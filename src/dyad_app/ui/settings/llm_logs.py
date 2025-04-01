@@ -360,9 +360,9 @@ def render_detail_panel(
                                 font_family="monospace", font_size=13
                             ),
                         )
-                    if request.output_type:
+                    if request.output_type_name:
                         me.text(
-                            f"Output Type: {request.output_type}",
+                            f"Output Type: {request.output_type_name}",
                             style=me.Style(
                                 font_family="monospace", font_size=13
                             ),

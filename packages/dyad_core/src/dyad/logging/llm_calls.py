@@ -1,13 +1,12 @@
 import logging
 from collections.abc import Sequence
 from datetime import datetime
-from typing import Generic, Optional
+from typing import Optional
 
 from pydantic import BaseModel
 from sqlalchemy import delete
 from sqlmodel import Field, Session, SQLModel, select
 
-from dyad.chat import BaseModelType
 from dyad.logging.logs_sql_engine import engine
 from dyad.public.chat_message import (
     CompletionMetadataChunk,
@@ -21,13 +20,13 @@ class ChatMessageRecord(BaseModel):
     text: str = ""
 
 
-class LanguageModelRequestRecord(BaseModel, Generic[BaseModelType]):
+class LanguageModelRequestRecord(BaseModel):
     input: str
     language_model_id: str
     history: Sequence[ChatMessageRecord] = Field(default_factory=list)
     prediction: str | None = None
     system_prompt: str = ""
-    output_type: type[BaseModelType] | None = None
+    output_type_name: str | None = None
 
 
 class LanguageModelResponseRecord(BaseModel):

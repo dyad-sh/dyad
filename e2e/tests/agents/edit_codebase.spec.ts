@@ -1,7 +1,9 @@
 import {test, expect} from '@playwright/test';
 import {ChatPage} from '../utils/page_object';
 
-test('edit codebase', async ({page}) => {
+// Need to skip this because search tool is not supported in test
+// so there's no way to trigger this right now.
+test.skip('edit codebase', async ({page}) => {
   const chatPage = await new ChatPage(page).setup();
   await chatPage.fillInChatInput('[test=(tool-call:edit_codebase)]');
   await chatPage.submitChat();

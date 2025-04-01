@@ -3,8 +3,6 @@ import os
 from sqlalchemy import create_engine
 from sqlmodel import text
 
-# from dyad.logging import llm_calls as llm_calls
-# from dyad.logging import logging as logging
 from dyad.workspace_util import get_workspace_storage_dir
 
 storage_dir = get_workspace_storage_dir()

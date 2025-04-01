@@ -28,10 +28,6 @@ class LanguageModelCallsTable(SQLModel, table=True):
 
 
 class LanguageModelCallRecord(BaseModel):
-    """
-    A record of an LLM call with parsed request and response objects.
-    """
-
     id: int
     timestamp: datetime
     request: LanguageModelRequest
@@ -106,13 +102,6 @@ class LLMCallLogger:
     ) -> list[LanguageModelCallRecord]:
         """
         Retrieve the most recent LLM calls from the database in reverse chronological order.
-        Returns parsed model objects instead of JSON strings.
-
-        Args:
-            limit: The maximum number of calls to retrieve. Defaults to 100.
-
-        Returns:
-            A list of LanguageModelCallRecord objects representing the most recent calls.
         """
 
         with Session(engine) as session:
@@ -126,7 +115,6 @@ class LLMCallLogger:
 
             for db_record in results:
                 try:
-                    # Parse the JSON strings into actual model objects
                     request = LanguageModelRequest.model_validate_json(
                         db_record.request_json
                     )
@@ -134,7 +122,6 @@ class LLMCallLogger:
                         db_record.response_json
                     )
 
-                    # Create a new record with the parsed objects
                     call_record = LanguageModelCallRecord(
                         id=db_record.id,
                         timestamp=db_record.timestamp,
@@ -143,17 +130,12 @@ class LLMCallLogger:
                     )
                     call_records.append(call_record)
                 except Exception as e:
-                    # Log error but continue processing other records
                     logging.error(f"Error parsing record {db_record.id}: {e!s}")
                     continue
 
             return call_records
 
     def clear_calls(self) -> None:
-        """
-        Clear all LLM call records from the database.
-        """
-
         with Session(engine) as session:
             session.exec(delete(LanguageModelCallsTable))  # type: ignore
             session.commit()

@@ -28,6 +28,7 @@ from dyad.language_model.language_model_clients import (
     get_reasoner_language_model,
     get_router_language_model,
 )
+from dyad.logging.llm_calls import LanguageModelResponse, llm_call_logger
 from dyad.logging.logging import logger
 from dyad.pad import Pad
 from dyad.pad_logic import has_matching_files
@@ -418,12 +419,15 @@ class AgentContext:
             system_prompt=self.base_prompt + system_prompt,
             language_model_id=language_model_id,
         )
+        request_id = llm_call_logger().record_request(request)
         logger().debug(
             "Streaming chunks for request: %s using handler: %s",
             request,
             client,
         )
+        response = LanguageModelResponse(chunks=[])
         for language_model_chunk in client.stream_chunks(request):
+            response.chunks.append(language_model_chunk)
             if isinstance(language_model_chunk, TextChunk):
                 yield language_model_chunk
             elif isinstance(language_model_chunk, ErrorChunk):
@@ -451,6 +455,7 @@ class AgentContext:
                 last_call.finish_reason = language_model_chunk.finish_reason
             else:
                 raise ValueError(f"Unknown chunk type: {language_model_chunk}")
+        llm_call_logger().record_response(request_id, response)
 
     def stream_structured_output(
         self,

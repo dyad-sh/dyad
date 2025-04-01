@@ -7,6 +7,7 @@ from dyad_app.ui.settings.advanced import advanced_settings
 from dyad_app.ui.settings.extensions import extensions_settings
 from dyad_app.ui.settings.general import general_settings
 from dyad_app.ui.settings.indexing import indexing_settings
+from dyad_app.ui.settings.llm_logs import llm_logs_settings
 from dyad_app.ui.settings.logs import logs_settings
 from dyad_app.ui.settings.models import models_and_providers_settings
 from dyad_app.ui.state import State
@@ -81,6 +82,7 @@ def settings_menu():
                     "Indexing",
                     "Prompt",
                     "Logs",
+                    "LLM Logs",
                 ],
             ),
         ]:
@@ -134,6 +136,8 @@ def settings_body():
             models_and_providers_settings()
         elif active_pane == "Logs":
             logs_settings()
+        elif active_pane == "LLM Logs":
+            llm_logs_settings()
         elif active_pane == "Advanced":
             advanced_settings()
         elif active_pane == "Extensions":

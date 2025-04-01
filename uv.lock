@@ -1,4 +1,5 @@
 version = 1
+revision = 1
 requires-python = ">=3.10"
 resolution-markers = [
     "python_full_version < '3.11'",
@@ -371,7 +372,7 @@ requires-dist = [{ name = "uv", specifier = ">=0.5.0" }]
 
 [[package]]
 name = "dyad-app"
-version = "0.1.6"
+version = "0.1.7"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -418,7 +419,7 @@ dev = [
 
 [[package]]
 name = "dyad-core"
-version = "0.1.6"
+version = "0.1.7"
 source = { editable = "packages/dyad_core" }
 dependencies = [
     { name = "anthropic" },
@@ -469,7 +470,7 @@ requires-dist = [
 
 [[package]]
 name = "dyad-git"
-version = "0.1.6"
+version = "0.1.7"
 source = { editable = "packages/dyad_git" }
 dependencies = [
     { name = "gitpython" },
@@ -480,7 +481,7 @@ requires-dist = [{ name = "gitpython", specifier = ">=3.1.44" }]
 
 [[package]]
 name = "dyad-github"
-version = "0.1.6"
+version = "0.1.7"
 source = { editable = "packages/dyad_github" }
 dependencies = [
     { name = "requests" },

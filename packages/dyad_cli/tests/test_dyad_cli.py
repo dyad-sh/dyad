@@ -157,10 +157,18 @@ def test_check_package_version_user_skips(mock_env):
     mock_save.assert_called_once()
 
 
-def test_get_command_args_no_extensions(mock_env):
+def test_get_command_args_no_extensions(mock_env, tmp_path):
     """Test command args generation without extensions."""
-    result = get_command_args("uv", "1.0.0", [])
-    assert "--with-requirements" not in result
+    # Use a temporary path instead of the real EXTENSIONS_REQUIREMENTS_PATH
+    with patch(
+        "dyad_cli.EXTENSIONS_REQUIREMENTS_PATH", tmp_path / "requirements.txt"
+    ):
+        # Make sure the temp file doesn't exist
+        if (tmp_path / "requirements.txt").exists():
+            (tmp_path / "requirements.txt").unlink()
+
+        result = get_command_args("uv", "1.0.0", [])
+        assert "--with-requirements" not in result
 
 
 def test_get_command_args_with_extensions(mock_env):

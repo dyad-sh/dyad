@@ -102,7 +102,7 @@ def mock_workspace():
         mock_read.return_value = "original code"
 
         mock_model_instance = MagicMock()
-        mock_model_instance.get_id.return_value = "test-model"
+        mock_model_instance.id = "test-model-id"
         mock_model.return_value = mock_model_instance
 
         mock_client_instance = MagicMock()

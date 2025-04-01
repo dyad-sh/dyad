@@ -8,11 +8,16 @@ from sqlmodel import Field, Session, SQLModel, select
 
 from dyad.chat import LanguageModelRequest
 from dyad.logging.logs_sql_engine import engine
-from dyad.public.chat_message import LanguageModelChunk
+from dyad.public.chat_message import CompletionMetadataChunk, LanguageModelChunk
 
 
 class LanguageModelResponse(BaseModel):
     chunks: list[LanguageModelChunk]
+
+    def get_completion_metadata(self) -> CompletionMetadataChunk | None:
+        for chunk in reversed(self.chunks):
+            if chunk.type == "completion-metadata":
+                return chunk
 
 
 class LanguageModelCallsTable(SQLModel, table=True):

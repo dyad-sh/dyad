@@ -82,7 +82,7 @@ def settings_menu():
                     "Indexing",
                     "Prompt",
                     "Logs",
-                    "LLM Logs",
+                    "LLM Calls",
                 ],
             ),
         ]:
@@ -122,7 +122,7 @@ def settings_body():
             gap=16,
             width="100%",
             flex_grow=1,
-            overflow="auto",
+            overflow="auto" if active_pane != "LLM Calls" else None,
             padding=me.Padding.symmetric(horizontal=24),
         )
     ):
@@ -136,7 +136,7 @@ def settings_body():
             models_and_providers_settings()
         elif active_pane == "Logs":
             logs_settings()
-        elif active_pane == "LLM Logs":
+        elif active_pane == "LLM Calls":
             llm_logs_settings()
         elif active_pane == "Advanced":
             advanced_settings()

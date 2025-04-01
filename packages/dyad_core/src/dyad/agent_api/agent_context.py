@@ -28,7 +28,12 @@ from dyad.language_model.language_model_clients import (
     get_reasoner_language_model,
     get_router_language_model,
 )
-from dyad.logging.llm_calls import LanguageModelResponse, llm_call_logger
+from dyad.logging.llm_calls import (
+    ChatMessageRecord,
+    LanguageModelRequestRecord,
+    LanguageModelResponseRecord,
+    llm_call_logger,
+)
 from dyad.logging.logging import logger
 from dyad.pad import Pad
 from dyad.pad_logic import has_matching_files
@@ -419,13 +424,22 @@ class AgentContext:
             system_prompt=self.base_prompt + system_prompt,
             language_model_id=language_model_id,
         )
-        request_id = llm_call_logger().record_request(request)
+        request_record = LanguageModelRequestRecord(
+            input=request.input.text,
+            history=[
+                ChatMessageRecord(role=m.role, text=m.to_language_model_text())
+                for m in request.history
+            ],
+            system_prompt=request.system_prompt,
+            language_model_id=language_model_id,
+        )
+        request_id = llm_call_logger().record_request(request_record)
         logger().debug(
             "Streaming chunks for request: %s using handler: %s",
             request,
             client,
         )
-        response = LanguageModelResponse(chunks=[])
+        response = LanguageModelResponseRecord(chunks=[])
         for language_model_chunk in client.stream_chunks(request):
             response.chunks.append(language_model_chunk)
             if isinstance(language_model_chunk, TextChunk):

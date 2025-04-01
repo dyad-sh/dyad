@@ -1,5 +1,6 @@
 import uuid
 from collections.abc import Sequence
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Generic, TypeVar
 
@@ -11,12 +12,13 @@ from dyad.public.input import Input
 BaseModelType = TypeVar("BaseModelType", bound=BaseModel)
 
 
-class LanguageModelRequest(BaseModel, Generic[BaseModelType]):
+@dataclass
+class LanguageModelRequest(Generic[BaseModelType]):
     """Chat request metadata."""
 
     input: Input
     language_model_id: str
-    history: Sequence[ChatMessage] = Field(default_factory=list)
+    history: Sequence[ChatMessage] = field(default_factory=list)
     prediction: str | None = None
     system_prompt: str = ""
     output_type: type[BaseModelType] | None = None

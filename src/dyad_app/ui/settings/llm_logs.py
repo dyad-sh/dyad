@@ -3,8 +3,11 @@ from datetime import datetime
 from typing import Literal
 
 import mesop as me
-from dyad.chat import LanguageModelRequest
-from dyad.logging.llm_calls import LanguageModelCallRecord, llm_call_logger
+from dyad.logging.llm_calls import (
+    LanguageModelCallRecord,
+    LanguageModelRequestRecord,
+    llm_call_logger,
+)
 
 
 @me.stateclass
@@ -387,13 +390,15 @@ def render_detail_panel(
                     me.text("Response contains no chunks.")
 
 
-def expandable_input_box(request: LanguageModelRequest, state: LLMLogState):
+def expandable_input_box(
+    request: LanguageModelRequestRecord, state: LLMLogState
+):
     section_id = f"input_{state.selected_call_id}"
-    expandable_content_box("Input", str(request.input), state, section_id)
+    expandable_content_box("Input", request.input, state, section_id)
 
 
 def expandable_system_prompt_box(
-    request: LanguageModelRequest, state: LLMLogState
+    request: LanguageModelRequestRecord, state: LLMLogState
 ):
     if request.system_prompt:
         section_id = f"system_prompt_{state.selected_call_id}"
@@ -402,16 +407,18 @@ def expandable_system_prompt_box(
         )
 
 
-def expandable_history_box(request: LanguageModelRequest, state: LLMLogState):
+def expandable_history_box(
+    request: LanguageModelRequestRecord, state: LLMLogState
+):
     if request.history:
         me.text(
             "History:",
             style=me.Style(font_weight=500, margin=me.Margin(bottom=8)),
         )
-        for i, msg in enumerate(request.history):
+        for i, msg in enumerate(reversed(request.history)):
             section_id = f"history_{state.selected_call_id}_{i}"
             expandable_content_box(
-                f"Role: {msg.role}", msg.content.get_text(), state, section_id
+                f"Role: {msg.role}", msg.text, state, section_id
             )
 
 

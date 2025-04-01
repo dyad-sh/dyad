@@ -26,7 +26,7 @@ Let's explain this code example step-by-step:
 
 1. `import dyad` should always be used instead of importing from specific sub-modules (e.g. `import dyad.foo`) because it's the only public API which will be stable over releases.
 1. `@dyad.agent(name="haiku")` is a function decorator which makes a function into an agent. The `name` argument is what is shown in the chat suggestion.
-1. The function paramter `context` is of the type `dyad.AgentContext` this contains the user input and state and represents essentially the interaction with an agent.
+1. The function parameter `context` is of the type `dyad.AgentContext` this contains the user input and state and represents essentially the interaction with an agent.
 1. `yield from context.stream_to_content` is a method on AgentContext which allows you to call an LLM and incrementally update the UI.
 
 ## Creating a tools agent

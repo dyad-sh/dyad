@@ -1,6 +1,6 @@
 [project]
 name = "dyad-git"
-version = "0.1.5"
+version = "0.1.6"
 description = "Add your description here"
 readme = "README.md"
 authors = [{ name = "Will Chen", email = "willchen90@gmail.com" }]

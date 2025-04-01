@@ -155,7 +155,7 @@ class LLMCallLogger:
         """
 
         with Session(engine) as session:
-            session.exec(delete(LanguageModelCallsTable))
+            session.exec(delete(LanguageModelCallsTable))  # type: ignore
             session.commit()
 
 

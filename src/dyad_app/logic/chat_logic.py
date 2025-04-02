@@ -168,6 +168,7 @@ def _handle_response(
 ):
     start_time = time.time()
     state = me.state(State)
+    current_chat = state.current_chat
     response, context = param
     has_opened_side_pane = False
     try:
@@ -210,8 +211,11 @@ def _handle_response(
             pad_ids=context._pad_ids,
             files=context._observed_files,
         )
-        set_current_chat(state.current_chat)
-        save_chat(state.current_chat)
+        # If the user hasn't moved to another chat (e.g. new chat),
+        # then we'll set the current chat to update the query params.
+        if state.current_chat == current_chat:
+            set_current_chat(current_chat)
+        save_chat(current_chat)
         state.in_progress = False
         state.is_chat_cancelled = False
         state.chat_input_focus_counter += 1

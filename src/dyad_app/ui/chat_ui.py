@@ -22,6 +22,7 @@ from dyad.public.chat_message import (
     ChatMessage,
     Checkpoint,
     Content,
+    ContentError,
 )
 from dyad.settings.user_settings import get_user_settings
 from dyad.storage.models.pad import get_pad
@@ -297,7 +298,12 @@ def click_open_academy_embed(e: me.ClickEvent, *, turn_index: int):
     state.turn_index = turn_index
 
 
-def pad_block(pad: Pad, academy_collection_id: str | None, turn_index: int):
+def pad_block(
+    pad: Pad,
+    academy_collection_id: str | None,
+    turn_index: int,
+    has_error: bool,
+):
     is_academy_expanded = is_academy_embed_expanded(turn_index)
     with me.box(
         style=me.Style(
@@ -397,7 +403,7 @@ def pad_block(pad: Pad, academy_collection_id: str | None, turn_index: int):
                     )
                     me.text(pad.title)
             with me.box(style=me.Style(display="flex", align_items="center")):
-                if not pad.complete:
+                if not pad.complete and not has_error:
                     me.progress_spinner(diameter=24, stroke_width=3)
 
                 me.icon(
@@ -443,7 +449,10 @@ def render_block(
                 else:
                     segment.id = pad_ids_remaining.pop()
                     pad_block(
-                        segment, academy_collection_id, turn_index=turn_index
+                        segment,
+                        academy_collection_id,
+                        turn_index=turn_index,
+                        has_error=bool(content.errors),
                     )
             elif isinstance(segment, FollowUpPrompts):
                 follow_up_prompts_box(segment.prompts)
@@ -454,9 +463,9 @@ def render_block(
                 me.code(str(segment))
 
     for error in content.errors:
-        error_message_box(error.message)
+        error_box(error)
 
-    if content.errors:
+    if any(error.source == "system" for error in content.errors):
         with me.box(
             style=me.Style(
                 display="flex",
@@ -516,6 +525,31 @@ def render_block(
                 me.text(f"Time: {call_metadata.seconds_taken:.2f}s")
 
 
+def error_box(error: ContentError):
+    with me.box(
+        style=me.Style(
+            background=me.theme_var("error-container")
+            if error.source == "system"
+            else me.theme_var("surface-container-high"),
+            padding=me.Padding.symmetric(horizontal=16, vertical=4),
+            border_radius=16,
+            margin=me.Margin.symmetric(vertical=8),
+            display="flex",
+            align_items="center",
+        )
+    ):
+        me.icon("error", style=me.Style(margin=me.Margin(right=8, top=4)))
+        me.markdown(
+            error.message,
+            style=me.Style(
+                color=me.theme_var("on-error-container")
+                if error.source == "system"
+                else None,
+                margin=me.Margin.symmetric(vertical=-12),
+            ),
+        )
+
+
 def error_message_box(error_message: str):
     with me.box(
         style=me.Style(
@@ -527,7 +561,10 @@ def error_message_box(error_message: str):
     ):
         me.markdown(
             error_message,
-            style=me.Style(color=me.theme_var("on-error-container")),
+            style=me.Style(
+                color=me.theme_var("on-error-container"),
+                margin=me.Margin.symmetric(vertical=-12),
+            ),
         )
 
 

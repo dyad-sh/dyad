@@ -71,6 +71,7 @@ class Checkpoint(BaseModel):
 
 class ContentError(BaseModel):
     message: str
+    source: Literal["user", "system"] = "system"
 
 
 class LanguageModelCallMetadata(BaseModel):

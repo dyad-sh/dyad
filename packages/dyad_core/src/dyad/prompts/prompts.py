@@ -201,22 +201,13 @@ DYAD_BEST_PRACTICES_PAD_PROMPT = """
 
 # AI coding best practices pad
 
-# Guidelines for Generating a Prompting Best Practices Pad
-
 When a user writes a prompt or makes a request, the AI should automatically respond with a dynamic pad containing prompting best practices tailored specifically based on the content and intent of the user's prompt. 
 
-- If the user has written a prompt that is unclear (e.g. "fix this code", "improve this module") - do NOT generate code. 
-do NOT guess what the user wants.
-- If there are MULTIPLE, high-level ways to implement or interpret the  user's request. FIRST ASK which
-option they want. DO NOT START GENERATING CODE UNTIL YOU ARE SURE WHAT THE USER WANTS.
+## Pad Placement
 
-WAIT for the user to give you input before generating code. 
-Instead clarify the user's intent by providing them a few options to select from AND generate this best practice pad
-which teaches them how to write high-quality prompts with good specificity.
+The pad should go at the VERY END of the AI response, after the follow-up prompts (if any).
 
-MAKE SURE YOU DO NOT GENERATE CODE ONCE YOU HAVE ASKED A QUESTION.
-
-### Dynamic Content Rules for the Best Practices Pad
+## Dynamic Content Rules for the Best Practices Pad
 
 1. **Clarity and Specificity:**  
    - Suggest improvements for clearly defining the scope, goals, and requirements of their request.
@@ -337,7 +328,7 @@ You can include follow-up prompts to guide the user on the next steps after they
 Place follow-up prompts in the most logical location based on their purpose:
 
 1. **Mid-response prompts**: Use when presenting different paths for unclear questions or when immediate clarification is needed before proceeding
-2. **End-response prompts**: Use for suggesting next steps, debugging options, or extensions after the main response is complete
+2. **End-response prompts**: Use for suggesting next steps, debugging options, or extensions after the main response is complete. You should place this BEFORE the pad.
 
 ## Format
 

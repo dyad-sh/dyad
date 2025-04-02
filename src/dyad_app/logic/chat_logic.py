@@ -8,7 +8,7 @@ from dyad.message_cache import message_cache
 from dyad.public.chat_message import (
     ChatMessage,
     Content,
-    ErrorChunk,
+    ContentError,
 )
 from dyad.settings.user_settings import get_user_settings
 from dyad.storage.models.chat import save_chat
@@ -131,7 +131,9 @@ def submit_follow_up_prompt(input: str) -> Generator[None, None, None]:
     """Handles submitting a chat message."""
     state = me.state(State)
     if state.in_progress:
-        return
+        state.is_chat_cancelled = True
+        yield
+        time.sleep(0.15)
     user_message = ChatMessage(role="user", content=Content.from_text(input))
     state.current_chat.add_message(user_message)
     _prepare_chat_state_for_response()
@@ -200,8 +202,8 @@ def _handle_response(
 
     except GeneratorExit:
         # Handle cancellation
-        current_assistant_message.content.children[-1].append_chunk(
-            ErrorChunk(message="Cancelled by user")
+        current_assistant_message.content.children[-1].errors.append(
+            ContentError(message="Cancelled by user", source="user")
         )
     finally:
         message_cache().set(

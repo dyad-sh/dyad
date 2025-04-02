@@ -201,10 +201,14 @@ def _handle_response(
                 yield
 
     except GeneratorExit:
-        # Handle cancellation
-        current_assistant_message.content.children[-1].errors.append(
-            ContentError(message="Cancelled by user", source="user")
-        )
+        if current_assistant_message.content.children:
+            current_assistant_message.content.children[-1].errors.append(
+                ContentError(message="Cancelled by user", source="user")
+            )
+        else:
+            current_assistant_message.content.errors.append(
+                ContentError(message="Cancelled by user", source="user")
+            )
     finally:
         message_cache().set(
             key=current_user_message.id,

@@ -20,6 +20,7 @@ from dyad_app.ui.history_pane import history_pane
 from dyad_app.ui.pads_sidebar import pads_sidebar
 from dyad_app.ui.state import (
     State,
+    navigate_and_cancel_chat,
     new_chat,
 )
 from dyad_app.ui.status_bar import status_bar
@@ -126,7 +127,7 @@ def app_bar():
 
 
 def on_click_navigate(e: me.ClickEvent, url: str):
-    me.navigate(url)
+    yield from navigate_and_cancel_chat(url)
 
 
 def app_bar_button(
@@ -260,8 +261,3 @@ def chat_sidebar():
         on_click=lambda e: new_chat(),
     )
     history_pane()
-
-
-def navigate_settings(e: me.ClickEvent):
-    """Navigate to settings page."""
-    me.navigate("/settings")

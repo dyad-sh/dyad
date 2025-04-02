@@ -10,7 +10,7 @@ from dyad_app.ui.settings.indexing import indexing_settings
 from dyad_app.ui.settings.llm_logs import llm_logs_settings
 from dyad_app.ui.settings.logs import logs_settings
 from dyad_app.ui.settings.models import models_and_providers_settings
-from dyad_app.ui.state import State
+from dyad_app.ui.state import State, navigate_and_cancel_chat
 from dyad_app.ui.theme_utils import load_theme_mode_from_settings
 
 SETTINGS_PANE_QUERY_PARAM = "settings-pane"
@@ -60,8 +60,9 @@ def body():
 
 def settings_menu():
     def click_menu_item(e: me.ClickEvent):
-        me.navigate("/settings")
+        yield from navigate_and_cancel_chat("/settings")
         me.query_params[SETTINGS_PANE_QUERY_PARAM] = e.key
+        yield
 
     with me.box(
         style=me.Style(

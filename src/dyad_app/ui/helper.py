@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from typing import Literal
 
 import mesop as me
@@ -63,7 +63,8 @@ def menu_item(
     icon: str,
     label: str,
     key: str = "",
-    on_click: Callable[[me.ClickEvent], None] | None = None,
+    on_click: Callable[[me.ClickEvent], None | Generator[None, None, None]]
+    | None = None,
 ):
     with me.box(on_click=on_click):
         with me.box(

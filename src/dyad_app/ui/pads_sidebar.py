@@ -7,10 +7,10 @@ from dyad.storage.models.pad import get_pad, get_pads
 from dyad_app.ui.chat.pad_helpers import generate_id
 from dyad_app.ui.helper import menu_item
 from dyad_app.ui.side_pane_state import set_side_pane
-from dyad_app.ui.state import State
+from dyad_app.ui.state import State, navigate_and_cancel_chat
 
 
-def new_pad():
+def new_pad(e):
     state = me.state(State)
     state.pad = Pad(
         id=generate_id(),
@@ -20,7 +20,7 @@ def new_pad():
         type="text/markdown",
     )
     set_side_pane("pad")
-    me.navigate("/pads")
+    yield from navigate_and_cancel_chat("/pads")
 
 
 def pads_sidebar():
@@ -36,7 +36,7 @@ def pads_sidebar():
         menu_item(
             icon="add",
             label="New pad",
-            on_click=lambda e: new_pad(),
+            on_click=new_pad,
         )
         me.text("Pads", style=me.Style(font_size=16, font_weight="bold"))
         for pad in get_pads():
@@ -63,4 +63,4 @@ def click_pad(e: me.ClickEvent, pad_id: str):
     state = me.state(State)
     state.pad = get_pad(pad_id)
     set_side_pane("pad")
-    me.navigate("/pads")
+    yield from navigate_and_cancel_chat("/pads")

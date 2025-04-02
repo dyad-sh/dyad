@@ -1,3 +1,4 @@
+import time
 from dataclasses import dataclass
 from typing import Literal
 
@@ -150,3 +151,12 @@ def set_default_input_state():
 def focus_chat_input():
     state = me.state(State)
     state.chat_input_focus_counter += 1
+
+
+def navigate_and_cancel_chat(url: str):
+    state = me.state(State)
+    state.is_chat_cancelled = True
+    yield
+    time.sleep(0.1)
+    me.navigate(url)
+    yield

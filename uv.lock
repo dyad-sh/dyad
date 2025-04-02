@@ -401,7 +401,7 @@ requires-dist = [
     { name = "dyad-core", editable = "packages/dyad_core" },
     { name = "dyad-git", editable = "packages/dyad_git" },
     { name = "flask-sock", specifier = ">=0.7.0" },
-    { name = "mesop", specifier = ">=1.0.0" },
+    { name = "mesop", specifier = ">=1.0.1" },
     { name = "pydantic", specifier = ">=2.9.2" },
     { name = "werkzeug", specifier = ">=3.1.2" },
 ]
@@ -976,7 +976,7 @@ wheels = [
 
 [[package]]
 name = "mesop"
-version = "1.0.0"
+version = "1.0.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "absl-py" },
@@ -990,7 +990,7 @@ dependencies = [
     { name = "werkzeug" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b7/be/e44f25a5caa9158820709bd80f6ae7ae67e14379ab9f72062c255b97481e/mesop-1.0.0-py3-none-any.whl", hash = "sha256:24525ecdf093b3cb29654711ca9716541baf637a336e22a62584d776e5e1770a", size = 7420276 },
+    { url = "https://files.pythonhosted.org/packages/ab/47/a1fb3129e474323fd45c11059593dee39745dff3ca03f769514cdbfbb024/mesop-1.0.1-py3-none-any.whl", hash = "sha256:a4d01c82b4a5a4953c693debf8d3ffaee25751bca0b44c12fc7adb6940061350", size = 7420841 },
 ]
 
 [[package]]

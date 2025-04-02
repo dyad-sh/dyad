@@ -1,0 +1,287 @@
+p {
+  letter-spacing: 0.07px;
+}
+
+/*
+   * Forked from: https://github.com/astral-sh/ruff/blob/39728a1198f1ed6081a0fd159715737848a50aa2/docs/stylesheets/extra.css#L32
+   */
+:root {
+  --black: #0f0f11;
+  --almost-white: #e3e3e3;
+  --white: white;
+  --radiate: #d7ff64;
+  --flare: #6340ac;
+  --rock: #78876e;
+  --galaxy: #121230;
+  --space: #171414;
+  --comet: #6f5d6f;
+  --cosmic: #cb00dc;
+  --sun: #ffac2f;
+  --electron: #46ebe1;
+  --aurora: #46eb74;
+  --constellation: #5f6de9;
+  --neutron: #cff3cf;
+  --proton: #f6afbc;
+  --nebula: #cdcbfb;
+  --supernova: #f1aff6;
+  --starlight: #f4f4f1;
+  --lunar: #fbf2fc;
+  --asteroid: #e3cee3;
+  --crater: #f0dfdf;
+  --mesop-blue-40: #0064ff;
+  --mesop-blue-35: #0052ce;
+  /* Tailwind colors: https://tailwindcss.com/docs/customizing-colors#default-color-palette */
+  --teal-600: #0d9488;
+  --indigo-600: #4f46e5;
+  --pink-600: #db2777;
+  --amber-600: #d97706;
+  --zinc-900: #18181b;
+
+  /* Mateiral colors */
+  --sys-primary: #0064ff;
+  --sys-tertiary: #01796b;
+}
+
+/* #87d0ff */
+
+:root {
+  --primary-button-background-color: var(--mesop-blue-40);
+  --primary-button-background-color-hover: var(--mesop-blue-35);
+  --primary-button-text-color: var(--white);
+  --primary-button-text-color-hover: var(--almost-white);
+}
+
+body {
+  --md-admonition-bg-color: var(--md-default-bg-color);
+  --md-admonition-fg-color: var(--md-default-fg-color);
+}
+
+[data-md-color-scheme='dyad-light'] {
+  --md-typeset-a-color: var(--sys-primary);
+  --md-accent-fg-color: var(--sys-tertiary);
+  /* --md-default-bg-color: #fafafc; */
+  --md-default-fg-color--light: #475569;
+  --md-default-bg-color--dark: var(--black);
+  --md-default-bg-color--lighter: var(--almost-white);
+  --md-primary-fg-color: var(--white);
+  --md-primary-fg-color--dark: var(--md-primary-fg-color);
+  --md-default-bg-color: var(--md-primary-fg-color);
+  --md-primary-bg-color: #333;
+  --md-typeset-a-color: var(--sys-primary);
+  --md-accent-fg-color: var(--sys-tertiary);
+}
+
+[data-md-color-scheme='dyad-dark'] {
+  --md-typeset-a-color: var(--sys-primary);
+  --md-accent-fg-color: var(--sys-tertiary);
+
+  --sys-primary: #87d0ff;
+  --sys-tertiary: #54dbc8;
+
+  --md-default-bg-color: var(--zinc-900); /* var(--galaxy);*/
+  --md-default-fg-color: var(--almost-white);
+  --md-default-fg-color--light: var(--almost-white);
+  --md-default-fg-color--lighter: var(--almost-white);
+  --md-primary-fg-color: var(--zinc-900); /* var(--space); */
+  --md-primary-bg-color: var(--almost-white);
+  /* --md-accent-fg-color: var(--cosmic); */
+
+  --md-typeset-color: var(--almost-white);
+  /* --md-typeset-a-color: var(--radiate); */
+  --md-typeset-mark-color: var(--sun);
+
+  --md-code-fg-color: var(--almost-white);
+  --md-code-bg-color: var(--space);
+
+  --md-code-hl-comment-color: var(--asteroid);
+  --md-code-hl-punctuation-color: var(--asteroid);
+  --md-code-hl-generic-color: var(--supernova);
+  --md-code-hl-variable-color: var(--starlight);
+  --md-code-hl-string-color: var(--radiate);
+  --md-code-hl-keyword-color: var(--supernova);
+  --md-code-hl-operator-color: var(--supernova);
+  --md-code-hl-number-color: var(--electron);
+  --md-code-hl-special-color: var(--electron);
+  --md-code-hl-function-color: var(--neutron);
+  --md-code-hl-constant-color: var(--radiate);
+  --md-code-hl-name-color: var(--md-code-fg-color);
+
+  --md-typeset-del-color: hsla(6, 90%, 60%, 0.15);
+  --md-typeset-ins-color: hsla(150, 90%, 44%, 0.15);
+
+  --md-typeset-table-color: hsla(0, 0%, 100%, 0.12);
+  --md-typeset-table-color--light: hsla(0, 0%, 100%, 0.035);
+}
+
+[data-md-color-scheme='dyad-light'] img[src$='#only-dark'],
+[data-md-color-scheme='dyad-light'] img[src$='#gh-dark-mode-only'] {
+  display: none; /* Hide dark images in light mode */
+}
+
+[data-md-color-scheme='dyad-light'] img[src$='#only-light'],
+[data-md-color-scheme='dyad-light'] img[src$='#gh-light-mode-only'] {
+  display: inline; /* Show light images in light mode */
+}
+
+[data-md-color-scheme='dyad-dark'] img[src$='#only-light'],
+[data-md-color-scheme='dyad-dark'] img[src$='#gh-light-mode-only'] {
+  display: none; /* Hide light images in dark mode */
+}
+
+[data-md-color-scheme='dyad-dark'] img[src$='#only-dark'],
+[data-md-color-scheme='dyad-dark'] img[src$='#gh-dark-mode-only'] {
+  display: inline; /* Show dark images in dark mode */
+}
+
+.md-header--shadow {
+  box-shadow: none;
+}
+
+[data-md-color-scheme='dyad-light'] .md-header__topic {
+  /* color: #444; TODO */
+  font-weight: 600;
+}
+
+/* See: https://github.com/squidfunk/mkdocs-material/issues/175#issuecomment-616694465 */
+.md-typeset__table {
+  min-width: 100%;
+}
+.md-typeset table:not([class]) {
+  display: table;
+}
+
+/* See: https://github.com/mesop-sh/ruff/issues/8519 */
+[data-md-color-scheme='dyad-dark'] details summary a {
+  color: var(--flare);
+}
+
+.md-nav--primary {
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.md-nav--secondary {
+  font-size: 0.75rem;
+}
+
+.md-main__inner {
+  margin-top: 0.5rem;
+}
+
+.md-nav--primary a.md-nav__link {
+  color: #444;
+  font-size: 0.8rem;
+  letter-spacing: 0.14px;
+}
+
+[data-md-color-scheme='dyad-dark'] .md-nav--primary a.md-nav__link {
+  color: white;
+}
+
+.md-typeset {
+  font-size: 0.8rem;
+}
+
+.md-typeset .admonition,
+.md-typeset details {
+  font-size: 0.8rem;
+}
+
+.highlight code {
+  font-size: 0.7rem;
+}
+
+.md-tabs__link {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.md-search__input,
+.md-search__form {
+  border-radius: 8px;
+}
+
+.md-search__input {
+  background-color: var(--md-default-bg-color--lighter);
+}
+
+.md-search__input::placeholder {
+  color: var(--md-default-bg-color--dark);
+}
+
+/* Based on https://github.com/squidfunk/mkdocs-material/issues/2574#issuecomment-821979698 */
+[data-md-toggle='search']:not(:checked) ~ .md-header .md-search__form::after {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.5rem;
+  display: block;
+  padding: 0.1rem 0.4rem;
+  background: var(--md-default-bg-color);
+  color: var(--md-default-bg-color--dark);
+  font-weight: bold;
+  font-size: 0.8rem;
+  border: 0.05rem solid var(--md-default-bg-color--lighter);
+  box-shadow: 0 1px 2px var(--md-default-bg-color--lighter);
+  text-shadow: 0 1px 0 var(--md-default-bg-color--lighter);
+  border-radius: 0.2rem;
+  z-index: 9;
+  content: '/';
+}
+
+/* Caps the height of the code snippets. */
+.md-typeset pre > code {
+  max-height: 450px;
+}
+
+a.link-block {
+  display: block;
+  position: relative;
+  margin-top: 16px;
+  border: 1px solid var(--md-default-bg-color--lighter);
+
+  padding: 32px 16px 16px;
+  border-radius: 8px;
+  width: 400px;
+}
+
+a.link-block:hover {
+  border: 1px solid var(--md-accent-fg-color);
+}
+
+a.link-block:before {
+  content: attr(data-title);
+  color: var(--md-typeset-color);
+  font-size: 14px;
+  position: absolute;
+  top: 8px;
+}
+
+a.next-step {
+  display: block;
+  position: relative;
+  margin-top: 16px;
+  border: 1px solid var(--md-default-bg-color--lighter);
+
+  padding: 32px 16px 16px;
+  border-radius: 8px;
+  width: 400px;
+}
+
+a.next-step:before {
+  content: 'Next';
+  color: var(--md-typeset-color);
+  font-size: 14px;
+  position: absolute;
+  top: 8px;
+}
+
+a.next-step:hover {
+  border: 1px solid var(--md-accent-fg-color);
+}
+
+.screenshot {
+  border-radius: 16px;
+  box-shadow:
+    0 0 0 1px var(--md-default-bg-color--lighter),
+    0 4px 6px 0 rgba(0, 0, 0, 0.1);
+}

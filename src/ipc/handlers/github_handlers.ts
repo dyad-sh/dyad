@@ -16,6 +16,9 @@ import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import { GithubUser } from "../../lib/schemas";
+import log from "electron-log";
+
+const logger = log.scope("github_handlers");
 
 // --- GitHub Device Flow Constants ---
 // TODO: Fetch this securely, e.g., from environment variables or a config file
@@ -65,7 +68,7 @@ export async function getGithubUser(): Promise<GithubUser | null> {
     });
     return { email };
   } catch (err) {
-    console.error("[GitHub Handler] Failed to get GitHub username:", err);
+    logger.error("[GitHub Handler] Failed to get GitHub username:", err);
     return null;
   }
 }
@@ -78,15 +81,13 @@ export async function getGithubUser(): Promise<GithubUser | null> {
 
 async function pollForAccessToken(event: IpcMainInvokeEvent) {
   if (!currentFlowState || !currentFlowState.isPolling) {
-    console.log("[GitHub Handler] Polling stopped or no active flow.");
+    logger.debug("[GitHub Handler] Polling stopped or no active flow.");
     return;
   }
 
   const { deviceCode, interval } = currentFlowState;
 
-  console.log(
-    `[GitHub Handler] Polling for token with device code: ${deviceCode}`
-  );
+  logger.debug("[GitHub Handler] Polling for token with device code");
   event.sender.send("github:flow-update", {
     message: "Polling GitHub for authorization...",
   });
@@ -108,10 +109,7 @@ async function pollForAccessToken(event: IpcMainInvokeEvent) {
     const data = await response.json();
 
     if (response.ok && data.access_token) {
-      // --- SUCCESS ---
-      console.log(
-        "[GitHub Handler] Successfully obtained GitHub Access Token."
-      ); // TODO: Store this token securely!
+      logger.log("Successfully obtained GitHub Access Token.");
       event.sender.send("github:flow-success", {
         message: "Successfully connected!",
       });
@@ -120,13 +118,13 @@ async function pollForAccessToken(event: IpcMainInvokeEvent) {
           value: data.access_token,
         },
       });
-      // TODO: Associate token with appId if provided
+
       stopPolling();
       return;
     } else if (data.error) {
       switch (data.error) {
         case "authorization_pending":
-          console.log("[GitHub Handler] Authorization pending...");
+          logger.debug("Authorization pending...");
           event.sender.send("github:flow-update", {
             message: "Waiting for user authorization...",
           });
@@ -138,9 +136,7 @@ async function pollForAccessToken(event: IpcMainInvokeEvent) {
           break;
         case "slow_down":
           const newInterval = interval + 5;
-          console.log(
-            `[GitHub Handler] Slow down requested. New interval: ${newInterval}s`
-          );
+          logger.debug(`Slow down requested. New interval: ${newInterval}s`);
           currentFlowState.interval = newInterval; // Update interval
           event.sender.send("github:flow-update", {
             message: `GitHub asked to slow down. Retrying in ${newInterval}s...`,
@@ -151,24 +147,22 @@ async function pollForAccessToken(event: IpcMainInvokeEvent) {
           );
           break;
         case "expired_token":
-          console.error("[GitHub Handler] Device code expired.");
+          logger.error("Device code expired.");
           event.sender.send("github:flow-error", {
             error: "Verification code expired. Please try again.",
           });
           stopPolling();
           break;
         case "access_denied":
-          console.error("[GitHub Handler] Access denied by user.");
+          logger.error("Access denied by user.");
           event.sender.send("github:flow-error", {
             error: "Authorization denied by user.",
           });
           stopPolling();
           break;
         default:
-          console.error(
-            `[GitHub Handler] Unknown GitHub error: ${
-              data.error_description || data.error
-            }`
+          logger.error(
+            `Unknown GitHub error: ${data.error_description || data.error}`
           );
           event.sender.send("github:flow-error", {
             error: `GitHub authorization error: ${
@@ -182,10 +176,7 @@ async function pollForAccessToken(event: IpcMainInvokeEvent) {
       throw new Error(`Unknown response structure: ${JSON.stringify(data)}`);
     }
   } catch (error) {
-    console.error(
-      "[GitHub Handler] Error polling for GitHub access token:",
-      error
-    );
+    logger.error("Error polling for GitHub access token:", error);
     event.sender.send("github:flow-error", {
       error: `Network or unexpected error during polling: ${
         error instanceof Error ? error.message : String(error)
@@ -202,12 +193,9 @@ function stopPolling() {
     }
     currentFlowState.isPolling = false;
     currentFlowState.timeoutId = null;
-    // Maybe keep window reference for a bit if needed, or clear it
-    // currentFlowState.window = null;
-    console.log("[GitHub Handler] Polling stopped.");
+
+    logger.debug("[GitHub Handler] Polling stopped.");
   }
-  // Setting to null signifies no active flow
-  // currentFlowState = null; // Decide if you want to clear immediately or allow potential restart
 }
 
 // --- IPC Handlers ---
@@ -216,15 +204,11 @@ function handleStartGithubFlow(
   event: IpcMainInvokeEvent,
   args: { appId: number | null }
 ) {
-  console.log(
-    `[GitHub Handler] Received github:start-flow for appId: ${args.appId}`
-  );
+  logger.debug(`Received github:start-flow for appId: ${args.appId}`);
 
   // If a flow is already in progress, maybe cancel it or send an error
   if (currentFlowState && currentFlowState.isPolling) {
-    console.warn(
-      "[GitHub Handler] Another GitHub flow is already in progress."
-    );
+    logger.warn("Another GitHub flow is already in progress.");
     event.sender.send("github:flow-error", {
       error: "Another connection process is already active.",
     });
@@ -234,7 +218,7 @@ function handleStartGithubFlow(
   // Store the window that initiated the request
   const window = BrowserWindow.fromWebContents(event.sender);
   if (!window) {
-    console.error("[GitHub Handler] Could not get BrowserWindow instance.");
+    logger.error("Could not get BrowserWindow instance.");
     return;
   }
 
@@ -272,7 +256,7 @@ function handleStartGithubFlow(
       return res.json();
     })
     .then((data) => {
-      console.log("[GitHub Handler] Received device code response:", data);
+      logger.info("Received device code response");
       if (!currentFlowState) return; // Flow might have been cancelled
 
       currentFlowState.deviceCode = data.device_code;
@@ -293,10 +277,7 @@ function handleStartGithubFlow(
       );
     })
     .catch((error) => {
-      console.error(
-        "[GitHub Handler] Error initiating GitHub device flow:",
-        error
-      );
+      logger.error("Error initiating GitHub device flow:", error);
       event.sender.send("github:flow-error", {
         error: `Failed to start GitHub connection: ${error.message}`,
       });
@@ -304,15 +285,6 @@ function handleStartGithubFlow(
       currentFlowState = null; // Clear state on initial error
     });
 }
-
-// Optional: Handle cancellation from renderer
-// function handleCancelGithubFlow(event: IpcMainEvent) {
-//   console.log('[GitHub Handler] Received github:cancel-flow');
-//   stopPolling();
-//   currentFlowState = null; // Clear state on cancel
-//   // Optionally send confirmation back
-//   event.sender.send('github:flow-cancelled', { message: 'GitHub flow cancelled.' });
-// }
 
 // --- GitHub Repo Availability Handler ---
 async function handleIsRepoAvailable(
@@ -453,7 +425,6 @@ async function handlePushToGithub(
 // --- Registration ---
 export function registerGithubHandlers() {
   ipcMain.handle("github:start-flow", handleStartGithubFlow);
-  // ipcMain.on('github:cancel-flow', handleCancelGithubFlow); // Uncomment if you add cancellation
   ipcMain.handle("github:is-repo-available", handleIsRepoAvailable);
   ipcMain.handle("github:create-repo", handleCreateRepo);
   ipcMain.handle("github:push", handlePushToGithub);

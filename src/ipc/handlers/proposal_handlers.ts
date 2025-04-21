@@ -10,6 +10,9 @@ import {
   getDyadWriteTags,
   processFullResponseActions,
 } from "../processors/response_processor";
+import log from "electron-log";
+
+const logger = log.scope("proposal_handlers");
 
 // Placeholder Proposal data (can be removed or kept for reference)
 // const placeholderProposal: Proposal = { ... };
@@ -33,7 +36,7 @@ const getProposalHandler = async (
   _event: IpcMainInvokeEvent,
   { chatId }: { chatId: number }
 ): Promise<ProposalResult | null> => {
-  console.log(`IPC: get-proposal called for chatId: ${chatId}`);
+  logger.log(`IPC: get-proposal called for chatId: ${chatId}`);
 
   try {
     // Find the latest ASSISTANT message for the chat
@@ -56,7 +59,7 @@ const getProposalHandler = async (
 
     if (latestAssistantMessage?.content && latestAssistantMessage.id) {
       const messageId = latestAssistantMessage.id; // Get the message ID
-      console.log(
+      logger.log(
         `Found latest assistant message (ID: ${messageId}), parsing content...`
       );
       const messageContent = latestAssistantMessage.content;
@@ -78,20 +81,25 @@ const getProposalHandler = async (
             summary: tag.description ?? "(no change summary found)", // Generic summary
           })),
         };
-        console.log("Generated proposal on the fly:", proposal);
+        logger.log(
+          "Generated code proposal. title=",
+          proposal.title,
+          "files=",
+          proposal.filesChanged.length
+        );
         return { proposal, chatId, messageId }; // Return proposal and messageId
       } else {
-        console.log(
+        logger.log(
           "No relevant tags found in the latest assistant message content."
         );
         return null; // No proposal could be generated
       }
     } else {
-      console.log(`No assistant message found for chatId: ${chatId}`);
+      logger.log(`No assistant message found for chatId: ${chatId}`);
       return null; // No message found
     }
   } catch (error) {
-    console.error(`Error processing proposal for chatId ${chatId}:`, error);
+    logger.error(`Error processing proposal for chatId ${chatId}:`, error);
     return null; // Indicate DB or processing error
   }
 };
@@ -101,7 +109,7 @@ const approveProposalHandler = async (
   _event: IpcMainInvokeEvent,
   { chatId, messageId }: { chatId: number; messageId: number }
 ): Promise<{ success: boolean; error?: string }> => {
-  console.log(
+  logger.log(
     `IPC: approve-proposal called for chatId: ${chatId}, messageId: ${messageId}`
   );
 
@@ -119,7 +127,7 @@ const approveProposalHandler = async (
     });
 
     if (!messageToApprove?.content) {
-      console.error(
+      logger.error(
         `Assistant message not found for chatId: ${chatId}, messageId: ${messageId}`
       );
       return { success: false, error: "Assistant message not found." };
@@ -137,7 +145,7 @@ const approveProposalHandler = async (
     );
 
     if (processResult.error) {
-      console.error(
+      logger.error(
         `Error processing actions for message ${messageId}:`,
         processResult.error
       );
@@ -151,10 +159,7 @@ const approveProposalHandler = async (
 
     return { success: true };
   } catch (error) {
-    console.error(
-      `Error approving proposal for messageId ${messageId}:`,
-      error
-    );
+    logger.error(`Error approving proposal for messageId ${messageId}:`, error);
     return {
       success: false,
       error: (error as Error)?.message || "Unknown error",
@@ -167,7 +172,7 @@ const rejectProposalHandler = async (
   _event: IpcMainInvokeEvent,
   { chatId, messageId }: { chatId: number; messageId: number }
 ): Promise<{ success: boolean; error?: string }> => {
-  console.log(
+  logger.log(
     `IPC: reject-proposal called for chatId: ${chatId}, messageId: ${messageId}`
   );
 
@@ -183,7 +188,7 @@ const rejectProposalHandler = async (
     });
 
     if (!messageToReject) {
-      console.error(
+      logger.error(
         `Assistant message not found for chatId: ${chatId}, messageId: ${messageId}`
       );
       return { success: false, error: "Assistant message not found." };
@@ -195,13 +200,10 @@ const rejectProposalHandler = async (
       .set({ approvalState: "rejected" })
       .where(eq(messages.id, messageId));
 
-    console.log(`Message ${messageId} marked as rejected.`);
+    logger.log(`Message ${messageId} marked as rejected.`);
     return { success: true };
   } catch (error) {
-    console.error(
-      `Error rejecting proposal for messageId ${messageId}:`,
-      error
-    );
+    logger.error(`Error rejecting proposal for messageId ${messageId}:`, error);
     return {
       success: false,
       error: (error as Error)?.message || "Unknown error",
@@ -214,5 +216,4 @@ export function registerProposalHandlers() {
   ipcMain.handle("get-proposal", getProposalHandler);
   ipcMain.handle("approve-proposal", approveProposalHandler);
   ipcMain.handle("reject-proposal", rejectProposalHandler);
-  console.log("Registered proposal IPC handlers (get, approve, reject)");
 }

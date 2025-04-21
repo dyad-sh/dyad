@@ -12,6 +12,9 @@ import { processFullResponseActions } from "../processors/response_processor";
 import { streamTestResponse } from "./testing_chat_handlers";
 import { getTestResponse } from "./testing_chat_handlers";
 import { getModelClient } from "../utils/get_model_client";
+import log from "electron-log";
+
+const logger = log.scope("chat_stream_handlers");
 
 // Track active streams for cancellation
 const activeStreams = new Map<number, AbortController>();
@@ -125,12 +128,12 @@ export function registerChatStreamHandlers() {
           const appPath = getDyadAppPath(updatedChat.app.path);
           try {
             codebaseInfo = await extractCodebase(appPath);
-            console.log(`Extracted codebase information from ${appPath}`);
+            logger.log(`Extracted codebase information from ${appPath}`);
           } catch (error) {
-            console.error("Error extracting codebase:", error);
+            logger.error("Error extracting codebase:", error);
           }
         }
-        console.log(
+        logger.log(
           "codebaseInfo: length",
           codebaseInfo.length,
           "estimated tokens",
@@ -170,7 +173,7 @@ export function registerChatStreamHandlers() {
             },
           ],
           onError: (error) => {
-            console.error("Error streaming text:", error);
+            logger.error("Error streaming text:", error);
             const message =
               (error as any)?.error?.message || JSON.stringify(error);
             event.sender.send(
@@ -204,7 +207,7 @@ export function registerChatStreamHandlers() {
 
             // If the stream was aborted, exit early
             if (abortController.signal.aborted) {
-              console.log(`Stream for chat ${req.chatId} was aborted`);
+              logger.log(`Stream for chat ${req.chatId} was aborted`);
               break;
             }
           }
@@ -222,10 +225,10 @@ export function registerChatStreamHandlers() {
                   role: "assistant",
                   content: `${partialResponse}\n\n[Response cancelled by user]`,
                 });
-                console.log(`Saved partial response for chat ${chatId}`);
+                logger.log(`Saved partial response for chat ${chatId}`);
                 partialResponses.delete(chatId);
               } catch (error) {
-                console.error(
+                logger.error(
                   `Error saving partial response for chat ${chatId}:`,
                   error
                 );
@@ -305,7 +308,7 @@ export function registerChatStreamHandlers() {
       // Return the chat ID for backwards compatibility
       return req.chatId;
     } catch (error) {
-      console.error("[MAIN] API error:", error);
+      logger.error("Error calling LLM:", error);
       event.sender.send(
         "chat:response:error",
         `Sorry, there was an error processing your request: ${error}`
@@ -324,9 +327,9 @@ export function registerChatStreamHandlers() {
       // Abort the stream
       abortController.abort();
       activeStreams.delete(chatId);
-      console.log(`Aborted stream for chat ${chatId}`);
+      logger.log(`Aborted stream for chat ${chatId}`);
     } else {
-      console.warn(`No active stream found for chat ${chatId}`);
+      logger.warn(`No active stream found for chat ${chatId}`);
     }
 
     // Send the end event to the renderer

@@ -11,10 +11,9 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
 import { isIgnored } from "isomorphic-git";
+import log from "electron-log";
 
-// Setup ESM compatibility
-// const __filename = fileURLToPath(import.meta.url);
-// const __dirname = dirname(__filename);
+const logger = log.scope("extract-codebase");
 
 // File extensions to include
 const ALLOWED_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".css"];
@@ -28,7 +27,7 @@ async function isGitIgnored(
     const relativePath = path.relative(baseDir, filePath);
     return await isIgnored({ fs, dir: baseDir, filepath: relativePath });
   } catch (error) {
-    console.error(`Error checking if path is git ignored: ${filePath}`, error);
+    logger.error(`Error checking if path is git ignored: ${filePath}`, error);
     return false;
   }
 }
@@ -84,7 +83,7 @@ function formatFile(filePath: string, baseDir: string): string {
       .extname(filePath)
       .substring(1)}\n${content}\n\`\`\`\n\n`;
   } catch (error) {
-    console.error(`Error reading file: ${filePath}`, error);
+    logger.error(`Error reading file: ${filePath}`, error);
     return `## File: ${filePath}\nError reading file: ${error}\n\n`;
   }
 }
@@ -115,9 +114,3 @@ async function main() {
   fs.writeFileSync(outputFile, output);
   console.log(`Extraction complete. Output written to ${outputFile}`);
 }
-
-// Run the script
-main().catch((error) => {
-  console.error("Error:", error);
-  process.exit(1);
-});

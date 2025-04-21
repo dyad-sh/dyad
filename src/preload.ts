@@ -41,6 +41,7 @@ const validInvokeChannels = [
   "get-proposal",
   "approve-proposal",
   "reject-proposal",
+  "get-system-debug-info",
 ] as const;
 
 // Add valid receive channels

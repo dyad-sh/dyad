@@ -7,11 +7,9 @@ import started from "electron-squirrel-startup";
 import { updateElectronApp } from "update-electron-app";
 import log from "electron-log";
 
-console.log = log.log;
-console.error = log.error;
-console.warn = log.warn;
-console.info = log.info;
-console.debug = log.debug;
+log.errorHandler.startCatching();
+log.eventLogger.startLogging();
+log.log("HELLO WORLD");
 
 updateElectronApp(); // additional configuration options available
 

@@ -1,51 +1,28 @@
 import { ipcMain, app } from "electron";
-import { exec, execSync, spawn } from "child_process";
+import { exec, execSync } from "child_process";
 import { platform, arch } from "os";
 import { NodeSystemInfo } from "../ipc_types";
 import fixPath from "fix-path";
+import { runShellCommand } from "../utils/runShellCommand";
+import log from "electron-log";
 
-function checkCommandExists(command: string): Promise<string | null> {
-  return new Promise((resolve) => {
-    let output = "";
-    const process = spawn(command, {
-      shell: true,
-      stdio: ["ignore", "pipe", "pipe"], // ignore stdin, pipe stdout/stderr
-    });
-
-    process.stdout?.on("data", (data) => {
-      output += data.toString();
-    });
-
-    process.stderr?.on("data", (data) => {
-      // Log stderr but don't treat it as a failure unless the exit code is non-zero
-      console.warn(`Stderr from "${command}": ${data.toString().trim()}`);
-    });
-
-    process.on("error", (error) => {
-      console.error(`Error executing command "${command}":`, error.message);
-      resolve(null); // Command execution failed
-    });
-
-    process.on("close", (code) => {
-      if (code === 0) {
-        resolve(output.trim()); // Command succeeded, return trimmed output
-      } else {
-        console.error(`Command "${command}" failed with code ${code}`);
-        resolve(null); // Command failed
-      }
-    });
-  });
-}
+const logger = log.scope("node_handlers");
 
 export function registerNodeHandlers() {
   ipcMain.handle("nodejs-status", async (): Promise<NodeSystemInfo> => {
+    logger.log(
+      "handling ipc: nodejs-status for platform:",
+      platform(),
+      "and arch:",
+      arch()
+    );
     // Run checks in parallel
     const [nodeVersion, pnpmVersion] = await Promise.all([
-      checkCommandExists("node --version"),
+      runShellCommand("node --version"),
       // First, check if pnpm is installed.
       // If not, try to install it using corepack.
       // If both fail, then pnpm is not available.
-      checkCommandExists(
+      runShellCommand(
         "pnpm --version || (corepack enable pnpm && pnpm --version) || (npm install -g pnpm@latest-10 && pnpm --version)"
       ),
     ]);
@@ -66,7 +43,7 @@ export function registerNodeHandlers() {
   });
 
   ipcMain.handle("reload-env-path", async (): Promise<void> => {
-    console.debug("Reloading env path, previously:", process.env.PATH);
+    logger.debug("Reloading env path, previously:", process.env.PATH);
     if (platform() === "win32") {
       const newPath = execSync("cmd /c echo %PATH%", {
         encoding: "utf8",
@@ -75,6 +52,6 @@ export function registerNodeHandlers() {
     } else {
       fixPath();
     }
-    console.debug("Reloaded env path, now:", process.env.PATH);
+    logger.debug("Reloaded env path, now:", process.env.PATH);
   });
 }

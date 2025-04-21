@@ -16,6 +16,7 @@ import type {
   NodeSystemInfo,
   Message,
   Version,
+  SystemDebugInfo,
 } from "./ipc_types";
 import type { CodeProposal, ProposalResult } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
@@ -670,4 +671,15 @@ export class IpcClient {
     }
   }
   // --- End Proposal Management ---
+
+  // Get system debug information
+  public async getSystemDebugInfo(): Promise<SystemDebugInfo> {
+    try {
+      const result = await this.ipcRenderer.invoke("get-system-debug-info");
+      return result;
+    } catch (error) {
+      showError(error);
+      throw error;
+    }
+  }
 }

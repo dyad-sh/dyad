@@ -9,6 +9,9 @@ import path from "node:path";
 import fs from "node:fs";
 import { getDyadAppPath, getUserDataPath } from "../paths/paths";
 import { eq } from "drizzle-orm";
+import log from "electron-log";
+
+const logger = log.scope("db");
 
 // Database connection factory
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -29,7 +32,7 @@ export function initializeDatabase(): BetterSQLite3Database<typeof schema> & {
   if (_db) return _db as any;
 
   const dbPath = getDatabasePath();
-  console.log("Initializing database at:", dbPath);
+  logger.log("Initializing database at:", dbPath);
 
   // Check if the database file exists and remove it if it has issues
   try {
@@ -38,14 +41,12 @@ export function initializeDatabase(): BetterSQLite3Database<typeof schema> & {
       const stats = fs.statSync(dbPath);
       // If the file is very small, it might be corrupted
       if (stats.size < 100) {
-        console.log(
-          "Database file exists but may be corrupted. Removing it..."
-        );
+        logger.log("Database file exists but may be corrupted. Removing it...");
         fs.unlinkSync(dbPath);
       }
     }
   } catch (error) {
-    console.error("Error checking database file:", error);
+    logger.error("Error checking database file:", error);
   }
 
   fs.mkdirSync(getUserDataPath(), { recursive: true });
@@ -62,21 +63,15 @@ export function initializeDatabase(): BetterSQLite3Database<typeof schema> & {
   _db = drizzle(sqlite, { schema });
 
   try {
-    // Run migrations programmatically
-
     const migrationsFolder = path.join(__dirname, "..", "..", "drizzle");
-
-    console.log("MIGRATIONS FOLDER INITIALIZE", migrationsFolder);
-
-    // Verify migrations folder exists
     if (!fs.existsSync(migrationsFolder)) {
-      console.error("Migrations folder not found:", migrationsFolder);
+      logger.error("Migrations folder not found:", migrationsFolder);
     } else {
-      console.log("Running migrations from:", migrationsFolder);
+      logger.log("Running migrations from:", migrationsFolder);
       migrate(_db, { migrationsFolder });
     }
   } catch (error) {
-    console.error("Migration error:", error);
+    logger.error("Migration error:", error);
   }
 
   return _db as any;
@@ -86,7 +81,7 @@ export function initializeDatabase(): BetterSQLite3Database<typeof schema> & {
 try {
   initializeDatabase();
 } catch (error) {
-  console.error("Failed to initialize database:", error);
+  logger.error("Failed to initialize database:", error);
 }
 
 export const db = _db as any as BetterSQLite3Database<typeof schema> & {

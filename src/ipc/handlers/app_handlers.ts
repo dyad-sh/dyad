@@ -36,14 +36,13 @@ import fixPath from "fix-path";
 import { getGitAuthor } from "../utils/git_author";
 import killPort from "kill-port";
 import util from "util";
+import log from "electron-log";
+
+const logger = log.scope("app_handlers");
+
 // Needed, otherwise electron in MacOS/Linux will not be able
 // to find node/pnpm.
 fixPath();
-
-// Keep track of the static file server worker
-let staticServerWorker: Worker | null = null;
-let staticServerPort: number | null = null;
-// let staticServerRootDir: string | null = null; // Store the root dir it's serving - Removed
 
 async function executeApp({
   appPath,
@@ -96,7 +95,7 @@ async function executeAppLocalNode({
   // Log output
   process.stdout?.on("data", (data) => {
     const message = util.stripVTControlCharacters(data.toString());
-    console.log(`App ${appId} (PID: ${process.pid}) stdout: ${message}`);
+    logger.debug(`App ${appId} (PID: ${process.pid}) stdout: ${message}`);
     event.sender.send("app:output", {
       type: "stdout",
       message,
@@ -106,7 +105,7 @@ async function executeAppLocalNode({
 
   process.stderr?.on("data", (data) => {
     const message = util.stripVTControlCharacters(data.toString());
-    console.error(`App ${appId} (PID: ${process.pid}) stderr: ${message}`);
+    logger.error(`App ${appId} (PID: ${process.pid}) stderr: ${message}`);
     event.sender.send("app:output", {
       type: "stderr",
       message,
@@ -116,7 +115,7 @@ async function executeAppLocalNode({
 
   // Handle process exit/close
   process.on("close", (code, signal) => {
-    console.log(
+    logger.log(
       `App ${appId} (PID: ${process.pid}) process closed with code ${code}, signal ${signal}.`
     );
     removeAppIfCurrentProcess(appId, process);
@@ -124,7 +123,7 @@ async function executeAppLocalNode({
 
   // Handle errors during process lifecycle (e.g., command not found)
   process.on("error", (err) => {
-    console.error(
+    logger.error(
       `Error in app ${appId} (PID: ${process.pid}) process: ${err.message}`
     );
     removeAppIfCurrentProcess(appId, process);
@@ -196,7 +195,7 @@ export function registerAppHandlers() {
         author: await getGitAuthor(),
       });
     } catch (error) {
-      console.error("Error in background app initialization:", error);
+      logger.error("Error in background app initialization:", error);
     }
     // })();
 
@@ -219,7 +218,7 @@ export function registerAppHandlers() {
     try {
       files = getFilesRecursively(appPath, appPath);
     } catch (error) {
-      console.error(`Error reading files for app ${appId}:`, error);
+      logger.error(`Error reading files for app ${appId}:`, error);
       // Return app even if files couldn't be read
     }
 
@@ -266,10 +265,7 @@ export function registerAppHandlers() {
         const contents = fs.readFileSync(fullPath, "utf-8");
         return contents;
       } catch (error) {
-        console.error(
-          `Error reading file ${filePath} for app ${appId}:`,
-          error
-        );
+        logger.error(`Error reading file ${filePath} for app ${appId}:`, error);
         throw new Error("Failed to read file");
       }
     }
@@ -292,7 +288,7 @@ export function registerAppHandlers() {
       return withLock(appId, async () => {
         // Check if app is already running
         if (runningApps.has(appId)) {
-          console.debug(`App ${appId} is already running.`);
+          logger.debug(`App ${appId} is already running.`);
           // Potentially return the existing process info or confirm status
           return { success: true, message: "App already running." };
         }
@@ -305,7 +301,7 @@ export function registerAppHandlers() {
           throw new Error("App not found");
         }
 
-        console.debug(`Starting app ${appId} in path ${app.path}`);
+        logger.debug(`Starting app ${appId} in path ${app.path}`);
 
         const appPath = getDyadAppPath(app.path);
         try {
@@ -313,7 +309,7 @@ export function registerAppHandlers() {
 
           return { success: true, processId: currentProcessId };
         } catch (error: any) {
-          console.error(`Error running app ${appId}:`, error);
+          logger.error(`Error running app ${appId}:`, error);
           // Ensure cleanup if error happens during setup but before process events are handled
           if (
             runningApps.has(appId) &&
@@ -328,15 +324,15 @@ export function registerAppHandlers() {
   );
 
   ipcMain.handle("stop-app", async (_, { appId }: { appId: number }) => {
-    console.log(
-      `Attempting to stop app ${appId} (local-node only). Current running apps: ${runningApps.size}`
+    logger.log(
+      `Attempting to stop app ${appId}. Current running apps: ${runningApps.size}`
     );
     return withLock(appId, async () => {
       const appInfo = runningApps.get(appId);
 
       if (!appInfo) {
-        console.log(
-          `App ${appId} not found in running apps map (local-node). Assuming already stopped.`
+        logger.log(
+          `App ${appId} not found in running apps map. Assuming already stopped.`
         );
         return {
           success: true,
@@ -345,13 +341,13 @@ export function registerAppHandlers() {
       }
 
       const { process, processId } = appInfo;
-      console.log(
+      logger.log(
         `Found running app ${appId} with processId ${processId} (PID: ${process.pid}). Attempting to stop.`
       );
 
       // Check if the process is already exited or closed
       if (process.exitCode !== null || process.signalCode !== null) {
-        console.log(
+        logger.log(
           `Process for app ${appId} (PID: ${process.pid}) already exited (code: ${process.exitCode}, signal: ${process.signalCode}). Cleaning up map.`
         );
         runningApps.delete(appId); // Ensure cleanup if somehow missed
@@ -367,7 +363,7 @@ export function registerAppHandlers() {
 
         return { success: true };
       } catch (error: any) {
-        console.error(
+        logger.error(
           `Error stopping app ${appId} (PID: ${process.pid}, processId: ${processId}):`,
           error
         );
@@ -384,24 +380,21 @@ export function registerAppHandlers() {
       event: Electron.IpcMainInvokeEvent,
       { appId }: { appId: number }
     ) => {
-      // Static server worker is NOT terminated here anymore
-
+      logger.log(`Restarting app ${appId}`);
       return withLock(appId, async () => {
         try {
           // First stop the app if it's running
           const appInfo = runningApps.get(appId);
           if (appInfo) {
             const { process, processId } = appInfo;
-            console.log(
-              `Stopping local-node app ${appId} (processId ${processId}) before restart` // Adjusted log
+            logger.log(
+              `Stopping app ${appId} (processId ${processId}) before restart`
             );
 
             await killProcess(process);
             runningApps.delete(appId);
           } else {
-            console.log(
-              `App ${appId} not running in local-node mode, proceeding to start.`
-            );
+            logger.log(`App ${appId} not running. Proceeding to start.`);
           }
 
           // Kill any orphaned process on port 32100 (in case previous run left it)
@@ -417,7 +410,7 @@ export function registerAppHandlers() {
           }
 
           const appPath = getDyadAppPath(app.path);
-          console.debug(
+          logger.debug(
             `Executing app ${appId} in path ${app.path} after restart request`
           ); // Adjusted log
 
@@ -425,7 +418,7 @@ export function registerAppHandlers() {
 
           return { success: true };
         } catch (error) {
-          console.error(`Error restarting app ${appId}:`, error);
+          logger.error(`Error restarting app ${appId}:`, error);
           throw error;
         }
       });
@@ -461,7 +454,7 @@ export function registerAppHandlers() {
         timestamp: commit.commit.author.timestamp,
       })) satisfies Version[];
     } catch (error: any) {
-      console.error(`Error listing versions for app ${appId}:`, error);
+      logger.error(`Error listing versions for app ${appId}:`, error);
       throw new Error(`Failed to list versions: ${error.message}`);
     }
   });
@@ -552,7 +545,7 @@ export function registerAppHandlers() {
 
           return { success: true };
         } catch (error: any) {
-          console.error(
+          logger.error(
             `Error reverting to version ${previousVersionId} for app ${appId}:`,
             error
           );
@@ -587,7 +580,7 @@ export function registerAppHandlers() {
 
           return { success: true };
         } catch (error: any) {
-          console.error(
+          logger.error(
             `Error checking out version ${versionId} for app ${appId}:`,
             error
           );
@@ -614,7 +607,7 @@ export function registerAppHandlers() {
       try {
         return await extractCodebase(appPath, maxFiles);
       } catch (error) {
-        console.error(`Error extracting codebase for app ${appId}:`, error);
+        logger.error(`Error extracting codebase for app ${appId}:`, error);
         throw new Error(
           `Failed to extract codebase: ${(error as any).message}`
         );
@@ -673,10 +666,7 @@ export function registerAppHandlers() {
 
         return { success: true };
       } catch (error: any) {
-        console.error(
-          `Error writing file ${filePath} for app ${appId}:`,
-          error
-        );
+        logger.error(`Error writing file ${filePath} for app ${appId}:`, error);
         throw new Error(`Failed to write file: ${error.message}`);
       }
     }
@@ -699,14 +689,11 @@ export function registerAppHandlers() {
       if (runningApps.has(appId)) {
         const appInfo = runningApps.get(appId)!;
         try {
-          console.log(`Stopping local-node app ${appId} before deletion.`); // Adjusted log
+          logger.log(`Stopping app ${appId} before deletion.`); // Adjusted log
           await killProcess(appInfo.process);
           runningApps.delete(appId);
         } catch (error: any) {
-          console.error(
-            `Error stopping local-node app ${appId} before deletion:`,
-            error
-          ); // Adjusted log
+          logger.error(`Error stopping app ${appId} before deletion:`, error); // Adjusted log
           // Continue with deletion even if stopping fails
         }
       }
@@ -716,7 +703,7 @@ export function registerAppHandlers() {
       try {
         await fsPromises.rm(appPath, { recursive: true, force: true });
       } catch (error: any) {
-        console.error(`Error deleting app files for app ${appId}:`, error);
+        logger.error(`Error deleting app files for app ${appId}:`, error);
         throw new Error(`Failed to delete app files: ${error.message}`);
       }
 
@@ -726,7 +713,7 @@ export function registerAppHandlers() {
         // Note: Associated chats will cascade delete if that's set up in the schema
         return { success: true };
       } catch (error: any) {
-        console.error(`Error deleting app ${appId} from database:`, error);
+        logger.error(`Error deleting app ${appId} from database:`, error);
         throw new Error(`Failed to delete app from database: ${error.message}`);
       }
     });
@@ -776,10 +763,7 @@ export function registerAppHandlers() {
             await killProcess(appInfo.process);
             runningApps.delete(appId);
           } catch (error: any) {
-            console.error(
-              `Error stopping app ${appId} before renaming:`,
-              error
-            );
+            logger.error(`Error stopping app ${appId} before renaming:`, error);
             throw new Error(
               `Failed to stop app before renaming: ${error.message}`
             );
@@ -807,7 +791,7 @@ export function registerAppHandlers() {
             // Move the files
             await fsPromises.rename(oldAppPath, newAppPath);
           } catch (error: any) {
-            console.error(
+            logger.error(
               `Error moving app files from ${oldAppPath} to ${newAppPath}:`,
               error
             );
@@ -833,14 +817,14 @@ export function registerAppHandlers() {
             try {
               await fsPromises.rename(newAppPath, oldAppPath);
             } catch (rollbackError) {
-              console.error(
+              logger.error(
                 `Failed to rollback file move during rename error:`,
                 rollbackError
               );
             }
           }
 
-          console.error(`Error updating app ${appId} in database:`, error);
+          logger.error(`Error updating app ${appId} in database:`, error);
           throw new Error(`Failed to update app in database: ${error.message}`);
         }
       });
@@ -848,16 +832,9 @@ export function registerAppHandlers() {
   );
 
   ipcMain.handle("reset-all", async () => {
-    console.log("start: resetting all apps and settings.");
-    // Terminate static server worker if it's running
-    if (staticServerWorker) {
-      console.log(`Terminating static server worker on reset-all command.`);
-      await staticServerWorker.terminate();
-      staticServerWorker = null;
-      staticServerPort = null;
-    }
+    logger.log("start: resetting all apps and settings.");
     // Stop all running apps first
-    console.log("stopping all running apps...");
+    logger.log("stopping all running apps...");
     const runningAppIds = Array.from(runningApps.keys());
     for (const appId of runningAppIds) {
       try {
@@ -865,12 +842,12 @@ export function registerAppHandlers() {
         await killProcess(appInfo.process);
         runningApps.delete(appId);
       } catch (error) {
-        console.error(`Error stopping app ${appId} during reset:`, error);
+        logger.error(`Error stopping app ${appId} during reset:`, error);
         // Continue with reset even if stopping fails
       }
     }
-    console.log("all running apps stopped.");
-    console.log("deleting database...");
+    logger.log("all running apps stopped.");
+    logger.log("deleting database...");
     // 1. Drop the database by deleting the SQLite file
     const dbPath = getDatabasePath();
     if (fs.existsSync(dbPath)) {
@@ -879,31 +856,31 @@ export function registerAppHandlers() {
         db.$client.close();
       }
       await fsPromises.unlink(dbPath);
-      console.log(`Database file deleted: ${dbPath}`);
+      logger.log(`Database file deleted: ${dbPath}`);
     }
-    console.log("database deleted.");
-    console.log("deleting settings...");
+    logger.log("database deleted.");
+    logger.log("deleting settings...");
     // 2. Remove settings
     const userDataPath = getUserDataPath();
     const settingsPath = path.join(userDataPath, "user-settings.json");
 
     if (fs.existsSync(settingsPath)) {
       await fsPromises.unlink(settingsPath);
-      console.log(`Settings file deleted: ${settingsPath}`);
+      logger.log(`Settings file deleted: ${settingsPath}`);
     }
-    console.log("settings deleted.");
+    logger.log("settings deleted.");
     // 3. Remove all app files recursively
     // Doing this last because it's the most time-consuming and the least important
     // in terms of resetting the app state.
-    console.log("removing all app files...");
+    logger.log("removing all app files...");
     const dyadAppPath = getDyadAppPath(".");
     if (fs.existsSync(dyadAppPath)) {
       await fsPromises.rm(dyadAppPath, { recursive: true, force: true });
       // Recreate the base directory
       await fsPromises.mkdir(dyadAppPath, { recursive: true });
     }
-    console.log("all app files removed.");
-    console.log("reset all complete.");
+    logger.log("all app files removed.");
+    logger.log("reset all complete.");
     return { success: true, message: "Successfully reset everything" };
   });
 

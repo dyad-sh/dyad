@@ -7,6 +7,7 @@ import { registerDependencyHandlers } from "./handlers/dependency_handlers";
 import { registerGithubHandlers } from "./handlers/github_handlers";
 import { registerNodeHandlers } from "./handlers/node_handlers";
 import { registerProposalHandlers } from "./handlers/proposal_handlers";
+import { registerDebugHandlers } from "./handlers/debug_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -19,4 +20,5 @@ export function registerIpcHandlers() {
   registerGithubHandlers();
   registerNodeHandlers();
   registerProposalHandlers();
+  registerDebugHandlers();
 }

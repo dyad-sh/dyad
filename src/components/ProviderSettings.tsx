@@ -20,7 +20,6 @@ export function ProviderSettingsGrid({
   const navigate = useNavigate();
 
   const handleProviderClick = (provider: ModelProvider) => {
-    console.log("PROVIDER", provider);
     navigate({
       to: providerSettingsRoute.id,
       params: { provider },

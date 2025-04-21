@@ -105,6 +105,10 @@ export default function SettingsPage() {
             </div>
           </div>
 
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm">
+            <ProviderSettingsGrid configuredProviders={[]} />
+          </div>
+
           <div className="space-y-6">
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
               <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
@@ -124,10 +128,6 @@ export default function SettingsPage() {
                 </span>
               </div>
             </div>
-          </div>
-
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm">
-            <ProviderSettingsGrid configuredProviders={[]} />
           </div>
 
           {/* Danger Zone */}

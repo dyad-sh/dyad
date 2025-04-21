@@ -6,7 +6,6 @@ import { useSettings } from "@/hooks/useSettings";
 import { homeChatInputValueAtom } from "@/atoms/chatAtoms"; // Use a different atom for home input
 import { useAtom } from "jotai";
 import { useStreamChat } from "@/hooks/useStreamChat";
-import { usePostHog } from "posthog-js/react";
 
 export function HomeChatInput({ onSubmit }: { onSubmit: () => void }) {
   const [inputValue, setInputValue] = useAtom(homeChatInputValueAtom);

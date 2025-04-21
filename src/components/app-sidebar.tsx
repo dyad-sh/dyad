@@ -18,7 +18,6 @@ import {
 import { ChatList } from "./ChatList";
 import { AppList } from "./AppList";
 import { HelpDialog } from "./HelpDialog"; // Import the new dialog
-import { usePostHog } from "posthog-js/react";
 
 // Menu items.
 const items = [
@@ -146,8 +145,6 @@ function AppIcons({
 }: {
   onHoverChange: (state: HoverState) => void;
 }) {
-  const { capture } = usePostHog();
-
   const routerState = useRouterState();
   const pathname = routerState.location.pathname;
 

@@ -24,7 +24,7 @@ export default function HomePage() {
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const [isLoading, setIsLoading] = useState(false);
   const { streamMessage } = useStreamChat({ hasChatId: false });
-  const { capture } = usePostHog();
+  const posthog = usePostHog();
   // Get the appId from search params
   const appId = search.appId ? Number(search.appId) : null;
 
@@ -53,7 +53,7 @@ export default function HomePage() {
       setSelectedAppId(result.app.id);
       setIsPreviewOpen(false);
       await refreshApps(); // Ensure refreshApps is awaited if it's async
-      capture("home:chat-submit");
+      posthog.capture("home:chat-submit");
       navigate({ to: "/chat", search: { id: result.chatId } });
     } catch (error) {
       console.error("Failed to create chat:", error);

@@ -83,9 +83,8 @@ export function SetupBanner() {
     await checkNode();
   }, [checkNode, setNodeInstallStep]);
 
-  const isNodeSetupComplete = Boolean(
-    nodeSystemInfo?.nodeVersion && nodeSystemInfo?.pnpmVersion
-  );
+  // We only check for node version because pnpm is not required for the app to run.
+  const isNodeSetupComplete = Boolean(nodeSystemInfo?.nodeVersion);
 
   const itemsNeedAction: string[] = [];
   if (!isNodeSetupComplete && nodeSystemInfo) {
@@ -161,7 +160,8 @@ export function SetupBanner() {
                   Node.js ({nodeSystemInfo!.nodeVersion}) installed.{" "}
                   {nodeSystemInfo!.pnpmVersion && (
                     <span className="text-xs text-gray-500">
-                      pnpm ({nodeSystemInfo!.pnpmVersion}) installed.
+                      {" "}
+                      (optional) pnpm ({nodeSystemInfo!.pnpmVersion}) installed.
                     </span>
                   )}
                 </p>

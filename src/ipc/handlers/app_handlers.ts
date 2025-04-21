@@ -378,7 +378,10 @@ export function registerAppHandlers() {
     "restart-app",
     async (
       event: Electron.IpcMainInvokeEvent,
-      { appId }: { appId: number }
+      {
+        appId,
+        removeNodeModules,
+      }: { appId: number; removeNodeModules?: boolean }
     ) => {
       logger.log(`Restarting app ${appId}`);
       return withLock(appId, async () => {
@@ -410,6 +413,24 @@ export function registerAppHandlers() {
           }
 
           const appPath = getDyadAppPath(app.path);
+
+          // Remove node_modules if requested
+          if (removeNodeModules) {
+            const nodeModulesPath = path.join(appPath, "node_modules");
+            logger.log(
+              `Removing node_modules for app ${appId} at ${nodeModulesPath}`
+            );
+            if (fs.existsSync(nodeModulesPath)) {
+              await fsPromises.rm(nodeModulesPath, {
+                recursive: true,
+                force: true,
+              });
+              logger.log(`Successfully removed node_modules for app ${appId}`);
+            } else {
+              logger.log(`No node_modules directory found for app ${appId}`);
+            }
+          }
+
           logger.debug(
             `Executing app ${appId} in path ${app.path} after restart request`
           ); // Adjusted log

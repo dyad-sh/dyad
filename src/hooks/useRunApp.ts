@@ -70,41 +70,56 @@ export function useRunApp() {
     }
   }, []);
 
-  const restartApp = useCallback(async () => {
-    if (appId === null) {
-      return;
-    }
-    setLoading(true);
-    try {
-      const ipcClient = IpcClient.getInstance();
-      console.debug("Restarting app", appId);
+  const restartApp = useCallback(
+    async ({
+      removeNodeModules = false,
+    }: { removeNodeModules?: boolean } = {}) => {
+      if (appId === null) {
+        return;
+      }
+      setLoading(true);
+      try {
+        const ipcClient = IpcClient.getInstance();
+        console.debug(
+          "Restarting app",
+          appId,
+          removeNodeModules ? "with node_modules cleanup" : ""
+        );
 
-      // Clear the URL and add restart message
-      setAppUrlObj({ appUrl: null, appId: null });
-      setAppOutput((prev) => [
-        ...prev,
-        { message: "Restarting app...", type: "stdout", appId },
-      ]);
+        // Clear the URL and add restart message
+        setAppUrlObj({ appUrl: null, appId: null });
+        setAppOutput((prev) => [
+          ...prev,
+          { message: "Restarting app...", type: "stdout", appId },
+        ]);
 
-      const app = await ipcClient.getApp(appId);
-      setApp(app);
-      await ipcClient.restartApp(appId, (output) => {
-        setAppOutput((prev) => [...prev, output]);
-        // Check if the output contains a localhost URL
-        const urlMatch = output.message.match(/(https?:\/\/localhost:\d+\/?)/);
-        if (urlMatch) {
-          setAppUrlObj({ appUrl: urlMatch[1], appId });
-        }
-      });
-      setError(null);
-    } catch (error) {
-      console.error(`Error restarting app ${appId}:`, error);
-      setError(error instanceof Error ? error : new Error(String(error)));
-    } finally {
-      setPreviewPanelKey((prevKey) => prevKey + 1);
-      setLoading(false);
-    }
-  }, []);
+        const app = await ipcClient.getApp(appId);
+        setApp(app);
+        await ipcClient.restartApp(
+          appId,
+          (output) => {
+            setAppOutput((prev) => [...prev, output]);
+            // Check if the output contains a localhost URL
+            const urlMatch = output.message.match(
+              /(https?:\/\/localhost:\d+\/?)/
+            );
+            if (urlMatch) {
+              setAppUrlObj({ appUrl: urlMatch[1], appId });
+            }
+          },
+          removeNodeModules
+        );
+        setError(null);
+      } catch (error) {
+        console.error(`Error restarting app ${appId}:`, error);
+        setError(error instanceof Error ? error : new Error(String(error)));
+      } finally {
+        setPreviewPanelKey((prevKey) => prevKey + 1);
+        setLoading(false);
+      }
+    },
+    [appId, setApp, setAppOutput, setAppUrlObj, setError, setPreviewPanelKey]
+  );
 
   const refreshAppIframe = useCallback(async () => {
     setPreviewPanelKey((prevKey) => prevKey + 1);

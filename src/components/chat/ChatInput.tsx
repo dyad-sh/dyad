@@ -283,20 +283,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 }
 
 function mapActionToButton(action: SuggestedAction) {
-  const { restartApp } = useRunApp();
   switch (action.id) {
-    case "restart-app":
-      return (
-        <Button
-          variant="outline"
-          size="sm"
-          className="rounded-xl"
-          key={action.id}
-          onClick={restartApp}
-        >
-          Restart app
-        </Button>
-      );
     default:
       console.error(`Unsupported action: ${action.id}`);
       return (

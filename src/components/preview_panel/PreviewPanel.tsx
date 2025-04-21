@@ -15,12 +15,23 @@ import {
   ChevronUp,
   Logs,
   RefreshCw,
+  MoreVertical,
+  Trash2,
+  Cog,
+  CirclePower,
+  Power,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { PanelGroup, Panel, PanelResizeHandle } from "react-resizable-panels";
 import { Console } from "./Console";
 import { useRunApp } from "@/hooks/useRunApp";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 type PreviewMode = "preview" | "code";
 
@@ -28,6 +39,7 @@ interface PreviewHeaderProps {
   previewMode: PreviewMode;
   setPreviewMode: (mode: PreviewMode) => void;
   onRestart: () => void;
+  onCleanRestart: () => void;
 }
 
 interface ConsoleHeaderProps {
@@ -41,6 +53,7 @@ const PreviewHeader = ({
   previewMode,
   setPreviewMode,
   onRestart,
+  onCleanRestart,
 }: PreviewHeaderProps) => (
   <div className="flex items-center justify-between px-4 py-2 border-b border-border">
     <div className="relative flex space-x-2 bg-[var(--background-darkest)] rounded-md p-0.5">
@@ -73,14 +86,37 @@ const PreviewHeader = ({
         <span>Code</span>
       </button>
     </div>
-    <button
-      onClick={onRestart}
-      className="flex items-center space-x-1 px-3 py-1 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
-      title="Restart App"
-    >
-      <RefreshCw size={16} />
-      <span>Restart</span>
-    </button>
+    <div className="flex items-center">
+      <button
+        onClick={onRestart}
+        className="flex items-center space-x-1 px-3 py-1 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
+        title="Restart App"
+      >
+        <Power size={16} />
+        <span>Restart</span>
+      </button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            className="flex items-center justify-center p-1.5 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
+            title="More options"
+          >
+            <MoreVertical size={16} />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-60">
+          <DropdownMenuItem onClick={onCleanRestart}>
+            <Cog size={16} />
+            <div className="flex flex-col">
+              <span>Rebuild</span>
+              <span className="text-xs text-muted-foreground">
+                Re-installs node_modules and restarts
+              </span>
+            </div>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   </div>
 );
 
@@ -124,6 +160,10 @@ export function PreviewPanel() {
 
   const handleRestart = useCallback(() => {
     restartApp();
+  }, [restartApp]);
+
+  const handleCleanRestart = useCallback(() => {
+    restartApp({ removeNodeModules: true });
   }, [restartApp]);
 
   useEffect(() => {
@@ -176,6 +216,7 @@ export function PreviewPanel() {
         previewMode={previewMode}
         setPreviewMode={setPreviewMode}
         onRestart={handleRestart}
+        onCleanRestart={handleCleanRestart}
       />
       <div className="flex-1 overflow-hidden">
         <PanelGroup direction="vertical">

@@ -317,10 +317,14 @@ export class IpcClient {
   // Restart a running app
   public async restartApp(
     appId: number,
-    onOutput: (output: AppOutput) => void
+    onOutput: (output: AppOutput) => void,
+    removeNodeModules?: boolean
   ): Promise<{ success: boolean }> {
     try {
-      const result = await this.ipcRenderer.invoke("restart-app", { appId });
+      const result = await this.ipcRenderer.invoke("restart-app", {
+        appId,
+        removeNodeModules,
+      });
       this.appStreams.set(appId, { onOutput });
       return result;
     } catch (error) {

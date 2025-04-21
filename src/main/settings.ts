@@ -15,6 +15,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   providerSettings: {},
   telemetryConsent: "unset",
   telemetryUserId: uuidv4(),
+  hasRunBefore: false,
 };
 
 const SETTINGS_FILE = "user-settings.json";

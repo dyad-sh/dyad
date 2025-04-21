@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, dialog } from "electron";
 import * as path from "node:path";
 import { registerIpcHandlers } from "./ipc/ipc_host";
 import dotenv from "dotenv";
@@ -6,6 +6,7 @@ import dotenv from "dotenv";
 import started from "electron-squirrel-startup";
 import { updateElectronApp } from "update-electron-app";
 import log from "electron-log";
+import { readSettings, writeSettings } from "./main/settings";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -22,6 +23,40 @@ registerIpcHandlers();
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
   app.quit();
+}
+
+/**
+ * Is this the first run of Fiddle? If so, perform
+ * tasks that we only want to do in this case.
+ */
+export async function onFirstRunMaybe() {
+  const settings = readSettings();
+  if (!settings.hasRunBefore) {
+    await promptMoveToApplicationsFolder();
+    writeSettings({
+      hasRunBefore: true,
+    });
+  }
+}
+
+/**
+ * Ask the user if the app should be moved to the
+ * applications folder.
+ */
+async function promptMoveToApplicationsFolder(): Promise<void> {
+  if (process.platform !== "darwin") return;
+  if (app.isInApplicationsFolder()) return;
+
+  const { response } = await dialog.showMessageBox({
+    type: "question",
+    buttons: ["Move to Applications Folder", "Do Not Move"],
+    defaultId: 0,
+    message: "Move to Applications Folder? (required for auto-update)",
+  });
+
+  if (response === 0) {
+    app.moveToApplicationsFolder();
+  }
 }
 
 declare global {

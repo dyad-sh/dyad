@@ -7,8 +7,10 @@ import {
   AlertCircle,
   XCircle,
   Loader2,
+  Settings,
 } from "lucide-react";
 import { providerSettingsRoute } from "@/routes/settings/providers/$provider";
+import { settingsRoute } from "@/routes/settings";
 import { useSettings } from "@/hooks/useSettings";
 import { useState, useEffect, useCallback } from "react";
 import { IpcClient } from "@/ipc/ipc_client";
@@ -28,7 +30,7 @@ type NodeInstallStep =
   | "continue-processing";
 
 export function SetupBanner() {
-  const { capture } = usePostHog();
+  const posthog = usePostHog();
   const navigate = useNavigate();
   const { isAnyProviderSetup, loading } = useSettings();
   const [nodeSystemInfo, setNodeSystemInfo] = useState<NodeSystemInfo | null>(
@@ -54,21 +56,28 @@ export function SetupBanner() {
   }, [checkNode]);
 
   const handleAiSetupClick = () => {
-    capture("setup-flow:ai-provider-setup-click");
+    posthog.capture("setup-flow:ai-provider-setup:google:click");
     navigate({
       to: providerSettingsRoute.id,
       params: { provider: "google" },
     });
   };
 
+  const handleOtherProvidersClick = () => {
+    posthog.capture("setup-flow:ai-provider-setup:other:click");
+    navigate({
+      to: settingsRoute.id,
+    });
+  };
+
   const handleNodeInstallClick = useCallback(async () => {
-    capture("setup-flow:start-node-install-click");
+    posthog.capture("setup-flow:start-node-install-click");
     setNodeInstallStep("waiting-for-continue");
     IpcClient.getInstance().openExternalUrl(nodeSystemInfo!.nodeDownloadUrl);
   }, [nodeSystemInfo, setNodeInstallStep]);
 
   const finishNodeInstall = useCallback(async () => {
-    capture("setup-flow:continue-node-install-click");
+    posthog.capture("setup-flow:continue-node-install-click");
     setNodeInstallStep("continue-processing");
     await IpcClient.getInstance().reloadEnvPath();
     await checkNode();
@@ -228,11 +237,6 @@ export function SetupBanner() {
                 onClick={handleAiSetupClick}
                 role="button"
                 tabIndex={isNodeSetupComplete ? 0 : -1}
-                onKeyDown={(e) =>
-                  isNodeSetupComplete &&
-                  e.key === "Enter" &&
-                  handleAiSetupClick()
-                }
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
@@ -250,6 +254,30 @@ export function SetupBanner() {
                     </div>
                   </div>
                   <ChevronRight className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                </div>
+              </div>
+
+              <div
+                className="mt-2 p-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800/70 transition-colors"
+                onClick={handleOtherProvidersClick}
+                role="button"
+                tabIndex={isNodeSetupComplete ? 0 : -1}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <div className="bg-gray-100 dark:bg-gray-700 p-1.5 rounded-full">
+                      <Settings className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-sm text-gray-800 dark:text-gray-300">
+                        Setup other AI providers
+                      </h4>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">
+                        OpenAI, Anthropic, OpenRouter and more
+                      </p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-gray-600 dark:text-gray-400" />
                 </div>
               </div>
             </AccordionContent>

@@ -1,4 +1,4 @@
-import { Home, Inbox, Settings } from "lucide-react";
+import { Home, Inbox, Settings, HelpCircle } from "lucide-react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar"; // import useSidebar hook
 import { useEffect, useState, useRef } from "react";
@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/sidebar";
 import { ChatList } from "./ChatList";
 import { AppList } from "./AppList";
+import { HelpDialog } from "./HelpDialog"; // Import the new dialog
 import { usePostHog } from "posthog-js/react";
 
 // Menu items.
@@ -49,6 +50,7 @@ export function AppSidebar() {
   const { state, toggleSidebar } = useSidebar(); // retrieve current sidebar state
   const [hoverState, setHoverState] = useState<HoverState>("no-hover");
   const expandedByHover = useRef(false);
+  const [isHelpDialogOpen, setIsHelpDialogOpen] = useState(false); // State for dialog
 
   useEffect(() => {
     if (
@@ -113,6 +115,26 @@ export function AppSidebar() {
           </div>
         </div>
       </SidebarContent>
+
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            {/* Change button to open dialog instead of linking */}
+            <SidebarMenuButton
+              size="sm"
+              className="font-medium w-14 flex flex-col items-center gap-1 h-14 mb-2 rounded-2xl"
+              onClick={() => setIsHelpDialogOpen(true)} // Open dialog on click
+            >
+              <HelpCircle className="h-5 w-5" />
+              <span className={"text-xs"}>Help</span>
+            </SidebarMenuButton>
+            <HelpDialog
+              isOpen={isHelpDialogOpen}
+              onClose={() => setIsHelpDialogOpen(false)}
+            />
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
 
       <SidebarRail />
     </Sidebar>

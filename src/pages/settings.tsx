@@ -7,12 +7,16 @@ import { showSuccess, showError } from "@/lib/toast";
 import { AutoApproveSwitch } from "@/components/AutoApproveSwitch";
 import { TelemetrySwitch } from "@/components/TelemetrySwitch";
 import { useSettings } from "@/hooks/useSettings";
+import { Button } from "@/components/ui/button";
+import { ArrowLeft } from "lucide-react";
+import { useRouter } from "@tanstack/react-router";
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [appVersion, setAppVersion] = useState<string | null>(null);
   const { settings } = useSettings();
+  const router = useRouter();
 
   useEffect(() => {
     // Fetch app version
@@ -49,18 +53,29 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="min-h-screen p-8">
+    <div className="min-h-screen px-8 py-4">
       <div className="max-w-5xl mx-auto">
-        <h1 className="text-3xl font-bold mb-8 text-gray-900 dark:text-white">
-          Settings
-        </h1>
+        <Button
+          onClick={() => router.history.back()}
+          variant="outline"
+          size="sm"
+          className="flex items-center gap-2 mb-4 bg-(--background-lightest) py-5"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Go Back
+        </Button>
+        <div className="flex justify-between mb-4">
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+            Settings
+          </h1>
 
-        {/* App Version Section */}
-        <div className="mb-6 flex items-center text-sm text-gray-500 dark:text-gray-400">
-          <span className="mr-2 font-medium">App Version:</span>
-          <span className="bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded text-gray-800 dark:text-gray-200 font-mono">
-            {appVersion ? appVersion : "-"}
-          </span>
+          {/* App Version Section */}
+          <div className="flex items-center text-sm text-gray-500 dark:text-gray-400">
+            <span className="mr-2 font-medium">App Version:</span>
+            <span className="bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded text-gray-800 dark:text-gray-200 font-mono">
+              {appVersion ? appVersion : "-"}
+            </span>
+          </div>
         </div>
 
         <div className="space-y-6">

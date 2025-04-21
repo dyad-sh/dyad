@@ -7,6 +7,9 @@ import path from "node:path";
 import git from "isomorphic-git";
 import { getGithubUser } from "../handlers/github_handlers";
 import { getGitAuthor } from "../utils/git_author";
+import log from "electron-log";
+
+const logger = log.scope("response_processor");
 
 export function getDyadWriteTags(fullResponse: string): {
   path: string;
@@ -42,7 +45,7 @@ export function getDyadWriteTags(fullResponse: string): {
 
       tags.push({ path, content, description });
     } else {
-      console.warn(
+      logger.warn(
         "Found <dyad-write> tag without a valid 'path' attribute:",
         match[0]
       );
@@ -105,6 +108,7 @@ export async function processFullResponseActions(
     messageId,
   }: { chatSummary: string | undefined; messageId: number }
 ): Promise<{ updatedFiles?: boolean; error?: string }> {
+  logger.log("processFullResponseActions for chatId", chatId);
   // Get the app associated with the chat
   const chatWithApp = await db.query.chats.findFirst({
     where: eq(chats.id, chatId),
@@ -113,7 +117,7 @@ export async function processFullResponseActions(
     },
   });
   if (!chatWithApp || !chatWithApp.app) {
-    console.error(`No app found for chat ID: ${chatId}`);
+    logger.error(`No app found for chat ID: ${chatId}`);
     return {};
   }
 
@@ -121,6 +125,7 @@ export async function processFullResponseActions(
   const writtenFiles: string[] = [];
   const renamedFiles: string[] = [];
   const deletedFiles: string[] = [];
+  let hasChanges = false;
 
   try {
     // Extract all tags
@@ -129,15 +134,7 @@ export async function processFullResponseActions(
     const dyadDeletePaths = getDyadDeleteTags(fullResponse);
     const dyadAddDependencyPackages = getDyadAddDependencyTags(fullResponse);
 
-    // If no tags to process, return early
-    if (
-      dyadWriteTags.length === 0 &&
-      dyadRenameTags.length === 0 &&
-      dyadDeletePaths.length === 0 &&
-      dyadAddDependencyPackages.length === 0
-    ) {
-      return {};
-    }
+    // TODO: Handle add dependency tags
 
     // Process all file writes
     for (const tag of dyadWriteTags) {
@@ -151,7 +148,7 @@ export async function processFullResponseActions(
 
       // Write file content
       fs.writeFileSync(fullFilePath, content);
-      console.log(`Successfully wrote file: ${fullFilePath}`);
+      logger.log(`Successfully wrote file: ${fullFilePath}`);
       writtenFiles.push(filePath);
     }
 
@@ -167,7 +164,7 @@ export async function processFullResponseActions(
       // Rename the file
       if (fs.existsSync(fromPath)) {
         fs.renameSync(fromPath, toPath);
-        console.log(`Successfully renamed file: ${fromPath} -> ${toPath}`);
+        logger.log(`Successfully renamed file: ${fromPath} -> ${toPath}`);
         renamedFiles.push(tag.to);
 
         // Add the new file and remove the old one from git
@@ -183,11 +180,11 @@ export async function processFullResponseActions(
             filepath: tag.from,
           });
         } catch (error) {
-          console.warn(`Failed to git remove old file ${tag.from}:`, error);
+          logger.warn(`Failed to git remove old file ${tag.from}:`, error);
           // Continue even if remove fails as the file was still renamed
         }
       } else {
-        console.warn(`Source file for rename does not exist: ${fromPath}`);
+        logger.warn(`Source file for rename does not exist: ${fromPath}`);
       }
     }
 
@@ -198,7 +195,7 @@ export async function processFullResponseActions(
       // Delete the file if it exists
       if (fs.existsSync(fullFilePath)) {
         fs.unlinkSync(fullFilePath);
-        console.log(`Successfully deleted file: ${fullFilePath}`);
+        logger.log(`Successfully deleted file: ${fullFilePath}`);
         deletedFiles.push(filePath);
 
         // Remove the file from git
@@ -209,16 +206,16 @@ export async function processFullResponseActions(
             filepath: filePath,
           });
         } catch (error) {
-          console.warn(`Failed to git remove deleted file ${filePath}:`, error);
+          logger.warn(`Failed to git remove deleted file ${filePath}:`, error);
           // Continue even if remove fails as the file was still deleted
         }
       } else {
-        console.warn(`File to delete does not exist: ${fullFilePath}`);
+        logger.warn(`File to delete does not exist: ${fullFilePath}`);
       }
     }
 
     // If we have any file changes, commit them all at once
-    const hasChanges =
+    hasChanges =
       writtenFiles.length > 0 ||
       renamedFiles.length > 0 ||
       deletedFiles.length > 0;
@@ -250,22 +247,20 @@ export async function processFullResponseActions(
           : `[dyad] ${changes.join(", ")}`,
         author: await getGitAuthor(),
       });
-      console.log(`Successfully committed changes: ${changes.join(", ")}`);
-
-      // Update the message to approved
-      await db
-        .update(messages)
-        .set({
-          approvalState: "approved",
-        })
-        .where(eq(messages.id, messageId));
-
-      return { updatedFiles: true };
+      logger.log(`Successfully committed changes: ${changes.join(", ")}`);
     }
+    logger.log("mark as approved: hasChanges", hasChanges);
+    // Update the message to approved
+    await db
+      .update(messages)
+      .set({
+        approvalState: "approved",
+      })
+      .where(eq(messages.id, messageId));
 
-    return {};
+    return { updatedFiles: hasChanges };
   } catch (error: unknown) {
-    console.error("Error processing files:", error);
+    logger.error("Error processing files:", error);
     return { error: (error as any).toString() };
   }
 }

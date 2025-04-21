@@ -9,7 +9,7 @@ import log from "electron-log";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
-log.log("HELLO WORLD");
+log.scope.labelPadding = false;
 
 updateElectronApp(); // additional configuration options available
 

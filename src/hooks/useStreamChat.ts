@@ -19,8 +19,8 @@ import { useProposal } from "./useProposal";
 import { useSearch } from "@tanstack/react-router";
 import { useRunApp } from "./useRunApp";
 
-export function getRandomString() {
-  return Math.random().toString(36).substring(2, 15);
+export function getRandomNumberId() {
+  return Math.floor(Math.random() * 1_000_000_000_000_000);
 }
 
 export function useStreamChat({
@@ -70,7 +70,7 @@ export function useStreamChat({
           return [
             ...remainingMessages,
             {
-              id: getRandomString(),
+              id: getRandomNumberId(),
               role: "assistant",
               content: "",
             },
@@ -79,12 +79,12 @@ export function useStreamChat({
         return [
           ...currentMessages,
           {
-            id: getRandomString(),
+            id: getRandomNumberId(),
             role: "user",
             content: prompt,
           },
           {
-            id: getRandomString(),
+            id: getRandomNumberId(),
             role: "assistant",
             content: "",
           },

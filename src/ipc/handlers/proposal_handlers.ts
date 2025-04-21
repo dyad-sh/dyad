@@ -1,5 +1,9 @@
 import { ipcMain, type IpcMainInvokeEvent } from "electron";
-import type { CodeProposal, ProposalResult } from "@/lib/schemas";
+import type {
+  CodeProposal,
+  FileChange,
+  ProposalResult,
+} from "../../lib/schemas";
 import { db } from "../../db";
 import { messages } from "../../db/schema";
 import { desc, eq, and, Update } from "drizzle-orm";
@@ -8,6 +12,8 @@ import path from "node:path"; // Import path for basename
 import {
   getDyadAddDependencyTags,
   getDyadChatSummaryTag,
+  getDyadDeleteTags,
+  getDyadRenameTags,
   getDyadWriteTags,
   processFullResponseActions,
 } from "../processors/response_processor";
@@ -65,34 +71,51 @@ const getProposalHandler = async (
       );
       const messageContent = latestAssistantMessage.content;
 
-      // Parse tags directly from message content
       const proposalTitle = getDyadChatSummaryTag(messageContent);
-      const proposalFiles = getDyadWriteTags(messageContent); // Gets { path: string, content: string }[]
+
+      const proposalWriteFiles = getDyadWriteTags(messageContent);
+      const proposalRenameFiles = getDyadRenameTags(messageContent);
+      const proposalDeleteFiles = getDyadDeleteTags(messageContent);
+
       const packagesAdded = getDyadAddDependencyTags(messageContent);
 
+      const filesChanged = [
+        ...proposalWriteFiles.map((tag) => ({
+          name: path.basename(tag.path),
+          path: tag.path,
+          summary: tag.description ?? "(no change summary found)", // Generic summary
+          type: "write" as const,
+        })),
+        ...proposalRenameFiles.map((tag) => ({
+          name: path.basename(tag.to),
+          path: tag.to,
+          summary: `Rename from ${tag.from} to ${tag.to}`,
+          type: "rename" as const,
+        })),
+        ...proposalDeleteFiles.map((tag) => ({
+          name: path.basename(tag),
+          path: tag,
+          summary: `Delete file`,
+          type: "delete" as const,
+        })),
+      ];
       // Check if we have enough information to create a proposal
-      if (
-        proposalTitle ||
-        proposalFiles.length > 0 ||
-        packagesAdded.length > 0
-      ) {
+      if (filesChanged.length > 0 || packagesAdded.length > 0) {
         const proposal: CodeProposal = {
           type: "code-proposal",
           // Use parsed title or a default title if summary tag is missing but write tags exist
           title: proposalTitle ?? "Proposed File Changes",
           securityRisks: [], // Keep empty
-          filesChanged: proposalFiles.map((tag) => ({
-            name: path.basename(tag.path),
-            path: tag.path,
-            summary: tag.description ?? "(no change summary found)", // Generic summary
-          })),
+          filesChanged,
           packagesAdded,
         };
         logger.log(
           "Generated code proposal. title=",
           proposal.title,
           "files=",
-          proposal.filesChanged.length
+          proposal.filesChanged.length,
+          "packages=",
+          proposal.packagesAdded.length
         );
         return { proposal, chatId, messageId }; // Return proposal and messageId
       } else {

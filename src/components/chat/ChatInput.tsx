@@ -10,6 +10,8 @@ import {
   Check,
   Loader2,
   Package,
+  FileX,
+  SendToBack,
 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -32,6 +34,7 @@ import {
   Proposal,
   SuggestedAction,
   ProposalResult,
+  FileChange,
 } from "@/lib/schemas";
 import type { Message } from "@/ipc/ipc_types";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
@@ -461,10 +464,7 @@ function ChatInputActions({
               <ul className="space-y-1">
                 {proposal.filesChanged.map((file, index) => (
                   <li key={index} className="flex items-center space-x-2">
-                    <FileText
-                      size={16}
-                      className="text-muted-foreground flex-shrink-0"
-                    />
+                    {getIconForFileChange(file)}
                     <span title={file.path} className="truncate cursor-default">
                       {file.name}
                     </span>
@@ -480,4 +480,21 @@ function ChatInputActions({
       )}
     </div>
   );
+}
+
+function getIconForFileChange(file: FileChange) {
+  switch (file.type) {
+    case "write":
+      return (
+        <FileText size={16} className="text-muted-foreground flex-shrink-0" />
+      );
+    case "rename":
+      return (
+        <SendToBack size={16} className="text-muted-foreground flex-shrink-0" />
+      );
+    case "delete":
+      return (
+        <FileX size={16} className="text-muted-foreground flex-shrink-0" />
+      );
+  }
 }

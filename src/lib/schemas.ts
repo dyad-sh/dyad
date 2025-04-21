@@ -111,6 +111,7 @@ export interface FileChange {
   name: string;
   path: string;
   summary: string;
+  type: "write" | "rename" | "delete";
 }
 
 export interface CodeProposal {

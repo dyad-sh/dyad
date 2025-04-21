@@ -9,6 +9,7 @@ import {
   FileText,
   Check,
   Loader2,
+  Package,
 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -427,26 +428,54 @@ function ChatInputActions({
               </ul>
             </div>
           )}
+          {proposal.packagesAdded?.length > 0 && (
+            <div className="mb-3">
+              <h4 className="font-semibold mb-1">Packages Added</h4>
+              <ul className="space-y-1">
+                {proposal.packagesAdded.map((pkg, index) => (
+                  <li
+                    key={index}
+                    className="flex items-center space-x-2"
+                    onClick={() => {
+                      IpcClient.getInstance().openExternalUrl(
+                        `https://www.npmjs.com/package/${pkg}`
+                      );
+                    }}
+                  >
+                    <Package
+                      size={16}
+                      className="text-muted-foreground flex-shrink-0"
+                    />
+                    <span className="cursor-pointer text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300">
+                      {pkg}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
-          <div>
-            <h4 className="font-semibold mb-1">Files Changed</h4>
-            <ul className="space-y-1">
-              {proposal.filesChanged.map((file, index) => (
-                <li key={index} className="flex items-center space-x-2">
-                  <FileText
-                    size={16}
-                    className="text-muted-foreground flex-shrink-0"
-                  />
-                  <span title={file.path} className="truncate cursor-default">
-                    {file.name}
-                  </span>
-                  <span className="text-muted-foreground text-xs truncate">
-                    - {file.summary}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
+          {proposal.filesChanged?.length > 0 && (
+            <div>
+              <h4 className="font-semibold mb-1">Files Changed</h4>
+              <ul className="space-y-1">
+                {proposal.filesChanged.map((file, index) => (
+                  <li key={index} className="flex items-center space-x-2">
+                    <FileText
+                      size={16}
+                      className="text-muted-foreground flex-shrink-0"
+                    />
+                    <span title={file.path} className="truncate cursor-default">
+                      {file.name}
+                    </span>
+                    <span className="text-muted-foreground text-xs truncate">
+                      - {file.summary}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
     </div>

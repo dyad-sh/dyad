@@ -6,6 +6,7 @@ import { desc, eq, and, Update } from "drizzle-orm";
 import path from "node:path"; // Import path for basename
 // Import tag parsers
 import {
+  getDyadAddDependencyTags,
   getDyadChatSummaryTag,
   getDyadWriteTags,
   processFullResponseActions,
@@ -67,9 +68,14 @@ const getProposalHandler = async (
       // Parse tags directly from message content
       const proposalTitle = getDyadChatSummaryTag(messageContent);
       const proposalFiles = getDyadWriteTags(messageContent); // Gets { path: string, content: string }[]
+      const packagesAdded = getDyadAddDependencyTags(messageContent);
 
       // Check if we have enough information to create a proposal
-      if (proposalTitle || proposalFiles.length > 0) {
+      if (
+        proposalTitle ||
+        proposalFiles.length > 0 ||
+        packagesAdded.length > 0
+      ) {
         const proposal: CodeProposal = {
           type: "code-proposal",
           // Use parsed title or a default title if summary tag is missing but write tags exist
@@ -80,6 +86,7 @@ const getProposalHandler = async (
             path: tag.path,
             summary: tag.description ?? "(no change summary found)", // Generic summary
           })),
+          packagesAdded,
         };
         logger.log(
           "Generated code proposal. title=",

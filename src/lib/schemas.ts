@@ -118,6 +118,7 @@ export interface CodeProposal {
   title: string;
   securityRisks: SecurityRisk[];
   filesChanged: FileChange[];
+  packagesAdded: string[];
 }
 
 export interface SuggestedAction {

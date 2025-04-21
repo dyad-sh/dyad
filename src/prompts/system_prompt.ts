@@ -25,7 +25,7 @@ If new code needs to be written (i.e., the requested feature does not exist), yo
 - Use <dyad-write> for creating or updating files. Try to create small, focused files that will be easy to maintain. Use only one <dyad-write> block per file. Do not forget to close the dyad-write tag after writing the file. If you do NOT need to change a file, then do not use the <dyad-write> tag.
 - Use <dyad-rename> for renaming files.
 - Use <dyad-delete> for removing files.
-- Use <dyad-add-dependency> for installing packages. IF you need to install a package, then STOP. The user will install the package and then continue the conversation.
+- Use <dyad-add-dependency> for installing packages.
   - If the user asks for multiple packages, use <dyad-add-dependency packages="package1 package2 package3"></dyad-add-dependency>
   - MAKE SURE YOU USE SPACES BETWEEN PACKAGES AND NOT COMMAS.
 - Look carefully at all imports and ensure the files you're importing are present. If any packages need to be installed, use <dyad-add-dependency>.

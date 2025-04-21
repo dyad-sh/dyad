@@ -4,6 +4,7 @@ import {
   getDyadRenameTags,
   getDyadDeleteTags,
   processFullResponseActions,
+  getDyadAddDependencyTags,
 } from "../ipc/processors/response_processor";
 import fs from "node:fs";
 import git from "isomorphic-git";
@@ -49,6 +50,40 @@ vi.mock("../db", () => ({
   },
 }));
 
+describe("getDyadAddDependencyTags", () => {
+  it("should return an empty array when no dyad-add-dependency tags are found", () => {
+    const result = getDyadAddDependencyTags("No dyad-add-dependency tags here");
+    expect(result).toEqual([]);
+  });
+
+  it("should return an array of dyad-add-dependency tags", () => {
+    const result = getDyadAddDependencyTags(
+      `<dyad-add-dependency packages="uuid"></dyad-add-dependency>`
+    );
+    expect(result).toEqual(["uuid"]);
+  });
+
+  it("should return all the packages in the dyad-add-dependency tags", () => {
+    const result = getDyadAddDependencyTags(
+      `<dyad-add-dependency packages="pkg1 pkg2"></dyad-add-dependency>`
+    );
+    expect(result).toEqual(["pkg1", "pkg2"]);
+  });
+
+  it("should return all the packages in the dyad-add-dependency tags", () => {
+    const result = getDyadAddDependencyTags(
+      `txt before<dyad-add-dependency packages="pkg1 pkg2"></dyad-add-dependency>text after`
+    );
+    expect(result).toEqual(["pkg1", "pkg2"]);
+  });
+
+  it("should return all the packages in multiple dyad-add-dependency tags", () => {
+    const result = getDyadAddDependencyTags(
+      `txt before<dyad-add-dependency packages="pkg1 pkg2"></dyad-add-dependency>txt between<dyad-add-dependency packages="pkg3"></dyad-add-dependency>text after`
+    );
+    expect(result).toEqual(["pkg1", "pkg2", "pkg3"]);
+  });
+});
 describe("getDyadWriteTags", () => {
   it("should return an empty array when no dyad-write tags are found", () => {
     const result = getDyadWriteTags("No dyad-write tags here");
@@ -407,7 +442,7 @@ const Index: React.FC = () => {
 export default Index;
 </dyad-write>
 
-<dyad-add-dependency package="uuid"></dyad-add-dependency>
+<dyad-add-dependency packages="uuid"></dyad-add-dependency>
 
 <dyad-write path="src/types/uuid.d.ts" description="Adding type definitions for uuid">
 declare module 'uuid' {

@@ -29,43 +29,8 @@ export const DyadAddDependency: React.FC<DyadAddDependencyProps> = ({
   // Extract package attribute from the node if available
   const packages = node?.properties?.packages?.split(" ") || "";
   const [isInstalling, setIsInstalling] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const selectedChatId = useAtomValue(selectedChatIdAtom);
-  const [messages, setMessages] = useAtom(chatMessagesAtom);
-  const { streamMessage, isStreaming } = useStreamChat();
   const [isContentVisible, setIsContentVisible] = useState(false);
   const hasChildren = !!children;
-
-  const handleInstall = async () => {
-    if (!packages || !selectedChatId) return;
-
-    setIsInstalling(true);
-    setError(null);
-    try {
-      const ipcClient = IpcClient.getInstance();
-
-      await ipcClient.addDependency({
-        chatId: selectedChatId,
-        packages,
-      });
-
-      // Refresh the chat messages
-      const chat = await IpcClient.getInstance().getChat(selectedChatId);
-      setMessages(chat.messages);
-
-      await streamMessage({
-        prompt: `I've installed ${packages.join(", ")}. Keep going.`,
-        chatId: selectedChatId,
-      });
-    } catch (err) {
-      setError("There was an error installing this package.");
-
-      const chat = await IpcClient.getInstance().getChat(selectedChatId);
-      setMessages(chat.messages);
-    } finally {
-      setIsInstalling(false);
-    }
-  };
 
   return (
     <div
@@ -137,27 +102,6 @@ export const DyadAddDependency: React.FC<DyadAddDependencyProps> = ({
           <div className="text-xs">
             <CodeHighlight className="language-shell">{children}</CodeHighlight>
           </div>
-        </div>
-      )}
-
-      {/* Always show install button if there are no children */}
-      {packages.length > 0 && !hasChildren && (
-        <div className="mt-4 flex justify-center">
-          <Button
-            onClick={(e) => {
-              if (hasChildren) e.stopPropagation();
-              handleInstall();
-            }}
-            disabled={isInstalling || isStreaming}
-            size="default"
-            variant="default"
-            className="font-medium bg-primary/90 flex items-center gap-2 w-full max-w-sm py-4 mt-2 mb-2"
-          >
-            <Download size={16} />
-            {isInstalling ? "Installing..." : "Install packages"}
-          </Button>
-
-          {error && <div className="text-sm text-red-500 mt-2">{error}</div>}
         </div>
       )}
     </div>

@@ -36,10 +36,10 @@ export interface CreateAppResult {
 }
 
 export interface Message {
-  id: string;
+  id: number;
   role: "user" | "assistant";
   content: string;
-  approvalState?: "approved" | "rejected";
+  approvalState?: "approved" | "rejected" | null;
 }
 
 export interface Chat {

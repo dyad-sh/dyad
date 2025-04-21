@@ -1,6 +1,6 @@
 import { db } from "../../db";
 import { chats, messages } from "../../db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import fs from "node:fs";
 import { getDyadAppPath } from "../../paths/paths";
 import path from "node:path";
@@ -8,6 +8,7 @@ import git from "isomorphic-git";
 import { getGithubUser } from "../handlers/github_handlers";
 import { getGitAuthor } from "../utils/git_author";
 import log from "electron-log";
+import { executeAddDependency } from "./executeAddDependency";
 
 const logger = log.scope("response_processor");
 
@@ -81,11 +82,11 @@ export function getDyadDeleteTags(fullResponse: string): string[] {
 
 export function getDyadAddDependencyTags(fullResponse: string): string[] {
   const dyadAddDependencyRegex =
-    /<dyad-add-dependency package="([^"]+)">[^<]*<\/dyad-add-dependency>/g;
+    /<dyad-add-dependency packages="([^"]+)">[^<]*<\/dyad-add-dependency>/g;
   let match;
   const packages: string[] = [];
   while ((match = dyadAddDependencyRegex.exec(fullResponse)) !== null) {
-    packages.push(match[1]);
+    packages.push(...match[1].split(" "));
   }
   return packages;
 }
@@ -134,7 +135,36 @@ export async function processFullResponseActions(
     const dyadDeletePaths = getDyadDeleteTags(fullResponse);
     const dyadAddDependencyPackages = getDyadAddDependencyTags(fullResponse);
 
+    const message = await db.query.messages.findFirst({
+      where: and(
+        eq(messages.id, messageId),
+        eq(messages.role, "assistant"),
+        eq(messages.chatId, chatId)
+      ),
+    });
+
+    if (!message) {
+      logger.error(`No message found for ID: ${messageId}`);
+      return {};
+    }
+
     // TODO: Handle add dependency tags
+    if (dyadAddDependencyPackages.length > 0) {
+      await executeAddDependency({
+        packages: dyadAddDependencyPackages,
+        message: message,
+        appPath,
+      });
+      writtenFiles.push("package.json");
+      const pnpmFilename = "pnpm-lock.yaml";
+      if (fs.existsSync(path.join(appPath, pnpmFilename))) {
+        writtenFiles.push(pnpmFilename);
+      }
+      const packageLockFilename = "package-lock.json";
+      if (fs.existsSync(path.join(appPath, packageLockFilename))) {
+        writtenFiles.push(packageLockFilename);
+      }
+    }
 
     // Process all file writes
     for (const tag of dyadWriteTags) {
@@ -218,7 +248,8 @@ export async function processFullResponseActions(
     hasChanges =
       writtenFiles.length > 0 ||
       renamedFiles.length > 0 ||
-      deletedFiles.length > 0;
+      deletedFiles.length > 0 ||
+      dyadAddDependencyPackages.length > 0;
     if (hasChanges) {
       // Stage all written files
       for (const file of writtenFiles) {
@@ -237,6 +268,10 @@ export async function processFullResponseActions(
         changes.push(`renamed ${renamedFiles.length} file(s)`);
       if (deletedFiles.length > 0)
         changes.push(`deleted ${deletedFiles.length} file(s)`);
+      if (dyadAddDependencyPackages.length > 0)
+        changes.push(
+          `added ${dyadAddDependencyPackages.join(", ")} package(s)`
+        );
 
       // Use chat summary, if provided, or default for commit message
       await git.commit({

@@ -12,6 +12,8 @@ log.errorHandler.startCatching();
 log.eventLogger.startLogging();
 log.scope.labelPadding = false;
 
+const logger = log.scope("main");
+
 updateElectronApp(); // additional configuration options available
 
 // Load environment variables from .env file
@@ -24,6 +26,12 @@ registerIpcHandlers();
 if (started) {
   app.quit();
 }
+
+export async function onReady() {
+  await onFirstRunMaybe();
+}
+
+app.whenReady().then(onReady);
 
 /**
  * Is this the first run of Fiddle? If so, perform
@@ -46,6 +54,7 @@ export async function onFirstRunMaybe() {
 async function promptMoveToApplicationsFolder(): Promise<void> {
   if (process.platform !== "darwin") return;
   if (app.isInApplicationsFolder()) return;
+  logger.log("Prompting user to move to applications folder");
 
   const { response } = await dialog.showMessageBox({
     type: "question",
@@ -55,7 +64,10 @@ async function promptMoveToApplicationsFolder(): Promise<void> {
   });
 
   if (response === 0) {
+    logger.log("User chose to move to applications folder");
     app.moveToApplicationsFolder();
+  } else {
+    logger.log("User chose not to move to applications folder");
   }
 }
 

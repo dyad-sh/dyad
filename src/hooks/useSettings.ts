@@ -38,6 +38,7 @@ export function useSettings() {
         ipcClient.getUserSettings(),
         ipcClient.getEnvVars(),
       ]);
+      processSettingsForTelemetry(userSettings);
       setSettingsAtom(userSettings);
       setEnvVarsAtom(fetchedEnvVars);
       setError(null);
@@ -60,22 +61,7 @@ export function useSettings() {
       const ipcClient = IpcClient.getInstance();
       const updatedSettings = await ipcClient.setUserSettings(newSettings);
       setSettingsAtom(updatedSettings);
-      if (updatedSettings.telemetryConsent) {
-        window.localStorage.setItem(
-          TELEMETRY_CONSENT_KEY,
-          updatedSettings.telemetryConsent
-        );
-      } else {
-        window.localStorage.removeItem(TELEMETRY_CONSENT_KEY);
-      }
-      if (updatedSettings.telemetryUserId) {
-        window.localStorage.setItem(
-          TELEMETRY_USER_ID_KEY,
-          updatedSettings.telemetryUserId
-        );
-      } else {
-        window.localStorage.removeItem(TELEMETRY_USER_ID_KEY);
-      }
+      processSettingsForTelemetry(updatedSettings);
 
       setError(null);
       return updatedSettings;
@@ -115,4 +101,23 @@ export function useSettings() {
       loadInitialData();
     },
   };
+}
+
+function processSettingsForTelemetry(settings: UserSettings) {
+  if (settings.telemetryConsent) {
+    window.localStorage.setItem(
+      TELEMETRY_CONSENT_KEY,
+      settings.telemetryConsent
+    );
+  } else {
+    window.localStorage.removeItem(TELEMETRY_CONSENT_KEY);
+  }
+  if (settings.telemetryUserId) {
+    window.localStorage.setItem(
+      TELEMETRY_USER_ID_KEY,
+      settings.telemetryUserId
+    );
+  } else {
+    window.localStorage.removeItem(TELEMETRY_USER_ID_KEY);
+  }
 }

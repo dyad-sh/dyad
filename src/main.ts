@@ -7,7 +7,7 @@ import started from "electron-squirrel-startup";
 import { updateElectronApp } from "update-electron-app";
 import log from "electron-log";
 import { readSettings, writeSettings } from "./main/settings";
-import { handleSupabaseOAuthReturn } from "./main/supabase_return_handler";
+import { handleSupabaseOAuthReturn } from "./supabase_admin/supabase_return_handler";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();

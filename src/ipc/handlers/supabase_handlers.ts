@@ -5,7 +5,7 @@ import log from "electron-log";
 import { db } from "../../db";
 import { eq } from "drizzle-orm";
 import { apps } from "../../db/schema";
-import { getSupabaseClient } from "../utils/supabase_management_client";
+import { getSupabaseClient } from "../../supabase_admin/supabase_management_client";
 
 const logger = log.scope("supabase_handlers");
 

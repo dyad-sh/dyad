@@ -5,6 +5,7 @@ import { DyadWrite } from "./DyadWrite";
 import { DyadRename } from "./DyadRename";
 import { DyadDelete } from "./DyadDelete";
 import { DyadAddDependency } from "./DyadAddDependency";
+import { DyadExecuteSql } from "./DyadExecuteSql";
 import { CodeHighlight } from "./CodeHighlight";
 import { useAtomValue } from "jotai";
 import { isStreamingAtom } from "@/atoms/chatAtoms";
@@ -73,6 +74,7 @@ function preprocessUnclosedTags(content: string): {
     "dyad-rename",
     "dyad-delete",
     "dyad-add-dependency",
+    "dyad-execute-sql",
   ];
 
   let processedContent = content;
@@ -131,6 +133,7 @@ function parseCustomTags(content: string): ContentPiece[] {
     "dyad-rename",
     "dyad-delete",
     "dyad-add-dependency",
+    "dyad-execute-sql",
   ];
 
   const tagPattern = new RegExp(
@@ -269,6 +272,19 @@ function renderCustomTag(
         >
           {content}
         </DyadAddDependency>
+      );
+
+    case "dyad-execute-sql":
+      return (
+        <DyadExecuteSql
+          node={{
+            properties: {
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadExecuteSql>
       );
 
     default:

@@ -129,6 +129,7 @@ export interface CodeProposal {
   securityRisks: SecurityRisk[];
   filesChanged: FileChange[];
   packagesAdded: string[];
+  sqlQueries: string[];
 }
 
 export interface SuggestedAction {

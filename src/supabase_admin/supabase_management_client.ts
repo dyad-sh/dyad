@@ -1,4 +1,4 @@
-import { readSettings } from "../../main/settings";
+import { readSettings } from "../main/settings";
 import { SupabaseManagementAPI } from "supabase-management-js";
 
 // Function to get the Supabase Management API client
@@ -25,4 +25,16 @@ export async function getSupabaseProjectName(
   const projects = await supabase.getProjects();
   const project = projects?.find((p) => p.id === projectId);
   return project?.name || `<project not found for: ${projectId}>`;
+}
+
+export async function executeSupabaseSql({
+  supabaseProjectId,
+  query,
+}: {
+  supabaseProjectId: string;
+  query: string;
+}): Promise<string> {
+  const supabase = await getSupabaseClient();
+  const result = await supabase.runQuery(supabaseProjectId, query);
+  return JSON.stringify(result);
 }

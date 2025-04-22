@@ -9,6 +9,7 @@ import { getGithubUser } from "../handlers/github_handlers";
 import { getGitAuthor } from "../utils/git_author";
 import log from "electron-log";
 import { executeAddDependency } from "./executeAddDependency";
+import { executeSupabaseSql } from "../../supabase_admin/supabase_management_client";
 
 const logger = log.scope("response_processor");
 
@@ -101,6 +102,31 @@ export function getDyadChatSummaryTag(fullResponse: string): string | null {
   return null;
 }
 
+export function getDyadExecuteSqlTags(fullResponse: string): string[] {
+  const dyadExecuteSqlRegex =
+    /<dyad-execute-sql>([\s\S]*?)<\/dyad-execute-sql>/g;
+  let match;
+  const queries: string[] = [];
+
+  while ((match = dyadExecuteSqlRegex.exec(fullResponse)) !== null) {
+    let content = match[1].trim();
+
+    // Handle markdown code blocks if present
+    const contentLines = content.split("\n");
+    if (contentLines[0]?.startsWith("```")) {
+      contentLines.shift();
+    }
+    if (contentLines[contentLines.length - 1]?.startsWith("```")) {
+      contentLines.pop();
+    }
+    content = contentLines.join("\n");
+
+    queries.push(content);
+  }
+
+  return queries;
+}
+
 export async function processFullResponseActions(
   fullResponse: string,
   chatId: number,
@@ -134,6 +160,9 @@ export async function processFullResponseActions(
     const dyadRenameTags = getDyadRenameTags(fullResponse);
     const dyadDeletePaths = getDyadDeleteTags(fullResponse);
     const dyadAddDependencyPackages = getDyadAddDependencyTags(fullResponse);
+    const dyadExecuteSqlQueries = chatWithApp.app.supabaseProjectId
+      ? getDyadExecuteSqlTags(fullResponse)
+      : [];
 
     const message = await db.query.messages.findFirst({
       where: and(
@@ -146,6 +175,17 @@ export async function processFullResponseActions(
     if (!message) {
       logger.error(`No message found for ID: ${messageId}`);
       return {};
+    }
+
+    // Handle SQL execution tags
+    if (dyadExecuteSqlQueries.length > 0) {
+      for (const query of dyadExecuteSqlQueries) {
+        const result = await executeSupabaseSql({
+          supabaseProjectId: chatWithApp.app.supabaseProjectId!,
+          query,
+        });
+      }
+      logger.log(`Executed ${dyadExecuteSqlQueries.length} SQL queries`);
     }
 
     // TODO: Handle add dependency tags
@@ -249,7 +289,8 @@ export async function processFullResponseActions(
       writtenFiles.length > 0 ||
       renamedFiles.length > 0 ||
       deletedFiles.length > 0 ||
-      dyadAddDependencyPackages.length > 0;
+      dyadAddDependencyPackages.length > 0 ||
+      dyadExecuteSqlQueries.length > 0;
     if (hasChanges) {
       // Stage all written files
       for (const file of writtenFiles) {
@@ -272,6 +313,8 @@ export async function processFullResponseActions(
         changes.push(
           `added ${dyadAddDependencyPackages.join(", ")} package(s)`
         );
+      if (dyadExecuteSqlQueries.length > 0)
+        changes.push(`executed ${dyadExecuteSqlQueries.length} SQL queries`);
 
       // Use chat summary, if provided, or default for commit message
       await git.commit({

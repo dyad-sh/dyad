@@ -4,6 +4,10 @@ import { db } from "../../db";
 import { chats, messages } from "../../db/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import { SYSTEM_PROMPT } from "../../prompts/system_prompt";
+import {
+  SUPABASE_AVAILABLE_SYSTEM_PROMPT,
+  SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
+} from "../../prompts/supabase_prompt";
 import { getDyadAppPath } from "../../paths/paths";
 import { readSettings } from "../../main/settings";
 import type { ChatResponseEnd, ChatStreamParams } from "../ipc_types";
@@ -13,6 +17,10 @@ import { streamTestResponse } from "./testing_chat_handlers";
 import { getTestResponse } from "./testing_chat_handlers";
 import { getModelClient } from "../utils/get_model_client";
 import log from "electron-log";
+import {
+  getSupabaseContext,
+  getSupabaseClientCode,
+} from "../../supabase_admin/supabase_context";
 
 const logger = log.scope("chat_stream_handlers");
 
@@ -158,12 +166,23 @@ export function registerChatStreamHandlers() {
         ) {
           messageHistory.pop();
         }
-
+        let systemPrompt = SYSTEM_PROMPT;
+        if (updatedChat.app?.supabaseProjectId) {
+          systemPrompt +=
+            "\n\n" +
+            SUPABASE_AVAILABLE_SYSTEM_PROMPT +
+            "\n\n" +
+            (await getSupabaseContext({
+              supabaseProjectId: updatedChat.app.supabaseProjectId,
+            }));
+        } else {
+          systemPrompt += "\n\n" + SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT;
+        }
         const { textStream } = streamText({
           maxTokens: 8_000,
           temperature: 0,
           model: modelClient,
-          system: SYSTEM_PROMPT,
+          system: systemPrompt,
           messages: [
             ...messageHistory,
             // Add the enhanced user prompt
@@ -190,6 +209,18 @@ export function registerChatStreamHandlers() {
         try {
           for await (const textPart of textStream) {
             fullResponse += textPart;
+            if (
+              fullResponse.includes("$$SUPABASE_CLIENT_CODE$$") &&
+              updatedChat.app?.supabaseProjectId
+            ) {
+              const supabaseClientCode = await getSupabaseClientCode({
+                projectId: updatedChat.app?.supabaseProjectId,
+              });
+              fullResponse = fullResponse.replace(
+                "$$SUPABASE_CLIENT_CODE$$",
+                supabaseClientCode
+              );
+            }
             // Store the current partial response
             partialResponses.set(req.chatId, fullResponse);
 

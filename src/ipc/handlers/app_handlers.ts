@@ -37,7 +37,7 @@ import { getGitAuthor } from "../utils/git_author";
 import killPort from "kill-port";
 import util from "util";
 import log from "electron-log";
-import { getSupabaseProjectName } from "../utils/supabase_management_client";
+import { getSupabaseProjectName } from "../../supabase_admin/supabase_management_client";
 
 const logger = log.scope("app_handlers");
 

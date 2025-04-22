@@ -13,6 +13,7 @@ import {
   getDyadAddDependencyTags,
   getDyadChatSummaryTag,
   getDyadDeleteTags,
+  getDyadExecuteSqlTags,
   getDyadRenameTags,
   getDyadWriteTags,
   processFullResponseActions,
@@ -76,7 +77,7 @@ const getProposalHandler = async (
       const proposalWriteFiles = getDyadWriteTags(messageContent);
       const proposalRenameFiles = getDyadRenameTags(messageContent);
       const proposalDeleteFiles = getDyadDeleteTags(messageContent);
-
+      const proposalExecuteSqlQueries = getDyadExecuteSqlTags(messageContent);
       const packagesAdded = getDyadAddDependencyTags(messageContent);
 
       const filesChanged = [
@@ -108,6 +109,7 @@ const getProposalHandler = async (
           securityRisks: [], // Keep empty
           filesChanged,
           packagesAdded,
+          sqlQueries: proposalExecuteSqlQueries,
         };
         logger.log(
           "Generated code proposal. title=",

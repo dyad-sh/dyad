@@ -12,6 +12,9 @@ import {
   Package,
   FileX,
   SendToBack,
+  Database,
+  ChevronsUpDown,
+  ChevronsDownUp,
 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -41,6 +44,8 @@ import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import { useRunApp } from "@/hooks/useRunApp";
 import { AutoApproveSwitch } from "../AutoApproveSwitch";
 import { usePostHog } from "posthog-js/react";
+import { CodeHighlight } from "./CodeHighlight";
+
 export function ChatInput({ chatId }: { chatId?: number }) {
   const posthog = usePostHog();
   const [inputValue, setInputValue] = useAtom(chatInputValueAtom);
@@ -418,6 +423,18 @@ function ChatInputActions({
               </ul>
             </div>
           )}
+
+          {proposal.sqlQueries?.length > 0 && (
+            <div className="mb-3">
+              <h4 className="font-semibold mb-1">SQL Queries</h4>
+              <ul className="space-y-2">
+                {proposal.sqlQueries.map((query, index) => (
+                  <SqlQueryItem key={index} query={query} />
+                ))}
+              </ul>
+            </div>
+          )}
+
           {proposal.packagesAdded?.length > 0 && (
             <div className="mb-3">
               <h4 className="font-semibold mb-1">Packages Added</h4>
@@ -484,4 +501,35 @@ function getIconForFileChange(file: FileChange) {
         <FileX size={16} className="text-muted-foreground flex-shrink-0" />
       );
   }
+}
+
+// SQL Query item with expandable functionality
+function SqlQueryItem({ query }: { query: string }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  return (
+    <li
+      className="bg-(--background-lightest) hover:bg-(--background-lighter) rounded-lg px-3 py-2 border border-border cursor-pointer"
+      onClick={() => setIsExpanded(!isExpanded)}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Database size={16} className="text-muted-foreground flex-shrink-0" />
+          <span className="text-sm font-medium">SQL Query</span>
+        </div>
+        <div>
+          {isExpanded ? (
+            <ChevronsDownUp size={18} className="text-muted-foreground" />
+          ) : (
+            <ChevronsUpDown size={18} className="text-muted-foreground" />
+          )}
+        </div>
+      </div>
+      {isExpanded && (
+        <div className="mt-2 text-xs max-h-[200px] overflow-auto">
+          <CodeHighlight className="language-sql ">{query}</CodeHighlight>
+        </div>
+      )}
+    </li>
+  );
 }

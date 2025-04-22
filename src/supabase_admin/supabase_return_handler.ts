@@ -1,4 +1,4 @@
-import { writeSettings } from "./settings";
+import { writeSettings } from "../main/settings";
 
 export function handleSupabaseOAuthReturn({
   token,

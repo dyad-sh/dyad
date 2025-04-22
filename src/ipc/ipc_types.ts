@@ -57,6 +57,8 @@ export interface App {
   updatedAt: Date;
   githubOrg: string | null;
   githubRepo: string | null;
+  supabaseProjectId: string | null;
+  supabaseProjectName: string | null;
 }
 
 export interface Version {

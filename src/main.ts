@@ -7,6 +7,7 @@ import started from "electron-squirrel-startup";
 import { updateElectronApp } from "update-electron-app";
 import log from "electron-log";
 import { readSettings, writeSettings } from "./main/settings";
+import { handleSupabaseOAuthReturn } from "./main/supabase_return_handler";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -25,6 +26,17 @@ registerIpcHandlers();
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
   app.quit();
+}
+
+// https://www.electronjs.org/docs/latest/tutorial/launch-app-from-url-in-another-app#main-process-mainjs
+if (process.defaultApp) {
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient("dyad", process.execPath, [
+      path.resolve(process.argv[1]),
+    ]);
+  }
+} else {
+  app.setAsDefaultProtocolClient("dyad");
 }
 
 export async function onReady() {
@@ -75,9 +87,11 @@ declare global {
   const MAIN_WINDOW_VITE_DEV_SERVER_URL: string;
 }
 
+let mainWindow: BrowserWindow | null = null;
+
 const createWindow = () => {
   // Create the browser window.
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: process.env.NODE_ENV === "development" ? 1280 : 960,
     height: 700,
     titleBarStyle: "hidden",
@@ -109,10 +123,55 @@ const createWindow = () => {
   }
 };
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
-app.on("ready", createWindow);
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on("second-instance", (event, commandLine, workingDirectory) => {
+    // Someone tried to run a second instance, we should focus our window.
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+    // the commandLine is array of strings in which last element is deep link url
+    handleDeepLinkReturn(commandLine.pop()!);
+  });
+
+  // Create mainWindow, load the rest of the app, etc...
+  app.whenReady().then(() => {
+    createWindow();
+  });
+}
+
+// Handle the protocol. In this case, we choose to show an Error Box.
+app.on("open-url", (event, url) => {
+  handleDeepLinkReturn(url);
+});
+
+function handleDeepLinkReturn(url: string) {
+  // example url: "dyad://supabase-oauth-return?token=a&refreshToken=b"
+  const parsed = new URL(url);
+  if (parsed.protocol !== "dyad:") {
+    dialog.showErrorBox(
+      "Invalid Protocol",
+      `Expected dyad://, got ${parsed.protocol}. Full URL: ${url}`
+    );
+  }
+  if (parsed.hostname === "supabase-oauth-return") {
+    const token = parsed.searchParams.get("token");
+    const refreshToken = parsed.searchParams.get("refreshToken");
+    const expiresIn = Number(parsed.searchParams.get("expiresIn"));
+    if (!token || !refreshToken || !expiresIn) {
+      dialog.showErrorBox(
+        "Invalid URL",
+        "Expected token, refreshToken, and expiresIn"
+      );
+      return;
+    }
+    handleSupabaseOAuthReturn({ token, refreshToken, expiresIn });
+  }
+}
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits

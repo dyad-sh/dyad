@@ -28,6 +28,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { GitHubConnector } from "@/components/GitHubConnector";
+import { SupabaseConnector } from "@/components/SupabaseConnector";
 
 export default function AppDetailsPage() {
   const navigate = useNavigate();
@@ -239,6 +240,7 @@ export default function AppDetailsPage() {
             <MessageCircle className="h-5 w-5" />
           </Button>
           <GitHubConnector appId={appId} folderName={selectedApp.path} />
+          {appId && <SupabaseConnector appId={appId} />}
         </div>
 
         {/* Rename Dialog */}

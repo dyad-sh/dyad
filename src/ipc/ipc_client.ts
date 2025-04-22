@@ -676,6 +676,51 @@ export class IpcClient {
   }
   // --- End Proposal Management ---
 
+  // --- Supabase Management ---
+  public async listSupabaseProjects(): Promise<any[]> {
+    try {
+      const projects = await this.ipcRenderer.invoke("supabase:list-projects");
+      return projects;
+    } catch (error) {
+      showError(error);
+      throw error;
+    }
+  }
+
+  public async setSupabaseAppProject(
+    project: string,
+    app: number
+  ): Promise<{ success: boolean; appId: number; projectId: string }> {
+    try {
+      const result = await this.ipcRenderer.invoke("supabase:set-app-project", {
+        project,
+        app,
+      });
+      return result;
+    } catch (error) {
+      showError(error);
+      throw error;
+    }
+  }
+
+  public async unsetSupabaseAppProject(
+    app: number
+  ): Promise<{ success: boolean; appId: number }> {
+    try {
+      const result = await this.ipcRenderer.invoke(
+        "supabase:unset-app-project",
+        {
+          app,
+        }
+      );
+      return result;
+    } catch (error) {
+      showError(error);
+      throw error;
+    }
+  }
+  // --- End Supabase Management ---
+
   // Get system debug information
   public async getSystemDebugInfo(): Promise<SystemDebugInfo> {
     try {

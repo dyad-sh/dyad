@@ -14,6 +14,7 @@ export const apps = sqliteTable("apps", {
     .default(sql`(unixepoch())`),
   githubOrg: text("github_org"),
   githubRepo: text("github_repo"),
+  supabaseProjectId: text("supabase_project_id"),
 });
 
 export const chats = sqliteTable("chats", {

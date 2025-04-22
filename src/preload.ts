@@ -42,6 +42,9 @@ const validInvokeChannels = [
   "approve-proposal",
   "reject-proposal",
   "get-system-debug-info",
+  "supabase:list-projects",
+  "supabase:set-app-project",
+  "supabase:unset-app-project",
 ] as const;
 
 // Add valid receive channels

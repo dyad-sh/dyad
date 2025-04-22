@@ -36,6 +36,27 @@ export function readSettings(): UserSettings {
       ...DEFAULT_SETTINGS,
       ...rawSettings,
     };
+    const supabase = combinedSettings.supabase;
+    if (supabase) {
+      if (supabase.refreshToken) {
+        const encryptionType = supabase.refreshToken.encryptionType;
+        if (encryptionType) {
+          supabase.refreshToken = {
+            value: decrypt(supabase.refreshToken),
+            encryptionType,
+          };
+        }
+      }
+      if (supabase.accessToken) {
+        const encryptionType = supabase.accessToken.encryptionType;
+        if (encryptionType) {
+          supabase.accessToken = {
+            value: decrypt(supabase.accessToken),
+            encryptionType,
+          };
+        }
+      }
+    }
     if (combinedSettings.githubAccessToken) {
       const encryptionType = combinedSettings.githubAccessToken.encryptionType;
       combinedSettings.githubAccessToken = {
@@ -74,7 +95,18 @@ export function writeSettings(settings: Partial<UserSettings>): void {
         newSettings.githubAccessToken.value
       );
     }
-
+    if (newSettings.supabase) {
+      if (newSettings.supabase.accessToken) {
+        newSettings.supabase.accessToken = encrypt(
+          newSettings.supabase.accessToken.value
+        );
+      }
+      if (newSettings.supabase.refreshToken) {
+        newSettings.supabase.refreshToken = encrypt(
+          newSettings.supabase.refreshToken.value
+        );
+      }
+    }
     for (const provider in newSettings.providerSettings) {
       if (newSettings.providerSettings[provider].apiKey) {
         newSettings.providerSettings[provider].apiKey = encrypt(

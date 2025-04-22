@@ -15,6 +15,13 @@
       "when": 1744999922420,
       "tag": "0001_hesitant_roland_deschain",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1745359640409,
+      "tag": "0002_unique_morlocks",
+      "breakpoints": true
     }
   ]
 }

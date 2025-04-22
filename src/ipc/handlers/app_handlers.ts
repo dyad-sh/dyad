@@ -37,6 +37,7 @@ import { getGitAuthor } from "../utils/git_author";
 import killPort from "kill-port";
 import util from "util";
 import log from "electron-log";
+import { getSupabaseProjectName } from "../utils/supabase_management_client";
 
 const logger = log.scope("app_handlers");
 
@@ -222,9 +223,16 @@ export function registerAppHandlers() {
       // Return app even if files couldn't be read
     }
 
+    let supabaseProjectName: string | null = null;
+
+    if (app.supabaseProjectId) {
+      supabaseProjectName = await getSupabaseProjectName(app.supabaseProjectId);
+    }
+
     return {
       ...app,
       files,
+      supabaseProjectName,
     };
   });
 

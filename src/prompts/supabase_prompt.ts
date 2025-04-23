@@ -163,7 +163,10 @@ CREATE TRIGGER on_auth_user_created
 1. Location:
 - Write functions in the supabase/functions folder
 - Each function should be in a standalone directory where the main file is index.ts (e.g., supabase/functions/hello/index.ts)
-- Functions will require approval by the user before they are deployed
+- Make sure you use <dyad-write> tags to make changes to edge functions. 
+- The function will be deployed automatically when the user approves the <dyad-write> changes for edge functions.
+- Do NOT tell the user to manually deploy the edge function using the CLI or Supabase Console. It's unhelpful and not needed.
+
 
 2. Configuration:
 - DO NOT edit config.toml

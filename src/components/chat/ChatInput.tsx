@@ -350,18 +350,28 @@ function ChatInputActions({
         {/* Row 1: Title, Expand Icon, and Security Chip */}
         <div className="flex items-center gap-2 mb-1">
           <button
-            className="flex items-center text-left text-sm font-medium hover:bg-muted p-1 rounded justify-start"
+            className="flex flex-col text-left text-sm hover:bg-muted p-1 rounded justify-start w-full"
             onClick={() => setIsDetailsVisible(!isDetailsVisible)}
           >
-            {isDetailsVisible ? (
-              <ChevronUp size={16} className="mr-1" />
-            ) : (
-              <ChevronDown size={16} className="mr-1" />
-            )}
-            {proposal.title}
+            <div className="flex items-center">
+              {isDetailsVisible ? (
+                <ChevronUp size={16} className="mr-1 flex-shrink-0" />
+              ) : (
+                <ChevronDown size={16} className="mr-1 flex-shrink-0" />
+              )}
+              <span className="font-medium">{proposal.title}</span>
+            </div>
+            <div className="text-xs text-muted-foreground ml-6">
+              <ProposalSummary
+                sqlQueries={proposal.sqlQueries}
+                serverFunctions={serverFunctions}
+                packagesAdded={proposal.packagesAdded}
+                filesChanged={otherFilesChanged}
+              />
+            </div>
           </button>
           {proposal.securityRisks.length > 0 && (
-            <span className="bg-red-100 text-red-700 text-xs font-medium px-2 py-0.5 rounded-full">
+            <span className="bg-red-100 text-red-700 text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0">
               Security risks found
             </span>
           )}
@@ -528,6 +538,65 @@ function getIconForFileChange(file: FileChange) {
         <FileX size={16} className="text-muted-foreground flex-shrink-0" />
       );
   }
+}
+
+// Proposal summary component to show counts of changes
+function ProposalSummary({
+  sqlQueries = [],
+  serverFunctions = [],
+  packagesAdded = [],
+  filesChanged = [],
+}: {
+  sqlQueries?: string[];
+  serverFunctions?: FileChange[];
+  packagesAdded?: string[];
+  filesChanged?: FileChange[];
+}) {
+  // If no changes, show a simple message
+  if (
+    !sqlQueries.length &&
+    !serverFunctions.length &&
+    !packagesAdded.length &&
+    !filesChanged.length
+  ) {
+    return <span>No changes</span>;
+  }
+
+  // Build parts array with only the segments that have content
+  const parts: string[] = [];
+
+  if (sqlQueries.length) {
+    parts.push(
+      `${sqlQueries.length} SQL ${
+        sqlQueries.length === 1 ? "query" : "queries"
+      }`
+    );
+  }
+
+  if (serverFunctions.length) {
+    parts.push(
+      `${serverFunctions.length} Server ${
+        serverFunctions.length === 1 ? "Function" : "Functions"
+      }`
+    );
+  }
+
+  if (packagesAdded.length) {
+    parts.push(
+      `${packagesAdded.length} ${
+        packagesAdded.length === 1 ? "package" : "packages"
+      }`
+    );
+  }
+
+  if (filesChanged.length) {
+    parts.push(
+      `${filesChanged.length} ${filesChanged.length === 1 ? "file" : "files"}`
+    );
+  }
+
+  // Join all parts with separator
+  return <span>{parts.join(" | ")}</span>;
 }
 
 // SQL Query item with expandable functionality

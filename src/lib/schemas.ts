@@ -129,6 +129,7 @@ export interface FileChange {
   path: string;
   summary: string;
   type: "write" | "rename" | "delete";
+  isServerFunction: boolean;
 }
 
 export interface CodeProposal {

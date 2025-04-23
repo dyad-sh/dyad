@@ -19,6 +19,7 @@ import {
   processFullResponseActions,
 } from "../processors/response_processor";
 import log from "electron-log";
+import { isServerFunction } from "../../supabase_admin/supabase_utils";
 
 const logger = log.scope("proposal_handlers");
 
@@ -86,18 +87,21 @@ const getProposalHandler = async (
           path: tag.path,
           summary: tag.description ?? "(no change summary found)", // Generic summary
           type: "write" as const,
+          isServerFunction: isServerFunction(tag.path),
         })),
         ...proposalRenameFiles.map((tag) => ({
           name: path.basename(tag.to),
           path: tag.to,
           summary: `Rename from ${tag.from} to ${tag.to}`,
           type: "rename" as const,
+          isServerFunction: isServerFunction(tag.to),
         })),
         ...proposalDeleteFiles.map((tag) => ({
           name: path.basename(tag),
           path: tag,
           summary: `Delete file`,
           type: "delete" as const,
+          isServerFunction: isServerFunction(tag),
         })),
       ];
       // Check if we have enough information to create a proposal

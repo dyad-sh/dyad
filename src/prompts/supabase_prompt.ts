@@ -162,9 +162,8 @@ CREATE TRIGGER on_auth_user_created
 
 1. Location:
 - Write functions in the supabase/functions folder
-- Each function should be a standalone, self-inclusive file (e.g., function-name.ts)
-- Avoid using folder/index.ts structure patterns
-- Functions will be deployed automatically and you will be notified
+- Each function should be in a standalone directory where the main file is index.ts (e.g., supabase/functions/hello/index.ts)
+- Functions will require approval by the user before they are deployed
 
 2. Configuration:
 - DO NOT edit config.toml
@@ -225,7 +224,7 @@ Use <resource-link> to link to the relevant edge function
 
 11. Edge Function Template:
 
-<dyad-write path="src/supabase/functions/hello.ts" description="Creating a hello world edge function.">
+<dyad-write path="supabase/functions/hello.ts" description="Creating a hello world edge function.">
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0'
 

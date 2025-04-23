@@ -9,7 +9,11 @@ import { getGithubUser } from "../handlers/github_handlers";
 import { getGitAuthor } from "../utils/git_author";
 import log from "electron-log";
 import { executeAddDependency } from "./executeAddDependency";
-import { executeSupabaseSql } from "../../supabase_admin/supabase_management_client";
+import {
+  deploySupabaseFunctions,
+  executeSupabaseSql,
+} from "../../supabase_admin/supabase_management_client";
+import { isServerFunction } from "../../supabase_admin/supabase_utils";
 
 const logger = log.scope("response_processor");
 
@@ -220,6 +224,13 @@ export async function processFullResponseActions(
       fs.writeFileSync(fullFilePath, content);
       logger.log(`Successfully wrote file: ${fullFilePath}`);
       writtenFiles.push(filePath);
+      if (isServerFunction(filePath)) {
+        await deploySupabaseFunctions({
+          supabaseProjectId: chatWithApp.app.supabaseProjectId!,
+          functionName: path.basename(path.dirname(filePath)),
+          content: content,
+        });
+      }
     }
 
     // Process all file renames

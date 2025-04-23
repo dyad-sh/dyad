@@ -1,6 +1,9 @@
 import { withLock } from "../ipc/utils/lock_utils";
 import { readSettings, writeSettings } from "../main/settings";
-import { SupabaseManagementAPI } from "supabase-management-js";
+import {
+  SupabaseManagementAPI,
+  SupabaseManagementAPIError,
+} from "@dyad-sh/supabase-management-js";
 
 /**
  * Checks if the Supabase access token is expired or about to expire
@@ -132,4 +135,72 @@ export async function executeSupabaseSql({
   const supabase = await getSupabaseClient();
   const result = await supabase.runQuery(supabaseProjectId, query);
   return JSON.stringify(result);
+}
+
+export async function deploySupabaseFunctions({
+  supabaseProjectId,
+  functionName,
+  content,
+}: {
+  supabaseProjectId: string;
+  functionName: string;
+  content: string;
+}): Promise<void> {
+  const supabase = await getSupabaseClient();
+  const formData = new FormData();
+  formData.append(
+    "metadata",
+    JSON.stringify({
+      entrypoint_path: "index.ts",
+      name: functionName,
+    })
+  );
+  formData.append("file", new Blob([content]), "index.ts");
+
+  const response = await fetch(
+    `https://api.supabase.com/v1/projects/${supabaseProjectId}/functions/deploy?slug=${functionName}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${(supabase as any).options.accessToken}`,
+      },
+      body: formData,
+    }
+  );
+
+  if (response.status !== 201) {
+    throw await createResponseError(response, "create function");
+  }
+
+  return response.json();
+}
+
+async function createResponseError(response: Response, action: string) {
+  const errorBody = await safeParseErrorResponseBody(response);
+
+  return new SupabaseManagementAPIError(
+    `Failed to ${action}: ${response.statusText} (${response.status})${
+      errorBody ? `: ${errorBody.message}` : ""
+    }`,
+    response
+  );
+}
+
+async function safeParseErrorResponseBody(
+  response: Response
+): Promise<{ message: string } | undefined> {
+  try {
+    const body = await response.json();
+
+    if (
+      typeof body === "object" &&
+      body !== null &&
+      "message" in body &&
+      typeof body.message === "string"
+    ) {
+      return { message: body.message };
+    }
+  } catch (error) {
+    return;
+  }
 }

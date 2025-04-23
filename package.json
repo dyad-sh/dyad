@@ -116,7 +116,7 @@
     "shell-env": "^4.0.1",
     "shiki": "^3.2.1",
     "sonner": "^2.0.3",
-    "supabase-management-js": "^1.0.0",
+    "@dyad-sh/supabase-management-js": "v1.0.0",
     "tailwind-merge": "^3.1.0",
     "tailwindcss": "^4.1.3",
     "tree-kill": "^1.2.2",

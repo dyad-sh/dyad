@@ -6,6 +6,7 @@ import { DyadRename } from "./DyadRename";
 import { DyadDelete } from "./DyadDelete";
 import { DyadAddDependency } from "./DyadAddDependency";
 import { DyadExecuteSql } from "./DyadExecuteSql";
+import { DyadAddIntegration } from "./DyadAddIntegration";
 import { CodeHighlight } from "./CodeHighlight";
 import { useAtomValue } from "jotai";
 import { isStreamingAtom } from "@/atoms/chatAtoms";
@@ -75,6 +76,7 @@ function preprocessUnclosedTags(content: string): {
     "dyad-delete",
     "dyad-add-dependency",
     "dyad-execute-sql",
+    "dyad-add-integration",
   ];
 
   let processedContent = content;
@@ -134,6 +136,7 @@ function parseCustomTags(content: string): ContentPiece[] {
     "dyad-delete",
     "dyad-add-dependency",
     "dyad-execute-sql",
+    "dyad-add-integration",
   ];
 
   const tagPattern = new RegExp(
@@ -285,6 +288,19 @@ function renderCustomTag(
         >
           {content}
         </DyadExecuteSql>
+      );
+
+    case "dyad-add-integration":
+      return (
+        <DyadAddIntegration
+          node={{
+            properties: {
+              provider: attributes.provider || "",
+            },
+          }}
+        >
+          {content}
+        </DyadAddIntegration>
       );
 
     default:

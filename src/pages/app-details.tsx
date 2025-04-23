@@ -1,4 +1,4 @@
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useNavigate, useRouter, useSearch } from "@tanstack/react-router";
 import { useAtom, useAtomValue } from "jotai";
 import { appBasePathAtom, appsListAtom } from "@/atoms/appAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
@@ -32,6 +32,7 @@ import { SupabaseConnector } from "@/components/SupabaseConnector";
 
 export default function AppDetailsPage() {
   const navigate = useNavigate();
+  const router = useRouter();
   const search = useSearch({ from: "/app-details" as const });
   const [appsList] = useAtom(appsListAtom);
   const { refreshApps } = useLoadApps();
@@ -142,7 +143,7 @@ export default function AppDetailsPage() {
     return (
       <div className="relative min-h-screen p-8">
         <Button
-          onClick={() => navigate({ to: "/", search: {} })}
+          onClick={() => router.history.back()}
           variant="outline"
           size="sm"
           className="absolute top-4 left-4 flex items-center gap-2 bg-(--background-lightest) py-5"
@@ -160,7 +161,7 @@ export default function AppDetailsPage() {
   return (
     <div className="relative min-h-screen p-8 w-full">
       <Button
-        onClick={() => navigate({ to: "/", search: {} })}
+        onClick={() => router.history.back()}
         variant="outline"
         size="sm"
         className="absolute top-4 left-4 flex items-center gap-2 bg-(--background-lightest) py-5"

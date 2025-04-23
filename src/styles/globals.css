@@ -59,7 +59,7 @@
 }
 
 .no-app-region-drag {
-  app-region: initial;
+  app-region: no-drag;
 }
 
 .h-screenish {

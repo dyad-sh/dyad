@@ -17,6 +17,8 @@ import type {
   Message,
   Version,
   SystemDebugInfo,
+  LocalModel,
+  LocalModelListResponse,
 } from "./ipc_types";
 import type { CodeProposal, ProposalResult } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
@@ -729,12 +731,22 @@ export class IpcClient {
   // Get system debug information
   public async getSystemDebugInfo(): Promise<SystemDebugInfo> {
     try {
-      const result = await this.ipcRenderer.invoke("get-system-debug-info");
-      return result;
+      const data = await this.ipcRenderer.invoke("get-system-debug-info");
+      return data;
     } catch (error) {
       showError(error);
       throw error;
     }
+  }
+
+  public async listLocalModels(): Promise<LocalModel[]> {
+    const { models, error } = (await this.ipcRenderer.invoke(
+      "local-models:list"
+    )) as LocalModelListResponse;
+    if (error) {
+      throw new Error(error);
+    }
+    return models;
   }
 
   // Listen for deep link events

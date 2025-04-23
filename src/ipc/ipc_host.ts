@@ -9,6 +9,7 @@ import { registerNodeHandlers } from "./handlers/node_handlers";
 import { registerProposalHandlers } from "./handlers/proposal_handlers";
 import { registerDebugHandlers } from "./handlers/debug_handlers";
 import { registerSupabaseHandlers } from "./handlers/supabase_handlers";
+import { registerLocalModelHandlers } from "./handlers/local_model_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -23,4 +24,5 @@ export function registerIpcHandlers() {
   registerProposalHandlers();
   registerDebugHandlers();
   registerSupabaseHandlers();
+  registerLocalModelHandlers();
 }

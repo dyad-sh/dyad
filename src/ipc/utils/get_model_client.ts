@@ -2,6 +2,8 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI as createGoogle } from "@ai-sdk/google";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { createOllama } from "ollama-ai-provider";
+
 import type { LargeLanguageModel, UserSettings } from "../../lib/schemas";
 import { PROVIDER_TO_ENV_VAR, AUTO_MODELS } from "../../constants/models";
 import { getEnvVar } from "./read_env";
@@ -54,6 +56,10 @@ export function getModelClient(
     }
     case "openrouter": {
       const provider = createOpenRouter({ apiKey });
+      return provider(model.name);
+    }
+    case "ollama": {
+      const provider = createOllama();
       return provider(model.name);
     }
     default: {

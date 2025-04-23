@@ -45,6 +45,7 @@ const validInvokeChannels = [
   "supabase:list-projects",
   "supabase:set-app-project",
   "supabase:unset-app-project",
+  "local-models:list",
 ] as const;
 
 // Add valid receive channels

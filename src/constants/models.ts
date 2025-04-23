@@ -6,7 +6,8 @@ export interface ModelOption {
   tag?: string;
 }
 
-export const MODEL_OPTIONS: Record<ModelProvider, ModelOption[]> = {
+type RegularModelProvider = Exclude<ModelProvider, "ollama">;
+export const MODEL_OPTIONS: Record<RegularModelProvider, ModelOption[]> = {
   openai: [
     {
       name: "gpt-4.1",
@@ -52,7 +53,7 @@ export const MODEL_OPTIONS: Record<ModelProvider, ModelOption[]> = {
 };
 
 export const PROVIDERS: Record<
-  ModelProvider,
+  RegularModelProvider,
   {
     name: string;
     displayName: string;

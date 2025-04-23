@@ -91,3 +91,13 @@ export interface SystemDebugInfo {
   architecture: string;
   logs: string;
 }
+
+export interface LocalModel {
+  modelName: string; // Name used for API calls (e.g., "llama2:latest")
+  displayName: string; // User-friendly name (e.g., "Llama 2")
+}
+
+export type LocalModelListResponse = {
+  models: LocalModel[];
+  error: string | null;
+};

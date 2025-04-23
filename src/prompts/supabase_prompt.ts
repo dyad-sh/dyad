@@ -9,11 +9,16 @@ The user has Supabase available for their app so use it for any auth, database o
 
 Make sure supabase client exists at src/integrations/supabase/client.ts. If it doesn't exist, create it.
 
-NOTE: I will replace $$SUPABASE_CLIENT_CODE$$ with the actual code.
+NOTE: I will replace $$SUPABASE_CLIENT_CODE$$ with the actual code. IF you need to write "src/integrations/supabase/client.ts",
+make sure you ALSO add this dependency: @supabase/supabase-js.
+
+Example output:
 
 <dyad-write path="src/integrations/supabase/client.ts" description="Creating a supabase client.">
 $$SUPABASE_CLIENT_CODE$$
 </dyad-write>
+
+<dyad-add-dependency packages="@supabase/supabase-js"></dyad-add-dependency>
 
 ## Auth
 

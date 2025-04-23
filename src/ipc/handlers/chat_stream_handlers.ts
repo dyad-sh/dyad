@@ -148,24 +148,11 @@ export function registerChatStreamHandlers() {
           codebaseInfo.length / 4
         );
 
-        // Append codebase information to the user's prompt if available
-        const userPrompt = codebaseInfo
-          ? `${req.prompt}\n\nHere's the codebase:\n${codebaseInfo}`
-          : req.prompt;
-
         // Prepare message history for the AI
         const messageHistory = updatedChat.messages.map((message) => ({
           role: message.role as "user" | "assistant" | "system",
           content: message.content,
         }));
-
-        // Remove the last user message (we'll replace it with our enhanced version)
-        if (
-          messageHistory.length > 0 &&
-          messageHistory[messageHistory.length - 1].role === "user"
-        ) {
-          messageHistory.pop();
-        }
         let systemPrompt = SYSTEM_PROMPT;
         if (readSettings().experiments?.enableSupabaseIntegration) {
           if (updatedChat.app?.supabaseProjectId) {
@@ -186,12 +173,15 @@ export function registerChatStreamHandlers() {
           model: modelClient,
           system: systemPrompt,
           messages: [
-            ...messageHistory,
-            // Add the enhanced user prompt
             {
               role: "user",
-              content: userPrompt,
+              content: "This is my codebase. " + codebaseInfo,
             },
+            {
+              role: "assistant",
+              content: "OK, got it. I'm ready to help",
+            },
+            ...messageHistory,
           ],
           onError: (error) => {
             logger.error("Error streaming text:", error);

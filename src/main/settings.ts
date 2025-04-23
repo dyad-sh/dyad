@@ -16,6 +16,9 @@ const DEFAULT_SETTINGS: UserSettings = {
   telemetryConsent: "unset",
   telemetryUserId: uuidv4(),
   hasRunBefore: false,
+  experiments: {
+    enableSupabaseIntegration: false,
+  },
 };
 
 const SETTINGS_FILE = "user-settings.json";

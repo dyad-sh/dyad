@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/dialog";
 import { GitHubConnector } from "@/components/GitHubConnector";
 import { SupabaseConnector } from "@/components/SupabaseConnector";
+import { useSettings } from "@/hooks/useSettings";
 
 export default function AppDetailsPage() {
   const navigate = useNavigate();
@@ -48,7 +49,7 @@ export default function AppDetailsPage() {
   const [newFolderName, setNewFolderName] = useState("");
   const [isRenamingFolder, setIsRenamingFolder] = useState(false);
   const appBasePath = useAtomValue(appBasePathAtom);
-
+  const { settings } = useSettings();
   // Get the appId from search params and find the corresponding app
   const appId = search.appId ? Number(search.appId) : null;
   const selectedApp = appId ? appsList.find((app) => app.id === appId) : null;
@@ -241,7 +242,9 @@ export default function AppDetailsPage() {
             <MessageCircle className="h-5 w-5" />
           </Button>
           <GitHubConnector appId={appId} folderName={selectedApp.path} />
-          {appId && <SupabaseConnector appId={appId} />}
+          {appId && settings?.experiments?.enableSupabaseIntegration && (
+            <SupabaseConnector appId={appId} />
+          )}
         </div>
 
         {/* Rename Dialog */}

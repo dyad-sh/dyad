@@ -6,6 +6,7 @@ import { IpcClient } from "@/ipc/ipc_client";
 import { showSuccess, showError } from "@/lib/toast";
 import { AutoApproveSwitch } from "@/components/AutoApproveSwitch";
 import { TelemetrySwitch } from "@/components/TelemetrySwitch";
+import { SupabaseIntegrationSwitch } from "@/components/SupabaseIntegrationSwitch";
 import { useSettings } from "@/hooks/useSettings";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
@@ -141,6 +142,22 @@ export default function SettingsPage() {
                 <span className="bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded text-gray-800 dark:text-gray-200 font-mono">
                   {settings ? settings.telemetryUserId : "n/a"}
                 </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Experiments Section */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+            <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+              Experiments
+            </h2>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <SupabaseIntegrationSwitch />
+                <div className="text-sm text-gray-500 dark:text-gray-400">
+                  Enable integration with Supabase for auth, database and server
+                  function support.
+                </div>
               </div>
             </div>
           </div>

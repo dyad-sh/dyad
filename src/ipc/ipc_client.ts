@@ -45,6 +45,11 @@ export interface GitHubDeviceFlowErrorData {
   error: string;
 }
 
+export interface DeepLinkData {
+  type: string;
+  url?: string;
+}
+
 export class IpcClient {
   private static instance: IpcClient;
   private ipcRenderer: IpcRenderer;
@@ -730,5 +735,18 @@ export class IpcClient {
       showError(error);
       throw error;
     }
+  }
+
+  // Listen for deep link events
+  public onDeepLinkReceived(
+    callback: (data: DeepLinkData) => void
+  ): () => void {
+    const listener = (data: any) => {
+      callback(data as DeepLinkData);
+    };
+    this.ipcRenderer.on("deep-link-received", listener);
+    return () => {
+      this.ipcRenderer.removeListener("deep-link-received", listener);
+    };
   }
 }

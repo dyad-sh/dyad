@@ -98,7 +98,7 @@ export function useSettings() {
       );
     },
     refreshSettings: () => {
-      loadInitialData();
+      return loadInitialData();
     },
   };
 }

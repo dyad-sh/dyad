@@ -23,12 +23,24 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLoadApp } from "@/hooks/useLoadApp";
+import { useDeepLink } from "@/contexts/DeepLinkContext";
 const OAUTH_CLIENT_ID = "bf747de7-60bb-48a2-9015-6494e0b04983";
 
 export function SupabaseConnector({ appId }: { appId: number }) {
   const [isConnecting, setIsConnecting] = useState(false);
-  const { settings } = useSettings();
+  const { settings, refreshSettings } = useSettings();
   const { app, refreshApp } = useLoadApp(appId);
+  const { lastDeepLink } = useDeepLink();
+
+  useEffect(() => {
+    const handleDeepLink = async () => {
+      if (lastDeepLink?.type === "supabase-oauth-return") {
+        await refreshSettings();
+        await refreshApp();
+      }
+    };
+    handleDeepLink();
+  }, [lastDeepLink]);
   const {
     projects,
     loading,
@@ -176,7 +188,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
 
   return (
     <div className="flex flex-col space-y-4 p-4 border rounded-md">
-      <h2 className="text-lg font-semibold">Connect to Supabase</h2>
+      <h2 className="text-lg font-semibold">Supabase Integration</h2>
 
       <Button
         onClick={handleConnect}

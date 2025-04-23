@@ -152,6 +152,13 @@ app.on("open-url", (event, url) => {
 function handleDeepLinkReturn(url: string) {
   // example url: "dyad://supabase-oauth-return?token=a&refreshToken=b"
   const parsed = new URL(url);
+  // Intentionally do NOT log the full URL which may contain sensitive tokens.
+  log.log(
+    "Handling deep link: protocol",
+    parsed.protocol,
+    "hostname",
+    parsed.hostname
+  );
   if (parsed.protocol !== "dyad:") {
     dialog.showErrorBox(
       "Invalid Protocol",
@@ -170,6 +177,11 @@ function handleDeepLinkReturn(url: string) {
       return;
     }
     handleSupabaseOAuthReturn({ token, refreshToken, expiresIn });
+    // Send message to renderer to trigger re-render
+    mainWindow?.webContents.send("deep-link-received", {
+      type: parsed.hostname,
+      url,
+    });
   }
 }
 

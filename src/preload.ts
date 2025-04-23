@@ -56,6 +56,7 @@ const validReceiveChannels = [
   "github:flow-update",
   "github:flow-success",
   "github:flow-error",
+  "deep-link-received",
 ] as const;
 
 type ValidInvokeChannel = (typeof validInvokeChannels)[number];

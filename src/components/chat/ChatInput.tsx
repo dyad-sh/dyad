@@ -38,6 +38,7 @@ import {
   SuggestedAction,
   ProposalResult,
   FileChange,
+  SqlQuery,
 } from "@/lib/schemas";
 import type { Message } from "@/ipc/ipc_types";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
@@ -547,7 +548,7 @@ function ProposalSummary({
   packagesAdded = [],
   filesChanged = [],
 }: {
-  sqlQueries?: string[];
+  sqlQueries?: Array<SqlQuery>;
   serverFunctions?: FileChange[];
   packagesAdded?: string[];
   filesChanged?: FileChange[];
@@ -600,8 +601,11 @@ function ProposalSummary({
 }
 
 // SQL Query item with expandable functionality
-function SqlQueryItem({ query }: { query: string }) {
+function SqlQueryItem({ query }: { query: SqlQuery }) {
   const [isExpanded, setIsExpanded] = useState(false);
+
+  const queryContent = query.content;
+  const queryDescription = query.description;
 
   return (
     <li
@@ -611,7 +615,9 @@ function SqlQueryItem({ query }: { query: string }) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Database size={16} className="text-muted-foreground flex-shrink-0" />
-          <span className="text-sm font-medium">SQL Query</span>
+          <span className="text-sm font-medium">
+            {queryDescription || "SQL Query"}
+          </span>
         </div>
         <div>
           {isExpanded ? (
@@ -623,7 +629,9 @@ function SqlQueryItem({ query }: { query: string }) {
       </div>
       {isExpanded && (
         <div className="mt-2 text-xs max-h-[200px] overflow-auto">
-          <CodeHighlight className="language-sql ">{query}</CodeHighlight>
+          <CodeHighlight className="language-sql ">
+            {queryContent}
+          </CodeHighlight>
         </div>
       )}
     </li>

@@ -132,13 +132,18 @@ export interface FileChange {
   isServerFunction: boolean;
 }
 
+export interface SqlQuery {
+  content: string;
+  description?: string;
+}
+
 export interface CodeProposal {
   type: "code-proposal";
   title: string;
   securityRisks: SecurityRisk[];
   filesChanged: FileChange[];
   packagesAdded: string[];
-  sqlQueries: string[];
+  sqlQueries: SqlQuery[];
 }
 
 export interface SuggestedAction {

@@ -14,16 +14,19 @@ import { CustomTagState } from "./stateTypes";
 interface DyadExecuteSqlProps {
   children?: ReactNode;
   node?: any;
+  description?: string;
 }
 
 export const DyadExecuteSql: React.FC<DyadExecuteSqlProps> = ({
   children,
   node,
+  description,
 }) => {
   const [isContentVisible, setIsContentVisible] = useState(false);
   const state = node?.properties?.state as CustomTagState;
   const inProgress = state === "pending";
   const aborted = state === "aborted";
+  const queryDescription = description || node?.properties?.description;
 
   return (
     <div
@@ -40,7 +43,7 @@ export const DyadExecuteSql: React.FC<DyadExecuteSqlProps> = ({
         <div className="flex items-center gap-2">
           <Database size={16} />
           <span className="text-gray-700 dark:text-gray-300 font-medium text-sm">
-            SQL Query
+            {queryDescription || "SQL Query"}
           </span>
           {inProgress && (
             <div className="flex items-center text-amber-600 text-xs">

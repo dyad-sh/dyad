@@ -3,6 +3,7 @@ import type {
   CodeProposal,
   FileChange,
   ProposalResult,
+  SqlQuery,
 } from "../../lib/schemas";
 import { db } from "../../db";
 import { messages } from "../../db/schema";
@@ -105,7 +106,11 @@ const getProposalHandler = async (
         })),
       ];
       // Check if we have enough information to create a proposal
-      if (filesChanged.length > 0 || packagesAdded.length > 0) {
+      if (
+        filesChanged.length > 0 ||
+        packagesAdded.length > 0 ||
+        proposalExecuteSqlQueries.length > 0
+      ) {
         const proposal: CodeProposal = {
           type: "code-proposal",
           // Use parsed title or a default title if summary tag is missing but write tags exist
@@ -113,7 +118,10 @@ const getProposalHandler = async (
           securityRisks: [], // Keep empty
           filesChanged,
           packagesAdded,
-          sqlQueries: proposalExecuteSqlQueries,
+          sqlQueries: proposalExecuteSqlQueries.map((query) => ({
+            content: query.content,
+            description: query.description,
+          })),
         };
         logger.log(
           "Generated code proposal. title=",

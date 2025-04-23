@@ -89,11 +89,13 @@ function Login() {
 
 ## Database
 
-If the user wants to use the database, use the following code:
+If the user wants to use the database, use the following syntax:
 
-<dyad-execute-sql>
+<dyad-execute-sql description="Get all users">
 SELECT * FROM users;
 </dyad-execute-sql>
+
+The description should be a short description of what the code is doing and be understandable by semi-technical users.
 
 You will need to setup the database schema.
 
@@ -103,7 +105,7 @@ If the user wants to create a user profile, use the following code:
 
 ### Create profiles table in public schema
 
-<dyad-execute-sql>
+<dyad-execute-sql description="Create profiles table in public schema">
 CREATE TABLE public.profiles (
   id UUID NOT NULL REFERENCES auth.users ON DELETE CASCADE,
   first_name TEXT,
@@ -130,7 +132,7 @@ create policy "Users can update own profile." on profiles for update using ( aut
 
 ### Function to insert profile when user signs up
 
-<dyad-execute-sql>
+<dyad-execute-sql description="Create function to insert profile when user signs up">
 CREATE FUNCTION public.handle_new_user()
 RETURNS TRIGGER
 LANGUAGE PLPGSQL

@@ -15,6 +15,7 @@ import {
   executeSupabaseSql,
 } from "../../supabase_admin/supabase_management_client";
 import { isServerFunction } from "../../supabase_admin/supabase_utils";
+import { SqlQuery } from "../../lib/schemas";
 
 const readFile = fs.promises.readFile;
 const logger = log.scope("response_processor");
@@ -108,14 +109,18 @@ export function getDyadChatSummaryTag(fullResponse: string): string | null {
   return null;
 }
 
-export function getDyadExecuteSqlTags(fullResponse: string): string[] {
+export function getDyadExecuteSqlTags(fullResponse: string): SqlQuery[] {
   const dyadExecuteSqlRegex =
-    /<dyad-execute-sql>([\s\S]*?)<\/dyad-execute-sql>/g;
+    /<dyad-execute-sql([^>]*)>([\s\S]*?)<\/dyad-execute-sql>/g;
+  const descriptionRegex = /description="([^"]+)"/;
   let match;
-  const queries: string[] = [];
+  const queries: { content: string; description?: string }[] = [];
 
   while ((match = dyadExecuteSqlRegex.exec(fullResponse)) !== null) {
-    let content = match[1].trim();
+    const attributesString = match[1] || "";
+    let content = match[2].trim();
+    const descriptionMatch = descriptionRegex.exec(attributesString);
+    const description = descriptionMatch?.[1];
 
     // Handle markdown code blocks if present
     const contentLines = content.split("\n");
@@ -127,7 +132,7 @@ export function getDyadExecuteSqlTags(fullResponse: string): string[] {
     }
     content = contentLines.join("\n");
 
-    queries.push(content);
+    queries.push({ content, description });
   }
 
   return queries;
@@ -209,11 +214,11 @@ export async function processFullResponseActions(
         try {
           const result = await executeSupabaseSql({
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
-            query,
+            query: query.content,
           });
         } catch (error) {
           errors.push({
-            message: `Failed to execute SQL query: ${query}`,
+            message: `Failed to execute SQL query: ${query.content}`,
             error: error,
           });
         }

@@ -183,6 +183,7 @@ function handleDeepLinkReturn(url: string) {
       type: parsed.hostname,
       url,
     });
+    return;
   }
   dialog.showErrorBox("Invalid deep link URL", url);
 }

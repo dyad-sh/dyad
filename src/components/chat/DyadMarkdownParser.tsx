@@ -79,6 +79,7 @@ function preprocessUnclosedTags(content: string): {
     "dyad-execute-sql",
     "dyad-add-integration",
     "dyad-output",
+    "dyad-chat-summary",
   ];
 
   let processedContent = content;
@@ -140,6 +141,7 @@ function parseCustomTags(content: string): ContentPiece[] {
     "dyad-execute-sql",
     "dyad-add-integration",
     "dyad-output",
+    "dyad-chat-summary",
   ];
 
   const tagPattern = new RegExp(
@@ -315,6 +317,10 @@ function renderCustomTag(
           {content}
         </DyadOutput>
       );
+
+    case "dyad-chat-summary":
+      // Don't render anything for dyad-chat-summary
+      return null;
 
     default:
       return null;

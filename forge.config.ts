@@ -40,6 +40,12 @@ const ignore = (file: string) => {
 
 const config: ForgeConfig = {
   packagerConfig: {
+    protocols: [
+      {
+        name: "Dyad",
+        schemes: ["dyad"],
+      },
+    ],
     icon: "./assets/icon/logo",
 
     osxSign: {
@@ -62,7 +68,11 @@ const config: ForgeConfig = {
     new MakerSquirrel({}),
     new MakerZIP({}, ["darwin"]),
     new MakerRpm({}),
-    new MakerDeb({}),
+    new MakerDeb({
+      options: {
+        mimeType: ["x-scheme-handler/dyad"],
+      },
+    }),
   ],
   publishers: [
     {

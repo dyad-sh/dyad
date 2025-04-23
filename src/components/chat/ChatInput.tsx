@@ -330,12 +330,20 @@ function ChatInputActions({
 }: ChatInputActionsProps) {
   const [autoApprove, setAutoApprove] = useState(false);
   const [isDetailsVisible, setIsDetailsVisible] = useState(false);
+
   if (proposal.type === "tip-proposal") {
     return <div>Tip proposal</div>;
   }
   if (proposal.type === "action-proposal") {
     return <ActionProposalActions proposal={proposal}></ActionProposalActions>;
   }
+
+  // Split files into server functions and other files - only for CodeProposal
+  const serverFunctions =
+    proposal.filesChanged?.filter((f: FileChange) => f.isServerFunction) ?? [];
+  const otherFilesChanged =
+    proposal.filesChanged?.filter((f: FileChange) => !f.isServerFunction) ?? [];
+
   return (
     <div className="border-b border-border">
       <div className="p-2">
@@ -462,11 +470,30 @@ function ChatInputActions({
             </div>
           )}
 
-          {proposal.filesChanged?.length > 0 && (
+          {serverFunctions.length > 0 && (
+            <div className="mb-3">
+              <h4 className="font-semibold mb-1">Server Functions Changed</h4>
+              <ul className="space-y-1">
+                {serverFunctions.map((file: FileChange, index: number) => (
+                  <li key={index} className="flex items-center space-x-2">
+                    {getIconForFileChange(file)}
+                    <span title={file.path} className="truncate cursor-default">
+                      {file.name}
+                    </span>
+                    <span className="text-muted-foreground text-xs truncate">
+                      - {file.summary}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {otherFilesChanged.length > 0 && (
             <div>
               <h4 className="font-semibold mb-1">Files Changed</h4>
               <ul className="space-y-1">
-                {proposal.filesChanged.map((file, index) => (
+                {otherFilesChanged.map((file: FileChange, index: number) => (
                   <li key={index} className="flex items-center space-x-2">
                     {getIconForFileChange(file)}
                     <span title={file.path} className="truncate cursor-default">

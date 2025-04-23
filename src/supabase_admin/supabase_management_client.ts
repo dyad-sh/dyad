@@ -4,6 +4,9 @@ import {
   SupabaseManagementAPI,
   SupabaseManagementAPIError,
 } from "@dyad-sh/supabase-management-js";
+import log from "electron-log";
+
+const logger = log.scope("supabase_management_client");
 
 /**
  * Checks if the Supabase access token is expired or about to expire
@@ -137,6 +140,23 @@ export async function executeSupabaseSql({
   return JSON.stringify(result);
 }
 
+export async function deleteSupabaseFunction({
+  supabaseProjectId,
+  functionName,
+}: {
+  supabaseProjectId: string;
+  functionName: string;
+}): Promise<void> {
+  logger.info(
+    `Deleting Supabase function: ${functionName} from project: ${supabaseProjectId}`
+  );
+  const supabase = await getSupabaseClient();
+  await supabase.deleteFunction(supabaseProjectId, functionName);
+  logger.info(
+    `Deleted Supabase function: ${functionName} from project: ${supabaseProjectId}`
+  );
+}
+
 export async function deploySupabaseFunctions({
   supabaseProjectId,
   functionName,
@@ -146,6 +166,9 @@ export async function deploySupabaseFunctions({
   functionName: string;
   content: string;
 }): Promise<void> {
+  logger.info(
+    `Deploying Supabase function: ${functionName} to project: ${supabaseProjectId}`
+  );
   const supabase = await getSupabaseClient();
   const formData = new FormData();
   formData.append(
@@ -172,6 +195,9 @@ export async function deploySupabaseFunctions({
     throw await createResponseError(response, "create function");
   }
 
+  logger.info(
+    `Deployed Supabase function: ${functionName} to project: ${supabaseProjectId}`
+  );
   return response.json();
 }
 

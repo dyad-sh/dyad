@@ -11,6 +11,7 @@ import { CodeHighlight } from "./CodeHighlight";
 import { useAtomValue } from "jotai";
 import { isStreamingAtom } from "@/atoms/chatAtoms";
 import { CustomTagState } from "./stateTypes";
+import { DyadOutput } from "./DyadOutput";
 
 interface DyadMarkdownParserProps {
   content: string;
@@ -77,6 +78,7 @@ function preprocessUnclosedTags(content: string): {
     "dyad-add-dependency",
     "dyad-execute-sql",
     "dyad-add-integration",
+    "dyad-output",
   ];
 
   let processedContent = content;
@@ -137,6 +139,7 @@ function parseCustomTags(content: string): ContentPiece[] {
     "dyad-add-dependency",
     "dyad-execute-sql",
     "dyad-add-integration",
+    "dyad-output",
   ];
 
   const tagPattern = new RegExp(
@@ -301,6 +304,16 @@ function renderCustomTag(
         >
           {content}
         </DyadAddIntegration>
+      );
+
+    case "dyad-output":
+      return (
+        <DyadOutput
+          type={attributes.type as "warning" | "error"}
+          message={attributes.message}
+        >
+          {content}
+        </DyadOutput>
       );
 
     default:

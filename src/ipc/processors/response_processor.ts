@@ -10,11 +10,13 @@ import { getGitAuthor } from "../utils/git_author";
 import log from "electron-log";
 import { executeAddDependency } from "./executeAddDependency";
 import {
+  deleteSupabaseFunction,
   deploySupabaseFunctions,
   executeSupabaseSql,
 } from "../../supabase_admin/supabase_management_client";
 import { isServerFunction } from "../../supabase_admin/supabase_utils";
 
+const readFile = fs.promises.readFile;
 const logger = log.scope("response_processor");
 
 export function getDyadWriteTags(fullResponse: string): {
@@ -131,6 +133,23 @@ export function getDyadExecuteSqlTags(fullResponse: string): string[] {
   return queries;
 }
 
+interface Output {
+  message: string;
+  error: unknown;
+}
+
+function getFunctionNameFromPath(input: string): string {
+  return path.basename(path.extname(input) ? path.dirname(input) : input);
+}
+
+async function readFileFromFunctionPath(input: string): Promise<string> {
+  // Sometimes, the path given is a directory, sometimes it's the file itself.
+  if (path.extname(input) === "") {
+    return readFile(path.join(input, "index.ts"), "utf8");
+  }
+  return readFile(input, "utf8");
+}
+
 export async function processFullResponseActions(
   fullResponse: string,
   chatId: number,
@@ -158,6 +177,9 @@ export async function processFullResponseActions(
   const deletedFiles: string[] = [];
   let hasChanges = false;
 
+  const warnings: Output[] = [];
+  const errors: Output[] = [];
+
   try {
     // Extract all tags
     const dyadWriteTags = getDyadWriteTags(fullResponse);
@@ -184,21 +206,37 @@ export async function processFullResponseActions(
     // Handle SQL execution tags
     if (dyadExecuteSqlQueries.length > 0) {
       for (const query of dyadExecuteSqlQueries) {
-        const result = await executeSupabaseSql({
-          supabaseProjectId: chatWithApp.app.supabaseProjectId!,
-          query,
-        });
+        try {
+          const result = await executeSupabaseSql({
+            supabaseProjectId: chatWithApp.app.supabaseProjectId!,
+            query,
+          });
+        } catch (error) {
+          errors.push({
+            message: `Failed to execute SQL query: ${query}`,
+            error: error,
+          });
+        }
       }
       logger.log(`Executed ${dyadExecuteSqlQueries.length} SQL queries`);
     }
 
     // TODO: Handle add dependency tags
     if (dyadAddDependencyPackages.length > 0) {
-      await executeAddDependency({
-        packages: dyadAddDependencyPackages,
-        message: message,
-        appPath,
-      });
+      try {
+        await executeAddDependency({
+          packages: dyadAddDependencyPackages,
+          message: message,
+          appPath,
+        });
+      } catch (error) {
+        errors.push({
+          message: `Failed to add dependencies: ${dyadAddDependencyPackages.join(
+            ", "
+          )}`,
+          error: error,
+        });
+      }
       writtenFiles.push("package.json");
       const pnpmFilename = "pnpm-lock.yaml";
       if (fs.existsSync(path.join(appPath, pnpmFilename))) {
@@ -225,11 +263,18 @@ export async function processFullResponseActions(
       logger.log(`Successfully wrote file: ${fullFilePath}`);
       writtenFiles.push(filePath);
       if (isServerFunction(filePath)) {
-        await deploySupabaseFunctions({
-          supabaseProjectId: chatWithApp.app.supabaseProjectId!,
-          functionName: path.basename(path.dirname(filePath)),
-          content: content,
-        });
+        try {
+          await deploySupabaseFunctions({
+            supabaseProjectId: chatWithApp.app.supabaseProjectId!,
+            functionName: path.basename(path.dirname(filePath)),
+            content: content,
+          });
+        } catch (error) {
+          errors.push({
+            message: `Failed to deploy Supabase function: ${filePath}`,
+            error: error,
+          });
+        }
       }
     }
 
@@ -267,6 +312,33 @@ export async function processFullResponseActions(
       } else {
         logger.warn(`Source file for rename does not exist: ${fromPath}`);
       }
+      if (isServerFunction(tag.from)) {
+        try {
+          await deleteSupabaseFunction({
+            supabaseProjectId: chatWithApp.app.supabaseProjectId!,
+            functionName: getFunctionNameFromPath(tag.from),
+          });
+        } catch (error) {
+          warnings.push({
+            message: `Failed to delete Supabase function: ${tag.from} as part of renaming ${tag.from} to ${tag.to}`,
+            error: error,
+          });
+        }
+      }
+      if (isServerFunction(tag.to)) {
+        try {
+          await deploySupabaseFunctions({
+            supabaseProjectId: chatWithApp.app.supabaseProjectId!,
+            functionName: getFunctionNameFromPath(tag.to),
+            content: await readFileFromFunctionPath(toPath),
+          });
+        } catch (error) {
+          errors.push({
+            message: `Failed to deploy Supabase function: ${tag.to} as part of renaming ${tag.from} to ${tag.to}`,
+            error: error,
+          });
+        }
+      }
     }
 
     // Process all file deletions
@@ -275,7 +347,11 @@ export async function processFullResponseActions(
 
       // Delete the file if it exists
       if (fs.existsSync(fullFilePath)) {
-        fs.unlinkSync(fullFilePath);
+        if (fs.lstatSync(fullFilePath).isDirectory()) {
+          fs.rmdirSync(fullFilePath, { recursive: true });
+        } else {
+          fs.unlinkSync(fullFilePath);
+        }
         logger.log(`Successfully deleted file: ${fullFilePath}`);
         deletedFiles.push(filePath);
 
@@ -292,6 +368,19 @@ export async function processFullResponseActions(
         }
       } else {
         logger.warn(`File to delete does not exist: ${fullFilePath}`);
+      }
+      if (isServerFunction(filePath)) {
+        try {
+          await deleteSupabaseFunction({
+            supabaseProjectId: chatWithApp.app.supabaseProjectId!,
+            functionName: getFunctionNameFromPath(filePath),
+          });
+        } catch (error) {
+          errors.push({
+            message: `Failed to delete Supabase function: ${filePath}`,
+            error: error,
+          });
+        }
       }
     }
 
@@ -346,10 +435,32 @@ export async function processFullResponseActions(
         approvalState: "approved",
       })
       .where(eq(messages.id, messageId));
-
     return { updatedFiles: hasChanges };
   } catch (error: unknown) {
     logger.error("Error processing files:", error);
     return { error: (error as any).toString() };
+  } finally {
+    const appendedContent = `
+    ${warnings
+      .map(
+        (warning) =>
+          `<dyad-output type="warning" message="${warning.message}">${warning.error}</dyad-output>`
+      )
+      .join("\n")}
+    ${errors
+      .map(
+        (error) =>
+          `<dyad-output type="error" message="${error.message}">${error.error}</dyad-output>`
+      )
+      .join("\n")}
+    `;
+    if (appendedContent.length > 0) {
+      await db
+        .update(messages)
+        .set({
+          content: fullResponse + "\n\n" + appendedContent,
+        })
+        .where(eq(messages.id, messageId));
+    }
   }
 }

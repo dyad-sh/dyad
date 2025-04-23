@@ -1,6 +1,4 @@
 import { ipcMain } from "electron";
-import { SupabaseManagementAPI } from "supabase-management-js";
-import { readSettings, writeSettings } from "../../main/settings";
 import log from "electron-log";
 import { db } from "../../db";
 import { eq } from "drizzle-orm";

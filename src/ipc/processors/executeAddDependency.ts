@@ -17,55 +17,31 @@ export async function executeAddDependency({
   appPath: string;
 }) {
   const packageStr = packages.join(" ");
-  try {
-    const { stdout, stderr } = await execPromise(
-      `(pnpm add ${packageStr}) || (npm install ${packageStr})`,
-      {
-        cwd: appPath,
-      }
-    );
-    const installResults = stdout + (stderr ? `\n${stderr}` : "");
 
-    // Update the message content with the installation results
-    const updatedContent = message.content.replace(
-      new RegExp(
-        `<dyad-add-dependency packages="${packages.join(
-          " "
-        )}">[^<]*</dyad-add-dependency>`,
-        "g"
-      ),
+  const { stdout, stderr } = await execPromise(
+    `(pnpm add ${packageStr}) || (npm install ${packageStr})`,
+    {
+      cwd: appPath,
+    }
+  );
+  const installResults = stdout + (stderr ? `\n${stderr}` : "");
+
+  // Update the message content with the installation results
+  const updatedContent = message.content.replace(
+    new RegExp(
       `<dyad-add-dependency packages="${packages.join(
         " "
-      )}">${installResults}</dyad-add-dependency>`
-    );
+      )}">[^<]*</dyad-add-dependency>`,
+      "g"
+    ),
+    `<dyad-add-dependency packages="${packages.join(
+      " "
+    )}">${installResults}</dyad-add-dependency>`
+  );
 
-    // Save the updated message back to the database
-    await db
-      .update(messages)
-      .set({ content: updatedContent })
-      .where(eq(messages.id, message.id));
-
-    // Return undefined implicitly
-  } catch (error: any) {
-    // Update the message with the error
-    const updatedContent = message.content.replace(
-      new RegExp(
-        `<dyad-add-dependency packages="${packages.join(
-          " "
-        )}">[^<]*</dyad-add-dependency>`,
-        "g"
-      ),
-      `<dyad-add-dependency packages="${packages.join(" ")}"><dyad-error>${
-        error.message
-      }</dyad-error></dyad-add-dependency>`
-    );
-
-    // Save the updated message back to the database
-    await db
-      .update(messages)
-      .set({ content: updatedContent })
-      .where(eq(messages.id, message.id));
-
-    throw error;
-  }
+  // Save the updated message back to the database
+  await db
+    .update(messages)
+    .set({ content: updatedContent })
+    .where(eq(messages.id, message.id));
 }

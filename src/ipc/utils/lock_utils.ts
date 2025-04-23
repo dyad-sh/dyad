@@ -1,12 +1,11 @@
-// Track app operations that are in progress
-const appOperationLocks = new Map<number, Promise<void>>();
+const locks = new Map<number | string, Promise<void>>();
 
 /**
  * Acquires a lock for an app operation
- * @param appId The app ID to lock
+ * @param lockId The app ID to lock
  * @returns An object with release function and promise
  */
-export function acquireLock(appId: number): {
+export function acquireLock(lockId: number | string): {
   release: () => void;
   promise: Promise<void>;
 } {
@@ -14,33 +13,33 @@ export function acquireLock(appId: number): {
 
   const promise = new Promise<void>((resolve) => {
     release = () => {
-      appOperationLocks.delete(appId);
+      locks.delete(lockId);
       resolve();
     };
   });
 
-  appOperationLocks.set(appId, promise);
+  locks.set(lockId, promise);
   return { release, promise };
 }
 
 /**
- * Executes a function with a lock on the app ID
- * @param appId The app ID to lock
+ * Executes a function with a lock on the lock ID
+ * @param lockId The lock ID to lock
  * @param fn The function to execute with the lock
  * @returns Result of the function
  */
 export async function withLock<T>(
-  appId: number,
+  lockId: number | string,
   fn: () => Promise<T>
 ): Promise<T> {
   // Wait for any existing operation to complete
-  const existingLock = appOperationLocks.get(appId);
+  const existingLock = locks.get(lockId);
   if (existingLock) {
     await existingLock;
   }
 
   // Acquire a new lock
-  const { release, promise } = acquireLock(appId);
+  const { release, promise } = acquireLock(lockId);
 
   try {
     const result = await fn();

@@ -18,6 +18,7 @@ export function handleSupabaseOAuthReturn({
         value: refreshToken,
       },
       expiresIn,
+      tokenTimestamp: Math.floor(Date.now() / 1000),
     },
   });
 }

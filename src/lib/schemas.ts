@@ -84,6 +84,7 @@ export const SupabaseSchema = z.object({
   accessToken: SecretSchema.optional(),
   refreshToken: SecretSchema.optional(),
   expiresIn: z.number().optional(),
+  tokenTimestamp: z.number().optional(),
 });
 export type Supabase = z.infer<typeof SupabaseSchema>;
 

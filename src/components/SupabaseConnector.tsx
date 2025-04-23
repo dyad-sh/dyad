@@ -25,13 +25,19 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useDeepLink } from "@/contexts/DeepLinkContext";
 const OAUTH_CLIENT_ID = "bf747de7-60bb-48a2-9015-6494e0b04983";
+import supabaseLogoLight from "../../assets/supabase/supabase-logo-wordmark--light.svg";
+import supabaseLogoDark from "../../assets/supabase/supabase-logo-wordmark--dark.svg";
+import connectSupabaseDark from "../../assets/supabase/connect-supabase-dark.svg";
+import connectSupabaseLight from "../../assets/supabase/connect-supabase-light.svg";
+
+import { ExternalLink } from "lucide-react";
+import { useTheme } from "@/contexts/ThemeContext";
 
 export function SupabaseConnector({ appId }: { appId: number }) {
-  const [isConnecting, setIsConnecting] = useState(false);
   const { settings, refreshSettings } = useSettings();
   const { app, refreshApp } = useLoadApp(appId);
   const { lastDeepLink } = useDeepLink();
-
+  const { isDarkMode } = useTheme();
   useEffect(() => {
     const handleDeepLink = async () => {
       if (lastDeepLink?.type === "supabase-oauth-return") {
@@ -58,27 +64,6 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     }
   }, [settings?.supabase?.accessToken, loadProjects]);
 
-  const handleConnect = async () => {
-    try {
-      setIsConnecting(true);
-
-      // TODO: replace this with deployed URL
-      const result = await IpcClient.getInstance().openExternalUrl(
-        "https://supabase-oauth.dyad.sh/api/connect-supabase/login"
-      );
-      if (!result.success) {
-        throw new Error(result.error || "Failed to open auth URL");
-      }
-
-      toast.success("Successfully connected to Supabase");
-    } catch (error) {
-      console.error("Failed to connect to Supabase:", error);
-      toast.error("Failed to connect to Supabase");
-    } finally {
-      setIsConnecting(false);
-    }
-  };
-
   const handleProjectSelect = async (projectId: string) => {
     try {
       await setAppProject(projectId, appId);
@@ -103,9 +88,31 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   if (settings?.supabase?.accessToken) {
     if (app?.supabaseProjectName) {
       return (
-        <Card>
+        <Card className="mt-1">
           <CardHeader>
-            <CardTitle>Supabase Project</CardTitle>
+            <CardTitle className="flex items-center justify-between">
+              Supabase Project{" "}
+              <Button
+                variant="outline"
+                onClick={() => {
+                  IpcClient.getInstance().openExternalUrl(
+                    `https://supabase.com/dashboard/project/${app.supabaseProjectId}`
+                  );
+                }}
+                className="ml-2 px-2 py-1"
+                style={{ display: "inline-flex", alignItems: "center" }}
+                asChild
+              >
+                <div className="flex items-center gap-2">
+                  <img
+                    src={isDarkMode ? supabaseLogoDark : supabaseLogoLight}
+                    alt="Supabase Logo"
+                    style={{ height: 20, width: "auto", marginRight: 4 }}
+                  />
+                  <ExternalLink className="h-4 w-4" />
+                </div>
+              </Button>
+            </CardTitle>
             <CardDescription>
               This app is connected to project: {app.supabaseProjectName}
             </CardDescription>
@@ -119,7 +126,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
       );
     }
     return (
-      <Card>
+      <Card className="mt-1">
         <CardHeader>
           <CardTitle>Supabase Projects</CardTitle>
           <CardDescription>
@@ -188,15 +195,20 @@ export function SupabaseConnector({ appId }: { appId: number }) {
 
   return (
     <div className="flex flex-col space-y-4 p-4 border rounded-md">
-      <h2 className="text-lg font-semibold">Supabase Integration</h2>
-
-      <Button
-        onClick={handleConnect}
-        disabled={isConnecting}
-        className="w-full"
-      >
-        {isConnecting ? "Connecting..." : "Connect to Supabase"}
-      </Button>
+      <div className="flex flex-col md:flex-row items-center justify-between">
+        <h2 className="text-lg font-medium">Integrations</h2>
+        <img
+          onClick={() => {
+            IpcClient.getInstance().openExternalUrl(
+              "https://supabase-oauth.dyad.sh/api/connect-supabase/login"
+            );
+          }}
+          src={isDarkMode ? connectSupabaseDark : connectSupabaseLight}
+          alt="Connect to Supabase"
+          className="w-full h-10 min-h-8 min-w-20 cursor-pointer"
+          // className="h-10"
+        />
+      </div>
     </div>
   );
 }

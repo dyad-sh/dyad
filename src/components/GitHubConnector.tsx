@@ -173,11 +173,11 @@ export function GitHubConnector({ appId, folderName }: GitHubConnectorProps) {
 
   if (!settings?.githubAccessToken) {
     return (
-      <div className="mt-4 w-full">
+      <div className="mt-1 w-full">
         {" "}
         <Button
           onClick={handleConnectToGithub}
-          className="cursor-pointer w-full py-6 flex justify-center items-center gap-2 text-lg"
+          className="cursor-pointer w-full py-5 flex justify-center items-center gap-2"
           size="lg"
           variant="outline"
           disabled={isConnectingToGithub || !appId} // Also disable if appId is null

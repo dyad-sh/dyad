@@ -147,59 +147,66 @@ export default function AppDetailsPage() {
           onClick={() => router.history.back()}
           variant="outline"
           size="sm"
-          className="absolute top-4 left-4 flex items-center gap-2 bg-(--background-lightest) py-5"
+          className="absolute top-4 left-4 flex items-center gap-1 bg-(--background-lightest) py-5"
         >
-          <ArrowLeft className="h-4 w-4" />
-          Go Back
+          <ArrowLeft className="h-3 w-4" />
+          Back
         </Button>
         <div className="flex flex-col items-center justify-center h-full">
-          <h2 className="text-2xl font-bold mb-4">App not found</h2>
+          <h2 className="text-xl font-bold">App not found</h2>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="relative min-h-screen p-8 w-full">
+    <div className="relative min-h-screen p-4 w-full">
       <Button
         onClick={() => router.history.back()}
         variant="outline"
         size="sm"
-        className="absolute top-4 left-4 flex items-center gap-2 bg-(--background-lightest) py-5"
+        className="absolute top-4 left-4 flex items-center gap-1 bg-(--background-lightest) py-2"
       >
-        <ArrowLeft className="h-4 w-4" />
-        Go Back
+        <ArrowLeft className="h-3 w-4" />
+        Back
       </Button>
 
-      <div className="w-full max-w-2xl mx-auto mt-16 p-8 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-md relative">
-        <div className="flex items-center mb-6">
-          <h2 className="text-3xl font-bold">{selectedApp.name}</h2>
+      <div className="w-full max-w-2xl mx-auto mt-10 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm relative">
+        <div className="flex items-center mb-3">
+          <h2 className="text-2xl font-bold">{selectedApp.name}</h2>
           <Button
             variant="ghost"
             size="sm"
-            className="ml-2 p-1 h-auto"
+            className="ml-1 p-0.5 h-auto"
             onClick={handleOpenRenameDialog}
           >
-            <Pencil className="h-4 w-4" />
+            <Pencil className="h-3.5 w-3.5" />
           </Button>
         </div>
 
         {/* Overflow Menu in top right */}
-        <div className="absolute top-4 right-4">
+        <div className="absolute top-2 right-2">
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
                 <MoreVertical className="h-4 w-4" />
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-48" align="end">
-              <div className="flex flex-col space-y-1">
-                <Button onClick={handleOpenRenameFolderDialog} variant="ghost">
+            <PopoverContent className="w-40 p-2" align="end">
+              <div className="flex flex-col space-y-0.5">
+                <Button
+                  onClick={handleOpenRenameFolderDialog}
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 justify-start text-xs"
+                >
                   Rename folder
                 </Button>
                 <Button
                   onClick={() => setIsDeleteDialogOpen(true)}
                   variant="ghost"
+                  size="sm"
+                  className="h-8 justify-start text-xs"
                 >
                   Delete
                 </Button>
@@ -208,38 +215,38 @@ export default function AppDetailsPage() {
           </Popover>
         </div>
 
-        <div className="grid grid-cols-2 gap-6 text-base mb-8">
+        <div className="grid grid-cols-2 gap-3 text-sm mb-4">
           <div>
-            <span className="block text-gray-500 dark:text-gray-400 mb-1 text-base">
+            <span className="block text-gray-500 dark:text-gray-400 mb-0.5 text-xs">
               Created
             </span>
             <span>{new Date().toLocaleString()}</span>
           </div>
           <div>
-            <span className="block text-gray-500 dark:text-gray-400 mb-1 text-base">
+            <span className="block text-gray-500 dark:text-gray-400 mb-0.5 text-xs">
               Last Updated
             </span>
             <span>{new Date().toLocaleString()}</span>
           </div>
           <div className="col-span-2">
-            <span className="block text-gray-500 dark:text-gray-400 mb-1 text-base">
+            <span className="block text-gray-500 dark:text-gray-400 mb-0.5 text-xs">
               Path
             </span>
-            <span>
+            <span className="text-sm break-all">
               {appBasePath.replace("$APP_BASE_PATH", selectedApp.path)}
             </span>
           </div>
         </div>
-        <div className="mt-8 flex flex-col gap-4">
+        <div className="mt-4 flex flex-col gap-2">
           <Button
             onClick={() =>
               appId && navigate({ to: "/chat", search: { id: appId } })
             }
-            className="cursor-pointer w-full py-6 flex justify-center items-center gap-2 text-lg"
+            className="cursor-pointer w-full py-5 flex justify-center items-center gap-2"
             size="lg"
           >
             Open in Chat
-            <MessageCircle className="h-5 w-5" />
+            <MessageCircle className="h-4 w-4" />
           </Button>
           <GitHubConnector appId={appId} folderName={selectedApp.path} />
           {appId && settings?.experiments?.enableSupabaseIntegration && (
@@ -249,22 +256,23 @@ export default function AppDetailsPage() {
 
         {/* Rename Dialog */}
         <Dialog open={isRenameDialogOpen} onOpenChange={setIsRenameDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
+          <DialogContent className="max-w-sm p-4">
+            <DialogHeader className="pb-2">
               <DialogTitle>Rename App</DialogTitle>
             </DialogHeader>
             <Input
               value={newAppName}
               onChange={(e) => setNewAppName(e.target.value)}
               placeholder="Enter new app name"
-              className="my-4"
+              className="my-2"
               autoFocus
             />
-            <DialogFooter>
+            <DialogFooter className="pt-2">
               <Button
                 variant="outline"
                 onClick={() => setIsRenameDialogOpen(false)}
                 disabled={isRenaming}
+                size="sm"
               >
                 Cancel
               </Button>
@@ -274,6 +282,7 @@ export default function AppDetailsPage() {
                   setIsRenameConfirmDialogOpen(true);
                 }}
                 disabled={isRenaming || !newAppName.trim()}
+                size="sm"
               >
                 Continue
               </Button>
@@ -286,10 +295,10 @@ export default function AppDetailsPage() {
           open={isRenameFolderDialogOpen}
           onOpenChange={setIsRenameFolderDialogOpen}
         >
-          <DialogContent>
-            <DialogHeader>
+          <DialogContent className="max-w-sm p-4">
+            <DialogHeader className="pb-2">
               <DialogTitle>Rename app folder</DialogTitle>
-              <DialogDescription>
+              <DialogDescription className="text-xs">
                 This will change only the folder name, not the app name.
               </DialogDescription>
             </DialogHeader>
@@ -297,25 +306,27 @@ export default function AppDetailsPage() {
               value={newFolderName}
               onChange={(e) => setNewFolderName(e.target.value)}
               placeholder="Enter new folder name"
-              className="my-4"
+              className="my-2"
               autoFocus
             />
-            <DialogFooter>
+            <DialogFooter className="pt-2">
               <Button
                 variant="outline"
                 onClick={() => setIsRenameFolderDialogOpen(false)}
                 disabled={isRenamingFolder}
+                size="sm"
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleRenameFolderOnly}
                 disabled={isRenamingFolder || !newFolderName.trim()}
+                size="sm"
               >
                 {isRenamingFolder ? (
                   <>
                     <svg
-                      className="animate-spin h-4 w-4 mr-2"
+                      className="animate-spin h-3 w-3 mr-1"
                       xmlns="http://www.w3.org/2000/svg"
                       fill="none"
                       viewBox="0 0 24 24"
@@ -349,28 +360,30 @@ export default function AppDetailsPage() {
           open={isRenameConfirmDialogOpen}
           onOpenChange={setIsRenameConfirmDialogOpen}
         >
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>
+          <DialogContent className="max-w-sm p-4">
+            <DialogHeader className="pb-2">
+              <DialogTitle className="text-base">
                 How would you like to rename "{selectedApp.name}"?
               </DialogTitle>
-              <DialogDescription>Choose an option:</DialogDescription>
+              <DialogDescription className="text-xs">
+                Choose an option:
+              </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4 my-4">
+            <div className="space-y-2 my-2">
               <Button
                 variant="outline"
-                className="w-full justify-start p-4 h-auto relative"
+                className="w-full justify-start p-2 h-auto relative text-sm"
                 onClick={() => handleRenameApp(true)}
                 disabled={isRenaming}
               >
-                <div className="absolute top-2 right-2">
-                  <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2 py-0.5 rounded dark:bg-blue-900 dark:text-blue-300">
+                <div className="absolute top-1 right-1">
+                  <span className="bg-blue-100 text-blue-800 text-xs font-medium px-1.5 py-0.5 rounded dark:bg-blue-900 dark:text-blue-300 text-[10px]">
                     Recommended
                   </span>
                 </div>
                 <div className="text-left">
-                  <p className="font-medium">Rename app and folder</p>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                  <p className="font-medium text-xs">Rename app and folder</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
                     Renames the folder to match the new app name.
                   </p>
                 </div>
@@ -378,23 +391,24 @@ export default function AppDetailsPage() {
 
               <Button
                 variant="outline"
-                className="w-full justify-start p-4 h-auto"
+                className="w-full justify-start p-2 h-auto text-sm"
                 onClick={() => handleRenameApp(false)}
                 disabled={isRenaming}
               >
                 <div className="text-left">
-                  <p className="font-medium">Rename app only</p>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                  <p className="font-medium text-xs">Rename app only</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
                     The folder name will remain the same.
                   </p>
                 </div>
               </Button>
             </div>
-            <DialogFooter>
+            <DialogFooter className="pt-2">
               <Button
                 variant="outline"
                 onClick={() => setIsRenameConfirmDialogOpen(false)}
                 disabled={isRenaming}
+                size="sm"
               >
                 Cancel
               </Button>
@@ -404,19 +418,20 @@ export default function AppDetailsPage() {
 
         {/* Delete Confirmation Dialog */}
         <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
+          <DialogContent className="max-w-sm p-4">
+            <DialogHeader className="pb-2">
               <DialogTitle>Delete "{selectedApp.name}"?</DialogTitle>
-              <DialogDescription>
+              <DialogDescription className="text-xs">
                 This action is irreversible. All app files and chat history will
                 be permanently deleted.
               </DialogDescription>
             </DialogHeader>
-            <DialogFooter className="flex justify-end gap-3">
+            <DialogFooter className="flex justify-end gap-2 pt-2">
               <Button
                 variant="outline"
                 onClick={() => setIsDeleteDialogOpen(false)}
                 disabled={isDeleting}
+                size="sm"
               >
                 Cancel
               </Button>
@@ -424,12 +439,13 @@ export default function AppDetailsPage() {
                 variant="destructive"
                 onClick={handleDeleteApp}
                 disabled={isDeleting}
-                className="flex items-center gap-2"
+                className="flex items-center gap-1"
+                size="sm"
               >
                 {isDeleting ? (
                   <>
                     <svg
-                      className="animate-spin h-4 w-4 text-white"
+                      className="animate-spin h-3 w-3 text-white"
                       xmlns="http://www.w3.org/2000/svg"
                       fill="none"
                       viewBox="0 0 24 24"

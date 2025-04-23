@@ -17,28 +17,7 @@ export const CodeHighlight = memo(
     const language = className?.match(/language-(\w+)/)?.[1];
     const isInline = node ? isInlineCode(node) : false;
 
-    // Get the current theme setting
-    const { theme } = useTheme();
-
-    // State to track if dark mode is active
-    const [isDarkMode, setIsDarkMode] = React.useState(false);
-
-    // Determine if dark mode is active when component mounts or theme changes
-    useEffect(() => {
-      const darkModeQuery = window.matchMedia("(prefers-color-scheme: dark)");
-      const updateTheme = () => {
-        setIsDarkMode(
-          theme === "dark" || (theme === "system" && darkModeQuery.matches)
-        );
-      };
-
-      updateTheme();
-      darkModeQuery.addEventListener("change", updateTheme);
-
-      return () => {
-        darkModeQuery.removeEventListener("change", updateTheme);
-      };
-    }, [theme]);
+    const { isDarkMode } = useTheme();
 
     // Cache for the highlighted code
     const highlightedCodeCache = useRef<ReactNode | null>(null);

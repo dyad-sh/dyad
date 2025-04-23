@@ -53,5 +53,24 @@ export function useTheme() {
   if (context === undefined) {
     throw new Error("useTheme must be used within a ThemeProvider");
   }
-  return context;
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  const { theme, setTheme } = context;
+
+  // Determine if dark mode is active when component mounts or theme changes
+  useEffect(() => {
+    const darkModeQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const updateTheme = () => {
+      setIsDarkMode(
+        theme === "dark" || (theme === "system" && darkModeQuery.matches)
+      );
+    };
+
+    updateTheme();
+    darkModeQuery.addEventListener("change", updateTheme);
+
+    return () => {
+      darkModeQuery.removeEventListener("change", updateTheme);
+    };
+  }, [theme]);
+  return { theme, isDarkMode, setTheme };
 }

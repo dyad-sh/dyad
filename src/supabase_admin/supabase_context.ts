@@ -47,6 +47,9 @@ export async function getSupabaseContext({
     SUPABASE_SCHEMA_QUERY
   );
 
+  const secrets = await supabase.getSecrets(supabaseProjectId);
+  const secretNames = secrets?.map((secret) => secret.name);
+
   // TODO: include EDGE FUNCTIONS and SECRETS!
 
   const context = `
@@ -57,6 +60,9 @@ export async function getSupabaseContext({
 
   ## Publishable key (aka anon key)
   ${publishableKey}
+
+  ## Secret names (environmental variables)
+  ${JSON.stringify(secretNames)}
 
   ## Schema
   ${JSON.stringify(schema)}

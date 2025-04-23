@@ -164,6 +164,7 @@ function handleDeepLinkReturn(url: string) {
       "Invalid Protocol",
       `Expected dyad://, got ${parsed.protocol}. Full URL: ${url}`
     );
+    return;
   }
   if (parsed.hostname === "supabase-oauth-return") {
     const token = parsed.searchParams.get("token");
@@ -183,6 +184,7 @@ function handleDeepLinkReturn(url: string) {
       url,
     });
   }
+  dialog.showErrorBox("Invalid deep link URL", url);
 }
 
 // Quit when all windows are closed, except on macOS. There, it's common

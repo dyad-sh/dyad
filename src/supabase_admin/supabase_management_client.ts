@@ -79,7 +79,7 @@ export async function refreshSupabaseToken(): Promise<void> {
       },
     });
   } catch (error) {
-    console.error("Error refreshing Supabase token:", error);
+    logger.error("Error refreshing Supabase token:", error);
     throw error;
   }
 }

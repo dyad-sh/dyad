@@ -52,7 +52,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
 
       // TODO: replace this with deployed URL
       const result = await IpcClient.getInstance().openExternalUrl(
-        "http://localhost:30123/connect-supabase/login"
+        "https://supabase-oauth.dyad.sh/api/connect-supabase/login"
       );
       if (!result.success) {
         throw new Error(result.error || "Failed to open auth URL");

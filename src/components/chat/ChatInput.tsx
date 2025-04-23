@@ -345,6 +345,19 @@ function ChatInputActions({
   const otherFilesChanged =
     proposal.filesChanged?.filter((f: FileChange) => !f.isServerFunction) ?? [];
 
+  function formatTitle({
+    title,
+    isDetailsVisible,
+  }: {
+    title: string;
+    isDetailsVisible: boolean;
+  }) {
+    if (isDetailsVisible) {
+      return title;
+    }
+    return title.slice(0, 60) + "...";
+  }
+
   return (
     <div className="border-b border-border">
       <div className="p-2">
@@ -360,7 +373,9 @@ function ChatInputActions({
               ) : (
                 <ChevronDown size={16} className="mr-1 flex-shrink-0" />
               )}
-              <span className="font-medium">{proposal.title}</span>
+              <span className="font-medium">
+                {formatTitle({ title: proposal.title, isDetailsVisible })}
+              </span>
             </div>
             <div className="text-xs text-muted-foreground ml-6">
               <ProposalSummary
@@ -414,112 +429,120 @@ function ChatInputActions({
         </div>
       </div>
 
-      {isDetailsVisible && (
-        <div className="p-3 border-t border-border bg-muted/50 text-sm">
-          {!!proposal.securityRisks.length && (
-            <div className="mb-3">
-              <h4 className="font-semibold mb-1">Security Risks</h4>
-              <ul className="space-y-1">
-                {proposal.securityRisks.map((risk, index) => (
-                  <li key={index} className="flex items-start space-x-2">
-                    {risk.type === "warning" ? (
-                      <AlertTriangle
+      <div className="overflow-y-auto max-h-[calc(100vh-300px)]">
+        {isDetailsVisible && (
+          <div className="p-3 border-t border-border bg-muted/50 text-sm">
+            {!!proposal.securityRisks.length && (
+              <div className="mb-3">
+                <h4 className="font-semibold mb-1">Security Risks</h4>
+                <ul className="space-y-1">
+                  {proposal.securityRisks.map((risk, index) => (
+                    <li key={index} className="flex items-start space-x-2">
+                      {risk.type === "warning" ? (
+                        <AlertTriangle
+                          size={16}
+                          className="text-yellow-500 mt-0.5 flex-shrink-0"
+                        />
+                      ) : (
+                        <AlertOctagon
+                          size={16}
+                          className="text-red-500 mt-0.5 flex-shrink-0"
+                        />
+                      )}
+                      <div>
+                        <span className="font-medium">{risk.title}:</span>{" "}
+                        <span>{risk.description}</span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {proposal.sqlQueries?.length > 0 && (
+              <div className="mb-3">
+                <h4 className="font-semibold mb-1">SQL Queries</h4>
+                <ul className="space-y-2">
+                  {proposal.sqlQueries.map((query, index) => (
+                    <SqlQueryItem key={index} query={query} />
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {proposal.packagesAdded?.length > 0 && (
+              <div className="mb-3">
+                <h4 className="font-semibold mb-1">Packages Added</h4>
+                <ul className="space-y-1">
+                  {proposal.packagesAdded.map((pkg, index) => (
+                    <li
+                      key={index}
+                      className="flex items-center space-x-2"
+                      onClick={() => {
+                        IpcClient.getInstance().openExternalUrl(
+                          `https://www.npmjs.com/package/${pkg}`
+                        );
+                      }}
+                    >
+                      <Package
                         size={16}
-                        className="text-yellow-500 mt-0.5 flex-shrink-0"
+                        className="text-muted-foreground flex-shrink-0"
                       />
-                    ) : (
-                      <AlertOctagon
-                        size={16}
-                        className="text-red-500 mt-0.5 flex-shrink-0"
-                      />
-                    )}
-                    <div>
-                      <span className="font-medium">{risk.title}:</span>{" "}
-                      <span>{risk.description}</span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+                      <span className="cursor-pointer text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300">
+                        {pkg}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
-          {proposal.sqlQueries?.length > 0 && (
-            <div className="mb-3">
-              <h4 className="font-semibold mb-1">SQL Queries</h4>
-              <ul className="space-y-2">
-                {proposal.sqlQueries.map((query, index) => (
-                  <SqlQueryItem key={index} query={query} />
-                ))}
-              </ul>
-            </div>
-          )}
+            {serverFunctions.length > 0 && (
+              <div className="mb-3">
+                <h4 className="font-semibold mb-1">Server Functions Changed</h4>
+                <ul className="space-y-1">
+                  {serverFunctions.map((file: FileChange, index: number) => (
+                    <li key={index} className="flex items-center space-x-2">
+                      {getIconForFileChange(file)}
+                      <span
+                        title={file.path}
+                        className="truncate cursor-default"
+                      >
+                        {file.name}
+                      </span>
+                      <span className="text-muted-foreground text-xs truncate">
+                        - {file.summary}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
-          {proposal.packagesAdded?.length > 0 && (
-            <div className="mb-3">
-              <h4 className="font-semibold mb-1">Packages Added</h4>
-              <ul className="space-y-1">
-                {proposal.packagesAdded.map((pkg, index) => (
-                  <li
-                    key={index}
-                    className="flex items-center space-x-2"
-                    onClick={() => {
-                      IpcClient.getInstance().openExternalUrl(
-                        `https://www.npmjs.com/package/${pkg}`
-                      );
-                    }}
-                  >
-                    <Package
-                      size={16}
-                      className="text-muted-foreground flex-shrink-0"
-                    />
-                    <span className="cursor-pointer text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300">
-                      {pkg}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {serverFunctions.length > 0 && (
-            <div className="mb-3">
-              <h4 className="font-semibold mb-1">Server Functions Changed</h4>
-              <ul className="space-y-1">
-                {serverFunctions.map((file: FileChange, index: number) => (
-                  <li key={index} className="flex items-center space-x-2">
-                    {getIconForFileChange(file)}
-                    <span title={file.path} className="truncate cursor-default">
-                      {file.name}
-                    </span>
-                    <span className="text-muted-foreground text-xs truncate">
-                      - {file.summary}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {otherFilesChanged.length > 0 && (
-            <div>
-              <h4 className="font-semibold mb-1">Files Changed</h4>
-              <ul className="space-y-1">
-                {otherFilesChanged.map((file: FileChange, index: number) => (
-                  <li key={index} className="flex items-center space-x-2">
-                    {getIconForFileChange(file)}
-                    <span title={file.path} className="truncate cursor-default">
-                      {file.name}
-                    </span>
-                    <span className="text-muted-foreground text-xs truncate">
-                      - {file.summary}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      )}
+            {otherFilesChanged.length > 0 && (
+              <div>
+                <h4 className="font-semibold mb-1">Files Changed</h4>
+                <ul className="space-y-1">
+                  {otherFilesChanged.map((file: FileChange, index: number) => (
+                    <li key={index} className="flex items-center space-x-2">
+                      {getIconForFileChange(file)}
+                      <span
+                        title={file.path}
+                        className="truncate cursor-default"
+                      >
+                        {file.name}
+                      </span>
+                      <span className="text-muted-foreground text-xs truncate">
+                        - {file.summary}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

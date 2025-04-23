@@ -27,7 +27,8 @@ import { usePostHog } from "posthog-js/react";
 type NodeInstallStep =
   | "install"
   | "waiting-for-continue"
-  | "continue-processing";
+  | "continue-processing"
+  | "finished-checking";
 
 export function SetupBanner() {
   const posthog = usePostHog();
@@ -81,6 +82,7 @@ export function SetupBanner() {
     setNodeInstallStep("continue-processing");
     await IpcClient.getInstance().reloadEnvPath();
     await checkNode();
+    setNodeInstallStep("finished-checking");
   }, [checkNode, setNodeInstallStep]);
 
   // We only check for node version because pnpm is not required for the app to run.
@@ -185,22 +187,11 @@ export function SetupBanner() {
                       .
                     </p>
                   )}
-                  {nodeInstallStep === "install" ? (
-                    <Button className="mt-3" onClick={handleNodeInstallClick}>
-                      Install Node.js Runtime
-                    </Button>
-                  ) : (
-                    <Button className="mt-3" onClick={finishNodeInstall}>
-                      {nodeInstallStep === "continue-processing" ? (
-                        <div className="flex items-center gap-2">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          Checking Node.js setup...
-                        </div>
-                      ) : (
-                        "Continue | I installed Node.js"
-                      )}
-                    </Button>
-                  )}
+                  <NodeInstallButton
+                    nodeInstallStep={nodeInstallStep}
+                    handleNodeInstallClick={handleNodeInstallClick}
+                    finishNodeInstall={finishNodeInstall}
+                  />
                 </div>
               )}
               <NodeJsHelpCallout />
@@ -312,4 +303,48 @@ function NodeJsHelpCallout() {
       </p>
     </div>
   );
+}
+
+function NodeInstallButton({
+  nodeInstallStep,
+  handleNodeInstallClick,
+  finishNodeInstall,
+}: {
+  nodeInstallStep: NodeInstallStep;
+  handleNodeInstallClick: () => void;
+  finishNodeInstall: () => void;
+}) {
+  switch (nodeInstallStep) {
+    case "install":
+      return (
+        <Button className="mt-3" onClick={handleNodeInstallClick}>
+          Install Node.js Runtime
+        </Button>
+      );
+    case "continue-processing":
+      return (
+        <Button className="mt-3" onClick={finishNodeInstall} disabled>
+          <div className="flex items-center gap-2">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Checking Node.js setup...
+          </div>
+        </Button>
+      );
+    case "waiting-for-continue":
+      return (
+        <Button className="mt-3" onClick={finishNodeInstall}>
+          <div className="flex items-center gap-2">
+            Continue | I installed Node.js
+          </div>
+        </Button>
+      );
+    case "finished-checking":
+      return (
+        <div className="mt-3 text-sm text-red-600 dark:text-red-400">
+          Node.js not detected. Closing and re-opening Dyad usually fixes this.
+        </div>
+      );
+    default:
+      const _exhaustiveCheck: never = nodeInstallStep;
+  }
 }

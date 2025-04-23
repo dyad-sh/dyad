@@ -16,9 +16,9 @@ jobs:
       # for the same version are created in parallel.
       max-parallel: 1
       matrix:
-        os:
-          [
-            { name: "linux", image: "ubuntu-latest" },
+        os: [
+            # disabling until we fix the commands below (skip macos cert)
+            # { name: "linux", image: "ubuntu-latest" },
             { name: "macos-intel", image: "macos-13" },
             { name: "macos", image: "macos-latest" },
             { name: "windows", image: "windows-latest" },

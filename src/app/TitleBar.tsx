@@ -4,6 +4,7 @@ import { useLoadApps } from "@/hooks/useLoadApps";
 import { useRouter } from "@tanstack/react-router";
 import { useSettings } from "@/hooks/useSettings";
 import { Button } from "@/components/ui/button";
+// @ts-ignore
 import logo from "../../assets/logo_transparent.png";
 
 export const TitleBar = () => {

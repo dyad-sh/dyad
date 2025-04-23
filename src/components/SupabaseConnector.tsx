@@ -25,9 +25,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useDeepLink } from "@/contexts/DeepLinkContext";
 const OAUTH_CLIENT_ID = "bf747de7-60bb-48a2-9015-6494e0b04983";
+// @ts-ignore
 import supabaseLogoLight from "../../assets/supabase/supabase-logo-wordmark--light.svg";
+// @ts-ignore
 import supabaseLogoDark from "../../assets/supabase/supabase-logo-wordmark--dark.svg";
+// @ts-ignore
 import connectSupabaseDark from "../../assets/supabase/connect-supabase-dark.svg";
+// @ts-ignore
 import connectSupabaseLight from "../../assets/supabase/connect-supabase-light.svg";
 
 import { ExternalLink } from "lucide-react";

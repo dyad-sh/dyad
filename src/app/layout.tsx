@@ -17,7 +17,7 @@ export default function RootLayout({
         <DeepLinkProvider>
           <SidebarProvider>
             <AppSidebar />
-            <div className="flex h-screenish w-full overflow-x-hidden mt-8 mb-4 mr-4 border-t border-l border-border rounded-lg bg-background">
+            <div className="flex h-screenish w-full overflow-x-hidden mt-12 mb-4 mr-4 border-t border-l border-border rounded-lg bg-background">
               {children}
             </div>
             <Toaster richColors />

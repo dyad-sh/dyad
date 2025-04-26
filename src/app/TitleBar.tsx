@@ -8,11 +8,31 @@ import { Button } from "@/components/ui/button";
 import logo from "../../assets/logo_transparent.png";
 import { providerSettingsRoute } from "@/routes/settings/providers/$provider";
 import { cn } from "@/lib/utils";
+import { useDeepLink } from "@/contexts/DeepLinkContext";
+import { useEffect, useState } from "react";
+import { DyadProSuccessDialog } from "@/components/DyadProSuccessDialog";
+
 export const TitleBar = () => {
   const [selectedAppId] = useAtom(selectedAppIdAtom);
   const { apps } = useLoadApps();
   const { navigate } = useRouter();
-  const { settings } = useSettings();
+  const { settings, refreshSettings } = useSettings();
+  const [isSuccessDialogOpen, setIsSuccessDialogOpen] = useState(false);
+
+  const showDyadProSuccessDialog = () => {
+    setIsSuccessDialogOpen(true);
+  };
+
+  const { lastDeepLink } = useDeepLink();
+  useEffect(() => {
+    const handleDeepLink = async () => {
+      if (lastDeepLink?.type === "dyad-pro-return") {
+        await refreshSettings();
+        showDyadProSuccessDialog();
+      }
+    };
+    handleDeepLink();
+  }, [lastDeepLink]);
 
   // Get selected app name
   const selectedApp = apps.find((app) => app.id === selectedAppId);
@@ -30,37 +50,44 @@ export const TitleBar = () => {
   const isDyadProEnabled = settings?.enableDyadPro;
 
   return (
-    <div className="@container z-11 w-full h-11 bg-(--sidebar) absolute top-0 left-0 app-region-drag flex items-center">
-      <div className="pl-20"></div>
-      <img src={logo} alt="Dyad Logo" className="w-6 h-6 mr-2" />
-      <Button
-        variant="outline"
-        size="sm"
-        className={`hidden @md:block no-app-region-drag text-sm font-medium ${
-          selectedApp ? "cursor-pointer" : ""
-        }`}
-        onClick={handleAppClick}
-      >
-        {displayText}
-      </Button>
-      {isDyadPro && (
+    <>
+      <div className="@container z-11 w-full h-11 bg-(--sidebar) absolute top-0 left-0 app-region-drag flex items-center">
+        <div className="pl-20"></div>
+        <img src={logo} alt="Dyad Logo" className="w-6 h-6 mr-2" />
         <Button
-          onClick={() => {
-            navigate({
-              to: providerSettingsRoute.id,
-              params: { provider: "auto" },
-            });
-          }}
           variant="outline"
-          className={cn(
-            "ml-4 no-app-region-drag h-7 bg-indigo-600 text-white dark:bg-indigo-600 dark:text-white",
-            !isDyadProEnabled && "bg-zinc-600 dark:bg-zinc-600"
-          )}
           size="sm"
+          className={`hidden @md:block no-app-region-drag text-sm font-medium ${
+            selectedApp ? "cursor-pointer" : ""
+          }`}
+          onClick={handleAppClick}
         >
-          {isDyadProEnabled ? "Dyad Pro" : "Dyad Pro (disabled)"}
+          {displayText}
         </Button>
-      )}
-    </div>
+        {isDyadPro && (
+          <Button
+            onClick={() => {
+              navigate({
+                to: providerSettingsRoute.id,
+                params: { provider: "auto" },
+              });
+            }}
+            variant="outline"
+            className={cn(
+              "ml-4 no-app-region-drag h-7 bg-indigo-600 text-white dark:bg-indigo-600 dark:text-white",
+              !isDyadProEnabled && "bg-zinc-600 dark:bg-zinc-600"
+            )}
+            size="sm"
+          >
+            {isDyadProEnabled ? "Dyad Pro" : "Dyad Pro (disabled)"}
+          </Button>
+        )}
+      </div>
+
+      <DyadProSuccessDialog
+        isOpen={isSuccessDialogOpen}
+        onClose={() => setIsSuccessDialogOpen(false)}
+      />
+    </>
   );
 };

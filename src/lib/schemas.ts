@@ -94,6 +94,12 @@ export const ExperimentsSchema = z.object({
 });
 export type Experiments = z.infer<typeof ExperimentsSchema>;
 
+export const DyadProBudgetSchema = z.object({
+  budgetResetAt: z.string(),
+  maxBudget: z.number(),
+});
+export type DyadProBudget = z.infer<typeof DyadProBudgetSchema>;
+
 /**
  * Zod schema for user settings
  */
@@ -108,7 +114,7 @@ export const UserSettingsSchema = z.object({
   telemetryUserId: z.string().optional(),
   hasRunBefore: z.boolean().optional(),
   enableDyadPro: z.boolean().optional(),
-
+  dyadProBudget: DyadProBudgetSchema.optional(),
   experiments: ExperimentsSchema.optional(),
   // DEPRECATED.
   runtimeMode: RuntimeModeSchema.optional(),

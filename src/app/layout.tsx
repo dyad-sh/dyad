@@ -12,10 +12,10 @@ export default function RootLayout({
 }) {
   return (
     <>
-      <TitleBar />
       <ThemeProvider>
         <DeepLinkProvider>
           <SidebarProvider>
+            <TitleBar />
             <AppSidebar />
             <div className="flex h-screenish w-full overflow-x-hidden mt-12 mb-4 mr-4 border-t border-l border-border rounded-lg bg-background">
               {children}

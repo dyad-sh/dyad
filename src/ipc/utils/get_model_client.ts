@@ -46,7 +46,7 @@ export function getModelClient(
   }
 
   const dyadApiKey = settings.providerSettings?.auto?.apiKey?.value;
-  if (dyadApiKey) {
+  if (dyadApiKey && settings.enableDyadPro) {
     const provider = createOpenAI({
       apiKey: dyadApiKey,
       baseURL: "https://llm-gateway.dyad.sh/v1",

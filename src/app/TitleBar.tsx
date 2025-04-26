@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 // @ts-ignore
 import logo from "../../assets/logo_transparent.png";
 import { providerSettingsRoute } from "@/routes/settings/providers/$provider";
-
+import { cn } from "@/lib/utils";
 export const TitleBar = () => {
   const [selectedAppId] = useAtom(selectedAppIdAtom);
   const { apps } = useLoadApps();
@@ -27,6 +27,7 @@ export const TitleBar = () => {
   };
 
   const isDyadPro = !!settings?.providerSettings?.auto?.apiKey?.value;
+  const isDyadProEnabled = settings?.enableDyadPro;
 
   return (
     <div className="@container z-11 w-full h-11 bg-(--sidebar) absolute top-0 left-0 app-region-drag flex items-center">
@@ -51,10 +52,13 @@ export const TitleBar = () => {
             });
           }}
           variant="outline"
-          className="ml-4 no-app-region-drag h-7 bg-indigo-600 text-white dark:bg-indigo-600 dark:text-white"
+          className={cn(
+            "ml-4 no-app-region-drag h-7 bg-indigo-600 text-white dark:bg-indigo-600 dark:text-white",
+            !isDyadProEnabled && "bg-zinc-600 dark:bg-zinc-600"
+          )}
           size="sm"
         >
-          Dyad Pro
+          {isDyadProEnabled ? "Dyad Pro" : "Dyad Pro (disabled)"}
         </Button>
       )}
     </div>

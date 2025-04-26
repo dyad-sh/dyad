@@ -23,6 +23,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { IpcClient } from "@/ipc/ipc_client";
+import { Switch } from "@/components/ui/switch";
+import { showError } from "@/lib/toast";
+import { UserSettings } from "@/lib/schemas";
 
 interface ProviderSettingsPageProps {
   provider: string;
@@ -43,6 +46,8 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
     error: settingsError,
     updateSettings,
   } = useSettings();
+
+  const isDyad = provider === "auto";
 
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -95,7 +100,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
     setIsSaving(true);
     setSaveError(null);
     try {
-      await updateSettings({
+      const settingsUpdate: Partial<UserSettings> = {
         providerSettings: {
           ...settings?.providerSettings,
           [provider]: {
@@ -105,7 +110,11 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
             },
           },
         },
-      });
+      };
+      if (isDyad) {
+        settingsUpdate.enableDyadPro = true;
+      }
+      await updateSettings(settingsUpdate);
       setApiKeyInput(""); // Clear input on success
       // Optionally show a success message
     } catch (error: any) {
@@ -134,6 +143,20 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
     } catch (error: any) {
       console.error("Error deleting API key:", error);
       setSaveError(error.message || "Failed to delete API key.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // --- Toggle Dyad Pro Handler ---
+  const handleToggleDyadPro = async (enabled: boolean) => {
+    setIsSaving(true);
+    try {
+      await updateSettings({
+        enableDyadPro: enabled,
+      });
+    } catch (error: any) {
+      showError(`Error toggling Dyad Pro: ${error}`);
     } finally {
       setIsSaving(false);
     }
@@ -205,7 +228,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
             ) : (
               <KeyRound className="mr-2 h-4 w-4" />
             )}
-            {isConfigured ? "Manage API Keys" : "Setup API Key"}
+            {getKeyButtonText({ isConfigured, isDyad })}
             <ExternalLink className="ml-2 h-4 w-4" />
           </Button>
         )}
@@ -299,60 +322,93 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
               </AccordionContent>
             </AccordionItem>
 
-            <AccordionItem
-              value="env-key"
-              className="border rounded-lg px-4 bg-(--background-lightest)"
-            >
-              <AccordionTrigger className="text-lg font-medium hover:no-underline cursor-pointer">
-                API Key from Environment Variable
-              </AccordionTrigger>
-              <AccordionContent className="pt-4">
-                {hasEnvKey ? (
-                  <Alert variant="default">
-                    <KeyRound className="h-4 w-4" />
-                    <AlertTitle>
-                      Environment Variable Key ({envVarName})
-                    </AlertTitle>
-                    <AlertDescription>
-                      <p className="font-mono text-sm">
-                        {maskEnvApiKey(envApiKey)}
-                      </p>
-                      {activeKeySource === "env" && (
-                        <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-                          This key is currently active (no settings key set).
+            {!isDyad && (
+              <AccordionItem
+                value="env-key"
+                className="border rounded-lg px-4 bg-(--background-lightest)"
+              >
+                <AccordionTrigger className="text-lg font-medium hover:no-underline cursor-pointer">
+                  API Key from Environment Variable
+                </AccordionTrigger>
+                <AccordionContent className="pt-4">
+                  {hasEnvKey ? (
+                    <Alert variant="default">
+                      <KeyRound className="h-4 w-4" />
+                      <AlertTitle>
+                        Environment Variable Key ({envVarName})
+                      </AlertTitle>
+                      <AlertDescription>
+                        <p className="font-mono text-sm">
+                          {maskEnvApiKey(envApiKey)}
                         </p>
-                      )}
-                      {activeKeySource === "settings" && (
-                        <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">
-                          This key is currently being overridden by the key set
-                          in Settings.
-                        </p>
-                      )}
-                    </AlertDescription>
-                  </Alert>
-                ) : (
-                  <Alert variant="default">
-                    <Info className="h-4 w-4" />
-                    <AlertTitle>Environment Variable Not Set</AlertTitle>
-                    <AlertDescription>
-                      The{" "}
-                      <code className="font-mono bg-gray-100 dark:bg-gray-800 px-1 rounded text-xs">
-                        {envVarName}
-                      </code>{" "}
-                      environment variable is not set.
-                    </AlertDescription>
-                  </Alert>
-                )}
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-3">
-                  This key is set outside the application. If present, it will
-                  be used only if no key is configured in the Settings section
-                  above. Requires app restart to detect changes.
-                </p>
-              </AccordionContent>
-            </AccordionItem>
+                        {activeKeySource === "env" && (
+                          <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                            This key is currently active (no settings key set).
+                          </p>
+                        )}
+                        {activeKeySource === "settings" && (
+                          <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">
+                            This key is currently being overridden by the key
+                            set in Settings.
+                          </p>
+                        )}
+                      </AlertDescription>
+                    </Alert>
+                  ) : (
+                    <Alert variant="default">
+                      <Info className="h-4 w-4" />
+                      <AlertTitle>Environment Variable Not Set</AlertTitle>
+                      <AlertDescription>
+                        The{" "}
+                        <code className="font-mono bg-gray-100 dark:bg-gray-800 px-1 rounded text-xs">
+                          {envVarName}
+                        </code>{" "}
+                        environment variable is not set.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-3">
+                    This key is set outside the application. If present, it will
+                    be used only if no key is configured in the Settings section
+                    above. Requires app restart to detect changes.
+                  </p>
+                </AccordionContent>
+              </AccordionItem>
+            )}
           </Accordion>
+        )}
+
+        {isDyad && !settingsLoading && (
+          <div className="mt-6 flex items-center justify-between p-4 bg-(--background-lightest) rounded-lg border">
+            <div>
+              <h3 className="font-medium">Enable Dyad Pro</h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Toggle to enable Dyad Pro
+              </p>
+            </div>
+            <Switch
+              checked={settings?.enableDyadPro}
+              onCheckedChange={handleToggleDyadPro}
+              disabled={isSaving}
+            />
+          </div>
         )}
       </div>
     </div>
   );
+}
+
+function getKeyButtonText({
+  isConfigured,
+  isDyad,
+}: {
+  isConfigured: boolean;
+  isDyad: boolean;
+}) {
+  if (isDyad) {
+    return isConfigured
+      ? "Manage Dyad Pro Subscription"
+      : "Setup Dyad Pro Subscription";
+  }
+  return isConfigured ? "Manage API Keys" : "Setup API Key";
 }

@@ -6,6 +6,7 @@ import { useSettings } from "@/hooks/useSettings";
 import { Button } from "@/components/ui/button";
 // @ts-ignore
 import logo from "../../assets/logo_transparent.png";
+import { providerSettingsRoute } from "@/routes/settings/providers/$provider";
 
 export const TitleBar = () => {
   const [selectedAppId] = useAtom(selectedAppIdAtom);
@@ -25,6 +26,8 @@ export const TitleBar = () => {
     }
   };
 
+  const isDyadPro = !!settings?.providerSettings?.auto?.apiKey?.value;
+
   return (
     <div className="@container z-11 w-full h-11 bg-(--sidebar) absolute top-0 left-0 app-region-drag flex items-center">
       <div className="pl-20"></div>
@@ -39,6 +42,21 @@ export const TitleBar = () => {
       >
         {displayText}
       </Button>
+      {isDyadPro && (
+        <Button
+          onClick={() => {
+            navigate({
+              to: providerSettingsRoute.id,
+              params: { provider: "auto" },
+            });
+          }}
+          variant="outline"
+          className="ml-4 no-app-region-drag h-7 bg-indigo-600 text-white dark:bg-indigo-600 dark:text-white"
+          size="sm"
+        >
+          Dyad Pro
+        </Button>
+      )}
     </div>
   );
 };

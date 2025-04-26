@@ -273,7 +273,6 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
                   </label>
                   <div className="flex items-start space-x-2">
                     <Input
-                      type="password"
                       id="apiKeyInput"
                       value={apiKeyInput}
                       onChange={(e) => setApiKeyInput(e.target.value)}

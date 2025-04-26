@@ -15,6 +15,11 @@ export const MODEL_OPTIONS: Record<RegularModelProvider, ModelOption[]> = {
       description: "OpenAI's flagship model",
     },
     {
+      name: "gpt-4.1-mini",
+      displayName: "GPT 4.1 Mini",
+      description: "OpenAI's lightweight, but intelligent model",
+    },
+    {
       name: "o3-mini",
       displayName: "o3 mini",
       description: "Reasoning model",
@@ -55,40 +60,40 @@ export const MODEL_OPTIONS: Record<RegularModelProvider, ModelOption[]> = {
 export const PROVIDERS: Record<
   RegularModelProvider,
   {
-    name: string;
     displayName: string;
     hasFreeTier?: boolean;
     websiteUrl?: string;
+    gatewayPrefix: string;
   }
 > = {
   openai: {
-    name: "openai",
     displayName: "OpenAI",
     hasFreeTier: false,
     websiteUrl: "https://platform.openai.com/api-keys",
+    gatewayPrefix: "",
   },
   anthropic: {
-    name: "anthropic",
     displayName: "Anthropic",
     hasFreeTier: false,
     websiteUrl: "https://console.anthropic.com/settings/keys",
+    gatewayPrefix: "anthropic/",
   },
   google: {
-    name: "google",
     displayName: "Google",
     hasFreeTier: true,
     websiteUrl: "https://aistudio.google.com/app/apikey",
+    gatewayPrefix: "gemini/",
   },
   openrouter: {
-    name: "openrouter",
     displayName: "OpenRouter",
     hasFreeTier: true,
     websiteUrl: "https://openrouter.ai/settings/keys",
+    gatewayPrefix: "openrouter/",
   },
   auto: {
-    name: "auto",
     displayName: "Dyad",
     websiteUrl: "https://academy.dyad.sh/settings",
+    gatewayPrefix: "",
   },
 };
 

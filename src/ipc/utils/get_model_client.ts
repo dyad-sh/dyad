@@ -53,7 +53,9 @@ export function getModelClient(
     });
     const providerInfo = PROVIDERS[model.provider as keyof typeof PROVIDERS];
     logger.info("Using Dyad Pro API key");
-    return provider(`${providerInfo.gatewayPrefix}${model.name}`);
+    // Do not use free variant (for openrouter).
+    const modelName = model.name.split(":free")[0];
+    return provider(`${providerInfo.gatewayPrefix}${modelName}`);
   }
 
   const apiKey =

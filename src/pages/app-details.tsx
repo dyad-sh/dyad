@@ -249,9 +249,7 @@ export default function AppDetailsPage() {
             <MessageCircle className="h-4 w-4" />
           </Button>
           <GitHubConnector appId={appId} folderName={selectedApp.path} />
-          {appId && settings?.experiments?.enableSupabaseIntegration && (
-            <SupabaseConnector appId={appId} />
-          )}
+          {appId && <SupabaseConnector appId={appId} />}
         </div>
 
         {/* Rename Dialog */}

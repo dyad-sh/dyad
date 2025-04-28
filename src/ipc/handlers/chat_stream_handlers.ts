@@ -154,19 +154,18 @@ export function registerChatStreamHandlers() {
           content: message.content,
         }));
         let systemPrompt = SYSTEM_PROMPT;
-        if (readSettings().experiments?.enableSupabaseIntegration) {
-          if (updatedChat.app?.supabaseProjectId) {
-            systemPrompt +=
-              "\n\n" +
-              SUPABASE_AVAILABLE_SYSTEM_PROMPT +
-              "\n\n" +
-              (await getSupabaseContext({
-                supabaseProjectId: updatedChat.app.supabaseProjectId,
-              }));
-          } else {
-            systemPrompt += "\n\n" + SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT;
-          }
+        if (updatedChat.app?.supabaseProjectId) {
+          systemPrompt +=
+            "\n\n" +
+            SUPABASE_AVAILABLE_SYSTEM_PROMPT +
+            "\n\n" +
+            (await getSupabaseContext({
+              supabaseProjectId: updatedChat.app.supabaseProjectId,
+            }));
+        } else {
+          systemPrompt += "\n\n" + SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT;
         }
+
         const { textStream } = streamText({
           maxTokens: 8_000,
           temperature: 0,

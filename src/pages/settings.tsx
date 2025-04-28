@@ -6,7 +6,6 @@ import { IpcClient } from "@/ipc/ipc_client";
 import { showSuccess, showError } from "@/lib/toast";
 import { AutoApproveSwitch } from "@/components/AutoApproveSwitch";
 import { TelemetrySwitch } from "@/components/TelemetrySwitch";
-import { SupabaseIntegrationSwitch } from "@/components/SupabaseIntegrationSwitch";
 import { useSettings } from "@/hooks/useSettings";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
@@ -152,13 +151,7 @@ export default function SettingsPage() {
               Experiments
             </h2>
             <div className="space-y-4">
-              <div className="space-y-2">
-                <SupabaseIntegrationSwitch />
-                <div className="text-sm text-gray-500 dark:text-gray-400">
-                  Enable integration with Supabase for auth, database and server
-                  function support.
-                </div>
-              </div>
+              There are no experiments currently available.
             </div>
           </div>
 

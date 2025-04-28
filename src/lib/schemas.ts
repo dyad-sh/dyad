@@ -90,7 +90,8 @@ export const SupabaseSchema = z.object({
 export type Supabase = z.infer<typeof SupabaseSchema>;
 
 export const ExperimentsSchema = z.object({
-  enableSupabaseIntegration: z.boolean().optional(),
+  // Deprecated
+  enableSupabaseIntegration: z.boolean().describe("DEPRECATED").optional(),
 });
 export type Experiments = z.infer<typeof ExperimentsSchema>;
 

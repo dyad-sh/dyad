@@ -9,6 +9,7 @@ import {
   PROVIDER_TO_ENV_VAR,
   AUTO_MODELS,
   PROVIDERS,
+  MODEL_OPTIONS,
 } from "../../constants/models";
 import { getEnvVar } from "./read_env";
 import log from "electron-log";
@@ -27,7 +28,7 @@ export function getModelClient(
         getEnvVar(PROVIDER_TO_ENV_VAR[autoModel.provider]);
 
       if (apiKey) {
-        console.log(
+        logger.log(
           `Using provider: ${autoModel.provider} model: ${autoModel.name}`
         );
         // Use the first model that has an API key
@@ -88,4 +89,20 @@ export function getModelClient(
       throw new Error(`Unsupported model provider: ${model.provider}`);
     }
   }
+}
+
+// Most models support at least 8000 output tokens so we use it as a default value.
+const DEFAULT_MAX_TOKENS = 8_000;
+
+export function getMaxTokens(model: LargeLanguageModel) {
+  if (!MODEL_OPTIONS[model.provider as keyof typeof MODEL_OPTIONS]) {
+    logger.warn(
+      `Model provider ${model.provider} not found in MODEL_OPTIONS. Using default max tokens.`
+    );
+    return DEFAULT_MAX_TOKENS;
+  }
+  const modelOption = MODEL_OPTIONS[
+    model.provider as keyof typeof MODEL_OPTIONS
+  ].find((m) => m.name === model.name);
+  return modelOption?.maxOutputTokens || DEFAULT_MAX_TOKENS;
 }

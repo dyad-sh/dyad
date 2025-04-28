@@ -4,47 +4,60 @@ export interface ModelOption {
   displayName: string;
   description: string;
   tag?: string;
+  maxOutputTokens?: number;
 }
 
 type RegularModelProvider = Exclude<ModelProvider, "ollama">;
 export const MODEL_OPTIONS: Record<RegularModelProvider, ModelOption[]> = {
   openai: [
+    // https://platform.openai.com/docs/models/gpt-4.1
     {
       name: "gpt-4.1",
       displayName: "GPT 4.1",
       description: "OpenAI's flagship model",
+      maxOutputTokens: 32_768,
     },
+    // https://platform.openai.com/docs/models/gpt-4.1-mini
     {
       name: "gpt-4.1-mini",
       displayName: "GPT 4.1 Mini",
       description: "OpenAI's lightweight, but intelligent model",
+      maxOutputTokens: 32_768,
     },
+    // https://platform.openai.com/docs/models/o3-mini
     {
       name: "o3-mini",
       displayName: "o3 mini",
       description: "Reasoning model",
+      maxOutputTokens: 100_000,
     },
   ],
+  // https://docs.anthropic.com/en/docs/about-claude/models/all-models#model-comparison-table
   anthropic: [
     {
       name: "claude-3-7-sonnet-latest",
       displayName: "Claude 3.7 Sonnet",
       description: "Excellent coder",
+      maxOutputTokens: 64_000,
     },
   ],
   google: [
+    // https://ai.google.dev/gemini-api/docs/models#gemini-2.5-pro-preview-03-25
     {
       name: "gemini-2.5-pro-exp-03-25",
       displayName: "Gemini 2.5 Pro",
       description: "Experimental version of Google's Gemini 2.5 Pro model",
       tag: "Recommended",
+      maxOutputTokens: 65_536,
     },
   ],
   openrouter: [
+    // https://openrouter.ai/deepseek/deepseek-chat-v3-0324:free
     {
       name: "deepseek/deepseek-chat-v3-0324:free",
       displayName: "DeepSeek v3 (free)",
       description: "Use for free (data may be used for training)",
+      maxOutputTokens: 32_000,
     },
   ],
   auto: [

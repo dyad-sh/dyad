@@ -15,7 +15,7 @@ import { extractCodebase } from "../../utils/codebase";
 import { processFullResponseActions } from "../processors/response_processor";
 import { streamTestResponse } from "./testing_chat_handlers";
 import { getTestResponse } from "./testing_chat_handlers";
-import { getModelClient } from "../utils/get_model_client";
+import { getMaxTokens, getModelClient } from "../utils/get_model_client";
 import log from "electron-log";
 import {
   getSupabaseContext,
@@ -165,9 +165,8 @@ export function registerChatStreamHandlers() {
         } else {
           systemPrompt += "\n\n" + SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT;
         }
-
         const { textStream } = streamText({
-          maxTokens: 8_000,
+          maxTokens: getMaxTokens(settings.selectedModel),
           temperature: 0,
           model: modelClient,
           system: systemPrompt,

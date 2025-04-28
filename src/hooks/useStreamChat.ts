@@ -62,44 +62,18 @@ export function useStreamChat({
       }
 
       setError(null);
-      setMessages((currentMessages: Message[]) => {
-        if (redo) {
-          let remainingMessages = currentMessages.slice();
-          if (
-            currentMessages[currentMessages.length - 1].role === "assistant"
-          ) {
-            remainingMessages = currentMessages.slice(0, -1);
-          }
-          return [
-            ...remainingMessages,
-            {
-              id: getRandomNumberId(),
-              role: "assistant",
-              content: "",
-            },
-          ];
-        }
-        return [
-          ...currentMessages,
-          {
-            id: getRandomNumberId(),
-            role: "user",
-            content: prompt,
-          },
-          {
-            id: getRandomNumberId(),
-            role: "assistant",
-            content: "",
-          },
-        ];
-      });
       setIsStreaming(true);
-      setStreamCount((streamCount) => streamCount + 1);
+      let hasIncrementedStreamCount = false;
       try {
         IpcClient.getInstance().streamMessage(prompt, {
           chatId,
           redo,
           onUpdate: (updatedMessages: Message[]) => {
+            if (!hasIncrementedStreamCount) {
+              setStreamCount((streamCount) => streamCount + 1);
+              hasIncrementedStreamCount = true;
+            }
+
             setMessages(updatedMessages);
           },
           onEnd: (response: ChatResponseEnd) => {

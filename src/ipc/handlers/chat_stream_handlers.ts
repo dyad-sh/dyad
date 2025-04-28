@@ -97,6 +97,16 @@ export function registerChatStreamHandlers() {
         })
         .returning();
 
+      // Add a placeholder assistant message immediately
+      const [placeholderAssistantMessage] = await db
+        .insert(messages)
+        .values({
+          chatId: req.chatId,
+          role: "assistant",
+          content: "", // Start with empty content
+        })
+        .returning();
+
       // Fetch updated chat data after possible deletions and additions
       const updatedChat = await db.query.chats.findFirst({
         where: eq(chats.id, req.chatId),
@@ -111,6 +121,12 @@ export function registerChatStreamHandlers() {
       if (!updatedChat) {
         throw new Error(`Chat not found: ${req.chatId}`);
       }
+
+      // Send the messages right away so that the loading state is shown for the message.
+      event.sender.send("chat:response:chunk", {
+        chatId: req.chatId,
+        messages: updatedChat.messages,
+      });
 
       let fullResponse = "";
 
@@ -206,7 +222,7 @@ export function registerChatStreamHandlers() {
           temperature: 0,
           model: modelClient,
           system: systemPrompt,
-          messages: chatMessages,
+          messages: chatMessages.filter((m) => m.content),
           onError: (error) => {
             logger.error("Error streaming text:", error);
             const message =
@@ -240,16 +256,20 @@ export function registerChatStreamHandlers() {
             // Store the current partial response
             partialResponses.set(req.chatId, fullResponse);
 
+            // Update the placeholder assistant message content in the messages array
+            const currentMessages = [...updatedChat.messages];
+            if (
+              currentMessages.length > 0 &&
+              currentMessages[currentMessages.length - 1].role === "assistant"
+            ) {
+              currentMessages[currentMessages.length - 1].content =
+                fullResponse;
+            }
+
             // Update the assistant message in the database
             event.sender.send("chat:response:chunk", {
               chatId: req.chatId,
-              messages: [
-                ...updatedChat.messages,
-                {
-                  role: "assistant",
-                  content: fullResponse,
-                },
-              ],
+              messages: currentMessages,
             });
 
             // If the stream was aborted, exit early
@@ -266,14 +286,20 @@ export function registerChatStreamHandlers() {
             // If we have a partial response, save it to the database
             if (partialResponse) {
               try {
-                // Insert a new assistant message with the partial content
-                await db.insert(messages).values({
-                  chatId,
-                  role: "assistant",
-                  content: `${partialResponse}\n\n[Response cancelled by user]`,
-                });
-                logger.log(`Saved partial response for chat ${chatId}`);
-                partialResponses.delete(chatId);
+                // Update the placeholder assistant message with the partial content and cancellation note
+                await db
+                  .update(messages)
+                  .set({
+                    content: `${partialResponse}
+
+[Response cancelled by user]`,
+                  })
+                  .where(eq(messages.id, placeholderAssistantMessage.id));
+
+                logger.log(
+                  `Updated cancelled response for placeholder message ${placeholderAssistantMessage.id} in chat ${chatId}`
+                );
+                partialResponses.delete(req.chatId);
               } catch (error) {
                 logger.error(
                   `Error saving partial response for chat ${chatId}:`,
@@ -301,21 +327,17 @@ export function registerChatStreamHandlers() {
         }
         const chatSummary = chatTitle?.[1];
 
-        // Create initial assistant message
-        const [assistantMessage] = await db
-          .insert(messages)
-          .values({
-            chatId: req.chatId,
-            role: "assistant",
-            content: fullResponse,
-          })
-          .returning();
+        // Update the placeholder assistant message with the full response
+        await db
+          .update(messages)
+          .set({ content: fullResponse })
+          .where(eq(messages.id, placeholderAssistantMessage.id));
 
         if (readSettings().autoApproveChanges) {
           const status = await processFullResponseActions(
             fullResponse,
             req.chatId,
-            { chatSummary, messageId: assistantMessage.id }
+            { chatSummary, messageId: placeholderAssistantMessage.id } // Use placeholder ID
           );
 
           const chat = await db.query.chats.findFirst({

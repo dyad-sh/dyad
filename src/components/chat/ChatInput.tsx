@@ -22,8 +22,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ModelPicker } from "@/components/ModelPicker";
 import { useSettings } from "@/hooks/useSettings";
 import { IpcClient } from "@/ipc/ipc_client";
-import { chatInputValueAtom, chatMessagesAtom } from "@/atoms/chatAtoms";
-import { atom, useAtom, useSetAtom } from "jotai";
+import {
+  chatInputValueAtom,
+  chatMessagesAtom,
+  selectedChatIdAtom,
+} from "@/atoms/chatAtoms";
+import { atom, useAtom, useSetAtom, useAtomValue } from "jotai";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { useChats } from "@/hooks/useChats";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
@@ -48,6 +52,13 @@ import { AutoApproveSwitch } from "../AutoApproveSwitch";
 import { usePostHog } from "posthog-js/react";
 import { CodeHighlight } from "./CodeHighlight";
 import { TokenBar } from "./TokenBar";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../ui/tooltip";
+import { useNavigate } from "@tanstack/react-router";
 
 const showTokenBarAtom = atom(false);
 
@@ -305,8 +316,43 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   );
 }
 
+function SummarizeInNewChatButton() {
+  const [chatId] = useAtom(selectedChatIdAtom);
+  const appId = useAtomValue(selectedAppIdAtom);
+  const { streamMessage } = useStreamChat();
+  const navigate = useNavigate();
+  const onClick = async () => {
+    if (!appId) {
+      console.error("No app id found");
+      return;
+    }
+    const newChatId = await IpcClient.getInstance().createChat(appId);
+    // navigate to new chat
+    await navigate({ to: "/chat", search: { id: newChatId } });
+    await streamMessage({
+      prompt: "Summarize from chat-id=" + chatId,
+      chatId: newChatId,
+    });
+  };
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button variant="outline" size="sm" onClick={onClick}>
+            Summarize to new chat
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>Creating a new chat makes the AI more focused and efficient</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
 function mapActionToButton(action: SuggestedAction) {
   switch (action.id) {
+    case "summarize-in-new-chat":
+      return <SummarizeInNewChatButton />;
     default:
       console.error(`Unsupported action: ${action.id}`);
       return (
@@ -323,7 +369,6 @@ function ActionProposalActions({ proposal }: { proposal: ActionProposal }) {
       <div className="flex items-center space-x-2">
         {proposal.actions.map((action) => mapActionToButton(action))}
       </div>
-      <AutoApproveSwitch />
     </div>
   );
 }

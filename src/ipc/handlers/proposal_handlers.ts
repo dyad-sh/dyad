@@ -4,9 +4,10 @@ import type {
   FileChange,
   ProposalResult,
   SqlQuery,
+  ActionProposal,
 } from "../../lib/schemas";
 import { db } from "../../db";
-import { messages } from "../../db/schema";
+import { messages, chats } from "../../db/schema";
 import { desc, eq, and, Update } from "drizzle-orm";
 import path from "node:path"; // Import path for basename
 // Import tag parsers
@@ -21,6 +22,7 @@ import {
 } from "../processors/response_processor";
 import log from "electron-log";
 import { isServerFunction } from "../../supabase_admin/supabase_utils";
+import { estimateMessagesTokens, getContextWindow } from "../utils/token_utils";
 
 const logger = log.scope("proposal_handlers");
 
@@ -60,10 +62,45 @@ const getProposalHandler = async (
       },
     });
 
-    if (latestAssistantMessage?.approvalState === "rejected") {
-      return null;
-    }
-    if (latestAssistantMessage?.approvalState === "approved") {
+    if (
+      latestAssistantMessage?.approvalState === "rejected" ||
+      latestAssistantMessage?.approvalState === "approved"
+    ) {
+      // Get all chat messages to calculate token usage
+      const chat = await db.query.chats.findFirst({
+        where: eq(chats.id, chatId),
+        with: {
+          messages: {
+            orderBy: (messages, { asc }) => [asc(messages.createdAt)],
+          },
+        },
+      });
+
+      if (chat) {
+        // Calculate total tokens from message history
+        const totalTokens = estimateMessagesTokens(chat.messages);
+        const contextWindow = Math.min(getContextWindow(), 100_000);
+        logger.log(
+          `Token usage: ${totalTokens}/${contextWindow} (${
+            (totalTokens / contextWindow) * 100
+          }%)`
+        );
+
+        // If we're using more than 80% of the context window, suggest summarizing
+        if (totalTokens > contextWindow * 0.8) {
+          logger.log(
+            `Token usage high (${totalTokens}/${contextWindow}), suggesting summarize action`
+          );
+          return {
+            proposal: {
+              type: "action-proposal",
+              actions: [{ id: "summarize-in-new-chat" }],
+            },
+            chatId,
+            messageId: latestAssistantMessage.id,
+          };
+        }
+      }
       return null;
     }
 
@@ -131,7 +168,12 @@ const getProposalHandler = async (
           "packages=",
           proposal.packagesAdded.length
         );
-        return { proposal, chatId, messageId }; // Return proposal and messageId
+
+        return {
+          proposal: proposal,
+          chatId,
+          messageId,
+        };
       } else {
         logger.log(
           "No relevant tags found in the latest assistant message content."
@@ -228,7 +270,7 @@ const rejectProposalHandler = async (
         eq(messages.chatId, chatId),
         eq(messages.role, "assistant")
       ),
-      columns: { id: true }, // Only need to confirm existence
+      columns: { id: true },
     });
 
     if (!messageToReject) {

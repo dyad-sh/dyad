@@ -1,5 +1,5 @@
 import { ipcMain } from "electron";
-import { streamText } from "ai";
+import { CoreMessage, streamText } from "ai";
 import { db } from "../../db";
 import { chats, messages } from "../../db/schema";
 import { and, eq, isNull } from "drizzle-orm";
@@ -21,6 +21,7 @@ import {
   getSupabaseContext,
   getSupabaseClientCode,
 } from "../../supabase_admin/supabase_context";
+import { SUMMARIZE_CHAT_SYSTEM_PROMPT } from "../../prompts/summarize_chat_system_prompt";
 
 const logger = log.scope("chat_stream_handlers");
 
@@ -165,22 +166,47 @@ export function registerChatStreamHandlers() {
         } else {
           systemPrompt += "\n\n" + SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT;
         }
+        const isSummarizeIntent = req.prompt.startsWith(
+          "Summarize from chat-id="
+        );
+        if (isSummarizeIntent) {
+          systemPrompt = SUMMARIZE_CHAT_SYSTEM_PROMPT;
+        }
+        let chatMessages = [
+          {
+            role: "user",
+            content: "This is my codebase. " + codebaseInfo,
+          },
+          {
+            role: "assistant",
+            content: "OK, got it. I'm ready to help",
+          },
+          ...messageHistory,
+        ] satisfies CoreMessage[];
+        if (isSummarizeIntent) {
+          const previousChat = await db.query.chats.findFirst({
+            where: eq(chats.id, parseInt(req.prompt.split("=")[1])),
+            with: {
+              messages: {
+                orderBy: (messages, { asc }) => [asc(messages.createdAt)],
+              },
+            },
+          });
+          chatMessages = [
+            {
+              role: "user",
+              content:
+                "Summarize the following chat: " +
+                formatMessages(previousChat?.messages ?? []),
+            } satisfies CoreMessage,
+          ];
+        }
         const { textStream } = streamText({
           maxTokens: getMaxTokens(settings.selectedModel),
           temperature: 0,
           model: modelClient,
           system: systemPrompt,
-          messages: [
-            {
-              role: "user",
-              content: "This is my codebase. " + codebaseInfo,
-            },
-            {
-              role: "assistant",
-              content: "OK, got it. I'm ready to help",
-            },
-            ...messageHistory,
-          ],
+          messages: chatMessages,
           onError: (error) => {
             logger.error("Error streaming text:", error);
             const message =
@@ -361,4 +387,12 @@ export function registerChatStreamHandlers() {
 
     return true;
   });
+}
+
+export function formatMessages(
+  messages: { role: string; content: string | undefined }[]
+) {
+  return messages
+    .map((m) => `<message role="${m.role}">${m.content}</message>`)
+    .join("\n");
 }

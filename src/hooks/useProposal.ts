@@ -7,7 +7,6 @@ export function useProposal(chatId?: number | undefined) {
   const [proposalResult, setProposalResult] = useAtom(proposalResultAtom);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-
   const fetchProposal = useCallback(
     async (overrideChatId?: number) => {
       chatId = overrideChatId ?? chatId;
@@ -19,7 +18,6 @@ export function useProposal(chatId?: number | undefined) {
       }
       setIsLoading(true);
       setError(null);
-      setProposalResult(null); // Reset on new fetch
       try {
         // Type assertion might be needed depending on how IpcClient is typed
         const result = (await IpcClient.getInstance().getProposal(
@@ -39,7 +37,7 @@ export function useProposal(chatId?: number | undefined) {
         setIsLoading(false);
       }
     },
-    [chatId]
+    [chatId] // Only depend on chatId, setProposalResult is stable
   ); // Depend on chatId
 
   useEffect(() => {

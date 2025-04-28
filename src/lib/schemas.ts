@@ -156,7 +156,7 @@ export interface CodeProposal {
 }
 
 export interface SuggestedAction {
-  id: "restart-app";
+  id: "restart-app" | "summarize-in-new-chat";
 }
 
 export interface ActionProposal {

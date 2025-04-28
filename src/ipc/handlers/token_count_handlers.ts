@@ -15,13 +15,9 @@ import { readSettings } from "../../main/settings";
 import { MODEL_OPTIONS } from "../../constants/models";
 import { TokenCountParams } from "../ipc_types";
 import { TokenCountResult } from "../ipc_types";
+import { estimateTokens, getContextWindow } from "../utils/token_utils";
 
 const logger = log.scope("token_count_handlers");
-
-// Estimate tokens (4 characters per token)
-const estimateTokens = (text: string): number => {
-  return Math.ceil(text.length / 4);
-};
 
 export function registerTokenCountHandlers() {
   ipcMain.handle(
@@ -107,21 +103,4 @@ export function registerTokenCountHandlers() {
       }
     }
   );
-}
-
-const DEFAULT_CONTEXT_WINDOW = 128_000;
-
-function getContextWindow() {
-  const settings = readSettings();
-  const model = settings.selectedModel;
-  if (!MODEL_OPTIONS[model.provider as keyof typeof MODEL_OPTIONS]) {
-    logger.warn(
-      `Model provider ${model.provider} not found in MODEL_OPTIONS. Using default max tokens.`
-    );
-    return DEFAULT_CONTEXT_WINDOW;
-  }
-  const modelOption = MODEL_OPTIONS[
-    model.provider as keyof typeof MODEL_OPTIONS
-  ].find((m) => m.name === model.name);
-  return modelOption?.contextWindow || DEFAULT_CONTEXT_WINDOW;
 }

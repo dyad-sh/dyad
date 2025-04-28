@@ -15,6 +15,7 @@ import {
   Database,
   ChevronsUpDown,
   ChevronsDownUp,
+  BarChart2,
 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -22,7 +23,7 @@ import { ModelPicker } from "@/components/ModelPicker";
 import { useSettings } from "@/hooks/useSettings";
 import { IpcClient } from "@/ipc/ipc_client";
 import { chatInputValueAtom, chatMessagesAtom } from "@/atoms/chatAtoms";
-import { useAtom, useSetAtom } from "jotai";
+import { atom, useAtom, useSetAtom } from "jotai";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { useChats } from "@/hooks/useChats";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
@@ -46,6 +47,9 @@ import { useRunApp } from "@/hooks/useRunApp";
 import { AutoApproveSwitch } from "../AutoApproveSwitch";
 import { usePostHog } from "posthog-js/react";
 import { CodeHighlight } from "./CodeHighlight";
+import { TokenBar } from "./TokenBar";
+
+const showTokenBarAtom = atom(false);
 
 export function ChatInput({ chatId }: { chatId?: number }) {
   const posthog = usePostHog();
@@ -60,6 +64,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const [isRejecting, setIsRejecting] = useState(false); // State for rejecting
   const [messages, setMessages] = useAtom<Message[]>(chatMessagesAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
+  const [showTokenBar, setShowTokenBar] = useAtom(showTokenBarAtom);
 
   const { refreshAppIframe } = useRunApp();
 
@@ -274,14 +279,26 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               </button>
             )}
           </div>
-          <div className="px-2 pb-2">
-            <ModelPicker
-              selectedModel={settings.selectedModel}
-              onModelSelect={(model) =>
-                updateSettings({ selectedModel: model })
-              }
-            />
+          <div className="pl-2 pr-1 flex items-center justify-between">
+            <div className="pb-2">
+              <ModelPicker
+                selectedModel={settings.selectedModel}
+                onModelSelect={(model) =>
+                  updateSettings({ selectedModel: model })
+                }
+              />
+            </div>
+            <button
+              onClick={() => setShowTokenBar(!showTokenBar)}
+              className="flex items-center px-2 py-1 text-xs text-muted-foreground hover:bg-muted rounded"
+              title={showTokenBar ? "Hide token usage" : "Show token usage"}
+            >
+              <BarChart2 size={14} className="mr-1" />
+              {showTokenBar ? "Hide tokens" : "Tokens"}
+            </button>
           </div>
+          {/* TokenBar is only displayed when showTokenBar is true */}
+          {showTokenBar && <TokenBar chatId={chatId} />}
         </div>
       </div>
     </>

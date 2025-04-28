@@ -101,3 +101,16 @@ export type LocalModelListResponse = {
   models: LocalModel[];
   error: string | null;
 };
+
+export interface TokenCountParams {
+  chatId: number;
+  input: string;
+}
+export interface TokenCountResult {
+  totalTokens: number;
+  messageHistoryTokens: number;
+  codebaseTokens: number;
+  inputTokens: number;
+  systemPromptTokens: number;
+  contextWindow: number;
+}

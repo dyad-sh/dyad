@@ -18,6 +18,7 @@ import { showError } from "@/lib/toast";
 import { useProposal } from "./useProposal";
 import { useSearch } from "@tanstack/react-router";
 import { useRunApp } from "./useRunApp";
+import { useCountTokens } from "./useCountTokens";
 
 export function getRandomNumberId() {
   return Math.floor(Math.random() * 1_000_000_000_000_000);
@@ -36,6 +37,8 @@ export function useStreamChat({
   const setStreamCount = useSetAtom(chatStreamCountAtom);
   const { refreshVersions } = useLoadVersions(selectedAppId);
   const { refreshAppIframe } = useRunApp();
+  const { countTokens } = useCountTokens();
+
   let chatId: number | undefined;
 
   if (hasChatId) {
@@ -111,6 +114,7 @@ export function useStreamChat({
             refreshChats();
             refreshApp();
             refreshVersions();
+            countTokens(chatId, "");
           },
           onError: (errorMessage: string) => {
             console.error(`[CHAT] Stream error for ${chatId}:`, errorMessage);
@@ -121,6 +125,7 @@ export function useStreamChat({
             refreshChats();
             refreshApp();
             refreshVersions();
+            countTokens(chatId, "");
           },
         });
       } catch (error) {

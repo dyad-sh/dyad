@@ -19,6 +19,8 @@ import type {
   SystemDebugInfo,
   LocalModel,
   LocalModelListResponse,
+  TokenCountParams,
+  TokenCountResult,
 } from "./ipc_types";
 import type { CodeProposal, ProposalResult } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
@@ -746,5 +748,18 @@ export class IpcClient {
     return () => {
       this.ipcRenderer.removeListener("deep-link-received", listener);
     };
+  }
+
+  // Count tokens for a chat and input
+  public async countTokens(
+    params: TokenCountParams
+  ): Promise<TokenCountResult> {
+    try {
+      const result = await this.ipcRenderer.invoke("chat:count-tokens", params);
+      return result as TokenCountResult;
+    } catch (error) {
+      showError(error);
+      throw error;
+    }
   }
 }

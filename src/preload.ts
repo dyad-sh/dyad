@@ -9,6 +9,7 @@ const validInvokeChannels = [
   "chat:message",
   "chat:cancel",
   "chat:stream",
+  "chat:count-tokens",
   "create-chat",
   "create-app",
   "get-chat",

@@ -5,6 +5,7 @@ export interface ModelOption {
   description: string;
   tag?: string;
   maxOutputTokens?: number;
+  contextWindow?: number;
 }
 
 type RegularModelProvider = Exclude<ModelProvider, "ollama">;
@@ -16,6 +17,7 @@ export const MODEL_OPTIONS: Record<RegularModelProvider, ModelOption[]> = {
       displayName: "GPT 4.1",
       description: "OpenAI's flagship model",
       maxOutputTokens: 32_768,
+      contextWindow: 1_047_576,
     },
     // https://platform.openai.com/docs/models/gpt-4.1-mini
     {
@@ -23,6 +25,7 @@ export const MODEL_OPTIONS: Record<RegularModelProvider, ModelOption[]> = {
       displayName: "GPT 4.1 Mini",
       description: "OpenAI's lightweight, but intelligent model",
       maxOutputTokens: 32_768,
+      contextWindow: 1_047_576,
     },
     // https://platform.openai.com/docs/models/o3-mini
     {
@@ -30,6 +33,7 @@ export const MODEL_OPTIONS: Record<RegularModelProvider, ModelOption[]> = {
       displayName: "o3 mini",
       description: "Reasoning model",
       maxOutputTokens: 100_000,
+      contextWindow: 200_000,
     },
   ],
   // https://docs.anthropic.com/en/docs/about-claude/models/all-models#model-comparison-table
@@ -39,6 +43,7 @@ export const MODEL_OPTIONS: Record<RegularModelProvider, ModelOption[]> = {
       displayName: "Claude 3.7 Sonnet",
       description: "Excellent coder",
       maxOutputTokens: 64_000,
+      contextWindow: 200_000,
     },
   ],
   google: [
@@ -49,6 +54,8 @@ export const MODEL_OPTIONS: Record<RegularModelProvider, ModelOption[]> = {
       description: "Experimental version of Google's Gemini 2.5 Pro model",
       tag: "Recommended",
       maxOutputTokens: 65_536,
+      // Gemini context window = input token + output token
+      contextWindow: 1_048_576,
     },
   ],
   openrouter: [
@@ -58,6 +65,7 @@ export const MODEL_OPTIONS: Record<RegularModelProvider, ModelOption[]> = {
       displayName: "DeepSeek v3 (free)",
       description: "Use for free (data may be used for training)",
       maxOutputTokens: 32_000,
+      contextWindow: 128_000,
     },
   ],
   auto: [

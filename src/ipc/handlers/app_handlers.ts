@@ -619,31 +619,6 @@ export function registerAppHandlers() {
     }
   );
 
-  // Extract codebase information
-  ipcMain.handle(
-    "extract-codebase",
-    async (_, { appId, maxFiles }: { appId: number; maxFiles?: number }) => {
-      const app = await db.query.apps.findFirst({
-        where: eq(apps.id, appId),
-      });
-
-      if (!app) {
-        throw new Error("App not found");
-      }
-
-      const appPath = getDyadAppPath(app.path);
-
-      try {
-        return await extractCodebase(appPath, maxFiles);
-      } catch (error) {
-        logger.error(`Error extracting codebase for app ${appId}:`, error);
-        throw new Error(
-          `Failed to extract codebase: ${(error as any).message}`
-        );
-      }
-    }
-  );
-
   ipcMain.handle(
     "edit-app-file",
     async (

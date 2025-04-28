@@ -33,17 +33,8 @@ async function isGitIgnored(
 /**
  * Recursively walk a directory and collect all relevant files
  */
-async function collectFiles(
-  dir: string,
-  baseDir: string,
-  maxFiles = 100
-): Promise<string[]> {
+async function collectFiles(dir: string, baseDir: string): Promise<string[]> {
   const files: string[] = [];
-
-  // Stop if we've reached the file limit
-  if (files.length >= maxFiles) {
-    return files;
-  }
 
   // Check if directory exists
   if (!fs.existsSync(dir)) {
@@ -55,11 +46,6 @@ async function collectFiles(
     const entries = fs.readdirSync(dir, { withFileTypes: true });
 
     for (const entry of entries) {
-      // Stop if we've reached the file limit
-      if (files.length >= maxFiles) {
-        break;
-      }
-
       const fullPath = path.join(dir, entry.name);
 
       // Skip excluded directories
@@ -74,11 +60,7 @@ async function collectFiles(
 
       if (entry.isDirectory()) {
         // Recursively process subdirectories
-        const subDirFiles = await collectFiles(
-          fullPath,
-          baseDir,
-          maxFiles - files.length
-        );
+        const subDirFiles = await collectFiles(fullPath, baseDir);
         files.push(...subDirFiles);
       } else if (entry.isFile()) {
         // Check file extension and filename
@@ -152,19 +134,15 @@ ${content}
 /**
  * Extract and format codebase files as a string to be included in prompts
  * @param appPath - Path to the codebase to extract
- * @param maxFiles - Maximum number of files to include (default: 30)
  * @returns A string containing formatted file contents
  */
-export async function extractCodebase(
-  appPath: string,
-  maxFiles = 30
-): Promise<string> {
+export async function extractCodebase(appPath: string): Promise<string> {
   if (!fs.existsSync(appPath)) {
     return `# Error: Directory ${appPath} does not exist`;
   }
 
   // Collect all relevant files
-  const files = await collectFiles(appPath, appPath, maxFiles);
+  const files = await collectFiles(appPath, appPath);
 
   // Sort files to prioritize important files
   const sortedFiles = sortFilesByImportance(files, appPath);

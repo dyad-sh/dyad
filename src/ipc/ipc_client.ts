@@ -431,20 +431,6 @@ export class IpcClient {
     }
   }
 
-  // Extract codebase information for a given app
-  public async extractCodebase(appId: number, maxFiles = 30): Promise<string> {
-    try {
-      const codebaseInfo = await this.ipcRenderer.invoke("extract-codebase", {
-        appId,
-        maxFiles,
-      });
-      return codebaseInfo as string;
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
-  }
-
   // Delete an app and all its files
   public async deleteApp(appId: number): Promise<{ success: boolean }> {
     try {

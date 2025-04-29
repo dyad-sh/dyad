@@ -10,6 +10,8 @@ import { useSettings } from "@/hooks/useSettings";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import { useRouter } from "@tanstack/react-router";
+import { GitHubIntegration } from "@/components/GitHubIntegration";
+
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
@@ -142,6 +144,16 @@ export default function SettingsPage() {
                   {settings ? settings.telemetryUserId : "n/a"}
                 </span>
               </div>
+            </div>
+          </div>
+
+          {/* Integrations Section */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+            <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+              Integrations
+            </h2>
+            <div className="space-y-4">
+              <GitHubIntegration />
             </div>
           </div>
 

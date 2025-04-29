@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Github } from "lucide-react";
+import { Github, Clipboard, Check } from "lucide-react";
 import { IpcClient } from "@/ipc/ipc_client";
 import { useSettings } from "@/hooks/useSettings";
 import { useLoadApp } from "@/hooks/useLoadApp";
@@ -23,6 +23,7 @@ export function GitHubConnector({ appId, folderName }: GitHubConnectorProps) {
   const [githubStatusMessage, setGithubStatusMessage] = useState<string | null>(
     null
   );
+  const [codeCopied, setCodeCopied] = useState(false);
   // --- ---
 
   const handleConnectToGithub = async () => {
@@ -240,6 +241,29 @@ export function GitHubConnector({ appId, folderName }: GitHubConnectorProps) {
                   <strong className="ml-1 font-mono text-lg tracking-wider bg-gray-200 dark:bg-gray-600 px-2 py-0.5 rounded">
                     {githubUserCode}
                   </strong>
+                  <button
+                    className="ml-2 p-1 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500 focus:outline-none"
+                    onClick={() => {
+                      if (githubUserCode) {
+                        navigator.clipboard
+                          .writeText(githubUserCode)
+                          .then(() => {
+                            setCodeCopied(true);
+                            setTimeout(() => setCodeCopied(false), 2000);
+                          })
+                          .catch((err) =>
+                            console.error("Failed to copy code:", err)
+                          );
+                      }
+                    }}
+                    title="Copy to clipboard"
+                  >
+                    {codeCopied ? (
+                      <Check className="h-4 w-4 text-green-500" />
+                    ) : (
+                      <Clipboard className="h-4 w-4" />
+                    )}
+                  </button>
                 </p>
               </div>
             )}

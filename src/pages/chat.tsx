@@ -7,15 +7,28 @@ import {
 } from "react-resizable-panels";
 import { ChatPanel } from "../components/ChatPanel";
 import { PreviewPanel } from "../components/preview_panel/PreviewPanel";
-import { useSearch } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
-import { useAtom } from "jotai";
+import { useAtom, useAtomValue } from "jotai";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
+import { useChats } from "@/hooks/useChats";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
 
 export default function ChatPage() {
-  const { id } = useSearch({ from: "/chat" });
+  let { id: chatId } = useSearch({ from: "/chat" });
+  const navigate = useNavigate();
   const [isPreviewOpen, setIsPreviewOpen] = useAtom(isPreviewOpenAtom);
   const [isResizing, setIsResizing] = useState(false);
+  const selectedAppId = useAtomValue(selectedAppIdAtom);
+  const { chats, loading } = useChats(selectedAppId);
+
+  useEffect(() => {
+    if (!chatId && chats.length && !loading) {
+      // Not a real navigation, just a redirect, when the user navigates to /chat
+      // without a chatId, we redirect to the first chat
+      navigate({ to: "/chat", search: { id: chats[0]?.id }, replace: true });
+    }
+  }, [chatId, chats, loading, navigate]);
 
   useEffect(() => {
     if (isPreviewOpen) {
@@ -31,7 +44,7 @@ export default function ChatPage() {
       <Panel id="chat-panel" minSize={30}>
         <div className="h-full w-full">
           <ChatPanel
-            chatId={id}
+            chatId={chatId}
             isPreviewOpen={isPreviewOpen}
             onTogglePreview={() => {
               setIsPreviewOpen(!isPreviewOpen);

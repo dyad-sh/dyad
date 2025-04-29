@@ -253,9 +253,13 @@ export default function AppDetailsPage() {
         </div>
         <div className="mt-4 flex flex-col gap-2">
           <Button
-            onClick={() =>
-              appId && navigate({ to: "/chat", search: { id: appId } })
-            }
+            onClick={() => {
+              if (!appId) {
+                console.error("No app id found");
+                return;
+              }
+              navigate({ to: "/chat" });
+            }}
             className="cursor-pointer w-full py-5 flex justify-center items-center gap-2"
             size="lg"
           >

@@ -7,9 +7,21 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { BookOpenIcon, BugIcon } from "lucide-react";
+import {
+  BookOpenIcon,
+  BugIcon,
+  UploadIcon,
+  ChevronLeftIcon,
+  CheckIcon,
+  XIcon,
+  FileIcon,
+} from "lucide-react";
 import { IpcClient } from "@/ipc/ipc_client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useAtomValue } from "jotai";
+import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { ChatLogsData } from "@/ipc/ipc_types";
+import { showError } from "@/lib/toast";
 
 interface HelpDialogProps {
   isOpen: boolean;
@@ -18,6 +30,34 @@ interface HelpDialogProps {
 
 export function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
   const [isLoading, setIsLoading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [reviewMode, setReviewMode] = useState(false);
+  const [chatLogsData, setChatLogsData] = useState<ChatLogsData | null>(null);
+  const [uploadComplete, setUploadComplete] = useState(false);
+  const [sessionId, setSessionId] = useState("");
+  const selectedChatId = useAtomValue(selectedChatIdAtom);
+
+  // Function to reset all dialog state
+  const resetDialogState = () => {
+    setIsLoading(false);
+    setIsUploading(false);
+    setReviewMode(false);
+    setChatLogsData(null);
+    setUploadComplete(false);
+    setSessionId("");
+  };
+
+  // Reset state when dialog closes or reopens
+  useEffect(() => {
+    if (!isOpen) {
+      resetDialogState();
+    }
+  }, [isOpen]);
+
+  // Wrap the original onClose to also reset state
+  const handleClose = () => {
+    onClose();
+  };
 
   const handleReportBug = async () => {
     setIsLoading(true);
@@ -71,15 +111,261 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
     }
   };
 
+  const handleUploadChatSession = async () => {
+    if (!selectedChatId) {
+      alert("Please select a chat first");
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      // Get chat logs (includes debug info, chat data, and codebase)
+      const chatLogs = await IpcClient.getInstance().getChatLogs(
+        selectedChatId
+      );
+
+      // Store data for review and switch to review mode
+      setChatLogsData(chatLogs);
+      setReviewMode(true);
+    } catch (error) {
+      console.error("Failed to upload chat session:", error);
+      alert(
+        "Failed to upload chat session. Please try again or report manually."
+      );
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleSubmitChatLogs = async () => {
+    if (!chatLogsData) return;
+
+    setIsUploading(true);
+    try {
+      // Prepare data for upload
+      const chatLogsJson = {
+        systemInfo: chatLogsData.debugInfo,
+        chat: chatLogsData.chat,
+        codebaseSnippet: chatLogsData.codebase,
+      };
+
+      // Get signed URL
+      const response = await fetch(
+        "https://upload-logs.dyad.sh/generate-upload-url",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            extension: "json",
+            contentType: "application/json",
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        showError(`Failed to get upload URL: ${response.statusText}`);
+        throw new Error(`Failed to get upload URL: ${response.statusText}`);
+      }
+
+      const { uploadUrl, filename } = await response.json();
+
+      // Upload to the signed URL using IPC
+      const uploadResult = await IpcClient.getInstance().uploadToSignedUrl(
+        uploadUrl,
+        "application/json",
+        chatLogsJson
+      );
+
+      if (!uploadResult.success) {
+        throw new Error(`Failed to upload logs: ${uploadResult.error}`);
+      }
+
+      // Extract session ID (filename without extension)
+      const sessionId = filename.replace(".json", "");
+      setSessionId(sessionId);
+      setUploadComplete(true);
+      setReviewMode(false);
+    } catch (error) {
+      console.error("Failed to upload chat logs:", error);
+      alert("Failed to upload chat logs. Please try again.");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleCancelReview = () => {
+    setReviewMode(false);
+    setChatLogsData(null);
+  };
+
+  const handleOpenGitHubIssue = () => {
+    // Create a GitHub issue with the session ID
+    const issueBody = `
+## Support Request
+Session ID: ${sessionId}
+
+## Issue Description
+<!-- Please describe the issue you're experiencing -->
+
+## Expected Behavior
+<!-- What did you expect to happen? -->
+
+## Actual Behavior
+<!-- What actually happened? -->
+`;
+
+    const encodedBody = encodeURIComponent(issueBody);
+    const encodedTitle = encodeURIComponent("[session report] <add title>");
+    const githubIssueUrl = `https://github.com/dyad-sh/dyad/issues/new?title=${encodedTitle}&labels=support&body=${encodedBody}`;
+
+    IpcClient.getInstance().openExternalUrl(githubIssueUrl);
+    handleClose();
+  };
+
+  if (uploadComplete) {
+    return (
+      <Dialog open={isOpen} onOpenChange={handleClose}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Upload Complete</DialogTitle>
+          </DialogHeader>
+          <div className="py-6 flex flex-col items-center space-y-4">
+            <div className="bg-green-50 dark:bg-green-900/20 p-6 rounded-full">
+              <CheckIcon className="h-8 w-8 text-green-600 dark:text-green-400" />
+            </div>
+            <h3 className="text-lg font-medium">
+              Chat Logs Uploaded Successfully
+            </h3>
+            <div className="bg-slate-100 dark:bg-slate-800 p-3 rounded flex items-center space-x-2 font-mono text-sm">
+              <FileIcon
+                className="h-4 w-4 cursor-pointer"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(sessionId);
+                  } catch (err) {
+                    console.error("Failed to copy session ID:", err);
+                  }
+                }}
+              />
+              <span>{sessionId}</span>
+            </div>
+            <p className="text-center text-sm">
+              Please open a GitHub issue so we can follow-up with you on this
+              issue.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button onClick={handleOpenGitHubIssue} className="w-full">
+              Open GitHub Issue
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  if (reviewMode && chatLogsData) {
+    return (
+      <Dialog open={isOpen} onOpenChange={handleClose}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <Button
+                variant="ghost"
+                className="mr-2 p-0 h-8 w-8"
+                onClick={handleCancelReview}
+              >
+                <ChevronLeftIcon className="h-4 w-4" />
+              </Button>
+              OK to upload chat session?
+            </DialogTitle>
+          </DialogHeader>
+          <DialogDescription>
+            Please review the information that will be submitted. Your chat
+            messages, system information, and a snapshot of your codebase will
+            be included.
+          </DialogDescription>
+
+          <div className="space-y-4 overflow-y-auto flex-grow">
+            <div className="border rounded-md p-3">
+              <h3 className="font-medium mb-2">Chat Messages</h3>
+              <div className="text-sm bg-slate-50 dark:bg-slate-900 rounded p-2 max-h-40 overflow-y-auto">
+                {chatLogsData.chat.messages.map((msg, index) => (
+                  <div key={msg.id} className="mb-2">
+                    <span className="font-semibold">
+                      {msg.role === "user" ? "You" : "Assistant"}:{" "}
+                    </span>
+                    <span>{msg.content}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="border rounded-md p-3">
+              <h3 className="font-medium mb-2">Codebase Snapshot</h3>
+              <div className="text-sm bg-slate-50 dark:bg-slate-900 rounded p-2 max-h-40 overflow-y-auto font-mono">
+                {chatLogsData.codebase}
+              </div>
+            </div>
+
+            <div className="border rounded-md p-3">
+              <h3 className="font-medium mb-2">Logs</h3>
+              <div className="text-sm bg-slate-50 dark:bg-slate-900 rounded p-2 max-h-40 overflow-y-auto font-mono">
+                {chatLogsData.debugInfo.logs}
+              </div>
+            </div>
+
+            <div className="border rounded-md p-3">
+              <h3 className="font-medium mb-2">System Information</h3>
+              <div className="text-sm bg-slate-50 dark:bg-slate-900 rounded p-2 max-h-32 overflow-y-auto">
+                <p>Dyad Version: {chatLogsData.debugInfo.dyadVersion}</p>
+                <p>Platform: {chatLogsData.debugInfo.platform}</p>
+                <p>Architecture: {chatLogsData.debugInfo.architecture}</p>
+                <p>
+                  Node Version:{" "}
+                  {chatLogsData.debugInfo.nodeVersion || "Not available"}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-between mt-4 pt-2 sticky bottom-0 bg-background">
+            <Button
+              variant="outline"
+              onClick={handleCancelReview}
+              className="flex items-center"
+            >
+              <XIcon className="mr-2 h-4 w-4" /> Cancel
+            </Button>
+            <Button
+              onClick={handleSubmitChatLogs}
+              className="flex items-center"
+              disabled={isUploading}
+            >
+              {isUploading ? (
+                "Uploading..."
+              ) : (
+                <>
+                  <CheckIcon className="mr-2 h-4 w-4" /> Upload
+                </>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Need help with Dyad?</DialogTitle>
         </DialogHeader>
         <DialogDescription className="">
-          If you need assistance or want to report an issue, here are some
-          resources:
+          If you need help or want to report an issue, here are some options:
         </DialogDescription>
         <div className="flex flex-col space-y-4 w-full">
           <div className="flex flex-col space-y-2">
@@ -98,6 +384,7 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
               Get help with common questions and issues.
             </p>
           </div>
+
           <div className="flex flex-col space-y-2">
             <Button
               variant="outline"
@@ -111,6 +398,21 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
             <p className="text-sm text-muted-foreground px-2">
               We'll auto-fill your report with system info and logs. You can
               review it for any sensitive info before submitting.
+            </p>
+          </div>
+          <div className="flex flex-col space-y-2">
+            <Button
+              variant="outline"
+              onClick={handleUploadChatSession}
+              disabled={isUploading || !selectedChatId}
+              className="w-full py-6 bg-(--background-lightest)"
+            >
+              <UploadIcon className="mr-2 h-5 w-5" />{" "}
+              {isUploading ? "Preparing Upload..." : "Upload Chat Session"}
+            </Button>
+            <p className="text-sm text-muted-foreground px-2">
+              Share chat logs and code for troubleshooting. Data is used only to
+              resolve your issue and auto-deleted after a limited time.
             </p>
           </div>
         </div>

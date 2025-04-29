@@ -14,6 +14,7 @@ const validInvokeChannels = [
   "create-app",
   "get-chat",
   "get-chats",
+  "get-chat-logs",
   "list-apps",
   "get-app",
   "edit-app-file",
@@ -53,6 +54,7 @@ const validInvokeChannels = [
   "window:maximize",
   "window:close",
   "window:get-platform",
+  "upload-to-signed-url",
 ] as const;
 
 // Add valid receive channels

@@ -12,6 +12,7 @@ import { registerSupabaseHandlers } from "./handlers/supabase_handlers";
 import { registerLocalModelHandlers } from "./handlers/local_model_handlers";
 import { registerTokenCountHandlers } from "./handlers/token_count_handlers";
 import { registerWindowHandlers } from "./handlers/window_handlers";
+import { registerUploadHandlers } from "./handlers/upload_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -29,4 +30,5 @@ export function registerIpcHandlers() {
   registerLocalModelHandlers();
   registerTokenCountHandlers();
   registerWindowHandlers();
+  registerUploadHandlers();
 }

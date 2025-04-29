@@ -21,6 +21,7 @@ import type {
   LocalModelListResponse,
   TokenCountParams,
   TokenCountResult,
+  ChatLogsData,
 } from "./ipc_types";
 import type { CodeProposal, ProposalResult } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
@@ -749,7 +750,35 @@ export class IpcClient {
   public async getSystemDebugInfo(): Promise<SystemDebugInfo> {
     try {
       const data = await this.ipcRenderer.invoke("get-system-debug-info");
-      return data;
+      return data as SystemDebugInfo;
+    } catch (error) {
+      showError(error);
+      throw error;
+    }
+  }
+
+  public async getChatLogs(chatId: number): Promise<ChatLogsData> {
+    try {
+      const data = await this.ipcRenderer.invoke("get-chat-logs", chatId);
+      return data as ChatLogsData;
+    } catch (error) {
+      showError(error);
+      throw error;
+    }
+  }
+
+  public async uploadToSignedUrl(
+    url: string,
+    contentType: string,
+    data: any
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const result = await this.ipcRenderer.invoke("upload-to-signed-url", {
+        url,
+        contentType,
+        data,
+      });
+      return result as { success: boolean; error?: string };
     } catch (error) {
       showError(error);
       throw error;

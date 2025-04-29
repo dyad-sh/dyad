@@ -106,6 +106,7 @@ export interface TokenCountParams {
   chatId: number;
   input: string;
 }
+
 export interface TokenCountResult {
   totalTokens: number;
   messageHistoryTokens: number;
@@ -113,4 +114,10 @@ export interface TokenCountResult {
   inputTokens: number;
   systemPromptTokens: number;
   contextWindow: number;
+}
+
+export interface ChatLogsData {
+  debugInfo: SystemDebugInfo;
+  chat: Chat;
+  codebase: string;
 }

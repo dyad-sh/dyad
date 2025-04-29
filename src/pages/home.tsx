@@ -14,6 +14,16 @@ import { HomeChatInput } from "@/components/chat/HomeChatInput";
 import { usePostHog } from "posthog-js/react";
 import { PrivacyBanner } from "@/components/TelemetryBanner";
 import { INSPIRATION_PROMPTS } from "@/prompts/inspiration_prompts";
+import { useAppVersion } from "@/hooks/useAppVersion";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useTheme } from "@/contexts/ThemeContext";
+import { Button } from "@/components/ui/button";
+import { ExternalLink } from "lucide-react";
 
 export default function HomePage() {
   const [inputValue, setInputValue] = useAtom(homeChatInputValueAtom);
@@ -21,11 +31,40 @@ export default function HomePage() {
   const search = useSearch({ from: "/" });
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
   const { refreshApps } = useLoadApps();
-  const { settings, isAnyProviderSetup } = useSettings();
+  const { settings, updateSettings } = useSettings();
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const [isLoading, setIsLoading] = useState(false);
   const { streamMessage } = useStreamChat({ hasChatId: false });
   const posthog = usePostHog();
+  const appVersion = useAppVersion();
+  const [releaseNotesOpen, setReleaseNotesOpen] = useState(false);
+  const [releaseUrl, setReleaseUrl] = useState("");
+  const { theme } = useTheme();
+
+  useEffect(() => {
+    const updateLastVersionLaunched = async () => {
+      if (
+        appVersion &&
+        appVersion.match(/^\d+\.\d+\.\d+$/) &&
+        settings &&
+        settings.lastShownReleaseNotesVersion !== appVersion
+      ) {
+        await updateSettings({
+          lastShownReleaseNotesVersion: appVersion,
+        });
+
+        // Check if release notes exist for this version
+        const url = `https://www.dyad.sh/docs/releases/${appVersion}`;
+        const exists = await checkPageExists(url);
+        if (exists) {
+          setReleaseUrl(url + "?hideHeader=true&theme=" + theme);
+          setReleaseNotesOpen(true);
+        }
+      }
+    };
+    updateLastVersionLaunched();
+  }, [appVersion, settings, updateSettings]);
+
   // Get the appId from search params
   const appId = search.appId ? Number(search.appId) : null;
 
@@ -165,6 +204,51 @@ export default function HomePage() {
         </div>
       </div>
       <PrivacyBanner />
+
+      {/* Release Notes Dialog */}
+      <Dialog open={releaseNotesOpen} onOpenChange={setReleaseNotesOpen}>
+        <DialogContent className="max-w-4xl bg-(--docs-bg) pr-0 pt-4 pl-4 gap-1">
+          <DialogHeader>
+            <DialogTitle>What's new in v{appVersion}?</DialogTitle>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute right-10 top-2 focus-visible:ring-0 focus-visible:ring-offset-0"
+              onClick={() =>
+                window.open(
+                  releaseUrl.replace("?hideHeader=true&theme=" + theme, ""),
+                  "_blank"
+                )
+              }
+            >
+              <ExternalLink className="w-4 h-4" />
+            </Button>
+          </DialogHeader>
+          <div className="overflow-auto h-[70vh] flex flex-col ">
+            {releaseUrl && (
+              <div className="flex-1">
+                <iframe
+                  src={releaseUrl}
+                  className="w-full h-full border-0 rounded-lg"
+                  title={`Release notes for v${appVersion}`}
+                />
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
+}
+
+function checkPageExists(url: string) {
+  return fetch(url, { mode: "no-cors" })
+    .then(() => {
+      // Promise resolved - resource likely exists
+      return true;
+    })
+    .catch(() => {
+      // Promise rejected - resource likely doesn't exist or network error
+      return false;
+    });
 }

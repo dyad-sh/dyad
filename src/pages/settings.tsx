@@ -7,6 +7,7 @@ import { showSuccess, showError } from "@/lib/toast";
 import { AutoApproveSwitch } from "@/components/AutoApproveSwitch";
 import { TelemetrySwitch } from "@/components/TelemetrySwitch";
 import { useSettings } from "@/hooks/useSettings";
+import { useAppVersion } from "@/hooks/useAppVersion";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import { useRouter } from "@tanstack/react-router";
@@ -16,22 +17,9 @@ export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
-  const [appVersion, setAppVersion] = useState<string | null>(null);
+  const appVersion = useAppVersion();
   const { settings } = useSettings();
   const router = useRouter();
-
-  useEffect(() => {
-    // Fetch app version
-    const fetchVersion = async () => {
-      try {
-        const version = await IpcClient.getInstance().getAppVersion();
-        setAppVersion(version);
-      } catch (error) {
-        setAppVersion(null);
-      }
-    };
-    fetchVersion();
-  }, []);
 
   const handleResetEverything = async () => {
     setIsResetting(true);

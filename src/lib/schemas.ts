@@ -117,6 +117,7 @@ export const UserSettingsSchema = z.object({
   enableDyadPro: z.boolean().optional(),
   dyadProBudget: DyadProBudgetSchema.optional(),
   experiments: ExperimentsSchema.optional(),
+  lastShownReleaseNotesVersion: z.string().optional(),
   // DEPRECATED.
   runtimeMode: RuntimeModeSchema.optional(),
 });

@@ -66,7 +66,7 @@
   height: calc(100vh - 64px);
 }
 :root {
-  
+  --docs-bg: #f5f5f5;
 
   --default-font-family: 'Geist', sans-serif;
   --default-mono-font-family: 'Geist Mono', monospace;
@@ -120,6 +120,9 @@
   --tw-prose-pre-bg: var(--background);
 }
 .dark {
+  --docs-bg: #121212;
+
+  
   --background-lightest: oklch(0.285 0 0);
   --background-lighter: oklch(0.185 0 0);
   --background: oklch(0.145 0 0);

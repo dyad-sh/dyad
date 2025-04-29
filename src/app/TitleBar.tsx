@@ -11,6 +11,8 @@ import { cn } from "@/lib/utils";
 import { useDeepLink } from "@/contexts/DeepLinkContext";
 import { useEffect, useState } from "react";
 import { DyadProSuccessDialog } from "@/components/DyadProSuccessDialog";
+import { useTheme } from "@/contexts/ThemeContext";
+import { IpcClient } from "@/ipc/ipc_client";
 
 export const TitleBar = () => {
   const [selectedAppId] = useAtom(selectedAppIdAtom);
@@ -18,6 +20,21 @@ export const TitleBar = () => {
   const { navigate } = useRouter();
   const { settings, refreshSettings } = useSettings();
   const [isSuccessDialogOpen, setIsSuccessDialogOpen] = useState(false);
+  const [showWindowControls, setShowWindowControls] = useState(false);
+
+  useEffect(() => {
+    // Check if we're running on Windows
+    const checkPlatform = async () => {
+      try {
+        const platform = await IpcClient.getInstance().getSystemPlatform();
+        setShowWindowControls(platform !== "darwin");
+      } catch (error) {
+        console.error("Failed to get platform info:", error);
+      }
+    };
+
+    checkPlatform();
+  }, []);
 
   const showDyadProSuccessDialog = () => {
     setIsSuccessDialogOpen(true);
@@ -82,6 +99,7 @@ export const TitleBar = () => {
             {isDyadProEnabled ? "Dyad Pro" : "Dyad Pro (disabled)"}
           </Button>
         )}
+        {showWindowControls && <WindowsControls />}
       </div>
 
       <DyadProSuccessDialog
@@ -91,3 +109,84 @@ export const TitleBar = () => {
     </>
   );
 };
+
+function WindowsControls() {
+  const { isDarkMode } = useTheme();
+  const ipcClient = IpcClient.getInstance();
+
+  const minimizeWindow = () => {
+    ipcClient.minimizeWindow();
+  };
+
+  const maximizeWindow = () => {
+    ipcClient.maximizeWindow();
+  };
+
+  const closeWindow = () => {
+    ipcClient.closeWindow();
+  };
+
+  return (
+    <div className="ml-auto flex no-app-region-drag">
+      <button
+        className="w-12 h-11 flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+        onClick={minimizeWindow}
+        aria-label="Minimize"
+      >
+        <svg
+          width="12"
+          height="1"
+          viewBox="0 0 12 1"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <rect
+            width="12"
+            height="1"
+            fill={isDarkMode ? "#ffffff" : "#000000"}
+          />
+        </svg>
+      </button>
+      <button
+        className="w-12 h-11 flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+        onClick={maximizeWindow}
+        aria-label="Maximize"
+      >
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 12 12"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <rect
+            x="0.5"
+            y="0.5"
+            width="11"
+            height="11"
+            stroke={isDarkMode ? "#ffffff" : "#000000"}
+          />
+        </svg>
+      </button>
+      <button
+        className="w-12 h-11 flex items-center justify-center hover:bg-red-500 transition-colors"
+        onClick={closeWindow}
+        aria-label="Close"
+      >
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 12 12"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M1 1L11 11M1 11L11 1"
+            stroke={isDarkMode ? "#ffffff" : "#000000"}
+            strokeWidth="1.5"
+          />
+        </svg>
+      </button>
+    </div>
+  );
+}

@@ -48,6 +48,10 @@ const validInvokeChannels = [
   "supabase:set-app-project",
   "supabase:unset-app-project",
   "local-models:list",
+  "window:minimize",
+  "window:maximize",
+  "window:close",
+  "window:get-platform",
 ] as const;
 
 // Add valid receive channels

@@ -776,4 +776,45 @@ export class IpcClient {
       throw error;
     }
   }
+
+  // Window control methods
+  public async minimizeWindow(): Promise<void> {
+    try {
+      await this.ipcRenderer.invoke("window:minimize");
+    } catch (error) {
+      showError(error);
+      throw error;
+    }
+  }
+
+  public async maximizeWindow(): Promise<void> {
+    try {
+      await this.ipcRenderer.invoke("window:maximize");
+    } catch (error) {
+      showError(error);
+      throw error;
+    }
+  }
+
+  public async closeWindow(): Promise<void> {
+    try {
+      await this.ipcRenderer.invoke("window:close");
+    } catch (error) {
+      showError(error);
+      throw error;
+    }
+  }
+
+  // Get system platform (win32, darwin, linux)
+  public async getSystemPlatform(): Promise<string> {
+    try {
+      const platform = await this.ipcRenderer.invoke("window:get-platform");
+      return platform;
+    } catch (error) {
+      showError(error);
+      throw error;
+    }
+  }
+
+  // --- End window control methods ---
 }

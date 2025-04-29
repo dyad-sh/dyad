@@ -96,7 +96,7 @@ const createWindow = () => {
     width: process.env.NODE_ENV === "development" ? 1280 : 960,
     height: 700,
     titleBarStyle: "hidden",
-    titleBarOverlay: true,
+    titleBarOverlay: false,
     trafficLightPosition: {
       x: 10,
       y: 8,

@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
-import { useAtom } from "jotai";
+import { atom, useAtom } from "jotai";
 import { userSettingsAtom, envVarsAtom } from "@/atoms/appAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
 import type { UserSettings } from "@/lib/schemas";
+import { usePostHog } from "posthog-js/react";
 
 const PROVIDER_TO_ENV_VAR: Record<string, string> = {
   openai: "OPENAI_API_KEY",
@@ -24,7 +25,10 @@ export function getTelemetryUserId(): string | null {
   return window.localStorage.getItem(TELEMETRY_USER_ID_KEY);
 }
 
+let isInitialLoad = false;
+
 export function useSettings() {
+  const posthog = usePostHog();
   const [settings, setSettingsAtom] = useAtom(userSettingsAtom);
   const [envVars, setEnvVarsAtom] = useAtom(envVarsAtom);
   const [loading, setLoading] = useState(true);
@@ -39,6 +43,12 @@ export function useSettings() {
         ipcClient.getEnvVars(),
       ]);
       processSettingsForTelemetry(userSettings);
+      if (!isInitialLoad) {
+        posthog.capture("app:initial-load", {
+          isPro: Boolean(userSettings.providerSettings?.auto?.apiKey?.value),
+        });
+        isInitialLoad = true;
+      }
       setSettingsAtom(userSettings);
       setEnvVarsAtom(fetchedEnvVars);
       setError(null);

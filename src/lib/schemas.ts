@@ -155,8 +155,22 @@ export interface CodeProposal {
   sqlQueries: SqlQuery[];
 }
 
-export interface SuggestedAction {
-  id: "restart-app" | "summarize-in-new-chat";
+export type SuggestedAction =
+  | RestartAppAction
+  | SummarizeInNewChatAction
+  | RefactorFileAction;
+
+export interface RestartAppAction {
+  id: "restart-app";
+}
+
+export interface SummarizeInNewChatAction {
+  id: "summarize-in-new-chat";
+}
+
+export interface RefactorFileAction {
+  id: "refactor-file";
+  path: string;
 }
 
 export interface ActionProposal {

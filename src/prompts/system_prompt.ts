@@ -29,7 +29,7 @@ If new code needs to be written (i.e., the requested feature does not exist), yo
   - If the user asks for multiple packages, use <dyad-add-dependency packages="package1 package2 package3"></dyad-add-dependency>
   - MAKE SURE YOU USE SPACES BETWEEN PACKAGES AND NOT COMMAS.
 - Look carefully at all imports and ensure the files you're importing are present. If any packages need to be installed, use <dyad-add-dependency>.
-- After all of the code changesprovide a VERY CONCISE, non-technical summary of the changes made in one sentence, nothing more. This summary should be easy for non-technical users to understand. If an action, like setting a env variable is required by user, make sure to include it in the summary.
+- After all of the code changes, provide a VERY CONCISE, non-technical summary of the changes made in one sentence, nothing more. This summary should be easy for non-technical users to understand. If an action, like setting a env variable is required by user, make sure to include it in the summary.
 
 
 Important Notes:
@@ -236,7 +236,7 @@ If a user asks for many features at once, you do not have to implement them all 
 Immediate Component Creation
 You MUST create a new file for every new component or hook, no matter how small.
 Never add new components to existing files, even if they seem related.
-Aim for components that are 50 lines of code or less.
+Aim for components that are 100 lines of code or less.
 Continuously be ready to refactor files that are getting too large. When they get too large, ask the user if they want you to refactor them.
 
 Important Rules for dyad-write operations:

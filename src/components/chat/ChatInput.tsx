@@ -317,7 +317,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 }
 
 function SummarizeInNewChatButton() {
-  const [chatId] = useAtom(selectedChatIdAtom);
+  const chatId = useAtomValue(selectedChatIdAtom);
   const appId = useAtomValue(selectedAppIdAtom);
   const { streamMessage } = useStreamChat();
   const navigate = useNavigate();
@@ -349,10 +349,48 @@ function SummarizeInNewChatButton() {
     </TooltipProvider>
   );
 }
+
+function RefactorFileButton({ path }: { path: string }) {
+  const chatId = useAtomValue(selectedChatIdAtom);
+  const { streamMessage } = useStreamChat();
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              if (!chatId) {
+                console.error("No chat id found");
+                return;
+              }
+              streamMessage({
+                prompt: `Refactor ${path} and make it more modular`,
+                chatId,
+                redo: false,
+              });
+            }}
+          >
+            <span className="max-w-[180px] overflow-hidden whitespace-nowrap text-ellipsis">
+              Refactor {path.split("/").slice(-2).join("/")}
+            </span>
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>Refactor {path} to improve maintainability</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 function mapActionToButton(action: SuggestedAction) {
   switch (action.id) {
     case "summarize-in-new-chat":
       return <SummarizeInNewChatButton />;
+    case "refactor-file":
+      return <RefactorFileButton path={action.path} />;
     default:
       console.error(`Unsupported action: ${action.id}`);
       return (

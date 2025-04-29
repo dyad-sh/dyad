@@ -224,6 +224,23 @@ const getProposalHandler = async (
           );
         }
       }
+      const actions: ActionProposal["actions"] = [];
+      if (latestAssistantMessage?.content) {
+        const writeTags = getDyadWriteTags(latestAssistantMessage.content);
+        const refactorTarget = writeTags.reduce((largest, tag) => {
+          const lineCount = tag.content.split("\n").length;
+          return lineCount > 500 && (!largest || lineCount > largest.lineCount)
+            ? { path: tag.path, lineCount }
+            : largest;
+        }, null as { path: string; lineCount: number } | null);
+        if (refactorTarget) {
+          actions.push({
+            id: "refactor-file",
+            path: refactorTarget.path,
+          });
+        }
+      }
+
       // Get all chat messages to calculate token usage
       const chat = await db.query.chats.findFirst({
         where: eq(chats.id, chatId),
@@ -260,15 +277,20 @@ const getProposalHandler = async (
           logger.log(
             `Token usage high (${totalTokens}/${contextWindow}), suggesting summarize action`
           );
-          return {
-            proposal: {
-              type: "action-proposal",
-              actions: [{ id: "summarize-in-new-chat" }],
-            },
-            chatId,
-            messageId: latestAssistantMessage.id,
-          };
+          actions.push({
+            id: "summarize-in-new-chat",
+          });
         }
+      }
+      if (actions.length > 0 && latestAssistantMessage) {
+        return {
+          proposal: {
+            type: "action-proposal",
+            actions: actions,
+          },
+          chatId,
+          messageId: latestAssistantMessage.id,
+        };
       }
       return null;
     } catch (error) {

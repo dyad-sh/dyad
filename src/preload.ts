@@ -38,6 +38,7 @@ const validInvokeChannels = [
   "github:is-repo-available",
   "github:create-repo",
   "github:push",
+  "github:disconnect",
   "get-app-version",
   "reload-env-path",
   "get-proposal",

@@ -611,9 +611,24 @@ export class IpcClient {
   ): Promise<{ success: boolean; error?: string }> {
     try {
       const result = await this.ipcRenderer.invoke("github:push", { appId });
-      return result;
-    } catch (error: any) {
-      return { success: false, error: error.message || "Unknown error" };
+      return result as { success: boolean; error?: string };
+    } catch (error) {
+      showError(error);
+      throw error;
+    }
+  }
+
+  public async disconnectGithubRepo(
+    appId: number
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const result = await this.ipcRenderer.invoke("github:disconnect", {
+        appId,
+      });
+      return result as { success: boolean; error?: string };
+    } catch (error) {
+      showError(error);
+      throw error;
     }
   }
   // --- End GitHub Repo Management ---

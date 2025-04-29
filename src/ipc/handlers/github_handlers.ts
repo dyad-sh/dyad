@@ -422,10 +422,48 @@ async function handlePushToGithub(
   }
 }
 
+async function handleDisconnectGithubRepo(
+  event: IpcMainInvokeEvent,
+  { appId }: { appId: number }
+) {
+  try {
+    logger.log(`Disconnecting GitHub repo for appId: ${appId}`);
+
+    // Get the app from the database
+    const app = await db.query.apps.findFirst({
+      where: eq(apps.id, appId),
+    });
+
+    if (!app) {
+      return { success: false, error: "App not found" };
+    }
+
+    // Update app in database to remove GitHub repo and org
+    await db
+      .update(apps)
+      .set({
+        githubRepo: null,
+        githubOrg: null,
+      })
+      .where(eq(apps.id, appId));
+
+    return { success: true };
+  } catch (error) {
+    logger.error(`Error disconnecting GitHub repo: ${error}`);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 // --- Registration ---
 export function registerGithubHandlers() {
   ipcMain.handle("github:start-flow", handleStartGithubFlow);
   ipcMain.handle("github:is-repo-available", handleIsRepoAvailable);
   ipcMain.handle("github:create-repo", handleCreateRepo);
   ipcMain.handle("github:push", handlePushToGithub);
+  ipcMain.handle("github:disconnect", (event, args: { appId: number }) =>
+    handleDisconnectGithubRepo(event, args)
+  );
 }

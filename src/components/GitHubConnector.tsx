@@ -172,6 +172,27 @@ export function GitHubConnector({ appId, folderName }: GitHubConnectorProps) {
     }
   };
 
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [disconnectError, setDisconnectError] = useState<string | null>(null);
+
+  const handleDisconnectRepo = async () => {
+    if (!appId) return;
+    setIsDisconnecting(true);
+    setDisconnectError(null);
+    try {
+      const result = await IpcClient.getInstance().disconnectGithubRepo(appId);
+      if (result.success) {
+        refreshApp();
+      } else {
+        setDisconnectError(result.error || "Failed to disconnect repository.");
+      }
+    } catch (err: any) {
+      setDisconnectError(err.message || "Failed to disconnect repository.");
+    } finally {
+      setIsDisconnecting(false);
+    }
+  };
+
   if (!settings?.githubAccessToken) {
     return (
       <div className="mt-1 w-full">
@@ -313,7 +334,7 @@ export function GitHubConnector({ appId, folderName }: GitHubConnectorProps) {
         >
           {app.githubOrg}/{app.githubRepo}
         </a>
-        <div className="mt-2">
+        <div className="mt-2 flex gap-2">
           <Button onClick={handleSyncToGithub} disabled={isSyncing}>
             {isSyncing ? (
               <>
@@ -344,10 +365,20 @@ export function GitHubConnector({ appId, folderName }: GitHubConnectorProps) {
               "Sync to GitHub"
             )}
           </Button>
+          <Button
+            onClick={handleDisconnectRepo}
+            disabled={isDisconnecting}
+            variant="outline"
+          >
+            {isDisconnecting ? "Disconnecting..." : "Disconnect from repo"}
+          </Button>
         </div>
         {syncError && <p className="text-red-600 mt-2">{syncError}</p>}
         {syncSuccess && (
           <p className="text-green-600 mt-2">Successfully pushed to GitHub!</p>
+        )}
+        {disconnectError && (
+          <p className="text-red-600 mt-2">{disconnectError}</p>
         )}
       </div>
     );

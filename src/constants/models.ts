@@ -57,6 +57,15 @@ export const MODEL_OPTIONS: Record<RegularModelProvider, ModelOption[]> = {
       // Gemini context window = input token + output token
       contextWindow: 1_048_576,
     },
+    // https://ai.google.dev/gemini-api/docs/models#gemini-2.5-flash-preview
+    {
+      name: "gemini-2.5-flash-preview-04-17",
+      displayName: "Gemini 2.5 Flash",
+      description: "Preview version of Google's Gemini 2.5 Flash model",
+      maxOutputTokens: 65_536,
+      // Gemini context window = input token + output token
+      contextWindow: 1_048_576,
+    },
   ],
   openrouter: [
     // https://openrouter.ai/deepseek/deepseek-chat-v3-0324:free

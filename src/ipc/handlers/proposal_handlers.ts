@@ -22,8 +22,14 @@ import {
 } from "../processors/response_processor";
 import log from "electron-log";
 import { isServerFunction } from "../../supabase_admin/supabase_utils";
-import { estimateMessagesTokens, getContextWindow } from "../utils/token_utils";
-
+import {
+  estimateMessagesTokens,
+  estimateTokens,
+  getContextWindow,
+} from "../utils/token_utils";
+import { extractCodebase } from "../../utils/codebase";
+import { getDyadAppPath } from "../../paths/paths";
+import { withLock } from "../utils/lock_utils";
 const logger = log.scope("proposal_handlers");
 
 // Placeholder Proposal data (can be removed or kept for reference)
@@ -44,41 +50,204 @@ function isParsedProposal(obj: any): obj is ParsedProposal {
   );
 }
 
+// Cache for codebase token counts
+interface CodebaseTokenCache {
+  chatId: number;
+  messageId: number;
+  messageContent: string;
+  tokenCount: number;
+  timestamp: number;
+}
+
+// Cache expiration time (5 minutes)
+const CACHE_EXPIRATION_MS = 5 * 60 * 1000;
+
+// In-memory cache for codebase token counts
+const codebaseTokenCache = new Map<number, CodebaseTokenCache>();
+
+// Function to clean up expired cache entries
+function cleanupExpiredCacheEntries() {
+  const now = Date.now();
+  let expiredCount = 0;
+
+  codebaseTokenCache.forEach((entry, key) => {
+    if (now - entry.timestamp > CACHE_EXPIRATION_MS) {
+      codebaseTokenCache.delete(key);
+      expiredCount++;
+    }
+  });
+
+  if (expiredCount > 0) {
+    logger.log(
+      `Cleaned up ${expiredCount} expired codebase token cache entries`
+    );
+  }
+}
+
+// Function to get cached token count or calculate and cache it
+async function getCodebaseTokenCount(
+  chatId: number,
+  messageId: number,
+  messageContent: string,
+  appPath: string
+): Promise<number> {
+  // Clean up expired cache entries first
+  cleanupExpiredCacheEntries();
+
+  const cacheEntry = codebaseTokenCache.get(chatId);
+  const now = Date.now();
+
+  // Check if cache is valid - same chat, message and content, and not expired
+  if (
+    cacheEntry &&
+    cacheEntry.messageId === messageId &&
+    cacheEntry.messageContent === messageContent &&
+    now - cacheEntry.timestamp < CACHE_EXPIRATION_MS
+  ) {
+    logger.log(`Using cached codebase token count for chatId: ${chatId}`);
+    return cacheEntry.tokenCount;
+  }
+
+  // Calculate and cache the token count
+  logger.log(`Calculating codebase token count for chatId: ${chatId}`);
+  const codebase = await extractCodebase(getDyadAppPath(appPath));
+  const tokenCount = estimateTokens(codebase);
+
+  // Store in cache
+  codebaseTokenCache.set(chatId, {
+    chatId,
+    messageId,
+    messageContent,
+    tokenCount,
+    timestamp: now,
+  });
+
+  return tokenCount;
+}
+
 const getProposalHandler = async (
   _event: IpcMainInvokeEvent,
   { chatId }: { chatId: number }
 ): Promise<ProposalResult | null> => {
-  logger.log(`IPC: get-proposal called for chatId: ${chatId}`);
+  return withLock("get-proposal:" + chatId, async () => {
+    logger.log(`IPC: get-proposal called for chatId: ${chatId}`);
 
-  try {
-    // Find the latest ASSISTANT message for the chat
-    const latestAssistantMessage = await db.query.messages.findFirst({
-      where: and(eq(messages.chatId, chatId), eq(messages.role, "assistant")),
-      orderBy: [desc(messages.createdAt)],
-      columns: {
-        id: true, // Fetch the ID
-        content: true, // Fetch the content to parse
-        approvalState: true,
-      },
-    });
+    try {
+      // Find the latest ASSISTANT message for the chat
+      const latestAssistantMessage = await db.query.messages.findFirst({
+        where: and(eq(messages.chatId, chatId), eq(messages.role, "assistant")),
+        orderBy: [desc(messages.createdAt)],
+        columns: {
+          id: true, // Fetch the ID
+          content: true, // Fetch the content to parse
+          approvalState: true,
+        },
+      });
 
-    if (
-      latestAssistantMessage?.approvalState === "rejected" ||
-      latestAssistantMessage?.approvalState === "approved"
-    ) {
+      if (
+        latestAssistantMessage?.content &&
+        latestAssistantMessage.id &&
+        !latestAssistantMessage?.approvalState
+      ) {
+        const messageId = latestAssistantMessage.id; // Get the message ID
+        logger.log(
+          `Found latest assistant message (ID: ${messageId}), parsing content...`
+        );
+        const messageContent = latestAssistantMessage.content;
+
+        const proposalTitle = getDyadChatSummaryTag(messageContent);
+
+        const proposalWriteFiles = getDyadWriteTags(messageContent);
+        const proposalRenameFiles = getDyadRenameTags(messageContent);
+        const proposalDeleteFiles = getDyadDeleteTags(messageContent);
+        const proposalExecuteSqlQueries = getDyadExecuteSqlTags(messageContent);
+        const packagesAdded = getDyadAddDependencyTags(messageContent);
+
+        const filesChanged = [
+          ...proposalWriteFiles.map((tag) => ({
+            name: path.basename(tag.path),
+            path: tag.path,
+            summary: tag.description ?? "(no change summary found)", // Generic summary
+            type: "write" as const,
+            isServerFunction: isServerFunction(tag.path),
+          })),
+          ...proposalRenameFiles.map((tag) => ({
+            name: path.basename(tag.to),
+            path: tag.to,
+            summary: `Rename from ${tag.from} to ${tag.to}`,
+            type: "rename" as const,
+            isServerFunction: isServerFunction(tag.to),
+          })),
+          ...proposalDeleteFiles.map((tag) => ({
+            name: path.basename(tag),
+            path: tag,
+            summary: `Delete file`,
+            type: "delete" as const,
+            isServerFunction: isServerFunction(tag),
+          })),
+        ];
+        // Check if we have enough information to create a proposal
+        if (
+          filesChanged.length > 0 ||
+          packagesAdded.length > 0 ||
+          proposalExecuteSqlQueries.length > 0
+        ) {
+          const proposal: CodeProposal = {
+            type: "code-proposal",
+            // Use parsed title or a default title if summary tag is missing but write tags exist
+            title: proposalTitle ?? "Proposed File Changes",
+            securityRisks: [], // Keep empty
+            filesChanged,
+            packagesAdded,
+            sqlQueries: proposalExecuteSqlQueries.map((query) => ({
+              content: query.content,
+              description: query.description,
+            })),
+          };
+          logger.log(
+            "Generated code proposal. title=",
+            proposal.title,
+            "files=",
+            proposal.filesChanged.length,
+            "packages=",
+            proposal.packagesAdded.length
+          );
+
+          return {
+            proposal: proposal,
+            chatId,
+            messageId,
+          };
+        } else {
+          logger.log(
+            "No relevant tags found in the latest assistant message content."
+          );
+        }
+      }
       // Get all chat messages to calculate token usage
       const chat = await db.query.chats.findFirst({
         where: eq(chats.id, chatId),
         with: {
+          app: true,
           messages: {
             orderBy: (messages, { asc }) => [asc(messages.createdAt)],
           },
         },
       });
 
-      if (chat) {
+      if (latestAssistantMessage && chat) {
         // Calculate total tokens from message history
-        const totalTokens = estimateMessagesTokens(chat.messages);
+        const messagesTokenCount = estimateMessagesTokens(chat.messages);
+
+        // Use cached token count or calculate new one
+        const codebaseTokenCount = await getCodebaseTokenCount(
+          chatId,
+          latestAssistantMessage.id,
+          latestAssistantMessage.content || "",
+          chat.app.path
+        );
+
+        const totalTokens = messagesTokenCount + codebaseTokenCount;
         const contextWindow = Math.min(getContextWindow(), 100_000);
         logger.log(
           `Token usage: ${totalTokens}/${contextWindow} (${
@@ -102,92 +271,11 @@ const getProposalHandler = async (
         }
       }
       return null;
+    } catch (error) {
+      logger.error(`Error processing proposal for chatId ${chatId}:`, error);
+      return null; // Indicate DB or processing error
     }
-
-    if (latestAssistantMessage?.content && latestAssistantMessage.id) {
-      const messageId = latestAssistantMessage.id; // Get the message ID
-      logger.log(
-        `Found latest assistant message (ID: ${messageId}), parsing content...`
-      );
-      const messageContent = latestAssistantMessage.content;
-
-      const proposalTitle = getDyadChatSummaryTag(messageContent);
-
-      const proposalWriteFiles = getDyadWriteTags(messageContent);
-      const proposalRenameFiles = getDyadRenameTags(messageContent);
-      const proposalDeleteFiles = getDyadDeleteTags(messageContent);
-      const proposalExecuteSqlQueries = getDyadExecuteSqlTags(messageContent);
-      const packagesAdded = getDyadAddDependencyTags(messageContent);
-
-      const filesChanged = [
-        ...proposalWriteFiles.map((tag) => ({
-          name: path.basename(tag.path),
-          path: tag.path,
-          summary: tag.description ?? "(no change summary found)", // Generic summary
-          type: "write" as const,
-          isServerFunction: isServerFunction(tag.path),
-        })),
-        ...proposalRenameFiles.map((tag) => ({
-          name: path.basename(tag.to),
-          path: tag.to,
-          summary: `Rename from ${tag.from} to ${tag.to}`,
-          type: "rename" as const,
-          isServerFunction: isServerFunction(tag.to),
-        })),
-        ...proposalDeleteFiles.map((tag) => ({
-          name: path.basename(tag),
-          path: tag,
-          summary: `Delete file`,
-          type: "delete" as const,
-          isServerFunction: isServerFunction(tag),
-        })),
-      ];
-      // Check if we have enough information to create a proposal
-      if (
-        filesChanged.length > 0 ||
-        packagesAdded.length > 0 ||
-        proposalExecuteSqlQueries.length > 0
-      ) {
-        const proposal: CodeProposal = {
-          type: "code-proposal",
-          // Use parsed title or a default title if summary tag is missing but write tags exist
-          title: proposalTitle ?? "Proposed File Changes",
-          securityRisks: [], // Keep empty
-          filesChanged,
-          packagesAdded,
-          sqlQueries: proposalExecuteSqlQueries.map((query) => ({
-            content: query.content,
-            description: query.description,
-          })),
-        };
-        logger.log(
-          "Generated code proposal. title=",
-          proposal.title,
-          "files=",
-          proposal.filesChanged.length,
-          "packages=",
-          proposal.packagesAdded.length
-        );
-
-        return {
-          proposal: proposal,
-          chatId,
-          messageId,
-        };
-      } else {
-        logger.log(
-          "No relevant tags found in the latest assistant message content."
-        );
-        return null; // No proposal could be generated
-      }
-    } else {
-      logger.log(`No assistant message found for chatId: ${chatId}`);
-      return null; // No message found
-    }
-  } catch (error) {
-    logger.error(`Error processing proposal for chatId ${chatId}:`, error);
-    return null; // Indicate DB or processing error
-  }
+  });
 };
 
 // Handler to approve a proposal (process actions and update message)

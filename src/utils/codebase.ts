@@ -1,6 +1,10 @@
 import fs from "node:fs";
+import fsAsync from "node:fs/promises";
 import path from "node:path";
 import { isIgnored } from "isomorphic-git";
+import log from "electron-log";
+
+const logger = log.scope("utils/codebase");
 
 // File extensions to include in the extraction
 const ALLOWED_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".css", ".html"];
@@ -14,6 +18,23 @@ const ALWAYS_INCLUDE_FILES = ["package.json"];
 // Maximum file size to include (in bytes) - 100KB
 const MAX_FILE_SIZE = 100 * 1024;
 
+// Maximum size for fileContentCache
+const MAX_FILE_CACHE_SIZE = 500;
+
+// File content cache with timestamps
+type FileCache = {
+  content: string;
+  mtime: number;
+};
+
+// Cache for file contents
+const fileContentCache = new Map<string, FileCache>();
+
+// Cache for git ignored paths
+const gitIgnoreCache = new Map<string, boolean>();
+// Map to store .gitignore file paths and their modification times
+const gitIgnoreMtimes = new Map<string, number>();
+
 /**
  * Check if a path should be ignored based on git ignore rules
  */
@@ -22,11 +43,105 @@ async function isGitIgnored(
   baseDir: string
 ): Promise<boolean> {
   try {
+    // Check if any relevant .gitignore has been modified
+    // Git checks .gitignore files in the path from the repo root to the file
+    let currentDir = baseDir;
+    const pathParts = path.relative(baseDir, filePath).split(path.sep);
+    let shouldClearCache = false;
+
+    // Check root .gitignore
+    const rootGitIgnorePath = path.join(baseDir, ".gitignore");
+    try {
+      const stats = await fsAsync.stat(rootGitIgnorePath);
+      const lastMtime = gitIgnoreMtimes.get(rootGitIgnorePath) || 0;
+      if (stats.mtimeMs > lastMtime) {
+        gitIgnoreMtimes.set(rootGitIgnorePath, stats.mtimeMs);
+        shouldClearCache = true;
+      }
+    } catch (error) {
+      // Root .gitignore might not exist, which is fine
+    }
+
+    // Check .gitignore files in parent directories
+    for (let i = 0; i < pathParts.length - 1; i++) {
+      currentDir = path.join(currentDir, pathParts[i]);
+      const gitIgnorePath = path.join(currentDir, ".gitignore");
+
+      try {
+        const stats = await fsAsync.stat(gitIgnorePath);
+        const lastMtime = gitIgnoreMtimes.get(gitIgnorePath) || 0;
+        if (stats.mtimeMs > lastMtime) {
+          gitIgnoreMtimes.set(gitIgnorePath, stats.mtimeMs);
+          shouldClearCache = true;
+        }
+      } catch (error) {
+        // This directory might not have a .gitignore, which is fine
+      }
+    }
+
+    // Clear cache if any .gitignore was modified
+    if (shouldClearCache) {
+      gitIgnoreCache.clear();
+    }
+
+    const cacheKey = `${baseDir}:${filePath}`;
+
+    if (gitIgnoreCache.has(cacheKey)) {
+      return gitIgnoreCache.get(cacheKey)!;
+    }
+
     const relativePath = path.relative(baseDir, filePath);
-    return await isIgnored({ fs, dir: baseDir, filepath: relativePath });
+    const result = await isIgnored({
+      fs,
+      dir: baseDir,
+      filepath: relativePath,
+    });
+
+    gitIgnoreCache.set(cacheKey, result);
+    return result;
   } catch (error) {
-    console.error(`Error checking if path is git ignored: ${filePath}`, error);
+    logger.error(`Error checking if path is git ignored: ${filePath}`, error);
     return false;
+  }
+}
+
+/**
+ * Read file contents with caching based on last modified time
+ */
+async function readFileWithCache(filePath: string): Promise<string | null> {
+  try {
+    // Get file stats to check the modification time
+    const stats = await fsAsync.stat(filePath);
+    const currentMtime = stats.mtimeMs;
+
+    // If file is in cache and hasn't been modified, use cached content
+    if (fileContentCache.has(filePath)) {
+      const cache = fileContentCache.get(filePath)!;
+      if (cache.mtime === currentMtime) {
+        return cache.content;
+      }
+    }
+
+    // Read file and update cache
+    const content = await fsAsync.readFile(filePath, "utf-8");
+    fileContentCache.set(filePath, { content, mtime: currentMtime });
+
+    // Manage cache size by clearing oldest entries when it gets too large
+    if (fileContentCache.size > MAX_FILE_CACHE_SIZE) {
+      // Get the oldest 25% of entries to remove
+      const entriesToDelete = Math.ceil(MAX_FILE_CACHE_SIZE * 0.25);
+      const keys = Array.from(fileContentCache.keys());
+
+      // Remove oldest entries (first in, first out)
+      for (let i = 0; i < entriesToDelete; i++) {
+        fileContentCache.delete(keys[i]);
+      }
+    }
+
+    return content;
+  } catch (error) {
+    logger.error(`Error reading file: ${filePath}`, error);
+    return null;
   }
 }
 
@@ -37,25 +152,29 @@ async function collectFiles(dir: string, baseDir: string): Promise<string[]> {
   const files: string[] = [];
 
   // Check if directory exists
-  if (!fs.existsSync(dir)) {
+  try {
+    await fsAsync.access(dir);
+  } catch {
+    // Directory doesn't exist or is not accessible
     return files;
   }
 
   try {
     // Read directory contents
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    const entries = await fsAsync.readdir(dir, { withFileTypes: true });
 
-    for (const entry of entries) {
+    // Process entries concurrently
+    const promises = entries.map(async (entry) => {
       const fullPath = path.join(dir, entry.name);
 
       // Skip excluded directories
       if (entry.isDirectory() && EXCLUDED_DIRS.includes(entry.name)) {
-        continue;
+        return;
       }
 
       // Skip if the entry is git ignored
       if (await isGitIgnored(fullPath, baseDir)) {
-        continue;
+        return;
       }
 
       if (entry.isDirectory()) {
@@ -69,22 +188,24 @@ async function collectFiles(dir: string, baseDir: string): Promise<string[]> {
 
         // Skip files that are too large
         try {
-          const stats = fs.statSync(fullPath);
+          const stats = await fsAsync.stat(fullPath);
           if (stats.size > MAX_FILE_SIZE) {
-            continue;
+            return;
           }
         } catch (error) {
-          console.error(`Error checking file size: ${fullPath}`, error);
-          continue;
+          logger.error(`Error checking file size: ${fullPath}`, error);
+          return;
         }
 
         if (ALLOWED_EXTENSIONS.includes(ext) || shouldAlwaysInclude) {
           files.push(fullPath);
         }
       }
-    }
+    });
+
+    await Promise.all(promises);
   } catch (error) {
-    console.error(`Error reading directory ${dir}:`, error);
+    logger.error(`Error reading directory ${dir}:`, error);
   }
 
   return files;
@@ -93,7 +214,7 @@ async function collectFiles(dir: string, baseDir: string): Promise<string[]> {
 /**
  * Format a file for inclusion in the codebase extract
  */
-function formatFile(filePath: string, baseDir: string): string {
+async function formatFile(filePath: string, baseDir: string): Promise<string> {
   try {
     const relativePath = path.relative(baseDir, filePath);
 
@@ -114,7 +235,15 @@ function formatFile(filePath: string, baseDir: string): string {
 `;
     }
 
-    const content = fs.readFileSync(filePath, "utf-8");
+    const content = await readFileWithCache(filePath);
+
+    if (content === null) {
+      return `<dyad-file path="${relativePath}">
+// Error reading file
+</dyad-file>
+
+`;
+    }
 
     return `<dyad-file path="${relativePath}">
 ${content}
@@ -122,7 +251,7 @@ ${content}
 
 `;
   } catch (error) {
-    console.error(`Error reading file: ${filePath}`, error);
+    logger.error(`Error reading file: ${filePath}`, error);
     return `<dyad-file path="${path.relative(baseDir, filePath)}">
 // Error reading file: ${error}
 </dyad-file>
@@ -137,24 +266,51 @@ ${content}
  * @returns A string containing formatted file contents
  */
 export async function extractCodebase(appPath: string): Promise<string> {
-  if (!fs.existsSync(appPath)) {
-    return `# Error: Directory ${appPath} does not exist`;
+  try {
+    await fsAsync.access(appPath);
+  } catch {
+    return `# Error: Directory ${appPath} does not exist or is not accessible`;
   }
+  const startTime = Date.now();
 
   // Collect all relevant files
   const files = await collectFiles(appPath, appPath);
 
-  // Sort files to prioritize important files
-  const sortedFiles = sortFilesByImportance(files, appPath);
+  // Sort files by modification time (oldest first)
+  // This is important for cache-ability.
+  const sortedFiles = await sortFilesByModificationTime(files);
 
   // Format files
   let output = "";
+  const formatPromises = sortedFiles.map((file) => formatFile(file, appPath));
+  const formattedFiles = await Promise.all(formatPromises);
+  output = formattedFiles.join("");
 
-  for (const file of sortedFiles) {
-    output += formatFile(file, appPath);
-  }
-
+  const endTime = Date.now();
+  logger.log("extractCodebase: time taken", endTime - startTime);
   return output;
+}
+
+/**
+ * Sort files by their modification timestamp (oldest first)
+ */
+async function sortFilesByModificationTime(files: string[]): Promise<string[]> {
+  // Get stats for all files
+  const fileStats = await Promise.all(
+    files.map(async (file) => {
+      try {
+        const stats = await fsAsync.stat(file);
+        return { file, mtime: stats.mtimeMs };
+      } catch (error) {
+        // If there's an error getting stats, use current time as fallback
+        logger.error(`Error getting file stats for ${file}:`, error);
+        return { file, mtime: Date.now() };
+      }
+    })
+  );
+
+  // Sort by modification time (oldest first)
+  return fileStats.sort((a, b) => a.mtime - b.mtime).map((item) => item.file);
 }
 
 /**

@@ -30,6 +30,7 @@ const validInvokeChannels = [
   "set-user-settings",
   "get-env-vars",
   "open-external-url",
+  "show-item-in-folder",
   "reset-all",
   "nodejs-status",
   "install-node",

@@ -292,8 +292,22 @@ export class IpcClient {
       return result as { success: boolean; error?: string };
     } catch (error) {
       showError(error);
-      // Ensure a consistent return type even on invoke error
-      return { success: false, error: (error as Error).message };
+      throw error;
+    }
+  }
+
+  public async showItemInFolder(
+    fullPath: string
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const result = await this.ipcRenderer.invoke(
+        "show-item-in-folder",
+        fullPath
+      );
+      return result as { success: boolean; error?: string };
+    } catch (error) {
+      showError(error);
+      throw error;
     }
   }
 

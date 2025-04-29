@@ -12,6 +12,7 @@ import {
   MessageCircle,
   Pencil,
   Github,
+  Folder,
 } from "lucide-react";
 import {
   Popover,
@@ -159,6 +160,8 @@ export default function AppDetailsPage() {
     );
   }
 
+  const fullAppPath = appBasePath.replace("$APP_BASE_PATH", selectedApp.path);
+
   return (
     <div className="relative min-h-screen p-4 w-full">
       <Button
@@ -232,9 +235,20 @@ export default function AppDetailsPage() {
             <span className="block text-gray-500 dark:text-gray-400 mb-0.5 text-xs">
               Path
             </span>
-            <span className="text-sm break-all">
-              {appBasePath.replace("$APP_BASE_PATH", selectedApp.path)}
-            </span>
+            <div className="flex items-center gap-1">
+              <span className="text-sm break-all">{fullAppPath}</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="p-0.5 h-auto cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                onClick={() => {
+                  IpcClient.getInstance().showItemInFolder(fullAppPath);
+                }}
+                title="Show in folder"
+              >
+                <Folder className="h-3.5 w-3.5" />
+              </Button>
+            </div>
           </div>
         </div>
         <div className="mt-4 flex flex-col gap-2">

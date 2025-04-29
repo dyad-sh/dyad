@@ -22,4 +22,24 @@ export function registerShellHandlers() {
       return { success: false, error: (error as Error).message };
     }
   });
+
+  ipcMain.handle("show-item-in-folder", async (_event, fullPath: string) => {
+    try {
+      // Validate that a path was provided
+      if (!fullPath) {
+        logger.error("Attempted to show item with empty path");
+        return {
+          success: false,
+          error: "No file path provided.",
+        };
+      }
+
+      shell.showItemInFolder(fullPath);
+      logger.debug("Showed item in folder:", fullPath);
+      return { success: true };
+    } catch (error) {
+      logger.error(`Failed to show item in folder ${fullPath}:`, error);
+      return { success: false, error: (error as Error).message };
+    }
+  });
 }

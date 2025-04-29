@@ -239,6 +239,14 @@ const getProposalHandler = async (
             path: refactorTarget.path,
           });
         }
+        if (
+          writeTags.length === 0 &&
+          latestAssistantMessage.content.includes("```")
+        ) {
+          actions.push({
+            id: "write-code-properly",
+          });
+        }
       }
 
       // Get all chat messages to calculate token usage

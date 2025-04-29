@@ -29,6 +29,17 @@ type ContentPiece =
   | { type: "markdown"; content: string }
   | { type: "custom-tag"; tagInfo: CustomTagInfo };
 
+export const VanillaMarkdownParser = ({ content }: { content: string }) => {
+  return (
+    <ReactMarkdown
+      rehypePlugins={[rehypeRaw]}
+      components={{ code: CodeHighlight } as any}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+};
+
 /**
  * Custom component to parse markdown content with Dyad-specific tags
  */

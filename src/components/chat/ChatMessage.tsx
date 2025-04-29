@@ -1,6 +1,9 @@
 import { memo } from "react";
 import type { Message } from "@/ipc/ipc_types";
-import { DyadMarkdownParser } from "./DyadMarkdownParser";
+import {
+  DyadMarkdownParser,
+  VanillaMarkdownParser,
+} from "./DyadMarkdownParser";
 import { motion } from "framer-motion";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { CheckCircle, XCircle } from "lucide-react";
@@ -64,7 +67,11 @@ const ChatMessage = ({ message }: ChatMessageProps) => {
             className="prose dark:prose-invert prose-headings:mb-2 prose-p:my-1 prose-pre:my-0 max-w-none"
             suppressHydrationWarning
           >
-            <DyadMarkdownParser content={message.content} />
+            {message.role === "assistant" ? (
+              <DyadMarkdownParser content={message.content} />
+            ) : (
+              <VanillaMarkdownParser content={message.content} />
+            )}
           </div>
         )}
         {message.approvalState && (

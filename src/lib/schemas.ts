@@ -159,7 +159,8 @@ export interface CodeProposal {
 export type SuggestedAction =
   | RestartAppAction
   | SummarizeInNewChatAction
-  | RefactorFileAction;
+  | RefactorFileAction
+  | WriteCodeProperlyAction;
 
 export interface RestartAppAction {
   id: "restart-app";
@@ -167,6 +168,10 @@ export interface RestartAppAction {
 
 export interface SummarizeInNewChatAction {
   id: "summarize-in-new-chat";
+}
+
+export interface WriteCodeProperlyAction {
+  id: "write-code-properly";
 }
 
 export interface RefactorFileAction {

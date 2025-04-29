@@ -385,12 +385,50 @@ function RefactorFileButton({ path }: { path: string }) {
   );
 }
 
+function WriteCodeProperlyButton() {
+  const chatId = useAtomValue(selectedChatIdAtom);
+  const { streamMessage } = useStreamChat();
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              if (!chatId) {
+                console.error("No chat id found");
+                return;
+              }
+              streamMessage({
+                prompt: `Write the code in the previous message in the correct format using \`<dyad-write>\` tags!`,
+                chatId,
+                redo: false,
+              });
+            }}
+          >
+            Write code properly
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>
+            Write code properly (useful when AI generates the code in the wrong
+            format)
+          </p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 function mapActionToButton(action: SuggestedAction) {
   switch (action.id) {
     case "summarize-in-new-chat":
       return <SummarizeInNewChatButton />;
     case "refactor-file":
       return <RefactorFileButton path={action.path} />;
+    case "write-code-properly":
+      return <WriteCodeProperlyButton />;
     default:
       console.error(`Unsupported action: ${action.id}`);
       return (

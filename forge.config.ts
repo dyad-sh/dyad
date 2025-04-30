@@ -68,7 +68,9 @@ const config: ForgeConfig = {
   },
   makers: [
     new MakerSquirrel({
-      signWithParams: `/csp "DigiCert Signing Manager KSP" /kc ${process.env.DIGICERT_KEYPAIR_ALIAS} /f ${process.env.SM_CLIENT_CERT_FILE} /tr http://timestamp.digicert.com /td SHA256 /fd SHA256`,
+      signWithParams: `/sha1 ${process.env.SM_CODE_SIGNING_CERT_SHA1_HASH} /tr http://timestamp.digicert.com /td SHA256 /fd SHA256`,
+
+      // signWithParams: `/csp "DigiCert Signing Manager KSP" /kc ${process.env.DIGICERT_KEYPAIR_ALIAS} /f ${process.env.SM_CLIENT_CERT_FILE} /tr http://timestamp.digicert.com /td SHA256 /fd SHA256`,
       // windowsSign: {
 
       // certificateFile: process.env.SM_CLIENT_CERT_FILE,

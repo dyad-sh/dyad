@@ -57,10 +57,15 @@ jobs:
       - name: Code signing with Software Trust Manager
         if: contains(matrix.os.name, 'windows')
         uses: digicert/ssm-code-signing@v1.0.0
-      # Publish (all platforms)
+      - name: Sync certificate (Windows)
+        if: contains(matrix.os.name, 'windows')
+        run: |
+          smctl windows certsync --keypair-alias=${{ secrets.DIGICERT_KEYPAIR_ALIAS }}
+        shell: bash
+        # Publish (all platforms)
       - name: Publish app
         env:
-          DIGICERT_KEYPAIR_ALIAS: ${{ secrets.DIGICERT_KEYPAIR_ALIAS }}
+          SM_CODE_SIGNING_CERT_SHA1_HASH: ${{ secrets.SM_CODE_SIGNING_CERT_SHA1_HASH }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_ID: ${{ secrets.APPLE_ID }}

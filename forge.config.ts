@@ -40,20 +40,6 @@ const ignore = (file: string) => {
   return true;
 };
 
-console.log("process.env.SM_CLIENT_CERT_FILE", process.env.SM_CLIENT_CERT_FILE);
-console.log(
-  "process.env.SM_CLIENT_CERT_FILE - resolved path",
-  path.resolve(process.env.SM_CLIENT_CERT_FILE!)
-);
-console.log(
-  "process.env.SM_CLIENT_CERT_FILE - resolved path - exists",
-  fs.existsSync(path.resolve(process.env.SM_CLIENT_CERT_FILE!))
-);
-console.log(
-  "process.env.SM_CLIENT_CERT_PASSWORD - length",
-  process.env.SM_CLIENT_CERT_PASSWORD?.length
-);
-
 const config: ForgeConfig = {
   packagerConfig: {
     protocols: [
@@ -83,8 +69,10 @@ const config: ForgeConfig = {
   makers: [
     new MakerSquirrel({
       windowsSign: {
-        certificateFile: process.env.SM_CLIENT_CERT_FILE,
-        certificatePassword: process.env.SM_CLIENT_CERT_PASSWORD,
+        signWithParams: `/csp "DigiCert Signing Manager KSP" /kc ${process.env.DIGICERT_KEYPAIR_ALIAS} /f ${process.env.SM_CLIENT_CERT_FILE} /tr http://timestamp.digicert.com /td SHA256 /fd SHA256`,
+
+        // certificateFile: process.env.SM_CLIENT_CERT_FILE,
+        // certificatePassword: process.env.SM_CLIENT_CERT_PASSWORD,
         // signToolPath:
         //   "C:\\Program Files\\DigiCert\\DigiCert Keylocker Tools\\smctl.exe",
         // signWithParams: `/sha1 ${process.env.SM_CODE_SIGNING_CERT_SHA1_HASH} /tr http://timestamp.digicert.com /td SHA256 /fd SHA256`,

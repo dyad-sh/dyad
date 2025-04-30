@@ -7,6 +7,8 @@ import { VitePlugin } from "@electron-forge/plugin-vite";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
 import { AutoUnpackNativesPlugin } from "@electron-forge/plugin-auto-unpack-natives";
+import path from "path";
+import fs from "fs";
 
 // Based on https://github.com/electron/forge/blob/6b2d547a7216c30fde1e1fddd1118eee5d872945/packages/plugin/vite/src/VitePlugin.ts#L124
 const ignore = (file: string) => {
@@ -37,6 +39,20 @@ const ignore = (file: string) => {
 
   return true;
 };
+
+console.log("process.env.SM_CLIENT_CERT_FILE", process.env.SM_CLIENT_CERT_FILE);
+console.log(
+  "process.env.SM_CLIENT_CERT_FILE - resolved path",
+  path.resolve(process.env.SM_CLIENT_CERT_FILE!)
+);
+console.log(
+  "process.env.SM_CLIENT_CERT_FILE - resolved path - exists",
+  fs.existsSync(path.resolve(process.env.SM_CLIENT_CERT_FILE!))
+);
+console.log(
+  "process.env.SM_CLIENT_CERT_PASSWORD - length",
+  process.env.SM_CLIENT_CERT_PASSWORD?.length
+);
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -71,7 +87,7 @@ const config: ForgeConfig = {
         certificatePassword: process.env.SM_CLIENT_CERT_PASSWORD,
         // signToolPath:
         //   "C:\\Program Files\\DigiCert\\DigiCert Keylocker Tools\\smctl.exe",
-        signWithParams: `/sha1 ${process.env.SM_CODE_SIGNING_CERT_SHA1_HASH} /tr http://timestamp.digicert.com /td SHA256 /fd SHA256`,
+        // signWithParams: `/sha1 ${process.env.SM_CODE_SIGNING_CERT_SHA1_HASH} /tr http://timestamp.digicert.com /td SHA256 /fd SHA256`,
       },
     }),
     new MakerZIP({}, ["darwin"]),

@@ -7,7 +7,19 @@ import log from "electron-log";
 const logger = log.scope("utils/codebase");
 
 // File extensions to include in the extraction
-const ALLOWED_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".css", ".html"];
+const ALLOWED_EXTENSIONS = [
+  ".ts",
+  ".tsx",
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".cjs",
+  ".mts",
+  ".cts",
+  ".css",
+  ".html",
+  ".md",
+];
 
 // Directories to always exclude
 const EXCLUDED_DIRS = ["node_modules", ".git", "dist", "build"];

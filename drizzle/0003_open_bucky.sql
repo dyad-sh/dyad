@@ -1,0 +1,1 @@
+ALTER TABLE `messages` ADD `commit_hash` text;

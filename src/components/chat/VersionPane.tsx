@@ -1,6 +1,6 @@
 import { useAtom, useAtomValue } from "jotai";
 import { selectedAppIdAtom, selectedVersionIdAtom } from "@/atoms/appAtoms";
-import { useLoadVersions } from "@/hooks/useLoadVersions";
+import { useVersions } from "@/hooks/useVersions";
 import { formatDistanceToNow } from "date-fns";
 import { RotateCcw, X } from "lucide-react";
 import type { Version } from "@/ipc/ipc_types";
@@ -15,7 +15,8 @@ interface VersionPaneProps {
 
 export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
   const appId = useAtomValue(selectedAppIdAtom);
-  const { versions, loading, refreshVersions } = useLoadVersions(appId);
+  const { versions, loading, refreshVersions, revertVersion } =
+    useVersions(appId);
   const [selectedVersionId, setSelectedVersionId] = useAtom(
     selectedVersionIdAtom
   );
@@ -108,11 +109,9 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                     onClick={async (e) => {
                       e.stopPropagation();
                       setSelectedVersionId(null);
-                      await IpcClient.getInstance().revertVersion({
-                        appId: appId!,
-                        previousVersionId: version.oid,
+                      await revertVersion({
+                        versionId: version.oid,
                       });
-                      refreshVersions();
                     }}
                     className={cn(
                       "invisible mt-1 flex items-center gap-1 px-2 py-0.5 text-sm font-medium bg-(--primary) text-(--primary-foreground) hover:bg-background-lightest rounded-md transition-colors",

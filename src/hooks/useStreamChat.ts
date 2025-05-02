@@ -13,7 +13,7 @@ import type { ChatResponseEnd } from "@/ipc/ipc_types";
 import { useChats } from "./useChats";
 import { useLoadApp } from "./useLoadApp";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import { useLoadVersions } from "./useLoadVersions";
+import { useVersions } from "./useVersions";
 import { showError } from "@/lib/toast";
 import { useProposal } from "./useProposal";
 import { useSearch } from "@tanstack/react-router";
@@ -35,7 +35,7 @@ export function useStreamChat({
   const { refreshChats } = useChats(selectedAppId);
   const { refreshApp } = useLoadApp(selectedAppId);
   const setStreamCount = useSetAtom(chatStreamCountAtom);
-  const { refreshVersions } = useLoadVersions(selectedAppId);
+  const { refreshVersions } = useVersions(selectedAppId);
   const { refreshAppIframe } = useRunApp();
   const { countTokens } = useCountTokens();
 

@@ -2,7 +2,7 @@ import { PanelRightOpen, History, PlusCircle } from "lucide-react";
 import { PanelRightClose } from "lucide-react";
 import { useAtomValue, useSetAtom } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import { useLoadVersions } from "@/hooks/useLoadVersions";
+import { useVersions } from "@/hooks/useVersions";
 import { Button } from "../ui/button";
 import { IpcClient } from "@/ipc/ipc_client";
 import { useRouter } from "@tanstack/react-router";
@@ -22,7 +22,7 @@ export function ChatHeader({
   onVersionClick,
 }: ChatHeaderProps) {
   const appId = useAtomValue(selectedAppIdAtom);
-  const { versions, loading } = useLoadVersions(appId);
+  const { versions, loading } = useVersions(appId);
   const { navigate } = useRouter();
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const { refreshChats } = useChats(appId);

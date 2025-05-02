@@ -1,13 +1,16 @@
 import { useState, useEffect, useCallback } from "react";
-import { useAtom } from "jotai";
+import { useAtom, useAtomValue } from "jotai";
 import { versionsListAtom } from "@/atoms/appAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
+import { showError } from "@/lib/toast";
+import { chatMessagesAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
 
-export function useLoadVersions(appId: number | null) {
+export function useVersions(appId: number | null) {
   const [versions, setVersions] = useAtom(versionsListAtom);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
-
+  const selectedChatId = useAtomValue(selectedChatIdAtom);
+  const [messages, setMessages] = useAtom(chatMessagesAtom);
   useEffect(() => {
     const loadVersions = async () => {
       // If no app is selected, clear versions and return
@@ -50,5 +53,26 @@ export function useLoadVersions(appId: number | null) {
     }
   }, [appId, setVersions, setError]);
 
-  return { versions, loading, error, refreshVersions };
+  const revertVersion = useCallback(
+    async ({ versionId }: { versionId: string }) => {
+      if (appId === null) {
+        return;
+      }
+
+      try {
+        const ipcClient = IpcClient.getInstance();
+        await ipcClient.revertVersion({ appId, previousVersionId: versionId });
+        await refreshVersions();
+        if (selectedChatId) {
+          const chat = await IpcClient.getInstance().getChat(selectedChatId);
+          setMessages(chat.messages);
+        }
+      } catch (error) {
+        showError(error);
+      }
+    },
+    [appId, setVersions, setError, selectedChatId, setMessages]
+  );
+
+  return { versions, loading, error, refreshVersions, revertVersion };
 }

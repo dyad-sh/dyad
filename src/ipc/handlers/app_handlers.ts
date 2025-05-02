@@ -1,7 +1,7 @@
 import { ipcMain } from "electron";
 import { db, getDatabasePath } from "../../db";
-import { apps, chats } from "../../db/schema";
-import { desc, eq } from "drizzle-orm";
+import { apps, chats, messages } from "../../db/schema";
+import { desc, eq, and, gte, sql, gt } from "drizzle-orm";
 import type {
   App,
   CreateAppParams,
@@ -571,6 +571,44 @@ export function registerAppHandlers() {
             message: `Reverted all changes back to version ${previousVersionId}`,
             author: await getGitAuthor(),
           });
+
+          // Find the chat and message associated with the commit hash
+          const messageWithCommit = await db.query.messages.findFirst({
+            where: eq(messages.commitHash, previousVersionId),
+            with: {
+              chat: true,
+            },
+          });
+
+          // If we found a message with this commit hash, delete all subsequent messages (but keep this message)
+          if (messageWithCommit) {
+            const chatId = messageWithCommit.chatId;
+
+            // Find all messages in this chat with IDs > the one with our commit hash
+            const messagesToDelete = await db.query.messages.findMany({
+              where: and(
+                eq(messages.chatId, chatId),
+                gt(messages.id, messageWithCommit.id)
+              ),
+              orderBy: desc(messages.id),
+            });
+
+            logger.log(
+              `Deleting ${messagesToDelete.length} messages after commit ${previousVersionId} from chat ${chatId}`
+            );
+
+            // Delete the messages
+            if (messagesToDelete.length > 0) {
+              await db
+                .delete(messages)
+                .where(
+                  and(
+                    eq(messages.chatId, chatId),
+                    gt(messages.id, messageWithCommit.id)
+                  )
+                );
+            }
+          }
 
           return { success: true };
         } catch (error: any) {

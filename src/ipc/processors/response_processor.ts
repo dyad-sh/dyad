@@ -435,7 +435,7 @@ export async function processFullResponseActions(
         changes.push(`executed ${dyadExecuteSqlQueries.length} SQL queries`);
 
       // Use chat summary, if provided, or default for commit message
-      await git.commit({
+      const commitHash = await git.commit({
         fs,
         dir: appPath,
         message: chatSummary
@@ -444,6 +444,14 @@ export async function processFullResponseActions(
         author: await getGitAuthor(),
       });
       logger.log(`Successfully committed changes: ${changes.join(", ")}`);
+
+      // Save the commit hash to the message
+      await db
+        .update(messages)
+        .set({
+          commitHash: commitHash,
+        })
+        .where(eq(messages.id, messageId));
     }
     logger.log("mark as approved: hasChanges", hasChanges);
     // Update the message to approved

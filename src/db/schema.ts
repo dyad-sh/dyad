@@ -38,6 +38,7 @@ export const messages = sqliteTable("messages", {
   approvalState: text("approval_state", {
     enum: ["approved", "rejected"],
   }),
+  commitHash: text("commit_hash"),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),

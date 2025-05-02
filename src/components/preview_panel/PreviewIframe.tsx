@@ -414,6 +414,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           </div>
         ) : (
           <iframe
+            onLoad={() => {
+              setErrorMessage(undefined);
+            }}
             ref={iframeRef}
             key={reloadKey}
             title={`Preview for App ${selectedAppId}`}

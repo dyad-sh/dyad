@@ -787,25 +787,31 @@ export class IpcClient {
 
   public async listLocalOllamaModels(): Promise<LocalModel[]> {
     try {
-      const response = await this.ipcRenderer.invoke("local-models:list-ollama");
+      const response = await this.ipcRenderer.invoke(
+        "local-models:list-ollama"
+      );
       return response?.models || [];
     } catch (error) {
       if (error instanceof Error) {
         throw new Error(`Failed to fetch Ollama models: ${error.message}`);
       }
-      throw new Error('Failed to fetch Ollama models: Unknown error occurred');
+      throw new Error("Failed to fetch Ollama models: Unknown error occurred");
     }
   }
 
   public async listLocalLMStudioModels(): Promise<LocalModel[]> {
     try {
-      const response = await this.ipcRenderer.invoke("local-models:list-lmstudio");
+      const response = await this.ipcRenderer.invoke(
+        "local-models:list-lmstudio"
+      );
       return response?.models || [];
     } catch (error) {
       if (error instanceof Error) {
         throw new Error(`Failed to fetch LM Studio models: ${error.message}`);
       }
-      throw new Error('Failed to fetch LM Studio models: Unknown error occurred');
+      throw new Error(
+        "Failed to fetch LM Studio models: Unknown error occurred"
+      );
     }
   }
 

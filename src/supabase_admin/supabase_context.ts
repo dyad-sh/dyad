@@ -7,7 +7,10 @@ async function getPublishableKey({ projectId }: { projectId: string }) {
   if (!keys) {
     throw new Error("No keys found for project");
   }
-  const publishableKey = keys.find((key) => (key as any)["name"] === "anon");
+  const publishableKey = keys.find(
+    (key) =>
+      (key as any)["name"] === "anon" || (key as any)["type"] === "publishable"
+  );
 
   if (!publishableKey) {
     throw new Error("No publishable key found for project");

@@ -6,6 +6,7 @@ import { PlusCircle, MoreVertical, Trash2 } from "lucide-react";
 import { useAtom } from "jotai";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { dropdownOpenAtom } from "@/atoms/uiAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
 import { showError, showSuccess } from "@/lib/toast";
 import {
@@ -28,6 +29,7 @@ export function ChatList({ show }: { show?: boolean }) {
   const navigate = useNavigate();
   const [selectedChatId, setSelectedChatId] = useAtom(selectedChatIdAtom);
   const [selectedAppId, setSelectedAppId] = useAtom(selectedAppIdAtom);
+  const [isDropdownOpen, setIsDropdownOpen] = useAtom(dropdownOpenAtom);
   const { chats, loading, refreshChats } = useChats(selectedAppId);
   const routerState = useRouterState();
   const isChatRoute = routerState.location.pathname === "/chat";
@@ -136,7 +138,7 @@ export function ChatList({ show }: { show?: boolean }) {
             <SidebarMenu className="space-y-1">
               {chats.map((chat) => (
                 <SidebarMenuItem key={chat.id} className="mb-1">
-                  <div className="flex w-[185px] items-center">
+                  <div className="flex w-[175px] items-center">
                     <Button
                       variant="ghost"
                       onClick={() =>
@@ -161,7 +163,9 @@ export function ChatList({ show }: { show?: boolean }) {
                     </Button>
 
                     {selectedChatId === chat.id && (
-                      <DropdownMenu>
+                      <DropdownMenu
+                        onOpenChange={(open) => setIsDropdownOpen(open)}
+                      >
                         <DropdownMenuTrigger asChild>
                           <Button
                             variant="ghost"

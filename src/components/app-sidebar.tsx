@@ -2,6 +2,8 @@ import { Home, Inbox, Settings, HelpCircle } from "lucide-react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar"; // import useSidebar hook
 import { useEffect, useState, useRef } from "react";
+import { useAtom } from "jotai";
+import { dropdownOpenAtom } from "@/atoms/uiAtoms";
 
 import {
   Sidebar,
@@ -50,6 +52,7 @@ export function AppSidebar() {
   const [hoverState, setHoverState] = useState<HoverState>("no-hover");
   const expandedByHover = useRef(false);
   const [isHelpDialogOpen, setIsHelpDialogOpen] = useState(false); // State for dialog
+  const [isDropdownOpen] = useAtom(dropdownOpenAtom);
 
   useEffect(() => {
     if (
@@ -62,13 +65,14 @@ export function AppSidebar() {
     if (
       hoverState === "clear-hover" &&
       state === "expanded" &&
-      expandedByHover.current
+      expandedByHover.current &&
+      !isDropdownOpen
     ) {
       toggleSidebar();
       expandedByHover.current = false;
       setHoverState("no-hover");
     }
-  }, [hoverState, toggleSidebar, state, setHoverState]);
+  }, [hoverState, toggleSidebar, state, setHoverState, isDropdownOpen]);
 
   const routerState = useRouterState();
   const isAppRoute =
@@ -93,7 +97,9 @@ export function AppSidebar() {
     <Sidebar
       collapsible="icon"
       onMouseLeave={() => {
-        setHoverState("clear-hover");
+        if (!isDropdownOpen) {
+          setHoverState("clear-hover");
+        }
       }}
     >
       <SidebarContent className="overflow-hidden">

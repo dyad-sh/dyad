@@ -5,6 +5,7 @@ import {
   appUrlAtom,
   currentAppAtom,
   previewPanelKeyAtom,
+  previewErrorMessageAtom,
   selectedAppIdAtom,
 } from "@/atoms/appAtoms";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
@@ -12,12 +13,12 @@ import { App } from "@/ipc/ipc_types";
 
 export function useRunApp() {
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
   const [app, setApp] = useAtom(currentAppAtom);
   const setAppOutput = useSetAtom(appOutputAtom);
   const [appUrlObj, setAppUrlObj] = useAtom(appUrlAtom);
   const setPreviewPanelKey = useSetAtom(previewPanelKeyAtom);
   const appId = useAtomValue(selectedAppIdAtom);
+  const setPreviewErrorMessage = useSetAtom(previewErrorMessageAtom);
   const runApp = useCallback(async (appId: number) => {
     setLoading(true);
     try {
@@ -30,7 +31,12 @@ export function useRunApp() {
       }
       setAppOutput((prev) => [
         ...prev,
-        { message: "Trying to restart app...", type: "stdout", appId },
+        {
+          message: "Trying to restart app...",
+          type: "stdout",
+          appId,
+          timestamp: Date.now(),
+        },
       ]);
       const app = await ipcClient.getApp(appId);
       setApp(app);
@@ -42,10 +48,12 @@ export function useRunApp() {
           setAppUrlObj({ appUrl: urlMatch[1], appId });
         }
       });
-      setError(null);
+      setPreviewErrorMessage(undefined);
     } catch (error) {
       console.error(`Error running app ${appId}:`, error);
-      setError(error instanceof Error ? error : new Error(String(error)));
+      setPreviewErrorMessage(
+        error instanceof Error ? error.message : error?.toString()
+      );
     } finally {
       setLoading(false);
     }
@@ -61,14 +69,21 @@ export function useRunApp() {
       const ipcClient = IpcClient.getInstance();
       await ipcClient.stopApp(appId);
 
-      setError(null);
+      setPreviewErrorMessage(undefined);
     } catch (error) {
       console.error(`Error stopping app ${appId}:`, error);
-      setError(error instanceof Error ? error : new Error(String(error)));
+      setPreviewErrorMessage(
+        error instanceof Error ? error.message : error?.toString()
+      );
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const onHotModuleReload = useCallback(() => {
+    setPreviewPanelKey((prevKey) => prevKey + 1);
+    setPreviewErrorMessage(undefined);
+  }, [setPreviewPanelKey, setPreviewErrorMessage]);
 
   const restartApp = useCallback(
     async ({
@@ -90,7 +105,12 @@ export function useRunApp() {
         setAppUrlObj({ appUrl: null, appId: null });
         setAppOutput((prev) => [
           ...prev,
-          { message: "Restarting app...", type: "stdout", appId },
+          {
+            message: "Restarting app...",
+            type: "stdout",
+            appId,
+            timestamp: Date.now(),
+          },
         ]);
 
         const app = await ipcClient.getApp(appId);
@@ -99,6 +119,13 @@ export function useRunApp() {
           appId,
           (output) => {
             setAppOutput((prev) => [...prev, output]);
+            if (
+              output.message.includes("hmr update") &&
+              output.message.includes("[vite]")
+            ) {
+              onHotModuleReload();
+              return;
+            }
             // Check if the output contains a localhost URL
             const urlMatch = output.message.match(
               /(https?:\/\/localhost:\d+\/?)/
@@ -109,22 +136,30 @@ export function useRunApp() {
           },
           removeNodeModules
         );
-        setError(null);
       } catch (error) {
         console.error(`Error restarting app ${appId}:`, error);
-        setError(error instanceof Error ? error : new Error(String(error)));
+        setPreviewErrorMessage(
+          error instanceof Error ? error.message : error?.toString()
+        );
       } finally {
         setPreviewPanelKey((prevKey) => prevKey + 1);
         setLoading(false);
       }
     },
-    [appId, setApp, setAppOutput, setAppUrlObj, setError, setPreviewPanelKey]
+    [appId, setApp, setAppOutput, setAppUrlObj, setPreviewPanelKey]
   );
 
   const refreshAppIframe = useCallback(async () => {
     setPreviewPanelKey((prevKey) => prevKey + 1);
-    setError(null);
-  }, [setPreviewPanelKey, setError]);
+    setPreviewErrorMessage(undefined);
+  }, [setPreviewPanelKey, setPreviewErrorMessage]);
 
-  return { loading, error, runApp, stopApp, restartApp, app, refreshAppIframe };
+  return {
+    loading,
+    runApp,
+    stopApp,
+    restartApp,
+    app,
+    refreshAppIframe,
+  };
 }

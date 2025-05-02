@@ -29,19 +29,13 @@ import {
 } from "@/atoms/chatAtoms";
 import { atom, useAtom, useSetAtom, useAtomValue } from "jotai";
 import { useStreamChat } from "@/hooks/useStreamChat";
-import { useChats } from "@/hooks/useChats";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import { useLoadApp } from "@/hooks/useLoadApp";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { useProposal } from "@/hooks/useProposal";
 import {
-  CodeProposal,
   ActionProposal,
   Proposal,
   SuggestedAction,
-  ProposalResult,
   FileChange,
   SqlQuery,
 } from "@/lib/schemas";
@@ -69,15 +63,12 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const { settings, updateSettings, isAnyProviderSetup } = useSettings();
   const { streamMessage, isStreaming, setIsStreaming, error, setError } =
     useStreamChat();
-  const [selectedAppId] = useAtom(selectedAppIdAtom);
   const [showError, setShowError] = useState(true);
   const [isApproving, setIsApproving] = useState(false); // State for approving
   const [isRejecting, setIsRejecting] = useState(false); // State for rejecting
   const [messages, setMessages] = useAtom<Message[]>(chatMessagesAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const [showTokenBar, setShowTokenBar] = useAtom(showTokenBarAtom);
-
-  const { refreshAppIframe } = useRunApp();
 
   // Use the hook to fetch the proposal
   const {
@@ -171,7 +162,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     } finally {
       setIsApproving(false);
       setIsPreviewOpen(true);
-      refreshAppIframe();
 
       // Keep same as handleReject
       refreshProposal();

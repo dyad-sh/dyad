@@ -1,6 +1,7 @@
 export interface AppOutput {
   type: "stdout" | "stderr" | "info" | "client-error";
   message: string;
+  timestamp: number;
   appId: number;
 }
 

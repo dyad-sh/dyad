@@ -1,5 +1,10 @@
-import { selectedAppIdAtom, appUrlAtom, appOutputAtom } from "@/atoms/appAtoms";
-import { useAtomValue, useSetAtom } from "jotai";
+import {
+  selectedAppIdAtom,
+  appUrlAtom,
+  appOutputAtom,
+  previewErrorMessageAtom,
+} from "@/atoms/appAtoms";
+import { useAtomValue, useSetAtom, useAtom } from "jotai";
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -23,6 +28,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useSettings } from "@/hooks/useSettings";
+import { useRunApp } from "@/hooks/useRunApp";
 
 interface ErrorBannerProps {
   error: string | undefined;
@@ -78,23 +84,13 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
 };
 
 // Preview iframe component
-export const PreviewIframe = ({
-  loading,
-  loadingErrorMessage,
-}: {
-  loading: boolean;
-  loadingErrorMessage: string | undefined;
-}) => {
+export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { appUrl } = useAtomValue(appUrlAtom);
   const setAppOutput = useSetAtom(appOutputAtom);
-  const { app } = useLoadApp(selectedAppId);
-
   // State to trigger iframe reload
   const [reloadKey, setReloadKey] = useState(0);
-  const [errorMessage, setErrorMessage] = useState<string | undefined>(
-    loadingErrorMessage
-  );
+  const [errorMessage, setErrorMessage] = useAtom(previewErrorMessageAtom);
   const setInputValue = useSetAtom(chatInputValueAtom);
   const [availableRoutes, setAvailableRoutes] = useState<
     Array<{ path: string; label: string }>
@@ -179,6 +175,7 @@ export const PreviewIframe = ({
             message: `Iframe error: ${errorMessage}`,
             type: "client-error",
             appId: selectedAppId!,
+            timestamp: Date.now(),
           },
         ]);
       } else if (type === "pushState" || type === "replaceState") {
@@ -204,7 +201,13 @@ export const PreviewIframe = ({
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [navigationHistory, currentHistoryPosition, selectedAppId]);
+  }, [
+    navigationHistory,
+    currentHistoryPosition,
+    selectedAppId,
+    errorMessage,
+    setErrorMessage,
+  ]);
 
   useEffect(() => {
     // Update navigation buttons state

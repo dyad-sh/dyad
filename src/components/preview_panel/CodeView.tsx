@@ -13,25 +13,16 @@ interface App {
 
 export interface CodeViewProps {
   loading: boolean;
-  error: Error | null;
   app: App | null;
 }
 
 // Code view component that displays app files or status messages
-export const CodeView = ({ loading, error, app }: CodeViewProps) => {
+export const CodeView = ({ loading, app }: CodeViewProps) => {
   const selectedFile = useAtomValue(selectedFileAtom);
   const { refreshApp } = useLoadApp(app?.id ?? null);
 
   if (loading) {
     return <div className="text-center py-4">Loading files...</div>;
-  }
-
-  if (error) {
-    return (
-      <div className="text-center py-4 text-red-500">
-        Error loading files: {error.message}
-      </div>
-    );
   }
 
   if (!app) {

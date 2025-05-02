@@ -149,7 +149,7 @@ export function PreviewPanel() {
   const [previewMode, setPreviewMode] = useAtom(previewModeAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const [isConsoleOpen, setIsConsoleOpen] = useState(false);
-  const { runApp, stopApp, restartApp, error, loading, app } = useRunApp();
+  const { runApp, stopApp, restartApp, loading, app } = useRunApp();
   const runningAppIdRef = useRef<number | null>(null);
   const key = useAtomValue(previewPanelKeyAtom);
   const appOutput = useAtomValue(appOutputAtom);
@@ -223,13 +223,9 @@ export function PreviewPanel() {
           <Panel id="content" minSize={30}>
             <div className="h-full overflow-y-auto">
               {previewMode === "preview" ? (
-                <PreviewIframe
-                  key={key}
-                  loading={loading}
-                  loadingErrorMessage={error?.message}
-                />
+                <PreviewIframe key={key} loading={loading} />
               ) : (
-                <CodeView loading={loading} error={error} app={app} />
+                <CodeView loading={loading} app={app} />
               )}
             </div>
           </Panel>

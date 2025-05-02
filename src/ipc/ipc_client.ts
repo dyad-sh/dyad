@@ -99,10 +99,10 @@ export class IpcClient {
         "message" in data &&
         "appId" in data
       ) {
-        const { type, message, appId } = data as AppOutput;
+        const { type, message, appId } = data as unknown as AppOutput;
         const callbacks = this.appStreams.get(appId);
         if (callbacks) {
-          callbacks.onOutput({ type, message, appId });
+          callbacks.onOutput({ type, message, appId, timestamp: Date.now() });
         }
       } else {
         showError(new Error(`[IPC] Invalid app output data received: ${data}`));

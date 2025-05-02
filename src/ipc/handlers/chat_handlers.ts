@@ -63,4 +63,15 @@ export function registerChatHandlers() {
       return allChats;
     }
   );
+
+  ipcMain.handle("delete-chat", async (_, chatId: number) => {
+    try {
+      // Delete the chat and its associated messages
+      await db.delete(chats).where(eq(chats.id, chatId));
+      return { success: true };
+    } catch (error) {
+      console.error("Error deleting chat:", error);
+      return { success: false, error: (error as Error).message };
+    }
+  });
 }

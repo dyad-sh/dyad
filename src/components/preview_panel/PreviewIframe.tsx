@@ -17,7 +17,7 @@ import {
   ChevronDown,
   Lightbulb,
 } from "lucide-react";
-import { chatInputValueAtom } from "@/atoms/chatAtoms";
+import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useLoadAppFile } from "@/hooks/useLoadAppFile";
@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useSettings } from "@/hooks/useSettings";
 import { useRunApp } from "@/hooks/useRunApp";
+import { useStreamChat } from "@/hooks/useStreamChat";
 
 interface ErrorBannerProps {
   error: string | undefined;
@@ -91,7 +92,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   // State to trigger iframe reload
   const [reloadKey, setReloadKey] = useState(0);
   const [errorMessage, setErrorMessage] = useAtom(previewErrorMessageAtom);
-  const setInputValue = useSetAtom(chatInputValueAtom);
+  const [selectedChatId, setSelectedChatId] = useAtom(selectedChatIdAtom);
+  const { streamMessage } = useStreamChat();
   const [availableRoutes, setAvailableRoutes] = useState<
     Array<{ path: string; label: string }>
   >([]);
@@ -394,7 +396,12 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           error={errorMessage}
           onDismiss={() => setErrorMessage(undefined)}
           onAIFix={() => {
-            setInputValue(`Fix the error in ${errorMessage}`);
+            if (selectedChatId) {
+              streamMessage({
+                prompt: `Fix error: ${errorMessage}`,
+                chatId: selectedChatId,
+              });
+            }
           }}
         />
 

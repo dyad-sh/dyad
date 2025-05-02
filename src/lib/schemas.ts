@@ -36,6 +36,7 @@ export const ModelProviderSchema = z.enum([
   "auto",
   "openrouter",
   "ollama",
+  "lmstudio",
 ]);
 
 /**

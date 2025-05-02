@@ -94,6 +94,7 @@ export interface SystemDebugInfo {
 }
 
 export interface LocalModel {
+  provider: "ollama" | "lmstudio";
   modelName: string; // Name used for API calls (e.g., "llama2:latest")
   displayName: string; // User-friendly name (e.g., "Llama 2")
 }

@@ -785,14 +785,28 @@ export class IpcClient {
     }
   }
 
-  public async listLocalModels(): Promise<LocalModel[]> {
-    const { models, error } = (await this.ipcRenderer.invoke(
-      "local-models:list"
-    )) as LocalModelListResponse;
-    if (error) {
-      throw new Error(error);
+  public async listLocalOllamaModels(): Promise<LocalModel[]> {
+    try {
+      const response = await this.ipcRenderer.invoke("local-models:list-ollama");
+      return response?.models || [];
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Failed to fetch Ollama models: ${error.message}`);
+      }
+      throw new Error('Failed to fetch Ollama models: Unknown error occurred');
     }
-    return models;
+  }
+
+  public async listLocalLMStudioModels(): Promise<LocalModel[]> {
+    try {
+      const response = await this.ipcRenderer.invoke("local-models:list-lmstudio");
+      return response?.models || [];
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Failed to fetch LM Studio models: ${error.message}`);
+      }
+      throw new Error('Failed to fetch LM Studio models: Unknown error occurred');
+    }
   }
 
   // Listen for deep link events

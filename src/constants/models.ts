@@ -8,7 +8,7 @@ export interface ModelOption {
   contextWindow?: number;
 }
 
-type RegularModelProvider = Exclude<ModelProvider, "ollama">;
+type RegularModelProvider = Exclude<ModelProvider, "ollama" | "lmstudio">;
 export const MODEL_OPTIONS: Record<RegularModelProvider, ModelOption[]> = {
   openai: [
     // https://platform.openai.com/docs/models/gpt-4.1

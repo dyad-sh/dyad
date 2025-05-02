@@ -1,16 +1,16 @@
 import { useCallback } from "react";
 import { useAtom } from "jotai";
 import {
-  localModelsAtom,
-  localModelsLoadingAtom,
-  localModelsErrorAtom,
+  lmStudioModelsAtom,
+  lmStudioModelsLoadingAtom,
+  lmStudioModelsErrorAtom,
 } from "@/atoms/localModelsAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
 
-export function useLocalModels() {
-  const [models, setModels] = useAtom(localModelsAtom);
-  const [loading, setLoading] = useAtom(localModelsLoadingAtom);
-  const [error, setError] = useAtom(localModelsErrorAtom);
+export function useLocalLMSModels() {
+  const [models, setModels] = useAtom(lmStudioModelsAtom);
+  const [loading, setLoading] = useAtom(lmStudioModelsLoadingAtom);
+  const [error, setError] = useAtom(lmStudioModelsErrorAtom);
 
   const ipcClient = IpcClient.getInstance();
 
@@ -20,13 +20,13 @@ export function useLocalModels() {
   const loadModels = useCallback(async () => {
     setLoading(true);
     try {
-      const modelList = await ipcClient.listLocalOllamaModels();
+      const modelList = await ipcClient.listLocalLMStudioModels();
       setModels(modelList);
       setError(null);
 
       return modelList;
     } catch (error) {
-      console.error("Error loading local Ollama models:", error);
+      console.error("Error loading local LMStudio models:", error);
       setError(error instanceof Error ? error : new Error(String(error)));
       return [];
     } finally {

@@ -421,6 +421,87 @@ function WriteCodeProperlyButton() {
   );
 }
 
+function RebuildButton() {
+  const { restartApp } = useRunApp();
+  const posthog = usePostHog();
+  const selectedAppId = useAtomValue(selectedAppIdAtom);
+
+  const handleRebuild = useCallback(async () => {
+    if (!selectedAppId) return;
+
+    posthog.capture("action:rebuild");
+    await restartApp({ removeNodeModules: true });
+  }, [selectedAppId, posthog, restartApp]);
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button variant="outline" size="sm" onClick={handleRebuild}>
+            Rebuild app
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>Rebuild the application</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function RestartButton() {
+  const { restartApp } = useRunApp();
+  const posthog = usePostHog();
+  const selectedAppId = useAtomValue(selectedAppIdAtom);
+
+  const handleRestart = useCallback(async () => {
+    if (!selectedAppId) return;
+
+    posthog.capture("action:restart");
+    await restartApp();
+  }, [selectedAppId, posthog, restartApp]);
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button variant="outline" size="sm" onClick={handleRestart}>
+            Restart app
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>Restart the development server</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function RefreshButton() {
+  const { refreshAppIframe } = useRunApp();
+  const posthog = usePostHog();
+
+  const handleRefresh = useCallback(() => {
+    posthog.capture("action:refresh");
+    refreshAppIframe();
+  }, [posthog, refreshAppIframe]);
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button variant="outline" size="sm" onClick={handleRefresh}>
+            Refresh app
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>Refresh the application preview</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 function mapActionToButton(action: SuggestedAction) {
   switch (action.id) {
     case "summarize-in-new-chat":
@@ -429,6 +510,12 @@ function mapActionToButton(action: SuggestedAction) {
       return <RefactorFileButton path={action.path} />;
     case "write-code-properly":
       return <WriteCodeProperlyButton />;
+    case "rebuild":
+      return <RebuildButton />;
+    case "restart":
+      return <RestartButton />;
+    case "refresh":
+      return <RefreshButton />;
     default:
       console.error(`Unsupported action: ${action.id}`);
       return (

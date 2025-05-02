@@ -160,7 +160,10 @@ export type SuggestedAction =
   | RestartAppAction
   | SummarizeInNewChatAction
   | RefactorFileAction
-  | WriteCodeProperlyAction;
+  | WriteCodeProperlyAction
+  | RebuildAction
+  | RestartAction
+  | RefreshAction;
 
 export interface RestartAppAction {
   id: "restart-app";
@@ -177,6 +180,18 @@ export interface WriteCodeProperlyAction {
 export interface RefactorFileAction {
   id: "refactor-file";
   path: string;
+}
+
+export interface RebuildAction {
+  id: "rebuild";
+}
+
+export interface RestartAction {
+  id: "restart";
+}
+
+export interface RefreshAction {
+  id: "refresh";
 }
 
 export interface ActionProposal {

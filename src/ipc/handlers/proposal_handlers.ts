@@ -18,6 +18,7 @@ import {
   getDyadExecuteSqlTags,
   getDyadRenameTags,
   getDyadWriteTags,
+  getDyadCommandTags,
   processFullResponseActions,
 } from "../processors/response_processor";
 import log from "electron-log";
@@ -245,6 +246,24 @@ const getProposalHandler = async (
         ) {
           actions.push({
             id: "write-code-properly",
+          });
+        }
+
+        // Check for command tags and add corresponding actions
+        const commandTags = getDyadCommandTags(latestAssistantMessage.content);
+        if (commandTags.includes("rebuild")) {
+          actions.push({
+            id: "rebuild",
+          });
+        }
+        if (commandTags.includes("restart")) {
+          actions.push({
+            id: "restart",
+          });
+        }
+        if (commandTags.includes("refresh")) {
+          actions.push({
+            id: "refresh",
           });
         }
       }

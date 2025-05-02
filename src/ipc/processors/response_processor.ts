@@ -138,6 +138,19 @@ export function getDyadExecuteSqlTags(fullResponse: string): SqlQuery[] {
   return queries;
 }
 
+export function getDyadCommandTags(fullResponse: string): string[] {
+  const dyadCommandRegex =
+    /<dyad-command type="([^"]+)"[^>]*><\/dyad-command>/g;
+  let match;
+  const commands: string[] = [];
+
+  while ((match = dyadCommandRegex.exec(fullResponse)) !== null) {
+    commands.push(match[1]);
+  }
+
+  return commands;
+}
+
 interface Output {
   message: string;
   error: unknown;

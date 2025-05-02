@@ -157,7 +157,20 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         return;
       }
 
-      const { type, payload } = event.data;
+      const { type, payload } = event.data as {
+        type:
+          | "window-error"
+          | "unhandled-rejection"
+          | "iframe-sourcemapped-error"
+          | "pushState"
+          | "replaceState";
+        payload?: {
+          message?: string;
+          stack?: string;
+          reason?: string;
+          newUrl?: string;
+        };
+      };
 
       if (
         type === "window-error" ||
@@ -166,9 +179,11 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       ) {
         const stack =
           type === "iframe-sourcemapped-error"
-            ? payload.stack.split("\n").slice(0, 1).join("\n")
-            : payload.stack;
-        const errorMessage = `Error ${payload.message}\nStack trace: ${stack}`;
+            ? payload?.stack?.split("\n").slice(0, 1).join("\n")
+            : payload?.stack;
+        const errorMessage = `Error ${
+          payload?.message || payload?.reason
+        }\nStack trace: ${stack}`;
         console.error("Iframe error:", errorMessage);
         setErrorMessage(errorMessage);
         setAppOutput((prev) => [
@@ -184,7 +199,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         console.debug(`Navigation event: ${type}`, payload);
 
         // Update navigation history based on the type of state change
-        if (type === "pushState") {
+        if (type === "pushState" && payload?.newUrl) {
           // For pushState, we trim any forward history and add the new URL
           const newHistory = [
             ...navigationHistory.slice(0, currentHistoryPosition + 1),
@@ -192,7 +207,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           ];
           setNavigationHistory(newHistory);
           setCurrentHistoryPosition(newHistory.length - 1);
-        } else if (type === "replaceState") {
+        } else if (type === "replaceState" && payload?.newUrl) {
           // For replaceState, we replace the current URL
           const newHistory = [...navigationHistory];
           newHistory[currentHistoryPosition] = payload.newUrl;

@@ -53,6 +53,7 @@ import {
   TooltipTrigger,
 } from "../ui/tooltip";
 import { useNavigate } from "@tanstack/react-router";
+import { useVersions } from "@/hooks/useVersions";
 
 const showTokenBarAtom = atom(false);
 
@@ -61,6 +62,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const [inputValue, setInputValue] = useAtom(chatInputValueAtom);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { settings, updateSettings, isAnyProviderSetup } = useSettings();
+  const appId = useAtomValue(selectedAppIdAtom);
+  const { refreshVersions } = useVersions(appId);
   const { streamMessage, isStreaming, setIsStreaming, error, setError } =
     useStreamChat();
   const [showError, setShowError] = useState(true);
@@ -162,6 +165,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     } finally {
       setIsApproving(false);
       setIsPreviewOpen(true);
+      refreshVersions();
 
       // Keep same as handleReject
       refreshProposal();

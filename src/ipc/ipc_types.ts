@@ -41,6 +41,7 @@ export interface Message {
   role: "user" | "assistant";
   content: string;
   approvalState?: "approved" | "rejected" | null;
+  commitHash?: string | null;
 }
 
 export interface Chat {

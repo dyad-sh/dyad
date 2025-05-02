@@ -494,6 +494,7 @@ export function registerAppHandlers() {
       _,
       { appId, previousVersionId }: { appId: number; previousVersionId: string }
     ) => {
+      logger.log(`Reverting to version ${previousVersionId} for app ${appId}`);
       return withLock(appId, async () => {
         const app = await db.query.apps.findFirst({
           where: eq(apps.id, appId),

@@ -9,6 +9,9 @@ import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useAtom, useAtomValue } from "jotai";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useVersions } from "@/hooks/useVersions";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { showError } from "@/lib/toast";
 
 interface MessagesListProps {
   messages: Message[];
@@ -17,6 +20,8 @@ interface MessagesListProps {
 
 export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
   function MessagesList({ messages, messagesEndRef }, ref) {
+    const appId = useAtomValue(selectedAppIdAtom);
+    const { versions, revertVersion } = useVersions(appId);
     const { streamMessage, isStreaming, error, setError } = useStreamChat();
     const { isAnyProviderSetup } = useSettings();
     const selectedChatId = useAtomValue(selectedChatIdAtom);
@@ -39,11 +44,42 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => {
+              onClick={async () => {
                 if (!selectedChatId) {
                   console.error("No chat selected");
                   return;
                 }
+                // The last message is usually an assistant, but it might not be.
+                const lastVersion = versions[0];
+                const lastMessage = messages[messages.length - 1];
+                let reverted = false;
+                if (
+                  lastVersion.oid === lastMessage.commitHash &&
+                  lastMessage.role === "assistant"
+                ) {
+                  if (versions.length < 2) {
+                    showError("Cannot retry message; no previous version");
+                    return;
+                  }
+                  const previousAssistantMessage =
+                    messages[messages.length - 3];
+                  if (
+                    previousAssistantMessage?.role === "assistant" &&
+                    previousAssistantMessage?.commitHash
+                  ) {
+                    console.debug("Reverting to previous assistant version");
+                    await revertVersion({
+                      versionId: previousAssistantMessage.commitHash,
+                    });
+                    reverted = true;
+                  } else {
+                    console.debug("Reverting to previous version");
+                    await revertVersion({
+                      versionId: versions[1].oid,
+                    });
+                  }
+                }
+
                 // Find the last user message
                 const lastUserMessage = [...messages]
                   .reverse()
@@ -52,10 +88,15 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
                   console.error("No user message found");
                   return;
                 }
+                // If we reverted, we don't need to mark "redo" because
+                // the old message has already been deleted.
+                const redo = !reverted;
+                console.debug("Streaming message with redo", redo);
+
                 streamMessage({
                   prompt: lastUserMessage.content,
                   chatId: selectedChatId,
-                  redo: true,
+                  redo,
                 });
               }}
             >

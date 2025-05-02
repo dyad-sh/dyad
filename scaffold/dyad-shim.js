@@ -182,4 +182,86 @@
     }
     sendSourcemappedErrorToParent(error, "unhandled-rejection");
   });
+
+  (function watchForViteErrorOverlay() {
+    // --- Configuration for the observer ---
+    // We only care about direct children being added or removed.
+    const config = {
+      childList: true, // Observe additions/removals of child nodes
+      subtree: false, // IMPORTANT: Do *not* observe descendants, only direct children
+    };
+
+    // --- Callback function executed when mutations are observed ---
+    const observerCallback = function (mutationsList) {
+      // Iterate through all mutations that just occurred
+      for (const mutation of mutationsList) {
+        // We are only interested in nodes that were added
+        if (mutation.type === "childList" && mutation.addedNodes.length > 0) {
+          // Check each added node
+          for (const node of mutation.addedNodes) {
+            // Check if it's an ELEMENT_NODE (type 1) and has the correct ID
+            if (
+              node.nodeType === Node.ELEMENT_NODE &&
+              node.tagName === "vite-error-overlay".toUpperCase()
+            ) {
+              reportViteErrorOverlay(node);
+            }
+          }
+        }
+      }
+    };
+
+    function reportViteErrorOverlay(node) {
+      console.log(`Detected vite error overlay: ${node}`);
+      try {
+        window.parent.postMessage(
+          {
+            type: "build-error-report",
+            payload: {
+              message: node.shadowRoot.querySelector(".message").textContent,
+              file: node.shadowRoot.querySelector(".file").textContent,
+              frame: node.shadowRoot.querySelector(".frame").textContent,
+            },
+          },
+          PARENT_TARGET_ORIGIN
+        );
+      } catch (error) {
+        console.error("Could not report vite error overlay", error);
+      }
+    }
+
+    // --- Wait for DOM ready logic ---
+    if (document.readyState === "loading") {
+      // The document is still loading, wait for DOMContentLoaded
+      document.addEventListener("DOMContentLoaded", () => {
+        if (!document.body) {
+          console.error(
+            "document.body does not exist - something very weird happened"
+          );
+          return;
+        }
+
+        const node = document.body.querySelector("vite-error-overlay");
+        if (node) {
+          reportViteErrorOverlay(node);
+        }
+        const observer = new MutationObserver(observerCallback);
+        observer.observe(document.body, config);
+      });
+      console.log(
+        "Document loading, waiting for DOMContentLoaded to set up observer."
+      );
+    } else {
+      if (!document.body) {
+        console.error(
+          "document.body does not exist - something very weird happened"
+        );
+        return;
+      }
+      // The DOM is already interactive or complete
+      console.log("DOM already ready, setting up observer immediately.");
+      const observer = new MutationObserver(observerCallback);
+      observer.observe(document.body, config);
+    }
+  })();
 })();

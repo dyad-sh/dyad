@@ -16,6 +16,7 @@ import {
   Sparkles,
   ChevronDown,
   Lightbulb,
+  ChevronRight,
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
@@ -38,7 +39,18 @@ interface ErrorBannerProps {
 }
 
 const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
+  const [isCollapsed, setIsCollapsed] = useState(true);
+
   if (!error) return null;
+
+  const getTruncatedError = () => {
+    const firstLine = error.split("\n")[0];
+    const snippetLength = 200;
+    const snippet = error.substring(0, snippetLength);
+    return firstLine.length < snippet.length
+      ? firstLine
+      : snippet + (snippet.length === snippetLength ? "..." : "");
+  };
 
   return (
     <div className="absolute top-2 left-2 right-2 z-10 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-md shadow-sm p-2">
@@ -52,8 +64,17 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
 
       {/* Error message in the middle */}
       <div className="px-6 py-1 text-sm">
-        <div className="text-red-700 dark:text-red-300 text-wrap font-mono whitespace-pre-wrap break-words text-xs">
-          {error}
+        <div
+          className="text-red-700 dark:text-red-300 text-wrap font-mono whitespace-pre-wrap break-words text-xs cursor-pointer flex gap-1 items-start"
+          onClick={() => setIsCollapsed(!isCollapsed)}
+        >
+          <ChevronRight
+            size={14}
+            className={`mt-0.5 transform transition-transform ${
+              isCollapsed ? "" : "rotate-90"
+            }`}
+          />
+          {isCollapsed ? getTruncatedError() : error}
         </div>
       </div>
 
@@ -162,6 +183,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           | "window-error"
           | "unhandled-rejection"
           | "iframe-sourcemapped-error"
+          | "build-error-report"
           | "pushState"
           | "replaceState";
         payload?: {
@@ -169,6 +191,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           stack?: string;
           reason?: string;
           newUrl?: string;
+          file?: string;
+          frame?: string;
         };
       };
 
@@ -190,6 +214,19 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           ...prev,
           {
             message: `Iframe error: ${errorMessage}`,
+            type: "client-error",
+            appId: selectedAppId!,
+            timestamp: Date.now(),
+          },
+        ]);
+      } else if (type === "build-error-report") {
+        console.debug(`Build error report: ${payload}`);
+        const errorMessage = `${payload?.message} from file ${payload?.file}.\n\nSource code:\n${payload?.frame}`;
+        setErrorMessage(errorMessage);
+        setAppOutput((prev) => [
+          ...prev,
+          {
+            message: `Build error report: ${JSON.stringify(payload)}`,
             type: "client-error",
             appId: selectedAppId!,
             timestamp: Date.now(),

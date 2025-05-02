@@ -299,6 +299,7 @@ function renderCustomTag(
           node={{
             properties: {
               state: getState({ isStreaming, inProgress }),
+              description: attributes.description || "",
             },
           }}
         >

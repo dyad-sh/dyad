@@ -43,7 +43,10 @@ export const DyadExecuteSql: React.FC<DyadExecuteSqlProps> = ({
         <div className="flex items-center gap-2">
           <Database size={16} />
           <span className="text-gray-700 dark:text-gray-300 font-medium text-sm">
-            {queryDescription || "SQL Query"}
+            <span className="font-bold mr-2 outline-2 outline-gray-200 dark:outline-gray-700 bg-gray-100 dark:bg-gray-800 rounded-md px-1">
+              SQL
+            </span>
+            {queryDescription}
           </span>
           {inProgress && (
             <div className="flex items-center text-amber-600 text-xs">

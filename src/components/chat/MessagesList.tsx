@@ -11,7 +11,7 @@ import { Loader2, RefreshCw, Undo } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useVersions } from "@/hooks/useVersions";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import { showError } from "@/lib/toast";
+import { showError, showSuccess } from "@/lib/toast";
 import { IpcClient } from "@/ipc/ipc_client";
 import { chatMessagesAtom } from "@/atoms/chatAtoms";
 
@@ -26,10 +26,11 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
     const { versions, revertVersion } = useVersions(appId);
     const { streamMessage, isStreaming, error, setError } = useStreamChat();
     const { isAnyProviderSetup } = useSettings();
-    const selectedChatId = useAtomValue(selectedChatIdAtom);
+
     const setMessages = useSetAtom(chatMessagesAtom);
     const [isUndoLoading, setIsUndoLoading] = useState(false);
     const [isRetryLoading, setIsRetryLoading] = useState(false);
+    const [selectedChatId, setSelectedChatId] = useAtom(selectedChatIdAtom);
 
     return (
       <div className="flex-1 overflow-y-auto p-4" ref={ref}>
@@ -45,63 +46,61 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
             {!isAnyProviderSetup() && <SetupBanner />}
           </div>
         )}
-        {messages.length > 0 && !isStreaming && (
+        {messages.length > 3 && !isStreaming && (
           <div className="flex max-w-3xl mx-auto gap-2">
-            {messages[messages.length - 1].role === "assistant" && (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={isUndoLoading}
-                onClick={async () => {
-                  if (!selectedChatId || !appId) {
-                    console.error("No chat selected or app ID not available");
-                    return;
-                  }
-                  if (versions.length < 2) {
-                    showError("Cannot undo; no previous version");
-                    return;
-                  }
+            {messages[messages.length - 1].role === "assistant" &&
+              messages[messages.length - 1].commitHash && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={isUndoLoading}
+                  onClick={async () => {
+                    if (!selectedChatId || !appId) {
+                      console.error("No chat selected or app ID not available");
+                      return;
+                    }
+                    if (versions.length < 2) {
+                      showError("Cannot undo; no previous version");
+                      return;
+                    }
 
-                  setIsUndoLoading(true);
-                  try {
-                    const previousAssistantMessage =
-                      messages[messages.length - 3];
-                    if (
-                      previousAssistantMessage?.role === "assistant" &&
-                      previousAssistantMessage?.commitHash
-                    ) {
-                      console.debug("Reverting to previous assistant version");
-                      await revertVersion({
-                        versionId: previousAssistantMessage.commitHash,
-                      });
-                    } else {
-                      // Revert to the previous version
-                      await revertVersion({
-                        versionId: versions[1].oid,
-                      });
+                    setIsUndoLoading(true);
+                    try {
+                      const previousAssistantMessage =
+                        messages[messages.length - 3];
+                      if (
+                        previousAssistantMessage?.role === "assistant" &&
+                        previousAssistantMessage?.commitHash
+                      ) {
+                        console.debug(
+                          "Reverting to previous assistant version"
+                        );
+                        await revertVersion({
+                          versionId: previousAssistantMessage.commitHash,
+                        });
+                        if (selectedChatId) {
+                          const chat = await IpcClient.getInstance().getChat(
+                            selectedChatId
+                          );
+                          setMessages(chat.messages);
+                        }
+                      }
+                    } catch (error) {
+                      console.error("Error during undo operation:", error);
+                      showError("Failed to undo changes");
+                    } finally {
+                      setIsUndoLoading(false);
                     }
-                    if (selectedChatId) {
-                      const chat = await IpcClient.getInstance().getChat(
-                        selectedChatId
-                      );
-                      setMessages(chat.messages);
-                    }
-                  } catch (error) {
-                    console.error("Error during undo operation:", error);
-                    showError("Failed to undo changes");
-                  } finally {
-                    setIsUndoLoading(false);
-                  }
-                }}
-              >
-                {isUndoLoading ? (
-                  <Loader2 size={16} className="mr-1 animate-spin" />
-                ) : (
-                  <Undo size={16} />
-                )}
-                Undo
-              </Button>
-            )}
+                  }}
+                >
+                  {isUndoLoading ? (
+                    <Loader2 size={16} className="mr-1 animate-spin" />
+                  ) : (
+                    <Undo size={16} />
+                  )}
+                  Undo
+                </Button>
+              )}
             <Button
               variant="outline"
               size="sm"
@@ -138,10 +137,9 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
                       });
                       reverted = true;
                     } else {
-                      console.debug("Reverting to previous version");
-                      await revertVersion({
-                        versionId: versions[1].oid,
-                      });
+                      showSuccess(
+                        "You will need to manually revert to an earlier revision"
+                      );
                     }
                   }
 

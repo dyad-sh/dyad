@@ -45,7 +45,9 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
 
       {/* Error message in the middle */}
       <div className="px-6 py-1 text-sm">
-        <div className="text-red-700 dark:text-red-300 text-wrap">{error}</div>
+        <div className="text-red-700 dark:text-red-300 text-wrap font-mono whitespace-pre-wrap break-words text-xs">
+          {error}
+        </div>
       </div>
 
       {/* Tip message */}
@@ -159,26 +161,22 @@ export const PreviewIframe = ({
 
       const { type, payload } = event.data;
 
-      if (type === "window-error") {
-        const errorMessage = `Error in ${payload.filename} (line ${payload.lineno}, col ${payload.colno}): ${payload.message}`;
+      if (
+        type === "window-error" ||
+        type === "unhandled-rejection" ||
+        type === "iframe-sourcemapped-error"
+      ) {
+        const stack =
+          type === "iframe-sourcemapped-error"
+            ? payload.stack.split("\n").slice(0, 1).join("\n")
+            : payload.stack;
+        const errorMessage = `Error ${payload.message}\nStack trace: ${stack}`;
         console.error("Iframe error:", errorMessage);
         setErrorMessage(errorMessage);
         setAppOutput((prev) => [
           ...prev,
           {
             message: `Iframe error: ${errorMessage}`,
-            type: "client-error",
-            appId: selectedAppId!,
-          },
-        ]);
-      } else if (type === "unhandled-rejection") {
-        const errorMessage = `Unhandled Promise Rejection: ${payload.reason}`;
-        console.error("Iframe unhandled rejection:", errorMessage);
-        setErrorMessage(errorMessage);
-        setAppOutput((prev) => [
-          ...prev,
-          {
-            message: `Iframe unhandled rejection: ${errorMessage}`,
             type: "client-error",
             appId: selectedAppId!,
           },
@@ -201,16 +199,18 @@ export const PreviewIframe = ({
           newHistory[currentHistoryPosition] = payload.newUrl;
           setNavigationHistory(newHistory);
         }
-
-        // Update navigation buttons state
-        setCanGoBack(currentHistoryPosition > 0);
-        setCanGoForward(currentHistoryPosition < navigationHistory.length - 1);
       }
     };
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
   }, [navigationHistory, currentHistoryPosition, selectedAppId]);
+
+  useEffect(() => {
+    // Update navigation buttons state
+    setCanGoBack(currentHistoryPosition > 0);
+    setCanGoForward(currentHistoryPosition < navigationHistory.length - 1);
+  }, [navigationHistory, currentHistoryPosition]);
 
   // Initialize navigation history when iframe loads
   useEffect(() => {

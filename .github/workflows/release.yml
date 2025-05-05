@@ -12,9 +12,10 @@ jobs:
   build:
     environment: release
     strategy:
-      # Do it sequentially to avoid a race condition where multiple release drafts
-      # for the same version are created in parallel.
-      max-parallel: 1
+      # Uncomment max-parallel to prevent race condition (where multiple releases are
+      # created concurrently). Typically though, we'll create a release manually ahead of time
+      # which prevents the race.
+      # max-parallel: 1
       matrix:
         os:
           [
@@ -47,7 +48,6 @@ jobs:
       - name: Set variables
         if: contains(matrix.os.name, 'windows')
         id: variables
-        # echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
         run: |
           echo "SM_HOST=${{ secrets.SM_HOST }}" >> "$GITHUB_ENV" 
           echo "SM_API_KEY=${{ secrets.SM_API_KEY }}" >> "$GITHUB_ENV" 

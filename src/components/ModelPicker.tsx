@@ -61,14 +61,16 @@ export function ModelPicker({
   const getModelDisplayName = () => {
     if (selectedModel.provider === "ollama") {
       return (
-        ollamaModels.find((model: LocalModel) => model.modelName === selectedModel.name)
-          ?.displayName || selectedModel.name
+        ollamaModels.find(
+          (model: LocalModel) => model.modelName === selectedModel.name
+        )?.displayName || selectedModel.name
       );
     }
     if (selectedModel.provider === "lmstudio") {
       return (
-        lmStudioModels.find((model: LocalModel) => model.modelName === selectedModel.name)
-          ?.displayName || selectedModel.name // Fallback to path if not found
+        lmStudioModels.find(
+          (model: LocalModel) => model.modelName === selectedModel.name
+        )?.displayName || selectedModel.name // Fallback to path if not found
       );
     }
 
@@ -92,8 +94,10 @@ export function ModelPicker({
   );
 
   // Determine availability of local models
-  const hasOllamaModels = !ollamaLoading && !ollamaError && ollamaModels.length > 0;
-  const hasLMStudioModels = !lmStudioLoading && !lmStudioError && lmStudioModels.length > 0;
+  const hasOllamaModels =
+    !ollamaLoading && !ollamaError && ollamaModels.length > 0;
+  const hasLMStudioModels =
+    !lmStudioLoading && !lmStudioError && lmStudioModels.length > 0;
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -110,10 +114,11 @@ export function ModelPicker({
           <ChevronDown className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-64" align="start"> {/* Increased width slightly */}
+      <DropdownMenuContent className="w-64" align="start">
+        {" "}
+        {/* Increased width slightly */}
         <DropdownMenuLabel>Cloud Models</DropdownMenuLabel>
         <DropdownMenuSeparator />
-
         {/* Cloud models */}
         {cloudModels.map((model) => (
           <Tooltip key={`${model.provider}-${model.name}`}>
@@ -151,177 +156,183 @@ export function ModelPicker({
             <TooltipContent side="right">{model.description}</TooltipContent>
           </Tooltip>
         ))}
-
         <DropdownMenuSeparator />
-
-        {/* Ollama Models SubMenu */}
+        {/* Local Models Parent SubMenu */}
         <DropdownMenuSub>
-          <DropdownMenuSubTrigger
-            disabled={ollamaLoading && !hasOllamaModels} // Disable if loading and no models yet
-            className="w-full font-normal"
-          >
+          <DropdownMenuSubTrigger className="w-full font-normal">
             <div className="flex flex-col items-start">
-              <span>Local models (Ollama)</span>
-              {ollamaLoading ? (
-                <span className="text-xs text-muted-foreground">
-                  Loading...
-                </span>
-              ) : ollamaError ? (
-                 <span className="text-xs text-red-500">
-                   Error loading
-                 </span>
-              ): !hasOllamaModels ? (
-                <span className="text-xs text-muted-foreground">
-                  None available
-                </span>
-              ) : (
-                <span className="text-xs text-muted-foreground">
-                  {ollamaModels.length} models
-                </span>
-              )}
+              <span>Local models</span>
+              <span className="text-xs text-muted-foreground">
+                LM Studio, Ollama
+              </span>
             </div>
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent className="w-56">
-            <DropdownMenuLabel>Ollama Models</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-
-            {ollamaLoading && ollamaModels.length === 0 ? ( // Show loading only if no models are loaded yet
-              <div className="text-xs text-center py-2 text-muted-foreground">
-                Loading models...
-              </div>
-            ) : ollamaError ? (
-              <div className="px-2 py-1.5 text-sm text-red-600">
-                 <div className="flex flex-col">
-                   <span>Error loading models</span>
-                   <span className="text-xs text-muted-foreground">
-                     Is Ollama running?
-                   </span>
-                 </div>
-               </div>
-            ) : !hasOllamaModels ? (
-              <div className="px-2 py-1.5 text-sm">
-                <div className="flex flex-col">
-                  <span>No local models found</span>
-                  <span className="text-xs text-muted-foreground">
-                    Ensure Ollama is running and models are pulled.
-                  </span>
-                </div>
-              </div>
-            ) : (
-              ollamaModels.map((model: LocalModel) => (
-                <DropdownMenuItem
-                  key={`ollama-${model.modelName}`}
-                  className={
-                    selectedModel.provider === "ollama" &&
-                    selectedModel.name === model.modelName
-                      ? "bg-secondary"
-                      : ""
-                  }
-                  onClick={() => {
-                    onModelSelect({
-                      name: model.modelName,
-                      provider: "ollama",
-                    });
-                    setOpen(false);
-                  }}
-                >
-                  <div className="flex flex-col">
-                    <span>{model.displayName}</span>
-                    <span className="text-xs text-muted-foreground truncate">
-                      {model.modelName}
+            {/* Ollama Models SubMenu */}
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger
+                disabled={ollamaLoading && !hasOllamaModels} // Disable if loading and no models yet
+                className="w-full font-normal"
+              >
+                <div className="flex flex-col items-start">
+                  <span>Ollama</span>
+                  {ollamaLoading ? (
+                    <span className="text-xs text-muted-foreground">
+                      Loading...
                     </span>
+                  ) : ollamaError ? (
+                    <span className="text-xs text-red-500">Error loading</span>
+                  ) : !hasOllamaModels ? (
+                    <span className="text-xs text-muted-foreground">
+                      None available
+                    </span>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">
+                      {ollamaModels.length} models
+                    </span>
+                  )}
+                </div>
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="w-56">
+                <DropdownMenuLabel>Ollama Models</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+
+                {ollamaLoading && ollamaModels.length === 0 ? ( // Show loading only if no models are loaded yet
+                  <div className="text-xs text-center py-2 text-muted-foreground">
+                    Loading models...
                   </div>
-                </DropdownMenuItem>
-              ))
-            )}
+                ) : ollamaError ? (
+                  <div className="px-2 py-1.5 text-sm text-red-600">
+                    <div className="flex flex-col">
+                      <span>Error loading models</span>
+                      <span className="text-xs text-muted-foreground">
+                        Is Ollama running?
+                      </span>
+                    </div>
+                  </div>
+                ) : !hasOllamaModels ? (
+                  <div className="px-2 py-1.5 text-sm">
+                    <div className="flex flex-col">
+                      <span>No local models found</span>
+                      <span className="text-xs text-muted-foreground">
+                        Ensure Ollama is running and models are pulled.
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  ollamaModels.map((model: LocalModel) => (
+                    <DropdownMenuItem
+                      key={`ollama-${model.modelName}`}
+                      className={
+                        selectedModel.provider === "ollama" &&
+                        selectedModel.name === model.modelName
+                          ? "bg-secondary"
+                          : ""
+                      }
+                      onClick={() => {
+                        onModelSelect({
+                          name: model.modelName,
+                          provider: "ollama",
+                        });
+                        setOpen(false);
+                      }}
+                    >
+                      <div className="flex flex-col">
+                        <span>{model.displayName}</span>
+                        <span className="text-xs text-muted-foreground truncate">
+                          {model.modelName}
+                        </span>
+                      </div>
+                    </DropdownMenuItem>
+                  ))
+                )}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+
+            {/* LM Studio Models SubMenu */}
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger
+                disabled={lmStudioLoading && !hasLMStudioModels} // Disable if loading and no models yet
+                className="w-full font-normal"
+              >
+                <div className="flex flex-col items-start">
+                  <span>LM Studio</span>
+                  {lmStudioLoading ? (
+                    <span className="text-xs text-muted-foreground">
+                      Loading...
+                    </span>
+                  ) : lmStudioError ? (
+                    <span className="text-xs text-red-500">Error loading</span>
+                  ) : !hasLMStudioModels ? (
+                    <span className="text-xs text-muted-foreground">
+                      None available
+                    </span>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">
+                      {lmStudioModels.length} models
+                    </span>
+                  )}
+                </div>
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="w-56">
+                <DropdownMenuLabel>LM Studio Models</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+
+                {lmStudioLoading && lmStudioModels.length === 0 ? ( // Show loading only if no models are loaded yet
+                  <div className="text-xs text-center py-2 text-muted-foreground">
+                    Loading models...
+                  </div>
+                ) : lmStudioError ? (
+                  <div className="px-2 py-1.5 text-sm text-red-600">
+                    <div className="flex flex-col">
+                      <span>Error loading models</span>
+                      <span className="text-xs text-muted-foreground">
+                        {lmStudioError.message} {/* Display specific error */}
+                      </span>
+                    </div>
+                  </div>
+                ) : !hasLMStudioModels ? (
+                  <div className="px-2 py-1.5 text-sm">
+                    <div className="flex flex-col">
+                      <span>No loaded models found</span>
+                      <span className="text-xs text-muted-foreground">
+                        Ensure LM Studio is running and models are loaded.
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  lmStudioModels.map((model: LocalModel) => (
+                    <DropdownMenuItem
+                      key={`lmstudio-${model.modelName}`}
+                      className={
+                        selectedModel.provider === "lmstudio" &&
+                        selectedModel.name === model.modelName
+                          ? "bg-secondary"
+                          : ""
+                      }
+                      onClick={() => {
+                        onModelSelect({
+                          name: model.modelName,
+                          provider: "lmstudio",
+                        });
+                        setOpen(false);
+                      }}
+                    >
+                      <div className="flex flex-col">
+                        {/* Display the user-friendly name */}
+                        <span>{model.displayName}</span>
+                        {/* Show the path as secondary info */}
+                        <span className="text-xs text-muted-foreground truncate">
+                          {model.modelName}
+                        </span>
+                      </div>
+                    </DropdownMenuItem>
+                  ))
+                )}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
           </DropdownMenuSubContent>
         </DropdownMenuSub>
-
-        {/* LM Studio Models SubMenu */}
-        <DropdownMenuSub>
-          <DropdownMenuSubTrigger
-            disabled={lmStudioLoading && !hasLMStudioModels} // Disable if loading and no models yet
-            className="w-full font-normal"
-          >
-            <div className="flex flex-col items-start">
-              <span>Local models (LM Studio)</span>
-              {lmStudioLoading ? (
-                <span className="text-xs text-muted-foreground">
-                  Loading...
-                </span>
-               ) : lmStudioError ? (
-                 <span className="text-xs text-red-500">
-                   Error loading
-                 </span>
-              ) : !hasLMStudioModels ? (
-                <span className="text-xs text-muted-foreground">
-                  None available
-                </span>
-              ) : (
-                <span className="text-xs text-muted-foreground">
-                  {lmStudioModels.length} models
-                </span>
-              )}
-            </div>
-          </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent className="w-56">
-            <DropdownMenuLabel>LM Studio Models</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-
-            {lmStudioLoading && lmStudioModels.length === 0 ? ( // Show loading only if no models are loaded yet
-              <div className="text-xs text-center py-2 text-muted-foreground">
-                Loading models...
-              </div>
-            ) : lmStudioError ? (
-               <div className="px-2 py-1.5 text-sm text-red-600">
-                 <div className="flex flex-col">
-                   <span>Error loading models</span>
-                   <span className="text-xs text-muted-foreground">
-                     {lmStudioError.message} {/* Display specific error */}
-                   </span>
-                 </div>
-               </div>
-            ) : !hasLMStudioModels ? (
-              <div className="px-2 py-1.5 text-sm">
-                <div className="flex flex-col">
-                  <span>No loaded models found</span>
-                  <span className="text-xs text-muted-foreground">
-                    Ensure LM Studio is running and models are loaded.
-                  </span>
-                </div>
-              </div>
-            ) : (
-              lmStudioModels.map((model: LocalModel) => (
-                <DropdownMenuItem
-                  key={`lmstudio-${model.modelName}`}
-                  className={
-                    selectedModel.provider === "lmstudio" &&
-                    selectedModel.name === model.modelName
-                      ? "bg-secondary"
-                      : ""
-                  }
-                  onClick={() => {
-                    onModelSelect({
-                      name: model.modelName,
-                      provider: "lmstudio",
-                    });
-                    setOpen(false);
-                  }}
-                >
-                  <div className="flex flex-col">
-                    {/* Display the user-friendly name */}
-                    <span>{model.displayName}</span>
-                    {/* Show the path as secondary info */}
-                    <span className="text-xs text-muted-foreground truncate">
-                      {model.modelName}
-                    </span>
-                  </div>
-                </DropdownMenuItem>
-              ))
-            )}
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
-
       </DropdownMenuContent>
     </DropdownMenu>
   );

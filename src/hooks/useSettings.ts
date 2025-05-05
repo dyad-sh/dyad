@@ -86,7 +86,7 @@ export function useSettings() {
 
   const isProviderSetup = (provider: string) => {
     const providerSettings = settings?.providerSettings[provider];
-    if (providerSettings) {
+    if (providerSettings?.apiKey?.value) {
       return true;
     }
     if (envVars[PROVIDER_TO_ENV_VAR[provider]]) {

@@ -52,6 +52,8 @@ export function ChatHeader({
       navigate({ to: "/" });
     }
   };
+  // TODO: KEEP UP TO DATE WITH app_handlers.ts
+  const versionPostfix = versions.length === 10_000 ? `+` : "";
   return (
     <div className="@container flex items-center justify-between py-1.5">
       <div className="flex items-center space-x-2">
@@ -69,7 +71,7 @@ export function ChatHeader({
           className="hidden @6xs:flex cursor-pointer items-center gap-1 text-sm px-2 py-1 rounded-md"
         >
           <History size={16} />
-          {loading ? "..." : `Version ${versions.length}`}
+          {loading ? "..." : `Version ${versions.length}${versionPostfix}`}
         </Button>
       </div>
 

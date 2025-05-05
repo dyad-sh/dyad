@@ -474,7 +474,8 @@ export function registerAppHandlers() {
       const commits = await git.log({
         fs,
         dir: appPath,
-        depth: 1000, // Limit to last 1000 commits for performance
+        // KEEP UP TO DATE WITH ChatHeader.tsx
+        depth: 10_000, // Limit to last 10_000 commits for performance
       });
 
       return commits.map((commit) => ({

@@ -52,12 +52,17 @@ export function useStreamChat({
       prompt,
       chatId,
       redo,
+      attachments,
     }: {
       prompt: string;
       chatId: number;
       redo?: boolean;
+      attachments?: File[];
     }) => {
-      if (!prompt.trim() || !chatId) {
+      if (
+        (!prompt.trim() && (!attachments || attachments.length === 0)) ||
+        !chatId
+      ) {
         return;
       }
 
@@ -68,6 +73,7 @@ export function useStreamChat({
         IpcClient.getInstance().streamMessage(prompt, {
           chatId,
           redo,
+          attachments,
           onUpdate: (updatedMessages: Message[]) => {
             if (!hasIncrementedStreamCount) {
               setStreamCount((streamCount) => streamCount + 1);

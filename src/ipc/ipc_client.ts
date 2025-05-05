@@ -240,26 +240,71 @@ export class IpcClient {
     options: {
       chatId: number;
       redo?: boolean;
+      attachments?: File[];
       onUpdate: (messages: Message[]) => void;
       onEnd: (response: ChatResponseEnd) => void;
       onError: (error: string) => void;
     }
   ): void {
-    const { chatId, onUpdate, onEnd, onError, redo } = options;
+    const { chatId, redo, attachments, onUpdate, onEnd, onError } = options;
     this.chatStreams.set(chatId, { onUpdate, onEnd, onError });
 
-    // Use invoke to start the stream and pass the chatId
-    this.ipcRenderer
-      .invoke("chat:stream", {
-        prompt,
-        chatId,
-        redo,
-      } satisfies ChatStreamParams)
-      .catch((err) => {
-        showError(err);
-        onError(String(err));
-        this.chatStreams.delete(chatId);
-      });
+    // Handle file attachments if provided
+    if (attachments && attachments.length > 0) {
+      // Process each file and convert to base64
+      Promise.all(
+        attachments.map(async (file) => {
+          return new Promise<{ name: string; type: string; data: string }>(
+            (resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => {
+                resolve({
+                  name: file.name,
+                  type: file.type,
+                  data: reader.result as string,
+                });
+              };
+              reader.onerror = () =>
+                reject(new Error(`Failed to read file: ${file.name}`));
+              reader.readAsDataURL(file);
+            }
+          );
+        })
+      )
+        .then((fileDataArray) => {
+          // Use invoke to start the stream and pass the chatId and attachments
+          this.ipcRenderer
+            .invoke("chat:stream", {
+              prompt,
+              chatId,
+              redo,
+              attachments: fileDataArray,
+            })
+            .catch((err) => {
+              showError(err);
+              onError(String(err));
+              this.chatStreams.delete(chatId);
+            });
+        })
+        .catch((err) => {
+          showError(err);
+          onError(String(err));
+          this.chatStreams.delete(chatId);
+        });
+    } else {
+      // No attachments, proceed normally
+      this.ipcRenderer
+        .invoke("chat:stream", {
+          prompt,
+          chatId,
+          redo,
+        })
+        .catch((err) => {
+          showError(err);
+          onError(String(err));
+          this.chatStreams.delete(chatId);
+        });
+    }
   }
 
   // Method to cancel an ongoing stream

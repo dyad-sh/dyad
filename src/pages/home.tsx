@@ -25,6 +25,11 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { Button } from "@/components/ui/button";
 import { ExternalLink } from "lucide-react";
 
+// Adding an export for attachments
+export interface HomeSubmitOptions {
+  attachments?: File[];
+}
+
 export default function HomePage() {
   const [inputValue, setInputValue] = useAtom(homeChatInputValueAtom);
   const navigate = useNavigate();
@@ -91,8 +96,10 @@ export default function HomePage() {
     }
   }, [appId, navigate]);
 
-  const handleSubmit = async () => {
-    if (!inputValue.trim()) return;
+  const handleSubmit = async (options?: HomeSubmitOptions) => {
+    const attachments = options?.attachments || [];
+
+    if (!inputValue.trim() && attachments.length === 0) return;
 
     try {
       setIsLoading(true);
@@ -101,8 +108,12 @@ export default function HomePage() {
         name: generateCuteAppName(),
       });
 
-      // Stream the message
-      streamMessage({ prompt: inputValue, chatId: result.chatId });
+      // Stream the message with attachments
+      streamMessage({
+        prompt: inputValue,
+        chatId: result.chatId,
+        attachments,
+      });
       await new Promise((resolve) => setTimeout(resolve, 2000));
 
       setInputValue("");

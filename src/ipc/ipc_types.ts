@@ -14,6 +14,11 @@ export interface ChatStreamParams {
   chatId: number;
   prompt: string;
   redo?: boolean;
+  attachments?: Array<{
+    name: string;
+    type: string;
+    data: string; // Base64 encoded file data
+  }>;
 }
 
 export interface ChatResponseEnd {

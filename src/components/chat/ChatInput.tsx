@@ -16,6 +16,7 @@ import {
   ChevronsUpDown,
   ChevronsDownUp,
   BarChart2,
+  Paperclip,
 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -54,6 +55,9 @@ import {
 } from "../ui/tooltip";
 import { useNavigate } from "@tanstack/react-router";
 import { useVersions } from "@/hooks/useVersions";
+import { useAttachments } from "@/hooks/useAttachments";
+import { AttachmentsList } from "./AttachmentsList";
+import { DragDropOverlay } from "./DragDropOverlay";
 
 const showTokenBarAtom = atom(false);
 
@@ -72,6 +76,20 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const [messages, setMessages] = useAtom<Message[]>(chatMessagesAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const [showTokenBar, setShowTokenBar] = useAtom(showTokenBarAtom);
+
+  // Use the attachments hook
+  const {
+    attachments,
+    fileInputRef,
+    isDraggingOver,
+    handleAttachmentClick,
+    handleFileChange,
+    removeAttachment,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop,
+    clearAttachments,
+  } = useAttachments();
 
   // Use the hook to fetch the proposal
   const {
@@ -118,13 +136,25 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   };
 
   const handleSubmit = async () => {
-    if (!inputValue.trim() || isStreaming || !chatId) {
+    if (
+      (!inputValue.trim() && attachments.length === 0) ||
+      isStreaming ||
+      !chatId
+    ) {
       return;
     }
 
     const currentInput = inputValue;
     setInputValue("");
-    await streamMessage({ prompt: currentInput, chatId });
+
+    // Send message with attachments and clear them after sending
+    await streamMessage({
+      prompt: currentInput,
+      chatId,
+      attachments,
+      redo: false,
+    });
+    clearAttachments();
     posthog.capture("chat:submit");
   };
 
@@ -236,7 +266,14 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         </div>
       )}
       <div className="p-4">
-        <div className="flex flex-col border border-border rounded-lg bg-(--background-lighter) shadow-sm">
+        <div
+          className={`relative flex flex-col border border-border rounded-lg bg-(--background-lighter) shadow-sm ${
+            isDraggingOver ? "ring-2 ring-blue-500 border-blue-500" : ""
+          }`}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
           {/* Only render ChatInputActions if proposal is loaded */}
           {proposal && proposalResult?.chatId === chatId && (
             <ChatInputActions
@@ -255,6 +292,16 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               isRejecting={isRejecting}
             />
           )}
+
+          {/* Use the AttachmentsList component */}
+          <AttachmentsList
+            attachments={attachments}
+            onRemove={removeAttachment}
+          />
+
+          {/* Use the DragDropOverlay component */}
+          <DragDropOverlay isDraggingOver={isDraggingOver} />
+
           <div className="flex items-start space-x-2 ">
             <textarea
               ref={textareaRef}
@@ -266,6 +313,25 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               style={{ resize: "none" }}
               disabled={isStreaming}
             />
+
+            {/* File attachment button */}
+            <button
+              onClick={handleAttachmentClick}
+              className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
+              disabled={isStreaming}
+              title="Attach files"
+            >
+              <Paperclip size={20} />
+            </button>
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              className="hidden"
+              multiple
+              accept=".jpg,.jpeg,.png,.gif,.webp,.txt,.md,.js,.ts,.html,.css,.json,.csv"
+            />
+
             {isStreaming ? (
               <button
                 onClick={handleCancel}
@@ -277,7 +343,10 @@ export function ChatInput({ chatId }: { chatId?: number }) {
             ) : (
               <button
                 onClick={handleSubmit}
-                disabled={!inputValue.trim() || !isAnyProviderSetup()}
+                disabled={
+                  (!inputValue.trim() && attachments.length === 0) ||
+                  !isAnyProviderSetup()
+                }
                 className="px-2 py-2 mt-1 mr-2 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
               >
                 <SendIcon size={20} />

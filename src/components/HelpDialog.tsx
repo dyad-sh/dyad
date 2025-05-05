@@ -86,6 +86,7 @@ export function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
 - Node Version: ${debugInfo.nodeVersion || "Not available"}
 - PNPM Version: ${debugInfo.pnpmVersion || "Not available"}
 - Node Path: ${debugInfo.nodePath || "Not available"}
+- Telemetry ID: ${debugInfo.telemetryId || "Not available"}
 
 ## Logs
 \`\`\`

@@ -16,6 +16,7 @@ const routeTree = rootRoute.addChildren([
 // src/components/NotFoundRedirect.tsx
 import * as React from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 export function NotFoundRedirect() {
   const navigate = useNavigate();
@@ -35,6 +36,7 @@ export function NotFoundRedirect() {
 export const router = createRouter({
   routeTree,
   defaultNotFoundComponent: NotFoundRedirect,
+  defaultErrorComponent: ErrorBoundary,
 });
 
 declare module "@tanstack/react-router" {

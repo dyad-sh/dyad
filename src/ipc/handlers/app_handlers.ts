@@ -189,12 +189,20 @@ export function registerAppHandlers() {
       });
 
       // Create initial commit
-      await git.commit({
+      const commitHash = await git.commit({
         fs: fs,
         dir: fullAppPath,
         message: "Init from react vite template",
         author: await getGitAuthor(),
       });
+
+      // Update chat with initial commit hash
+      await db
+        .update(chats)
+        .set({
+          initialCommitHash: commitHash,
+        })
+        .where(eq(chats.id, chat.id));
     } catch (error) {
       logger.error("Error in background app initialization:", error);
     }

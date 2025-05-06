@@ -54,6 +54,7 @@ export interface Chat {
   id: number;
   title: string;
   messages: Message[];
+  initialCommitHash?: string | null;
 }
 
 export interface App {

@@ -1,0 +1,1 @@
+ALTER TABLE `chats` ADD `initial_commit_hash` text;

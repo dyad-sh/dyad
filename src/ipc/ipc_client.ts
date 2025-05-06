@@ -330,12 +330,24 @@ export class IpcClient {
     }
   }
 
-  public async deleteChat(chatId: number): Promise<{ success: boolean }> {
+  public async deleteChat(
+    chatId: number
+  ): Promise<{ success: boolean; error?: string }> {
     try {
-      const result = (await this.ipcRenderer.invoke("delete-chat", chatId)) as {
-        success: boolean;
-      };
-      return result;
+      const result = await this.ipcRenderer.invoke("delete-chat", chatId);
+      return result as { success: boolean; error?: string };
+    } catch (error) {
+      showError(error);
+      throw error;
+    }
+  }
+
+  public async deleteMessages(
+    chatId: number
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const result = await this.ipcRenderer.invoke("delete-messages", chatId);
+      return result as { success: boolean; error?: string };
     } catch (error) {
       showError(error);
       throw error;

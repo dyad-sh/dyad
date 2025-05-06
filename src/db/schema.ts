@@ -23,6 +23,7 @@ export const chats = sqliteTable("chats", {
     .notNull()
     .references(() => apps.id, { onDelete: "cascade" }),
   title: text("title"),
+  initialCommitHash: text("initial_commit_hash"),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),

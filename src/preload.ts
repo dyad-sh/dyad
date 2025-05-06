@@ -58,6 +58,8 @@ const validInvokeChannels = [
   "window:get-platform",
   "upload-to-signed-url",
   "delete-chat",
+  "delete-messages",
+  "start-chat-stream",
 ] as const;
 
 // Add valid receive channels

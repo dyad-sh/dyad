@@ -26,10 +26,7 @@ export type ChatSummary = z.infer<typeof ChatSummarySchema>;
  */
 export const ChatSummariesSchema = z.array(ChatSummarySchema);
 
-/**
- * Zod schema for model provider
- */
-export const ModelProviderSchema = z.enum([
+const providers = [
   "openai",
   "anthropic",
   "google",
@@ -37,7 +34,15 @@ export const ModelProviderSchema = z.enum([
   "openrouter",
   "ollama",
   "lmstudio",
-]);
+] as const;
+/**
+ * Zod schema for model provider
+ */
+export const ModelProviderSchema = z.enum(providers);
+
+export const cloudProviders = providers.filter(
+  (provider) => provider !== "ollama" && provider !== "lmstudio"
+);
 
 /**
  * Type derived from the ModelProviderSchema

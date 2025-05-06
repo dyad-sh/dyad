@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { atom, useAtom } from "jotai";
 import { userSettingsAtom, envVarsAtom } from "@/atoms/appAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
-import type { UserSettings } from "@/lib/schemas";
+import { cloudProviders, type UserSettings } from "@/lib/schemas";
 import { usePostHog } from "posthog-js/react";
 
 const PROVIDER_TO_ENV_VAR: Record<string, string> = {
@@ -103,9 +103,10 @@ export function useSettings() {
     updateSettings,
     isProviderSetup,
     isAnyProviderSetup: () => {
-      return Object.keys(PROVIDER_TO_ENV_VAR).some((provider) =>
-        isProviderSetup(provider)
-      );
+      // Technically we should check for ollama and lmstudio being setup, but
+      // practically most users will want to use a cloud provider (at least
+      // some of the time)
+      return cloudProviders.some((provider) => isProviderSetup(provider));
     },
     refreshSettings: () => {
       return loadInitialData();

@@ -13,7 +13,7 @@ import { registerLocalModelHandlers } from "./handlers/local_model_handlers";
 import { registerTokenCountHandlers } from "./handlers/token_count_handlers";
 import { registerWindowHandlers } from "./handlers/window_handlers";
 import { registerUploadHandlers } from "./handlers/upload_handlers";
-
+import { registerVersionHandlers } from "./handlers/version_handlers";
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
   registerAppHandlers();
@@ -31,4 +31,5 @@ export function registerIpcHandlers() {
   registerTokenCountHandlers();
   registerWindowHandlers();
   registerUploadHandlers();
+  registerVersionHandlers();
 }

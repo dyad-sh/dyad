@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import { useRouter } from "@tanstack/react-router";
 import { GitHubIntegration } from "@/components/GitHubIntegration";
+import { SupabaseIntegration } from "@/components/SupabaseIntegration";
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
@@ -142,6 +143,7 @@ export default function SettingsPage() {
             </h2>
             <div className="space-y-4">
               <GitHubIntegration />
+              <SupabaseIntegration />
             </div>
           </div>
 

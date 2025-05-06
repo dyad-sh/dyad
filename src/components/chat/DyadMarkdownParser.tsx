@@ -12,6 +12,7 @@ import { useAtomValue } from "jotai";
 import { isStreamingAtom } from "@/atoms/chatAtoms";
 import { CustomTagState } from "./stateTypes";
 import { DyadOutput } from "./DyadOutput";
+import { IpcClient } from "@/ipc/ipc_client";
 
 interface DyadMarkdownParserProps {
   content: string;
@@ -29,11 +30,27 @@ type ContentPiece =
   | { type: "markdown"; content: string }
   | { type: "custom-tag"; tagInfo: CustomTagInfo };
 
+const customLink = ({ node, ...props }: { node?: any; [key: string]: any }) => (
+  <a
+    {...props}
+    onClick={(e) => {
+      const url = props.href;
+      if (url) {
+        e.preventDefault();
+        IpcClient.getInstance().openExternalUrl(url);
+      }
+    }}
+  />
+);
+
 export const VanillaMarkdownParser = ({ content }: { content: string }) => {
   return (
     <ReactMarkdown
       rehypePlugins={[rehypeRaw]}
-      components={{ code: CodeHighlight } as any}
+      components={{
+        code: CodeHighlight,
+        a: customLink,
+      }}
     >
       {content}
     </ReactMarkdown>
@@ -60,7 +77,10 @@ export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
             ? piece.content && (
                 <ReactMarkdown
                   rehypePlugins={[rehypeRaw]}
-                  components={{ code: CodeHighlight } as any}
+                  components={{
+                    code: CodeHighlight,
+                    a: customLink,
+                  }}
                 >
                   {piece.content}
                 </ReactMarkdown>

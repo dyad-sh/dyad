@@ -5,6 +5,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { ChevronRight, Circle } from "lucide-react";
 import "@/components/chat/monaco";
 import { IpcClient } from "@/ipc/ipc_client";
+import { useSettings } from "@/hooks/useSettings";
 
 interface FileEditorProps {
   appId: number | null;
@@ -54,6 +55,7 @@ const Breadcrumb: React.FC<BreadcrumbProps> = ({ path, hasUnsavedChanges }) => {
 export const FileEditor = ({ appId, filePath }: FileEditorProps) => {
   const { content, loading, error } = useLoadAppFile(appId, filePath);
   const { theme } = useTheme();
+  const { settings } = useSettings();
   const [value, setValue] = useState<string | undefined>(undefined);
   const [displayUnsavedChanges, setDisplayUnsavedChanges] = useState(false);
 
@@ -197,6 +199,7 @@ export const FileEditor = ({ appId, filePath }: FileEditorProps) => {
             fontFamily: "monospace",
             fontSize: 13,
             lineNumbers: "on",
+            readOnly: !settings?.experiments?.enableFileEditing,
           }}
         />
       </div>

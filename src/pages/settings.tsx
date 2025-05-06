@@ -13,13 +13,14 @@ import { ArrowLeft } from "lucide-react";
 import { useRouter } from "@tanstack/react-router";
 import { GitHubIntegration } from "@/components/GitHubIntegration";
 import { SupabaseIntegration } from "@/components/SupabaseIntegration";
+import { Switch } from "@/components/ui/switch";
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const appVersion = useAppVersion();
-  const { settings } = useSettings();
+  const { settings, updateSettings } = useSettings();
   const router = useRouter();
 
   const handleResetEverything = async () => {
@@ -153,7 +154,31 @@ export default function SettingsPage() {
               Experiments
             </h2>
             <div className="space-y-4">
-              There are no experiments currently available.
+              {/* Enable File Editing Experiment */}
+              <div className="flex items-center justify-between">
+                <label
+                  htmlFor="enable-file-editing"
+                  className="text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  Enable File Editing
+                </label>
+                <Switch
+                  id="enable-file-editing"
+                  checked={!!settings?.experiments?.enableFileEditing}
+                  onCheckedChange={(checked) => {
+                    updateSettings({
+                      experiments: {
+                        ...settings?.experiments,
+                        enableFileEditing: checked,
+                      },
+                    });
+                  }}
+                />
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                File editing is not reliable and requires you to manually commit
+                changes and update Supabase edge functions.
+              </p>
             </div>
           </div>
 

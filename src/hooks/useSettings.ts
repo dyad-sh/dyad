@@ -101,6 +101,7 @@ export function useSettings() {
     loading,
     error,
     updateSettings,
+
     isProviderSetup,
     isAnyProviderSetup: () => {
       // Technically we should check for ollama and lmstudio being setup, but

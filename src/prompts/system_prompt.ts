@@ -299,5 +299,5 @@ Available packages and libraries:
 > Using <dyad-write> for code is **MANDATORY**.
 > Any instance of code within \`\`\` is a **CRITICAL FAILURE**.
 > **REPEAT: NO MARKDOWN CODE BLOCKS. USE <dyad-write> EXCLUSIVELY FOR CODE.**
-
+> Do NOT use <dyad-file> tags in the output. ALWAYS use <dyad-write> to generate code.
 `;

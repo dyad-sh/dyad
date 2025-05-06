@@ -25,7 +25,7 @@ const logger = log.scope("github_handlers");
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID || "Ov23liWV2HdC0RBLecWx";
 const GITHUB_DEVICE_CODE_URL = "https://github.com/login/device/code";
 const GITHUB_ACCESS_TOKEN_URL = "https://github.com/login/oauth/access_token";
-const GITHUB_SCOPES = "repo,user"; // Define the scopes needed
+const GITHUB_SCOPES = "repo,user,workflow"; // Define the scopes needed
 
 // --- State Management (Simple in-memory, consider alternatives for robustness) ---
 interface DeviceFlowState {

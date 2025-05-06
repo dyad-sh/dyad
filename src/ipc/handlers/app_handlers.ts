@@ -38,6 +38,7 @@ import killPort from "kill-port";
 import util from "util";
 import log from "electron-log";
 import { getSupabaseProjectName } from "../../supabase_admin/supabase_management_client";
+import { settings } from "happy-dom/lib/PropertySymbol.js";
 
 const logger = log.scope("app_handlers");
 
@@ -232,8 +233,8 @@ export function registerAppHandlers() {
     }
 
     let supabaseProjectName: string | null = null;
-
-    if (app.supabaseProjectId) {
+    const settings = readSettings();
+    if (app.supabaseProjectId && settings.supabase?.accessToken?.value) {
       supabaseProjectName = await getSupabaseProjectName(app.supabaseProjectId);
     }
 

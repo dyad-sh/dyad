@@ -251,7 +251,10 @@ export function registerChatStreamHandlers() {
           content: message.content,
         }));
         let systemPrompt = SYSTEM_PROMPT;
-        if (updatedChat.app?.supabaseProjectId) {
+        if (
+          updatedChat.app?.supabaseProjectId &&
+          settings.supabase?.accessToken?.value
+        ) {
           systemPrompt +=
             "\n\n" +
             SUPABASE_AVAILABLE_SYSTEM_PROMPT +

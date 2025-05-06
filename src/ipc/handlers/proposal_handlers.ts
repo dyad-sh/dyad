@@ -331,7 +331,11 @@ const getProposalHandler = async (
 const approveProposalHandler = async (
   _event: IpcMainInvokeEvent,
   { chatId, messageId }: { chatId: number; messageId: number }
-): Promise<{ success: boolean; error?: string }> => {
+): Promise<{
+  success: boolean;
+  error?: string;
+  uncommittedFiles?: string[];
+}> => {
   logger.log(
     `IPC: approve-proposal called for chatId: ${chatId}, messageId: ${messageId}`
   );
@@ -380,7 +384,7 @@ const approveProposalHandler = async (
       };
     }
 
-    return { success: true };
+    return { success: true, uncommittedFiles: processResult.uncommittedFiles };
   } catch (error) {
     logger.error(`Error approving proposal for messageId ${messageId}:`, error);
     return {

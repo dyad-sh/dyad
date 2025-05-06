@@ -24,6 +24,7 @@ export interface ChatStreamParams {
 export interface ChatResponseEnd {
   chatId: number;
   updatedFiles: boolean;
+  uncommittedFiles?: string[];
 }
 
 export interface CreateAppParams {

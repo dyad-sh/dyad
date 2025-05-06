@@ -58,7 +58,10 @@ import { useVersions } from "@/hooks/useVersions";
 import { useAttachments } from "@/hooks/useAttachments";
 import { AttachmentsList } from "./AttachmentsList";
 import { DragDropOverlay } from "./DragDropOverlay";
-
+import {
+  showError as showErrorToast,
+  showUncommittedFilesWarning,
+} from "@/lib/toast";
 const showTokenBarAtom = atom(false);
 
 export function ChatInput({ chatId }: { chatId?: number }) {
@@ -188,6 +191,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       } else {
         console.error("Failed to approve proposal:", result.error);
         setError(result.error || "Failed to approve proposal");
+      }
+      if (result.uncommittedFiles) {
+        showUncommittedFilesWarning(result.uncommittedFiles);
       }
     } catch (err) {
       console.error("Error approving proposal:", err);

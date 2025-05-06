@@ -175,7 +175,11 @@ export async function processFullResponseActions(
     chatSummary,
     messageId,
   }: { chatSummary: string | undefined; messageId: number }
-): Promise<{ updatedFiles?: boolean; error?: string }> {
+): Promise<{
+  updatedFiles?: boolean;
+  error?: string;
+  uncommittedFiles?: string[];
+}> {
   logger.log("processFullResponseActions for chatId", chatId);
   // Get the app associated with the chat
   const chatWithApp = await db.query.chats.findFirst({
@@ -453,6 +457,13 @@ export async function processFullResponseActions(
         })
         .where(eq(messages.id, messageId));
     }
+
+    // Check for any uncommitted changes after the commit
+    const statusMatrix = await git.statusMatrix({ fs, dir: appPath });
+    const uncommittedFiles = statusMatrix
+      .filter((row) => row[1] !== 1 || row[2] !== 1 || row[3] !== 1)
+      .map((row) => row[0]); // Get just the file paths
+
     logger.log("mark as approved: hasChanges", hasChanges);
     // Update the message to approved
     await db
@@ -461,7 +472,12 @@ export async function processFullResponseActions(
         approvalState: "approved",
       })
       .where(eq(messages.id, messageId));
-    return { updatedFiles: hasChanges };
+
+    return {
+      updatedFiles: hasChanges,
+      uncommittedFiles:
+        uncommittedFiles.length > 0 ? uncommittedFiles : undefined,
+    };
   } catch (error: unknown) {
     logger.error("Error processing files:", error);
     return { error: (error as any).toString() };

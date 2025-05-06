@@ -111,10 +111,10 @@ export class IpcClient {
     });
 
     this.ipcRenderer.on("chat:response:end", (payload) => {
-      const { chatId, updatedFiles } = payload as unknown as ChatResponseEnd;
+      const { chatId } = payload as unknown as ChatResponseEnd;
       const callbacks = this.chatStreams.get(chatId);
       if (callbacks) {
-        callbacks.onEnd({ chatId, updatedFiles });
+        callbacks.onEnd(payload as unknown as ChatResponseEnd);
         console.debug("chat:response:end");
         this.chatStreams.delete(chatId);
       } else {
@@ -734,13 +734,21 @@ export class IpcClient {
   }: {
     chatId: number;
     messageId: number;
-  }): Promise<{ success: boolean; error?: string }> {
+  }): Promise<{
+    success: boolean;
+    error?: string;
+    uncommittedFiles?: string[];
+  }> {
     try {
       const result = await this.ipcRenderer.invoke("approve-proposal", {
         chatId,
         messageId,
       });
-      return result as { success: boolean; error?: string };
+      return result as {
+        success: boolean;
+        error?: string;
+        uncommittedFiles?: string[];
+      };
     } catch (error) {
       showError(error);
       return { success: false, error: (error as Error).message };

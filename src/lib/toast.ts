@@ -22,6 +22,15 @@ export const showError = (message: any) => {
 };
 
 /**
+ * Show a warning toast
+ * @param message The warning message to display
+ */
+export const showWarning = (message: string) => {
+  toast.warning(message);
+  console.warn(message);
+};
+
+/**
  * Show an info toast
  * @param message The info message to display
  */
@@ -47,6 +56,13 @@ export const showLoading = <T>(
     success: (data) => successMessage || "Operation completed successfully",
     error: (err) => errorMessage || `Error: ${err.message || "Unknown error"}`,
   });
+};
+
+export const showUncommittedFilesWarning = (files: string[]) => {
+  showWarning(
+    `Some changed files were not committed. Please use git to manually commit them.
+    \n\n${files.join("\n")}`
+  );
 };
 
 // Re-export for direct use

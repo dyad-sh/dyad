@@ -2,7 +2,7 @@ import { ipcMain } from "electron";
 import { db } from "../../db";
 import { apps, messages } from "../../db/schema";
 import { desc, eq, and, gt } from "drizzle-orm";
-import type { Version } from "../ipc_types";
+import type { Version, BranchResult } from "../ipc_types";
 import fs from "node:fs";
 import path from "node:path";
 import { getDyadAppPath } from "../../paths/paths";
@@ -50,6 +50,53 @@ export function registerVersionHandlers() {
       throw new Error(`Failed to list versions: ${error.message}`);
     }
   });
+
+  ipcMain.handle(
+    "get-current-branch",
+    async (_, { appId }: { appId: number }): Promise<BranchResult> => {
+      const app = await db.query.apps.findFirst({
+        where: eq(apps.id, appId),
+      });
+
+      if (!app) {
+        return {
+          success: false,
+          errorMessage: "App not found",
+        };
+      }
+
+      const appPath = getDyadAppPath(app.path);
+
+      // Return appropriate result if the app is not a git repo
+      if (!fs.existsSync(path.join(appPath, ".git"))) {
+        return {
+          success: false,
+          errorMessage: "Not a git repository",
+        };
+      }
+
+      try {
+        const currentBranch = await git.currentBranch({
+          fs,
+          dir: appPath,
+          fullname: false,
+        });
+
+        return {
+          success: true,
+          data: {
+            branch: currentBranch || "<no-branch>",
+          },
+        };
+      } catch (error: any) {
+        logger.error(`Error getting current branch for app ${appId}:`, error);
+        return {
+          success: false,
+          errorMessage: `Failed to get current branch: ${error.message}`,
+        };
+      }
+    }
+  );
 
   ipcMain.handle(
     "revert-version",

@@ -25,6 +25,7 @@ const validInvokeChannels = [
   "list-versions",
   "revert-version",
   "checkout-version",
+  "get-current-branch",
   "delete-app",
   "rename-app",
   "get-user-settings",

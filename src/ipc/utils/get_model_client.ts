@@ -19,11 +19,13 @@ export function getModelClient(
   model: LargeLanguageModel,
   settings: UserSettings
 ) {
+  const dyadApiKey = settings.providerSettings?.auto?.apiKey?.value;
   // Handle 'auto' provider by trying each model in AUTO_MODELS until one works
   if (model.provider === "auto") {
     // Try each model in AUTO_MODELS in order until finding one with an API key
     for (const autoModel of AUTO_MODELS) {
       const apiKey =
+        dyadApiKey ||
         settings.providerSettings?.[autoModel.provider]?.apiKey ||
         getEnvVar(PROVIDER_TO_ENV_VAR[autoModel.provider]);
 
@@ -46,7 +48,6 @@ export function getModelClient(
     throw new Error("No API keys available for any model in AUTO_MODELS");
   }
 
-  const dyadApiKey = settings.providerSettings?.auto?.apiKey?.value;
   if (dyadApiKey && settings.enableDyadPro) {
     const provider = createOpenAI({
       apiKey: dyadApiKey,
@@ -82,14 +83,14 @@ export function getModelClient(
     case "ollama": {
       const provider = createOllama();
       return provider(model.name);
-   }
-   case "lmstudio": {
-     // Using LM Studio's OpenAI compatible API
-     const baseURL = "http://localhost:1234/v1"; // Default LM Studio OpenAI API URL
-     const provider = createOpenAICompatible({ name: "lmstudio", baseURL });
-     return provider(model.name);
-   }
-   default: {
+    }
+    case "lmstudio": {
+      // Using LM Studio's OpenAI compatible API
+      const baseURL = "http://localhost:1234/v1"; // Default LM Studio OpenAI API URL
+      const provider = createOpenAICompatible({ name: "lmstudio", baseURL });
+      return provider(model.name);
+    }
+    default: {
       // Ensure exhaustive check if more providers are added
       const _exhaustiveCheck: never = model.provider;
       throw new Error(`Unsupported model provider: ${model.provider}`);

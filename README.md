@@ -18,6 +18,6 @@ No sign-up required. Just download and go.
 
 ### [👉 Download for your platform](https://www.dyad.sh/#download)
 
-## 🎥 Preview
-
 **dyad** is open source (Apache 2.0-licensed).
+
+If you're interested in contributing to dyad, please read our [contributing](./CONTRIBUTING.md) doc.

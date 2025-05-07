@@ -25,7 +25,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
-    "extract-codebase": "ts-node scripts/extract-codebase.ts"
+    "extract-codebase": "ts-node scripts/extract-codebase.ts",
+    "prepare": "husky install"
   },
   "keywords": [],
   "author": {
@@ -58,6 +59,8 @@
     "eslint": "^8.57.1",
     "eslint-plugin-import": "^2.31.0",
     "happy-dom": "^17.4.4",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.5.2",
     "prettier": "3.5.3",
     "typescript": "^5.8.3",
     "vite": "^5.4.17",
@@ -126,5 +129,8 @@
     "tw-animate-css": "^1.2.5",
     "update-electron-app": "^3.1.1",
     "uuid": "^11.1.0"
+  },
+  "lint-staged": {
+    "*.{js,css,md,ts,tsx,jsx,json}": "prettier --write"
   }
 }

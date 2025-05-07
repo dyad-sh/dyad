@@ -95,14 +95,17 @@ export function registerVersionHandlers() {
           errorMessage: `Failed to get current branch: ${error.message}`,
         };
       }
-    }
+    },
   );
 
   ipcMain.handle(
     "revert-version",
     async (
       _,
-      { appId, previousVersionId }: { appId: number; previousVersionId: string }
+      {
+        appId,
+        previousVersionId,
+      }: { appId: number; previousVersionId: string },
     ) => {
       return withLock(appId, async () => {
         const app = await db.query.apps.findFirst({
@@ -198,13 +201,13 @@ export function registerVersionHandlers() {
             const messagesToDelete = await db.query.messages.findMany({
               where: and(
                 eq(messages.chatId, chatId),
-                gt(messages.id, messageWithCommit.id)
+                gt(messages.id, messageWithCommit.id),
               ),
               orderBy: desc(messages.id),
             });
 
             logger.log(
-              `Deleting ${messagesToDelete.length} messages after commit ${previousVersionId} from chat ${chatId}`
+              `Deleting ${messagesToDelete.length} messages after commit ${previousVersionId} from chat ${chatId}`,
             );
 
             // Delete the messages
@@ -214,8 +217,8 @@ export function registerVersionHandlers() {
                 .where(
                   and(
                     eq(messages.chatId, chatId),
-                    gt(messages.id, messageWithCommit.id)
-                  )
+                    gt(messages.id, messageWithCommit.id),
+                  ),
                 );
             }
           }
@@ -224,12 +227,12 @@ export function registerVersionHandlers() {
         } catch (error: any) {
           logger.error(
             `Error reverting to version ${previousVersionId} for app ${appId}:`,
-            error
+            error,
           );
           throw new Error(`Failed to revert version: ${error.message}`);
         }
       });
-    }
+    },
   );
 
   ipcMain.handle(
@@ -259,11 +262,11 @@ export function registerVersionHandlers() {
         } catch (error: any) {
           logger.error(
             `Error checking out version ${versionId} for app ${appId}:`,
-            error
+            error,
           );
           throw new Error(`Failed to checkout version: ${error.message}`);
         }
       });
-    }
+    },
   );
 }

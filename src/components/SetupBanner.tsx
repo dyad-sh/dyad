@@ -35,7 +35,7 @@ export function SetupBanner() {
   const navigate = useNavigate();
   const { isAnyProviderSetup, loading } = useSettings();
   const [nodeSystemInfo, setNodeSystemInfo] = useState<NodeSystemInfo | null>(
-    null
+    null,
   );
   const [nodeCheckError, setNodeCheckError] = useState<boolean>(false);
   const [nodeInstallStep, setNodeInstallStep] =
@@ -106,7 +106,7 @@ export function SetupBanner() {
 
   const bannerClasses = cn(
     "w-full mb-6 border rounded-xl shadow-sm overflow-hidden",
-    "border-zinc-200 dark:border-zinc-700"
+    "border-zinc-200 dark:border-zinc-700",
   );
 
   const getStatusIcon = (isComplete: boolean, hasError: boolean = false) => {
@@ -137,8 +137,8 @@ export function SetupBanner() {
               nodeCheckError
                 ? "bg-red-50 dark:bg-red-900/30"
                 : isNodeSetupComplete
-                ? "bg-green-50 dark:bg-green-900/30"
-                : "bg-yellow-50 dark:bg-yellow-900/30"
+                  ? "bg-green-50 dark:bg-green-900/30"
+                  : "bg-yellow-50 dark:bg-yellow-900/30",
             )}
           >
             <AccordionTrigger className="px-4 py-3 transition-colors w-full hover:no-underline">
@@ -178,7 +178,7 @@ export function SetupBanner() {
                         className="text-blue-500 dark:text-blue-400 hover:underline"
                         onClick={() => {
                           IpcClient.getInstance().openExternalUrl(
-                            "https://nodejs.org/en/download"
+                            "https://nodejs.org/en/download",
                           );
                         }}
                       >
@@ -203,12 +203,12 @@ export function SetupBanner() {
             className={cn(
               isAnyProviderSetup()
                 ? "bg-green-50 dark:bg-green-900/30"
-                : "bg-yellow-50 dark:bg-yellow-900/30"
+                : "bg-yellow-50 dark:bg-yellow-900/30",
             )}
           >
             <AccordionTrigger
               className={cn(
-                "px-4 py-3 transition-colors w-full hover:no-underline"
+                "px-4 py-3 transition-colors w-full hover:no-underline",
               )}
             >
               <div className="flex items-center justify-between w-full">
@@ -288,7 +288,7 @@ function NodeJsHelpCallout() {
         <a
           onClick={() => {
             IpcClient.getInstance().openExternalUrl(
-              "https://www.dyad.sh/docs/help/nodejs"
+              "https://www.dyad.sh/docs/help/nodejs",
             );
           }}
           className="text-blue-600 dark:text-blue-400 hover:underline font-medium"

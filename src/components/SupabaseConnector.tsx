@@ -100,7 +100,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                 variant="outline"
                 onClick={() => {
                   IpcClient.getInstance().openExternalUrl(
-                    `https://supabase.com/dashboard/project/${app.supabaseProjectId}`
+                    `https://supabase.com/dashboard/project/${app.supabaseProjectId}`,
                   );
                 }}
                 className="ml-2 px-2 py-1"
@@ -204,7 +204,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
         <img
           onClick={() => {
             IpcClient.getInstance().openExternalUrl(
-              "https://supabase-oauth.dyad.sh/api/connect-supabase/login"
+              "https://supabase-oauth.dyad.sh/api/connect-supabase/login",
             );
           }}
           src={isDarkMode ? connectSupabaseDark : connectSupabaseLight}

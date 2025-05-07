@@ -200,7 +200,7 @@ export function PreviewPanel() {
         if (currentRunningApp !== null) {
           console.debug(
             "Component unmounting or selectedAppId changing, stopping app",
-            currentRunningApp
+            currentRunningApp,
           );
           stopApp(currentRunningApp);
           runningAppIdRef.current = null; // Clear ref on stop

@@ -22,7 +22,7 @@ export async function executeAddDependency({
     `(pnpm add ${packageStr}) || (npm install ${packageStr})`,
     {
       cwd: appPath,
-    }
+    },
   );
   const installResults = stdout + (stderr ? `\n${stderr}` : "");
 
@@ -30,13 +30,13 @@ export async function executeAddDependency({
   const updatedContent = message.content.replace(
     new RegExp(
       `<dyad-add-dependency packages="${packages.join(
-        " "
+        " ",
       )}">[^<]*</dyad-add-dependency>`,
-      "g"
+      "g",
     ),
     `<dyad-add-dependency packages="${packages.join(
-      " "
-    )}">${installResults}</dyad-add-dependency>`
+      " ",
+    )}">${installResults}</dyad-add-dependency>`,
   );
 
   // Save the updated message back to the database

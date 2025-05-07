@@ -135,7 +135,7 @@ export const PROVIDER_TO_ENV_VAR: Record<string, string> = {
 };
 
 export const ALLOWED_ENV_VARS = Object.keys(PROVIDER_TO_ENV_VAR).map(
-  (provider) => PROVIDER_TO_ENV_VAR[provider]
+  (provider) => PROVIDER_TO_ENV_VAR[provider],
 );
 
 export const AUTO_MODELS = [

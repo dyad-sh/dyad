@@ -46,7 +46,7 @@ export async function streamTestResponse(
   chatId: number,
   testResponse: string,
   abortController: AbortController,
-  updatedChat: any
+  updatedChat: any,
 ): Promise<string> {
   console.log(`Using canned response for test prompt`);
 

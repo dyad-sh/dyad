@@ -21,7 +21,7 @@ export function useProposal(chatId?: number | undefined) {
       try {
         // Type assertion might be needed depending on how IpcClient is typed
         const result = (await IpcClient.getInstance().getProposal(
-          chatId
+          chatId,
         )) as ProposalResult | null;
 
         if (result) {
@@ -37,7 +37,7 @@ export function useProposal(chatId?: number | undefined) {
         setIsLoading(false);
       }
     },
-    [chatId] // Only depend on chatId, setProposalResult is stable
+    [chatId], // Only depend on chatId, setProposalResult is stable
   ); // Depend on chatId
 
   useEffect(() => {

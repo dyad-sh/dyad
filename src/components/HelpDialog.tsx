@@ -105,7 +105,7 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
       console.error("Failed to prepare bug report:", error);
       // Fallback to opening the regular GitHub issue page
       IpcClient.getInstance().openExternalUrl(
-        "https://github.com/dyad-sh/dyad/issues/new"
+        "https://github.com/dyad-sh/dyad/issues/new",
       );
     } finally {
       setIsLoading(false);
@@ -121,9 +121,8 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
     setIsUploading(true);
     try {
       // Get chat logs (includes debug info, chat data, and codebase)
-      const chatLogs = await IpcClient.getInstance().getChatLogs(
-        selectedChatId
-      );
+      const chatLogs =
+        await IpcClient.getInstance().getChatLogs(selectedChatId);
 
       // Store data for review and switch to review mode
       setChatLogsData(chatLogs);
@@ -131,7 +130,7 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
     } catch (error) {
       console.error("Failed to upload chat session:", error);
       alert(
-        "Failed to upload chat session. Please try again or report manually."
+        "Failed to upload chat session. Please try again or report manually.",
       );
     } finally {
       setIsUploading(false);
@@ -162,7 +161,7 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
             extension: "json",
             contentType: "application/json",
           }),
-        }
+        },
       );
 
       if (!response.ok) {
@@ -176,7 +175,7 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
       const uploadResult = await IpcClient.getInstance().uploadToSignedUrl(
         uploadUrl,
         "application/json",
-        chatLogsJson
+        chatLogsJson,
       );
 
       if (!uploadResult.success) {
@@ -374,7 +373,7 @@ Session ID: ${sessionId}
               variant="outline"
               onClick={() => {
                 IpcClient.getInstance().openExternalUrl(
-                  "https://www.dyad.sh/docs"
+                  "https://www.dyad.sh/docs",
                 );
               }}
               className="w-full py-6 bg-(--background-lightest)"

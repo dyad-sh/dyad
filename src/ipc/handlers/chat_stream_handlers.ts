@@ -124,7 +124,7 @@ export function registerChatStreamHandlers() {
             await db
               .delete(messages)
               .where(
-                eq(messages.id, chatMessages[lastUserMessageIndex + 1].id)
+                eq(messages.id, chatMessages[lastUserMessageIndex + 1].id),
               );
           }
         }
@@ -220,7 +220,7 @@ export function registerChatStreamHandlers() {
           req.chatId,
           testResponse,
           abortController,
-          updatedChat
+          updatedChat,
         );
       } else {
         // Normal AI processing for non-test prompts
@@ -242,7 +242,7 @@ export function registerChatStreamHandlers() {
           "codebaseInfo: length",
           codebaseInfo.length,
           "estimated tokens",
-          codebaseInfo.length / 4
+          codebaseInfo.length / 4,
         );
 
         // Prepare message history for the AI
@@ -266,7 +266,7 @@ export function registerChatStreamHandlers() {
           systemPrompt += "\n\n" + SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT;
         }
         const isSummarizeIntent = req.prompt.startsWith(
-          "Summarize from chat-id="
+          "Summarize from chat-id=",
         );
         if (isSummarizeIntent) {
           systemPrompt = SUMMARIZE_CHAT_SYSTEM_PROMPT;
@@ -276,7 +276,7 @@ export function registerChatStreamHandlers() {
         const hasImageAttachments =
           req.attachments &&
           req.attachments.some((attachment) =>
-            attachment.type.startsWith("image/")
+            attachment.type.startsWith("image/"),
           );
 
         if (hasImageAttachments) {
@@ -316,7 +316,7 @@ This conversation includes one or more image attachments. When the user uploads 
             // Replace the last message with one that includes attachments
             chatMessages[lastUserIndex] = await prepareMessageWithAttachments(
               lastUserMessage,
-              attachmentPaths
+              attachmentPaths,
             );
           }
         }
@@ -353,7 +353,7 @@ This conversation includes one or more image attachments. When the user uploads 
               (error as any)?.error?.message || JSON.stringify(error);
             event.sender.send(
               "chat:response:error",
-              `Sorry, there was an error from the AI: ${message}`
+              `Sorry, there was an error from the AI: ${message}`,
             );
             // Clean up the abort controller
             activeStreams.delete(req.chatId);
@@ -374,7 +374,7 @@ This conversation includes one or more image attachments. When the user uploads 
               });
               fullResponse = fullResponse.replace(
                 "$$SUPABASE_CLIENT_CODE$$",
-                supabaseClientCode
+                supabaseClientCode,
               );
             }
             // Store the current partial response
@@ -421,13 +421,13 @@ This conversation includes one or more image attachments. When the user uploads 
                   .where(eq(messages.id, placeholderAssistantMessage.id));
 
                 logger.log(
-                  `Updated cancelled response for placeholder message ${placeholderAssistantMessage.id} in chat ${chatId}`
+                  `Updated cancelled response for placeholder message ${placeholderAssistantMessage.id} in chat ${chatId}`,
                 );
                 partialResponses.delete(req.chatId);
               } catch (error) {
                 logger.error(
                   `Error saving partial response for chat ${chatId}:`,
-                  error
+                  error,
                 );
               }
             }
@@ -441,7 +441,7 @@ This conversation includes one or more image attachments. When the user uploads 
       if (!abortController.signal.aborted && fullResponse) {
         // Scrape from: <dyad-chat-summary>Renaming profile file</dyad-chat-title>
         const chatTitle = fullResponse.match(
-          /<dyad-chat-summary>(.*?)<\/dyad-chat-summary>/
+          /<dyad-chat-summary>(.*?)<\/dyad-chat-summary>/,
         );
         if (chatTitle) {
           await db
@@ -461,7 +461,7 @@ This conversation includes one or more image attachments. When the user uploads 
           const status = await processFullResponseActions(
             fullResponse,
             req.chatId,
-            { chatSummary, messageId: placeholderAssistantMessage.id } // Use placeholder ID
+            { chatSummary, messageId: placeholderAssistantMessage.id }, // Use placeholder ID
           );
 
           const chat = await db.query.chats.findFirst({
@@ -481,7 +481,7 @@ This conversation includes one or more image attachments. When the user uploads 
           if (status.error) {
             event.sender.send(
               "chat:response:error",
-              `Sorry, there was an error applying the AI's changes: ${status.error}`
+              `Sorry, there was an error applying the AI's changes: ${status.error}`,
             );
           }
 
@@ -505,12 +505,15 @@ This conversation includes one or more image attachments. When the user uploads 
           try {
             // We don't immediately delete files because they might be needed for reference
             // Instead, schedule them for deletion after some time
-            setTimeout(async () => {
-              if (fs.existsSync(filePath)) {
-                await unlink(filePath);
-                logger.log(`Deleted temporary file: ${filePath}`);
-              }
-            }, 30 * 60 * 1000); // Delete after 30 minutes
+            setTimeout(
+              async () => {
+                if (fs.existsSync(filePath)) {
+                  await unlink(filePath);
+                  logger.log(`Deleted temporary file: ${filePath}`);
+                }
+              },
+              30 * 60 * 1000,
+            ); // Delete after 30 minutes
           } catch (error) {
             logger.error(`Error scheduling file deletion: ${error}`);
           }
@@ -523,7 +526,7 @@ This conversation includes one or more image attachments. When the user uploads 
       logger.error("Error calling LLM:", error);
       event.sender.send(
         "chat:response:error",
-        `Sorry, there was an error processing your request: ${error}`
+        `Sorry, there was an error processing your request: ${error}`,
       );
       // Clean up the abort controller
       activeStreams.delete(req.chatId);
@@ -555,7 +558,7 @@ This conversation includes one or more image attachments. When the user uploads 
 }
 
 export function formatMessages(
-  messages: { role: string; content: string | undefined }[]
+  messages: { role: string; content: string | undefined }[],
 ) {
   return messages
     .map((m) => `<message role="${m.role}">${m.content}</message>`)
@@ -566,7 +569,7 @@ export function formatMessages(
 async function replaceTextAttachmentWithContent(
   text: string,
   filePath: string,
-  fileName: string
+  fileName: string,
 ): Promise<string> {
   try {
     if (await isTextFile(filePath)) {
@@ -577,16 +580,16 @@ async function replaceTextAttachmentWithContent(
       const escapedPath = filePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const tagPattern = new RegExp(
         `<dyad-text-attachment filename="[^"]*" type="[^"]*" path="${escapedPath}">\\s*<\\/dyad-text-attachment>`,
-        "g"
+        "g",
       );
 
       const replacedText = text.replace(
         tagPattern,
-        `Full content of ${fileName}:\n\`\`\`\n${fullContent}\n\`\`\``
+        `Full content of ${fileName}:\n\`\`\`\n${fullContent}\n\`\`\``,
       );
 
       logger.log(
-        `Replaced text attachment content for: ${fileName} - length before: ${text.length} - length after: ${replacedText.length}`
+        `Replaced text attachment content for: ${fileName} - length before: ${text.length} - length after: ${replacedText.length}`,
       );
       return replacedText;
     }
@@ -600,13 +603,13 @@ async function replaceTextAttachmentWithContent(
 // Helper function to convert traditional message to one with proper image attachments
 async function prepareMessageWithAttachments(
   message: CoreMessage,
-  attachmentPaths: string[]
+  attachmentPaths: string[],
 ): Promise<CoreMessage> {
   let textContent = message.content;
   // Get the original text content
   if (typeof textContent !== "string") {
     logger.warn(
-      "Message content is not a string - shouldn't happen but using message as-is"
+      "Message content is not a string - shouldn't happen but using message as-is",
     );
     return message;
   }
@@ -617,7 +620,7 @@ async function prepareMessageWithAttachments(
     textContent = await replaceTextAttachmentWithContent(
       textContent,
       filePath,
-      fileName
+      fileName,
     );
   }
 

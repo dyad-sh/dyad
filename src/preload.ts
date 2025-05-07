@@ -89,7 +89,7 @@ contextBridge.exposeInMainWorld("electron", {
     },
     on: (
       channel: ValidReceiveChannel,
-      listener: (...args: unknown[]) => void
+      listener: (...args: unknown[]) => void,
     ) => {
       if (validReceiveChannels.includes(channel)) {
         const subscription = (
@@ -110,7 +110,7 @@ contextBridge.exposeInMainWorld("electron", {
     },
     removeListener: (
       channel: ValidReceiveChannel,
-      listener: (...args: unknown[]) => void
+      listener: (...args: unknown[]) => void,
     ) => {
       if (validReceiveChannels.includes(channel)) {
         ipcRenderer.removeListener(channel, listener);

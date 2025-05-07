@@ -91,7 +91,7 @@ export const db = _db as any as BetterSQLite3Database<typeof schema> & {
 export async function updateAppGithubRepo(
   appId: number,
   org: string,
-  repo: string
+  repo: string,
 ): Promise<void> {
   await db
     .update(schema.apps)

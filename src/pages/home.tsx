@@ -228,7 +228,7 @@ export default function HomePage() {
               onClick={() =>
                 window.open(
                   releaseUrl.replace("?hideHeader=true&theme=" + theme, ""),
-                  "_blank"
+                  "_blank",
                 )
               }
             >

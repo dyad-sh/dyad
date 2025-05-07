@@ -13,7 +13,7 @@ export const estimateTokens = (text: string): number => {
 export const estimateMessagesTokens = (messages: Message[]): number => {
   return messages.reduce(
     (acc, message) => acc + estimateTokens(message.content),
-    0
+    0,
   );
 };
 
@@ -24,7 +24,7 @@ export function getContextWindow() {
   const model = settings.selectedModel;
   if (!MODEL_OPTIONS[model.provider as keyof typeof MODEL_OPTIONS]) {
     logger.warn(
-      `Model provider ${model.provider} not found in MODEL_OPTIONS. Using default max tokens.`
+      `Model provider ${model.provider} not found in MODEL_OPTIONS. Using default max tokens.`,
     );
     return DEFAULT_CONTEXT_WINDOW;
   }

@@ -13,7 +13,7 @@ export function useSupabase() {
   const [loading, setLoading] = useAtom(supabaseLoadingAtom);
   const [error, setError] = useAtom(supabaseErrorAtom);
   const [selectedProject, setSelectedProject] = useAtom(
-    selectedSupabaseProjectAtom
+    selectedSupabaseProjectAtom,
   );
 
   const ipcClient = IpcClient.getInstance();
@@ -58,7 +58,7 @@ export function useSupabase() {
         setLoading(false);
       }
     },
-    [ipcClient, setError, setLoading]
+    [ipcClient, setError, setLoading],
   );
 
   /**
@@ -84,7 +84,7 @@ export function useSupabase() {
         setLoading(false);
       }
     },
-    [ipcClient, setError, setLoading]
+    [ipcClient, setError, setLoading],
   );
 
   /**
@@ -94,7 +94,7 @@ export function useSupabase() {
     (projectId: string | null) => {
       setSelectedProject(projectId);
     },
-    [setSelectedProject]
+    [setSelectedProject],
   );
 
   return {

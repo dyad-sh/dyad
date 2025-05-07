@@ -17,7 +17,7 @@ import log from "electron-log";
 const logger = log.scope("getModelClient");
 export function getModelClient(
   model: LargeLanguageModel,
-  settings: UserSettings
+  settings: UserSettings,
 ) {
   const dyadApiKey = settings.providerSettings?.auto?.apiKey?.value;
   // Handle 'auto' provider by trying each model in AUTO_MODELS until one works
@@ -31,7 +31,7 @@ export function getModelClient(
 
       if (apiKey) {
         logger.log(
-          `Using provider: ${autoModel.provider} model: ${autoModel.name}`
+          `Using provider: ${autoModel.provider} model: ${autoModel.name}`,
         );
         // Use the first model that has an API key
         return getModelClient(
@@ -39,7 +39,7 @@ export function getModelClient(
             provider: autoModel.provider,
             name: autoModel.name,
           } as LargeLanguageModel,
-          settings
+          settings,
         );
       }
     }
@@ -104,7 +104,7 @@ const DEFAULT_MAX_TOKENS = 8_000;
 export function getMaxTokens(model: LargeLanguageModel) {
   if (!MODEL_OPTIONS[model.provider as keyof typeof MODEL_OPTIONS]) {
     logger.warn(
-      `Model provider ${model.provider} not found in MODEL_OPTIONS. Using default max tokens.`
+      `Model provider ${model.provider} not found in MODEL_OPTIONS. Using default max tokens.`,
     );
     return DEFAULT_MAX_TOKENS;
   }

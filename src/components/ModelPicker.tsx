@@ -62,14 +62,14 @@ export function ModelPicker({
     if (selectedModel.provider === "ollama") {
       return (
         ollamaModels.find(
-          (model: LocalModel) => model.modelName === selectedModel.name
+          (model: LocalModel) => model.modelName === selectedModel.name,
         )?.displayName || selectedModel.name
       );
     }
     if (selectedModel.provider === "lmstudio") {
       return (
         lmStudioModels.find(
-          (model: LocalModel) => model.modelName === selectedModel.name
+          (model: LocalModel) => model.modelName === selectedModel.name,
         )?.displayName || selectedModel.name // Fallback to path if not found
       );
     }
@@ -77,7 +77,7 @@ export function ModelPicker({
     // Fallback for cloud models
     return (
       MODEL_OPTIONS[selectedModel.provider]?.find(
-        (model) => model.name === selectedModel.name
+        (model) => model.name === selectedModel.name,
       )?.displayName || selectedModel.name
     );
   };
@@ -90,7 +90,7 @@ export function ModelPicker({
       models.map((model) => ({
         ...model,
         provider: provider as ModelProvider,
-      }))
+      })),
   );
 
   // Determine availability of local models

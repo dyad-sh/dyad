@@ -30,7 +30,7 @@ export function acquireLock(lockId: number | string): {
  */
 export async function withLock<T>(
   lockId: number | string,
-  fn: () => Promise<T>
+  fn: () => Promise<T>,
 ): Promise<T> {
   // Wait for any existing operation to complete
   const existingLock = locks.get(lockId);

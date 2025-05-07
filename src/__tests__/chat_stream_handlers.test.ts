@@ -58,28 +58,28 @@ describe("getDyadAddDependencyTags", () => {
 
   it("should return an array of dyad-add-dependency tags", () => {
     const result = getDyadAddDependencyTags(
-      `<dyad-add-dependency packages="uuid"></dyad-add-dependency>`
+      `<dyad-add-dependency packages="uuid"></dyad-add-dependency>`,
     );
     expect(result).toEqual(["uuid"]);
   });
 
   it("should return all the packages in the dyad-add-dependency tags", () => {
     const result = getDyadAddDependencyTags(
-      `<dyad-add-dependency packages="pkg1 pkg2"></dyad-add-dependency>`
+      `<dyad-add-dependency packages="pkg1 pkg2"></dyad-add-dependency>`,
     );
     expect(result).toEqual(["pkg1", "pkg2"]);
   });
 
   it("should return all the packages in the dyad-add-dependency tags", () => {
     const result = getDyadAddDependencyTags(
-      `txt before<dyad-add-dependency packages="pkg1 pkg2"></dyad-add-dependency>text after`
+      `txt before<dyad-add-dependency packages="pkg1 pkg2"></dyad-add-dependency>text after`,
     );
     expect(result).toEqual(["pkg1", "pkg2"]);
   });
 
   it("should return all the packages in multiple dyad-add-dependency tags", () => {
     const result = getDyadAddDependencyTags(
-      `txt before<dyad-add-dependency packages="pkg1 pkg2"></dyad-add-dependency>txt between<dyad-add-dependency packages="pkg3"></dyad-add-dependency>text after`
+      `txt before<dyad-add-dependency packages="pkg1 pkg2"></dyad-add-dependency>txt between<dyad-add-dependency packages="pkg3"></dyad-add-dependency>text after`,
     );
     expect(result).toEqual(["pkg1", "pkg2", "pkg3"]);
   });
@@ -450,7 +450,7 @@ declare module 'uuid' {
 }
 </dyad-write>
 
-I've created a complete todo list application with the ability to add, complete, and delete tasks. The app includes statistics and uses local storage to persist data.`
+I've created a complete todo list application with the ability to add, complete, and delete tasks. The app includes statistics and uses local storage to persist data.`,
     );
     expect(result.length).toEqual(7);
   });
@@ -465,7 +465,7 @@ describe("getDyadRenameTags", () => {
   it("should return an array of dyad-rename tags", () => {
     const result = getDyadRenameTags(
       `<dyad-rename from="src/components/UserProfile.jsx" to="src/components/ProfileCard.jsx"></dyad-rename>
-      <dyad-rename from="src/utils/helpers.js" to="src/utils/utils.js"></dyad-rename>`
+      <dyad-rename from="src/utils/helpers.js" to="src/utils/utils.js"></dyad-rename>`,
     );
     expect(result).toEqual([
       {
@@ -486,7 +486,7 @@ describe("getDyadDeleteTags", () => {
   it("should return an array of dyad-delete paths", () => {
     const result = getDyadDeleteTags(
       `<dyad-delete path="src/components/Analytics.jsx"></dyad-delete>
-      <dyad-delete path="src/utils/unused.js"></dyad-delete>`
+      <dyad-delete path="src/utils/unused.js"></dyad-delete>`,
     );
     expect(result).toEqual([
       "src/components/Analytics.jsx",
@@ -526,7 +526,7 @@ describe("processFullResponse", () => {
       {
         chatSummary: undefined,
         messageId: 1,
-      }
+      },
     );
     expect(result).toEqual({});
     expect(fs.mkdirSync).not.toHaveBeenCalled();
@@ -547,16 +547,16 @@ describe("processFullResponse", () => {
 
     expect(fs.mkdirSync).toHaveBeenCalledWith(
       "/mock/user/data/path/mock-app-path/src",
-      { recursive: true }
+      { recursive: true },
     );
     expect(fs.writeFileSync).toHaveBeenCalledWith(
       "/mock/user/data/path/mock-app-path/src/file1.js",
-      "console.log('Hello');"
+      "console.log('Hello');",
     );
     expect(git.add).toHaveBeenCalledWith(
       expect.objectContaining({
         filepath: "src/file1.js",
-      })
+      }),
     );
     expect(git.commit).toHaveBeenCalled();
     expect(result).toEqual({ updatedFiles: true });
@@ -604,49 +604,49 @@ describe("processFullResponse", () => {
     // Check that directories were created for each file path
     expect(fs.mkdirSync).toHaveBeenCalledWith(
       "/mock/user/data/path/mock-app-path/src",
-      { recursive: true }
+      { recursive: true },
     );
     expect(fs.mkdirSync).toHaveBeenCalledWith(
       "/mock/user/data/path/mock-app-path/src/utils",
-      { recursive: true }
+      { recursive: true },
     );
     expect(fs.mkdirSync).toHaveBeenCalledWith(
       "/mock/user/data/path/mock-app-path/src/components",
-      { recursive: true }
+      { recursive: true },
     );
 
     // Using toHaveBeenNthCalledWith to check each specific call
     expect(fs.writeFileSync).toHaveBeenNthCalledWith(
       1,
       "/mock/user/data/path/mock-app-path/src/file1.js",
-      "console.log('First file');"
+      "console.log('First file');",
     );
     expect(fs.writeFileSync).toHaveBeenNthCalledWith(
       2,
       "/mock/user/data/path/mock-app-path/src/utils/file2.js",
-      "export const add = (a, b) => a + b;"
+      "export const add = (a, b) => a + b;",
     );
     expect(fs.writeFileSync).toHaveBeenNthCalledWith(
       3,
       "/mock/user/data/path/mock-app-path/src/components/Button.tsx",
-      "import React from 'react';\n    export const Button = ({ children }) => <button>{children}</button>;"
+      "import React from 'react';\n    export const Button = ({ children }) => <button>{children}</button>;",
     );
 
     // Verify git operations were called for each file
     expect(git.add).toHaveBeenCalledWith(
       expect.objectContaining({
         filepath: "src/file1.js",
-      })
+      }),
     );
     expect(git.add).toHaveBeenCalledWith(
       expect.objectContaining({
         filepath: "src/utils/file2.js",
-      })
+      }),
     );
     expect(git.add).toHaveBeenCalledWith(
       expect.objectContaining({
         filepath: "src/components/Button.tsx",
-      })
+      }),
     );
 
     // Verify commit was called once after all files were added
@@ -669,21 +669,21 @@ describe("processFullResponse", () => {
 
     expect(fs.mkdirSync).toHaveBeenCalledWith(
       "/mock/user/data/path/mock-app-path/src/components",
-      { recursive: true }
+      { recursive: true },
     );
     expect(fs.renameSync).toHaveBeenCalledWith(
       "/mock/user/data/path/mock-app-path/src/components/OldComponent.jsx",
-      "/mock/user/data/path/mock-app-path/src/components/NewComponent.jsx"
+      "/mock/user/data/path/mock-app-path/src/components/NewComponent.jsx",
     );
     expect(git.add).toHaveBeenCalledWith(
       expect.objectContaining({
         filepath: "src/components/NewComponent.jsx",
-      })
+      }),
     );
     expect(git.remove).toHaveBeenCalledWith(
       expect.objectContaining({
         filepath: "src/components/OldComponent.jsx",
-      })
+      }),
     );
     expect(git.commit).toHaveBeenCalled();
     expect(result).toEqual({ updatedFiles: true });
@@ -719,12 +719,12 @@ describe("processFullResponse", () => {
     });
 
     expect(fs.unlinkSync).toHaveBeenCalledWith(
-      "/mock/user/data/path/mock-app-path/src/components/Unused.jsx"
+      "/mock/user/data/path/mock-app-path/src/components/Unused.jsx",
     );
     expect(git.remove).toHaveBeenCalledWith(
       expect.objectContaining({
         filepath: "src/components/Unused.jsx",
-      })
+      }),
     );
     expect(git.commit).toHaveBeenCalled();
     expect(result).toEqual({ updatedFiles: true });
@@ -769,18 +769,18 @@ describe("processFullResponse", () => {
     // Check write operation happened
     expect(fs.writeFileSync).toHaveBeenCalledWith(
       "/mock/user/data/path/mock-app-path/src/components/NewComponent.jsx",
-      "import React from 'react'; export default () => <div>New</div>;"
+      "import React from 'react'; export default () => <div>New</div>;",
     );
 
     // Check rename operation happened
     expect(fs.renameSync).toHaveBeenCalledWith(
       "/mock/user/data/path/mock-app-path/src/components/OldComponent.jsx",
-      "/mock/user/data/path/mock-app-path/src/components/RenamedComponent.jsx"
+      "/mock/user/data/path/mock-app-path/src/components/RenamedComponent.jsx",
     );
 
     // Check delete operation happened
     expect(fs.unlinkSync).toHaveBeenCalledWith(
-      "/mock/user/data/path/mock-app-path/src/components/Unused.jsx"
+      "/mock/user/data/path/mock-app-path/src/components/Unused.jsx",
     );
 
     // Check git operations
@@ -791,9 +791,9 @@ describe("processFullResponse", () => {
     expect(git.commit).toHaveBeenCalledWith(
       expect.objectContaining({
         message: expect.stringContaining(
-          "wrote 1 file(s), renamed 1 file(s), deleted 1 file(s)"
+          "wrote 1 file(s), renamed 1 file(s), deleted 1 file(s)",
         ),
-      })
+      }),
     );
 
     expect(result).toEqual({ updatedFiles: true });

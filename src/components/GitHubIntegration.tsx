@@ -21,7 +21,7 @@ export function GitHubIntegration() {
       }
     } catch (err: any) {
       showError(
-        err.message || "An error occurred while disconnecting from GitHub"
+        err.message || "An error occurred while disconnecting from GitHub",
       );
     } finally {
       setIsDisconnecting(false);

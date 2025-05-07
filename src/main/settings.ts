@@ -93,25 +93,25 @@ export function writeSettings(settings: Partial<UserSettings>): void {
     const newSettings = { ...currentSettings, ...settings };
     if (newSettings.githubAccessToken) {
       newSettings.githubAccessToken = encrypt(
-        newSettings.githubAccessToken.value
+        newSettings.githubAccessToken.value,
       );
     }
     if (newSettings.supabase) {
       if (newSettings.supabase.accessToken) {
         newSettings.supabase.accessToken = encrypt(
-          newSettings.supabase.accessToken.value
+          newSettings.supabase.accessToken.value,
         );
       }
       if (newSettings.supabase.refreshToken) {
         newSettings.supabase.refreshToken = encrypt(
-          newSettings.supabase.refreshToken.value
+          newSettings.supabase.refreshToken.value,
         );
       }
     }
     for (const provider in newSettings.providerSettings) {
       if (newSettings.providerSettings[provider].apiKey) {
         newSettings.providerSettings[provider].apiKey = encrypt(
-          newSettings.providerSettings[provider].apiKey.value
+          newSettings.providerSettings[provider].apiKey.value,
         );
       }
     }

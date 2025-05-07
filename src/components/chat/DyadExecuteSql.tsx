@@ -34,8 +34,8 @@ export const DyadExecuteSql: React.FC<DyadExecuteSqlProps> = ({
         inProgress
           ? "border-amber-500"
           : aborted
-          ? "border-red-500"
-          : "border-border"
+            ? "border-red-500"
+            : "border-border"
       }`}
       onClick={() => setIsContentVisible(!isContentVisible)}
     >

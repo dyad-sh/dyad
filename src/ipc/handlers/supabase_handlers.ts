@@ -39,7 +39,7 @@ export function registerSupabaseHandlers() {
         logger.error("Error setting Supabase project for app:", error);
         throw error;
       }
-    }
+    },
   );
 
   // Unset app project - removes the link between a Dyad app and a Supabase project
@@ -58,6 +58,6 @@ export function registerSupabaseHandlers() {
         logger.error("Error unsetting Supabase project for app:", error);
         throw error;
       }
-    }
+    },
   );
 }

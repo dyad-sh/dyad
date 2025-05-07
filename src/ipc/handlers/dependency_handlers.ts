@@ -10,7 +10,7 @@ export function registerDependencyHandlers() {
     "chat:add-dep",
     async (
       _event,
-      { chatId, packages }: { chatId: number; packages: string[] }
+      { chatId, packages }: { chatId: number; packages: string[] },
     ) => {
       // Find the message from the database
       const foundMessages = await db.query.messages.findMany({
@@ -39,13 +39,13 @@ export function registerDependencyHandlers() {
         .reverse()
         .find((m) =>
           m.content.includes(
-            `<dyad-add-dependency packages="${packages.join(" ")}">`
-          )
+            `<dyad-add-dependency packages="${packages.join(" ")}">`,
+          ),
         );
 
       if (!message) {
         throw new Error(
-          `Message with packages ${packages.join(", ")} not found`
+          `Message with packages ${packages.join(", ")} not found`,
         );
       }
 
@@ -54,6 +54,6 @@ export function registerDependencyHandlers() {
         message,
         appPath: getDyadAppPath(app.path),
       });
-    }
+    },
   );
 }

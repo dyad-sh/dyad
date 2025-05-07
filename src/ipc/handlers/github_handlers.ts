@@ -131,7 +131,7 @@ async function pollForAccessToken(event: IpcMainInvokeEvent) {
           // Schedule next poll
           currentFlowState.timeoutId = setTimeout(
             () => pollForAccessToken(event),
-            interval * 1000
+            interval * 1000,
           );
           break;
         case "slow_down":
@@ -143,7 +143,7 @@ async function pollForAccessToken(event: IpcMainInvokeEvent) {
           });
           currentFlowState.timeoutId = setTimeout(
             () => pollForAccessToken(event),
-            newInterval * 1000
+            newInterval * 1000,
           );
           break;
         case "expired_token":
@@ -162,7 +162,7 @@ async function pollForAccessToken(event: IpcMainInvokeEvent) {
           break;
         default:
           logger.error(
-            `Unknown GitHub error: ${data.error_description || data.error}`
+            `Unknown GitHub error: ${data.error_description || data.error}`,
           );
           event.sender.send("github:flow-error", {
             error: `GitHub authorization error: ${
@@ -202,7 +202,7 @@ function stopPolling() {
 
 function handleStartGithubFlow(
   event: IpcMainInvokeEvent,
-  args: { appId: number | null }
+  args: { appId: number | null },
 ) {
   logger.debug(`Received github:start-flow for appId: ${args.appId}`);
 
@@ -249,7 +249,7 @@ function handleStartGithubFlow(
       if (!res.ok) {
         return res.json().then((errData) => {
           throw new Error(
-            `GitHub API Error: ${errData.error_description || res.statusText}`
+            `GitHub API Error: ${errData.error_description || res.statusText}`,
           );
         });
       }
@@ -273,7 +273,7 @@ function handleStartGithubFlow(
       // Start polling after the initial interval
       currentFlowState.timeoutId = setTimeout(
         () => pollForAccessToken(event),
-        currentFlowState.interval * 1000
+        currentFlowState.interval * 1000,
       );
     })
     .catch((error) => {
@@ -289,7 +289,7 @@ function handleStartGithubFlow(
 // --- GitHub Repo Availability Handler ---
 async function handleIsRepoAvailable(
   event: IpcMainInvokeEvent,
-  { org, repo }: { org: string; repo: string }
+  { org, repo }: { org: string; repo: string },
 ) {
   try {
     // Get access token from settings
@@ -327,7 +327,7 @@ async function handleIsRepoAvailable(
 // --- GitHub Create Repo Handler ---
 async function handleCreateRepo(
   event: IpcMainInvokeEvent,
-  { org, repo, appId }: { org: string; repo: string; appId: number }
+  { org, repo, appId }: { org: string; repo: string; appId: number },
 ) {
   try {
     // Get access token from settings
@@ -376,7 +376,7 @@ async function handleCreateRepo(
 // --- GitHub Push Handler ---
 async function handlePushToGithub(
   event: IpcMainInvokeEvent,
-  { appId }: { appId: number }
+  { appId }: { appId: number },
 ) {
   try {
     // Get access token from settings
@@ -424,7 +424,7 @@ async function handlePushToGithub(
 
 async function handleDisconnectGithubRepo(
   event: IpcMainInvokeEvent,
-  { appId }: { appId: number }
+  { appId }: { appId: number },
 ) {
   try {
     logger.log(`Disconnecting GitHub repo for appId: ${appId}`);
@@ -464,6 +464,6 @@ export function registerGithubHandlers() {
   ipcMain.handle("github:create-repo", handleCreateRepo);
   ipcMain.handle("github:push", handlePushToGithub);
   ipcMain.handle("github:disconnect", (event, args: { appId: number }) =>
-    handleDisconnectGithubRepo(event, args)
+    handleDisconnectGithubRepo(event, args),
   );
 }

@@ -80,7 +80,7 @@ function cleanupExpiredCacheEntries() {
 
   if (expiredCount > 0) {
     logger.log(
-      `Cleaned up ${expiredCount} expired codebase token cache entries`
+      `Cleaned up ${expiredCount} expired codebase token cache entries`,
     );
   }
 }
@@ -90,7 +90,7 @@ async function getCodebaseTokenCount(
   chatId: number,
   messageId: number,
   messageContent: string,
-  appPath: string
+  appPath: string,
 ): Promise<number> {
   // Clean up expired cache entries first
   cleanupExpiredCacheEntries();
@@ -128,7 +128,7 @@ async function getCodebaseTokenCount(
 
 const getProposalHandler = async (
   _event: IpcMainInvokeEvent,
-  { chatId }: { chatId: number }
+  { chatId }: { chatId: number },
 ): Promise<ProposalResult | null> => {
   return withLock("get-proposal:" + chatId, async () => {
     logger.log(`IPC: get-proposal called for chatId: ${chatId}`);
@@ -152,7 +152,7 @@ const getProposalHandler = async (
       ) {
         const messageId = latestAssistantMessage.id; // Get the message ID
         logger.log(
-          `Found latest assistant message (ID: ${messageId}), parsing content...`
+          `Found latest assistant message (ID: ${messageId}), parsing content...`,
         );
         const messageContent = latestAssistantMessage.content;
 
@@ -211,7 +211,7 @@ const getProposalHandler = async (
             "files=",
             proposal.filesChanged.length,
             "packages=",
-            proposal.packagesAdded.length
+            proposal.packagesAdded.length,
           );
 
           return {
@@ -221,19 +221,23 @@ const getProposalHandler = async (
           };
         } else {
           logger.log(
-            "No relevant tags found in the latest assistant message content."
+            "No relevant tags found in the latest assistant message content.",
           );
         }
       }
       const actions: ActionProposal["actions"] = [];
       if (latestAssistantMessage?.content) {
         const writeTags = getDyadWriteTags(latestAssistantMessage.content);
-        const refactorTarget = writeTags.reduce((largest, tag) => {
-          const lineCount = tag.content.split("\n").length;
-          return lineCount > 500 && (!largest || lineCount > largest.lineCount)
-            ? { path: tag.path, lineCount }
-            : largest;
-        }, null as { path: string; lineCount: number } | null);
+        const refactorTarget = writeTags.reduce(
+          (largest, tag) => {
+            const lineCount = tag.content.split("\n").length;
+            return lineCount > 500 &&
+              (!largest || lineCount > largest.lineCount)
+              ? { path: tag.path, lineCount }
+              : largest;
+          },
+          null as { path: string; lineCount: number } | null,
+        );
         if (refactorTarget) {
           actions.push({
             id: "refactor-file",
@@ -288,7 +292,7 @@ const getProposalHandler = async (
           chatId,
           latestAssistantMessage.id,
           latestAssistantMessage.content || "",
-          chat.app.path
+          chat.app.path,
         );
 
         const totalTokens = messagesTokenCount + codebaseTokenCount;
@@ -296,13 +300,13 @@ const getProposalHandler = async (
         logger.log(
           `Token usage: ${totalTokens}/${contextWindow} (${
             (totalTokens / contextWindow) * 100
-          }%)`
+          }%)`,
         );
 
         // If we're using more than 80% of the context window, suggest summarizing
         if (totalTokens > contextWindow * 0.8) {
           logger.log(
-            `Token usage high (${totalTokens}/${contextWindow}), suggesting summarize action`
+            `Token usage high (${totalTokens}/${contextWindow}), suggesting summarize action`,
           );
           actions.push({
             id: "summarize-in-new-chat",
@@ -330,14 +334,14 @@ const getProposalHandler = async (
 // Handler to approve a proposal (process actions and update message)
 const approveProposalHandler = async (
   _event: IpcMainInvokeEvent,
-  { chatId, messageId }: { chatId: number; messageId: number }
+  { chatId, messageId }: { chatId: number; messageId: number },
 ): Promise<{
   success: boolean;
   error?: string;
   uncommittedFiles?: string[];
 }> => {
   logger.log(
-    `IPC: approve-proposal called for chatId: ${chatId}, messageId: ${messageId}`
+    `IPC: approve-proposal called for chatId: ${chatId}, messageId: ${messageId}`,
   );
 
   try {
@@ -346,7 +350,7 @@ const approveProposalHandler = async (
       where: and(
         eq(messages.id, messageId),
         eq(messages.chatId, chatId),
-        eq(messages.role, "assistant")
+        eq(messages.role, "assistant"),
       ),
       columns: {
         content: true,
@@ -355,7 +359,7 @@ const approveProposalHandler = async (
 
     if (!messageToApprove?.content) {
       logger.error(
-        `Assistant message not found for chatId: ${chatId}, messageId: ${messageId}`
+        `Assistant message not found for chatId: ${chatId}, messageId: ${messageId}`,
       );
       return { success: false, error: "Assistant message not found." };
     }
@@ -368,13 +372,13 @@ const approveProposalHandler = async (
       {
         chatSummary: chatSummary ?? undefined,
         messageId,
-      } // Pass summary if found
+      }, // Pass summary if found
     );
 
     if (processResult.error) {
       logger.error(
         `Error processing actions for message ${messageId}:`,
-        processResult.error
+        processResult.error,
       );
       // Optionally: Update message state to 'error' or similar?
       // For now, just return error to frontend
@@ -397,10 +401,10 @@ const approveProposalHandler = async (
 // Handler to reject a proposal (just update message state)
 const rejectProposalHandler = async (
   _event: IpcMainInvokeEvent,
-  { chatId, messageId }: { chatId: number; messageId: number }
+  { chatId, messageId }: { chatId: number; messageId: number },
 ): Promise<{ success: boolean; error?: string }> => {
   logger.log(
-    `IPC: reject-proposal called for chatId: ${chatId}, messageId: ${messageId}`
+    `IPC: reject-proposal called for chatId: ${chatId}, messageId: ${messageId}`,
   );
 
   try {
@@ -409,14 +413,14 @@ const rejectProposalHandler = async (
       where: and(
         eq(messages.id, messageId),
         eq(messages.chatId, chatId),
-        eq(messages.role, "assistant")
+        eq(messages.role, "assistant"),
       ),
       columns: { id: true },
     });
 
     if (!messageToReject) {
       logger.error(
-        `Assistant message not found for chatId: ${chatId}, messageId: ${messageId}`
+        `Assistant message not found for chatId: ${chatId}, messageId: ${messageId}`,
       );
       return { success: false, error: "Assistant message not found." };
     }

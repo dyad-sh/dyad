@@ -49,7 +49,7 @@ export const showLoading = <T>(
   loadingMessage: string,
   promise: Promise<T>,
   successMessage?: string,
-  errorMessage?: string
+  errorMessage?: string,
 ) => {
   return toast.promise(promise, {
     loading: loadingMessage,
@@ -61,7 +61,7 @@ export const showLoading = <T>(
 export const showUncommittedFilesWarning = (files: string[]) => {
   showWarning(
     `Some changed files were not committed. Please use git to manually commit them.
-    \n\n${files.join("\n")}`
+    \n\n${files.join("\n")}`,
   );
 };
 

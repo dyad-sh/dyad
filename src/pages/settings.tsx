@@ -36,7 +36,7 @@ export default function SettingsPage() {
     } catch (error) {
       console.error("Error resetting:", error);
       showError(
-        error instanceof Error ? error.message : "An unknown error occurred"
+        error instanceof Error ? error.message : "An unknown error occurred",
       );
     } finally {
       setIsResetting(false);

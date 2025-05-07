@@ -176,7 +176,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     if (!chatId || !messageId || isApproving || isRejecting || isStreaming)
       return;
     console.log(
-      `Approving proposal for chatId: ${chatId}, messageId: ${messageId}`
+      `Approving proposal for chatId: ${chatId}, messageId: ${messageId}`,
     );
     setIsApproving(true);
     posthog.capture("chat:approve");
@@ -213,7 +213,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     if (!chatId || !messageId || isApproving || isRejecting || isStreaming)
       return;
     console.log(
-      `Rejecting proposal for chatId: ${chatId}, messageId: ${messageId}`
+      `Rejecting proposal for chatId: ${chatId}, messageId: ${messageId}`,
     );
     setIsRejecting(true);
     posthog.capture("chat:reject");
@@ -771,7 +771,7 @@ function ChatInputActions({
                       className="flex items-center space-x-2"
                       onClick={() => {
                         IpcClient.getInstance().openExternalUrl(
-                          `https://www.npmjs.com/package/${pkg}`
+                          `https://www.npmjs.com/package/${pkg}`,
                         );
                       }}
                     >
@@ -884,7 +884,7 @@ function ProposalSummary({
     parts.push(
       `${sqlQueries.length} SQL ${
         sqlQueries.length === 1 ? "query" : "queries"
-      }`
+      }`,
     );
   }
 
@@ -892,7 +892,7 @@ function ProposalSummary({
     parts.push(
       `${serverFunctions.length} Server ${
         serverFunctions.length === 1 ? "Function" : "Functions"
-      }`
+      }`,
     );
   }
 
@@ -900,13 +900,13 @@ function ProposalSummary({
     parts.push(
       `${packagesAdded.length} ${
         packagesAdded.length === 1 ? "package" : "packages"
-      }`
+      }`,
     );
   }
 
   if (filesChanged.length) {
     parts.push(
-      `${filesChanged.length} ${filesChanged.length === 1 ? "file" : "files"}`
+      `${filesChanged.length} ${filesChanged.length === 1 ? "file" : "files"}`,
     );
   }
 

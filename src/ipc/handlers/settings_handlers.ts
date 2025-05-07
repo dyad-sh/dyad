@@ -15,7 +15,7 @@ export function registerSettingsHandlers() {
         if (
           Object.prototype.hasOwnProperty.call(
             settings.providerSettings,
-            providerKey
+            providerKey,
           )
         ) {
           const providerSetting = settings.providerSettings[providerKey];
@@ -35,6 +35,6 @@ export function registerSettingsHandlers() {
     async (_, settings: Partial<UserSettings>) => {
       writeSettings(settings);
       return readSettings();
-    }
+    },
   );
 }

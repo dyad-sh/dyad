@@ -21,7 +21,7 @@ export function GitHubConnector({ appId, folderName }: GitHubConnectorProps) {
   const [githubError, setGithubError] = useState<string | null>(null);
   const [isConnectingToGithub, setIsConnectingToGithub] = useState(false);
   const [githubStatusMessage, setGithubStatusMessage] = useState<string | null>(
-    null
+    null,
   );
   const [codeCopied, setCodeCopied] = useState(false);
   // --- ---
@@ -91,7 +91,7 @@ export function GitHubConnector({ appId, folderName }: GitHubConnectorProps) {
         setGithubUserCode(null);
         setGithubVerificationUri(null);
         setIsConnectingToGithub(false);
-      }
+      },
     );
     cleanupFunctions.push(removeErrorListener);
 
@@ -134,7 +134,7 @@ export function GitHubConnector({ appId, folderName }: GitHubConnectorProps) {
     try {
       const result = await IpcClient.getInstance().checkGithubRepoAvailable(
         githubOrg,
-        repoName
+        repoName,
       );
       setRepoAvailable(result.available);
       if (!result.available) {
@@ -156,7 +156,7 @@ export function GitHubConnector({ appId, folderName }: GitHubConnectorProps) {
       const result = await IpcClient.getInstance().createGithubRepo(
         githubOrg,
         repoName,
-        appId!
+        appId!,
       );
       if (result.success) {
         setCreateRepoSuccess(true);
@@ -247,7 +247,7 @@ export function GitHubConnector({ appId, folderName }: GitHubConnectorProps) {
                     onClick={(e) => {
                       e.preventDefault();
                       IpcClient.getInstance().openExternalUrl(
-                        githubVerificationUri
+                        githubVerificationUri,
                       );
                     }}
                     target="_blank"
@@ -273,7 +273,7 @@ export function GitHubConnector({ appId, folderName }: GitHubConnectorProps) {
                             setTimeout(() => setCodeCopied(false), 2000);
                           })
                           .catch((err) =>
-                            console.error("Failed to copy code:", err)
+                            console.error("Failed to copy code:", err),
                           );
                       }
                     }}
@@ -325,7 +325,7 @@ export function GitHubConnector({ appId, folderName }: GitHubConnectorProps) {
           onClick={(e) => {
             e.preventDefault();
             IpcClient.getInstance().openExternalUrl(
-              `https://github.com/${app.githubOrg}/${app.githubRepo}`
+              `https://github.com/${app.githubOrg}/${app.githubRepo}`,
             );
           }}
           className="cursor-pointer text-blue-600 hover:underline dark:text-blue-400"

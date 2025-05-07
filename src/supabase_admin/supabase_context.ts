@@ -9,7 +9,7 @@ async function getPublishableKey({ projectId }: { projectId: string }) {
   }
   const publishableKey = keys.find(
     (key) =>
-      (key as any)["name"] === "anon" || (key as any)["type"] === "publishable"
+      (key as any)["name"] === "anon" || (key as any)["type"] === "publishable",
   );
 
   if (!publishableKey) {
@@ -47,7 +47,7 @@ export async function getSupabaseContext({
   });
   const schema = await supabase.runQuery(
     supabaseProjectId,
-    SUPABASE_SCHEMA_QUERY
+    SUPABASE_SCHEMA_QUERY,
   );
 
   const secrets = await supabase.getSecrets(supabaseProjectId);

@@ -108,7 +108,7 @@ export default function AppDetailsPage() {
       alert(
         `Error renaming app: ${
           error instanceof Error ? error.message : String(error)
-        }`
+        }`,
       );
     } finally {
       setIsRenaming(false);
@@ -134,7 +134,7 @@ export default function AppDetailsPage() {
       alert(
         `Error renaming folder: ${
           error instanceof Error ? error.message : String(error)
-        }`
+        }`,
       );
     } finally {
       setIsRenamingFolder(false);

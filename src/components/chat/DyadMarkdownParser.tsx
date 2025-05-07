@@ -177,7 +177,7 @@ function parseCustomTags(content: string): ContentPiece[] {
 
   const tagPattern = new RegExp(
     `<(${customTagNames.join("|")})\\s*([^>]*)>(.*?)<\\/\\1>`,
-    "gs"
+    "gs",
   );
 
   const contentPieces: ContentPiece[] = [];
@@ -253,7 +253,7 @@ function getState({
  */
 function renderCustomTag(
   tagInfo: CustomTagInfo,
-  { isStreaming }: { isStreaming: boolean }
+  { isStreaming }: { isStreaming: boolean },
 ): React.ReactNode {
   const { tag, attributes, content, inProgress } = tagInfo;
 

@@ -24,7 +24,7 @@ export function SupabaseIntegration() {
       }
     } catch (err: any) {
       showError(
-        err.message || "An error occurred while disconnecting from Supabase"
+        err.message || "An error occurred while disconnecting from Supabase",
       );
     } finally {
       setIsDisconnecting(false);

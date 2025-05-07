@@ -52,7 +52,7 @@ export function registerChatHandlers() {
       "for app:",
       appId,
       "with initial commit hash:",
-      initialCommitHash
+      initialCommitHash,
     );
     return chat.id;
   });
@@ -101,7 +101,7 @@ export function registerChatHandlers() {
 
       const allChats = await query;
       return allChats;
-    }
+    },
   );
 
   ipcMain.handle("delete-chat", async (_, chatId: number) => {

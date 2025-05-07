@@ -35,7 +35,7 @@ export function getFilesRecursively(dir: string, baseDir: string): string[] {
 
 export async function copyDirectoryRecursive(
   source: string,
-  destination: string
+  destination: string,
 ) {
   await fsPromises.mkdir(destination, { recursive: true });
   const entries = await fsPromises.readdir(source, { withFileTypes: true });

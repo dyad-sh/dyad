@@ -92,7 +92,7 @@ export const TitleBar = () => {
             variant="outline"
             className={cn(
               "ml-4 no-app-region-drag h-7 bg-indigo-600 text-white dark:bg-indigo-600 dark:text-white",
-              !isDyadProEnabled && "bg-zinc-600 dark:bg-zinc-600"
+              !isDyadProEnabled && "bg-zinc-600 dark:bg-zinc-600",
             )}
             size="sm"
           >

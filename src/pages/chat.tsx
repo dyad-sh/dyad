@@ -69,7 +69,7 @@ export default function ChatPage() {
           id="preview-panel"
           minSize={20}
           className={cn(
-            !isResizing && "transition-all duration-100 ease-in-out"
+            !isResizing && "transition-all duration-100 ease-in-out",
           )}
         >
           <PreviewPanel />

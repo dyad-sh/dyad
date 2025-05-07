@@ -71,7 +71,7 @@ export function useVersions(appId: number | null) {
         showError(error);
       }
     },
-    [appId, setVersions, setError, selectedChatId, setMessages]
+    [appId, setVersions, setError, selectedChatId, setMessages],
   );
 
   return { versions, loading, error, refreshVersions, revertVersion };

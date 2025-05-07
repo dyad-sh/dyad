@@ -91,7 +91,7 @@ export function registerDebugHandlers() {
     async (): Promise<SystemDebugInfo> => {
       console.log("IPC: get-system-debug-info called");
       return getSystemDebugInfo();
-    }
+    },
   );
 
   ipcMain.handle(
@@ -151,7 +151,7 @@ export function registerDebugHandlers() {
         console.error(`Error in get-chat-logs:`, error);
         throw error;
       }
-    }
+    },
   );
 
   console.log("Registered debug IPC handlers");

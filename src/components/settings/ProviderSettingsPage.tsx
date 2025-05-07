@@ -78,8 +78,8 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   const activeKeySource = isValidUserKey
     ? "settings"
     : hasEnvKey
-    ? "env"
-    : "none";
+      ? "env"
+      : "none";
 
   // --- Accordion Logic ---
   const defaultAccordionValue = [];
@@ -202,8 +202,8 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
               {settingsLoading
                 ? "Loading..."
                 : isConfigured
-                ? "Setup Complete"
-                : "Not Setup"}
+                  ? "Setup Complete"
+                  : "Not Setup"}
             </span>
           </div>
           {!settingsLoading && hasFreeTier && (

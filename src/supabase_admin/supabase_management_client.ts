@@ -38,7 +38,7 @@ export async function refreshSupabaseToken(): Promise<void> {
 
   if (!refreshToken) {
     throw new Error(
-      "Supabase refresh token not found. Please authenticate first."
+      "Supabase refresh token not found. Please authenticate first.",
     );
   }
 
@@ -52,7 +52,7 @@ export async function refreshSupabaseToken(): Promise<void> {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ refreshToken }),
-      }
+      },
     );
 
     if (!response.ok) {
@@ -94,7 +94,7 @@ export async function getSupabaseClient(): Promise<SupabaseManagementAPI> {
 
   if (!supabaseAccessToken) {
     throw new Error(
-      "Supabase access token not found. Please authenticate first."
+      "Supabase access token not found. Please authenticate first.",
     );
   }
 
@@ -120,7 +120,7 @@ export async function getSupabaseClient(): Promise<SupabaseManagementAPI> {
 }
 
 export async function getSupabaseProjectName(
-  projectId: string
+  projectId: string,
 ): Promise<string> {
   const supabase = await getSupabaseClient();
   const projects = await supabase.getProjects();
@@ -148,12 +148,12 @@ export async function deleteSupabaseFunction({
   functionName: string;
 }): Promise<void> {
   logger.info(
-    `Deleting Supabase function: ${functionName} from project: ${supabaseProjectId}`
+    `Deleting Supabase function: ${functionName} from project: ${supabaseProjectId}`,
   );
   const supabase = await getSupabaseClient();
   await supabase.deleteFunction(supabaseProjectId, functionName);
   logger.info(
-    `Deleted Supabase function: ${functionName} from project: ${supabaseProjectId}`
+    `Deleted Supabase function: ${functionName} from project: ${supabaseProjectId}`,
   );
 }
 
@@ -167,7 +167,7 @@ export async function deploySupabaseFunctions({
   content: string;
 }): Promise<void> {
   logger.info(
-    `Deploying Supabase function: ${functionName} to project: ${supabaseProjectId}`
+    `Deploying Supabase function: ${functionName} to project: ${supabaseProjectId}`,
   );
   const supabase = await getSupabaseClient();
   const formData = new FormData();
@@ -176,7 +176,7 @@ export async function deploySupabaseFunctions({
     JSON.stringify({
       entrypoint_path: "index.ts",
       name: functionName,
-    })
+    }),
   );
   formData.append("file", new Blob([content]), "index.ts");
 
@@ -188,7 +188,7 @@ export async function deploySupabaseFunctions({
         Authorization: `Bearer ${(supabase as any).options.accessToken}`,
       },
       body: formData,
-    }
+    },
   );
 
   if (response.status !== 201) {
@@ -196,7 +196,7 @@ export async function deploySupabaseFunctions({
   }
 
   logger.info(
-    `Deployed Supabase function: ${functionName} to project: ${supabaseProjectId}`
+    `Deployed Supabase function: ${functionName} to project: ${supabaseProjectId}`,
   );
   return response.json();
 }
@@ -208,12 +208,12 @@ async function createResponseError(response: Response, action: string) {
     `Failed to ${action}: ${response.statusText} (${response.status})${
       errorBody ? `: ${errorBody.message}` : ""
     }`,
-    response
+    response,
   );
 }
 
 async function safeParseErrorResponseBody(
-  response: Response
+  response: Response,
 ): Promise<{ message: string } | undefined> {
   try {
     const body = await response.json();

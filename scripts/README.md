@@ -25,4 +25,4 @@ chmod +x scripts/extract-codebase.ts
 - Respects all `.gitignore` rules
 - Extracts files with extensions: .ts, .tsx, .js, .jsx, .css
 - Formats output with markdown code blocks, including file paths
-- Writes all extracted code to a single markdown file 
+- Writes all extracted code to a single markdown file

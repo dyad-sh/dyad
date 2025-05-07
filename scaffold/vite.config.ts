@@ -16,7 +16,7 @@ export function devErrorAndNavigationPlugin(): Plugin {
         "node_modules",
         "stacktrace-js",
         "dist",
-        "stacktrace.min.js"
+        "stacktrace.min.js",
       );
       if (stackTraceLibPath) {
         try {
@@ -24,7 +24,7 @@ export function devErrorAndNavigationPlugin(): Plugin {
         } catch (error) {
           console.error(
             `[dyad-shim] Failed to read stacktrace.js from ${stackTraceLibPath}:`,
-            error
+            error,
           );
           stacktraceJsContent = null;
         }
@@ -39,7 +39,7 @@ export function devErrorAndNavigationPlugin(): Plugin {
         } catch (error) {
           console.error(
             `[dyad-shim] Failed to read dyad-shim from ${dyadShimPath}:`,
-            error
+            error,
           );
           dyadShimContent = null;
         }

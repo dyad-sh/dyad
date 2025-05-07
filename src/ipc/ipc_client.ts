@@ -84,7 +84,7 @@ export class IpcClient {
         } else {
           console.warn(
             `[IPC] No callbacks found for chat ${chatId}`,
-            this.chatStreams
+            this.chatStreams,
           );
         }
       } else {
@@ -119,7 +119,9 @@ export class IpcClient {
         this.chatStreams.delete(chatId);
       } else {
         console.error(
-          new Error(`[IPC] No callbacks found for chat ${chatId} on stream end`)
+          new Error(
+            `[IPC] No callbacks found for chat ${chatId} on stream end`,
+          ),
         );
       }
     });
@@ -220,7 +222,7 @@ export class IpcClient {
   public async editAppFile(
     appId: number,
     filePath: string,
-    content: string
+    content: string,
   ): Promise<{ success: boolean }> {
     try {
       const result = await this.ipcRenderer.invoke("edit-app-file", {
@@ -245,7 +247,7 @@ export class IpcClient {
       onUpdate: (messages: Message[]) => void;
       onEnd: (response: ChatResponseEnd) => void;
       onError: (error: string) => void;
-    }
+    },
   ): void {
     const { chatId, redo, attachments, onUpdate, onEnd, onError } = options;
     this.chatStreams.set(chatId, { onUpdate, onEnd, onError });
@@ -268,9 +270,9 @@ export class IpcClient {
               reader.onerror = () =>
                 reject(new Error(`Failed to read file: ${file.name}`));
               reader.readAsDataURL(file);
-            }
+            },
           );
-        })
+        }),
       )
         .then((fileDataArray) => {
           // Use invoke to start the stream and pass the chatId and attachments
@@ -331,7 +333,7 @@ export class IpcClient {
   }
 
   public async deleteChat(
-    chatId: number
+    chatId: number,
   ): Promise<{ success: boolean; error?: string }> {
     try {
       const result = await this.ipcRenderer.invoke("delete-chat", chatId);
@@ -343,7 +345,7 @@ export class IpcClient {
   }
 
   public async deleteMessages(
-    chatId: number
+    chatId: number,
   ): Promise<{ success: boolean; error?: string }> {
     try {
       const result = await this.ipcRenderer.invoke("delete-messages", chatId);
@@ -356,7 +358,7 @@ export class IpcClient {
 
   // Open an external URL using the default browser
   public async openExternalUrl(
-    url: string
+    url: string,
   ): Promise<{ success: boolean; error?: string }> {
     try {
       const result = await this.ipcRenderer.invoke("open-external-url", url);
@@ -368,12 +370,12 @@ export class IpcClient {
   }
 
   public async showItemInFolder(
-    fullPath: string
+    fullPath: string,
   ): Promise<{ success: boolean; error?: string }> {
     try {
       const result = await this.ipcRenderer.invoke(
         "show-item-in-folder",
-        fullPath
+        fullPath,
       );
       return result as { success: boolean; error?: string };
     } catch (error) {
@@ -385,7 +387,7 @@ export class IpcClient {
   // Run an app
   public async runApp(
     appId: number,
-    onOutput: (output: AppOutput) => void
+    onOutput: (output: AppOutput) => void,
   ): Promise<{ success: boolean }> {
     try {
       const result = await this.ipcRenderer.invoke("run-app", { appId });
@@ -412,7 +414,7 @@ export class IpcClient {
   public async restartApp(
     appId: number,
     onOutput: (output: AppOutput) => void,
-    removeNodeModules?: boolean
+    removeNodeModules?: boolean,
   ): Promise<{ success: boolean }> {
     try {
       const result = await this.ipcRenderer.invoke("restart-app", {
@@ -512,12 +514,12 @@ export class IpcClient {
 
   // Update user settings
   public async setUserSettings(
-    settings: Partial<UserSettings>
+    settings: Partial<UserSettings>,
   ): Promise<UserSettings> {
     try {
       const updatedSettings = await this.ipcRenderer.invoke(
         "set-user-settings",
-        settings
+        settings,
       );
       return updatedSettings;
     } catch (error) {
@@ -606,7 +608,7 @@ export class IpcClient {
   }
 
   public onGithubDeviceFlowUpdate(
-    callback: (data: GitHubDeviceFlowUpdateData) => void
+    callback: (data: GitHubDeviceFlowUpdateData) => void,
   ): () => void {
     const listener = (data: any) => {
       console.log("github:flow-update", data);
@@ -620,7 +622,7 @@ export class IpcClient {
   }
 
   public onGithubDeviceFlowSuccess(
-    callback: (data: GitHubDeviceFlowSuccessData) => void
+    callback: (data: GitHubDeviceFlowSuccessData) => void,
   ): () => void {
     const listener = (data: any) => {
       console.log("github:flow-success", data);
@@ -633,7 +635,7 @@ export class IpcClient {
   }
 
   public onGithubDeviceFlowError(
-    callback: (data: GitHubDeviceFlowErrorData) => void
+    callback: (data: GitHubDeviceFlowErrorData) => void,
   ): () => void {
     const listener = (data: any) => {
       console.log("github:flow-error", data);
@@ -654,7 +656,7 @@ export class IpcClient {
   // --- GitHub Repo Management ---
   public async checkGithubRepoAvailable(
     org: string,
-    repo: string
+    repo: string,
   ): Promise<{ available: boolean; error?: string }> {
     try {
       const result = await this.ipcRenderer.invoke("github:is-repo-available", {
@@ -670,7 +672,7 @@ export class IpcClient {
   public async createGithubRepo(
     org: string,
     repo: string,
-    appId: number
+    appId: number,
   ): Promise<{ success: boolean; error?: string }> {
     try {
       const result = await this.ipcRenderer.invoke("github:create-repo", {
@@ -686,7 +688,7 @@ export class IpcClient {
 
   // Sync (push) local repo to GitHub
   public async syncGithubRepo(
-    appId: number
+    appId: number,
   ): Promise<{ success: boolean; error?: string }> {
     try {
       const result = await this.ipcRenderer.invoke("github:push", { appId });
@@ -698,7 +700,7 @@ export class IpcClient {
   }
 
   public async disconnectGithubRepo(
-    appId: number
+    appId: number,
   ): Promise<{ success: boolean; error?: string }> {
     try {
       const result = await this.ipcRenderer.invoke("github:disconnect", {
@@ -800,7 +802,7 @@ export class IpcClient {
 
   public async setSupabaseAppProject(
     project: string,
-    app: number
+    app: number,
   ): Promise<{ success: boolean; appId: number; projectId: string }> {
     try {
       const result = await this.ipcRenderer.invoke("supabase:set-app-project", {
@@ -815,14 +817,14 @@ export class IpcClient {
   }
 
   public async unsetSupabaseAppProject(
-    app: number
+    app: number,
   ): Promise<{ success: boolean; appId: number }> {
     try {
       const result = await this.ipcRenderer.invoke(
         "supabase:unset-app-project",
         {
           app,
-        }
+        },
       );
       return result;
     } catch (error) {
@@ -856,7 +858,7 @@ export class IpcClient {
   public async uploadToSignedUrl(
     url: string,
     contentType: string,
-    data: any
+    data: any,
   ): Promise<{ success: boolean; error?: string }> {
     try {
       const result = await this.ipcRenderer.invoke("upload-to-signed-url", {
@@ -874,7 +876,7 @@ export class IpcClient {
   public async listLocalOllamaModels(): Promise<LocalModel[]> {
     try {
       const response = await this.ipcRenderer.invoke(
-        "local-models:list-ollama"
+        "local-models:list-ollama",
       );
       return response?.models || [];
     } catch (error) {
@@ -888,7 +890,7 @@ export class IpcClient {
   public async listLocalLMStudioModels(): Promise<LocalModel[]> {
     try {
       const response = await this.ipcRenderer.invoke(
-        "local-models:list-lmstudio"
+        "local-models:list-lmstudio",
       );
       return response?.models || [];
     } catch (error) {
@@ -896,14 +898,14 @@ export class IpcClient {
         throw new Error(`Failed to fetch LM Studio models: ${error.message}`);
       }
       throw new Error(
-        "Failed to fetch LM Studio models: Unknown error occurred"
+        "Failed to fetch LM Studio models: Unknown error occurred",
       );
     }
   }
 
   // Listen for deep link events
   public onDeepLinkReceived(
-    callback: (data: DeepLinkData) => void
+    callback: (data: DeepLinkData) => void,
   ): () => void {
     const listener = (data: any) => {
       callback(data as DeepLinkData);
@@ -916,7 +918,7 @@ export class IpcClient {
 
   // Count tokens for a chat and input
   public async countTokens(
-    params: TokenCountParams
+    params: TokenCountParams,
   ): Promise<TokenCountResult> {
     try {
       const result = await this.ipcRenderer.invoke("chat:count-tokens", params);

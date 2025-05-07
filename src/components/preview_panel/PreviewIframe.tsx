@@ -122,7 +122,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   // Load router related files to extract routes
   const { content: routerContent } = useLoadAppFile(
     selectedAppId,
-    "src/App.tsx"
+    "src/App.tsx",
   );
 
   // Effect to parse routes from the router file
@@ -287,7 +287,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           type: "navigate",
           payload: { direction: "backward" },
         },
-        "*"
+        "*",
       );
 
       // Update our local state
@@ -305,14 +305,14 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           type: "navigate",
           payload: { direction: "forward" },
         },
-        "*"
+        "*",
       );
 
       // Update our local state
       setCurrentHistoryPosition((prev) => prev + 1);
       setCanGoBack(true);
       setCanGoForward(
-        currentHistoryPosition + 1 < navigationHistory.length - 1
+        currentHistoryPosition + 1 < navigationHistory.length - 1,
       );
     }
   };

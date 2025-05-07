@@ -71,27 +71,27 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
                           previousAssistantMessage?.commitHash
                         ) {
                           console.debug(
-                            "Reverting to previous assistant version"
+                            "Reverting to previous assistant version",
                           );
                           await revertVersion({
                             versionId: previousAssistantMessage.commitHash,
                           });
-                          const chat = await IpcClient.getInstance().getChat(
-                            selectedChatId
-                          );
+                          const chat =
+                            await IpcClient.getInstance().getChat(
+                              selectedChatId,
+                            );
                           setMessages(chat.messages);
                         }
                       } else {
-                        const chat = await IpcClient.getInstance().getChat(
-                          selectedChatId
-                        );
+                        const chat =
+                          await IpcClient.getInstance().getChat(selectedChatId);
                         if (chat.initialCommitHash) {
                           await revertVersion({
                             versionId: chat.initialCommitHash,
                           });
                           const result =
                             await IpcClient.getInstance().deleteMessages(
-                              selectedChatId
+                              selectedChatId,
                             );
                           if (result.success) {
                             setMessages([]);
@@ -100,7 +100,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
                           }
                         } else {
                           showWarning(
-                            "No initial commit hash found for chat. Need to manually undo code changes"
+                            "No initial commit hash found for chat. Need to manually undo code changes",
                           );
                         }
                       }
@@ -148,27 +148,26 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
                         previousAssistantMessage?.commitHash
                       ) {
                         console.debug(
-                          "Reverting to previous assistant version"
+                          "Reverting to previous assistant version",
                         );
                         await revertVersion({
                           versionId: previousAssistantMessage.commitHash,
                         });
                         shouldRedo = false;
                       } else {
-                        const chat = await IpcClient.getInstance().getChat(
-                          selectedChatId
-                        );
+                        const chat =
+                          await IpcClient.getInstance().getChat(selectedChatId);
                         if (chat.initialCommitHash) {
                           console.debug(
                             "Reverting to initial commit hash",
-                            chat.initialCommitHash
+                            chat.initialCommitHash,
                           );
                           await revertVersion({
                             versionId: chat.initialCommitHash,
                           });
                         } else {
                           showWarning(
-                            "No initial commit hash found for chat. Need to manually undo code changes"
+                            "No initial commit hash found for chat. Need to manually undo code changes",
                           );
                         }
                       }
@@ -212,5 +211,5 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         <div ref={messagesEndRef} />
       </div>
     );
-  }
+  },
 );

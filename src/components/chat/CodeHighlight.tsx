@@ -29,7 +29,7 @@ export const CodeHighlight = memo(
       isDarkMode ? githubDark : github,
       {
         delay: 150,
-      }
+      },
     );
 
     // Update the cache whenever we get a new highlighted code
@@ -64,5 +64,5 @@ export const CodeHighlight = memo(
   },
   (prevProps, nextProps) => {
     return prevProps.children === nextProps.children;
-  }
+  },
 );

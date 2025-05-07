@@ -34,7 +34,7 @@ export function ProviderSettingsGrid({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {Object.entries(PROVIDERS).map(([key, provider]) => {
           const isConfigured = configuredProviders.includes(
-            key as ModelProvider
+            key as ModelProvider,
           );
 
           return (

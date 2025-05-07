@@ -115,7 +115,7 @@ const createWindow = () => {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   } else {
     mainWindow.loadFile(
-      path.join(__dirname, "../renderer/main_window/index.html")
+      path.join(__dirname, "../renderer/main_window/index.html"),
     );
   }
   if (process.env.NODE_ENV === "development") {
@@ -158,12 +158,12 @@ function handleDeepLinkReturn(url: string) {
     "Handling deep link: protocol",
     parsed.protocol,
     "hostname",
-    parsed.hostname
+    parsed.hostname,
   );
   if (parsed.protocol !== "dyad:") {
     dialog.showErrorBox(
       "Invalid Protocol",
-      `Expected dyad://, got ${parsed.protocol}. Full URL: ${url}`
+      `Expected dyad://, got ${parsed.protocol}. Full URL: ${url}`,
     );
     return;
   }
@@ -174,7 +174,7 @@ function handleDeepLinkReturn(url: string) {
     if (!token || !refreshToken || !expiresIn) {
       dialog.showErrorBox(
         "Invalid URL",
-        "Expected token, refreshToken, and expiresIn"
+        "Expected token, refreshToken, and expiresIn",
       );
       return;
     }
@@ -196,7 +196,7 @@ function handleDeepLinkReturn(url: string) {
     if (!apiKey) {
       dialog.showErrorBox(
         "Invalid URL",
-        "Expected key, budget_reset_at, and max_budget"
+        "Expected key, budget_reset_at, and max_budget",
       );
       return;
     }

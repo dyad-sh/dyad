@@ -52,7 +52,7 @@ export function useRunApp() {
     } catch (error) {
       console.error(`Error running app ${appId}:`, error);
       setPreviewErrorMessage(
-        error instanceof Error ? error.message : error?.toString()
+        error instanceof Error ? error.message : error?.toString(),
       );
     } finally {
       setLoading(false);
@@ -73,7 +73,7 @@ export function useRunApp() {
     } catch (error) {
       console.error(`Error stopping app ${appId}:`, error);
       setPreviewErrorMessage(
-        error instanceof Error ? error.message : error?.toString()
+        error instanceof Error ? error.message : error?.toString(),
       );
     } finally {
       setLoading(false);
@@ -97,7 +97,7 @@ export function useRunApp() {
         console.debug(
           "Restarting app",
           appId,
-          removeNodeModules ? "with node_modules cleanup" : ""
+          removeNodeModules ? "with node_modules cleanup" : "",
         );
 
         // Clear the URL and add restart message
@@ -127,25 +127,25 @@ export function useRunApp() {
             }
             // Check if the output contains a localhost URL
             const urlMatch = output.message.match(
-              /(https?:\/\/localhost:\d+\/?)/
+              /(https?:\/\/localhost:\d+\/?)/,
             );
             if (urlMatch) {
               setAppUrlObj({ appUrl: urlMatch[1], appId });
             }
           },
-          removeNodeModules
+          removeNodeModules,
         );
       } catch (error) {
         console.error(`Error restarting app ${appId}:`, error);
         setPreviewErrorMessage(
-          error instanceof Error ? error.message : error?.toString()
+          error instanceof Error ? error.message : error?.toString(),
         );
       } finally {
         setPreviewPanelKey((prevKey) => prevKey + 1);
         setLoading(false);
       }
     },
-    [appId, setApp, setAppOutput, setAppUrlObj, setPreviewPanelKey]
+    [appId, setApp, setAppOutput, setAppUrlObj, setPreviewPanelKey],
   );
 
   const refreshAppIframe = useCallback(async () => {

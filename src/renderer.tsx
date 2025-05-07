@@ -36,12 +36,12 @@ const posthogClient = posthog.init(
         "Telemetry opted in - UUID:",
         telemetryUserId,
         "sending event",
-        event
+        event,
       );
       return event;
     },
     persistence: "localStorage",
-  }
+  },
 );
 
 function App() {
@@ -74,5 +74,5 @@ createRoot(document.getElementById("root")!).render(
     <PostHogProvider client={posthogClient}>
       <App />
     </PostHogProvider>
-  </StrictMode>
+  </StrictMode>,
 );

@@ -119,7 +119,7 @@ function processSettingsForTelemetry(settings: UserSettings) {
   if (settings.telemetryConsent) {
     window.localStorage.setItem(
       TELEMETRY_CONSENT_KEY,
-      settings.telemetryConsent
+      settings.telemetryConsent,
     );
   } else {
     window.localStorage.removeItem(TELEMETRY_CONSENT_KEY);
@@ -127,7 +127,7 @@ function processSettingsForTelemetry(settings: UserSettings) {
   if (settings.telemetryUserId) {
     window.localStorage.setItem(
       TELEMETRY_USER_ID_KEY,
-      settings.telemetryUserId
+      settings.telemetryUserId,
     );
   } else {
     window.localStorage.removeItem(TELEMETRY_USER_ID_KEY);

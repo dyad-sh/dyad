@@ -61,7 +61,7 @@ export function useTheme() {
     const darkModeQuery = window.matchMedia("(prefers-color-scheme: dark)");
     const updateTheme = () => {
       setIsDarkMode(
-        theme === "dark" || (theme === "system" && darkModeQuery.matches)
+        theme === "dark" || (theme === "system" && darkModeQuery.matches),
       );
     };
 

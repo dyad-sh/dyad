@@ -20,4 +20,4 @@ No sign-up required. Just download and go.
 
 ## 🎥 Preview
 
-**dyad** is open source (Apache 2.0-licensed).  
+**dyad** is open source (Apache 2.0-licensed).

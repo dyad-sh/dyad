@@ -56,7 +56,7 @@ export function getDyadWriteTags(fullResponse: string): {
     } else {
       logger.warn(
         "Found <dyad-write> tag without a valid 'path' attribute:",
-        match[0]
+        match[0],
       );
     }
   }
@@ -174,7 +174,7 @@ export async function processFullResponseActions(
   {
     chatSummary,
     messageId,
-  }: { chatSummary: string | undefined; messageId: number }
+  }: { chatSummary: string | undefined; messageId: number },
 ): Promise<{
   updatedFiles?: boolean;
   error?: string;
@@ -216,7 +216,7 @@ export async function processFullResponseActions(
       where: and(
         eq(messages.id, messageId),
         eq(messages.role, "assistant"),
-        eq(messages.chatId, chatId)
+        eq(messages.chatId, chatId),
       ),
     });
 
@@ -254,7 +254,7 @@ export async function processFullResponseActions(
       } catch (error) {
         errors.push({
           message: `Failed to add dependencies: ${dyadAddDependencyPackages.join(
-            ", "
+            ", ",
           )}`,
           error: error,
         });
@@ -433,7 +433,7 @@ export async function processFullResponseActions(
         changes.push(`deleted ${deletedFiles.length} file(s)`);
       if (dyadAddDependencyPackages.length > 0)
         changes.push(
-          `added ${dyadAddDependencyPackages.join(", ")} package(s)`
+          `added ${dyadAddDependencyPackages.join(", ")} package(s)`,
         );
       if (dyadExecuteSqlQueries.length > 0)
         changes.push(`executed ${dyadExecuteSqlQueries.length} SQL queries`);
@@ -486,13 +486,13 @@ export async function processFullResponseActions(
     ${warnings
       .map(
         (warning) =>
-          `<dyad-output type="warning" message="${warning.message}">${warning.error}</dyad-output>`
+          `<dyad-output type="warning" message="${warning.message}">${warning.error}</dyad-output>`,
       )
       .join("\n")}
     ${errors
       .map(
         (error) =>
-          `<dyad-output type="error" message="${error.message}">${error.error}</dyad-output>`
+          `<dyad-output type="error" message="${error.message}">${error.error}</dyad-output>`,
       )
       .join("\n")}
     `;

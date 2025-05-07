@@ -11,15 +11,17 @@ export interface LMStudioModel {
   publisher: string;
   state: "loaded" | "not-loaded";
   max_context_length: number;
-  quantization: string
-  compatibility_type: string
+  quantization: string;
+  compatibility_type: string;
   arch: string;
   [key: string]: any;
 }
 
 export async function fetchLMStudioModels(): Promise<LocalModelListResponse> {
   try {
-    const modelsResponse: Response = await fetch("http://localhost:1234/api/v0/models");
+    const modelsResponse: Response = await fetch(
+      "http://localhost:1234/api/v0/models",
+    );
     if (!modelsResponse.ok) {
       throw new Error("Failed to fetch models from LM Studio");
     }
@@ -30,7 +32,7 @@ export async function fetchLMStudioModels(): Promise<LocalModelListResponse> {
       .map((model: any) => ({
         modelName: model.id,
         displayName: model.id,
-        provider: "lmstudio"
+        provider: "lmstudio",
       }));
 
     logger.info(`Successfully fetched ${models.length} models from LM Studio`);
@@ -41,7 +43,10 @@ export async function fetchLMStudioModels(): Promise<LocalModelListResponse> {
 }
 
 export function registerLMStudioHandlers() {
-  ipcMain.handle('local-models:list-lmstudio', async (): Promise<LocalModelListResponse> => {
-    return fetchLMStudioModels();
-  });
+  ipcMain.handle(
+    "local-models:list-lmstudio",
+    async (): Promise<LocalModelListResponse> => {
+      return fetchLMStudioModels();
+    },
+  );
 }

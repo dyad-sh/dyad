@@ -33,7 +33,7 @@ export function PrivacyBanner() {
             <a
               onClick={() => {
                 IpcClient.getInstance().openExternalUrl(
-                  "https://dyad.sh/docs/telemetry"
+                  "https://dyad.sh/docs/telemetry",
                 );
               }}
               className="cursor-pointer text-sm text-blue-600 dark:text-blue-400 hover:underline"

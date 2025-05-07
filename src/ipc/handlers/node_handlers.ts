@@ -14,7 +14,7 @@ export function registerNodeHandlers() {
       "handling ipc: nodejs-status for platform:",
       platform(),
       "and arch:",
-      arch()
+      arch(),
     );
     // Run checks in parallel
     const [nodeVersion, pnpmVersion] = await Promise.all([
@@ -23,7 +23,7 @@ export function registerNodeHandlers() {
       // If not, try to install it using corepack.
       // If both fail, then pnpm is not available.
       runShellCommand(
-        "pnpm --version || (corepack enable pnpm && pnpm --version) || (npm install -g pnpm@latest-10 && pnpm --version)"
+        "pnpm --version || (corepack enable pnpm && pnpm --version) || (npm install -g pnpm@latest-10 && pnpm --version)",
       ),
     ]);
     // Default to mac download url.

@@ -27,13 +27,13 @@ Add these commands to your `package.json`:
 When mocking the `node:fs` module, use a default export in the mock:
 
 ```typescript
-vi.mock('node:fs', async () => {
+vi.mock("node:fs", async () => {
   return {
     default: {
       mkdirSync: vi.fn(),
       writeFileSync: vi.fn(),
       // Add other fs methods as needed
-    }
+    },
   };
 });
 ```
@@ -43,12 +43,12 @@ vi.mock('node:fs', async () => {
 When mocking isomorphic-git, provide a default export:
 
 ```typescript
-vi.mock('isomorphic-git', () => ({
+vi.mock("isomorphic-git", () => ({
   default: {
     add: vi.fn().mockResolvedValue(undefined),
     commit: vi.fn().mockResolvedValue(undefined),
     // Add other git methods as needed
-  }
+  },
 }));
 ```
 
@@ -57,7 +57,7 @@ vi.mock('isomorphic-git', () => ({
 When testing IPC handlers, mock the Electron IPC system:
 
 ```typescript
-vi.mock('electron', () => ({
+vi.mock("electron", () => ({
   ipcMain: {
     handle: vi.fn(),
     on: vi.fn(),
@@ -74,4 +74,4 @@ vi.mock('electron', () => ({
 
 ## Example
 
-See `chat_stream_handlers.test.ts` for an example of testing IPC handlers with proper mocking. 
+See `chat_stream_handlers.test.ts` for an example of testing IPC handlers with proper mocking.

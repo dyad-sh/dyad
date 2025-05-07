@@ -56,7 +56,7 @@ export const DyadAddDependency: React.FC<DyadAddDependencyProps> = ({
                     key={p}
                     onClick={() => {
                       IpcClient.getInstance().openExternalUrl(
-                        `https://www.npmjs.com/package/${p}`
+                        `https://www.npmjs.com/package/${p}`,
                       );
                     }}
                   >

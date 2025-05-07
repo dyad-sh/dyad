@@ -32,12 +32,12 @@
           type: navigationType,
           payload: { oldUrl: oldUrlForMessage, newUrl: newUrl },
         },
-        PARENT_TARGET_ORIGIN
+        PARENT_TARGET_ORIGIN,
       );
     } catch (e) {
       console.error(
         `[vite-dev-plugin] Error calling original ${navigationType}: `,
-        e
+        e,
       );
       window.parent.postMessage(
         {
@@ -50,7 +50,7 @@
             urlAttempted: url,
           },
         },
-        PARENT_TARGET_ORIGIN
+        PARENT_TARGET_ORIGIN,
       );
     }
   };
@@ -98,7 +98,7 @@
               error?.stack || "<no stack available - StackTrace.js missing>",
           },
         },
-        PARENT_TARGET_ORIGIN
+        PARENT_TARGET_ORIGIN,
       );
       return;
     }
@@ -119,13 +119,13 @@
             type: "iframe-sourcemapped-error",
             payload: { ...payload, originalSourceType: sourceType },
           },
-          PARENT_TARGET_ORIGIN
+          PARENT_TARGET_ORIGIN,
         );
       })
       .catch((mappingError) => {
         console.error(
           "[vite-dev-plugin] Error during stacktrace sourcemapping:",
-          mappingError
+          mappingError,
         );
 
         const payload = {
@@ -141,7 +141,7 @@
             type: "iframe-sourcemapped-error",
             payload: { ...payload, originalSourceType: sourceType },
           },
-          PARENT_TARGET_ORIGIN
+          PARENT_TARGET_ORIGIN,
         );
       });
   }
@@ -157,7 +157,7 @@
             stack: "<no stack available - an improper error was thrown>",
           },
         },
-        PARENT_TARGET_ORIGIN
+        PARENT_TARGET_ORIGIN,
       );
       return;
     }
@@ -176,7 +176,7 @@
               "<no stack available - an improper error was thrown (promise)>",
           },
         },
-        PARENT_TARGET_ORIGIN
+        PARENT_TARGET_ORIGIN,
       );
       return;
     }
@@ -223,7 +223,7 @@
               frame: node.shadowRoot.querySelector(".frame").textContent,
             },
           },
-          PARENT_TARGET_ORIGIN
+          PARENT_TARGET_ORIGIN,
         );
       } catch (error) {
         console.error("Could not report vite error overlay", error);
@@ -236,7 +236,7 @@
       document.addEventListener("DOMContentLoaded", () => {
         if (!document.body) {
           console.error(
-            "document.body does not exist - something very weird happened"
+            "document.body does not exist - something very weird happened",
           );
           return;
         }
@@ -249,12 +249,12 @@
         observer.observe(document.body, config);
       });
       console.log(
-        "Document loading, waiting for DOMContentLoaded to set up observer."
+        "Document loading, waiting for DOMContentLoaded to set up observer.",
       );
     } else {
       if (!document.body) {
         console.error(
-          "document.body does not exist - something very weird happened"
+          "document.body does not exist - something very weird happened",
         );
         return;
       }

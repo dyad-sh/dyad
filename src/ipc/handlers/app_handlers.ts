@@ -74,7 +74,7 @@ async function executeAppLocalNode({
       shell: true,
       stdio: "pipe", // Ensure stdio is piped so we can capture output/errors and detect close
       detached: false, // Ensure child process is attached to the main process lifecycle unless explicitly backgrounded
-    }
+    },
   );
 
   // Check if process spawned correctly
@@ -86,7 +86,7 @@ async function executeAppLocalNode({
     throw new Error(
       `Failed to spawn process for app ${appId}. Error: ${
         errorOutput || "Unknown spawn error"
-      }`
+      }`,
     );
   }
 
@@ -118,7 +118,7 @@ async function executeAppLocalNode({
   // Handle process exit/close
   process.on("close", (code, signal) => {
     logger.log(
-      `App ${appId} (PID: ${process.pid}) process closed with code ${code}, signal ${signal}.`
+      `App ${appId} (PID: ${process.pid}) process closed with code ${code}, signal ${signal}.`,
     );
     removeAppIfCurrentProcess(appId, process);
   });
@@ -126,7 +126,7 @@ async function executeAppLocalNode({
   // Handle errors during process lifecycle (e.g., command not found)
   process.on("error", (err) => {
     logger.error(
-      `Error in app ${appId} (PID: ${process.pid}) process: ${err.message}`
+      `Error in app ${appId} (PID: ${process.pid}) process: ${err.message}`,
     );
     removeAppIfCurrentProcess(appId, process);
     // Note: We don't throw here as the error is asynchronous. The caller got a success response already.
@@ -173,7 +173,7 @@ export function registerAppHandlers() {
       // Copy scaffold asynchronously
       await copyDirectoryRecursive(
         path.join(__dirname, "..", "..", "scaffold"),
-        fullAppPath
+        fullAppPath,
       );
       // Initialize git repo and create first commit
       await git.init({
@@ -285,7 +285,7 @@ export function registerAppHandlers() {
         logger.error(`Error reading file ${filePath} for app ${appId}:`, error);
         throw new Error("Failed to read file");
       }
-    }
+    },
   );
 
   ipcMain.handle("get-env-vars", async () => {
@@ -300,7 +300,7 @@ export function registerAppHandlers() {
     "run-app",
     async (
       event: Electron.IpcMainInvokeEvent,
-      { appId }: { appId: number }
+      { appId }: { appId: number },
     ) => {
       return withLock(appId, async () => {
         // Check if app is already running
@@ -337,19 +337,19 @@ export function registerAppHandlers() {
           throw new Error(`Failed to run app ${appId}: ${error.message}`);
         }
       });
-    }
+    },
   );
 
   ipcMain.handle("stop-app", async (_, { appId }: { appId: number }) => {
     logger.log(
-      `Attempting to stop app ${appId}. Current running apps: ${runningApps.size}`
+      `Attempting to stop app ${appId}. Current running apps: ${runningApps.size}`,
     );
     return withLock(appId, async () => {
       const appInfo = runningApps.get(appId);
 
       if (!appInfo) {
         logger.log(
-          `App ${appId} not found in running apps map. Assuming already stopped.`
+          `App ${appId} not found in running apps map. Assuming already stopped.`,
         );
         return {
           success: true,
@@ -359,13 +359,13 @@ export function registerAppHandlers() {
 
       const { process, processId } = appInfo;
       logger.log(
-        `Found running app ${appId} with processId ${processId} (PID: ${process.pid}). Attempting to stop.`
+        `Found running app ${appId} with processId ${processId} (PID: ${process.pid}). Attempting to stop.`,
       );
 
       // Check if the process is already exited or closed
       if (process.exitCode !== null || process.signalCode !== null) {
         logger.log(
-          `Process for app ${appId} (PID: ${process.pid}) already exited (code: ${process.exitCode}, signal: ${process.signalCode}). Cleaning up map.`
+          `Process for app ${appId} (PID: ${process.pid}) already exited (code: ${process.exitCode}, signal: ${process.signalCode}). Cleaning up map.`,
         );
         runningApps.delete(appId); // Ensure cleanup if somehow missed
         return { success: true, message: "Process already exited." };
@@ -382,7 +382,7 @@ export function registerAppHandlers() {
       } catch (error: any) {
         logger.error(
           `Error stopping app ${appId} (PID: ${process.pid}, processId: ${processId}):`,
-          error
+          error,
         );
         // Attempt cleanup even if an error occurred during the stop process
         removeAppIfCurrentProcess(appId, process);
@@ -398,7 +398,7 @@ export function registerAppHandlers() {
       {
         appId,
         removeNodeModules,
-      }: { appId: number; removeNodeModules?: boolean }
+      }: { appId: number; removeNodeModules?: boolean },
     ) => {
       logger.log(`Restarting app ${appId}`);
       return withLock(appId, async () => {
@@ -408,7 +408,7 @@ export function registerAppHandlers() {
           if (appInfo) {
             const { process, processId } = appInfo;
             logger.log(
-              `Stopping app ${appId} (processId ${processId}) before restart`
+              `Stopping app ${appId} (processId ${processId}) before restart`,
             );
 
             await killProcess(process);
@@ -435,7 +435,7 @@ export function registerAppHandlers() {
           if (removeNodeModules) {
             const nodeModulesPath = path.join(appPath, "node_modules");
             logger.log(
-              `Removing node_modules for app ${appId} at ${nodeModulesPath}`
+              `Removing node_modules for app ${appId} at ${nodeModulesPath}`,
             );
             if (fs.existsSync(nodeModulesPath)) {
               await fsPromises.rm(nodeModulesPath, {
@@ -449,7 +449,7 @@ export function registerAppHandlers() {
           }
 
           logger.debug(
-            `Executing app ${appId} in path ${app.path} after restart request`
+            `Executing app ${appId} in path ${app.path} after restart request`,
           ); // Adjusted log
 
           await executeApp({ appPath, appId, event }); // This will handle starting either mode
@@ -460,7 +460,7 @@ export function registerAppHandlers() {
           throw error;
         }
       });
-    }
+    },
   );
 
   ipcMain.handle(
@@ -471,7 +471,7 @@ export function registerAppHandlers() {
         appId,
         filePath,
         content,
-      }: { appId: number; filePath: string; content: string }
+      }: { appId: number; filePath: string; content: string },
     ) => {
       const app = await db.query.apps.findFirst({
         where: eq(apps.id, appId),
@@ -517,7 +517,7 @@ export function registerAppHandlers() {
         logger.error(`Error writing file ${filePath} for app ${appId}:`, error);
         throw new Error(`Failed to write file: ${error.message}`);
       }
-    }
+    },
   );
 
   ipcMain.handle("delete-app", async (_, { appId }: { appId: number }) => {
@@ -575,7 +575,7 @@ export function registerAppHandlers() {
         appId,
         appName,
         appPath,
-      }: { appId: number; appName: string; appPath: string }
+      }: { appId: number; appName: string; appPath: string },
     ) => {
       return withLock(appId, async () => {
         // Check if app exists
@@ -613,7 +613,7 @@ export function registerAppHandlers() {
           } catch (error: any) {
             logger.error(`Error stopping app ${appId} before renaming:`, error);
             throw new Error(
-              `Failed to stop app before renaming: ${error.message}`
+              `Failed to stop app before renaming: ${error.message}`,
             );
           }
         }
@@ -627,7 +627,7 @@ export function registerAppHandlers() {
             // Check if destination directory already exists
             if (fs.existsSync(newAppPath)) {
               throw new Error(
-                `Destination path '${newAppPath}' already exists`
+                `Destination path '${newAppPath}' already exists`,
               );
             }
 
@@ -641,7 +641,7 @@ export function registerAppHandlers() {
           } catch (error: any) {
             logger.error(
               `Error moving app files from ${oldAppPath} to ${newAppPath}:`,
-              error
+              error,
             );
             throw new Error(`Failed to move app files: ${error.message}`);
           }
@@ -667,7 +667,7 @@ export function registerAppHandlers() {
             } catch (rollbackError) {
               logger.error(
                 `Failed to rollback file move during rename error:`,
-                rollbackError
+                rollbackError,
               );
             }
           }
@@ -676,7 +676,7 @@ export function registerAppHandlers() {
           throw new Error(`Failed to update app in database: ${error.message}`);
         }
       });
-    }
+    },
   );
 
   ipcMain.handle("reset-all", async () => {

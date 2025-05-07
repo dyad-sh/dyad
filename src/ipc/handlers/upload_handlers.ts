@@ -39,7 +39,7 @@ export function registerUploadHandlers() {
 
         if (!response.ok) {
           throw new Error(
-            `Upload failed with status ${response.status}: ${response.statusText}`
+            `Upload failed with status ${response.status}: ${response.statusText}`,
           );
         }
 
@@ -52,7 +52,7 @@ export function registerUploadHandlers() {
           error: error instanceof Error ? error.message : String(error),
         };
       }
-    }
+    },
   );
 
   logger.debug("Registered upload IPC handlers");

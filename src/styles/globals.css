@@ -5,48 +5,54 @@
 /* Load Geist Font */
 
 @font-face {
-  font-family: 'Geist Mono';
-  src: url('/node_modules/geist/dist/fonts/geist-mono/GeistMono-Regular.ttf') format('truetype');
+  font-family: "Geist Mono";
+  src: url("/node_modules/geist/dist/fonts/geist-mono/GeistMono-Regular.ttf")
+    format("truetype");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'Geist Mono';
-  src: url('/node_modules/geist/dist/fonts/geist-mono/GeistMono-Medium.ttf') format('truetype');
+  font-family: "Geist Mono";
+  src: url("/node_modules/geist/dist/fonts/geist-mono/GeistMono-Medium.ttf")
+    format("truetype");
   font-weight: 500;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'Geist Mono';
-  src: url('/node_modules/geist/dist/fonts/geist-mono/GeistMono-Bold.ttf') format('truetype');
+  font-family: "Geist Mono";
+  src: url("/node_modules/geist/dist/fonts/geist-mono/GeistMono-Bold.ttf")
+    format("truetype");
   font-weight: 700;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'Geist';
-  src: url('/node_modules/geist/dist/fonts/geist-sans/Geist-Regular.ttf') format('truetype');
+  font-family: "Geist";
+  src: url("/node_modules/geist/dist/fonts/geist-sans/Geist-Regular.ttf")
+    format("truetype");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'Geist';
-  src: url('/node_modules/geist/dist/fonts/geist-sans/Geist-Medium.ttf') format('truetype');
+  font-family: "Geist";
+  src: url("/node_modules/geist/dist/fonts/geist-sans/Geist-Medium.ttf")
+    format("truetype");
   font-weight: 500;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'Geist';
-  src: url('/node_modules/geist/dist/fonts/geist-sans/Geist-Bold.ttf') format('truetype');
+  font-family: "Geist";
+  src: url("/node_modules/geist/dist/fonts/geist-sans/Geist-Bold.ttf")
+    format("truetype");
   font-weight: 700;
   font-style: normal;
   font-display: swap;
@@ -68,8 +74,8 @@
 :root {
   --docs-bg: #f5f5f5;
 
-  --default-font-family: 'Geist', sans-serif;
-  --default-mono-font-family: 'Geist Mono', monospace;
+  --default-font-family: "Geist", sans-serif;
+  --default-mono-font-family: "Geist Mono", monospace;
   /* --background: oklch(1 0 0); */
   --background-lightest: #fff;
   --background-lighter: oklch(0.995 0.0188 292.61);
@@ -122,7 +128,6 @@
 .dark {
   --docs-bg: #121212;
 
-  
   --background-lightest: oklch(0.285 0 0);
   --background-lighter: oklch(0.185 0 0);
   --background: oklch(0.145 0 0);
@@ -214,65 +219,64 @@
 }
 
 @layer base {
-    :root {
-      --sidebar-background: 0 0% 98%;
-      --sidebar-foreground: 240 5.3% 26.1%;
-      --sidebar-primary: 240 5.9% 10%;
-      --sidebar-primary-foreground: 0 0% 98%;
-      --sidebar-accent: 240 4.8% 95.9%;
-      --sidebar-accent-foreground: 240 5.9% 10%;
-      --sidebar-border: 220 13% 91%;
-      --sidebar-ring: 217.2 91.2% 59.8%;
-    }
-  
-    .dark {
-      --sidebar-background: 240 5.9% 10%;
-      --sidebar-foreground: 240 4.8% 95.9%;
-      --sidebar-primary: 224.3 76.3% 48%;
-      --sidebar-primary-foreground: 0 0% 100%;
-      --sidebar-accent: 240 3.7% 15.9%;
-      --sidebar-accent-foreground: 240 4.8% 95.9%;
-      --sidebar-border: 240 3.7% 15.9%;
-      --sidebar-ring: 217.2 91.2% 59.8%;
+  :root {
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@media (pointer: fine) {
+  @supports not (selector(::-webkit-scrollbar)) {
+    * {
+      scrollbar-color: #dadce0 transparent;
+      scrollbar-gutter: auto;
+      scrollbar-width: thin;
     }
   }
-  
-  @media (pointer: fine) {
-    @supports not (selector(::-webkit-scrollbar)) {
-      * {
-        scrollbar-color: #dadce0 transparent;
-        scrollbar-gutter: auto;
-        scrollbar-width: thin;
-      }
-    }
-  
-    ::-webkit-scrollbar,
-    ::-webkit-scrollbar-corner {
-      background: transparent;
-      height: 12px;
-      width: 12px;
-    }
-  
-    ::-webkit-scrollbar-thumb {
-      background: content-box currentColor;
-      border: 2px solid transparent;
-      border-radius: 8px;
-      color: #dadce0;
-      min-height: 48px;
-      min-width: 48px;
-    }
-  
-    :hover::-webkit-scrollbar-thumb {
-      color: #80868b;
-    }
-  
-    ::-webkit-scrollbar-thumb:active {
-      color: #5f6368;
-    }
-  
-    ::-webkit-scrollbar-button {
-      height: 0;
-      width: 0;
-    }
+
+  ::-webkit-scrollbar,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+    height: 12px;
+    width: 12px;
   }
-  
+
+  ::-webkit-scrollbar-thumb {
+    background: content-box currentColor;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    color: #dadce0;
+    min-height: 48px;
+    min-width: 48px;
+  }
+
+  :hover::-webkit-scrollbar-thumb {
+    color: #80868b;
+  }
+
+  ::-webkit-scrollbar-thumb:active {
+    color: #5f6368;
+  }
+
+  ::-webkit-scrollbar-button {
+    height: 0;
+    width: 0;
+  }
+}

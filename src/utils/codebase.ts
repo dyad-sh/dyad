@@ -52,7 +52,7 @@ const gitIgnoreMtimes = new Map<string, number>();
  */
 async function isGitIgnored(
   filePath: string,
-  baseDir: string
+  baseDir: string,
 ): Promise<boolean> {
   try {
     // Check if any relevant .gitignore has been modified
@@ -318,7 +318,7 @@ async function sortFilesByModificationTime(files: string[]): Promise<string[]> {
         logger.error(`Error getting file stats for ${file}:`, error);
         return { file, mtime: Date.now() };
       }
-    })
+    }),
   );
 
   // Sort by modification time (oldest first)
@@ -346,12 +346,12 @@ function sortFilesByImportance(files: string[], baseDir: string): string[] {
 
     // Check if file A matches any high priority pattern
     const aIsHighPriority = highPriorityPatterns.some((pattern) =>
-      pattern.test(relativeA)
+      pattern.test(relativeA),
     );
 
     // Check if file B matches any high priority pattern
     const bIsHighPriority = highPriorityPatterns.some((pattern) =>
-      pattern.test(relativeB)
+      pattern.test(relativeB),
     );
 
     // Sort by priority first

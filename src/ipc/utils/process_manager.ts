@@ -36,7 +36,7 @@ export function killProcess(process: ChildProcess): Promise<void> {
     // Add timeout to prevent hanging
     const timeout = setTimeout(() => {
       console.warn(
-        `Timeout waiting for process (PID: ${process.pid}) to close. Force killing may be needed.`
+        `Timeout waiting for process (PID: ${process.pid}) to close. Force killing may be needed.`,
       );
       resolve();
     }, 5000); // 5-second timeout
@@ -44,7 +44,7 @@ export function killProcess(process: ChildProcess): Promise<void> {
     process.on("close", (code, signal) => {
       clearTimeout(timeout);
       console.log(
-        `Received 'close' event for process (PID: ${process.pid}) with code ${code}, signal ${signal}.`
+        `Received 'close' event for process (PID: ${process.pid}) with code ${code}, signal ${signal}.`,
       );
       resolve();
     });
@@ -53,7 +53,7 @@ export function killProcess(process: ChildProcess): Promise<void> {
     process.on("error", (err) => {
       clearTimeout(timeout);
       console.error(
-        `Error during stop sequence for process (PID: ${process.pid}): ${err.message}`
+        `Error during stop sequence for process (PID: ${process.pid}): ${err.message}`,
       );
       resolve();
     });
@@ -62,16 +62,16 @@ export function killProcess(process: ChildProcess): Promise<void> {
     if (process.pid) {
       // Use tree-kill to terminate the entire process tree
       console.log(
-        `Attempting to tree-kill process tree starting at PID ${process.pid}.`
+        `Attempting to tree-kill process tree starting at PID ${process.pid}.`,
       );
       treeKill(process.pid, "SIGTERM", (err: Error | undefined) => {
         if (err) {
           console.warn(
-            `tree-kill error for PID ${process.pid}: ${err.message}`
+            `tree-kill error for PID ${process.pid}: ${err.message}`,
           );
         } else {
           console.log(
-            `tree-kill signal sent successfully to PID ${process.pid}.`
+            `tree-kill signal sent successfully to PID ${process.pid}.`,
           );
         }
       });
@@ -88,17 +88,17 @@ export function killProcess(process: ChildProcess): Promise<void> {
  */
 export function removeAppIfCurrentProcess(
   appId: number,
-  process: ChildProcess
+  process: ChildProcess,
 ): void {
   const currentAppInfo = runningApps.get(appId);
   if (currentAppInfo && currentAppInfo.process === process) {
     runningApps.delete(appId);
     console.log(
-      `Removed app ${appId} (processId ${currentAppInfo.processId}) from running map. Current size: ${runningApps.size}`
+      `Removed app ${appId} (processId ${currentAppInfo.processId}) from running map. Current size: ${runningApps.size}`,
     );
   } else {
     console.log(
-      `App ${appId} process was already removed or replaced in running map. Ignoring.`
+      `App ${appId} process was already removed or replaced in running map. Ignoring.`,
     );
   }
 }

@@ -62,7 +62,7 @@ export function registerTokenCountHandlers() {
         }
 
         const systemPromptTokens = estimateTokens(
-          systemPrompt + supabaseContext
+          systemPrompt + supabaseContext,
         );
 
         // Extract codebase information if app is associated with the chat
@@ -75,7 +75,7 @@ export function registerTokenCountHandlers() {
             codebaseInfo = await extractCodebase(appPath);
             codebaseTokens = estimateTokens(codebaseInfo);
             logger.log(
-              `Extracted codebase information from ${appPath}, tokens: ${codebaseTokens}`
+              `Extracted codebase information from ${appPath}, tokens: ${codebaseTokens}`,
             );
           } catch (error) {
             logger.error("Error extracting codebase:", error);
@@ -101,6 +101,6 @@ export function registerTokenCountHandlers() {
         logger.error("Error counting tokens:", error);
         throw error;
       }
-    }
+    },
   );
 }

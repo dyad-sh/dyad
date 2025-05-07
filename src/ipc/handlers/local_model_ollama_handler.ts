@@ -31,12 +31,13 @@ export async function fetchOllamaModels(): Promise<LocalModelListResponse> {
     const ollamaModels: OllamaModel[] = data.models || [];
 
     const models: LocalModel[] = ollamaModels.map((model: OllamaModel) => {
-      const displayName = model.name.split(':')[0]
-        .replace(/-/g, ' ')
-        .replace(/(\d+)/, ' $1 ')
-        .split(' ')
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(' ')
+      const displayName = model.name
+        .split(":")[0]
+        .replace(/-/g, " ")
+        .replace(/(\d+)/, " $1 ")
+        .split(" ")
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(" ")
         .trim();
 
       return {
@@ -45,14 +46,18 @@ export async function fetchOllamaModels(): Promise<LocalModelListResponse> {
         provider: "ollama",
       };
     });
-  logger.info(`Successfully fetched ${models.length} models from Ollama`);
-  return { models, error: null };
+    logger.info(`Successfully fetched ${models.length} models from Ollama`);
+    return { models, error: null };
   } catch (error) {
-    if (error instanceof TypeError && (error as Error).message.includes('fetch failed')) {
+    if (
+      error instanceof TypeError &&
+      (error as Error).message.includes("fetch failed")
+    ) {
       logger.error("Could not connect to Ollama");
       return {
         models: [],
-        error: "Could not connect to Ollama. Make sure it's running at http://localhost:11434"
+        error:
+          "Could not connect to Ollama. Make sure it's running at http://localhost:11434",
       };
     }
     return { models: [], error: "Failed to fetch models from Ollama" };
@@ -60,7 +65,10 @@ export async function fetchOllamaModels(): Promise<LocalModelListResponse> {
 }
 
 export function registerOllamaHandlers() {
-  ipcMain.handle('local-models:list-ollama', async (): Promise<LocalModelListResponse> => {
-    return fetchOllamaModels();
-  });
+  ipcMain.handle(
+    "local-models:list-ollama",
+    async (): Promise<LocalModelListResponse> => {
+      return fetchOllamaModels();
+    },
+  );
 }

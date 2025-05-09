@@ -1,78 +1,79 @@
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { useAtom, useAtomValue } from "jotai";
 import { versionsListAtom } from "@/atoms/appAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
 import { showError } from "@/lib/toast";
 import { chatMessagesAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import type { Version } from "@/ipc/ipc_types";
 
 export function useVersions(appId: number | null) {
-  const [versions, setVersions] = useAtom(versionsListAtom);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+  const [, setVersionsAtom] = useAtom(versionsListAtom);
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const [, setMessages] = useAtom(chatMessagesAtom);
-  useEffect(() => {
-    const loadVersions = async () => {
-      // If no app is selected, clear versions and return
+  const queryClient = useQueryClient();
+
+  const {
+    data: versions,
+    isLoading: loading,
+    error,
+    refetch: refreshVersions,
+  } = useQuery<Version[], Error>({
+    queryKey: ["versions", appId],
+    queryFn: async (): Promise<Version[]> => {
       if (appId === null) {
-        setVersions([]);
-        setLoading(false);
-        return;
+        return [];
       }
-
-      try {
-        const ipcClient = IpcClient.getInstance();
-        const versionsList = await ipcClient.listVersions({ appId });
-
-        setVersions(versionsList);
-        setError(null);
-      } catch (error) {
-        console.error("Error loading versions:", error);
-        setError(error instanceof Error ? error : new Error(String(error)));
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadVersions();
-  }, [appId, setVersions]);
-
-  const refreshVersions = useCallback(async () => {
-    if (appId === null) {
-      return;
-    }
-
-    try {
       const ipcClient = IpcClient.getInstance();
-      const versionsList = await ipcClient.listVersions({ appId });
-      setVersions(versionsList);
-      setError(null);
-    } catch (error) {
-      console.error("Error refreshing versions:", error);
-      setError(error instanceof Error ? error : new Error(String(error)));
+      return ipcClient.listVersions({ appId });
+    },
+    enabled: appId !== null,
+    initialData: [],
+  });
+
+  useEffect(() => {
+    if (versions) {
+      setVersionsAtom(versions);
     }
-  }, [appId, setVersions, setError]);
+  }, [versions, setVersionsAtom]);
+
+  const revertVersionMutation = useMutation<void, Error, { versionId: string }>(
+    {
+      mutationFn: async ({ versionId }: { versionId: string }) => {
+        if (appId === null) {
+          throw new Error("App ID is null");
+        }
+        const ipcClient = IpcClient.getInstance();
+        await ipcClient.revertVersion({ appId, previousVersionId: versionId });
+      },
+      onSuccess: async () => {
+        await queryClient.invalidateQueries({ queryKey: ["versions", appId] });
+        if (selectedChatId) {
+          const chat = await IpcClient.getInstance().getChat(selectedChatId);
+          setMessages(chat.messages);
+        }
+      },
+      onError: (e: Error) => {
+        showError(e);
+      },
+    },
+  );
 
   const revertVersion = useCallback(
     async ({ versionId }: { versionId: string }) => {
       if (appId === null) {
         return;
       }
-
-      try {
-        const ipcClient = IpcClient.getInstance();
-        await ipcClient.revertVersion({ appId, previousVersionId: versionId });
-        await refreshVersions();
-        if (selectedChatId) {
-          const chat = await IpcClient.getInstance().getChat(selectedChatId);
-          setMessages(chat.messages);
-        }
-      } catch (error) {
-        showError(error);
-      }
+      await revertVersionMutation.mutateAsync({ versionId });
     },
-    [appId, setVersions, setError, selectedChatId, setMessages],
+    [appId, revertVersionMutation],
   );
 
-  return { versions, loading, error, refreshVersions, revertVersion };
+  return {
+    versions: versions || [],
+    loading,
+    error,
+    refreshVersions,
+    revertVersion,
+  };
 }

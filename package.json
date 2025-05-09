@@ -95,6 +95,7 @@
     "@rollup/plugin-commonjs": "^28.0.3",
     "@tailwindcss/typography": "^0.5.16",
     "@tailwindcss/vite": "^4.1.3",
+    "@tanstack/react-query": "^5.75.5",
     "@tanstack/react-router": "^1.114.34",
     "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^4.3.4",

@@ -5,9 +5,12 @@ import { RouterProvider } from "@tanstack/react-router";
 import { PostHogProvider } from "posthog-js/react";
 import posthog from "posthog-js";
 import { getTelemetryUserId, isTelemetryOptedIn } from "./hooks/useSettings";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 // @ts-ignore
 console.log("Running in mode:", import.meta.env.MODE);
+
+const queryClient = new QueryClient();
 
 const posthogClient = posthog.init(
   "phc_5Vxx0XT8Ug3eWROhP6mm4D6D2DgIIKT232q4AKxC2ab",
@@ -71,8 +74,10 @@ function App() {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <PostHogProvider client={posthogClient}>
-      <App />
-    </PostHogProvider>
+    <QueryClientProvider client={queryClient}>
+      <PostHogProvider client={posthogClient}>
+        <App />
+      </PostHogProvider>
+    </QueryClientProvider>
   </StrictMode>,
 );

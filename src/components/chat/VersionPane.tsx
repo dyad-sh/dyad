@@ -21,17 +21,20 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
     selectedVersionIdAtom,
   );
   useEffect(() => {
-    // Refresh versions in case the user updated versions outside of the app
-    // (e.g. manually using git).
-    // Avoid loading state which causes brief flash of loading state.
-    refreshVersions();
-    if (!isVisible && selectedVersionId) {
-      setSelectedVersionId(null);
-      IpcClient.getInstance().checkoutVersion({
-        appId: appId!,
-        versionId: "main",
-      });
+    async function updateVersions() {
+      // Refresh versions in case the user updated versions outside of the app
+      // (e.g. manually using git).
+      // Avoid loading state which causes brief flash of loading state.
+      if (!isVisible && selectedVersionId) {
+        setSelectedVersionId(null);
+        await IpcClient.getInstance().checkoutVersion({
+          appId: appId!,
+          versionId: "main",
+        });
+      }
+      refreshVersions();
     }
+    updateVersions();
   }, [isVisible, refreshVersions]);
   if (!isVisible) {
     return null;

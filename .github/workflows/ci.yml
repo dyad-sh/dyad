@@ -29,5 +29,7 @@ jobs:
           cache-dependency-path: package-lock.json
       - name: Install node modules
         run: npm install
+      - name: Presubmit check (e.g. lint, format)
+        run: npm run presubmit
       - name: Type-checking
         run: npm run ts

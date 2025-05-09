@@ -19,7 +19,7 @@ export function useCurrentBranch(appId: number | null) {
       return ipcClient.getCurrentBranch(appId);
     },
     enabled: appId !== null,
-    meta: { showErrorToast: false },
+    meta: { showErrorToast: true },
   });
 
   return {

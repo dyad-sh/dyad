@@ -5,12 +5,41 @@ import { RouterProvider } from "@tanstack/react-router";
 import { PostHogProvider } from "posthog-js/react";
 import posthog from "posthog-js";
 import { getTelemetryUserId, isTelemetryOptedIn } from "./hooks/useSettings";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  QueryCache,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
+import { showError } from "./lib/toast";
 
 // @ts-ignore
 console.log("Running in mode:", import.meta.env.MODE);
 
-const queryClient = new QueryClient();
+interface MyMeta extends Record<string, unknown> {
+  showErrorToast: boolean;
+}
+
+declare module "@tanstack/react-query" {
+  interface Register {
+    queryMeta: MyMeta;
+    mutationMeta: MyMeta;
+  }
+}
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: false,
+    },
+  },
+  queryCache: new QueryCache({
+    onError: (error, query) => {
+      if (query.meta?.showErrorToast) {
+        showError(error);
+      }
+    },
+  }),
+});
 
 const posthogClient = posthog.init(
   "phc_5Vxx0XT8Ug3eWROhP6mm4D6D2DgIIKT232q4AKxC2ab",

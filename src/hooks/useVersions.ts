@@ -29,6 +29,7 @@ export function useVersions(appId: number | null) {
     },
     enabled: appId !== null,
     initialData: [],
+    meta: { showErrorToast: true },
   });
 
   useEffect(() => {

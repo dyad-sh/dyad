@@ -150,23 +150,11 @@ export class IpcClient {
 
   // Create a new app with an initial chat
   public async createApp(params: CreateAppParams): Promise<CreateAppResult> {
-    try {
-      const result = await this.ipcRenderer.invoke("create-app", params);
-      return result as CreateAppResult;
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
+    return this.ipcRenderer.invoke("create-app", params);
   }
 
   public async getApp(appId: number): Promise<App> {
-    try {
-      const data = await this.ipcRenderer.invoke("get-app", appId);
-      return data;
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
+    return this.ipcRenderer.invoke("get-app", appId);
   }
 
   public async getChat(chatId: number): Promise<Chat> {
@@ -192,28 +180,14 @@ export class IpcClient {
 
   // Get all apps
   public async listApps(): Promise<ListAppsResponse> {
-    try {
-      const data = await this.ipcRenderer.invoke("list-apps");
-      return data;
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
+    return this.ipcRenderer.invoke("list-apps");
   }
 
-  // Read a file from an app directory
   public async readAppFile(appId: number, filePath: string): Promise<string> {
-    try {
-      const content = await this.ipcRenderer.invoke("read-app-file", {
-        appId,
-        filePath,
-      });
-      return content as string;
-    } catch (error) {
-      // No toast because sometimes the file will disappear.
-      console.error(error);
-      throw error;
-    }
+    return this.ipcRenderer.invoke("read-app-file", {
+      appId,
+      filePath,
+    });
   }
 
   // Edit a file in an app directory
@@ -221,18 +195,12 @@ export class IpcClient {
     appId: number,
     filePath: string,
     content: string,
-  ): Promise<{ success: boolean }> {
-    try {
-      const result = await this.ipcRenderer.invoke("edit-app-file", {
-        appId,
-        filePath,
-        content,
-      });
-      return result as { success: boolean };
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("edit-app-file", {
+      appId,
+      filePath,
+      content,
+    });
   }
 
   // New method for streaming responses
@@ -321,91 +289,38 @@ export class IpcClient {
 
   // Create a new chat for an app
   public async createChat(appId: number): Promise<number> {
-    try {
-      const chatId = await this.ipcRenderer.invoke("create-chat", appId);
-      return chatId as number;
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
+    return this.ipcRenderer.invoke("create-chat", appId);
   }
 
-  public async deleteChat(
-    chatId: number,
-  ): Promise<{ success: boolean; error?: string }> {
-    try {
-      const result = await this.ipcRenderer.invoke("delete-chat", chatId);
-      return result as { success: boolean; error?: string };
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
+  public async deleteChat(chatId: number): Promise<void> {
+    await this.ipcRenderer.invoke("delete-chat", chatId);
   }
 
-  public async deleteMessages(
-    chatId: number,
-  ): Promise<{ success: boolean; error?: string }> {
-    try {
-      const result = await this.ipcRenderer.invoke("delete-messages", chatId);
-      return result as { success: boolean; error?: string };
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
+  public async deleteMessages(chatId: number): Promise<void> {
+    await this.ipcRenderer.invoke("delete-messages", chatId);
   }
 
   // Open an external URL using the default browser
-  public async openExternalUrl(
-    url: string,
-  ): Promise<{ success: boolean; error?: string }> {
-    try {
-      const result = await this.ipcRenderer.invoke("open-external-url", url);
-      return result as { success: boolean; error?: string };
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
+  public async openExternalUrl(url: string): Promise<void> {
+    await this.ipcRenderer.invoke("open-external-url", url);
   }
 
-  public async showItemInFolder(
-    fullPath: string,
-  ): Promise<{ success: boolean; error?: string }> {
-    try {
-      const result = await this.ipcRenderer.invoke(
-        "show-item-in-folder",
-        fullPath,
-      );
-      return result as { success: boolean; error?: string };
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
+  public async showItemInFolder(fullPath: string): Promise<void> {
+    await this.ipcRenderer.invoke("show-item-in-folder", fullPath);
   }
 
   // Run an app
   public async runApp(
     appId: number,
     onOutput: (output: AppOutput) => void,
-  ): Promise<{ success: boolean }> {
-    try {
-      const result = await this.ipcRenderer.invoke("run-app", { appId });
-      this.appStreams.set(appId, { onOutput });
-      return result;
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("run-app", { appId });
+    this.appStreams.set(appId, { onOutput });
   }
 
   // Stop a running app
-  public async stopApp(appId: number): Promise<{ success: boolean }> {
-    try {
-      const result = await this.ipcRenderer.invoke("stop-app", { appId });
-      return result;
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
+  public async stopApp(appId: number): Promise<void> {
+    await this.ipcRenderer.invoke("stop-app", { appId });
   }
 
   // Restart a running app
@@ -514,14 +429,8 @@ export class IpcClient {
   }
 
   // Delete an app and all its files
-  public async deleteApp(appId: number): Promise<{ success: boolean }> {
-    try {
-      const result = await this.ipcRenderer.invoke("delete-app", { appId });
-      return result as { success: boolean };
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
+  public async deleteApp(appId: number): Promise<void> {
+    await this.ipcRenderer.invoke("delete-app", { appId });
   }
 
   // Rename an app (update name and path)
@@ -533,29 +442,17 @@ export class IpcClient {
     appId: number;
     appName: string;
     appPath: string;
-  }): Promise<{ success: boolean; app: App }> {
-    try {
-      const result = await this.ipcRenderer.invoke("rename-app", {
-        appId,
-        appName,
-        appPath,
-      });
-      return result as { success: boolean; app: App };
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
+  }): Promise<void> {
+    await this.ipcRenderer.invoke("rename-app", {
+      appId,
+      appName,
+      appPath,
+    });
   }
 
   // Reset all - removes all app files, settings, and drops the database
-  public async resetAll(): Promise<{ success: boolean; message: string }> {
-    try {
-      const result = await this.ipcRenderer.invoke("reset-all");
-      return result as { success: boolean; message: string };
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
+  public async resetAll(): Promise<void> {
+    await this.ipcRenderer.invoke("reset-all");
   }
 
   public async addDependency({
@@ -565,26 +462,15 @@ export class IpcClient {
     chatId: number;
     packages: string[];
   }): Promise<void> {
-    try {
-      await this.ipcRenderer.invoke("chat:add-dep", {
-        chatId,
-        packages,
-      });
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
+    await this.ipcRenderer.invoke("chat:add-dep", {
+      chatId,
+      packages,
+    });
   }
 
   // Check Node.js and npm status
   public async getNodejsStatus(): Promise<NodeSystemInfo> {
-    try {
-      const result = await this.ipcRenderer.invoke("nodejs-status");
-      return result;
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
+    return this.ipcRenderer.invoke("nodejs-status");
   }
 
   // --- GitHub Device Flow ---
@@ -631,11 +517,6 @@ export class IpcClient {
       this.ipcRenderer.removeListener("github:flow-error", listener);
     };
   }
-
-  // TODO: Implement cancel method if needed
-  // public cancelGithubDeviceFlow(): void {
-  //   this.ipcRenderer.sendMessage("github:cancel-flow");
-  // }
   // --- End GitHub Device Flow ---
 
   // --- GitHub Repo Management ---
@@ -643,32 +524,22 @@ export class IpcClient {
     org: string,
     repo: string,
   ): Promise<{ available: boolean; error?: string }> {
-    try {
-      const result = await this.ipcRenderer.invoke("github:is-repo-available", {
-        org,
-        repo,
-      });
-      return result;
-    } catch (error: any) {
-      return { available: false, error: error.message || "Unknown error" };
-    }
+    return this.ipcRenderer.invoke("github:is-repo-available", {
+      org,
+      repo,
+    });
   }
 
   public async createGithubRepo(
     org: string,
     repo: string,
     appId: number,
-  ): Promise<{ success: boolean; error?: string }> {
-    try {
-      const result = await this.ipcRenderer.invoke("github:create-repo", {
-        org,
-        repo,
-        appId,
-      });
-      return result;
-    } catch (error: any) {
-      return { success: false, error: error.message || "Unknown error" };
-    }
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("github:create-repo", {
+      org,
+      repo,
+      appId,
+    });
   }
 
   // Sync (push) local repo to GitHub
@@ -684,30 +555,17 @@ export class IpcClient {
     }
   }
 
-  public async disconnectGithubRepo(
-    appId: number,
-  ): Promise<{ success: boolean; error?: string }> {
-    try {
-      const result = await this.ipcRenderer.invoke("github:disconnect", {
-        appId,
-      });
-      return result as { success: boolean; error?: string };
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
+  public async disconnectGithubRepo(appId: number): Promise<void> {
+    await this.ipcRenderer.invoke("github:disconnect", {
+      appId,
+    });
   }
   // --- End GitHub Repo Management ---
 
   // Get the main app version
   public async getAppVersion(): Promise<string> {
-    try {
-      const result = await this.ipcRenderer.invoke("get-app-version");
-      return result.version as string;
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
+    const result = await this.ipcRenderer.invoke("get-app-version");
+    return result.version as string;
   }
 
   // Get proposal details
@@ -734,24 +592,12 @@ export class IpcClient {
     chatId: number;
     messageId: number;
   }): Promise<{
-    success: boolean;
-    error?: string;
     uncommittedFiles?: string[];
   }> {
-    try {
-      const result = await this.ipcRenderer.invoke("approve-proposal", {
-        chatId,
-        messageId,
-      });
-      return result as {
-        success: boolean;
-        error?: string;
-        uncommittedFiles?: string[];
-      };
-    } catch (error) {
-      showError(error);
-      return { success: false, error: (error as Error).message };
-    }
+    return this.ipcRenderer.invoke("approve-proposal", {
+      chatId,
+      messageId,
+    });
   }
 
   public async rejectProposal({
@@ -760,132 +606,66 @@ export class IpcClient {
   }: {
     chatId: number;
     messageId: number;
-  }): Promise<{ success: boolean; error?: string }> {
-    try {
-      const result = await this.ipcRenderer.invoke("reject-proposal", {
-        chatId,
-        messageId,
-      });
-      return result as { success: boolean; error?: string };
-    } catch (error) {
-      showError(error);
-      return { success: false, error: (error as Error).message };
-    }
+  }): Promise<void> {
+    await this.ipcRenderer.invoke("reject-proposal", {
+      chatId,
+      messageId,
+    });
   }
   // --- End Proposal Management ---
 
   // --- Supabase Management ---
   public async listSupabaseProjects(): Promise<any[]> {
-    try {
-      const projects = await this.ipcRenderer.invoke("supabase:list-projects");
-      return projects;
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
+    return this.ipcRenderer.invoke("supabase:list-projects");
   }
 
   public async setSupabaseAppProject(
     project: string,
     app: number,
-  ): Promise<{ success: boolean; appId: number; projectId: string }> {
-    try {
-      const result = await this.ipcRenderer.invoke("supabase:set-app-project", {
-        project,
-        app,
-      });
-      return result;
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("supabase:set-app-project", {
+      project,
+      app,
+    });
   }
 
-  public async unsetSupabaseAppProject(
-    app: number,
-  ): Promise<{ success: boolean; appId: number }> {
-    try {
-      const result = await this.ipcRenderer.invoke(
-        "supabase:unset-app-project",
-        {
-          app,
-        },
-      );
-      return result;
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
+  public async unsetSupabaseAppProject(app: number): Promise<void> {
+    await this.ipcRenderer.invoke("supabase:unset-app-project", {
+      app,
+    });
   }
   // --- End Supabase Management ---
 
-  // Get system debug information
   public async getSystemDebugInfo(): Promise<SystemDebugInfo> {
-    try {
-      const data = await this.ipcRenderer.invoke("get-system-debug-info");
-      return data as SystemDebugInfo;
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
+    return this.ipcRenderer.invoke("get-system-debug-info");
   }
 
   public async getChatLogs(chatId: number): Promise<ChatLogsData> {
-    try {
-      const data = await this.ipcRenderer.invoke("get-chat-logs", chatId);
-      return data as ChatLogsData;
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
+    return this.ipcRenderer.invoke("get-chat-logs", chatId);
   }
 
   public async uploadToSignedUrl(
     url: string,
     contentType: string,
     data: any,
-  ): Promise<{ success: boolean; error?: string }> {
-    try {
-      const result = await this.ipcRenderer.invoke("upload-to-signed-url", {
-        url,
-        contentType,
-        data,
-      });
-      return result as { success: boolean; error?: string };
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("upload-to-signed-url", {
+      url,
+      contentType,
+      data,
+    });
   }
 
   public async listLocalOllamaModels(): Promise<LocalModel[]> {
-    try {
-      const response = await this.ipcRenderer.invoke(
-        "local-models:list-ollama",
-      );
-      return response?.models || [];
-    } catch (error) {
-      if (error instanceof Error) {
-        throw new Error(`Failed to fetch Ollama models: ${error.message}`);
-      }
-      throw new Error("Failed to fetch Ollama models: Unknown error occurred");
-    }
+    const response = await this.ipcRenderer.invoke("local-models:list-ollama");
+    return response?.models || [];
   }
 
   public async listLocalLMStudioModels(): Promise<LocalModel[]> {
-    try {
-      const response = await this.ipcRenderer.invoke(
-        "local-models:list-lmstudio",
-      );
-      return response?.models || [];
-    } catch (error) {
-      if (error instanceof Error) {
-        throw new Error(`Failed to fetch LM Studio models: ${error.message}`);
-      }
-      throw new Error(
-        "Failed to fetch LM Studio models: Unknown error occurred",
-      );
-    }
+    const response = await this.ipcRenderer.invoke(
+      "local-models:list-lmstudio",
+    );
+    return response?.models || [];
   }
 
   // Listen for deep link events

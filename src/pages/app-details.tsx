@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dialog";
 import { GitHubConnector } from "@/components/GitHubConnector";
 import { SupabaseConnector } from "@/components/SupabaseConnector";
+import { showError } from "@/lib/toast";
 
 export default function AppDetailsPage() {
   const navigate = useNavigate();
@@ -62,7 +63,7 @@ export default function AppDetailsPage() {
       await refreshApps();
       navigate({ to: "/", search: {} });
     } catch (error) {
-      console.error("Failed to delete app:", error);
+      showError(error);
     } finally {
       setIsDeleting(false);
     }

@@ -18,28 +18,24 @@ export interface LMStudioModel {
 }
 
 export async function fetchLMStudioModels(): Promise<LocalModelListResponse> {
-  try {
-    const modelsResponse: Response = await fetch(
-      "http://localhost:1234/api/v0/models",
-    );
-    if (!modelsResponse.ok) {
-      throw new Error("Failed to fetch models from LM Studio");
-    }
-    const modelsJson = await modelsResponse.json();
-    const downloadedModels = modelsJson.data as LMStudioModel[];
-    const models: LocalModel[] = downloadedModels
-      .filter((model: any) => model.type === "llm")
-      .map((model: any) => ({
-        modelName: model.id,
-        displayName: model.id,
-        provider: "lmstudio",
-      }));
-
-    logger.info(`Successfully fetched ${models.length} models from LM Studio`);
-    return { models, error: null };
-  } catch {
-    return { models: [], error: "Failed to fetch models from LM Studio" };
+  const modelsResponse: Response = await fetch(
+    "http://localhost:1234/api/v0/models",
+  );
+  if (!modelsResponse.ok) {
+    throw new Error("Failed to fetch models from LM Studio");
   }
+  const modelsJson = await modelsResponse.json();
+  const downloadedModels = modelsJson.data as LMStudioModel[];
+  const models: LocalModel[] = downloadedModels
+    .filter((model: any) => model.type === "llm")
+    .map((model: any) => ({
+      modelName: model.id,
+      displayName: model.id,
+      provider: "lmstudio",
+    }));
+
+  logger.info(`Successfully fetched ${models.length} models from LM Studio`);
+  return { models };
 }
 
 export function registerLMStudioHandlers() {

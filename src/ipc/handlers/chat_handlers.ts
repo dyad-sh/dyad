@@ -5,14 +5,16 @@ import { desc, eq } from "drizzle-orm";
 import type { ChatSummary } from "../../lib/schemas";
 import * as git from "isomorphic-git";
 import * as fs from "fs";
+import { createLoggedHandler } from "./safe_handle";
 
 import log from "electron-log";
 import { getDyadAppPath } from "../../paths/paths";
 
 const logger = log.scope("chat_handlers");
+const handle = createLoggedHandler(logger);
 
 export function registerChatHandlers() {
-  ipcMain.handle("create-chat", async (_, appId: number) => {
+  handle("create-chat", async (_, appId: number): Promise<number> => {
     // Get the app's path first
     const app = await db.query.apps.findFirst({
       where: eq(apps.id, appId),
@@ -74,54 +76,38 @@ export function registerChatHandlers() {
     return chat;
   });
 
-  ipcMain.handle(
-    "get-chats",
-    async (_, appId?: number): Promise<ChatSummary[]> => {
-      // If appId is provided, filter chats for that app
-      const query = appId
-        ? db.query.chats.findMany({
-            where: eq(chats.appId, appId),
-            columns: {
-              id: true,
-              title: true,
-              createdAt: true,
-              appId: true,
-            },
-            orderBy: [desc(chats.createdAt)],
-          })
-        : db.query.chats.findMany({
-            columns: {
-              id: true,
-              title: true,
-              createdAt: true,
-              appId: true,
-            },
-            orderBy: [desc(chats.createdAt)],
-          });
+  handle("get-chats", async (_, appId?: number): Promise<ChatSummary[]> => {
+    // If appId is provided, filter chats for that app
+    const query = appId
+      ? db.query.chats.findMany({
+          where: eq(chats.appId, appId),
+          columns: {
+            id: true,
+            title: true,
+            createdAt: true,
+            appId: true,
+          },
+          orderBy: [desc(chats.createdAt)],
+        })
+      : db.query.chats.findMany({
+          columns: {
+            id: true,
+            title: true,
+            createdAt: true,
+            appId: true,
+          },
+          orderBy: [desc(chats.createdAt)],
+        });
 
-      const allChats = await query;
-      return allChats;
-    },
-  );
-
-  ipcMain.handle("delete-chat", async (_, chatId: number) => {
-    try {
-      // Delete the chat and its associated messages
-      await db.delete(chats).where(eq(chats.id, chatId));
-      return { success: true };
-    } catch (error) {
-      logger.error("Error deleting chat:", error);
-      return { success: false, error: (error as Error).message };
-    }
+    const allChats = await query;
+    return allChats;
   });
 
-  ipcMain.handle("delete-messages", async (_, chatId: number) => {
-    try {
-      await db.delete(messages).where(eq(messages.chatId, chatId));
-      return { success: true };
-    } catch (error) {
-      logger.error("Error deleting messages:", error);
-      return { success: false, error: (error as Error).message };
-    }
+  handle("delete-chat", async (_, chatId: number): Promise<void> => {
+    await db.delete(chats).where(eq(chats.id, chatId));
+  });
+
+  handle("delete-messages", async (_, chatId: number): Promise<void> => {
+    await db.delete(messages).where(eq(messages.chatId, chatId));
   });
 }

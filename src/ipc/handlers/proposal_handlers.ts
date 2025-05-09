@@ -1,4 +1,4 @@
-import { ipcMain, type IpcMainInvokeEvent } from "electron";
+import { type IpcMainInvokeEvent } from "electron";
 import type {
   CodeProposal,
   ProposalResult,
@@ -29,9 +29,9 @@ import {
 import { extractCodebase } from "../../utils/codebase";
 import { getDyadAppPath } from "../../paths/paths";
 import { withLock } from "../utils/lock_utils";
-
+import { createLoggedHandler } from "./safe_handle";
 const logger = log.scope("proposal_handlers");
-
+const handle = createLoggedHandler(logger);
 // Cache for codebase token counts
 interface CodebaseTokenCache {
   chatId: number;
@@ -317,115 +317,83 @@ const approveProposalHandler = async (
   _event: IpcMainInvokeEvent,
   { chatId, messageId }: { chatId: number; messageId: number },
 ): Promise<{
-  success: boolean;
-  error?: string;
   uncommittedFiles?: string[];
 }> => {
-  logger.log(
-    `IPC: approve-proposal called for chatId: ${chatId}, messageId: ${messageId}`,
+  // 1. Fetch the specific assistant message
+  const messageToApprove = await db.query.messages.findFirst({
+    where: and(
+      eq(messages.id, messageId),
+      eq(messages.chatId, chatId),
+      eq(messages.role, "assistant"),
+    ),
+    columns: {
+      content: true,
+    },
+  });
+
+  if (!messageToApprove?.content) {
+    throw new Error(
+      `Assistant message not found for chatId: ${chatId}, messageId: ${messageId}`,
+    );
+  }
+
+  // 2. Process the actions defined in the message content
+  const chatSummary = getDyadChatSummaryTag(messageToApprove.content);
+  const processResult = await processFullResponseActions(
+    messageToApprove.content,
+    chatId,
+    {
+      chatSummary: chatSummary ?? undefined,
+      messageId,
+    }, // Pass summary if found
   );
 
-  try {
-    // 1. Fetch the specific assistant message
-    const messageToApprove = await db.query.messages.findFirst({
-      where: and(
-        eq(messages.id, messageId),
-        eq(messages.chatId, chatId),
-        eq(messages.role, "assistant"),
-      ),
-      columns: {
-        content: true,
-      },
-    });
-
-    if (!messageToApprove?.content) {
-      logger.error(
-        `Assistant message not found for chatId: ${chatId}, messageId: ${messageId}`,
-      );
-      return { success: false, error: "Assistant message not found." };
-    }
-
-    // 2. Process the actions defined in the message content
-    const chatSummary = getDyadChatSummaryTag(messageToApprove.content);
-    const processResult = await processFullResponseActions(
-      messageToApprove.content,
-      chatId,
-      {
-        chatSummary: chatSummary ?? undefined,
-        messageId,
-      }, // Pass summary if found
+  if (processResult.error) {
+    throw new Error(
+      `Error processing actions for message ${messageId}: ${processResult.error}`,
     );
-
-    if (processResult.error) {
-      logger.error(
-        `Error processing actions for message ${messageId}:`,
-        processResult.error,
-      );
-      // Optionally: Update message state to 'error' or similar?
-      // For now, just return error to frontend
-      return {
-        success: false,
-        error: `Action processing failed: ${processResult.error}`,
-      };
-    }
-
-    return { success: true, uncommittedFiles: processResult.uncommittedFiles };
-  } catch (error) {
-    logger.error(`Error approving proposal for messageId ${messageId}:`, error);
-    return {
-      success: false,
-      error: (error as Error)?.message || "Unknown error",
-    };
   }
+
+  return { uncommittedFiles: processResult.uncommittedFiles };
 };
 
 // Handler to reject a proposal (just update message state)
 const rejectProposalHandler = async (
   _event: IpcMainInvokeEvent,
   { chatId, messageId }: { chatId: number; messageId: number },
-): Promise<{ success: boolean; error?: string }> => {
+): Promise<void> => {
   logger.log(
     `IPC: reject-proposal called for chatId: ${chatId}, messageId: ${messageId}`,
   );
 
-  try {
-    // 1. Verify the message exists and is an assistant message
-    const messageToReject = await db.query.messages.findFirst({
-      where: and(
-        eq(messages.id, messageId),
-        eq(messages.chatId, chatId),
-        eq(messages.role, "assistant"),
-      ),
-      columns: { id: true },
-    });
+  // 1. Verify the message exists and is an assistant message
+  const messageToReject = await db.query.messages.findFirst({
+    where: and(
+      eq(messages.id, messageId),
+      eq(messages.chatId, chatId),
+      eq(messages.role, "assistant"),
+    ),
+    columns: { id: true },
+  });
 
-    if (!messageToReject) {
-      logger.error(
-        `Assistant message not found for chatId: ${chatId}, messageId: ${messageId}`,
-      );
-      return { success: false, error: "Assistant message not found." };
-    }
-
-    // 2. Update the message's approval state to 'rejected'
-    await db
-      .update(messages)
-      .set({ approvalState: "rejected" })
-      .where(eq(messages.id, messageId));
-
-    logger.log(`Message ${messageId} marked as rejected.`);
-    return { success: true };
-  } catch (error) {
-    logger.error(`Error rejecting proposal for messageId ${messageId}:`, error);
-    return {
-      success: false,
-      error: (error as Error)?.message || "Unknown error",
-    };
+  if (!messageToReject) {
+    throw new Error(
+      `Assistant message not found for chatId: ${chatId}, messageId: ${messageId}`,
+    );
   }
+
+  // 2. Update the message's approval state to 'rejected'
+  await db
+    .update(messages)
+    .set({ approvalState: "rejected" })
+    .where(eq(messages.id, messageId));
+
+  logger.log(`Message ${messageId} marked as rejected.`);
 };
 
 // Function to register proposal-related handlers
 export function registerProposalHandlers() {
-  ipcMain.handle("get-proposal", getProposalHandler);
-  ipcMain.handle("approve-proposal", approveProposalHandler);
-  ipcMain.handle("reject-proposal", rejectProposalHandler);
+  handle("get-proposal", getProposalHandler);
+  handle("approve-proposal", approveProposalHandler);
+  handle("reject-proposal", rejectProposalHandler);
 }

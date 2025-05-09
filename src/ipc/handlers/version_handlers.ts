@@ -10,11 +10,11 @@ import { promises as fsPromises } from "node:fs";
 import { withLock } from "../utils/lock_utils";
 import { getGitAuthor } from "../utils/git_author";
 import log from "electron-log";
-import { createSafeHandler } from "./safe_handle";
+import { createLoggedHandler } from "./safe_handle";
 
 const logger = log.scope("version_handlers");
 
-const handle = createSafeHandler(logger);
+const handle = createLoggedHandler(logger);
 
 export function registerVersionHandlers() {
   handle("list-versions", async (_, { appId }: { appId: number }) => {

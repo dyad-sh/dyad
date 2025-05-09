@@ -153,18 +153,14 @@ export function GitHubConnector({ appId, folderName }: GitHubConnectorProps) {
     setIsCreatingRepo(true);
     setCreateRepoSuccess(false);
     try {
-      const result = await IpcClient.getInstance().createGithubRepo(
+      await IpcClient.getInstance().createGithubRepo(
         githubOrg,
         repoName,
         appId!,
       );
-      if (result.success) {
-        setCreateRepoSuccess(true);
-        setRepoCheckError(null);
-        refreshApp();
-      } else {
-        setCreateRepoError(result.error || "Failed to create repository.");
-      }
+      setCreateRepoSuccess(true);
+      setRepoCheckError(null);
+      refreshApp();
     } catch (err: any) {
       setCreateRepoError(err.message || "Failed to create repository.");
     } finally {
@@ -180,12 +176,8 @@ export function GitHubConnector({ appId, folderName }: GitHubConnectorProps) {
     setIsDisconnecting(true);
     setDisconnectError(null);
     try {
-      const result = await IpcClient.getInstance().disconnectGithubRepo(appId);
-      if (result.success) {
-        refreshApp();
-      } else {
-        setDisconnectError(result.error || "Failed to disconnect repository.");
-      }
+      await IpcClient.getInstance().disconnectGithubRepo(appId);
+      refreshApp();
     } catch (err: any) {
       setDisconnectError(err.message || "Failed to disconnect repository.");
     } finally {

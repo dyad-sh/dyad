@@ -42,14 +42,8 @@ export function useSupabase() {
     async (projectId: string, appId: number) => {
       setLoading(true);
       try {
-        const result = await ipcClient.setSupabaseAppProject(projectId, appId);
-
-        if (result.success) {
-          setError(null);
-          return result;
-        } else {
-          throw new Error("Failed to set project for app");
-        }
+        await ipcClient.setSupabaseAppProject(projectId, appId);
+        setError(null);
       } catch (error) {
         console.error("Error setting Supabase project for app:", error);
         setError(error instanceof Error ? error : new Error(String(error)));
@@ -68,14 +62,8 @@ export function useSupabase() {
     async (appId: number) => {
       setLoading(true);
       try {
-        const result = await ipcClient.unsetSupabaseAppProject(appId);
-
-        if (result.success) {
-          setError(null);
-          return result;
-        } else {
-          throw new Error("Failed to unset project for app");
-        }
+        await ipcClient.unsetSupabaseAppProject(appId);
+        setError(null);
       } catch (error) {
         console.error("Error unsetting Supabase project for app:", error);
         setError(error instanceof Error ? error : new Error(String(error)));

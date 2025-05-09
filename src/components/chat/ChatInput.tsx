@@ -58,7 +58,7 @@ import { useVersions } from "@/hooks/useVersions";
 import { useAttachments } from "@/hooks/useAttachments";
 import { AttachmentsList } from "./AttachmentsList";
 import { DragDropOverlay } from "./DragDropOverlay";
-import { showUncommittedFilesWarning } from "@/lib/toast";
+import { showError, showUncommittedFilesWarning } from "@/lib/toast";
 const showTokenBarAtom = atom(false);
 
 export function ChatInput({ chatId }: { chatId?: number }) {
@@ -182,13 +182,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         chatId,
         messageId,
       });
-      if (result.success) {
-        console.log("Proposal approved successfully");
-        // TODO: Maybe refresh proposal state or show confirmation?
-      } else {
-        console.error("Failed to approve proposal:", result.error);
-        setError(result.error || "Failed to approve proposal");
-      }
       if (result.uncommittedFiles) {
         showUncommittedFilesWarning(result.uncommittedFiles);
       }
@@ -215,17 +208,10 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     setIsRejecting(true);
     posthog.capture("chat:reject");
     try {
-      const result = await IpcClient.getInstance().rejectProposal({
+      await IpcClient.getInstance().rejectProposal({
         chatId,
         messageId,
       });
-      if (result.success) {
-        console.log("Proposal rejected successfully");
-        // TODO: Maybe refresh proposal state or show confirmation?
-      } else {
-        console.error("Failed to reject proposal:", result.error);
-        setError(result.error || "Failed to reject proposal");
-      }
     } catch (err) {
       console.error("Error rejecting proposal:", err);
       setError((err as Error)?.message || "An error occurred while rejecting");
@@ -389,13 +375,17 @@ function SummarizeInNewChatButton() {
       console.error("No app id found");
       return;
     }
-    const newChatId = await IpcClient.getInstance().createChat(appId);
-    // navigate to new chat
-    await navigate({ to: "/chat", search: { id: newChatId } });
-    await streamMessage({
-      prompt: "Summarize from chat-id=" + chatId,
-      chatId: newChatId,
-    });
+    try {
+      const newChatId = await IpcClient.getInstance().createChat(appId);
+      // navigate to new chat
+      await navigate({ to: "/chat", search: { id: newChatId } });
+      await streamMessage({
+        prompt: "Summarize from chat-id=" + chatId,
+        chatId: newChatId,
+      });
+    } catch (err) {
+      showError(err);
+    }
   };
   return (
     <TooltipProvider>

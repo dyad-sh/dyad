@@ -285,7 +285,7 @@ function handleStartGithubFlow(
 async function handleIsRepoAvailable(
   event: IpcMainInvokeEvent,
   { org, repo }: { org: string; repo: string },
-) {
+): Promise<{ available: boolean; error?: string }> {
   try {
     // Get access token from settings
     const settings = readSettings();
@@ -323,49 +323,44 @@ async function handleIsRepoAvailable(
 async function handleCreateRepo(
   event: IpcMainInvokeEvent,
   { org, repo, appId }: { org: string; repo: string; appId: number },
-) {
-  try {
-    // Get access token from settings
-    const settings = readSettings();
-    const accessToken = settings.githubAccessToken?.value;
-    if (!accessToken) {
-      return { success: false, error: "Not authenticated with GitHub." };
-    }
-    // If org is empty, create for the authenticated user
-    let owner = org;
-    if (!owner) {
-      const userRes = await fetch("https://api.github.com/user", {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      const user = await userRes.json();
-      owner = user.login;
-    }
-    // Create repo
-    const createUrl = org
-      ? `https://api.github.com/orgs/${owner}/repos`
-      : `https://api.github.com/user/repos`;
-    const res = await fetch(createUrl, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-        Accept: "application/vnd.github+json",
-      },
-      body: JSON.stringify({
-        name: repo,
-        private: true,
-      }),
-    });
-    if (!res.ok) {
-      const data = await res.json();
-      return { success: false, error: data.message || "Failed to create repo" };
-    }
-    // Store org and repo in the app's DB row (apps table)
-    await updateAppGithubRepo(appId, owner, repo);
-    return { success: true };
-  } catch (err: any) {
-    return { success: false, error: err.message || "Unknown error" };
+): Promise<void> {
+  // Get access token from settings
+  const settings = readSettings();
+  const accessToken = settings.githubAccessToken?.value;
+  if (!accessToken) {
+    throw new Error("Not authenticated with GitHub.");
   }
+  // If org is empty, create for the authenticated user
+  let owner = org;
+  if (!owner) {
+    const userRes = await fetch("https://api.github.com/user", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const user = await userRes.json();
+    owner = user.login;
+  }
+  // Create repo
+  const createUrl = org
+    ? `https://api.github.com/orgs/${owner}/repos`
+    : `https://api.github.com/user/repos`;
+  const res = await fetch(createUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      Accept: "application/vnd.github+json",
+    },
+    body: JSON.stringify({
+      name: repo,
+      private: true,
+    }),
+  });
+  if (!res.ok) {
+    const data = await res.json();
+    throw new Error(data.message || "Failed to create repo");
+  }
+  // Store org and repo in the app's DB row (apps table)
+  await updateAppGithubRepo(appId, owner, repo);
 }
 
 // --- GitHub Push Handler ---
@@ -420,36 +415,26 @@ async function handlePushToGithub(
 async function handleDisconnectGithubRepo(
   event: IpcMainInvokeEvent,
   { appId }: { appId: number },
-) {
-  try {
-    logger.log(`Disconnecting GitHub repo for appId: ${appId}`);
+): Promise<void> {
+  logger.log(`Disconnecting GitHub repo for appId: ${appId}`);
 
-    // Get the app from the database
-    const app = await db.query.apps.findFirst({
-      where: eq(apps.id, appId),
-    });
+  // Get the app from the database
+  const app = await db.query.apps.findFirst({
+    where: eq(apps.id, appId),
+  });
 
-    if (!app) {
-      return { success: false, error: "App not found" };
-    }
-
-    // Update app in database to remove GitHub repo and org
-    await db
-      .update(apps)
-      .set({
-        githubRepo: null,
-        githubOrg: null,
-      })
-      .where(eq(apps.id, appId));
-
-    return { success: true };
-  } catch (error) {
-    logger.error(`Error disconnecting GitHub repo: ${error}`);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
+  if (!app) {
+    throw new Error("App not found");
   }
+
+  // Update app in database to remove GitHub repo and org
+  await db
+    .update(apps)
+    .set({
+      githubRepo: null,
+      githubOrg: null,
+    })
+    .where(eq(apps.id, appId));
 }
 
 // --- Registration ---

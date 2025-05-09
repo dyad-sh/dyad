@@ -47,20 +47,17 @@ export async function fetchOllamaModels(): Promise<LocalModelListResponse> {
       };
     });
     logger.info(`Successfully fetched ${models.length} models from Ollama`);
-    return { models, error: null };
+    return { models };
   } catch (error) {
     if (
       error instanceof TypeError &&
       (error as Error).message.includes("fetch failed")
     ) {
-      logger.error("Could not connect to Ollama");
-      return {
-        models: [],
-        error:
-          "Could not connect to Ollama. Make sure it's running at http://localhost:11434",
-      };
+      throw new Error(
+        "Could not connect to Ollama. Make sure it's running at http://localhost:11434",
+      );
     }
-    return { models: [], error: "Failed to fetch models from Ollama" };
+    throw new Error("Failed to fetch models from Ollama");
   }
 }
 

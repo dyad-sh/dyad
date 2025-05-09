@@ -1,17 +1,21 @@
-import { ipcMain } from "electron";
 import { db } from "../../db";
 import { messages, apps, chats } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import { getDyadAppPath } from "../../paths/paths";
 import { executeAddDependency } from "../processors/executeAddDependency";
+import { createLoggedHandler } from "./safe_handle";
+import log from "electron-log";
+
+const logger = log.scope("dependency_handlers");
+const handle = createLoggedHandler(logger);
 
 export function registerDependencyHandlers() {
-  ipcMain.handle(
+  handle(
     "chat:add-dep",
     async (
       _event,
       { chatId, packages }: { chatId: number; packages: string[] },
-    ) => {
+    ): Promise<void> => {
       // Find the message from the database
       const foundMessages = await db.query.messages.findMany({
         where: eq(messages.chatId, chatId),

@@ -89,14 +89,13 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
                           await revertVersion({
                             versionId: chat.initialCommitHash,
                           });
-                          const result =
+                          try {
                             await IpcClient.getInstance().deleteMessages(
                               selectedChatId,
                             );
-                          if (result.success) {
                             setMessages([]);
-                          } else {
-                            showError(result.error);
+                          } catch (err) {
+                            showError(err);
                           }
                         } else {
                           showWarning(

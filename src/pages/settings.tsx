@@ -27,12 +27,8 @@ export default function SettingsPage() {
     setIsResetting(true);
     try {
       const ipcClient = IpcClient.getInstance();
-      const result = await ipcClient.resetAll();
-      if (result.success) {
-        showSuccess("Successfully reset everything. Restart the application.");
-      } else {
-        showError(result.message || "Failed to reset everything.");
-      }
+      await ipcClient.resetAll();
+      showSuccess("Successfully reset everything. Restart the application.");
     } catch (error) {
       console.error("Error resetting:", error);
       showError(

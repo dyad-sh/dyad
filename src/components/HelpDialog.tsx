@@ -171,16 +171,11 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
 
       const { uploadUrl, filename } = await response.json();
 
-      // Upload to the signed URL using IPC
-      const uploadResult = await IpcClient.getInstance().uploadToSignedUrl(
+      await IpcClient.getInstance().uploadToSignedUrl(
         uploadUrl,
         "application/json",
         chatLogsJson,
       );
-
-      if (!uploadResult.success) {
-        throw new Error(`Failed to upload logs: ${uploadResult.error}`);
-      }
 
       // Extract session ID (filename without extension)
       const sessionId = filename.replace(".json", "");

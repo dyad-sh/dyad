@@ -6,6 +6,7 @@ import { ChevronRight, Circle } from "lucide-react";
 import "@/components/chat/monaco";
 import { IpcClient } from "@/ipc/ipc_client";
 import { useSettings } from "@/hooks/useSettings";
+import { showError } from "@/lib/toast";
 
 interface FileEditorProps {
   appId: number | null;
@@ -132,8 +133,7 @@ export const FileEditor = ({ appId, filePath }: FileEditorProps) => {
       needsSaveRef.current = false;
       setDisplayUnsavedChanges(false);
     } catch (error) {
-      console.error("Error saving file:", error);
-      // Could add error notification here
+      showError(error);
     } finally {
       isSavingRef.current = false;
     }

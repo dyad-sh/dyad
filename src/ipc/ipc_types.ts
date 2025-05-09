@@ -111,7 +111,6 @@ export interface LocalModel {
 
 export type LocalModelListResponse = {
   models: LocalModel[];
-  error: string | null;
 };
 
 export interface TokenCountParams {

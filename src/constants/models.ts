@@ -9,6 +9,7 @@ export interface ModelOption {
 }
 
 type RegularModelProvider = Exclude<ModelProvider, "ollama" | "lmstudio">;
+export type LocalModelProvider = Extract<ModelProvider, "ollama" | "lmstudio">;
 export const MODEL_OPTIONS: Record<RegularModelProvider, ModelOption[]> = {
   openai: [
     // https://platform.openai.com/docs/models/gpt-4.1
@@ -154,3 +155,6 @@ export const AUTO_MODELS = [
     name: "gpt-4.1",
   },
 ];
+
+export const DEFAULT_OLLAMA_API_URL = "http://localhost:11434";
+export const DEFAULT_LMSTUDIO_API_URL = "http://localhost:1234";

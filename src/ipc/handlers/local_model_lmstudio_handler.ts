@@ -1,6 +1,8 @@
 import { ipcMain } from "electron";
 import log from "electron-log";
 import type { LocalModelListResponse, LocalModel } from "../ipc_types";
+import {readSettings} from "../../main/settings.ts";
+import {DEFAULT_LMSTUDIO_API_URL} from "../../constants/models.ts";
 
 const logger = log.scope("lmstudio_handler");
 
@@ -18,17 +20,16 @@ export interface LMStudioModel {
 }
 
 export async function fetchLMStudioModels(): Promise<LocalModelListResponse> {
-  try {
-    const modelsResponse: Response = await fetch(
-      "http://localhost:1234/api/v0/models",
-    );
+const settings = await readSettings();
+const baseURL = settings?.providerSettings?.lmstudio?.baseURL || DEFAULT_LMSTUDIO_API_URL;
+try {
+  const modelsResponse: Response = await fetch(`${baseURL}/v1/models`);
     if (!modelsResponse.ok) {
       throw new Error("Failed to fetch models from LM Studio");
     }
     const modelsJson = await modelsResponse.json();
     const downloadedModels = modelsJson.data as LMStudioModel[];
     const models: LocalModel[] = downloadedModels
-      .filter((model: any) => model.type === "llm")
       .map((model: any) => ({
         modelName: model.id,
         displayName: model.id,

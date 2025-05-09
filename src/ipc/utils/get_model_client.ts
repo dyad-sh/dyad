@@ -10,6 +10,8 @@ import {
   AUTO_MODELS,
   PROVIDERS,
   MODEL_OPTIONS,
+  DEFAULT_OLLAMA_API_URL,
+  DEFAULT_LMSTUDIO_API_URL,
 } from "../../constants/models";
 import { getEnvVar } from "./read_env";
 import log from "electron-log";
@@ -63,6 +65,7 @@ export function getModelClient(
   const apiKey =
     settings.providerSettings?.[model.provider]?.apiKey?.value ||
     getEnvVar(PROVIDER_TO_ENV_VAR[model.provider]);
+  const baseUrl= settings.providerSettings?.[model.provider]?.baseURL;
   switch (model.provider) {
     case "openai": {
       const provider = createOpenAI({ apiKey });
@@ -81,16 +84,16 @@ export function getModelClient(
       return provider(model.name);
     }
     case "ollama": {
-      const provider = createOllama();
+      const ollamaBaseURL = baseUrl || DEFAULT_OLLAMA_API_URL;
+      const provider = createOllama({baseURL: `${ollamaBaseURL}/api`});
       return provider(model.name);
-    }
-    case "lmstudio": {
-      // Using LM Studio's OpenAI compatible API
-      const baseURL = "http://localhost:1234/v1"; // Default LM Studio OpenAI API URL
-      const provider = createOpenAICompatible({ name: "lmstudio", baseURL });
-      return provider(model.name);
-    }
-    default: {
+   }
+   case "lmstudio": {
+     const lmStudioBaseURL = baseUrl || DEFAULT_LMSTUDIO_API_URL;
+     const provider = createOpenAICompatible({ name: "lmstudio", baseURL:`${lmStudioBaseURL}/v1`});
+     return provider(model.name);
+   }
+   default: {
       // Ensure exhaustive check if more providers are added
       const _exhaustiveCheck: never = model.provider;
       throw new Error(`Unsupported model provider: ${model.provider}`);

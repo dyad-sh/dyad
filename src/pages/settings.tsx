@@ -6,6 +6,7 @@ import { IpcClient } from "@/ipc/ipc_client";
 import { showSuccess, showError } from "@/lib/toast";
 import { AutoApproveSwitch } from "@/components/AutoApproveSwitch";
 import { TelemetrySwitch } from "@/components/TelemetrySwitch";
+import { LocalModelURLInput } from "@/components/LocalModelURLInput.tsx";
 import { useSettings } from "@/hooks/useSettings";
 import { useAppVersion } from "@/hooks/useAppVersion";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ import { useRouter } from "@tanstack/react-router";
 import { GitHubIntegration } from "@/components/GitHubIntegration";
 import { SupabaseIntegration } from "@/components/SupabaseIntegration";
 import { Switch } from "@/components/ui/switch";
+import {LocalModelProvider} from "@/constants/models.ts";
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
@@ -145,6 +147,26 @@ export default function SettingsPage() {
             <div className="space-y-4">
               <GitHubIntegration />
               <SupabaseIntegration />
+            </div>
+          </div>
+
+          {/* Ollama Section */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+            <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+              Ollama URL
+            </h2>
+            <div className="space-y-4">
+              <LocalModelURLInput provider={"ollama"}/>
+            </div>
+          </div>
+
+          {/* LMStudio Section */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+            <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+              LMStudio URL
+            </h2>
+            <div className="space-y-4">
+              <LocalModelURLInput provider={"lmstudio"}/>
             </div>
           </div>
 

@@ -1,10 +1,10 @@
 import { ipcMain } from "electron";
 import log from "electron-log";
 import { LocalModelListResponse, LocalModel } from "../ipc_types";
+import { readSettings } from "../../main/settings";
+import { DEFAULT_OLLAMA_API_URL } from "../../constants/models.ts";
 
 const logger = log.scope("ollama_handler");
-
-const OLLAMA_API_URL = "http://localhost:11434";
 
 interface OllamaModel {
   name: string;
@@ -21,8 +21,10 @@ interface OllamaModel {
 }
 
 export async function fetchOllamaModels(): Promise<LocalModelListResponse> {
+  const settings = await readSettings();
+  const baseURL = settings?.providerSettings?.ollama?.baseURL || DEFAULT_OLLAMA_API_URL;
   try {
-    const response = await fetch(`${OLLAMA_API_URL}/api/tags`);
+    const response = await fetch(`${baseURL}/api/tags`);
     if (!response.ok) {
       throw new Error(`Failed to fetch model: ${response.statusText}`);
     }
@@ -56,8 +58,7 @@ export async function fetchOllamaModels(): Promise<LocalModelListResponse> {
       logger.error("Could not connect to Ollama");
       return {
         models: [],
-        error:
-          "Could not connect to Ollama. Make sure it's running at http://localhost:11434",
+        error: `Could not connect to Ollama. Make sure it's running at ${baseURL}`
       };
     }
     return { models: [], error: "Failed to fetch models from Ollama" };

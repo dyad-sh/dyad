@@ -22,8 +22,8 @@ import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useChats } from "@/hooks/useChats";
 import { showError } from "@/lib/toast";
 import { useEffect, useState } from "react";
-import { BranchResult } from "@/ipc/ipc_types";
 import { useStreamChat } from "@/hooks/useStreamChat";
+import { useCurrentBranch } from "@/hooks/useCurrentBranch";
 
 interface ChatHeaderProps {
   isPreviewOpen: boolean;
@@ -37,55 +37,35 @@ export function ChatHeader({
   onVersionClick,
 }: ChatHeaderProps) {
   const appId = useAtomValue(selectedAppIdAtom);
-  const { versions, loading } = useVersions(appId);
+  const { versions, loading: versionsLoading } = useVersions(appId);
   const { navigate } = useRouter();
   const [selectedChatId, setSelectedChatId] = useAtom(selectedChatIdAtom);
   const { refreshChats } = useChats(appId);
-  const [branchInfo, setBranchInfo] = useState<BranchResult | null>(null);
   const [checkingOutMain, setCheckingOutMain] = useState(false);
   const { isStreaming } = useStreamChat();
 
-  // Fetch the current branch when appId changes
+  const {
+    branchInfo,
+    isLoading: branchInfoLoading,
+    refetchBranchInfo,
+  } = useCurrentBranch(appId);
+
   useEffect(() => {
-    if (!appId) return;
-
-    const fetchBranch = async () => {
-      try {
-        const result = await IpcClient.getInstance().getCurrentBranch(appId);
-        if (result.success) {
-          setBranchInfo(result);
-        } else {
-          showError("Failed to get current branch: " + result.errorMessage);
-        }
-      } catch (error) {
-        showError(`Failed to get current branch: ${error}`);
-      }
-    };
-
-    fetchBranch();
-    // The use of selectedChatId and isStreaming is a hack to ensure that
-    // the branch info is relatively up to date.
-  }, [appId, selectedChatId, isStreaming]);
+    if (appId) {
+      refetchBranchInfo();
+    }
+  }, [appId, selectedChatId, isStreaming, refetchBranchInfo]);
 
   const handleCheckoutMainBranch = async () => {
     if (!appId) return;
 
     try {
       setCheckingOutMain(true);
-      // Find the latest commit on main branch
-      // For simplicity, we'll just checkout to "main" directly
       await IpcClient.getInstance().checkoutVersion({
         appId,
         versionId: "main",
       });
-
-      // Refresh branch info
-      const result = await IpcClient.getInstance().getCurrentBranch(appId);
-      if (result.success) {
-        setBranchInfo(result);
-      } else {
-        showError(result.errorMessage);
-      }
+      await refetchBranchInfo();
     } catch (error) {
       showError(`Failed to checkout main branch: ${error}`);
     } finally {
@@ -94,36 +74,29 @@ export function ChatHeader({
   };
 
   const handleNewChat = async () => {
-    // Only create a new chat if an app is selected
     if (appId) {
       try {
-        // Create a new chat with an empty title for now
         const chatId = await IpcClient.getInstance().createChat(appId);
-
-        // Navigate to the new chat
         setSelectedChatId(chatId);
         navigate({
           to: "/chat",
           search: { id: chatId },
         });
-
-        // Refresh the chat list
         await refreshChats();
       } catch (error) {
-        // DO A TOAST
         showError(`Failed to create new chat: ${(error as any).toString()}`);
       }
     } else {
-      // If no app is selected, navigate to home page
       navigate({ to: "/" });
     }
   };
-  // TODO: KEEP UP TO DATE WITH app_handlers.ts
+
+  // REMINDER: KEEP UP TO DATE WITH app_handlers.ts
   const versionPostfix = versions.length === 10_000 ? `+` : "";
 
-  // Check if we're not on the main branch
-  const isNotMainBranch =
-    branchInfo?.success && branchInfo.data.branch !== "main";
+  const isNotMainBranch = branchInfo && branchInfo.branch !== "main";
+
+  const currentBranchName = branchInfo?.branch;
 
   return (
     <div className="flex flex-col w-full @container">
@@ -132,7 +105,7 @@ export function ChatHeader({
           <div className="flex items-center gap-2 text-sm">
             <GitBranch size={16} />
             <span>
-              {branchInfo?.data.branch === "<no-branch>" && (
+              {currentBranchName === "<no-branch>" && (
                 <>
                   <TooltipProvider>
                     <Tooltip>
@@ -153,13 +126,19 @@ export function ChatHeader({
                   </TooltipProvider>
                 </>
               )}
+              {currentBranchName && currentBranchName !== "<no-branch>" && (
+                <span>
+                  You are on branch: <strong>{currentBranchName}</strong>.
+                </span>
+              )}
+              {branchInfoLoading && <span>Checking branch...</span>}
             </span>
           </div>
           <Button
             variant="outline"
             size="sm"
             onClick={handleCheckoutMainBranch}
-            disabled={checkingOutMain}
+            disabled={checkingOutMain || branchInfoLoading}
           >
             {checkingOutMain ? "Checking out..." : "Switch to main branch"}
           </Button>
@@ -182,7 +161,9 @@ export function ChatHeader({
             className="hidden @6xs:flex cursor-pointer items-center gap-1 text-sm px-2 py-1 rounded-md"
           >
             <History size={16} />
-            {loading ? "..." : `Version ${versions.length}${versionPostfix}`}
+            {versionsLoading
+              ? "..."
+              : `Version ${versions.length}${versionPostfix}`}
           </Button>
         </div>
 

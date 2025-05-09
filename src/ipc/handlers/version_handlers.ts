@@ -59,20 +59,14 @@ export function registerVersionHandlers() {
       });
 
       if (!app) {
-        return {
-          success: false,
-          errorMessage: "App not found",
-        };
+        throw new Error("App not found");
       }
 
       const appPath = getDyadAppPath(app.path);
 
       // Return appropriate result if the app is not a git repo
       if (!fs.existsSync(path.join(appPath, ".git"))) {
-        return {
-          success: false,
-          errorMessage: "Not a git repository",
-        };
+        throw new Error("Not a git repository");
       }
 
       try {
@@ -83,17 +77,11 @@ export function registerVersionHandlers() {
         });
 
         return {
-          success: true,
-          data: {
-            branch: currentBranch || "<no-branch>",
-          },
+          branch: currentBranch || "<no-branch>",
         };
       } catch (error: any) {
         logger.error(`Error getting current branch for app ${appId}:`, error);
-        return {
-          success: false,
-          errorMessage: `Failed to get current branch: ${error.message}`,
-        };
+        throw new Error(`Failed to get current branch: ${error.message}`);
       }
     },
   );

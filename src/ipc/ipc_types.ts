@@ -76,17 +76,7 @@ export interface Version {
   timestamp: number;
 }
 
-export type Result<T> =
-  | {
-      success: true;
-      data: T;
-    }
-  | {
-      success: false;
-      errorMessage: string;
-    };
-
-export type BranchResult = Result<{ branch: string }>;
+export type BranchResult = { branch: string };
 
 export interface SandboxConfig {
   files: Record<string, string>;

@@ -493,10 +493,9 @@ export class IpcClient {
 
   // Get the current branch of an app
   public async getCurrentBranch(appId: number): Promise<BranchResult> {
-    const result = await this.ipcRenderer.invoke("get-current-branch", {
+    return this.ipcRenderer.invoke("get-current-branch", {
       appId,
     });
-    return result;
   }
 
   // Get user settings

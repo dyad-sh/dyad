@@ -53,7 +53,8 @@ export const MODEL_OPTIONS: Record<RegularModelProvider, ModelOption[]> = {
       displayName: "Gemini 2.5 Pro",
       description: "Experimental version of Google's Gemini 2.5 Pro model",
       tag: "Recommended",
-      maxOutputTokens: 65_536,
+      // See Flash 2.5 comment below (go 1 below just to be safe, even though it seems OK now).
+      maxOutputTokens: 65_536 - 1,
       // Gemini context window = input token + output token
       contextWindow: 1_048_576,
     },
@@ -62,7 +63,8 @@ export const MODEL_OPTIONS: Record<RegularModelProvider, ModelOption[]> = {
       name: "gemini-2.5-flash-preview-04-17",
       displayName: "Gemini 2.5 Flash",
       description: "Preview version of Google's Gemini 2.5 Flash model",
-      maxOutputTokens: 65_536,
+      // Weirdly for Vertex AI, the output token limit is *exclusive* of the stated limit.
+      maxOutputTokens: 65_536 - 1,
       // Gemini context window = input token + output token
       contextWindow: 1_048_576,
     },

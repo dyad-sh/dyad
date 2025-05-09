@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+
 import { Label } from "@/components/ui/label";
-import { SupabaseSchema } from "@/lib/schemas";
+
 import { IpcClient } from "@/ipc/ipc_client";
 import { toast } from "sonner";
 import { useSettings } from "@/hooks/useSettings";
@@ -24,7 +24,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useDeepLink } from "@/contexts/DeepLinkContext";
-const OAUTH_CLIENT_ID = "bf747de7-60bb-48a2-9015-6494e0b04983";
+
 // @ts-ignore
 import supabaseLogoLight from "../../assets/supabase/supabase-logo-wordmark--light.svg";
 // @ts-ignore
@@ -74,7 +74,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
       toast.success("Project connected to app successfully");
       await refreshApp();
     } catch (error) {
-      toast.error("Failed to connect project to app");
+      toast.error("Failed to connect project to app: " + error);
     }
   };
 

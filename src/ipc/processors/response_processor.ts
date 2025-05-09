@@ -5,7 +5,7 @@ import fs from "node:fs";
 import { getDyadAppPath } from "../../paths/paths";
 import path from "node:path";
 import git from "isomorphic-git";
-import { getGithubUser } from "../handlers/github_handlers";
+
 import { getGitAuthor } from "../utils/git_author";
 import log from "electron-log";
 import { executeAddDependency } from "./executeAddDependency";
@@ -229,7 +229,7 @@ export async function processFullResponseActions(
     if (dyadExecuteSqlQueries.length > 0) {
       for (const query of dyadExecuteSqlQueries) {
         try {
-          const result = await executeSupabaseSql({
+          await executeSupabaseSql({
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
             query: query.content,
           });

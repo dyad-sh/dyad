@@ -39,7 +39,7 @@ export async function withLock<T>(
   }
 
   // Acquire a new lock
-  const { release, promise } = acquireLock(lockId);
+  const { release } = acquireLock(lockId);
 
   try {
     const result = await fn();

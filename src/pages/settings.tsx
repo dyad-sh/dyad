@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { ProviderSettingsGrid } from "@/components/ProviderSettings";
 import ConfirmationDialog from "@/components/ConfirmationDialog";
@@ -113,7 +113,7 @@ export default function SettingsPage() {
           </div>
 
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm">
-            <ProviderSettingsGrid configuredProviders={[]} />
+            <ProviderSettingsGrid />
           </div>
 
           <div className="space-y-6">

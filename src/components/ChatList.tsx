@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import type { ChatSummary } from "@/lib/schemas";
+
 import { formatDistanceToNow } from "date-fns";
 import { PlusCircle, MoreVertical, Trash2 } from "lucide-react";
 import { useAtom } from "jotai";
@@ -29,7 +29,7 @@ export function ChatList({ show }: { show?: boolean }) {
   const navigate = useNavigate();
   const [selectedChatId, setSelectedChatId] = useAtom(selectedChatIdAtom);
   const [selectedAppId, setSelectedAppId] = useAtom(selectedAppIdAtom);
-  const [isDropdownOpen, setIsDropdownOpen] = useAtom(dropdownOpenAtom);
+  const [, setIsDropdownOpen] = useAtom(dropdownOpenAtom);
   const { chats, loading, refreshChats } = useChats(selectedAppId);
   const routerState = useRouterState();
   const isChatRoute = routerState.location.pathname === "/chat";

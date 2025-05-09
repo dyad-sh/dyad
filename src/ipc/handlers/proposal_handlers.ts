@@ -1,14 +1,12 @@
 import { ipcMain, type IpcMainInvokeEvent } from "electron";
 import type {
   CodeProposal,
-  FileChange,
   ProposalResult,
-  SqlQuery,
   ActionProposal,
 } from "../../lib/schemas";
 import { db } from "../../db";
 import { messages, chats } from "../../db/schema";
-import { desc, eq, and, Update } from "drizzle-orm";
+import { desc, eq, and } from "drizzle-orm";
 import path from "node:path"; // Import path for basename
 // Import tag parsers
 import {
@@ -31,25 +29,8 @@ import {
 import { extractCodebase } from "../../utils/codebase";
 import { getDyadAppPath } from "../../paths/paths";
 import { withLock } from "../utils/lock_utils";
+
 const logger = log.scope("proposal_handlers");
-
-// Placeholder Proposal data (can be removed or kept for reference)
-// const placeholderProposal: Proposal = { ... };
-
-// Type guard for the parsed proposal structure
-interface ParsedProposal {
-  title: string;
-  files: string[];
-}
-function isParsedProposal(obj: any): obj is ParsedProposal {
-  return (
-    obj &&
-    typeof obj === "object" &&
-    typeof obj.title === "string" &&
-    Array.isArray(obj.files) &&
-    obj.files.every((file: any) => typeof file === "string")
-  );
-}
 
 // Cache for codebase token counts
 interface CodebaseTokenCache {

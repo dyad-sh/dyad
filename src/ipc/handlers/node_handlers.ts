@@ -1,5 +1,5 @@
-import { ipcMain, app } from "electron";
-import { exec, execSync } from "child_process";
+import { ipcMain } from "electron";
+import { execSync } from "child_process";
 import { platform, arch } from "os";
 import { NodeSystemInfo } from "../ipc_types";
 import fixPath from "fix-path";

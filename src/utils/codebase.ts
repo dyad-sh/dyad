@@ -70,7 +70,7 @@ async function isGitIgnored(
         gitIgnoreMtimes.set(rootGitIgnorePath, stats.mtimeMs);
         shouldClearCache = true;
       }
-    } catch (error) {
+    } catch {
       // Root .gitignore might not exist, which is fine
     }
 
@@ -86,7 +86,7 @@ async function isGitIgnored(
           gitIgnoreMtimes.set(gitIgnorePath, stats.mtimeMs);
           shouldClearCache = true;
         }
-      } catch (error) {
+      } catch {
         // This directory might not have a .gitignore, which is fine
       }
     }
@@ -323,42 +323,4 @@ async function sortFilesByModificationTime(files: string[]): Promise<string[]> {
 
   // Sort by modification time (oldest first)
   return fileStats.sort((a, b) => a.mtime - b.mtime).map((item) => item.file);
-}
-
-/**
- * Sort files by their importance for context
- */
-function sortFilesByImportance(files: string[], baseDir: string): string[] {
-  // Define patterns for important files
-  const highPriorityPatterns = [
-    new RegExp(`(^|/)${ALWAYS_INCLUDE_FILES[0]}$`),
-    /tsconfig\.json$/,
-    /README\.md$/,
-    /index\.(ts|js)x?$/,
-    /main\.(ts|js)x?$/,
-    /app\.(ts|js)x?$/,
-  ];
-
-  // Custom sorting function
-  return [...files].sort((a, b) => {
-    const relativeA = path.relative(baseDir, a);
-    const relativeB = path.relative(baseDir, b);
-
-    // Check if file A matches any high priority pattern
-    const aIsHighPriority = highPriorityPatterns.some((pattern) =>
-      pattern.test(relativeA),
-    );
-
-    // Check if file B matches any high priority pattern
-    const bIsHighPriority = highPriorityPatterns.some((pattern) =>
-      pattern.test(relativeB),
-    );
-
-    // Sort by priority first
-    if (aIsHighPriority && !bIsHighPriority) return -1;
-    if (!aIsHighPriority && bIsHighPriority) return 1;
-
-    // If both are same priority, sort alphabetically
-    return relativeA.localeCompare(relativeB);
-  });
 }

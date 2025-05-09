@@ -99,8 +99,8 @@ console.log("TodoItem");
     expect(result).toEqual([
       {
         path: "src/components/TodoItem.tsx",
-        content: `import React from \"react\";
-console.log(\"TodoItem\");`,
+        content: `import React from "react";
+console.log("TodoItem");`,
       },
     ]);
   });
@@ -117,8 +117,8 @@ console.log("TodoItem");
     expect(result).toEqual([
       {
         path: "src/components/TodoItem.tsx",
-        content: `import React from \"react\";
-console.log(\"TodoItem\");`,
+        content: `import React from "react";
+console.log("TodoItem");`,
       },
     ]);
   });

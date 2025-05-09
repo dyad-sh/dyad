@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
-import { useLoadApp } from "@/hooks/useLoadApp";
+
 import { useLoadAppFile } from "@/hooks/useLoadAppFile";
 import {
   DropdownMenu,
@@ -28,8 +28,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useSettings } from "@/hooks/useSettings";
-import { useRunApp } from "@/hooks/useRunApp";
 import { useStreamChat } from "@/hooks/useStreamChat";
 
 interface ErrorBannerProps {
@@ -113,7 +111,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   // State to trigger iframe reload
   const [reloadKey, setReloadKey] = useState(0);
   const [errorMessage, setErrorMessage] = useAtom(previewErrorMessageAtom);
-  const [selectedChatId, setSelectedChatId] = useAtom(selectedChatIdAtom);
+  const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { streamMessage } = useStreamChat();
   const [availableRoutes, setAvailableRoutes] = useState<
     Array<{ path: string; label: string }>
@@ -168,7 +166,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const [navigationHistory, setNavigationHistory] = useState<string[]>([]);
   const [currentHistoryPosition, setCurrentHistoryPosition] = useState(0);
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const { settings } = useSettings();
 
   // Add message listener for iframe errors and navigation events
   useEffect(() => {

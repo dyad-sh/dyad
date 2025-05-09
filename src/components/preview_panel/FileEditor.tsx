@@ -90,7 +90,7 @@ export const FileEditor = ({ appId, filePath }: FileEditorProps) => {
   const editorTheme = isDarkMode ? "dyad-dark" : "dyad-light";
 
   // Handle editor mount
-  const handleEditorDidMount: OnMount = (editor, monaco) => {
+  const handleEditorDidMount: OnMount = (editor) => {
     editorRef.current = editor;
 
     // Listen for model content change events

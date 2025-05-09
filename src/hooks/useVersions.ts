@@ -10,7 +10,7 @@ export function useVersions(appId: number | null) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const selectedChatId = useAtomValue(selectedChatIdAtom);
-  const [messages, setMessages] = useAtom(chatMessagesAtom);
+  const [, setMessages] = useAtom(chatMessagesAtom);
   useEffect(() => {
     const loadVersions = async () => {
       // If no app is selected, clear versions and return

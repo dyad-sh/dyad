@@ -1,6 +1,6 @@
-import { SendIcon, StopCircleIcon, X, Paperclip, Loader2 } from "lucide-react";
+import { SendIcon, StopCircleIcon, Paperclip } from "lucide-react";
 import type React from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { ModelPicker } from "@/components/ModelPicker";
 import { useSettings } from "@/hooks/useSettings";
 import { homeChatInputValueAtom } from "@/atoms/chatAtoms"; // Use a different atom for home input
@@ -21,7 +21,7 @@ export function HomeChatInput({
   const [inputValue, setInputValue] = useAtom(homeChatInputValueAtom);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { settings, updateSettings, isAnyProviderSetup } = useSettings();
-  const { streamMessage, isStreaming, setIsStreaming } = useStreamChat({
+  const { isStreaming } = useStreamChat({
     hasChatId: false,
   }); // eslint-disable-line @typescript-eslint/no-unused-vars
 

@@ -17,6 +17,7 @@
         ? new URL(url, window.location.href).href
         : window.location.href;
     } catch (e) {
+      console.error("Could not parse URL", e);
       newUrl = window.location.href;
     }
 
@@ -64,7 +65,7 @@
   };
 
   // --- Listener for Back/Forward Navigation (popstate event) ---
-  window.addEventListener("popstate", (event) => {
+  window.addEventListener("popstate", () => {
     const currentUrl = window.location.href;
     previousUrl = currentUrl;
   });

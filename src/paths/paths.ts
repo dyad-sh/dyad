@@ -33,7 +33,7 @@ export function getElectron(): typeof import("electron") | undefined {
     if (process.versions.electron) {
       electron = require("electron");
     }
-  } catch (e) {
+  } catch {
     // Not in Electron environment
   }
   return electron;

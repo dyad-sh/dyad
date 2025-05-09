@@ -1,5 +1,4 @@
 import { FileText, X } from "lucide-react";
-import { useEffect } from "react";
 
 interface AttachmentsListProps {
   attachments: File[];

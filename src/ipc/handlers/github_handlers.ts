@@ -1,15 +1,10 @@
-import {
-  ipcMain,
-  IpcMainEvent,
-  BrowserWindow,
-  IpcMainInvokeEvent,
-} from "electron";
+import { ipcMain, BrowserWindow, IpcMainInvokeEvent } from "electron";
 import fetch from "node-fetch"; // Use node-fetch for making HTTP requests in main process
 import { writeSettings, readSettings } from "../../main/settings";
 import { updateAppGithubRepo } from "../../db/index";
 import git from "isomorphic-git";
 import http from "isomorphic-git/http/node";
-import path from "node:path";
+
 import fs from "node:fs";
 import { getDyadAppPath } from "../../paths/paths";
 import { db } from "../../db";

@@ -37,7 +37,7 @@ export async function fetchLMStudioModels(): Promise<LocalModelListResponse> {
 
     logger.info(`Successfully fetched ${models.length} models from LM Studio`);
     return { models, error: null };
-  } catch (error) {
+  } catch {
     return { models: [], error: "Failed to fetch models from LM Studio" };
   }
 }

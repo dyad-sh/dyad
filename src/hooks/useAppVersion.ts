@@ -9,7 +9,7 @@ export function useAppVersion() {
       try {
         const version = await IpcClient.getInstance().getAppVersion();
         setAppVersion(version);
-      } catch (error) {
+      } catch {
         setAppVersion(null);
       }
     };

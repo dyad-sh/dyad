@@ -5,7 +5,7 @@ import {
   previewPanelKeyAtom,
   selectedAppIdAtom,
 } from "../../atoms/appAtoms";
-import { useLoadApp } from "@/hooks/useLoadApp";
+
 import { CodeView } from "./CodeView";
 import { PreviewIframe } from "./PreviewIframe";
 import {
@@ -14,11 +14,8 @@ import {
   ChevronDown,
   ChevronUp,
   Logs,
-  RefreshCw,
   MoreVertical,
-  Trash2,
   Cog,
-  CirclePower,
   Power,
 } from "lucide-react";
 import { motion } from "framer-motion";

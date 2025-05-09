@@ -1,4 +1,4 @@
-import { createOpenAI, OpenAIProvider } from "@ai-sdk/openai";
+import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI as createGoogle } from "@ai-sdk/google";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";

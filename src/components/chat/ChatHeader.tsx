@@ -3,11 +3,10 @@ import {
   History,
   PlusCircle,
   GitBranch,
-  AlertCircle,
   Info,
 } from "lucide-react";
 import { PanelRightClose } from "lucide-react";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { useAtom, useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useVersions } from "@/hooks/useVersions";
 import { Button } from "../ui/button";

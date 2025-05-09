@@ -226,7 +226,7 @@ async function safeParseErrorResponseBody(
     ) {
       return { message: body.message };
     }
-  } catch (error) {
+  } catch {
     return;
   }
 }

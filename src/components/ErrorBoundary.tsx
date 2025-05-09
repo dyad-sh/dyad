@@ -1,10 +1,4 @@
-import React, {
-  Component,
-  ErrorInfo,
-  ReactNode,
-  useState,
-  useEffect,
-} from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { LightbulbIcon } from "lucide-react";
 import { ErrorComponentProps } from "@tanstack/react-router";

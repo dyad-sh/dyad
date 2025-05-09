@@ -1,5 +1,5 @@
 import { IpcClient } from "@/ipc/ipc_client";
-import React, { useState } from "react";
+import React from "react";
 import { Button } from "./ui/button";
 import { atom, useAtom } from "jotai";
 import { useSettings } from "@/hooks/useSettings";

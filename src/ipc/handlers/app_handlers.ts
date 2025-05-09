@@ -1,20 +1,15 @@
 import { ipcMain } from "electron";
 import { db, getDatabasePath } from "../../db";
-import { apps, chats, messages } from "../../db/schema";
-import { desc, eq, and, gte, sql, gt } from "drizzle-orm";
-import type {
-  App,
-  CreateAppParams,
-  SandboxConfig,
-  Version,
-} from "../ipc_types";
+import { apps, chats } from "../../db/schema";
+import { desc, eq } from "drizzle-orm";
+import type { App, CreateAppParams } from "../ipc_types";
 import fs from "node:fs";
 import path from "node:path";
 import { getDyadAppPath, getUserDataPath } from "../../paths/paths";
 import { spawn } from "node:child_process";
 import git from "isomorphic-git";
 import { promises as fsPromises } from "node:fs";
-import { extractCodebase } from "../../utils/codebase";
+
 // Import our utility modules
 import { withLock } from "../utils/lock_utils";
 import {
@@ -26,19 +21,17 @@ import {
   processCounter,
   killProcess,
   removeAppIfCurrentProcess,
-  RunningAppInfo,
 } from "../utils/process_manager";
 import { ALLOWED_ENV_VARS } from "../../constants/models";
 import { getEnvVar } from "../utils/read_env";
 import { readSettings } from "../../main/settings";
-import { Worker } from "worker_threads";
+
 import fixPath from "fix-path";
 import { getGitAuthor } from "../utils/git_author";
 import killPort from "kill-port";
 import util from "util";
 import log from "electron-log";
 import { getSupabaseProjectName } from "../../supabase_admin/supabase_management_client";
-import { settings } from "happy-dom/lib/PropertySymbol.js";
 
 const logger = log.scope("app_handlers");
 
@@ -138,7 +131,7 @@ async function executeAppLocalNode({
 async function killProcessOnPort(port: number): Promise<void> {
   try {
     await killPort(port, "tcp");
-  } catch (err) {
+  } catch {
     // Ignore if nothing was running on that port
   }
 }

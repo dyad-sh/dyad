@@ -10,13 +10,8 @@ import { providerSettingsRoute } from "@/routes/settings/providers/$provider";
 import type { ModelProvider } from "@/lib/schemas";
 import { useSettings } from "@/hooks/useSettings";
 import { GiftIcon } from "lucide-react";
-interface ProviderSettingsProps {
-  configuredProviders?: ModelProvider[];
-}
 
-export function ProviderSettingsGrid({
-  configuredProviders = [],
-}: ProviderSettingsProps) {
+export function ProviderSettingsGrid() {
   const navigate = useNavigate();
 
   const handleProviderClick = (provider: ModelProvider) => {
@@ -33,10 +28,6 @@ export function ProviderSettingsGrid({
       <h2 className="text-2xl font-bold mb-6">AI Providers</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {Object.entries(PROVIDERS).map(([key, provider]) => {
-          const isConfigured = configuredProviders.includes(
-            key as ModelProvider,
-          );
-
           return (
             <Card
               key={key}

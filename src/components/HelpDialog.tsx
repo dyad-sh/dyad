@@ -292,7 +292,7 @@ Session ID: ${sessionId}
             <div className="border rounded-md p-3">
               <h3 className="font-medium mb-2">Chat Messages</h3>
               <div className="text-sm bg-slate-50 dark:bg-slate-900 rounded p-2 max-h-40 overflow-y-auto">
-                {chatLogsData.chat.messages.map((msg, index) => (
+                {chatLogsData.chat.messages.map((msg) => (
                   <div key={msg.id} className="mb-2">
                     <span className="font-semibold">
                       {msg.role === "user" ? "You" : "Assistant"}:{" "}

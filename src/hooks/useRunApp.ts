@@ -9,7 +9,6 @@ import {
   selectedAppIdAtom,
 } from "@/atoms/appAtoms";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { App } from "@/ipc/ipc_types";
 
 export function useRunApp() {
   const [loading, setLoading] = useState(false);

@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { FileEditor } from "./FileEditor";
 import { FileTree } from "./FileTree";
 import { RefreshCw } from "lucide-react";

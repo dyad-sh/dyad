@@ -6,12 +6,12 @@ import { SetupBanner } from "../SetupBanner";
 import { useSettings } from "@/hooks/useSettings";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import { Loader2, RefreshCw, Undo } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useVersions } from "@/hooks/useVersions";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import { showError, showSuccess, showWarning } from "@/lib/toast";
+import { showError, showWarning } from "@/lib/toast";
 import { IpcClient } from "@/ipc/ipc_client";
 import { chatMessagesAtom } from "@/atoms/chatAtoms";
 
@@ -24,13 +24,13 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
   function MessagesList({ messages, messagesEndRef }, ref) {
     const appId = useAtomValue(selectedAppIdAtom);
     const { versions, revertVersion } = useVersions(appId);
-    const { streamMessage, isStreaming, error, setError } = useStreamChat();
+    const { streamMessage, isStreaming } = useStreamChat();
     const { isAnyProviderSetup } = useSettings();
 
     const setMessages = useSetAtom(chatMessagesAtom);
     const [isUndoLoading, setIsUndoLoading] = useState(false);
     const [isRetryLoading, setIsRetryLoading] = useState(false);
-    const [selectedChatId, setSelectedChatId] = useAtom(selectedChatIdAtom);
+    const selectedChatId = useAtomValue(selectedChatIdAtom);
 
     return (
       <div className="flex-1 overflow-y-auto p-4" ref={ref}>

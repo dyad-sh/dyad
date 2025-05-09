@@ -1,6 +1,6 @@
 import { ipcMain } from "electron";
 import { db } from "../../db";
-import { chats, messages } from "../../db/schema";
+import { chats } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import { SYSTEM_PROMPT } from "../../prompts/system_prompt";
 import {
@@ -11,8 +11,7 @@ import { getDyadAppPath } from "../../paths/paths";
 import log from "electron-log";
 import { extractCodebase } from "../../utils/codebase";
 import { getSupabaseContext } from "../../supabase_admin/supabase_context";
-import { readSettings } from "../../main/settings";
-import { MODEL_OPTIONS } from "../../constants/models";
+
 import { TokenCountParams } from "../ipc_types";
 import { TokenCountResult } from "../ipc_types";
 import { estimateTokens, getContextWindow } from "../utils/token_utils";

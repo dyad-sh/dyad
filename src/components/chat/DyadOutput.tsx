@@ -6,8 +6,8 @@ import {
   XCircle,
   Sparkles,
 } from "lucide-react";
-import { useAtom, useSetAtom } from "jotai";
-import { chatInputValueAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { useAtomValue } from "jotai";
+import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useStreamChat } from "@/hooks/useStreamChat";
 interface DyadOutputProps {
   type: "error" | "warning";
@@ -21,7 +21,7 @@ export const DyadOutput: React.FC<DyadOutputProps> = ({
   children,
 }) => {
   const [isContentVisible, setIsContentVisible] = useState(false);
-  const [selectedChatId, setSelectedChatId] = useAtom(selectedChatIdAtom);
+  const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { streamMessage } = useStreamChat();
 
   // If the type is not warning, it is an error (in case LLM gives a weird "type")

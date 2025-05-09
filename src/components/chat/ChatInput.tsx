@@ -58,17 +58,14 @@ import { useVersions } from "@/hooks/useVersions";
 import { useAttachments } from "@/hooks/useAttachments";
 import { AttachmentsList } from "./AttachmentsList";
 import { DragDropOverlay } from "./DragDropOverlay";
-import {
-  showError as showErrorToast,
-  showUncommittedFilesWarning,
-} from "@/lib/toast";
+import { showUncommittedFilesWarning } from "@/lib/toast";
 const showTokenBarAtom = atom(false);
 
 export function ChatInput({ chatId }: { chatId?: number }) {
   const posthog = usePostHog();
   const [inputValue, setInputValue] = useAtom(chatInputValueAtom);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const { settings, updateSettings, isAnyProviderSetup } = useSettings();
+  const { settings, updateSettings } = useSettings();
   const appId = useAtomValue(selectedAppIdAtom);
   const { refreshVersions } = useVersions(appId);
   const { streamMessage, isStreaming, setIsStreaming, error, setError } =
@@ -76,7 +73,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const [showError, setShowError] = useState(true);
   const [isApproving, setIsApproving] = useState(false); // State for approving
   const [isRejecting, setIsRejecting] = useState(false); // State for rejecting
-  const [messages, setMessages] = useAtom<Message[]>(chatMessagesAtom);
+  const [, setMessages] = useAtom<Message[]>(chatMessagesAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const [showTokenBar, setShowTokenBar] = useAtom(showTokenBarAtom);
 
@@ -101,7 +98,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     error: proposalError,
     refreshProposal,
   } = useProposal(chatId);
-  const { proposal, chatId: proposalChatId, messageId } = proposalResult ?? {};
+  const { proposal, messageId } = proposalResult ?? {};
 
   const adjustHeight = () => {
     const textarea = textareaRef.current;
@@ -620,7 +617,6 @@ function ChatInputActions({
   isApproving,
   isRejecting,
 }: ChatInputActionsProps) {
-  const [autoApprove, setAutoApprove] = useState(false);
   const [isDetailsVisible, setIsDetailsVisible] = useState(false);
 
   if (proposal.type === "tip-proposal") {

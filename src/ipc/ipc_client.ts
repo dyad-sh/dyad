@@ -9,7 +9,6 @@ import type {
   AppOutput,
   Chat,
   ChatResponseEnd,
-  ChatStreamParams,
   CreateAppParams,
   CreateAppResult,
   ListAppsResponse,
@@ -18,13 +17,12 @@ import type {
   Version,
   SystemDebugInfo,
   LocalModel,
-  LocalModelListResponse,
   TokenCountParams,
   TokenCountResult,
   ChatLogsData,
   BranchResult,
 } from "./ipc_types";
-import type { CodeProposal, ProposalResult } from "@/lib/schemas";
+import type { ProposalResult } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
 
 export interface ChatStreamCallbacks {

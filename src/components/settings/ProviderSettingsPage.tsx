@@ -104,7 +104,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
         providerSettings: {
           ...settings?.providerSettings,
           [provider]: {
-            ...(settings?.providerSettings?.[provider] || {}),
+            ...settings?.providerSettings?.[provider],
             apiKey: {
               value: apiKeyInput,
             },
@@ -134,7 +134,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
         providerSettings: {
           ...settings?.providerSettings,
           [provider]: {
-            ...(settings?.providerSettings?.[provider] || {}),
+            ...settings?.providerSettings?.[provider],
             apiKey: undefined,
           },
         },

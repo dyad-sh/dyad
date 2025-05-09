@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useAtom, useAtomValue } from "jotai";
 import { chatMessagesAtom, chatStreamCountAtom } from "../atoms/chatAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
-import { selectedAppIdAtom } from "@/atoms/appAtoms";
+
 import { ChatHeader } from "./chat/ChatHeader";
 import { MessagesList } from "./chat/MessagesList";
 import { ChatInput } from "./chat/ChatInput";
@@ -20,14 +20,11 @@ export function ChatPanel({
   isPreviewOpen,
   onTogglePreview,
 }: ChatPanelProps) {
-  const appId = useAtomValue(selectedAppIdAtom);
   const [messages, setMessages] = useAtom(chatMessagesAtom);
-  const [appName, setAppName] = useState<string>("Chat");
   const [isVersionPaneOpen, setIsVersionPaneOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const streamCount = useAtomValue(chatStreamCountAtom);
   // Reference to store the processed prompt so we don't submit it twice
-  const processedPromptRef = useRef<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
@@ -82,23 +79,6 @@ export function ChatPanel({
       }
     };
   }, []);
-
-  useEffect(() => {
-    const fetchAppName = async () => {
-      if (!appId) return;
-
-      try {
-        const app = await IpcClient.getInstance().getApp(appId);
-        if (app?.name) {
-          setAppName(app.name);
-        }
-      } catch (error) {
-        console.error("Failed to fetch app name:", error);
-      }
-    };
-
-    fetchAppName();
-  }, [appId]);
 
   const fetchChatMessages = useCallback(async () => {
     if (!chatId) {

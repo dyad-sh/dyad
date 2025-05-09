@@ -5,7 +5,7 @@ import { IpcClient } from "@/ipc/ipc_client";
 
 export function useLoadApps() {
   const [apps, setApps] = useAtom(appsListAtom);
-  const [appBasePath, setAppBasePath] = useAtom(appBasePathAtom);
+  const [, setAppBasePath] = useAtom(appBasePathAtom);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import type { Message } from "@/ipc/ipc_types";
 import { useAtom, useSetAtom } from "jotai";
 import {
@@ -14,7 +14,7 @@ import { useChats } from "./useChats";
 import { useLoadApp } from "./useLoadApp";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useVersions } from "./useVersions";
-import { showError, showUncommittedFilesWarning } from "@/lib/toast";
+import { showUncommittedFilesWarning } from "@/lib/toast";
 import { useProposal } from "./useProposal";
 import { useSearch } from "@tanstack/react-router";
 import { useRunApp } from "./useRunApp";
@@ -27,7 +27,7 @@ export function getRandomNumberId() {
 export function useStreamChat({
   hasChatId = true,
 }: { hasChatId?: boolean } = {}) {
-  const [messages, setMessages] = useAtom(chatMessagesAtom);
+  const [, setMessages] = useAtom(chatMessagesAtom);
   const [isStreaming, setIsStreaming] = useAtom(isStreamingAtom);
   const [error, setError] = useAtom(chatErrorAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);

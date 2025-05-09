@@ -18,7 +18,8 @@
     "make": "npm run clean && electron-forge make",
     "publish": "npm run clean && electron-forge publish",
     "ts": "npx tsc -p tsconfig.app.json --noEmit",
-    "lint": "npx biome lint src --fix --unsafe",
+    "lint": "npx oxlint --fix",
+    "lint:fix": "npx oxlint --fix --fix-suggestions --fix-dangerously",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
@@ -61,6 +62,7 @@
     "happy-dom": "^17.4.4",
     "husky": "^9.1.7",
     "lint-staged": "^15.5.2",
+    "oxlint": "^0.16.9",
     "prettier": "3.5.3",
     "typescript": "^5.8.3",
     "vite": "^5.4.17",
@@ -131,6 +133,7 @@
     "uuid": "^11.1.0"
   },
   "lint-staged": {
+    "**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx,vue,astro,svelte}": "oxlint",
     "*.{js,css,md,ts,tsx,jsx,json}": "prettier --write"
   }
 }

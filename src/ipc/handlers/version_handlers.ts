@@ -133,12 +133,7 @@ export function registerVersionHandlers() {
           });
 
           // Process each file to revert to the state in previousVersionId
-          for (const [
-            filepath,
-            headStatus,
-            workdirStatus,
-            stageStatus,
-          ] of matrix) {
+          for (const [filepath, headStatus, workdirStatus] of matrix) {
             const fullPath = path.join(appPath, filepath);
 
             // If file exists in HEAD (previous version)

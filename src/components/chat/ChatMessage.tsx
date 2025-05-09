@@ -1,4 +1,3 @@
-import { memo } from "react";
 import type { Message } from "@/ipc/ipc_types";
 import {
   DyadMarkdownParser,

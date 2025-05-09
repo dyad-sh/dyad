@@ -5,7 +5,7 @@ import { desc, eq } from "drizzle-orm";
 import type { ChatSummary } from "../../lib/schemas";
 import * as git from "isomorphic-git";
 import * as fs from "fs";
-import * as path from "path";
+
 import log from "electron-log";
 import { getDyadAppPath } from "../../paths/paths";
 

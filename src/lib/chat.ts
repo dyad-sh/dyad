@@ -1,4 +1,3 @@
-import type { Message } from "ai";
 import { IpcClient } from "../ipc/ipc_client";
 import type { ChatSummary } from "./schemas";
 import type { CreateAppParams, CreateAppResult } from "../ipc/ipc_types";

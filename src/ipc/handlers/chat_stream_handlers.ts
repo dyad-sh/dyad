@@ -26,7 +26,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import * as crypto from "crypto";
-import { stat, readFile, writeFile, mkdir, unlink } from "fs/promises";
+import { readFile, writeFile, unlink } from "fs/promises";
 
 const logger = log.scope("chat_stream_handlers");
 
@@ -60,19 +60,6 @@ async function isTextFile(filePath: string): Promise<boolean> {
 if (!fs.existsSync(TEMP_DIR)) {
   fs.mkdirSync(TEMP_DIR, { recursive: true });
 }
-
-// First, define the proper content types to match ai SDK
-type TextContent = {
-  type: "text";
-  text: string;
-};
-
-type ImageContent = {
-  type: "image";
-  image: Buffer;
-};
-
-type MessageContent = TextContent | ImageContent;
 
 export function registerChatStreamHandlers() {
   ipcMain.handle("chat:stream", async (event, req: ChatStreamParams) => {

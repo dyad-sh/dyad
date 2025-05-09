@@ -53,7 +53,7 @@ export const showLoading = <T>(
 ) => {
   return toast.promise(promise, {
     loading: loadingMessage,
-    success: (data) => successMessage || "Operation completed successfully",
+    success: () => successMessage || "Operation completed successfully",
     error: (err) => errorMessage || `Error: ${err.message || "Unknown error"}`,
   });
 };

@@ -117,6 +117,7 @@ export function ChatPanel({
   return (
     <div className="flex flex-col h-full">
       <ChatHeader
+        isVersionPaneOpen={isVersionPaneOpen}
         isPreviewOpen={isPreviewOpen}
         onTogglePreview={onTogglePreview}
         onVersionClick={() => setIsVersionPaneOpen(!isVersionPaneOpen)}

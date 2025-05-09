@@ -9,6 +9,7 @@ import {
   QueryCache,
   QueryClient,
   QueryClientProvider,
+  MutationCache,
 } from "@tanstack/react-query";
 import { showError } from "./lib/toast";
 
@@ -35,6 +36,13 @@ const queryClient = new QueryClient({
   queryCache: new QueryCache({
     onError: (error, query) => {
       if (query.meta?.showErrorToast) {
+        showError(error);
+      }
+    },
+  }),
+  mutationCache: new MutationCache({
+    onError: (error, _variables, _context, mutation) => {
+      if (mutation.meta?.showErrorToast) {
         showError(error);
       }
     },

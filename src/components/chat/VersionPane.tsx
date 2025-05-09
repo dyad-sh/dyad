@@ -4,9 +4,9 @@ import { useVersions } from "@/hooks/useVersions";
 import { formatDistanceToNow } from "date-fns";
 import { RotateCcw, X } from "lucide-react";
 import type { Version } from "@/ipc/ipc_types";
-import { IpcClient } from "@/ipc/ipc_client";
 import { cn } from "@/lib/utils";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useCheckoutVersion } from "@/hooks/useCheckoutVersion";
 
 interface VersionPaneProps {
   isVisible: boolean;
@@ -15,30 +15,68 @@ interface VersionPaneProps {
 
 export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
   const appId = useAtomValue(selectedAppIdAtom);
-  const { versions, loading, refreshVersions, revertVersion } =
-    useVersions(appId);
+  const {
+    versions: liveVersions,
+    refreshVersions,
+    revertVersion,
+  } = useVersions(appId);
   const [selectedVersionId, setSelectedVersionId] = useAtom(
     selectedVersionIdAtom,
   );
+  const { checkoutVersion, isCheckingOutVersion } = useCheckoutVersion();
+  const wasVisibleRef = useRef(false);
+  const [cachedVersions, setCachedVersions] = useState<Version[]>([]);
+
   useEffect(() => {
-    async function updateVersions() {
-      // Refresh versions in case the user updated versions outside of the app
-      // (e.g. manually using git).
-      // Avoid loading state which causes brief flash of loading state.
+    async function updatePaneState() {
+      // When pane becomes visible after being closed
+      if (isVisible && !wasVisibleRef.current) {
+        if (appId) {
+          await refreshVersions();
+          setCachedVersions(liveVersions);
+        }
+      }
+
+      // Reset when closing
       if (!isVisible && selectedVersionId) {
         setSelectedVersionId(null);
-        await IpcClient.getInstance().checkoutVersion({
-          appId: appId!,
-          versionId: "main",
-        });
+        if (appId) {
+          await checkoutVersion({ appId, versionId: "main" });
+        }
       }
-      refreshVersions();
+
+      wasVisibleRef.current = isVisible;
     }
-    updateVersions();
-  }, [isVisible, refreshVersions]);
+    updatePaneState();
+  }, [
+    isVisible,
+    selectedVersionId,
+    setSelectedVersionId,
+    appId,
+    checkoutVersion,
+    refreshVersions,
+    liveVersions,
+  ]);
+
+  // Initial load of cached versions when live versions become available
+  useEffect(() => {
+    if (isVisible && liveVersions.length > 0 && cachedVersions.length === 0) {
+      setCachedVersions(liveVersions);
+    }
+  }, [isVisible, liveVersions, cachedVersions.length]);
+
   if (!isVisible) {
     return null;
   }
+
+  const handleVersionClick = async (versionOid: string) => {
+    if (appId) {
+      setSelectedVersionId(versionOid);
+      await checkoutVersion({ appId, versionId: versionOid });
+    }
+  };
+
+  const versions = cachedVersions.length > 0 ? cachedVersions : liveVersions;
 
   return (
     <div className="h-full border-t border-2 border-border w-full">
@@ -53,26 +91,25 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
         </button>
       </div>
       <div className="overflow-y-auto h-[calc(100%-60px)]">
-        {loading ? (
-          <div className="p-4 ">Loading versions...</div>
-        ) : versions.length === 0 ? (
+        {versions.length === 0 ? (
           <div className="p-4 ">No versions available</div>
         ) : (
           <div className="divide-y divide-border">
             {versions.map((version: Version, index) => (
               <div
                 key={version.oid}
-                className={`px-4 py-2 hover:bg-(--background-lightest) cursor-pointer ${
-                  selectedVersionId === version.oid
-                    ? "bg-(--background-lightest)"
-                    : ""
-                }`}
+                className={cn(
+                  "px-4 py-2 hover:bg-(--background-lightest) cursor-pointer",
+                  selectedVersionId === version.oid &&
+                    "bg-(--background-lightest)",
+                  isCheckingOutVersion &&
+                    selectedVersionId === version.oid &&
+                    "opacity-50 cursor-not-allowed",
+                )}
                 onClick={() => {
-                  IpcClient.getInstance().checkoutVersion({
-                    appId: appId!,
-                    versionId: version.oid,
-                  });
-                  setSelectedVersionId(version.oid);
+                  if (!isCheckingOutVersion) {
+                    handleVersionClick(version.oid);
+                  }
                 }}
               >
                 <div className="flex items-center justify-between">
@@ -115,6 +152,8 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                       await revertVersion({
                         versionId: version.oid,
                       });
+                      // Close the pane after revert to force a refresh on next open
+                      onClose();
                     }}
                     className={cn(
                       "invisible mt-1 flex items-center gap-1 px-2 py-0.5 text-sm font-medium bg-(--primary) text-(--primary-foreground) hover:bg-background-lightest rounded-md transition-colors",

@@ -21,17 +21,20 @@ import { useRouter } from "@tanstack/react-router";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useChats } from "@/hooks/useChats";
 import { showError } from "@/lib/toast";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { useCurrentBranch } from "@/hooks/useCurrentBranch";
+import { useCheckoutVersion } from "@/hooks/useCheckoutVersion";
 
 interface ChatHeaderProps {
+  isVersionPaneOpen: boolean;
   isPreviewOpen: boolean;
   onTogglePreview: () => void;
   onVersionClick: () => void;
 }
 
 export function ChatHeader({
+  isVersionPaneOpen,
   isPreviewOpen,
   onTogglePreview,
   onVersionClick,
@@ -41,7 +44,6 @@ export function ChatHeader({
   const { navigate } = useRouter();
   const [selectedChatId, setSelectedChatId] = useAtom(selectedChatIdAtom);
   const { refreshChats } = useChats(appId);
-  const [checkingOutMain, setCheckingOutMain] = useState(false);
   const { isStreaming } = useStreamChat();
 
   const {
@@ -49,6 +51,8 @@ export function ChatHeader({
     isLoading: branchInfoLoading,
     refetchBranchInfo,
   } = useCurrentBranch(appId);
+
+  const { checkoutVersion, isCheckingOutVersion } = useCheckoutVersion();
 
   useEffect(() => {
     if (appId) {
@@ -58,19 +62,7 @@ export function ChatHeader({
 
   const handleCheckoutMainBranch = async () => {
     if (!appId) return;
-
-    try {
-      setCheckingOutMain(true);
-      await IpcClient.getInstance().checkoutVersion({
-        appId,
-        versionId: "main",
-      });
-      await refetchBranchInfo();
-    } catch (error) {
-      showError(`Failed to checkout main branch: ${error}`);
-    } finally {
-      setCheckingOutMain(false);
-    }
+    await checkoutVersion({ appId, versionId: "main" });
   };
 
   const handleNewChat = async () => {
@@ -100,7 +92,8 @@ export function ChatHeader({
 
   return (
     <div className="flex flex-col w-full @container">
-      {isNotMainBranch && (
+      {/* If the version pane is open, it's expected to not always be on the main branch. */}
+      {isNotMainBranch && !isVersionPaneOpen && (
         <div className="flex flex-col @sm:flex-row items-center justify-between px-4 py-2 bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200">
           <div className="flex items-center gap-2 text-sm">
             <GitBranch size={16} />
@@ -138,9 +131,9 @@ export function ChatHeader({
             variant="outline"
             size="sm"
             onClick={handleCheckoutMainBranch}
-            disabled={checkingOutMain || branchInfoLoading}
+            disabled={isCheckingOutVersion || branchInfoLoading}
           >
-            {checkingOutMain ? "Checking out..." : "Switch to main branch"}
+            {isCheckingOutVersion ? "Checking out..." : "Switch to main branch"}
           </Button>
         </div>
       )}

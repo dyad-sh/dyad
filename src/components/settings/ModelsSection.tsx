@@ -46,7 +46,7 @@ export function ModelsSection({ providerId }: ModelsSectionProps) {
         <div className="mt-4 space-y-3">
           {models.map((model) => (
             <div
-              key={model.name}
+              key={model.apiName}
               className="p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm"
             >
               <div className="flex justify-between items-center">
@@ -56,7 +56,7 @@ export function ModelsSection({ providerId }: ModelsSectionProps) {
                 {/* Optional: Add an edit/delete button here later */}
               </div>
               <p className="text-sm text-gray-500 dark:text-gray-400 italic">
-                {model.name}
+                {model.apiName}
               </p>
               {model.description && (
                 <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">

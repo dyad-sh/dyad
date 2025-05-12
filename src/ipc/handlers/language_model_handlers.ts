@@ -87,8 +87,8 @@ export function registerLanguageModelHandlers() {
       params: CreateCustomLanguageModelParams,
     ): Promise<void> => {
       const {
-        id,
-        name,
+        apiName,
+        displayName,
         providerId,
         description,
         maxOutputTokens,
@@ -96,11 +96,11 @@ export function registerLanguageModelHandlers() {
       } = params;
 
       // Validation
-      if (!id) {
-        throw new Error("Model ID is required");
+      if (!apiName) {
+        throw new Error("Model API name is required");
       }
-      if (!name) {
-        throw new Error("Model name is required");
+      if (!displayName) {
+        throw new Error("Model display name is required");
       }
       if (!providerId) {
         throw new Error("Provider ID is required");
@@ -117,21 +117,10 @@ export function registerLanguageModelHandlers() {
         throw new Error(`Provider with ID "${providerId}" not found`);
       }
 
-      // Check if model ID already exists
-      const existingModel = db
-        .select()
-        .from(languageModelsSchema)
-        .where(eq(languageModelsSchema.id, id))
-        .get();
-
-      if (existingModel) {
-        throw new Error(`A model with ID "${id}" already exists`);
-      }
-
       // Insert the new model
       await db.insert(languageModelsSchema).values({
-        id,
-        name,
+        displayName,
+        apiName,
         provider_id: providerId,
         description: description || null,
         max_output_tokens: maxOutputTokens || null,

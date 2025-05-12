@@ -27,8 +27,8 @@ export function CreateCustomModelDialog({
   onSuccess,
   providerId,
 }: CreateCustomModelDialogProps) {
-  const [id, setId] = useState("");
-  const [name, setName] = useState("");
+  const [apiName, setApiName] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [description, setDescription] = useState("");
   const [maxOutputTokens, setMaxOutputTokens] = useState<string>("");
   const [contextWindow, setContextWindow] = useState<string>("");
@@ -38,8 +38,8 @@ export function CreateCustomModelDialog({
   const mutation = useMutation({
     mutationFn: async () => {
       const params = {
-        id,
-        name,
+        apiName,
+        displayName,
         providerId,
         description: description || undefined,
         maxOutputTokens: maxOutputTokens
@@ -48,8 +48,9 @@ export function CreateCustomModelDialog({
         contextWindow: contextWindow ? parseInt(contextWindow, 10) : undefined,
       };
 
-      if (!params.id) throw new Error("Model ID is required");
-      if (!params.name) throw new Error("Model Name is required");
+      if (!params.apiName) throw new Error("Model API name is required");
+      if (!params.displayName)
+        throw new Error("Model display name is required");
       if (maxOutputTokens && isNaN(params.maxOutputTokens ?? NaN))
         throw new Error("Max Output Tokens must be a valid number");
       if (contextWindow && isNaN(params.contextWindow ?? NaN))
@@ -69,8 +70,8 @@ export function CreateCustomModelDialog({
   });
 
   const resetForm = () => {
-    setId("");
-    setName("");
+    setApiName("");
+    setDisplayName("");
     setDescription("");
     setMaxOutputTokens("");
     setContextWindow("");
@@ -105,9 +106,9 @@ export function CreateCustomModelDialog({
               </Label>
               <Input
                 id="model-id"
-                value={id}
+                value={apiName}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setId(e.target.value)
+                  setApiName(e.target.value)
                 }
                 className="col-span-3"
                 placeholder="This must match the model expected by the API"
@@ -121,9 +122,9 @@ export function CreateCustomModelDialog({
               </Label>
               <Input
                 id="model-name"
-                value={name}
+                value={displayName}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setName(e.target.value)
+                  setDisplayName(e.target.value)
                 }
                 className="col-span-3"
                 placeholder="Human-friendly name for the model"

@@ -8,8 +8,9 @@ CREATE TABLE `language_model_providers` (
 );
 --> statement-breakpoint
 CREATE TABLE `language_models` (
-	`id` text PRIMARY KEY NOT NULL,
-	`name` text NOT NULL,
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`display_name` text NOT NULL,
+	`api_name` text NOT NULL,
 	`provider_id` text NOT NULL,
 	`description` text,
 	`max_output_tokens` integer,

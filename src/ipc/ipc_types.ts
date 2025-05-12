@@ -144,16 +144,26 @@ export interface LanguageModelProvider {
   type: "custom" | "local" | "cloud";
 }
 
-export interface LanguageModel {
-  id: string;
-  name: string;
-  displayName: string;
-  description: string;
-  tag?: string;
-  maxOutputTokens?: number;
-  contextWindow?: number;
-  type: "local" | "cloud" | "custom";
-}
+export type LanguageModel =
+  | {
+      id: number;
+      apiName: string;
+      displayName: string;
+      description: string;
+      tag?: string;
+      maxOutputTokens?: number;
+      contextWindow?: number;
+      type: "custom";
+    }
+  | {
+      apiName: string;
+      displayName: string;
+      description: string;
+      tag?: string;
+      maxOutputTokens?: number;
+      contextWindow?: number;
+      type: "local" | "cloud";
+    };
 
 export interface CreateCustomLanguageModelProviderParams {
   id: string;
@@ -163,8 +173,8 @@ export interface CreateCustomLanguageModelProviderParams {
 }
 
 export interface CreateCustomLanguageModelParams {
-  id: string;
-  name: string;
+  apiName: string;
+  displayName: string;
   providerId: string;
   description?: string;
   maxOutputTokens?: number;

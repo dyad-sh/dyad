@@ -157,7 +157,7 @@ export async function getLanguageModels(obj: {
       const models = MODEL_OPTIONS[providerId as RegularModelProvider] || [];
       return models.map((model) => ({
         ...model,
-        id: model.name,
+        apiName: model.name,
         type: "cloud",
       }));
     } else {
@@ -174,7 +174,8 @@ export async function getLanguageModels(obj: {
         .select({
           id: languageModelsSchema.id,
           // Map DB columns to LanguageModel fields
-          name: languageModelsSchema.name,
+          displayName: languageModelsSchema.displayName,
+          apiName: languageModelsSchema.apiName,
           // No display_name in DB, use name instead
           description: languageModelsSchema.description,
           // No tag in DB
@@ -186,7 +187,6 @@ export async function getLanguageModels(obj: {
 
       return customModelsDb.map((model) => ({
         ...model,
-        displayName: model.name, // Use name as displayName for custom models
         // Ensure possibly null fields are handled, provide defaults or undefined if needed
         description: model.description ?? "",
         tag: undefined, // No tag for custom models from DB

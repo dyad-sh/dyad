@@ -82,8 +82,9 @@ export const language_model_providers = sqliteTable(
 );
 
 export const language_models = sqliteTable("language_models", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  displayName: text("display_name").notNull(),
+  apiName: text("api_name").notNull(),
   provider_id: text("provider_id")
     .notNull()
     .references(() => language_model_providers.id, { onDelete: "cascade" }),

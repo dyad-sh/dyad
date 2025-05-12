@@ -1,7 +1,11 @@
 import { db } from "@/db";
-import { language_model_providers as languageModelProvidersSchema } from "@/db/schema";
-import { RegularModelProvider } from "@/constants/models";
-import type { LanguageModelProvider } from "@/ipc/ipc_types";
+import {
+  language_model_providers as languageModelProvidersSchema,
+  language_models as languageModelsSchema,
+} from "@/db/schema";
+import { MODEL_OPTIONS, RegularModelProvider } from "@/constants/models";
+import type { LanguageModelProvider, LanguageModel } from "@/ipc/ipc_types";
+import { eq } from "drizzle-orm";
 
 export const PROVIDER_TO_ENV_VAR: Record<string, string> = {
   openai: "OPENAI_API_KEY",
@@ -128,4 +132,81 @@ export async function getLanguageModelProviders(): Promise<
   }
 
   return Array.from(mergedProvidersMap.values());
+}
+
+/**
+ * Fetches language models for a specific provider.
+ * @param obj An object containing the providerId.
+ * @returns A promise that resolves to an array of LanguageModel objects.
+ */
+export async function getLanguageModels(obj: {
+  providerId: string;
+}): Promise<LanguageModel[]> {
+  const { providerId } = obj;
+  const allProviders = await getLanguageModelProviders();
+  const provider = allProviders.find((p) => p.id === providerId);
+
+  if (!provider) {
+    console.warn(`Provider with ID "${providerId}" not found.`);
+    return [];
+  }
+
+  if (provider.type === "cloud") {
+    // Check if providerId is a valid key for MODEL_OPTIONS
+    if (providerId in MODEL_OPTIONS) {
+      const models = MODEL_OPTIONS[providerId as RegularModelProvider] || [];
+      return models.map((model) => ({
+        ...model,
+        id: model.name,
+        type: "cloud",
+      }));
+    } else {
+      console.warn(
+        `Provider "${providerId}" is cloud type but not found in MODEL_OPTIONS.`,
+      );
+      return [];
+    }
+  } else if (provider.type === "custom") {
+    // Fetch models from the database for this custom provider
+    // Assuming a language_models table with necessary columns and provider_id foreign key
+    try {
+      const customModelsDb = await db
+        .select({
+          id: languageModelsSchema.id,
+          // Map DB columns to LanguageModel fields
+          name: languageModelsSchema.name,
+          // No display_name in DB, use name instead
+          description: languageModelsSchema.description,
+          // No tag in DB
+          maxOutputTokens: languageModelsSchema.max_output_tokens,
+          contextWindow: languageModelsSchema.context_window,
+        })
+        .from(languageModelsSchema)
+        .where(eq(languageModelsSchema.provider_id, providerId)); // Assuming eq is imported or available
+
+      return customModelsDb.map((model) => ({
+        ...model,
+        displayName: model.name, // Use name as displayName for custom models
+        // Ensure possibly null fields are handled, provide defaults or undefined if needed
+        description: model.description ?? "",
+        tag: undefined, // No tag for custom models from DB
+        maxOutputTokens: model.maxOutputTokens ?? undefined,
+        contextWindow: model.contextWindow ?? undefined,
+        type: "custom",
+      }));
+    } catch (error) {
+      console.error(
+        `Error fetching custom models for provider "${providerId}" from DB:`,
+        error,
+      );
+      // Depending on desired behavior, could throw, return empty, or return a specific error state
+      return [];
+    }
+  } else {
+    // Handle other types like "local" if necessary, currently ignored
+    console.warn(
+      `Provider type "${provider.type}" not handled for model fetching.`,
+    );
+    return [];
+  }
 }

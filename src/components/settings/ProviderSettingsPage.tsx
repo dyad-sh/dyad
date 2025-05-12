@@ -1,43 +1,25 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "@tanstack/react-router";
-import {
-  ArrowLeft,
-  ExternalLink,
-  KeyRound,
-  Info,
-  Circle,
-  Settings as SettingsIcon,
-  GiftIcon,
-  Trash2,
-  AlertTriangle,
-} from "lucide-react";
+import { ArrowLeft, AlertTriangle } from "lucide-react";
 import { useSettings } from "@/hooks/useSettings";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
+
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
-import { Input } from "@/components/ui/input";
+import {} from "@/components/ui/accordion";
+
 import { Button } from "@/components/ui/button";
-import { IpcClient } from "@/ipc/ipc_client";
 import { Switch } from "@/components/ui/switch";
 import { showError } from "@/lib/toast";
 import { UserSettings } from "@/lib/schemas";
 
+import { ProviderSettingsHeader } from "./ProviderSettingsHeader";
+import { ApiKeyConfiguration } from "./ApiKeyConfiguration";
+import { ModelsSection } from "./ModelsSection";
+
 interface ProviderSettingsPageProps {
   provider: string;
 }
-
-// Helper function to mask ENV API keys (still needed for env vars)
-const maskEnvApiKey = (key: string | undefined): string => {
-  if (!key) return "Not Set";
-  if (key.length < 8) return "****";
-  return `${key.substring(0, 4)}...${key.substring(key.length - 4)}`;
-};
 
 export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   const {
@@ -55,15 +37,17 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
     error: providersError,
   } = useLanguageModelProviders();
 
+  // Find the specific provider data from the fetched list
+  const providerData = allProviders?.find((p) => p.id === provider);
+  const supportsCustomModels =
+    providerData?.type === "custom" || providerData?.type === "cloud";
+
   const isDyad = provider === "auto";
 
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const router = useRouter();
-
-  // Find the specific provider data from the fetched list
-  const providerData = allProviders?.find((p) => p.id === provider);
 
   // Use fetched data (or defaults for Dyad)
   const providerDisplayName = isDyad
@@ -74,7 +58,6 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
     : providerData?.websiteUrl;
   const hasFreeTier = isDyad ? false : providerData?.hasFreeTier;
   const envVarName = isDyad ? undefined : providerData?.envVarName;
-  const envApiKey = envVarName ? envVars[envVarName] : undefined;
 
   // Use provider ID (which is the 'provider' prop)
   const userApiKey = settings?.providerSettings?.[provider]?.apiKey?.value;
@@ -84,25 +67,9 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
     !!userApiKey &&
     !userApiKey.startsWith("Invalid Key") &&
     userApiKey !== "Not Set";
-  const hasEnvKey = !!envApiKey;
+  const hasEnvKey = !!(envVarName && envVars[envVarName]);
 
   const isConfigured = isValidUserKey || hasEnvKey; // Configured if either is set
-  // Settings key takes precedence if it's valid
-  const activeKeySource = isValidUserKey
-    ? "settings"
-    : hasEnvKey
-      ? "env"
-      : "none";
-
-  // --- Accordion Logic ---
-  const defaultAccordionValue = [];
-  if (isValidUserKey || !hasEnvKey) {
-    // If user key is set OR env key is NOT set, open the settings accordion item
-    defaultAccordionValue.push("settings-key");
-  }
-  if (hasEnvKey) {
-    defaultAccordionValue.push("env-key");
-  }
 
   // --- Save Handler ---
   const handleSaveKey = async () => {
@@ -182,24 +149,23 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
     }
   }, [apiKeyInput]);
 
-  // --- Loading State for Providers --- (Added)
+  // --- Loading State for Providers ---
   if (providersLoading) {
     return (
       <div className="min-h-screen px-8 py-4">
         <div className="max-w-4xl mx-auto">
-          <Skeleton className="h-8 w-24 mb-4" /> {/* Back button */}
-          <Skeleton className="h-10 w-1/2 mb-6" /> {/* Title */}
-          <Skeleton className="h-10 w-48 mb-4" /> {/* Get Key button */}
-          <div className="space-y-4">
-            <Skeleton className="h-20 w-full" />
-            <Skeleton className="h-20 w-full" />
+          <Skeleton className="h-8 w-24 mb-4" />
+          <Skeleton className="h-10 w-1/2 mb-6" />
+          <Skeleton className="h-10 w-48 mb-4" />
+          <div className="space-y-4 mt-6">
+            <Skeleton className="h-40 w-full" />
           </div>
         </div>
       </div>
     );
   }
 
-  // --- Error State for Providers --- (Added)
+  // --- Error State for Providers ---
   if (providersError) {
     return (
       <div className="min-h-screen px-8 py-4">
@@ -260,71 +226,19 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   return (
     <div className="min-h-screen px-8 py-4">
       <div className="max-w-4xl mx-auto">
-        <Button
-          onClick={() => router.history.back()}
-          variant="outline"
-          size="sm"
-          className="flex items-center gap-2 mb-4 bg-(--background-lightest) py-5"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Go Back
-        </Button>
-
-        <div className="mb-6">
-          <div className="flex items-center mb-1">
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mr-3">
-              Configure {providerDisplayName}
-            </h1>
-            {settingsLoading ? (
-              <Skeleton className="h-6 w-6 rounded-full" />
-            ) : (
-              <Circle
-                className={`h-5 w-5 ${
-                  isConfigured
-                    ? "fill-green-500 text-green-600"
-                    : "fill-yellow-400 text-yellow-500"
-                }`}
-              />
-            )}
-            <span className="ml-2 text-sm text-gray-600 dark:text-gray-400">
-              {settingsLoading
-                ? "Loading..."
-                : isConfigured
-                  ? "Setup Complete"
-                  : "Not Setup"}
-            </span>
-          </div>
-          {!settingsLoading && hasFreeTier && (
-            <span className="text-blue-600 mt-2 dark:text-blue-400 text-sm font-medium bg-blue-100 dark:bg-blue-900/30 px-2 py-1 rounded-full inline-flex items-center">
-              <GiftIcon className="w-4 h-4 mr-1" />
-              Free tier available
-            </span>
-          )}
-        </div>
-
-        {providerWebsiteUrl && !settingsLoading && (
-          <Button
-            onClick={(e) => {
-              e.preventDefault();
-              IpcClient.getInstance().openExternalUrl(providerWebsiteUrl);
-            }}
-            className="mb-4 bg-(--background-lightest) cursor-pointer py-5"
-            variant="outline"
-          >
-            {isConfigured ? (
-              <SettingsIcon className="mr-2 h-4 w-4" />
-            ) : (
-              <KeyRound className="mr-2 h-4 w-4" />
-            )}
-            {getKeyButtonText({ isConfigured, isDyad })}
-            <ExternalLink className="ml-2 h-4 w-4" />
-          </Button>
-        )}
+        <ProviderSettingsHeader
+          providerDisplayName={providerDisplayName}
+          isConfigured={isConfigured}
+          isLoading={settingsLoading}
+          hasFreeTier={hasFreeTier}
+          providerWebsiteUrl={providerWebsiteUrl}
+          isDyad={isDyad}
+          onBackClick={() => router.history.back()}
+        />
 
         {settingsLoading ? (
           <div className="space-y-4">
-            <Skeleton className="h-20 w-full" />
-            <Skeleton className="h-20 w-full" />
+            <Skeleton className="h-40 w-full" />
           </div>
         ) : settingsError ? (
           <Alert variant="destructive">
@@ -334,136 +248,20 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
             </AlertDescription>
           </Alert>
         ) : (
-          <Accordion
-            type="multiple"
-            className="w-full space-y-4"
-            defaultValue={defaultAccordionValue}
-          >
-            <AccordionItem
-              value="settings-key"
-              className="border rounded-lg px-4 bg-(--background-lightest)"
-            >
-              <AccordionTrigger className="text-lg font-medium hover:no-underline cursor-pointer">
-                API Key from Settings
-              </AccordionTrigger>
-              <AccordionContent className="pt-4 ">
-                {isValidUserKey && (
-                  <Alert variant="default" className="mb-4">
-                    <KeyRound className="h-4 w-4" />
-                    <AlertTitle className="flex justify-between items-center">
-                      <span>Current Key (Settings)</span>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={handleDeleteKey}
-                        disabled={isSaving}
-                        className="flex items-center gap-1 h-7 px-2"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        {isSaving ? "Deleting..." : "Delete"}
-                      </Button>
-                    </AlertTitle>
-                    <AlertDescription>
-                      <p className="font-mono text-sm">{userApiKey}</p>
-                      {activeKeySource === "settings" && (
-                        <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-                          This key is currently active.
-                        </p>
-                      )}
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                <div className="space-y-2">
-                  <label
-                    htmlFor="apiKeyInput"
-                    className="block text-sm font-medium text-gray-700 dark:text-gray-300"
-                  >
-                    {isValidUserKey ? "Update" : "Set"} {providerDisplayName}{" "}
-                    API Key
-                  </label>
-                  <div className="flex items-start space-x-2">
-                    <Input
-                      id="apiKeyInput"
-                      value={apiKeyInput}
-                      onChange={(e) => setApiKeyInput(e.target.value)}
-                      placeholder={`Enter new ${providerDisplayName} API Key here`}
-                      className={`flex-grow ${
-                        saveError ? "border-red-500" : ""
-                      }`}
-                    />
-                    <Button
-                      onClick={handleSaveKey}
-                      disabled={isSaving || !apiKeyInput}
-                    >
-                      {isSaving ? "Saving..." : "Save Key"}
-                    </Button>
-                  </div>
-                  {saveError && (
-                    <p className="text-xs text-red-600">{saveError}</p>
-                  )}
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Setting a key here will override the environment variable
-                    (if set).
-                  </p>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-
-            {!isDyad && envVarName && (
-              <AccordionItem
-                value="env-key"
-                className="border rounded-lg px-4 bg-(--background-lightest)"
-              >
-                <AccordionTrigger className="text-lg font-medium hover:no-underline cursor-pointer">
-                  API Key from Environment Variable
-                </AccordionTrigger>
-                <AccordionContent className="pt-4">
-                  {hasEnvKey ? (
-                    <Alert variant="default">
-                      <KeyRound className="h-4 w-4" />
-                      <AlertTitle>
-                        Environment Variable Key ({envVarName})
-                      </AlertTitle>
-                      <AlertDescription>
-                        <p className="font-mono text-sm">
-                          {maskEnvApiKey(envApiKey)}
-                        </p>
-                        {activeKeySource === "env" && (
-                          <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-                            This key is currently active (no settings key set).
-                          </p>
-                        )}
-                        {activeKeySource === "settings" && (
-                          <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">
-                            This key is currently being overridden by the key
-                            set in Settings.
-                          </p>
-                        )}
-                      </AlertDescription>
-                    </Alert>
-                  ) : (
-                    <Alert variant="default">
-                      <Info className="h-4 w-4" />
-                      <AlertTitle>Environment Variable Not Set</AlertTitle>
-                      <AlertDescription>
-                        The{" "}
-                        <code className="font-mono bg-gray-100 dark:bg-gray-800 px-1 rounded text-xs">
-                          {envVarName}
-                        </code>{" "}
-                        environment variable is not set.
-                      </AlertDescription>
-                    </Alert>
-                  )}
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-3">
-                    This key is set outside the application. If present, it will
-                    be used only if no key is configured in the Settings section
-                    above. Requires app restart to detect changes.
-                  </p>
-                </AccordionContent>
-              </AccordionItem>
-            )}
-          </Accordion>
+          <ApiKeyConfiguration
+            provider={provider}
+            providerDisplayName={providerDisplayName}
+            settings={settings}
+            envVars={envVars}
+            envVarName={envVarName}
+            isSaving={isSaving}
+            saveError={saveError}
+            apiKeyInput={apiKeyInput}
+            onApiKeyInputChange={setApiKeyInput}
+            onSaveKey={handleSaveKey}
+            onDeleteKey={handleDeleteKey}
+            isDyad={isDyad}
+          />
         )}
 
         {isDyad && !settingsLoading && (
@@ -481,22 +279,13 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
             />
           </div>
         )}
+
+        {/* Conditionally render CustomModelsSection */}
+        {supportsCustomModels && providerData && (
+          <ModelsSection providerId={providerData.id} />
+        )}
+        <div className="h-24"></div>
       </div>
     </div>
   );
-}
-
-function getKeyButtonText({
-  isConfigured,
-  isDyad,
-}: {
-  isConfigured: boolean;
-  isDyad: boolean;
-}) {
-  if (isDyad) {
-    return isConfigured
-      ? "Manage Dyad Pro Subscription"
-      : "Setup Dyad Pro Subscription";
-  }
-  return isConfigured ? "Manage API Keys" : "Setup API Key";
 }

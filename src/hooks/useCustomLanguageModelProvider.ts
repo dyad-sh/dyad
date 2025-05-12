@@ -1,14 +1,10 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { IpcClient } from "@/ipc/ipc_client";
-import type { LanguageModelProvider } from "@/ipc/ipc_types";
+import type {
+  CreateCustomLanguageModelProviderParams,
+  LanguageModelProvider,
+} from "@/ipc/ipc_types";
 import { showError } from "@/lib/toast";
-
-export interface CreateCustomLanguageModelProviderParams {
-  id: string;
-  name: string;
-  apiBaseUrl: string;
-  envVarName?: string;
-}
 
 export function useCustomLanguageModelProvider() {
   const queryClient = useQueryClient();

@@ -82,7 +82,7 @@ export const language_model_providers = sqliteTable(
 );
 
 export const language_models = sqliteTable("language_models", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+  id: text("id").primaryKey(),
   name: text("name").notNull(),
   provider_id: text("provider_id")
     .notNull()

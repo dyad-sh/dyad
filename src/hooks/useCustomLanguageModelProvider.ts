@@ -1,0 +1,58 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { IpcClient } from "@/ipc/ipc_client";
+import type { LanguageModelProvider } from "@/ipc/ipc_types";
+import { showError } from "@/lib/toast";
+
+export interface CreateCustomLanguageModelProviderParams {
+  id: string;
+  name: string;
+  apiBaseUrl: string;
+  envVarName?: string;
+}
+
+export function useCustomLanguageModelProvider() {
+  const queryClient = useQueryClient();
+  const ipcClient = IpcClient.getInstance();
+
+  const createProviderMutation = useMutation({
+    mutationFn: async (
+      params: CreateCustomLanguageModelProviderParams,
+    ): Promise<LanguageModelProvider> => {
+      if (!params.id.trim()) {
+        throw new Error("Provider ID is required");
+      }
+      if (!params.name.trim()) {
+        throw new Error("Provider name is required");
+      }
+      if (!params.apiBaseUrl.trim()) {
+        throw new Error("API base URL is required");
+      }
+
+      return ipcClient.createCustomLanguageModelProvider({
+        id: params.id.trim(),
+        name: params.name.trim(),
+        apiBaseUrl: params.apiBaseUrl.trim(),
+        envVarName: params.envVarName?.trim() || undefined,
+      });
+    },
+    onSuccess: () => {
+      // Invalidate and refetch
+      queryClient.invalidateQueries({ queryKey: ["languageModelProviders"] });
+    },
+    onError: (error) => {
+      showError(error);
+    },
+  });
+
+  const createProvider = async (
+    params: CreateCustomLanguageModelProviderParams,
+  ): Promise<LanguageModelProvider> => {
+    return createProviderMutation.mutateAsync(params);
+  };
+
+  return {
+    createProvider,
+    isCreating: createProviderMutation.isPending,
+    error: createProviderMutation.error,
+  };
+}

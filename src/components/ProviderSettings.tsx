@@ -9,19 +9,24 @@ import { providerSettingsRoute } from "@/routes/settings/providers/$provider";
 import type { LanguageModelProvider } from "@/ipc/ipc_types";
 
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
-import { GiftIcon } from "lucide-react";
+import { GiftIcon, PlusIcon } from "lucide-react";
 import { Skeleton } from "./ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { AlertTriangle } from "lucide-react";
+import { useState } from "react";
+
+import { CreateCustomProviderDialog } from "./CreateCustomProviderDialog";
 
 export function ProviderSettingsGrid() {
   const navigate = useNavigate();
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   const {
     data: providers,
     isLoading,
     error,
     isProviderSetup,
+    refetch,
   } = useLanguageModelProviders();
 
   const handleProviderClick = (providerId: string) => {
@@ -100,7 +105,32 @@ export function ProviderSettingsGrid() {
             </Card>
           );
         })}
+
+        {/* Add custom provider button */}
+        <Card
+          className="cursor-pointer transition-all hover:shadow-md border-border border-dashed hover:border-primary/70"
+          onClick={() => setIsDialogOpen(true)}
+        >
+          <CardHeader className="p-4 flex flex-col items-center justify-center h-full">
+            <PlusIcon className="h-10 w-10 text-muted-foreground mb-2" />
+            <CardTitle className="text-xl text-center">
+              Add custom provider
+            </CardTitle>
+            <CardDescription className="text-center">
+              Connect to a custom LLM API endpoint
+            </CardDescription>
+          </CardHeader>
+        </Card>
       </div>
+
+      <CreateCustomProviderDialog
+        isOpen={isDialogOpen}
+        onClose={() => setIsDialogOpen(false)}
+        onSuccess={() => {
+          setIsDialogOpen(false);
+          refetch();
+        }}
+      />
     </div>
   );
 }

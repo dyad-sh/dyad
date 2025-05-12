@@ -732,5 +732,24 @@ export class IpcClient {
     return this.ipcRenderer.invoke("get-language-model-providers");
   }
 
+  public async createCustomLanguageModelProvider({
+    id,
+    name,
+    apiBaseUrl,
+    envVarName,
+  }: {
+    id: string;
+    name: string;
+    apiBaseUrl: string;
+    envVarName?: string;
+  }): Promise<LanguageModelProvider> {
+    return this.ipcRenderer.invoke("create-custom-language-model-provider", {
+      id,
+      name,
+      apiBaseUrl,
+      envVarName,
+    });
+  }
+
   // --- End window control methods ---
 }

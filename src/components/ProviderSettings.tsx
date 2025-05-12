@@ -1,4 +1,3 @@
-import { PROVIDERS } from "@/constants/models";
 import {
   Card,
   CardHeader,
@@ -7,42 +6,84 @@ import {
 } from "@/components/ui/card";
 import { useNavigate } from "@tanstack/react-router";
 import { providerSettingsRoute } from "@/routes/settings/providers/$provider";
-import type { ModelProvider } from "@/lib/schemas";
-import { useSettings } from "@/hooks/useSettings";
+import type { LanguageModelProvider } from "@/ipc/ipc_types";
+
+import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { GiftIcon } from "lucide-react";
+import { Skeleton } from "./ui/skeleton";
+import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
+import { AlertTriangle } from "lucide-react";
 
 export function ProviderSettingsGrid() {
   const navigate = useNavigate();
 
-  const handleProviderClick = (provider: ModelProvider) => {
+  const {
+    data: providers,
+    isLoading,
+    error,
+    isProviderSetup,
+  } = useLanguageModelProviders();
+
+  const handleProviderClick = (providerId: string) => {
     navigate({
       to: providerSettingsRoute.id,
-      params: { provider },
+      params: { provider: providerId },
     });
   };
 
-  const { isProviderSetup } = useSettings();
+  if (isLoading) {
+    return (
+      <div className="p-6">
+        <h2 className="text-2xl font-bold mb-6">AI Providers</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <Card key={i} className="border-border">
+              <CardHeader className="p-4">
+                <Skeleton className="h-6 w-3/4 mb-2" />
+                <Skeleton className="h-4 w-1/2" />
+              </CardHeader>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <h2 className="text-2xl font-bold mb-6">AI Providers</h2>
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>
+            Failed to load AI providers: {error.message}
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6">
       <h2 className="text-2xl font-bold mb-6">AI Providers</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {Object.entries(PROVIDERS).map(([key, provider]) => {
+        {providers?.map((provider: LanguageModelProvider) => {
           return (
             <Card
-              key={key}
+              key={provider.id}
               className="cursor-pointer transition-all hover:shadow-md border-border"
-              onClick={() => handleProviderClick(key as ModelProvider)}
+              onClick={() => handleProviderClick(provider.id)}
             >
               <CardHeader className="p-4">
                 <CardTitle className="text-xl flex items-center justify-between">
-                  {provider.displayName}
-                  {isProviderSetup(key) ? (
+                  {provider.name}
+                  {isProviderSetup(provider.id) ? (
                     <span className="ml-3 text-sm font-medium text-green-500 bg-green-50 dark:bg-green-900/30 border border-green-500/50 dark:border-green-500/50 px-2 py-1 rounded-full">
                       Ready
                     </span>
                   ) : (
-                    <span className="text-sm text-gray-500 bg-gray-50 dark:bg-gray-900 dark:text-gray-300  px-2 py-1 rounded-full">
+                    <span className="text-sm text-gray-500 bg-gray-50 dark:bg-gray-900 dark:text-gray-300 px-2 py-1 rounded-full">
                       Needs Setup
                     </span>
                   )}

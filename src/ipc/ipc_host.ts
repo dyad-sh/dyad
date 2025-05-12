@@ -14,6 +14,8 @@ import { registerTokenCountHandlers } from "./handlers/token_count_handlers";
 import { registerWindowHandlers } from "./handlers/window_handlers";
 import { registerUploadHandlers } from "./handlers/upload_handlers";
 import { registerVersionHandlers } from "./handlers/version_handlers";
+import { registerLanguageModelHandlers } from "./handlers/language_model_handlers";
+
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
   registerAppHandlers();
@@ -32,4 +34,5 @@ export function registerIpcHandlers() {
   registerWindowHandlers();
   registerUploadHandlers();
   registerVersionHandlers();
+  registerLanguageModelHandlers();
 }

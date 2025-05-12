@@ -132,3 +132,14 @@ export interface ChatLogsData {
   chat: Chat;
   codebase: string;
 }
+
+export interface LanguageModelProvider {
+  id: string;
+  name: string;
+  hasFreeTier?: boolean;
+  websiteUrl?: string;
+  gatewayPrefix?: string;
+  envVarName?: string;
+  apiBaseUrl?: string;
+  type: "custom" | "local" | "cloud";
+}

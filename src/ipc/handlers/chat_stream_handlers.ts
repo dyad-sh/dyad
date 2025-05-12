@@ -212,7 +212,10 @@ export function registerChatStreamHandlers() {
       } else {
         // Normal AI processing for non-test prompts
         const settings = readSettings();
-        const modelClient = getModelClient(settings.selectedModel, settings);
+        const modelClient = await getModelClient(
+          settings.selectedModel,
+          settings,
+        );
 
         // Extract codebase information if app is associated with the chat
         let codebaseInfo = "";

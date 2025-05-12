@@ -2,14 +2,8 @@ import { useState, useEffect, useCallback } from "react";
 import { useAtom } from "jotai";
 import { userSettingsAtom, envVarsAtom } from "@/atoms/appAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
-import { cloudProviders, type UserSettings } from "@/lib/schemas";
+import { type UserSettings } from "@/lib/schemas";
 import { usePostHog } from "posthog-js/react";
-
-const PROVIDER_TO_ENV_VAR: Record<string, string> = {
-  openai: "OPENAI_API_KEY",
-  anthropic: "ANTHROPIC_API_KEY",
-  google: "GEMINI_API_KEY",
-};
 
 const TELEMETRY_CONSENT_KEY = "dyadTelemetryConsent";
 const TELEMETRY_USER_ID_KEY = "dyadTelemetryUserId";
@@ -81,17 +75,6 @@ export function useSettings() {
     }
   };
 
-  const isProviderSetup = (provider: string) => {
-    const providerSettings = settings?.providerSettings[provider];
-    if (providerSettings?.apiKey?.value) {
-      return true;
-    }
-    if (envVars[PROVIDER_TO_ENV_VAR[provider]]) {
-      return true;
-    }
-    return false;
-  };
-
   return {
     settings,
     envVars,
@@ -99,13 +82,6 @@ export function useSettings() {
     error,
     updateSettings,
 
-    isProviderSetup,
-    isAnyProviderSetup: () => {
-      // Technically we should check for ollama and lmstudio being setup, but
-      // practically most users will want to use a cloud provider (at least
-      // some of the time)
-      return cloudProviders.some((provider) => isProviderSetup(provider));
-    },
     refreshSettings: () => {
       return loadInitialData();
     },

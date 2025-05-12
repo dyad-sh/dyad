@@ -22,7 +22,6 @@ import {
   killProcess,
   removeAppIfCurrentProcess,
 } from "../utils/process_manager";
-import { ALLOWED_ENV_VARS } from "../../constants/models";
 import { getEnvVar } from "../utils/read_env";
 import { readSettings } from "../../main/settings";
 
@@ -33,6 +32,7 @@ import util from "util";
 import log from "electron-log";
 import { getSupabaseProjectName } from "../../supabase_admin/supabase_management_client";
 import { createLoggedHandler } from "./safe_handle";
+import { getLanguageModelProviders } from "../shared/language_model_helpers";
 
 const logger = log.scope("app_handlers");
 const handle = createLoggedHandler(logger);
@@ -291,8 +291,11 @@ export function registerAppHandlers() {
   // Do NOT use handle for this, it contains sensitive information.
   ipcMain.handle("get-env-vars", async () => {
     const envVars: Record<string, string | undefined> = {};
-    for (const key of ALLOWED_ENV_VARS) {
-      envVars[key] = getEnvVar(key);
+    const providers = await getLanguageModelProviders();
+    for (const provider of providers) {
+      if (provider.envVarName) {
+        envVars[provider.envVarName] = getEnvVar(provider.envVarName);
+      }
     }
     return envVars;
   });

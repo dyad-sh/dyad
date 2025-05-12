@@ -3,7 +3,7 @@ import type { Message } from "@/ipc/ipc_types";
 import { forwardRef, useState } from "react";
 import ChatMessage from "./ChatMessage";
 import { SetupBanner } from "../SetupBanner";
-import { useSettings } from "@/hooks/useSettings";
+
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useAtomValue, useSetAtom } from "jotai";
@@ -14,7 +14,7 @@ import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { showError, showWarning } from "@/lib/toast";
 import { IpcClient } from "@/ipc/ipc_client";
 import { chatMessagesAtom } from "@/atoms/chatAtoms";
-
+import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 interface MessagesListProps {
   messages: Message[];
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
@@ -25,7 +25,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
     const appId = useAtomValue(selectedAppIdAtom);
     const { versions, revertVersion } = useVersions(appId);
     const { streamMessage, isStreaming } = useStreamChat();
-    const { isAnyProviderSetup } = useSettings();
+    const { isAnyProviderSetup } = useLanguageModelProviders();
 
     const setMessages = useSetAtom(chatMessagesAtom);
     const [isUndoLoading, setIsUndoLoading] = useState(false);

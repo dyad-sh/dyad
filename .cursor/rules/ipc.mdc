@@ -66,27 +66,7 @@ The pattern involves a client-side React hook interacting with main process IPC 
     *   Contains the core business logic, interacting with databases (e.g., `db`), file system (`fs`), or other main-process services (e.g., `git`).
 *   **Error Handling (Crucial):**
     *   **Handlers MUST `throw new Error("Descriptive error message")` when an operation fails or an invalid state is encountered.** This is the preferred pattern over returning objects like `{ success: false, errorMessage: "..." }`.
-    *   Use `try...catch` blocks to handle errors from underlying operations (e.g., database queries, file system access, git commands).
-    *   Inside the `catch` block, log the original error for debugging purposes and then `throw` a new, often more user-friendly or context-specific, `Error`.
-    *   Example:
-        ```typescript
-        ipcMain.handle("list-entities", async (_, { parentId }) => {
-          if (!parentId) {
-            throw new Error("Parent ID is required to list entities.");
-          }
-          try {
-            const entities = await db.query.entities.findMany({ where: eq(entities.parentId, parentId) });
-            if (!entities) {
-              // Or handle as empty list depending on requirements
-              throw new Error(`No entities found for parent ID: ${parentId}`);
-            }
-            return entities;
-          } catch (error: any) {
-            logger.error(`Error listing entities for parent ${parentId}:`, error);
-            throw new Error(`Failed to list entities: ${error.message}`);
-          }
-        });
-        ```
+    
 *   **Concurrency (If Applicable):**
     *   For operations that modify shared resources related to a specific entity (like an `appId`), use a locking mechanism (e.g., `withLock(appId, async () => { ... })`) to prevent race conditions.
 

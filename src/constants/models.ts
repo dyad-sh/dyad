@@ -8,7 +8,10 @@ export interface ModelOption {
   contextWindow?: number;
 }
 
-type RegularModelProvider = Exclude<ModelProvider, "ollama" | "lmstudio">;
+export type RegularModelProvider = Exclude<
+  ModelProvider,
+  "ollama" | "lmstudio"
+>;
 export const MODEL_OPTIONS: Record<RegularModelProvider, ModelOption[]> = {
   openai: [
     // https://platform.openai.com/docs/models/gpt-4.1
@@ -88,57 +91,6 @@ export const MODEL_OPTIONS: Record<RegularModelProvider, ModelOption[]> = {
     },
   ],
 };
-
-export const PROVIDERS: Record<
-  RegularModelProvider,
-  {
-    displayName: string;
-    hasFreeTier?: boolean;
-    websiteUrl?: string;
-    gatewayPrefix: string;
-  }
-> = {
-  openai: {
-    displayName: "OpenAI",
-    hasFreeTier: false,
-    websiteUrl: "https://platform.openai.com/api-keys",
-    gatewayPrefix: "",
-  },
-  anthropic: {
-    displayName: "Anthropic",
-    hasFreeTier: false,
-    websiteUrl: "https://console.anthropic.com/settings/keys",
-    gatewayPrefix: "anthropic/",
-  },
-  google: {
-    displayName: "Google",
-    hasFreeTier: true,
-    websiteUrl: "https://aistudio.google.com/app/apikey",
-    gatewayPrefix: "gemini/",
-  },
-  openrouter: {
-    displayName: "OpenRouter",
-    hasFreeTier: true,
-    websiteUrl: "https://openrouter.ai/settings/keys",
-    gatewayPrefix: "openrouter/",
-  },
-  auto: {
-    displayName: "Dyad",
-    websiteUrl: "https://academy.dyad.sh/settings",
-    gatewayPrefix: "",
-  },
-};
-
-export const PROVIDER_TO_ENV_VAR: Record<string, string> = {
-  openai: "OPENAI_API_KEY",
-  anthropic: "ANTHROPIC_API_KEY",
-  google: "GEMINI_API_KEY",
-  openrouter: "OPENROUTER_API_KEY",
-};
-
-export const ALLOWED_ENV_VARS = Object.keys(PROVIDER_TO_ENV_VAR).map(
-  (provider) => PROVIDER_TO_ENV_VAR[provider],
-);
 
 export const AUTO_MODELS = [
   {

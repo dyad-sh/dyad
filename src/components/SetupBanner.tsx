@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { providerSettingsRoute } from "@/routes/settings/providers/$provider";
 import { settingsRoute } from "@/routes/settings";
-import { useSettings } from "@/hooks/useSettings";
+
 import { useState, useEffect, useCallback } from "react";
 import { IpcClient } from "@/ipc/ipc_client";
 import {
@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { NodeSystemInfo } from "@/ipc/ipc_types";
 import { usePostHog } from "posthog-js/react";
+import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 type NodeInstallStep =
   | "install"
   | "waiting-for-continue"
@@ -33,7 +34,8 @@ type NodeInstallStep =
 export function SetupBanner() {
   const posthog = usePostHog();
   const navigate = useNavigate();
-  const { isAnyProviderSetup, loading } = useSettings();
+  const { isAnyProviderSetup, isLoading: loading } =
+    useLanguageModelProviders();
   const [nodeSystemInfo, setNodeSystemInfo] = useState<NodeSystemInfo | null>(
     null,
   );

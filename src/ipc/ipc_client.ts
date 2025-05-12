@@ -21,6 +21,7 @@ import type {
   TokenCountResult,
   ChatLogsData,
   BranchResult,
+  LanguageModelProvider,
 } from "./ipc_types";
 import type { ProposalResult } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
@@ -724,13 +725,11 @@ export class IpcClient {
 
   // Get system platform (win32, darwin, linux)
   public async getSystemPlatform(): Promise<string> {
-    try {
-      const platform = await this.ipcRenderer.invoke("window:get-platform");
-      return platform;
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
+    return this.ipcRenderer.invoke("get-system-platform");
+  }
+
+  public async getLanguageModelProviders(): Promise<LanguageModelProvider[]> {
+    return this.ipcRenderer.invoke("get-language-model-providers");
   }
 
   // --- End window control methods ---

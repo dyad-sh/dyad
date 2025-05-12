@@ -5,6 +5,7 @@ import { contextBridge, ipcRenderer } from "electron";
 
 // Whitelist of valid channels
 const validInvokeChannels = [
+  "get-language-model-providers",
   "chat:add-dep",
   "chat:message",
   "chat:cancel",

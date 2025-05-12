@@ -9,9 +9,10 @@ import {
   Settings as SettingsIcon,
   GiftIcon,
   Trash2,
+  AlertTriangle,
 } from "lucide-react";
 import { useSettings } from "@/hooks/useSettings";
-import { PROVIDER_TO_ENV_VAR, PROVIDERS } from "@/constants/models";
+import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -47,6 +48,13 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
     updateSettings,
   } = useSettings();
 
+  // Fetch all providers
+  const {
+    data: allProviders,
+    isLoading: providersLoading,
+    error: providersError,
+  } = useLanguageModelProviders();
+
   const isDyad = provider === "auto";
 
   const [apiKeyInput, setApiKeyInput] = useState("");
@@ -54,16 +62,21 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const router = useRouter();
 
-  // Find provider details
-  const providerInfo = PROVIDERS[provider as keyof typeof PROVIDERS];
-  const providerDisplayName =
-    providerInfo?.displayName ||
-    provider.charAt(0).toUpperCase() + provider.slice(1);
-  const providerWebsiteUrl = providerInfo?.websiteUrl;
-  const hasFreeTier = providerInfo?.hasFreeTier;
+  // Find the specific provider data from the fetched list
+  const providerData = allProviders?.find((p) => p.id === provider);
 
-  const envVarName = PROVIDER_TO_ENV_VAR[provider];
-  const envApiKey = envVars[envVarName];
+  // Use fetched data (or defaults for Dyad)
+  const providerDisplayName = isDyad
+    ? "Dyad"
+    : (providerData?.name ?? "Unknown Provider");
+  const providerWebsiteUrl = isDyad
+    ? "https://academy.dyad.sh/settings"
+    : providerData?.websiteUrl;
+  const hasFreeTier = isDyad ? false : providerData?.hasFreeTier;
+  const envVarName = isDyad ? undefined : providerData?.envVarName;
+  const envApiKey = envVarName ? envVars[envVarName] : undefined;
+
+  // Use provider ID (which is the 'provider' prop)
   const userApiKey = settings?.providerSettings?.[provider]?.apiKey?.value;
 
   // --- Configuration Logic --- Updated Priority ---
@@ -168,6 +181,81 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
       setSaveError(null);
     }
   }, [apiKeyInput]);
+
+  // --- Loading State for Providers --- (Added)
+  if (providersLoading) {
+    return (
+      <div className="min-h-screen px-8 py-4">
+        <div className="max-w-4xl mx-auto">
+          <Skeleton className="h-8 w-24 mb-4" /> {/* Back button */}
+          <Skeleton className="h-10 w-1/2 mb-6" /> {/* Title */}
+          <Skeleton className="h-10 w-48 mb-4" /> {/* Get Key button */}
+          <div className="space-y-4">
+            <Skeleton className="h-20 w-full" />
+            <Skeleton className="h-20 w-full" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- Error State for Providers --- (Added)
+  if (providersError) {
+    return (
+      <div className="min-h-screen px-8 py-4">
+        <div className="max-w-4xl mx-auto">
+          <Button
+            onClick={() => router.history.back()}
+            variant="outline"
+            size="sm"
+            className="flex items-center gap-2 mb-4 bg-(--background-lightest) py-5"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Go Back
+          </Button>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mr-3 mb-6">
+            Configure Provider
+          </h1>
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Error Loading Provider Details</AlertTitle>
+            <AlertDescription>
+              Could not load provider data: {providersError.message}
+            </AlertDescription>
+          </Alert>
+        </div>
+      </div>
+    );
+  }
+
+  // Handle case where provider is not found (e.g., invalid ID in URL)
+  if (!providerData && !isDyad) {
+    return (
+      <div className="min-h-screen px-8 py-4">
+        <div className="max-w-4xl mx-auto">
+          <Button
+            onClick={() => router.history.back()}
+            variant="outline"
+            size="sm"
+            className="flex items-center gap-2 mb-4 bg-(--background-lightest) py-5"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Go Back
+          </Button>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mr-3 mb-6">
+            Provider Not Found
+          </h1>
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Error</AlertTitle>
+            <AlertDescription>
+              The provider with ID "{provider}" could not be found.
+            </AlertDescription>
+          </Alert>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen px-8 py-4">
@@ -322,7 +410,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
               </AccordionContent>
             </AccordionItem>
 
-            {!isDyad && (
+            {!isDyad && envVarName && (
               <AccordionItem
                 value="env-key"
                 className="border rounded-lg px-4 bg-(--background-lightest)"

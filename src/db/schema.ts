@@ -64,3 +64,54 @@ export const messagesRelations = relations(messages, ({ one }) => ({
     references: [chats.id],
   }),
 }));
+
+export const language_model_providers = sqliteTable(
+  "language_model_providers",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    api_base_url: text("api_base_url").notNull(),
+    env_var_name: text("env_var_name"),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+);
+
+export const language_models = sqliteTable("language_models", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  provider_id: text("provider_id")
+    .notNull()
+    .references(() => language_model_providers.id, { onDelete: "cascade" }),
+  description: text("description"),
+  max_output_tokens: integer("max_output_tokens"),
+  context_window: integer("context_window"),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+// Define relations for new tables
+export const languageModelProvidersRelations = relations(
+  language_model_providers,
+  ({ many }) => ({
+    languageModels: many(language_models),
+  }),
+);
+
+export const languageModelsRelations = relations(
+  language_models,
+  ({ one }) => ({
+    provider: one(language_model_providers, {
+      fields: [language_models.provider_id],
+      references: [language_model_providers.id],
+    }),
+  }),
+);

@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import ReactMarkdown from "react-markdown";
-import rehypeRaw from "rehype-raw";
+
 import { DyadWrite } from "./DyadWrite";
 import { DyadRename } from "./DyadRename";
 import { DyadDelete } from "./DyadDelete";
@@ -52,7 +52,6 @@ const customLink = ({
 export const VanillaMarkdownParser = ({ content }: { content: string }) => {
   return (
     <ReactMarkdown
-      rehypePlugins={[rehypeRaw]}
       components={{
         code: CodeHighlight,
         a: customLink,
@@ -82,7 +81,6 @@ export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
           {piece.type === "markdown"
             ? piece.content && (
                 <ReactMarkdown
-                  rehypePlugins={[rehypeRaw]}
                   components={{
                     code: CodeHighlight,
                     a: customLink,

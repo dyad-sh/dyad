@@ -125,7 +125,6 @@
     "react-markdown": "^10.1.0",
     "react-resizable-panels": "^2.1.7",
     "react-shiki": "^0.5.2",
-    "rehype-raw": "^7.0.0",
     "shell-env": "^4.0.1",
     "shiki": "^3.2.1",
     "sonner": "^2.0.3",

@@ -1,10 +1,21 @@
 import { useState } from "react";
-import { AlertTriangle, PlusIcon } from "lucide-react";
+import { AlertTriangle, PlusIcon, TrashIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { CreateCustomModelDialog } from "@/components/CreateCustomModelDialog";
 import { useLanguageModelsForProvider } from "@/hooks/useLanguageModelsForProvider"; // Use the hook directly here
+import { useDeleteCustomModel } from "@/hooks/useDeleteCustomModel"; // Import the new hook
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface ModelsSectionProps {
   providerId: string;
@@ -12,6 +23,9 @@ interface ModelsSectionProps {
 
 export function ModelsSection({ providerId }: ModelsSectionProps) {
   const [isCustomModelDialogOpen, setIsCustomModelDialogOpen] = useState(false);
+  const [isConfirmDeleteDialogOpen, setIsConfirmDeleteDialogOpen] =
+    useState(false);
+  const [modelToDelete, setModelToDelete] = useState<string | null>(null);
 
   // Fetch custom models within this component now
   const {
@@ -20,6 +34,30 @@ export function ModelsSection({ providerId }: ModelsSectionProps) {
     error: modelsError,
     refetch: refetchModels,
   } = useLanguageModelsForProvider(providerId);
+
+  const { mutate: deleteModel, isPending: isDeleting } = useDeleteCustomModel({
+    onSuccess: () => {
+      refetchModels(); // Refetch models list after successful deletion
+      // Optionally show a success toast here
+    },
+    onError: (error: Error) => {
+      // Optionally show an error toast here
+      console.error("Failed to delete model:", error);
+    },
+  });
+
+  const handleDeleteClick = (modelApiName: string) => {
+    setModelToDelete(modelApiName);
+    setIsConfirmDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = () => {
+    if (modelToDelete) {
+      deleteModel({ providerId, modelApiName: modelToDelete });
+      setModelToDelete(null);
+    }
+    setIsConfirmDeleteDialogOpen(false);
+  };
 
   return (
     <div className="mt-8 border-t pt-6">
@@ -53,7 +91,17 @@ export function ModelsSection({ providerId }: ModelsSectionProps) {
                 <h4 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
                   {model.displayName}
                 </h4>
-                {/* Optional: Add an edit/delete button here later */}
+                {model.type === "custom" && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleDeleteClick(model.apiName)}
+                    disabled={isDeleting}
+                    className="text-red-500 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900/50 h-8 w-8"
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
               <p className="text-sm text-gray-500 dark:text-gray-400 italic">
                 {model.apiName}
@@ -75,11 +123,17 @@ export function ModelsSection({ providerId }: ModelsSectionProps) {
                   </span>
                 )}
               </div>
-              {model.tag && (
+              <div className="flex flex-wrap gap-x-2">
                 <span className="mt-2 inline-block bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full dark:bg-blue-900 dark:text-blue-300">
-                  {model.tag}
+                  {model.type === "cloud" ? "Built-in" : "Custom"}
                 </span>
-              )}
+
+                {model.tag && (
+                  <span className="mt-2 inline-block bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full dark:bg-blue-900 dark:text-blue-300">
+                    {model.tag}
+                  </span>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -109,6 +163,39 @@ export function ModelsSection({ providerId }: ModelsSectionProps) {
         }}
         providerId={providerId}
       />
+
+      <AlertDialog
+        open={isConfirmDeleteDialogOpen}
+        onOpenChange={setIsConfirmDeleteDialogOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Are you sure you want to delete this model?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the
+              custom model "
+              {modelToDelete
+                ? models?.find((m) => m.apiName === modelToDelete)
+                    ?.displayName || modelToDelete
+                : ""}
+              " (API Name: {modelToDelete}).
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setModelToDelete(null)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isDeleting ? "Deleting..." : "Yes, delete it"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

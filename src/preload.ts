@@ -9,6 +9,8 @@ const validInvokeChannels = [
   "create-custom-language-model",
   "get-language-model-providers",
   "create-custom-language-model-provider",
+  "delete-custom-language-model",
+  "delete-custom-model",
   "chat:add-dep",
   "chat:message",
   "chat:cancel",

@@ -58,6 +58,11 @@ export interface DeepLinkData {
   url?: string;
 }
 
+interface DeleteCustomModelParams {
+  providerId: string;
+  modelApiName: string;
+}
+
 export class IpcClient {
   private static instance: IpcClient;
   private ipcRenderer: IpcRenderer;
@@ -761,5 +766,17 @@ export class IpcClient {
     await this.ipcRenderer.invoke("create-custom-language-model", params);
   }
 
+  public async deleteCustomLanguageModel(modelId: string): Promise<void> {
+    return this.ipcRenderer.invoke("delete-custom-language-model", modelId);
+  }
+
+  async deleteCustomModel(params: DeleteCustomModelParams): Promise<void> {
+    return this.ipcRenderer.invoke("delete-custom-model", params);
+  }
+
   // --- End window control methods ---
+
+  // --- Language Model Operations ---
+
+  // --- App Operations ---
 }

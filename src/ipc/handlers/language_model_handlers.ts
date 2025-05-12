@@ -12,10 +12,11 @@ import {
 } from "../shared/language_model_helpers";
 import { db } from "@/db";
 import {
+  language_models,
   language_model_providers as languageModelProvidersSchema,
   language_models as languageModelsSchema,
 } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { IpcMainInvokeEvent } from "electron";
 
 const logger = log.scope("language_model_handlers");
@@ -126,6 +127,80 @@ export function registerLanguageModelHandlers() {
         max_output_tokens: maxOutputTokens || null,
         context_window: contextWindow || null,
       });
+    },
+  );
+
+  handle(
+    "delete-custom-language-model",
+    async (
+      event: IpcMainInvokeEvent,
+      params: { modelId: string },
+    ): Promise<void> => {
+      const { modelId: apiName } = params;
+
+      // Validation
+      if (!apiName) {
+        throw new Error("Model API name (modelId) is required");
+      }
+
+      logger.info(
+        `Handling delete-custom-language-model for apiName: ${apiName}`,
+      );
+
+      const existingModel = await db
+        .select()
+        .from(languageModelsSchema)
+        .where(eq(languageModelsSchema.apiName, apiName))
+        .get();
+
+      if (!existingModel) {
+        throw new Error(
+          `A model with API name (modelId) "${apiName}" was not found`,
+        );
+      }
+
+      await db
+        .delete(languageModelsSchema)
+        .where(eq(languageModelsSchema.apiName, apiName));
+    },
+  );
+
+  handle(
+    "delete-custom-model",
+    async (
+      _event: IpcMainInvokeEvent,
+      params: { providerId: string; modelApiName: string },
+    ): Promise<void> => {
+      const { providerId, modelApiName } = params;
+      logger.info(
+        `Handling delete-custom-model for ${providerId} / ${modelApiName}`,
+      );
+      if (!providerId || !modelApiName) {
+        throw new Error("Provider ID and Model API Name are required.");
+      }
+      logger.info(
+        `Attempting to delete custom model ${modelApiName} for provider ${providerId}`,
+      );
+
+      const result = db
+        .delete(language_models)
+        .where(
+          and(
+            eq(language_models.provider_id, providerId),
+            eq(language_models.apiName, modelApiName),
+          ),
+        )
+        .run();
+
+      if (result.changes === 0) {
+        logger.warn(
+          `No custom model found matching providerId=${providerId} and apiName=${modelApiName} for deletion.`,
+        );
+      } else {
+        logger.info(
+          `Successfully deleted ${result.changes} custom model(s) with apiName=${modelApiName} for provider=${providerId}`,
+        );
+      }
     },
   );
 

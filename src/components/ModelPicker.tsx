@@ -22,6 +22,7 @@ import { useLocalLMSModels } from "@/hooks/useLMStudioModels";
 import { useLanguageModelsByProviders } from "@/hooks/useLanguageModelsByProviders";
 import { ChevronDown } from "lucide-react";
 import { LocalModel } from "@/ipc/ipc_types";
+import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 interface ModelPickerProps {
   selectedModel: LargeLanguageModel;
   onModelSelect: (model: LargeLanguageModel) => void;
@@ -34,9 +35,13 @@ export function ModelPicker({
   const [open, setOpen] = useState(false);
 
   // Cloud models from providers
-  const { data: modelsByProviders, isLoading: providersLoading } =
+  const { data: modelsByProviders, isLoading: modelsByProvidersLoading } =
     useLanguageModelsByProviders();
 
+  const { data: providers, isLoading: providersLoading } =
+    useLanguageModelProviders();
+
+  const loading = modelsByProvidersLoading || providersLoading;
   // Ollama Models Hook
   const {
     models: ollamaModels,
@@ -96,7 +101,7 @@ export function ModelPicker({
 
   // Get auto provider models (if any)
   const autoModels =
-    !providersLoading && modelsByProviders && modelsByProviders["auto"]
+    !loading && modelsByProviders && modelsByProviders["auto"]
       ? modelsByProviders["auto"]
       : [];
 
@@ -126,7 +131,7 @@ export function ModelPicker({
         <DropdownMenuSeparator />
 
         {/* Cloud models - loading state */}
-        {providersLoading ? (
+        {loading ? (
           <div className="text-xs text-center py-2 text-muted-foreground">
             Loading models...
           </div>
@@ -190,18 +195,23 @@ export function ModelPicker({
               // Skip auto provider as it's already handled
               if (providerId === "auto") return null;
 
+              const provider = providers?.find((p) => p.id === providerId);
+              if (models.length === 0) return null;
+
               return (
                 <DropdownMenuSub key={providerId}>
                   <DropdownMenuSubTrigger className="w-full font-normal">
                     <div className="flex flex-col items-start">
-                      <span>{providerId}</span>
+                      <span>{provider?.name}</span>
                       <span className="text-xs text-muted-foreground">
                         {models.length} models
                       </span>
                     </div>
                   </DropdownMenuSubTrigger>
                   <DropdownMenuSubContent className="w-56">
-                    <DropdownMenuLabel>{providerId} Models</DropdownMenuLabel>
+                    <DropdownMenuLabel>
+                      {provider?.name} Models
+                    </DropdownMenuLabel>
                     <DropdownMenuSeparator />
                     {models.map((model) => (
                       <Tooltip key={`${providerId}-${model.apiName}`}>

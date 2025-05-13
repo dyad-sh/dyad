@@ -285,9 +285,9 @@ const getProposalHandler = async (
         );
 
         // If we're using more than 80% of the context window, suggest summarizing
-        if (totalTokens > contextWindow * 0.8) {
+        if (totalTokens > contextWindow * 0.8 || chat.messages.length > 10) {
           logger.log(
-            `Token usage high (${totalTokens}/${contextWindow}), suggesting summarize action`,
+            `Token usage is high (${totalTokens}/${contextWindow}) OR long chat history (${chat.messages.length} messages), suggesting summarize action`,
           );
           actions.push({
             id: "summarize-in-new-chat",

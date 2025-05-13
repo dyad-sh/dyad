@@ -6,6 +6,7 @@ import { IpcClient } from "@/ipc/ipc_client";
 import { showSuccess, showError } from "@/lib/toast";
 import { AutoApproveSwitch } from "@/components/AutoApproveSwitch";
 import { TelemetrySwitch } from "@/components/TelemetrySwitch";
+import { MaxChatTurnsSelector } from "@/components/MaxChatTurnsSelector";
 import { useSettings } from "@/hooks/useSettings";
 import { useAppVersion } from "@/hooks/useAppVersion";
 import { Button } from "@/components/ui/button";
@@ -105,6 +106,10 @@ export default function SettingsPage() {
               <div className="text-sm text-gray-500 dark:text-gray-400">
                 This will automatically approve code changes and run them.
               </div>
+            </div>
+
+            <div className="mt-4">
+              <MaxChatTurnsSelector />
             </div>
           </div>
 

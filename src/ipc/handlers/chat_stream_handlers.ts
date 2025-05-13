@@ -28,6 +28,7 @@ import * as os from "os";
 import * as crypto from "crypto";
 import { readFile, writeFile, unlink } from "fs/promises";
 import { getMaxTokens } from "../utils/token_utils";
+import { MAX_CHAT_TURNS_IN_CONTEXT } from "@/constants/settings_constants";
 
 const logger = log.scope("chat_stream_handlers");
 
@@ -241,6 +242,45 @@ export function registerChatStreamHandlers() {
           role: message.role as "user" | "assistant" | "system",
           content: message.content,
         }));
+
+        // Limit chat history based on maxChatTurnsInContext setting
+        // We add 1 because the current prompt counts as a turn.
+        const maxChatTurns =
+          (settings.maxChatTurnsInContext || MAX_CHAT_TURNS_IN_CONTEXT) + 1;
+
+        // If we need to limit the context, we take only the most recent turns
+        let limitedMessageHistory = messageHistory;
+        if (messageHistory.length > maxChatTurns * 2) {
+          // Each turn is a user + assistant pair
+          // Calculate how many messages to keep (maxChatTurns * 2)
+          let recentMessages = messageHistory
+            .filter((msg) => msg.role !== "system")
+            .slice(-maxChatTurns * 2);
+
+          // Ensure the first message is a user message
+          if (recentMessages.length > 0 && recentMessages[0].role !== "user") {
+            // Find the first user message
+            const firstUserIndex = recentMessages.findIndex(
+              (msg) => msg.role === "user",
+            );
+            if (firstUserIndex > 0) {
+              // Drop assistant messages before the first user message
+              recentMessages = recentMessages.slice(firstUserIndex);
+            } else if (firstUserIndex === -1) {
+              logger.warn(
+                "No user messages found in recent history, set recent messages to empty",
+              );
+              recentMessages = [];
+            }
+          }
+
+          limitedMessageHistory = [...recentMessages];
+
+          logger.log(
+            `Limiting chat history from ${messageHistory.length} to ${limitedMessageHistory.length} messages (max ${maxChatTurns} turns)`,
+          );
+        }
+
         let systemPrompt = SYSTEM_PROMPT;
         if (
           updatedChat.app?.supabaseProjectId &&
@@ -292,7 +332,7 @@ This conversation includes one or more image attachments. When the user uploads 
             role: "assistant",
             content: "OK, got it. I'm ready to help",
           },
-          ...messageHistory.map((msg) => ({
+          ...limitedMessageHistory.map((msg) => ({
             role: msg.role as "user" | "assistant" | "system",
             content: msg.content,
           })),

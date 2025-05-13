@@ -117,6 +117,7 @@ export const UserSettingsSchema = z.object({
   dyadProBudget: DyadProBudgetSchema.optional(),
   experiments: ExperimentsSchema.optional(),
   lastShownReleaseNotesVersion: z.string().optional(),
+  maxChatTurnsInContext: z.number().optional(),
   // DEPRECATED.
   runtimeMode: RuntimeModeSchema.optional(),
 });

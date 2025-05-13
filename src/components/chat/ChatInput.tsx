@@ -362,7 +362,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 function SummarizeInNewChatButton() {
   const chatId = useAtomValue(selectedChatIdAtom);
   const appId = useAtomValue(selectedAppIdAtom);
-  const { streamMessage } = useStreamChat();
+  const { streamMessage, isStreaming } = useStreamChat();
   const navigate = useNavigate();
   const onClick = async () => {
     if (!appId) {
@@ -385,7 +385,12 @@ function SummarizeInNewChatButton() {
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button variant="outline" size="sm" onClick={onClick}>
+          <Button
+            disabled={isStreaming}
+            variant="outline"
+            size="sm"
+            onClick={onClick}
+          >
             Summarize to new chat
           </Button>
         </TooltipTrigger>
@@ -399,12 +404,13 @@ function SummarizeInNewChatButton() {
 
 function RefactorFileButton({ path }: { path: string }) {
   const chatId = useAtomValue(selectedChatIdAtom);
-  const { streamMessage } = useStreamChat();
+  const { streamMessage, isStreaming } = useStreamChat();
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
+            disabled={isStreaming}
             variant="outline"
             size="sm"
             onClick={() => {
@@ -434,12 +440,13 @@ function RefactorFileButton({ path }: { path: string }) {
 
 function WriteCodeProperlyButton() {
   const chatId = useAtomValue(selectedChatIdAtom);
-  const { streamMessage } = useStreamChat();
+  const { streamMessage, isStreaming } = useStreamChat();
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
+            disabled={isStreaming}
             variant="outline"
             size="sm"
             onClick={() => {
@@ -470,6 +477,7 @@ function WriteCodeProperlyButton() {
 
 function RebuildButton() {
   const { restartApp } = useRunApp();
+  const { isStreaming } = useStreamChat();
   const posthog = usePostHog();
   const selectedAppId = useAtomValue(selectedAppIdAtom);
 
@@ -484,7 +492,12 @@ function RebuildButton() {
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button variant="outline" size="sm" onClick={handleRebuild}>
+          <Button
+            disabled={isStreaming}
+            variant="outline"
+            size="sm"
+            onClick={handleRebuild}
+          >
             Rebuild app
           </Button>
         </TooltipTrigger>
@@ -497,6 +510,7 @@ function RebuildButton() {
 }
 
 function RestartButton() {
+  const { isStreaming } = useStreamChat();
   const { restartApp } = useRunApp();
   const posthog = usePostHog();
   const selectedAppId = useAtomValue(selectedAppIdAtom);
@@ -512,7 +526,12 @@ function RestartButton() {
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button variant="outline" size="sm" onClick={handleRestart}>
+          <Button
+            disabled={isStreaming}
+            variant="outline"
+            size="sm"
+            onClick={handleRestart}
+          >
             Restart app
           </Button>
         </TooltipTrigger>
@@ -526,6 +545,7 @@ function RestartButton() {
 
 function RefreshButton() {
   const { refreshAppIframe } = useRunApp();
+  const { isStreaming } = useStreamChat();
   const posthog = usePostHog();
 
   const handleRefresh = useCallback(() => {
@@ -537,7 +557,12 @@ function RefreshButton() {
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button variant="outline" size="sm" onClick={handleRefresh}>
+          <Button
+            disabled={isStreaming}
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+          >
             Refresh app
           </Button>
         </TooltipTrigger>

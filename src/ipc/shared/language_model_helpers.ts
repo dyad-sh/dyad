@@ -5,7 +5,6 @@ import {
 } from "@/db/schema";
 import type { LanguageModelProvider, LanguageModel } from "@/ipc/ipc_types";
 import { eq } from "drizzle-orm";
-import { ModelProvider } from "@/lib/schemas";
 
 export interface ModelOption {
   name: string;
@@ -16,12 +15,7 @@ export interface ModelOption {
   contextWindow?: number;
 }
 
-export type RegularModelProvider = Exclude<
-  ModelProvider,
-  "ollama" | "lmstudio"
->;
-
-export const MODEL_OPTIONS: Record<RegularModelProvider, ModelOption[]> = {
+export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
   openai: [
     // https://platform.openai.com/docs/models/gpt-4.1
     {
@@ -109,7 +103,7 @@ export const PROVIDER_TO_ENV_VAR: Record<string, string> = {
 };
 
 export const PROVIDERS: Record<
-  RegularModelProvider,
+  string,
   {
     displayName: string;
     hasFreeTier?: boolean;
@@ -286,7 +280,7 @@ export async function getLanguageModels({
   let hardcodedModels: LanguageModel[] = [];
   if (provider.type === "cloud") {
     if (providerId in MODEL_OPTIONS) {
-      const models = MODEL_OPTIONS[providerId as RegularModelProvider] || [];
+      const models = MODEL_OPTIONS[providerId] || [];
       hardcodedModels = models.map((model) => ({
         ...model,
         apiName: model.name,

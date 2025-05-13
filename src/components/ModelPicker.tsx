@@ -1,4 +1,4 @@
-import type { LargeLanguageModel, ModelProvider } from "@/lib/schemas";
+import type { LargeLanguageModel } from "@/lib/schemas";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -216,7 +216,7 @@ export function ModelPicker({
                             onClick={() => {
                               onModelSelect({
                                 name: model.apiName,
-                                provider: providerId as ModelProvider,
+                                provider: providerId,
                               });
                               setOpen(false);
                             }}

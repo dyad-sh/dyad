@@ -35,26 +35,17 @@ const providers = [
   "ollama",
   "lmstudio",
 ] as const;
-/**
- * Zod schema for model provider
- */
-export const ModelProviderSchema = z.enum(providers);
 
 export const cloudProviders = providers.filter(
   (provider) => provider !== "ollama" && provider !== "lmstudio",
 );
 
 /**
- * Type derived from the ModelProviderSchema
- */
-export type ModelProvider = z.infer<typeof ModelProviderSchema>;
-
-/**
  * Zod schema for large language model configuration
  */
 export const LargeLanguageModelSchema = z.object({
   name: z.string(),
-  provider: ModelProviderSchema,
+  provider: z.string(),
 });
 
 /**

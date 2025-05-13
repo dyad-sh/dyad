@@ -84,6 +84,13 @@ export function ModelPicker() {
 
     // For cloud models, look up in the modelsByProviders data
     if (modelsByProviders && modelsByProviders[selectedModel.provider]) {
+      const customFoundModel = modelsByProviders[selectedModel.provider].find(
+        (model) =>
+          model.type === "custom" && model.id === selectedModel.customModelId,
+      );
+      if (customFoundModel) {
+        return customFoundModel.displayName;
+      }
       const foundModel = modelsByProviders[selectedModel.provider].find(
         (model) => model.apiName === selectedModel.name,
       );
@@ -227,9 +234,12 @@ export function ModelPicker() {
                                 : ""
                             }
                             onClick={() => {
+                              const customModelId =
+                                model.type === "custom" ? model.id : undefined;
                               onModelSelect({
                                 name: model.apiName,
                                 provider: providerId,
+                                customModelId,
                               });
                               setOpen(false);
                             }}

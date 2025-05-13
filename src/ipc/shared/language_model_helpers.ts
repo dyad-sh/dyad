@@ -191,35 +191,7 @@ export async function getLanguageModelProviders(): Promise<
     }
   }
 
-  // Merge lists: custom providers take precedence
-  const mergedProvidersMap = new Map<string, LanguageModelProvider>();
-
-  // Add all hardcoded providers first
-  for (const hp of hardcodedProviders) {
-    mergedProvidersMap.set(hp.id, hp);
-  }
-
-  // Add/overwrite with custom providers from DB
-  for (const [id, cp] of customProvidersMap) {
-    const existingProvider = mergedProvidersMap.get(id);
-    if (existingProvider) {
-      // If exists, merge. Custom fields take precedence.
-      mergedProvidersMap.set(id, {
-        ...existingProvider, // start with hardcoded
-        ...cp, // override with custom where defined
-        id: cp.id, // ensure custom id is used
-        name: cp.name, // ensure custom name is used
-        type: "custom", // explicitly set type to custom
-        apiBaseUrl: cp.apiBaseUrl ?? existingProvider.apiBaseUrl,
-        envVarName: cp.envVarName ?? existingProvider.envVarName,
-      });
-    } else {
-      // If it doesn't exist in hardcoded, just add the custom one
-      mergedProvidersMap.set(id, cp);
-    }
-  }
-
-  return Array.from(mergedProvidersMap.values());
+  return [...hardcodedProviders, ...customProvidersMap.values()];
 }
 
 /**
@@ -293,20 +265,7 @@ export async function getLanguageModels({
     }
   }
 
-  // Merge the models, with custom models taking precedence over hardcoded ones
-  const mergedModelsMap = new Map<string, LanguageModel>();
-
-  // Add hardcoded models first
-  for (const model of hardcodedModels) {
-    mergedModelsMap.set(model.apiName, model);
-  }
-
-  // Then override with custom models
-  for (const model of customModels) {
-    mergedModelsMap.set(model.apiName, model);
-  }
-
-  return Array.from(mergedModelsMap.values());
+  return [...hardcodedModels, ...customModels];
 }
 
 /**

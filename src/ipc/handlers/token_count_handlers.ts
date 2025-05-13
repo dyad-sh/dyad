@@ -88,7 +88,7 @@ export function registerTokenCountHandlers() {
         codebaseTokens,
         inputTokens,
         systemPromptTokens,
-        contextWindow: getContextWindow(),
+        contextWindow: await getContextWindow(),
       };
     },
   );

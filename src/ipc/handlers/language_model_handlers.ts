@@ -7,6 +7,7 @@ import type {
 import { createLoggedHandler } from "./safe_handle";
 import log from "electron-log";
 import {
+  CUSTOM_PROVIDER_PREFIX,
   getLanguageModelProviders,
   getLanguageModels,
   getLanguageModelsByProviders,
@@ -66,7 +67,7 @@ export function registerLanguageModelHandlers() {
       // Insert the new provider
       await db.insert(languageModelProvidersSchema).values({
         // Make sure we will never have accidental collisions with builtin providers
-        id: "custom::" + id,
+        id: CUSTOM_PROVIDER_PREFIX + id,
         name,
         api_base_url: apiBaseUrl,
         env_var_name: envVarName || null,
@@ -297,11 +298,7 @@ export function registerLanguageModelHandlers() {
       if (provider.type === "local") {
         throw new Error("Local models cannot be fetched");
       }
-      return getLanguageModels(
-        provider.type === "cloud"
-          ? { builtinProviderId: params.providerId }
-          : { customProviderId: params.providerId },
-      );
+      return getLanguageModels({ providerId: params.providerId });
     },
   );
 

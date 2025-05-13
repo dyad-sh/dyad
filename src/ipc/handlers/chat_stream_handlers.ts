@@ -15,7 +15,7 @@ import { extractCodebase } from "../../utils/codebase";
 import { processFullResponseActions } from "../processors/response_processor";
 import { streamTestResponse } from "./testing_chat_handlers";
 import { getTestResponse } from "./testing_chat_handlers";
-import { getMaxTokens, getModelClient } from "../utils/get_model_client";
+import { getModelClient } from "../utils/get_model_client";
 import log from "electron-log";
 import {
   getSupabaseContext,
@@ -27,6 +27,7 @@ import * as path from "path";
 import * as os from "os";
 import * as crypto from "crypto";
 import { readFile, writeFile, unlink } from "fs/promises";
+import { getMaxTokens } from "../utils/token_utils";
 
 const logger = log.scope("chat_stream_handlers");
 
@@ -332,7 +333,7 @@ This conversation includes one or more image attachments. When the user uploads 
 
         // When calling streamText, the messages need to be properly formatted for mixed content
         const { textStream } = streamText({
-          maxTokens: getMaxTokens(settings.selectedModel),
+          maxTokens: await getMaxTokens(settings.selectedModel),
           temperature: 0,
           model: modelClient,
           system: systemPrompt,

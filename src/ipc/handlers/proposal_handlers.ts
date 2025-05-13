@@ -277,7 +277,7 @@ const getProposalHandler = async (
         );
 
         const totalTokens = messagesTokenCount + codebaseTokenCount;
-        const contextWindow = Math.min(getContextWindow(), 100_000);
+        const contextWindow = Math.min(await getContextWindow(), 100_000);
         logger.log(
           `Token usage: ${totalTokens}/${contextWindow} (${
             (totalTokens / contextWindow) * 100

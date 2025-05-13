@@ -1,5 +1,5 @@
 import { ipcMain } from "electron";
-import { CoreMessage, TextPart, ImagePart, streamText } from "ai";
+import { CoreMessage, TextPart, ImagePart } from "ai";
 import { db } from "../../db";
 import { chats, messages } from "../../db/schema";
 import { and, eq, isNull } from "drizzle-orm";
@@ -29,6 +29,7 @@ import * as crypto from "crypto";
 import { readFile, writeFile, unlink } from "fs/promises";
 import { getMaxTokens } from "../utils/token_utils";
 import { MAX_CHAT_TURNS_IN_CONTEXT } from "@/constants/settings_constants";
+import { streamTextWithBackup } from "../utils/stream_utils";
 
 const logger = log.scope("chat_stream_handlers");
 
@@ -214,7 +215,7 @@ export function registerChatStreamHandlers() {
       } else {
         // Normal AI processing for non-test prompts
         const settings = readSettings();
-        const modelClient = await getModelClient(
+        const { modelClient, backupModelClients } = await getModelClient(
           settings.selectedModel,
           settings,
         );
@@ -372,13 +373,14 @@ This conversation includes one or more image attachments. When the user uploads 
         }
 
         // When calling streamText, the messages need to be properly formatted for mixed content
-        const { textStream } = streamText({
+        const { textStream } = streamTextWithBackup({
           maxTokens: await getMaxTokens(settings.selectedModel),
           temperature: 0,
           model: modelClient,
+          backupModelClients: backupModelClients,
           system: systemPrompt,
           messages: chatMessages.filter((m) => m.content),
-          onError: (error) => {
+          onError: (error: any) => {
             logger.error("Error streaming text:", error);
             const message =
               (error as any)?.error?.message || JSON.stringify(error);

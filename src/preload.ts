@@ -8,6 +8,7 @@ const validInvokeChannels = [
   "get-language-models",
   "create-custom-language-model",
   "get-language-model-providers",
+  "delete-custom-language-model-provider",
   "create-custom-language-model-provider",
   "delete-custom-language-model",
   "delete-custom-model",

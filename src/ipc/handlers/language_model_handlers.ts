@@ -205,6 +205,72 @@ export function registerLanguageModelHandlers() {
   );
 
   handle(
+    "delete-custom-language-model-provider",
+    async (
+      event: IpcMainInvokeEvent,
+      params: { providerId: string },
+    ): Promise<void> => {
+      const { providerId } = params;
+
+      // Validation
+      if (!providerId) {
+        throw new Error("Provider ID is required");
+      }
+
+      logger.info(
+        `Handling delete-custom-language-model-provider for providerId: ${providerId}`,
+      );
+
+      // Check if the provider exists before attempting deletion
+      const existingProvider = await db
+        .select({ id: languageModelProvidersSchema.id })
+        .from(languageModelProvidersSchema)
+        .where(eq(languageModelProvidersSchema.id, providerId))
+        .get();
+
+      if (!existingProvider) {
+        // If the provider doesn't exist, maybe it was already deleted. Log and return.
+        logger.warn(
+          `Provider with ID "${providerId}" not found. It might have been deleted already.`,
+        );
+        // Optionally, throw new Error(`Provider with ID "${providerId}" not found`);
+        // Deciding to return gracefully instead of throwing an error if not found.
+        return;
+      }
+
+      // Use a transaction to ensure atomicity
+      await db.transaction(async (tx) => {
+        // 1. Delete associated models
+        const deleteModelsResult = await tx
+          .delete(languageModelsSchema)
+          .where(eq(languageModelsSchema.provider_id, providerId))
+          .run();
+        logger.info(
+          `Deleted ${deleteModelsResult.changes} model(s) associated with provider ${providerId}`,
+        );
+
+        // 2. Delete the provider
+        const deleteProviderResult = await tx
+          .delete(languageModelProvidersSchema)
+          .where(eq(languageModelProvidersSchema.id, providerId))
+          .run();
+
+        if (deleteProviderResult.changes === 0) {
+          // This case should ideally not happen if existingProvider check passed,
+          // but adding safety check within transaction.
+          logger.error(
+            `Failed to delete provider with ID "${providerId}" during transaction, although it was found initially. Rolling back.`,
+          );
+          throw new Error(
+            `Failed to delete provider with ID "${providerId}" which should have existed.`,
+          );
+        }
+        logger.info(`Successfully deleted provider with ID "${providerId}".`);
+      });
+    },
+  );
+
+  handle(
     "get-language-models",
     async (
       event: IpcMainInvokeEvent,

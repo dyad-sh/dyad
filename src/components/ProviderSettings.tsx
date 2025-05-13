@@ -9,17 +9,36 @@ import { providerSettingsRoute } from "@/routes/settings/providers/$provider";
 import type { LanguageModelProvider } from "@/ipc/ipc_types";
 
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
-import { GiftIcon, PlusIcon } from "lucide-react";
+import { useCustomLanguageModelProvider } from "@/hooks/useCustomLanguageModelProvider";
+import { GiftIcon, PlusIcon, MoreVertical, Trash2 } from "lucide-react";
 import { Skeleton } from "./ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { AlertTriangle } from "lucide-react";
 import { useState } from "react";
+
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 import { CreateCustomProviderDialog } from "./CreateCustomProviderDialog";
 
 export function ProviderSettingsGrid() {
   const navigate = useNavigate();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [providerToDelete, setProviderToDelete] = useState<string | null>(null);
 
   const {
     data: providers,
@@ -29,11 +48,21 @@ export function ProviderSettingsGrid() {
     refetch,
   } = useLanguageModelProviders();
 
+  const { deleteProvider, isDeleting } = useCustomLanguageModelProvider();
+
   const handleProviderClick = (providerId: string) => {
     navigate({
       to: providerSettingsRoute.id,
       params: { provider: providerId },
     });
+  };
+
+  const handleDeleteProvider = async () => {
+    if (providerToDelete) {
+      await deleteProvider(providerToDelete);
+      setProviderToDelete(null);
+      refetch();
+    }
   };
 
   if (isLoading) {
@@ -74,13 +103,17 @@ export function ProviderSettingsGrid() {
       <h2 className="text-2xl font-bold mb-6">AI Providers</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {providers?.map((provider: LanguageModelProvider) => {
+          const isCustom = provider.type === "custom";
+
           return (
             <Card
               key={provider.id}
-              className="cursor-pointer transition-all hover:shadow-md border-border"
-              onClick={() => handleProviderClick(provider.id)}
+              className="relative transition-all hover:shadow-md border-border"
             >
-              <CardHeader className="p-4">
+              <CardHeader
+                className="p-4 cursor-pointer"
+                onClick={() => handleProviderClick(provider.id)}
+              >
                 <CardTitle className="text-xl flex items-center justify-between">
                   {provider.name}
                   {isProviderSetup(provider.id) ? (
@@ -102,6 +135,30 @@ export function ProviderSettingsGrid() {
                   )}
                 </CardDescription>
               </CardHeader>
+
+              {isCustom && (
+                <div
+                  className="absolute top-2 right-2"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <DropdownMenu>
+                    <DropdownMenuTrigger className="focus:outline-none">
+                      <div className="p-1 hover:bg-muted rounded-full">
+                        <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive"
+                        onClick={() => setProviderToDelete(provider.id)}
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete Provider
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              )}
             </Card>
           );
         })}
@@ -131,6 +188,30 @@ export function ProviderSettingsGrid() {
           refetch();
         }}
       />
+
+      <AlertDialog
+        open={!!providerToDelete}
+        onOpenChange={(open) => !open && setProviderToDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Custom Provider</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this custom provider and all its
+              associated models. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteProvider}
+              disabled={isDeleting}
+            >
+              {isDeleting ? "Deleting..." : "Delete Provider"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

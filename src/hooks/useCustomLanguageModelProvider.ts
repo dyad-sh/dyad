@@ -40,15 +40,38 @@ export function useCustomLanguageModelProvider() {
     },
   });
 
+  const deleteProviderMutation = useMutation({
+    mutationFn: async (providerId: string): Promise<void> => {
+      if (!providerId) {
+        throw new Error("Provider ID is required");
+      }
+
+      return ipcClient.deleteCustomLanguageModelProvider(providerId);
+    },
+    onSuccess: () => {
+      // Invalidate and refetch
+      queryClient.invalidateQueries({ queryKey: ["languageModelProviders"] });
+    },
+    onError: (error) => {
+      showError(error);
+    },
+  });
+
   const createProvider = async (
     params: CreateCustomLanguageModelProviderParams,
   ): Promise<LanguageModelProvider> => {
     return createProviderMutation.mutateAsync(params);
   };
 
+  const deleteProvider = async (providerId: string): Promise<void> => {
+    return deleteProviderMutation.mutateAsync(providerId);
+  };
+
   return {
     createProvider,
+    deleteProvider,
     isCreating: createProviderMutation.isPending,
-    error: createProviderMutation.error,
+    isDeleting: deleteProviderMutation.isPending,
+    error: createProviderMutation.error || deleteProviderMutation.error,
   };
 }

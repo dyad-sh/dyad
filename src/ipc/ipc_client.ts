@@ -774,6 +774,12 @@ export class IpcClient {
     return this.ipcRenderer.invoke("delete-custom-model", params);
   }
 
+  async deleteCustomLanguageModelProvider(providerId: string): Promise<void> {
+    return this.ipcRenderer.invoke("delete-custom-language-model-provider", {
+      providerId,
+    });
+  }
+
   // --- End window control methods ---
 
   // --- Language Model Operations ---

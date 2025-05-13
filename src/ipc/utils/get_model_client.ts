@@ -5,10 +5,24 @@ import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { createOllama } from "ollama-ai-provider";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LargeLanguageModel, UserSettings } from "../../lib/schemas";
-import { AUTO_MODELS } from "../../constants/models";
 import { getEnvVar } from "./read_env";
 import log from "electron-log";
 import { getLanguageModelProviders } from "../shared/language_model_helpers";
+
+const AUTO_MODELS = [
+  {
+    provider: "google",
+    name: "gemini-2.5-pro-exp-03-25",
+  },
+  {
+    provider: "anthropic",
+    name: "claude-3-7-sonnet-latest",
+  },
+  {
+    provider: "openai",
+    name: "gpt-4.1",
+  },
+];
 
 const logger = log.scope("getModelClient");
 export async function getModelClient(

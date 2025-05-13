@@ -84,7 +84,7 @@ export function ModelsSection({ providerId }: ModelsSectionProps) {
         <div className="mt-4 space-y-3">
           {models.map((model) => (
             <div
-              key={model.apiName}
+              key={model.apiName + model.displayName}
               className="p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm"
             >
               <div className="flex justify-between items-center">
@@ -145,13 +145,15 @@ export function ModelsSection({ providerId }: ModelsSectionProps) {
       )}
       {/* End Custom Models List Area */}
 
-      <Button
-        onClick={() => setIsCustomModelDialogOpen(true)}
-        variant="outline"
-        className="mt-6"
-      >
-        <PlusIcon className="mr-2 h-4 w-4" /> Add Custom Model
-      </Button>
+      {providerId !== "auto" && (
+        <Button
+          onClick={() => setIsCustomModelDialogOpen(true)}
+          variant="outline"
+          className="mt-6"
+        >
+          <PlusIcon className="mr-2 h-4 w-4" /> Add Custom Model
+        </Button>
+      )}
 
       {/* Render the dialog */}
       <CreateCustomModelDialog

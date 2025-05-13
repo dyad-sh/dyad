@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ModelPicker } from "@/components/ModelPicker";
+
 import { useSettings } from "@/hooks/useSettings";
 import { IpcClient } from "@/ipc/ipc_client";
 import {
@@ -59,6 +59,7 @@ import { useAttachments } from "@/hooks/useAttachments";
 import { AttachmentsList } from "./AttachmentsList";
 import { DragDropOverlay } from "./DragDropOverlay";
 import { showError, showUncommittedFilesWarning } from "@/lib/toast";
+import { ChatInputControls } from "../ChatInputControls";
 const showTokenBarAtom = atom(false);
 
 export function ChatInput({ chatId }: { chatId?: number }) {
@@ -340,9 +341,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
             )}
           </div>
           <div className="pl-2 pr-1 flex items-center justify-between">
-            <div className="pb-2">
-              <ModelPicker />
-            </div>
+            <ChatInputControls />
             <button
               onClick={() => setShowTokenBar(!showTokenBar)}
               className="flex items-center px-2 py-1 text-xs text-muted-foreground hover:bg-muted rounded"

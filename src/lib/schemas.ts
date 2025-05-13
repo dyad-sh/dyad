@@ -118,6 +118,7 @@ export const UserSettingsSchema = z.object({
   experiments: ExperimentsSchema.optional(),
   lastShownReleaseNotesVersion: z.string().optional(),
   maxChatTurnsInContext: z.number().optional(),
+  enableProSaverMode: z.boolean().optional(),
   // DEPRECATED.
   runtimeMode: RuntimeModeSchema.optional(),
 });

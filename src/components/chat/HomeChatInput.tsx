@@ -1,7 +1,7 @@
 import { SendIcon, StopCircleIcon, Paperclip } from "lucide-react";
 import type React from "react";
 import { useEffect, useRef } from "react";
-import { ModelPicker } from "@/components/ModelPicker";
+
 import { useSettings } from "@/hooks/useSettings";
 import { homeChatInputValueAtom } from "@/atoms/chatAtoms"; // Use a different atom for home input
 import { useAtom } from "jotai";
@@ -11,7 +11,7 @@ import { AttachmentsList } from "./AttachmentsList";
 import { DragDropOverlay } from "./DragDropOverlay";
 import { usePostHog } from "posthog-js/react";
 import { HomeSubmitOptions } from "@/pages/home";
-
+import { ChatInputControls } from "../ChatInputControls";
 export function HomeChatInput({
   onSubmit,
 }: {
@@ -145,8 +145,8 @@ export function HomeChatInput({
               </button>
             )}
           </div>
-          <div className="px-2 pb-2">
-            <ModelPicker />
+          <div className="px-2">
+            <ChatInputControls />
           </div>
         </div>
       </div>

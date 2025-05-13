@@ -72,15 +72,8 @@ export default function SettingsPage() {
               General Settings
             </h2>
 
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <AutoApproveSwitch showToast={false} />
-                <div className="text-sm text-gray-500 dark:text-gray-400">
-                  This will automatically approve code changes and run them.
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between">
+            <div className="space-y-4 mb-4">
+              <div className="flex items-center gap-4">
                 <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
                   Theme
                 </label>
@@ -104,6 +97,13 @@ export default function SettingsPage() {
                     </button>
                   ))}
                 </div>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <AutoApproveSwitch showToast={false} />
+              <div className="text-sm text-gray-500 dark:text-gray-400">
+                This will automatically approve code changes and run them.
               </div>
             </div>
           </div>

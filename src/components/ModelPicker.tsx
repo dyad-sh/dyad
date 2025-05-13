@@ -23,15 +23,14 @@ import { useLanguageModelsByProviders } from "@/hooks/useLanguageModelsByProvide
 import { ChevronDown } from "lucide-react";
 import { LocalModel } from "@/ipc/ipc_types";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
-interface ModelPickerProps {
-  selectedModel: LargeLanguageModel;
-  onModelSelect: (model: LargeLanguageModel) => void;
-}
+import { useSettings } from "@/hooks/useSettings";
 
-export function ModelPicker({
-  selectedModel,
-  onModelSelect,
-}: ModelPickerProps) {
+export function ModelPicker() {
+  const { settings, updateSettings } = useSettings();
+  const onModelSelect = (model: LargeLanguageModel) => {
+    updateSettings({ selectedModel: model });
+  };
+
   const [open, setOpen] = useState(false);
 
   // Cloud models from providers
@@ -97,8 +96,6 @@ export function ModelPicker({
     return selectedModel.name;
   };
 
-  const modelDisplayName = getModelDisplayName();
-
   // Get auto provider models (if any)
   const autoModels =
     !loading && modelsByProviders && modelsByProviders["auto"]
@@ -110,6 +107,12 @@ export function ModelPicker({
     !ollamaLoading && !ollamaError && ollamaModels.length > 0;
   const hasLMStudioModels =
     !lmStudioLoading && !lmStudioError && lmStudioModels.length > 0;
+
+  if (!settings) {
+    return null;
+  }
+  const selectedModel = settings?.selectedModel;
+  const modelDisplayName = getModelDisplayName();
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>

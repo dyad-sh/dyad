@@ -20,7 +20,7 @@ export function HomeChatInput({
   const posthog = usePostHog();
   const [inputValue, setInputValue] = useAtom(homeChatInputValueAtom);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const { settings, updateSettings } = useSettings();
+  const { settings } = useSettings();
   const { isStreaming } = useStreamChat({
     hasChatId: false,
   }); // eslint-disable-line @typescript-eslint/no-unused-vars
@@ -146,12 +146,7 @@ export function HomeChatInput({
             )}
           </div>
           <div className="px-2 pb-2">
-            <ModelPicker
-              selectedModel={settings.selectedModel}
-              onModelSelect={(model) =>
-                updateSettings({ selectedModel: model })
-              }
-            />
+            <ModelPicker />
           </div>
         </div>
       </div>

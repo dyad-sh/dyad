@@ -65,7 +65,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const posthog = usePostHog();
   const [inputValue, setInputValue] = useAtom(chatInputValueAtom);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const { settings, updateSettings } = useSettings();
+  const { settings } = useSettings();
   const appId = useAtomValue(selectedAppIdAtom);
   const { refreshVersions } = useVersions(appId);
   const { streamMessage, isStreaming, setIsStreaming, error, setError } =
@@ -341,12 +341,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           </div>
           <div className="pl-2 pr-1 flex items-center justify-between">
             <div className="pb-2">
-              <ModelPicker
-                selectedModel={settings.selectedModel}
-                onModelSelect={(model) =>
-                  updateSettings({ selectedModel: model })
-                }
-              />
+              <ModelPicker />
             </div>
             <button
               onClick={() => setShowTokenBar(!showTokenBar)}

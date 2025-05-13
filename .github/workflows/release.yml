@@ -17,10 +17,10 @@ jobs:
       # which prevents the race.
       # max-parallel: 1
       matrix:
-        os:
-          [
+        os: [
             { name: "windows", image: "windows-latest" },
-            { name: "linux", image: "ubuntu-latest" },
+            # See https://github.com/dyad-sh/dyad/issues/96
+            { name: "linux", image: "ubuntu-22.04" },
             { name: "macos-intel", image: "macos-13" },
             { name: "macos", image: "macos-latest" },
           ]

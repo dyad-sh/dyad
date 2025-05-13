@@ -49,5 +49,5 @@ export function registerWindowHandlers() {
   ipcMain.handle("window:minimize", handleMinimize);
   ipcMain.handle("window:maximize", handleMaximize);
   ipcMain.handle("window:close", handleClose);
-  ipcMain.handle("window:get-platform", handleGetSystemPlatform);
+  ipcMain.handle("get-system-platform", handleGetSystemPlatform);
 }

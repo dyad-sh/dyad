@@ -63,7 +63,7 @@ const validInvokeChannels = [
   "window:minimize",
   "window:maximize",
   "window:close",
-  "window:get-platform",
+  "get-system-platform",
   "upload-to-signed-url",
   "delete-chat",
   "delete-messages",

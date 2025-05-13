@@ -13,7 +13,7 @@ export function createLoggedHandler(logger: log.LogFunctions) {
         try {
           const result = await fn(event, ...args);
           logger.log(
-            `IPC: ${channel} returned: ${JSON.stringify(result).slice(0, 100)}...`,
+            `IPC: ${channel} returned: ${JSON.stringify(result)?.slice(0, 100)}...`,
           );
           return result;
         } catch (error) {

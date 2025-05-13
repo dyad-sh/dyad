@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "424973e5-a102-4b71-8d5d-6160f1609b8c",
+  "id": "0a47ec41-9477-4457-b3e8-e5ecb3e3a855",
   "prevId": "ceedb797-6aa3-4a50-b42f-bc85ee08b3df",
   "tables": {
     "apps": {
@@ -210,11 +210,18 @@
           "notNull": true,
           "autoincrement": false
         },
-        "provider_id": {
-          "name": "provider_id",
+        "builtin_provider_id": {
+          "name": "builtin_provider_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "custom_provider_id": {
+          "name": "custom_provider_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "description": {
@@ -257,12 +264,12 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "language_models_provider_id_language_model_providers_id_fk": {
-          "name": "language_models_provider_id_language_model_providers_id_fk",
+        "language_models_custom_provider_id_language_model_providers_id_fk": {
+          "name": "language_models_custom_provider_id_language_model_providers_id_fk",
           "tableFrom": "language_models",
           "tableTo": "language_model_providers",
           "columnsFrom": [
-            "provider_id"
+            "custom_provider_id"
           ],
           "columnsTo": [
             "id"

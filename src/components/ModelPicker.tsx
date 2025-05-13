@@ -17,9 +17,9 @@ import {
   DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
 import { useEffect, useState } from "react";
-import { MODEL_OPTIONS } from "@/constants/models";
 import { useLocalModels } from "@/hooks/useLocalModels";
 import { useLocalLMSModels } from "@/hooks/useLMStudioModels";
+import { useLanguageModelsByProviders } from "@/hooks/useLanguageModelsByProviders";
 import { ChevronDown } from "lucide-react";
 import { LocalModel } from "@/ipc/ipc_types";
 interface ModelPickerProps {
@@ -32,6 +32,10 @@ export function ModelPicker({
   onModelSelect,
 }: ModelPickerProps) {
   const [open, setOpen] = useState(false);
+
+  // Cloud models from providers
+  const { data: modelsByProviders, isLoading: providersLoading } =
+    useLanguageModelsByProviders();
 
   // Ollama Models Hook
   const {
@@ -74,24 +78,35 @@ export function ModelPicker({
       );
     }
 
-    // Fallback for cloud models
-    return (
-      MODEL_OPTIONS[selectedModel.provider]?.find(
-        (model) => model.name === selectedModel.name,
-      )?.displayName || selectedModel.name
-    );
+    // For cloud models, look up in the modelsByProviders data
+    if (modelsByProviders && modelsByProviders[selectedModel.provider]) {
+      const foundModel = modelsByProviders[selectedModel.provider].find(
+        (model) => model.apiName === selectedModel.name,
+      );
+      if (foundModel) {
+        return foundModel.displayName;
+      }
+    }
+
+    // Fallback if not found
+    return selectedModel.name;
   };
 
   const modelDisplayName = getModelDisplayName();
 
-  // Flatten the cloud model options
-  const cloudModels = Object.entries(MODEL_OPTIONS).flatMap(
-    ([provider, models]) =>
-      models.map((model) => ({
-        ...model,
-        provider: provider as ModelProvider,
-      })),
-  );
+  // Flatten the cloud models from all providers
+  const cloudModels =
+    !providersLoading && modelsByProviders
+      ? Object.entries(modelsByProviders).flatMap(([providerId, models]) =>
+          models.map((model) => ({
+            name: model.apiName,
+            displayName: model.displayName,
+            description: model.description || "",
+            tag: model.tag,
+            provider: providerId as ModelProvider,
+          })),
+        )
+      : [];
 
   // Determine availability of local models
   const hasOllamaModels =
@@ -119,43 +134,54 @@ export function ModelPicker({
         {/* Increased width slightly */}
         <DropdownMenuLabel>Cloud Models</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        {/* Cloud models */}
-        {cloudModels.map((model) => (
-          <Tooltip key={`${model.provider}-${model.name}`}>
-            <TooltipTrigger asChild>
-              <DropdownMenuItem
-                className={
-                  selectedModel.provider === model.provider &&
-                  selectedModel.name === model.name
-                    ? "bg-secondary"
-                    : ""
-                }
-                onClick={() => {
-                  onModelSelect({
-                    name: model.name,
-                    provider: model.provider,
-                  });
-                  setOpen(false);
-                }}
-              >
-                <div className="flex justify-between items-start w-full">
-                  <span className="flex flex-col items-start">
-                    <span>{model.displayName}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {model.provider}
+        {/* Cloud models - loading state */}
+        {providersLoading ? (
+          <div className="text-xs text-center py-2 text-muted-foreground">
+            Loading models...
+          </div>
+        ) : cloudModels.length === 0 ? (
+          <div className="text-xs text-center py-2 text-muted-foreground">
+            No cloud models available
+          </div>
+        ) : (
+          /* Cloud models loaded */
+          cloudModels.map((model) => (
+            <Tooltip key={`${model.provider}-${model.name}`}>
+              <TooltipTrigger asChild>
+                <DropdownMenuItem
+                  className={
+                    selectedModel.provider === model.provider &&
+                    selectedModel.name === model.name
+                      ? "bg-secondary"
+                      : ""
+                  }
+                  onClick={() => {
+                    onModelSelect({
+                      name: model.name,
+                      provider: model.provider,
+                    });
+                    setOpen(false);
+                  }}
+                >
+                  <div className="flex justify-between items-start w-full">
+                    <span className="flex flex-col items-start">
+                      <span>{model.displayName}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {model.provider}
+                      </span>
                     </span>
-                  </span>
-                  {model.tag && (
-                    <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">
-                      {model.tag}
-                    </span>
-                  )}
-                </div>
-              </DropdownMenuItem>
-            </TooltipTrigger>
-            <TooltipContent side="right">{model.description}</TooltipContent>
-          </Tooltip>
-        ))}
+                    {model.tag && (
+                      <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">
+                        {model.tag}
+                      </span>
+                    )}
+                  </div>
+                </DropdownMenuItem>
+              </TooltipTrigger>
+              <TooltipContent side="right">{model.description}</TooltipContent>
+            </Tooltip>
+          ))
+        )}
         <DropdownMenuSeparator />
         {/* Local Models Parent SubMenu */}
         <DropdownMenuSub>

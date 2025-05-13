@@ -85,9 +85,11 @@ export const language_models = sqliteTable("language_models", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   displayName: text("display_name").notNull(),
   apiName: text("api_name").notNull(),
-  provider_id: text("provider_id")
-    .notNull()
-    .references(() => language_model_providers.id, { onDelete: "cascade" }),
+  builtinProviderId: text("builtin_provider_id"),
+  customProviderId: text("custom_provider_id").references(
+    () => language_model_providers.id,
+    { onDelete: "cascade" },
+  ),
   description: text("description"),
   max_output_tokens: integer("max_output_tokens"),
   context_window: integer("context_window"),
@@ -111,7 +113,7 @@ export const languageModelsRelations = relations(
   language_models,
   ({ one }) => ({
     provider: one(language_model_providers, {
-      fields: [language_models.provider_id],
+      fields: [language_models.customProviderId],
       references: [language_model_providers.id],
     }),
   }),

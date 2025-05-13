@@ -746,6 +746,12 @@ export class IpcClient {
     return this.ipcRenderer.invoke("get-language-models", params);
   }
 
+  public async getLanguageModelsByProviders(): Promise<
+    Record<string, LanguageModel[]>
+  > {
+    return this.ipcRenderer.invoke("get-language-models-by-providers");
+  }
+
   public async createCustomLanguageModelProvider({
     id,
     name,

@@ -11,11 +11,12 @@ CREATE TABLE `language_models` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`display_name` text NOT NULL,
 	`api_name` text NOT NULL,
-	`provider_id` text NOT NULL,
+	`builtin_provider_id` text,
+	`custom_provider_id` text,
 	`description` text,
 	`max_output_tokens` integer,
 	`context_window` integer,
 	`created_at` integer DEFAULT (unixepoch()) NOT NULL,
 	`updated_at` integer DEFAULT (unixepoch()) NOT NULL,
-	FOREIGN KEY (`provider_id`) REFERENCES `language_model_providers`(`id`) ON UPDATE no action ON DELETE cascade
+	FOREIGN KEY (`custom_provider_id`) REFERENCES `language_model_providers`(`id`) ON UPDATE no action ON DELETE cascade
 );

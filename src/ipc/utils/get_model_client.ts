@@ -14,6 +14,7 @@ import { llmErrorStore } from "@/main/llm_error_store";
 import { createDyadEngine } from "./llm_engine_provider";
 
 const dyadLocalEngine = process.env.DYAD_LOCAL_ENGINE;
+const dyadGatewayUrl = process.env.DYAD_GATEWAY_URL;
 
 const AUTO_MODELS = [
   {
@@ -105,7 +106,7 @@ export async function getModelClient(
           })
         : createOpenAI({
             apiKey: dyadApiKey,
-            baseURL: "https://llm-gateway.dyad.sh/v1",
+            baseURL: dyadGatewayUrl ?? "https://llm-gateway.dyad.sh/v1",
           });
 
       logger.info(

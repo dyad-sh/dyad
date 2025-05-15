@@ -92,7 +92,8 @@ async function getCodebaseTokenCount(
 
   // Calculate and cache the token count
   logger.log(`Calculating codebase token count for chatId: ${chatId}`);
-  const codebase = await extractCodebase(getDyadAppPath(appPath));
+  const codebase = (await extractCodebase(getDyadAppPath(appPath)))
+    .formattedOutput;
   const tokenCount = estimateTokens(codebase);
 
   // Store in cache

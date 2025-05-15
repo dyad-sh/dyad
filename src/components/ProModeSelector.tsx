@@ -20,6 +20,13 @@ export function ProModeSelector() {
   const toggleSaverMode = () => {
     updateSettings({ enableProSaverMode: !settings?.enableProSaverMode });
   };
+
+  const toggleLazyEdits = () => {
+    updateSettings({
+      enableProLazyEditsMode: !settings?.enableProLazyEditsMode,
+    });
+  };
+
   if (!settings?.enableDyadPro) {
     return null;
   }
@@ -73,6 +80,29 @@ export function ProModeSelector() {
               id="saver-mode"
               checked={Boolean(settings?.enableProSaverMode)}
               onCheckedChange={toggleSaverMode}
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="space-y-2">
+              <Label htmlFor="lazy-edits">Turbo Edits</Label>
+              <div className="flex items-center gap-1">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="max-w-72">
+                    Edits files faster.
+                  </TooltipContent>
+                </Tooltip>
+                <p className="text-xs text-muted-foreground max-w-55">
+                  Makes editing files faster and cheaper.
+                </p>
+              </div>
+            </div>
+            <Switch
+              id="lazy-edits"
+              checked={Boolean(settings?.enableProLazyEditsMode)}
+              onCheckedChange={toggleLazyEdits}
             />
           </div>
         </div>

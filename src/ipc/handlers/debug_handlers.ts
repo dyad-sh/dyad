@@ -140,7 +140,7 @@ export function registerDebugHandlers() {
 
         // Extract codebase
         const appPath = getDyadAppPath(app.path);
-        const codebase = await extractCodebase(appPath);
+        const codebase = (await extractCodebase(appPath)).formattedOutput;
 
         return {
           debugInfo,

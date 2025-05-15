@@ -7,6 +7,7 @@ import { DyadDelete } from "./DyadDelete";
 import { DyadAddDependency } from "./DyadAddDependency";
 import { DyadExecuteSql } from "./DyadExecuteSql";
 import { DyadAddIntegration } from "./DyadAddIntegration";
+import { DyadEdit } from "./DyadEdit";
 import { CodeHighlight } from "./CodeHighlight";
 import { useAtomValue } from "jotai";
 import { isStreamingAtom } from "@/atoms/chatAtoms";
@@ -115,6 +116,7 @@ function preprocessUnclosedTags(content: string): {
     "dyad-add-integration",
     "dyad-output",
     "dyad-chat-summary",
+    "dyad-edit",
   ];
 
   let processedContent = content;
@@ -177,6 +179,7 @@ function parseCustomTags(content: string): ContentPiece[] {
     "dyad-add-integration",
     "dyad-output",
     "dyad-chat-summary",
+    "dyad-edit",
   ];
 
   const tagPattern = new RegExp(
@@ -342,6 +345,21 @@ function renderCustomTag(
         >
           {content}
         </DyadAddIntegration>
+      );
+
+    case "dyad-edit":
+      return (
+        <DyadEdit
+          node={{
+            properties: {
+              path: attributes.path || "",
+              description: attributes.description || "",
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadEdit>
       );
 
     case "dyad-output":

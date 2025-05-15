@@ -215,17 +215,16 @@ export function registerChatStreamHandlers() {
       } else {
         // Normal AI processing for non-test prompts
         const settings = readSettings();
-        const { modelClient, backupModelClients } = await getModelClient(
-          settings.selectedModel,
-          settings,
-        );
 
         // Extract codebase information if app is associated with the chat
         let codebaseInfo = "";
+        let files: { path: string; content: string }[] = [];
         if (updatedChat.app) {
           const appPath = getDyadAppPath(updatedChat.app.path);
           try {
-            codebaseInfo = await extractCodebase(appPath);
+            const out = await extractCodebase(appPath);
+            codebaseInfo = out.formattedOutput;
+            files = out.files;
             logger.log(`Extracted codebase information from ${appPath}`);
           } catch (error) {
             logger.error("Error extracting codebase:", error);
@@ -236,6 +235,11 @@ export function registerChatStreamHandlers() {
           codebaseInfo.length,
           "estimated tokens",
           codebaseInfo.length / 4,
+        );
+        const { modelClient, backupModelClients } = await getModelClient(
+          settings.selectedModel,
+          settings,
+          files,
         );
 
         // Prepare message history for the AI

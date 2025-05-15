@@ -14,6 +14,7 @@
   "scripts": {
     "clean": "rm -rf out && rm -rf scaffold/node_modules",
     "start": "electron-forge start",
+    "dev:engine": "DYAD_LOCAL_ENGINE=http://localhost:8080/v1 npm start",
     "package": "npm run clean && electron-forge package",
     "make": "npm run clean && electron-forge make",
     "publish": "npm run clean && electron-forge publish",

@@ -11,6 +11,9 @@ import log from "electron-log";
 import { getLanguageModelProviders } from "../shared/language_model_helpers";
 import { LanguageModelProvider } from "../ipc_types";
 import { llmErrorStore } from "@/main/llm_error_store";
+import { createDyadEngine } from "./llm_engine_provider";
+
+const dyadLocalEngine = process.env.DYAD_LOCAL_ENGINE;
 
 const AUTO_MODELS = [
   {
@@ -32,10 +35,16 @@ export interface ModelClient {
   builtinProviderId?: string;
 }
 
+interface File {
+  path: string;
+  content: string;
+}
+
 const logger = log.scope("getModelClient");
 export async function getModelClient(
   model: LargeLanguageModel,
   settings: UserSettings,
+  files?: File[],
 ): Promise<{
   modelClient: ModelClient;
   backupModelClients: ModelClient[];
@@ -65,8 +74,9 @@ export async function getModelClient(
           {
             provider: autoModel.provider,
             name: autoModel.name,
-          } as LargeLanguageModel,
+          },
           settings,
+          files,
         );
       }
     }
@@ -85,17 +95,33 @@ export async function getModelClient(
 
   // Handle Dyad Pro override
   if (dyadApiKey && settings.enableDyadPro) {
-    // Check if the selected provider supports Dyad Pro (has a gateway prefix)
-    if (providerConfig.gatewayPrefix) {
-      const provider = createOpenAI({
-        apiKey: dyadApiKey,
-        baseURL: "https://llm-gateway.dyad.sh/v1",
-      });
-      logger.info("Using Dyad Pro API key via Gateway");
+    // Check if the selected provider supports Dyad Pro (has a gateway prefix) OR
+    // we're using local engine.
+    if (providerConfig.gatewayPrefix || dyadLocalEngine) {
+      const provider = settings.enableProLazyEditsMode
+        ? createDyadEngine({
+            apiKey: dyadApiKey,
+            baseURL: dyadLocalEngine ?? "https://engine.dyad.sh/v1",
+          })
+        : createOpenAI({
+            apiKey: dyadApiKey,
+            baseURL: "https://llm-gateway.dyad.sh/v1",
+          });
+
+      logger.info(
+        `Using Dyad Pro API key. engine_enabled=${settings.enableProLazyEditsMode}`,
+      );
       // Do not use free variant (for openrouter).
       const modelName = model.name.split(":free")[0];
       const autoModelClient = {
-        model: provider(`${providerConfig.gatewayPrefix}${modelName}`),
+        model: provider(
+          `${providerConfig.gatewayPrefix || ""}${modelName}`,
+          settings.enableProLazyEditsMode
+            ? {
+                files,
+              }
+            : undefined,
+        ),
         builtinProviderId: "auto",
       };
       const googleSettings = settings.providerSettings?.google;
@@ -235,7 +261,7 @@ function getRegularModelClient(
         const provider = createOpenAICompatible({
           name: providerConfig.id,
           baseURL: providerConfig.apiBaseUrl,
-          apiKey: apiKey,
+          apiKey,
         });
         return {
           modelClient: {

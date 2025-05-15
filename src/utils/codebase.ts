@@ -275,13 +275,19 @@ ${content}
 /**
  * Extract and format codebase files as a string to be included in prompts
  * @param appPath - Path to the codebase to extract
- * @returns A string containing formatted file contents
+ * @returns Object containing formatted output and individual files
  */
-export async function extractCodebase(appPath: string): Promise<string> {
+export async function extractCodebase(appPath: string): Promise<{
+  formattedOutput: string;
+  files: { path: string; content: string }[];
+}> {
   try {
     await fsAsync.access(appPath);
   } catch {
-    return `# Error: Directory ${appPath} does not exist or is not accessible`;
+    return {
+      formattedOutput: `# Error: Directory ${appPath} does not exist or is not accessible`,
+      files: [],
+    };
   }
   const startTime = Date.now();
 
@@ -292,15 +298,33 @@ export async function extractCodebase(appPath: string): Promise<string> {
   // This is important for cache-ability.
   const sortedFiles = await sortFilesByModificationTime(files);
 
-  // Format files
-  let output = "";
-  const formatPromises = sortedFiles.map((file) => formatFile(file, appPath));
+  // Format files and collect individual file contents
+  const filesArray: { path: string; content: string }[] = [];
+  const formatPromises = sortedFiles.map(async (file) => {
+    const formattedContent = await formatFile(file, appPath);
+
+    // Get raw content for the files array
+    const relativePath = path.relative(appPath, file);
+    const rawContent = await readFileWithCache(file);
+    if (rawContent !== null) {
+      filesArray.push({
+        path: relativePath,
+        content: rawContent,
+      });
+    }
+
+    return formattedContent;
+  });
+
   const formattedFiles = await Promise.all(formatPromises);
-  output = formattedFiles.join("");
+  const formattedOutput = formattedFiles.join("");
 
   const endTime = Date.now();
   logger.log("extractCodebase: time taken", endTime - startTime);
-  return output;
+  return {
+    formattedOutput,
+    files: filesArray,
+  };
 }
 
 /**

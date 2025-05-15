@@ -12,6 +12,7 @@ import { getLanguageModelProviders } from "../shared/language_model_helpers";
 import { LanguageModelProvider } from "../ipc_types";
 import { llmErrorStore } from "@/main/llm_error_store";
 import { createDyadEngine } from "./llm_engine_provider";
+import { findLanguageModel } from "./findLanguageModel";
 
 const dyadLocalEngine = process.env.DYAD_LOCAL_ENGINE;
 const dyadGatewayUrl = process.env.DYAD_GATEWAY_URL;
@@ -99,7 +100,14 @@ export async function getModelClient(
     // Check if the selected provider supports Dyad Pro (has a gateway prefix) OR
     // we're using local engine.
     if (providerConfig.gatewayPrefix || dyadLocalEngine) {
-      const provider = settings.enableProLazyEditsMode
+      const languageModel = await findLanguageModel(model);
+      // Currently engine is only used for turbo edits.
+      const isEngineEnabled = Boolean(
+        settings.enableProLazyEditsMode &&
+          languageModel?.type === "cloud" &&
+          languageModel?.supportsTurboEdits,
+      );
+      const provider = isEngineEnabled
         ? createDyadEngine({
             apiKey: dyadApiKey,
             baseURL: dyadLocalEngine ?? "https://engine.dyad.sh/v1",
@@ -109,9 +117,7 @@ export async function getModelClient(
             baseURL: dyadGatewayUrl ?? "https://llm-gateway.dyad.sh/v1",
           });
 
-      logger.info(
-        `Using Dyad Pro API key. engine_enabled=${settings.enableProLazyEditsMode}`,
-      );
+      logger.info(`Using Dyad Pro API key. engine_enabled=${isEngineEnabled}`);
       // Do not use free variant (for openrouter).
       const modelName = model.name.split(":free")[0];
       const autoModelClient = {

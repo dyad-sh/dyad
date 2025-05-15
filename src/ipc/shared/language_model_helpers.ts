@@ -113,7 +113,7 @@ export const PROVIDER_TO_ENV_VAR: Record<string, string> = {
   openrouter: "OPENROUTER_API_KEY",
 };
 
-export const PROVIDERS: Record<
+export const CLOUD_PROVIDERS: Record<
   string,
   {
     displayName: string;
@@ -153,6 +153,23 @@ export const PROVIDERS: Record<
   },
 };
 
+const LOCAL_PROVIDERS: Record<
+  string,
+  {
+    displayName: string;
+    hasFreeTier: boolean;
+  }
+> = {
+  ollama: {
+    displayName: "Ollama",
+    hasFreeTier: true,
+  },
+  lmstudio: {
+    displayName: "LM Studio",
+    hasFreeTier: true,
+  },
+};
+
 /**
  * Fetches language model providers from both the database (custom) and hardcoded constants (cloud),
  * merging them with custom providers taking precedence.
@@ -181,11 +198,11 @@ export async function getLanguageModelProviders(): Promise<
 
   // Get hardcoded cloud providers
   const hardcodedProviders: LanguageModelProvider[] = [];
-  for (const providerKey in PROVIDERS) {
-    if (Object.prototype.hasOwnProperty.call(PROVIDERS, providerKey)) {
+  for (const providerKey in CLOUD_PROVIDERS) {
+    if (Object.prototype.hasOwnProperty.call(CLOUD_PROVIDERS, providerKey)) {
       // Ensure providerKey is a key of PROVIDERS
-      const key = providerKey as keyof typeof PROVIDERS;
-      const providerDetails = PROVIDERS[key];
+      const key = providerKey as keyof typeof CLOUD_PROVIDERS;
+      const providerDetails = CLOUD_PROVIDERS[key];
       if (providerDetails) {
         // Ensure providerDetails is not undefined
         hardcodedProviders.push({
@@ -199,6 +216,19 @@ export async function getLanguageModelProviders(): Promise<
           // apiBaseUrl is not directly in PROVIDERS
         });
       }
+    }
+  }
+
+  for (const providerKey in LOCAL_PROVIDERS) {
+    if (Object.prototype.hasOwnProperty.call(LOCAL_PROVIDERS, providerKey)) {
+      const key = providerKey as keyof typeof LOCAL_PROVIDERS;
+      const providerDetails = LOCAL_PROVIDERS[key];
+      hardcodedProviders.push({
+        id: key,
+        name: providerDetails.displayName,
+        hasFreeTier: providerDetails.hasFreeTier,
+        type: "local",
+      });
     }
   }
 

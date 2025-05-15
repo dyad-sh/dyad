@@ -25,6 +25,7 @@ import type {
   LanguageModel,
   CreateCustomLanguageModelProviderParams,
   CreateCustomLanguageModelParams,
+  DoesReleaseNoteExistParams,
 } from "./ipc_types";
 import type { ProposalResult } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
@@ -734,6 +735,12 @@ export class IpcClient {
   // Get system platform (win32, darwin, linux)
   public async getSystemPlatform(): Promise<string> {
     return this.ipcRenderer.invoke("get-system-platform");
+  }
+
+  public async doesReleaseNoteExist(
+    params: DoesReleaseNoteExistParams,
+  ): Promise<{ exists: boolean; url?: string }> {
+    return this.ipcRenderer.invoke("does-release-note-exist", params);
   }
 
   public async getLanguageModelProviders(): Promise<LanguageModelProvider[]> {

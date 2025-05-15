@@ -68,6 +68,7 @@ const validInvokeChannels = [
   "delete-chat",
   "delete-messages",
   "start-chat-stream",
+  "does-release-note-exist",
 ] as const;
 
 // Add valid receive channels

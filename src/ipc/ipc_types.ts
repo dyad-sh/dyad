@@ -181,3 +181,7 @@ export interface CreateCustomLanguageModelParams {
   maxOutputTokens?: number;
   contextWindow?: number;
 }
+
+export interface DoesReleaseNoteExistParams {
+  version: string;
+}

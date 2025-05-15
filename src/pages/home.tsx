@@ -58,17 +58,25 @@ export default function HomePage() {
           lastShownReleaseNotesVersion: appVersion,
         });
 
-        // Check if release notes exist for this version
-        const url = `https://www.dyad.sh/docs/releases/${appVersion}`;
-        const exists = await checkPageExists(url);
-        if (exists) {
-          setReleaseUrl(url + "?hideHeader=true&theme=" + theme);
-          setReleaseNotesOpen(true);
+        try {
+          const result = await IpcClient.getInstance().doesReleaseNoteExist({
+            version: appVersion,
+          });
+
+          if (result.exists && result.url) {
+            setReleaseUrl(result.url + "?hideHeader=true&theme=" + theme);
+            setReleaseNotesOpen(true);
+          }
+        } catch (err) {
+          console.warn(
+            "Unable to check if release note exists for: " + appVersion,
+            err,
+          );
         }
       }
     };
     updateLastVersionLaunched();
-  }, [appVersion, settings, updateSettings]);
+  }, [appVersion, settings, updateSettings, theme]);
 
   // Get the appId from search params
   const appId = search.appId ? Number(search.appId) : null;
@@ -250,16 +258,4 @@ export default function HomePage() {
       </Dialog>
     </div>
   );
-}
-
-function checkPageExists(url: string) {
-  return fetch(url, { mode: "no-cors" })
-    .then(() => {
-      // Promise resolved - resource likely exists
-      return true;
-    })
-    .catch(() => {
-      // Promise rejected - resource likely doesn't exist or network error
-      return false;
-    });
 }

@@ -36,7 +36,11 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
       <div className="flex-1 overflow-y-auto p-4" ref={ref}>
         {messages.length > 0 ? (
           messages.map((message, index) => (
-            <ChatMessage key={index} message={message} />
+            <ChatMessage
+              key={index}
+              message={message}
+              isLastMessage={index === messages.length - 1}
+            />
           ))
         ) : (
           <div className="flex flex-col items-center justify-center h-full max-w-2xl mx-auto">

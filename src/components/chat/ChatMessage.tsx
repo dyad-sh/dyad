@@ -9,9 +9,10 @@ import { CheckCircle, XCircle } from "lucide-react";
 
 interface ChatMessageProps {
   message: Message;
+  isLastMessage: boolean;
 }
 
-const ChatMessage = ({ message }: ChatMessageProps) => {
+const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
   const { isStreaming } = useStreamChat();
   return (
     <div
@@ -26,7 +27,10 @@ const ChatMessage = ({ message }: ChatMessageProps) => {
             : "bg-(--sidebar-accent)"
         }`}
       >
-        {message.role === "assistant" && !message.content && isStreaming ? (
+        {message.role === "assistant" &&
+        !message.content &&
+        isStreaming &&
+        isLastMessage ? (
           <div className="flex h-6 items-center space-x-2 p-2">
             <motion.div
               className="h-3 w-3 rounded-full bg-(--primary) dark:bg-blue-500"
@@ -67,7 +71,16 @@ const ChatMessage = ({ message }: ChatMessageProps) => {
             suppressHydrationWarning
           >
             {message.role === "assistant" ? (
-              <DyadMarkdownParser content={message.content} />
+              <>
+                <DyadMarkdownParser content={message.content} />
+                {isLastMessage && isStreaming && (
+                  <div className="mt-4 ml-4 relative w-5 h-5 animate-spin">
+                    <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-2 h-2 bg-(--primary) dark:bg-blue-500 rounded-full"></div>
+                    <div className="absolute bottom-0 left-0 w-2 h-2 bg-(--primary) dark:bg-blue-500 rounded-full opacity-80"></div>
+                    <div className="absolute bottom-0 right-0 w-2 h-2 bg-(--primary) dark:bg-blue-500 rounded-full opacity-60"></div>
+                  </div>
+                )}
+              </>
             ) : (
               <VanillaMarkdownParser content={message.content} />
             )}

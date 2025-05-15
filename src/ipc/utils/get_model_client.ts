@@ -99,7 +99,9 @@ export async function getModelClient(
   if (dyadApiKey && settings.enableDyadPro) {
     // Check if the selected provider supports Dyad Pro (has a gateway prefix) OR
     // we're using local engine.
-    if (providerConfig.gatewayPrefix || dyadLocalEngine) {
+    // IMPORTANT: some providers like OpenAI have an empty string gateway prefix,
+    // so we do a nullish and not a truthy check here.
+    if (providerConfig.gatewayPrefix != null || dyadLocalEngine) {
       const languageModel = await findLanguageModel(model);
       // Currently engine is only used for turbo edits.
       const isEngineEnabled = Boolean(
@@ -112,7 +114,8 @@ export async function getModelClient(
             apiKey: dyadApiKey,
             baseURL: dyadLocalEngine ?? "https://engine.dyad.sh/v1",
           })
-        : createOpenAI({
+        : createOpenAICompatible({
+            name: "dyad-gateway",
             apiKey: dyadApiKey,
             baseURL: dyadGatewayUrl ?? "https://llm-gateway.dyad.sh/v1",
           });

@@ -51,6 +51,13 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       maxOutputTokens: 64_000,
       contextWindow: 200_000,
     },
+    {
+      name: "claude-3-5-haiku-20241022",
+      displayName: "Claude 3.5 Haiku",
+      description: "Lightweight coder",
+      maxOutputTokens: 8_000,
+      contextWindow: 200_000,
+    },
   ],
   google: [
     // https://ai.google.dev/gemini-api/docs/models#gemini-2.5-pro-preview-03-25

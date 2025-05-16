@@ -55,6 +55,14 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       supportsTurboEdits: true,
     },
     {
+      name: "claude-3-5-sonnet-20241022",
+      displayName: "Claude 3.5 Sonnet",
+      description: "Good coder, excellent at following instructions",
+      maxOutputTokens: 8_000,
+      contextWindow: 200_000,
+      supportsTurboEdits: true,
+    },
+    {
       name: "claude-3-5-haiku-20241022",
       displayName: "Claude 3.5 Haiku",
       description: "Lightweight coder",

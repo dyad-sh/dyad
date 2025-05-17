@@ -1,4 +1,5 @@
 (function () {
+  console.debug("dyad-shim.js loaded via proxy v0.6.0");
   const isInsideIframe = window.parent !== window;
   if (!isInsideIframe) return;
 

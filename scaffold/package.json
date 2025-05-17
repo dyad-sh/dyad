@@ -56,7 +56,6 @@
     "react-router-dom": "^6.26.2",
     "recharts": "^2.12.7",
     "sonner": "^1.5.0",
-    "stacktrace-js": "^2.0.2",
     "tailwind-merge": "^2.5.2",
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^0.9.3",

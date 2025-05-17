@@ -11,8 +11,9 @@ export const previewModeAtom = atom<"preview" | "code">("preview");
 export const selectedVersionIdAtom = atom<string | null>(null);
 export const appOutputAtom = atom<AppOutput[]>([]);
 export const appUrlAtom = atom<
-  { appUrl: string; appId: number } | { appUrl: null; appId: null }
->({ appUrl: null, appId: null });
+  | { appUrl: string; appId: number; originalUrl: string }
+  | { appUrl: null; appId: null; originalUrl: null }
+>({ appUrl: null, appId: null, originalUrl: null });
 export const userSettingsAtom = atom<UserSettings | null>(null);
 
 // Atom for storing allow-listed environment variables

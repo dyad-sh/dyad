@@ -9,6 +9,7 @@ import {
   selectedAppIdAtom,
 } from "@/atoms/appAtoms";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { AppOutput } from "@/ipc/ipc_types";
 
 export function useRunApp() {
   const [loading, setLoading] = useState(false);
@@ -18,6 +19,29 @@ export function useRunApp() {
   const setPreviewPanelKey = useSetAtom(previewPanelKeyAtom);
   const appId = useAtomValue(selectedAppIdAtom);
   const setPreviewErrorMessage = useSetAtom(previewErrorMessageAtom);
+
+  const processProxyServerOutput = (output: AppOutput) => {
+    const matchesProxyServerStart = output.message.includes(
+      "[dyad-proxy-server]started=[",
+    );
+    if (matchesProxyServerStart) {
+      // Extract both proxy URL and original URL using regex
+      const proxyUrlMatch = output.message.match(
+        /\[dyad-proxy-server\]started=\[(.*?)\]/,
+      );
+      const originalUrlMatch = output.message.match(/original=\[(.*?)\]/);
+
+      if (proxyUrlMatch && proxyUrlMatch[1]) {
+        const proxyUrl = proxyUrlMatch[1];
+        const originalUrl = originalUrlMatch && originalUrlMatch[1];
+        setAppUrlObj({
+          appUrl: proxyUrl,
+          appId: appId!,
+          originalUrl: originalUrl!,
+        });
+      }
+    }
+  };
   const runApp = useCallback(async (appId: number) => {
     setLoading(true);
     try {
@@ -26,7 +50,7 @@ export function useRunApp() {
 
       // Clear the URL and add restart message
       if (appUrlObj?.appId !== appId) {
-        setAppUrlObj({ appUrl: null, appId: null });
+        setAppUrlObj({ appUrl: null, appId: null, originalUrl: null });
       }
       setAppOutput((prev) => [
         ...prev,
@@ -41,11 +65,7 @@ export function useRunApp() {
       setApp(app);
       await ipcClient.runApp(appId, (output) => {
         setAppOutput((prev) => [...prev, output]);
-        // Check if the output contains a localhost URL
-        const urlMatch = output.message.match(/(https?:\/\/localhost:\d+\/?)/);
-        if (urlMatch) {
-          setAppUrlObj({ appUrl: urlMatch[1], appId });
-        }
+        processProxyServerOutput(output);
       });
       setPreviewErrorMessage(undefined);
     } catch (error) {
@@ -100,7 +120,7 @@ export function useRunApp() {
         );
 
         // Clear the URL and add restart message
-        setAppUrlObj({ appUrl: null, appId: null });
+        setAppUrlObj({ appUrl: null, appId: null, originalUrl: null });
         setAppOutput((prev) => [
           ...prev,
           {
@@ -124,13 +144,7 @@ export function useRunApp() {
               onHotModuleReload();
               return;
             }
-            // Check if the output contains a localhost URL
-            const urlMatch = output.message.match(
-              /(https?:\/\/localhost:\d+\/?)/,
-            );
-            if (urlMatch) {
-              setAppUrlObj({ appUrl: urlMatch[1], appId });
-            }
+            processProxyServerOutput(output);
           },
           removeNodeModules,
         );

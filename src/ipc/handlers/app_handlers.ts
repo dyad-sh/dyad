@@ -33,9 +33,13 @@ import log from "electron-log";
 import { getSupabaseProjectName } from "../../supabase_admin/supabase_management_client";
 import { createLoggedHandler } from "./safe_handle";
 import { getLanguageModelProviders } from "../shared/language_model_helpers";
+import { startProxy } from "../utils/start_proxy_server";
+import { Worker } from "worker_threads";
 
 const logger = log.scope("app_handlers");
 const handle = createLoggedHandler(logger);
+
+let proxyWorker: Worker | null = null;
 
 // Needed, otherwise electron in MacOS/Linux will not be able
 // to find node/pnpm.
@@ -50,8 +54,13 @@ async function executeApp({
   appId: number;
   event: Electron.IpcMainInvokeEvent;
 }): Promise<void> {
+  if (proxyWorker) {
+    proxyWorker.terminate();
+    proxyWorker = null;
+  }
   await executeAppLocalNode({ appPath, appId, event });
 }
+
 async function executeAppLocalNode({
   appPath,
   appId,
@@ -90,14 +99,27 @@ async function executeAppLocalNode({
   runningApps.set(appId, { process, processId: currentProcessId });
 
   // Log output
-  process.stdout?.on("data", (data) => {
+  process.stdout?.on("data", async (data) => {
     const message = util.stripVTControlCharacters(data.toString());
     logger.debug(`App ${appId} (PID: ${process.pid}) stdout: ${message}`);
+
     event.sender.send("app:output", {
       type: "stdout",
       message,
       appId,
     });
+    const urlMatch = message.match(/(https?:\/\/localhost:\d+\/?)/);
+    if (urlMatch) {
+      proxyWorker = await startProxy(urlMatch[1], {
+        onStarted: (proxyUrl) => {
+          event.sender.send("app:output", {
+            type: "stdout",
+            message: `[dyad-proxy-server]started=[${proxyUrl}] original=[${urlMatch[1]}]`,
+            appId,
+          });
+        },
+      });
+    }
   });
 
   process.stderr?.on("data", (data) => {

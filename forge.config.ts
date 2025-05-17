@@ -22,6 +22,9 @@ const ignore = (file: string) => {
   if (file.startsWith("/scaffold")) {
     return false;
   }
+  if (file.startsWith("/worker")) {
+    return false;
+  }
   if (file.startsWith("/node_modules/better-sqlite3")) {
     return false;
   }

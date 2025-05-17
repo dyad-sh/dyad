@@ -6,7 +6,7 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * Generates a cute app name like "blue-fox" or "jumping-zebra"
+ * Generates a cute app name.
  */
 export function generateCuteAppName(): string {
   const adjectives = [
@@ -144,9 +144,64 @@ export function generateCuteAppName(): string {
     "kraken",
   ];
 
+  const verbs = [
+    "run",
+    "hop",
+    "dash",
+    "zoom",
+    "skip",
+    "jump",
+    "glow",
+    "play",
+    "chirp",
+    "buzz",
+    "flip",
+    "flit",
+    "soar",
+    "dive",
+    "swim",
+    "climb",
+    "sprint",
+    "wiggle",
+    "twirl",
+    "pounce",
+    "bop",
+    "spin",
+    "hum",
+    "roll",
+    "blink",
+    "skid",
+    "kick",
+    "drift",
+    "bloom",
+    "burst",
+    "slide",
+    "bounce",
+    "crawl",
+    "sniff",
+    "peek",
+    "scurry",
+    "nudge",
+    "snap",
+    "swoop",
+    "roam",
+    "trot",
+    "dart",
+    "yawn",
+    "snore",
+    "hug",
+    "nap",
+    "chase",
+    "rest",
+    "wag",
+    "bob",
+    "beam",
+    "cheer",
+  ];
+
   const randomAdjective =
     adjectives[Math.floor(Math.random() * adjectives.length)];
   const randomAnimal = animals[Math.floor(Math.random() * animals.length)];
-
-  return `${randomAdjective}-${randomAnimal}`;
+  const randomVerb = verbs[Math.floor(Math.random() * verbs.length)];
+  return `${randomAdjective}-${randomAnimal}-${randomVerb}`;
 }

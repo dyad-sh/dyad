@@ -106,7 +106,7 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
 // Preview iframe component
 export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
-  const { appUrl } = useAtomValue(appUrlAtom);
+  const { appUrl, originalUrl } = useAtomValue(appUrlAtom);
   const setAppOutput = useSetAtom(appOutputAtom);
   // State to trigger iframe reload
   const [reloadKey, setReloadKey] = useState(0);
@@ -429,8 +429,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         <div className="flex space-x-1">
           <button
             onClick={() => {
-              if (appUrl) {
-                IpcClient.getInstance().openExternalUrl(appUrl);
+              if (originalUrl) {
+                IpcClient.getInstance().openExternalUrl(originalUrl);
               }
             }}
             className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"

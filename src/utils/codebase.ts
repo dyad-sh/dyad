@@ -223,6 +223,21 @@ async function collectFiles(dir: string, baseDir: string): Promise<string[]> {
   return files;
 }
 
+// Skip large configuration files or generated code (just include the path)
+function isOmittedFile(relativePath: string): boolean {
+  return (
+    relativePath.includes(path.join("src", "components", "ui")) ||
+    relativePath.includes("eslint.config") ||
+    relativePath.includes("tsconfig.json") ||
+    relativePath.includes("package-lock.json") ||
+    // These should already be excluded based on file type, but
+    // just in case, we'll redact the contents here.
+    relativePath.includes(".env")
+  );
+}
+
+const OMITTED_FILE_CONTENT = "// Contents omitted for brevity";
+
 /**
  * Format a file for inclusion in the codebase extract
  */
@@ -230,18 +245,9 @@ async function formatFile(filePath: string, baseDir: string): Promise<string> {
   try {
     const relativePath = path.relative(baseDir, filePath);
 
-    // Skip large configuration files or generated code (just include the path)
-    if (
-      relativePath.includes(path.join("src", "components", "ui")) ||
-      relativePath.includes("eslint.config") ||
-      relativePath.includes("tsconfig.json") ||
-      relativePath.includes("package-lock.json") ||
-      // These should already be excluded based on file type, but
-      // just in case, we'll redact the contents here.
-      relativePath.includes(".env")
-    ) {
+    if (isOmittedFile(relativePath)) {
       return `<dyad-file path="${relativePath}">
-// Contents omitted for brevity
+${OMITTED_FILE_CONTENT}
 </dyad-file>
 
 `;
@@ -305,11 +311,13 @@ export async function extractCodebase(appPath: string): Promise<{
 
     // Get raw content for the files array
     const relativePath = path.relative(appPath, file);
-    const rawContent = await readFileWithCache(file);
-    if (rawContent !== null) {
+    const fileContent = isOmittedFile(relativePath)
+      ? OMITTED_FILE_CONTENT
+      : await readFileWithCache(file);
+    if (fileContent !== null) {
       filesArray.push({
         path: relativePath,
-        content: rawContent,
+        content: fileContent,
       });
     }
 

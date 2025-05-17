@@ -27,6 +27,12 @@ export function ProModeSelector() {
     });
   };
 
+  const toggleSmartContext = () => {
+    updateSettings({
+      enableProSmartFilesContextMode: !settings?.enableProSmartFilesContextMode,
+    });
+  };
+
   if (!settings?.enableDyadPro) {
     return null;
   }
@@ -103,6 +109,30 @@ export function ProModeSelector() {
               id="lazy-edits"
               checked={Boolean(settings?.enableProLazyEditsMode)}
               onCheckedChange={toggleLazyEdits}
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="space-y-2">
+              <Label htmlFor="smart-context">Smart Context</Label>
+              <div className="flex items-center gap-1">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="max-w-72">
+                    Improve efficiency and save credits working on large
+                    codebases.
+                  </TooltipContent>
+                </Tooltip>
+                <p className="text-xs text-muted-foreground max-w-55">
+                  Automatically detects the most relevant files for your chat
+                </p>
+              </div>
+            </div>
+            <Switch
+              id="smart-context"
+              checked={Boolean(settings?.enableProSmartFilesContextMode)}
+              onCheckedChange={toggleSmartContext}
             />
           </div>
         </div>

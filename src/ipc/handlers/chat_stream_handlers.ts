@@ -236,11 +236,8 @@ export function registerChatStreamHandlers() {
           "estimated tokens",
           codebaseInfo.length / 4,
         );
-        const { modelClient, backupModelClients } = await getModelClient(
-          settings.selectedModel,
-          settings,
-          files,
-        );
+        const { modelClient, backupModelClients, isEngineEnabled } =
+          await getModelClient(settings.selectedModel, settings, files);
 
         // Prepare message history for the AI
         const messageHistory = updatedChat.messages.map((message) => ({
@@ -328,15 +325,22 @@ This conversation includes one or more image attachments. When the user uploads 
 `;
         }
 
+        const codebasePrefix = isEngineEnabled
+          ? // No codebase prefix if engine is set, we will take of it there.
+            []
+          : ([
+              {
+                role: "user",
+                content: "This is my codebase. " + codebaseInfo,
+              },
+              {
+                role: "assistant",
+                content: "OK, got it. I'm ready to help",
+              },
+            ] as const);
+
         let chatMessages: CoreMessage[] = [
-          {
-            role: "user",
-            content: "This is my codebase. " + codebaseInfo,
-          },
-          {
-            role: "assistant",
-            content: "OK, got it. I'm ready to help",
-          },
+          ...codebasePrefix,
           ...limitedMessageHistory.map((msg) => ({
             role: msg.role as "user" | "assistant" | "system",
             content: msg.content,

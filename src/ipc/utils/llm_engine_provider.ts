@@ -41,6 +41,11 @@ Custom fetch implementation. You can use it as a middleware to intercept request
 or to provide a custom fetch implementation for e.g. testing.
 */
   fetch?: FetchFunction;
+
+  dyadOptions: {
+    enableLazyEdits?: boolean;
+    enableSmartFilesContext?: boolean;
+  };
 }
 
 export interface DyadEngineProvider {
@@ -62,7 +67,7 @@ Creates a chat model for text generation.
 }
 
 export function createDyadEngine(
-  options: ExampleProviderSettings = {},
+  options: ExampleProviderSettings,
 ): DyadEngineProvider {
   const baseURL = withoutTrailingSlash(
     options.baseURL ?? "https://api.example.com/v1",
@@ -124,7 +129,9 @@ export function createDyadEngine(
               if (files?.length) {
                 parsedBody.dyad_options = {
                   files,
-                  enable_lazy_edits: true,
+                  enable_lazy_edits: options.dyadOptions.enableLazyEdits,
+                  enable_smart_files_context:
+                    options.dyadOptions.enableSmartFilesContext,
                 };
               }
 

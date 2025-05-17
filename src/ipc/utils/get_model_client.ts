@@ -50,6 +50,7 @@ export async function getModelClient(
 ): Promise<{
   modelClient: ModelClient;
   backupModelClients: ModelClient[];
+  isEngineEnabled?: boolean;
 }> {
   const allProviders = await getLanguageModelProviders();
 
@@ -103,9 +104,12 @@ export async function getModelClient(
     // so we do a nullish and not a truthy check here.
     if (providerConfig.gatewayPrefix != null || dyadLocalEngine) {
       const languageModel = await findLanguageModel(model);
+      const engineProMode =
+        settings.enableProSmartFilesContextMode ||
+        settings.enableProLazyEditsMode;
       // Currently engine is only used for turbo edits.
       const isEngineEnabled = Boolean(
-        settings.enableProLazyEditsMode &&
+        engineProMode &&
           languageModel?.type === "cloud" &&
           languageModel?.supportsTurboEdits,
       );
@@ -113,6 +117,10 @@ export async function getModelClient(
         ? createDyadEngine({
             apiKey: dyadApiKey,
             baseURL: dyadLocalEngine ?? "https://engine.dyad.sh/v1",
+            dyadOptions: {
+              enableLazyEdits: settings.enableProLazyEditsMode,
+              enableSmartFilesContext: settings.enableProSmartFilesContextMode,
+            },
           })
         : createOpenAICompatible({
             name: "dyad-gateway",
@@ -126,7 +134,7 @@ export async function getModelClient(
       const autoModelClient = {
         model: provider(
           `${providerConfig.gatewayPrefix || ""}${modelName}`,
-          settings.enableProLazyEditsMode
+          engineProMode
             ? {
                 files,
               }
@@ -161,6 +169,7 @@ export async function getModelClient(
             providerConfig,
           ).modelClient,
           backupModelClients: [autoModelClient],
+          isEngineEnabled,
         };
       } else {
         return {

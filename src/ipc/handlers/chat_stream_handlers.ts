@@ -3,7 +3,10 @@ import { CoreMessage, TextPart, ImagePart } from "ai";
 import { db } from "../../db";
 import { chats, messages } from "../../db/schema";
 import { and, eq, isNull } from "drizzle-orm";
-import { SYSTEM_PROMPT } from "../../prompts/system_prompt";
+import {
+  constructSystemPrompt,
+  readAiRules,
+} from "../../prompts/system_prompt";
 import {
   SUPABASE_AVAILABLE_SYSTEM_PROMPT,
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
@@ -283,7 +286,9 @@ export function registerChatStreamHandlers() {
           );
         }
 
-        let systemPrompt = SYSTEM_PROMPT;
+        let systemPrompt = constructSystemPrompt({
+          aiRules: await readAiRules(getDyadAppPath(updatedChat.app.path)),
+        });
         if (
           updatedChat.app?.supabaseProjectId &&
           settings.supabase?.accessToken?.value

@@ -297,7 +297,10 @@ const getProposalHandler = async (
           });
         }
       }
-      if (actions.length > 0 && latestAssistantMessage) {
+      if (latestAssistantMessage) {
+        actions.push({
+          id: "keep-going",
+        });
         return {
           proposal: {
             type: "action-proposal",

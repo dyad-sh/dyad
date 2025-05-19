@@ -362,10 +362,39 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   );
 }
 
+function SuggestionButton({
+  children,
+  onClick,
+  tooltipText,
+}: {
+  onClick: () => void;
+  children: React.ReactNode;
+  tooltipText: string;
+}) {
+  const { isStreaming } = useStreamChat();
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            disabled={isStreaming}
+            variant="outline"
+            size="sm"
+            onClick={onClick}
+          >
+            {children}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{tooltipText}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 function SummarizeInNewChatButton() {
   const chatId = useAtomValue(selectedChatIdAtom);
   const appId = useAtomValue(selectedAppIdAtom);
-  const { streamMessage, isStreaming } = useStreamChat();
+  const { streamMessage } = useStreamChat();
   const navigate = useNavigate();
   const onClick = async () => {
     if (!appId) {
@@ -385,106 +414,71 @@ function SummarizeInNewChatButton() {
     }
   };
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            disabled={isStreaming}
-            variant="outline"
-            size="sm"
-            onClick={onClick}
-          >
-            Summarize to new chat
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>
-          <p>Creating a new chat makes the AI more focused and efficient</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <SuggestionButton
+      onClick={onClick}
+      tooltipText="Creating a new chat makes the AI more focused and efficient"
+    >
+      Summarize to new chat
+    </SuggestionButton>
   );
 }
 
 function RefactorFileButton({ path }: { path: string }) {
   const chatId = useAtomValue(selectedChatIdAtom);
-  const { streamMessage, isStreaming } = useStreamChat();
+  const { streamMessage } = useStreamChat();
+  const onClick = () => {
+    if (!chatId) {
+      console.error("No chat id found");
+      return;
+    }
+    streamMessage({
+      prompt: `Refactor ${path} and make it more modular`,
+      chatId,
+      redo: false,
+    });
+  };
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            disabled={isStreaming}
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              if (!chatId) {
-                console.error("No chat id found");
-                return;
-              }
-              streamMessage({
-                prompt: `Refactor ${path} and make it more modular`,
-                chatId,
-                redo: false,
-              });
-            }}
-          >
-            <span className="max-w-[180px] overflow-hidden whitespace-nowrap text-ellipsis">
-              Refactor {path.split("/").slice(-2).join("/")}
-            </span>
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>
-          <p>Refactor {path} to improve maintainability</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <SuggestionButton
+      onClick={onClick}
+      tooltipText="Refactor the file to improve maintainability"
+    >
+      <span className="max-w-[180px] overflow-hidden whitespace-nowrap text-ellipsis">
+        Refactor {path.split("/").slice(-2).join("/")}
+      </span>
+    </SuggestionButton>
   );
 }
 
 function WriteCodeProperlyButton() {
   const chatId = useAtomValue(selectedChatIdAtom);
-  const { streamMessage, isStreaming } = useStreamChat();
+  const { streamMessage } = useStreamChat();
+  const onClick = () => {
+    if (!chatId) {
+      console.error("No chat id found");
+      return;
+    }
+    streamMessage({
+      prompt: `Write the code in the previous message in the correct format using \`<dyad-write>\` tags!`,
+      chatId,
+      redo: false,
+    });
+  };
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            disabled={isStreaming}
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              if (!chatId) {
-                console.error("No chat id found");
-                return;
-              }
-              streamMessage({
-                prompt: `Write the code in the previous message in the correct format using \`<dyad-write>\` tags!`,
-                chatId,
-                redo: false,
-              });
-            }}
-          >
-            Write code properly
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>
-          <p>
-            Write code properly (useful when AI generates the code in the wrong
-            format)
-          </p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <SuggestionButton
+      onClick={onClick}
+      tooltipText="Write code properly (useful when AI generates the code in the wrong format)"
+    >
+      Write code properly
+    </SuggestionButton>
   );
 }
 
 function RebuildButton() {
   const { restartApp } = useRunApp();
-  const { isStreaming } = useStreamChat();
   const posthog = usePostHog();
   const selectedAppId = useAtomValue(selectedAppIdAtom);
 
-  const handleRebuild = useCallback(async () => {
+  const onClick = useCallback(async () => {
     if (!selectedAppId) return;
 
     posthog.capture("action:rebuild");
@@ -492,33 +486,18 @@ function RebuildButton() {
   }, [selectedAppId, posthog, restartApp]);
 
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            disabled={isStreaming}
-            variant="outline"
-            size="sm"
-            onClick={handleRebuild}
-          >
-            Rebuild app
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>
-          <p>Rebuild the application</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <SuggestionButton onClick={onClick} tooltipText="Rebuild the application">
+      Rebuild app
+    </SuggestionButton>
   );
 }
 
 function RestartButton() {
-  const { isStreaming } = useStreamChat();
   const { restartApp } = useRunApp();
   const posthog = usePostHog();
   const selectedAppId = useAtomValue(selectedAppIdAtom);
 
-  const handleRestart = useCallback(async () => {
+  const onClick = useCallback(async () => {
     if (!selectedAppId) return;
 
     posthog.capture("action:restart");
@@ -526,54 +505,51 @@ function RestartButton() {
   }, [selectedAppId, posthog, restartApp]);
 
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            disabled={isStreaming}
-            variant="outline"
-            size="sm"
-            onClick={handleRestart}
-          >
-            Restart app
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>
-          <p>Restart the development server</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <SuggestionButton
+      onClick={onClick}
+      tooltipText="Restart the development server"
+    >
+      Restart app
+    </SuggestionButton>
   );
 }
 
 function RefreshButton() {
   const { refreshAppIframe } = useRunApp();
-  const { isStreaming } = useStreamChat();
   const posthog = usePostHog();
 
-  const handleRefresh = useCallback(() => {
+  const onClick = useCallback(() => {
     posthog.capture("action:refresh");
     refreshAppIframe();
   }, [posthog, refreshAppIframe]);
 
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            disabled={isStreaming}
-            variant="outline"
-            size="sm"
-            onClick={handleRefresh}
-          >
-            Refresh app
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>
-          <p>Refresh the application preview</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <SuggestionButton
+      onClick={onClick}
+      tooltipText="Refresh the application preview"
+    >
+      Refresh app
+    </SuggestionButton>
+  );
+}
+
+function KeepGoingButton() {
+  const { streamMessage } = useStreamChat();
+  const chatId = useAtomValue(selectedChatIdAtom);
+  const onClick = () => {
+    if (!chatId) {
+      console.error("No chat id found");
+      return;
+    }
+    streamMessage({
+      prompt: "Keep going",
+      chatId,
+    });
+  };
+  return (
+    <SuggestionButton onClick={onClick} tooltipText="Keep going">
+      Keep going
+    </SuggestionButton>
   );
 }
 
@@ -591,6 +567,8 @@ function mapActionToButton(action: SuggestedAction) {
       return <RestartButton />;
     case "refresh":
       return <RefreshButton />;
+    case "keep-going":
+      return <KeepGoingButton />;
     default:
       console.error(`Unsupported action: ${action.id}`);
       return (
@@ -603,8 +581,8 @@ function mapActionToButton(action: SuggestedAction) {
 
 function ActionProposalActions({ proposal }: { proposal: ActionProposal }) {
   return (
-    <div className="border-b border-border p-2 flex items-center justify-between">
-      <div className="flex items-center space-x-2">
+    <div className="border-b border-border p-2 pb-0 flex items-center justify-between">
+      <div className="flex items-center space-x-2 overflow-x-auto pb-2">
         {proposal.actions.map((action) => mapActionToButton(action))}
       </div>
     </div>

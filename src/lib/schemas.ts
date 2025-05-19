@@ -166,7 +166,8 @@ export type SuggestedAction =
   | WriteCodeProperlyAction
   | RebuildAction
   | RestartAction
-  | RefreshAction;
+  | RefreshAction
+  | KeepGoingAction;
 
 export interface RestartAppAction {
   id: "restart-app";
@@ -195,6 +196,10 @@ export interface RestartAction {
 
 export interface RefreshAction {
   id: "refresh";
+}
+
+export interface KeepGoingAction {
+  id: "keep-going";
 }
 
 export interface ActionProposal {

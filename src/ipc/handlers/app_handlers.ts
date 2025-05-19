@@ -12,10 +12,7 @@ import { promises as fsPromises } from "node:fs";
 
 // Import our utility modules
 import { withLock } from "../utils/lock_utils";
-import {
-  copyDirectoryRecursive,
-  getFilesRecursively,
-} from "../utils/file_utils";
+import { getFilesRecursively } from "../utils/file_utils";
 import {
   runningApps,
   processCounter,
@@ -192,10 +189,15 @@ export function registerAppHandlers() {
 
       // Start async operations in background
       try {
-        // Copy scaffold asynchronously
-        await copyDirectoryRecursive(
+        await fsPromises.cp(
           path.join(__dirname, "..", "..", "scaffold"),
           fullAppPath,
+          {
+            recursive: true,
+            // Scaffold should *not* have node_modules anyways, but
+            // just in case, we filter it out.
+            filter: (source) => !source.includes("node_modules"),
+          },
         );
         // Initialize git repo and create first commit
         await git.init({
@@ -666,14 +668,32 @@ export function registerAppHandlers() {
               recursive: true,
             });
 
-            // Move the files
-            await fsPromises.rename(oldAppPath, newAppPath);
+            // Copy the directory without node_modules
+            await fsPromises.cp(oldAppPath, newAppPath, {
+              recursive: true,
+              filter: (source) => !source.includes("node_modules"),
+            });
           } catch (error: any) {
             logger.error(
               `Error moving app files from ${oldAppPath} to ${newAppPath}:`,
               error,
             );
             throw new Error(`Failed to move app files: ${error.message}`);
+          }
+
+          try {
+            // Delete the old directory
+            await fsPromises.rm(oldAppPath, { recursive: true, force: true });
+          } catch (error: any) {
+            // Why is this just a warning? This happens quite often on Windows
+            // because it has an aggressive file lock.
+            //
+            // Not deleting the old directory is annoying, but not a big deal
+            // since the user can do it themselves if they need to.
+            logger.warn(
+              `Error deleting old app directory ${oldAppPath}:`,
+              error,
+            );
           }
         }
 
@@ -693,7 +713,13 @@ export function registerAppHandlers() {
           // Attempt to rollback the file move
           if (newAppPath !== oldAppPath) {
             try {
-              await fsPromises.rename(newAppPath, oldAppPath);
+              // Copy back from new to old
+              await fsPromises.cp(newAppPath, oldAppPath, {
+                recursive: true,
+                filter: (source) => !source.includes("node_modules"),
+              });
+              // Delete the new directory
+              await fsPromises.rm(newAppPath, { recursive: true, force: true });
             } catch (rollbackError) {
               logger.error(
                 `Failed to rollback file move during rename error:`,

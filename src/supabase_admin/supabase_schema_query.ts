@@ -77,7 +77,7 @@ export const SUPABASE_SCHEMA_QUERY = `
             FROM pg_proc p
             LEFT JOIN pg_description d ON p.oid = d.objoid
             LEFT JOIN pg_language l ON p.prolang = l.oid
-            WHERE p.pronamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public')
+            WHERE p.pronamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public') AND p.prokind = 'f' -- 'f' = normal function (otherwise source code fetch fails)
         ),
         triggers_result AS (
             SELECT

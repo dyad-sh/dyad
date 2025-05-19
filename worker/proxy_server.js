@@ -181,6 +181,10 @@ const server = http.createServer((clientReq, clientRes) => {
       delete headers.referer;
     }
   }
+  if (needsInjection) {
+    // Request uncompressed content from upstream
+    delete headers["accept-encoding"];
+  }
 
   if (headers["if-none-match"] && needsInjection(target.pathname))
     delete headers["if-none-match"];
@@ -213,6 +217,11 @@ const server = http.createServer((clientReq, clientRes) => {
           ...upRes.headers,
           "content-length": Buffer.byteLength(patched),
         };
+        // If we injected content, it's no longer encoded in the original way
+        delete hdrs["content-encoding"];
+        // Also, remove ETag as content has changed
+        delete hdrs["etag"];
+
         clientRes.writeHead(upRes.statusCode, hdrs);
         clientRes.end(patched);
       } catch (e) {

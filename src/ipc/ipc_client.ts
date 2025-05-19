@@ -29,6 +29,7 @@ import type {
   ApproveProposalResult,
   ImportAppResult,
   ImportAppParams,
+  RenameBranchParams,
 } from "./ipc_types";
 import type { ProposalResult } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
@@ -815,5 +816,9 @@ export class IpcClient {
     appName: string;
   }): Promise<{ exists: boolean }> {
     return this.ipcRenderer.invoke("check-app-name", params);
+  }
+
+  public async renameBranch(params: RenameBranchParams): Promise<void> {
+    await this.ipcRenderer.invoke("rename-branch", params);
   }
 }

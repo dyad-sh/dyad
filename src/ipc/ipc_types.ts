@@ -201,3 +201,9 @@ export interface ImportAppResult {
   appId: number;
   chatId: number;
 }
+
+export interface RenameBranchParams {
+  appId: number;
+  oldBranchName: string;
+  newBranchName: string;
+}

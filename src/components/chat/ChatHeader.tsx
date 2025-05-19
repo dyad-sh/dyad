@@ -20,11 +20,12 @@ import { IpcClient } from "@/ipc/ipc_client";
 import { useRouter } from "@tanstack/react-router";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useChats } from "@/hooks/useChats";
-import { showError } from "@/lib/toast";
+import { showError, showSuccess } from "@/lib/toast";
 import { useEffect } from "react";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { useCurrentBranch } from "@/hooks/useCurrentBranch";
 import { useCheckoutVersion } from "@/hooks/useCheckoutVersion";
+import { useRenameBranch } from "@/hooks/useRenameBranch";
 
 interface ChatHeaderProps {
   isVersionPaneOpen: boolean;
@@ -53,6 +54,7 @@ export function ChatHeader({
   } = useCurrentBranch(appId);
 
   const { checkoutVersion, isCheckingOutVersion } = useCheckoutVersion();
+  const { renameBranch, isRenamingBranch } = useRenameBranch();
 
   useEffect(() => {
     if (appId) {
@@ -63,6 +65,14 @@ export function ChatHeader({
   const handleCheckoutMainBranch = async () => {
     if (!appId) return;
     await checkoutVersion({ appId, versionId: "main" });
+  };
+
+  const handleRenameMasterToMain = async () => {
+    if (!appId) return;
+    // If this throws, it will automatically show an error toast
+    await renameBranch({ oldBranchName: "master", newBranchName: "main" });
+
+    showSuccess("Master branch renamed to main");
   };
 
   const handleNewChat = async () => {
@@ -127,14 +137,27 @@ export function ChatHeader({
               {branchInfoLoading && <span>Checking branch...</span>}
             </span>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleCheckoutMainBranch}
-            disabled={isCheckingOutVersion || branchInfoLoading}
-          >
-            {isCheckingOutVersion ? "Checking out..." : "Switch to main branch"}
-          </Button>
+          {currentBranchName === "master" ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRenameMasterToMain}
+              disabled={isRenamingBranch || branchInfoLoading}
+            >
+              {isRenamingBranch ? "Renaming..." : "Rename master to main"}
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCheckoutMainBranch}
+              disabled={isCheckingOutVersion || branchInfoLoading}
+            >
+              {isCheckingOutVersion
+                ? "Checking out..."
+                : "Switch to main branch"}
+            </Button>
+          )}
         </div>
       )}
 

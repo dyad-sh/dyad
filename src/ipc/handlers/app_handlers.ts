@@ -2,7 +2,7 @@ import { ipcMain } from "electron";
 import { db, getDatabasePath } from "../../db";
 import { apps, chats } from "../../db/schema";
 import { desc, eq } from "drizzle-orm";
-import type { App, CreateAppParams } from "../ipc_types";
+import type { App, CreateAppParams, RenameBranchParams } from "../ipc_types";
 import fs from "node:fs";
 import path from "node:path";
 import { getDyadAppPath, getUserDataPath } from "../../paths/paths";
@@ -766,5 +766,56 @@ export function registerAppHandlers() {
     const packageJsonPath = path.resolve(__dirname, "..", "..", "package.json");
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
     return { version: packageJson.version };
+  });
+
+  handle("rename-branch", async (_, params: RenameBranchParams) => {
+    const { appId, oldBranchName, newBranchName } = params;
+    const app = await db.query.apps.findFirst({
+      where: eq(apps.id, appId),
+    });
+
+    if (!app) {
+      throw new Error("App not found");
+    }
+
+    const appPath = getDyadAppPath(app.path);
+
+    return withLock(appId, async () => {
+      try {
+        // Check if the old branch exists
+        const branches = await git.listBranches({ fs, dir: appPath });
+        if (!branches.includes(oldBranchName)) {
+          throw new Error(`Branch '${oldBranchName}' not found.`);
+        }
+
+        // Check if the new branch name already exists
+        if (branches.includes(newBranchName)) {
+          // If newBranchName is 'main' and oldBranchName is 'master',
+          // and 'main' already exists, we might want to allow this if 'main' is the current branch
+          // and just switch to it, or delete 'master'.
+          // For now, let's keep it simple and throw an error.
+          throw new Error(
+            `Branch '${newBranchName}' already exists. Cannot rename.`,
+          );
+        }
+
+        await git.renameBranch({
+          fs: fs,
+          dir: appPath,
+          oldref: oldBranchName,
+          ref: newBranchName,
+        });
+        logger.info(
+          `Branch renamed from '${oldBranchName}' to '${newBranchName}' for app ${appId}`,
+        );
+      } catch (error: any) {
+        logger.error(
+          `Failed to rename branch for app ${appId}: ${error.message}`,
+        );
+        throw new Error(
+          `Failed to rename branch '${oldBranchName}' to '${newBranchName}': ${error.message}`,
+        );
+      }
+    });
   });
 }

@@ -73,6 +73,7 @@ const validInvokeChannels = [
   "check-ai-rules",
   "select-app-folder",
   "check-app-name",
+  "rename-branch",
 ] as const;
 
 // Add valid receive channels

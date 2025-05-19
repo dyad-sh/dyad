@@ -30,6 +30,8 @@ import { extractCodebase } from "../../utils/codebase";
 import { getDyadAppPath } from "../../paths/paths";
 import { withLock } from "../utils/lock_utils";
 import { createLoggedHandler } from "./safe_handle";
+import { ApproveProposalResult } from "../ipc_types";
+
 const logger = log.scope("proposal_handlers");
 const handle = createLoggedHandler(logger);
 // Cache for codebase token counts
@@ -317,9 +319,7 @@ const getProposalHandler = async (
 const approveProposalHandler = async (
   _event: IpcMainInvokeEvent,
   { chatId, messageId }: { chatId: number; messageId: number },
-): Promise<{
-  uncommittedFiles?: string[];
-}> => {
+): Promise<ApproveProposalResult> => {
   // 1. Fetch the specific assistant message
   const messageToApprove = await db.query.messages.findFirst({
     where: and(
@@ -355,7 +355,10 @@ const approveProposalHandler = async (
     );
   }
 
-  return { uncommittedFiles: processResult.uncommittedFiles };
+  return {
+    extraFiles: processResult.extraFiles,
+    extraFilesError: processResult.extraFilesError,
+  };
 };
 
 // Handler to reject a proposal (just update message state)

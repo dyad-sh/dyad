@@ -24,7 +24,8 @@ export interface ChatStreamParams {
 export interface ChatResponseEnd {
   chatId: number;
   updatedFiles: boolean;
-  uncommittedFiles?: string[];
+  extraFiles?: string[];
+  extraFilesError?: string;
 }
 
 export interface CreateAppParams {
@@ -184,4 +185,9 @@ export interface CreateCustomLanguageModelParams {
 
 export interface DoesReleaseNoteExistParams {
   version: string;
+}
+
+export interface ApproveProposalResult {
+  extraFiles?: string[];
+  extraFilesError?: string;
 }

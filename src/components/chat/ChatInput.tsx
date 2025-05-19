@@ -58,7 +58,7 @@ import { useVersions } from "@/hooks/useVersions";
 import { useAttachments } from "@/hooks/useAttachments";
 import { AttachmentsList } from "./AttachmentsList";
 import { DragDropOverlay } from "./DragDropOverlay";
-import { showError, showUncommittedFilesWarning } from "@/lib/toast";
+import { showError, showExtraFilesToast } from "@/lib/toast";
 import { ChatInputControls } from "../ChatInputControls";
 const showTokenBarAtom = atom(false);
 
@@ -183,8 +183,11 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         chatId,
         messageId,
       });
-      if (result.uncommittedFiles) {
-        showUncommittedFilesWarning(result.uncommittedFiles);
+      if (result.extraFiles) {
+        showExtraFilesToast({
+          files: result.extraFiles,
+          error: result.extraFilesError,
+        });
       }
     } catch (err) {
       console.error("Error approving proposal:", err);

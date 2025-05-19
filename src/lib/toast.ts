@@ -58,11 +58,23 @@ export const showLoading = <T>(
   });
 };
 
-export const showUncommittedFilesWarning = (files: string[]) => {
-  showWarning(
-    `Some changed files were not committed. Please use git to manually commit them.
+export const showExtraFilesToast = ({
+  files,
+  error,
+}: {
+  files: string[];
+  error?: string;
+}) => {
+  if (error) {
+    showError(
+      `Error committing files ${files.join(", ")} changed outside of Dyad: ${error}`,
+    );
+  } else {
+    showWarning(
+      `Files changed outside of Dyad have automatically been committed:
     \n\n${files.join("\n")}`,
-  );
+    );
+  }
 };
 
 // Re-export for direct use

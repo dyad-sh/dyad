@@ -26,6 +26,7 @@ import type {
   CreateCustomLanguageModelProviderParams,
   CreateCustomLanguageModelParams,
   DoesReleaseNoteExistParams,
+  ApproveProposalResult,
 } from "./ipc_types";
 import type { ProposalResult } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
@@ -601,9 +602,7 @@ export class IpcClient {
   }: {
     chatId: number;
     messageId: number;
-  }): Promise<{
-    uncommittedFiles?: string[];
-  }> {
+  }): Promise<ApproveProposalResult> {
     return this.ipcRenderer.invoke("approve-proposal", {
       chatId,
       messageId,

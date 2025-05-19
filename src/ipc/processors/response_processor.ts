@@ -178,7 +178,8 @@ export async function processFullResponseActions(
 ): Promise<{
   updatedFiles?: boolean;
   error?: string;
-  uncommittedFiles?: string[];
+  extraFiles?: string[];
+  extraFilesError?: string;
 }> {
   logger.log("processFullResponseActions for chatId", chatId);
   // Get the app associated with the chat
@@ -413,6 +414,10 @@ export async function processFullResponseActions(
       deletedFiles.length > 0 ||
       dyadAddDependencyPackages.length > 0 ||
       dyadExecuteSqlQueries.length > 0;
+
+    let uncommittedFiles: string[] = [];
+    let extraFilesError: string | undefined;
+
     if (hasChanges) {
       // Stage all written files
       for (const file of writtenFiles) {
@@ -438,16 +443,53 @@ export async function processFullResponseActions(
       if (dyadExecuteSqlQueries.length > 0)
         changes.push(`executed ${dyadExecuteSqlQueries.length} SQL queries`);
 
+      let message = chatSummary
+        ? `[dyad] ${chatSummary} - ${changes.join(", ")}`
+        : `[dyad] ${changes.join(", ")}`;
       // Use chat summary, if provided, or default for commit message
-      const commitHash = await git.commit({
+      let commitHash = await git.commit({
         fs,
         dir: appPath,
-        message: chatSummary
-          ? `[dyad] ${chatSummary} - ${changes.join(", ")}`
-          : `[dyad] ${changes.join(", ")}`,
+        message,
         author: await getGitAuthor(),
       });
       logger.log(`Successfully committed changes: ${changes.join(", ")}`);
+
+      // Check for any uncommitted changes after the commit
+      const statusMatrix = await git.statusMatrix({ fs, dir: appPath });
+      uncommittedFiles = statusMatrix
+        .filter((row) => row[1] !== 1 || row[2] !== 1 || row[3] !== 1)
+        .map((row) => row[0]); // Get just the file paths
+
+      if (uncommittedFiles.length > 0) {
+        // Stage all changes
+        await git.add({
+          fs,
+          dir: appPath,
+          filepath: ".",
+        });
+        try {
+          commitHash = await git.commit({
+            fs,
+            dir: appPath,
+            message: message + " + extra files edited outside of Dyad",
+            author: await getGitAuthor(),
+            amend: true,
+          });
+          logger.log(
+            `Amend commit with changes outside of dyad: ${uncommittedFiles.join(", ")}`,
+          );
+        } catch (error) {
+          // Just log, but don't throw an error because the user can still
+          // commit these changes outside of Dyad if needed.
+          logger.error(
+            `Failed to commit changes outside of dyad: ${uncommittedFiles.join(
+              ", ",
+            )}`,
+          );
+          extraFilesError = (error as any).toString();
+        }
+      }
 
       // Save the commit hash to the message
       await db
@@ -457,13 +499,6 @@ export async function processFullResponseActions(
         })
         .where(eq(messages.id, messageId));
     }
-
-    // Check for any uncommitted changes after the commit
-    const statusMatrix = await git.statusMatrix({ fs, dir: appPath });
-    const uncommittedFiles = statusMatrix
-      .filter((row) => row[1] !== 1 || row[2] !== 1 || row[3] !== 1)
-      .map((row) => row[0]); // Get just the file paths
-
     logger.log("mark as approved: hasChanges", hasChanges);
     // Update the message to approved
     await db
@@ -475,8 +510,8 @@ export async function processFullResponseActions(
 
     return {
       updatedFiles: hasChanges,
-      uncommittedFiles:
-        uncommittedFiles.length > 0 ? uncommittedFiles : undefined,
+      extraFiles: uncommittedFiles.length > 0 ? uncommittedFiles : undefined,
+      extraFilesError,
     };
   } catch (error: unknown) {
     logger.error("Error processing files:", error);

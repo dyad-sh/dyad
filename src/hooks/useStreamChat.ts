@@ -14,7 +14,7 @@ import { useChats } from "./useChats";
 import { useLoadApp } from "./useLoadApp";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useVersions } from "./useVersions";
-import { showUncommittedFilesWarning } from "@/lib/toast";
+import { showExtraFilesToast } from "@/lib/toast";
 import { useProposal } from "./useProposal";
 import { useSearch } from "@tanstack/react-router";
 import { useRunApp } from "./useRunApp";
@@ -87,8 +87,11 @@ export function useStreamChat({
               setIsPreviewOpen(true);
               refreshAppIframe();
             }
-            if (response.uncommittedFiles) {
-              showUncommittedFilesWarning(response.uncommittedFiles);
+            if (response.extraFiles) {
+              showExtraFilesToast({
+                files: response.extraFiles,
+                error: response.extraFilesError,
+              });
             }
             refreshProposal(chatId);
 

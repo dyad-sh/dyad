@@ -535,7 +535,8 @@ This conversation includes one or more image attachments. When the user uploads 
           event.sender.send("chat:response:end", {
             chatId: req.chatId,
             updatedFiles: status.updatedFiles ?? false,
-            uncommittedFiles: status.uncommittedFiles,
+            extraFiles: status.extraFiles,
+            extraFilesError: status.extraFilesError,
           } satisfies ChatResponseEnd);
         } else {
           event.sender.send("chat:response:end", {

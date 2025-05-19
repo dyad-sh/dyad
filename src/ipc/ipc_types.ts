@@ -191,3 +191,13 @@ export interface ApproveProposalResult {
   extraFiles?: string[];
   extraFilesError?: string;
 }
+
+export interface ImportAppParams {
+  path: string;
+  appName: string;
+}
+
+export interface ImportAppResult {
+  appId: number;
+  chatId: number;
+}

@@ -215,7 +215,7 @@ export function registerAppHandlers() {
         const commitHash = await git.commit({
           fs: fs,
           dir: fullAppPath,
-          message: "Init from react vite template",
+          message: "Init Dyad app",
           author: await getGitAuthor(),
         });
 

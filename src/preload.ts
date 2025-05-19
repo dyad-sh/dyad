@@ -69,6 +69,10 @@ const validInvokeChannels = [
   "delete-messages",
   "start-chat-stream",
   "does-release-note-exist",
+  "import-app",
+  "check-ai-rules",
+  "select-app-folder",
+  "check-app-name",
 ] as const;
 
 // Add valid receive channels

@@ -16,6 +16,7 @@ import { registerUploadHandlers } from "./handlers/upload_handlers";
 import { registerVersionHandlers } from "./handlers/version_handlers";
 import { registerLanguageModelHandlers } from "./handlers/language_model_handlers";
 import { registerReleaseNoteHandlers } from "./handlers/release_note_handlers";
+import { registerImportHandlers } from "./handlers/import_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -37,4 +38,5 @@ export function registerIpcHandlers() {
   registerVersionHandlers();
   registerLanguageModelHandlers();
   registerReleaseNoteHandlers();
+  registerImportHandlers();
 }

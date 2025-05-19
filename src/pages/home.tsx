@@ -24,6 +24,7 @@ import {
 import { useTheme } from "@/contexts/ThemeContext";
 import { Button } from "@/components/ui/button";
 import { ExternalLink } from "lucide-react";
+import { ImportAppButton } from "@/components/ImportAppButton";
 
 // Adding an export for attachments
 export interface HomeSubmitOptions {
@@ -165,6 +166,7 @@ export default function HomePage() {
       <SetupBanner />
 
       <div className="w-full">
+        <ImportAppButton />
         <HomeChatInput onSubmit={handleSubmit} />
 
         <div className="flex flex-col gap-4 mt-4">

@@ -27,6 +27,8 @@ import type {
   CreateCustomLanguageModelParams,
   DoesReleaseNoteExistParams,
   ApproveProposalResult,
+  ImportAppResult,
+  ImportAppParams,
 } from "./ipc_types";
 import type { ProposalResult } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
@@ -792,9 +794,26 @@ export class IpcClient {
     });
   }
 
-  // --- End window control methods ---
+  public async selectAppFolder(): Promise<{
+    path: string | null;
+    name: string | null;
+  }> {
+    return this.ipcRenderer.invoke("select-app-folder");
+  }
 
-  // --- Language Model Operations ---
+  public async checkAiRules(params: {
+    path: string;
+  }): Promise<{ exists: boolean }> {
+    return this.ipcRenderer.invoke("check-ai-rules", params);
+  }
 
-  // --- App Operations ---
+  public async importApp(params: ImportAppParams): Promise<ImportAppResult> {
+    return this.ipcRenderer.invoke("import-app", params);
+  }
+
+  async checkAppName(params: {
+    appName: string;
+  }): Promise<{ exists: boolean }> {
+    return this.ipcRenderer.invoke("check-app-name", params);
+  }
 }

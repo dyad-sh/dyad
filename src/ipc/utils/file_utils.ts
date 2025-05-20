@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { promises as fsPromises } from "node:fs";
 import path from "node:path";
 
 /**
@@ -30,4 +31,23 @@ export function getFilesRecursively(dir: string, baseDir: string): string[] {
   }
 
   return files;
+}
+
+export async function copyDirectoryRecursive(
+  source: string,
+  destination: string,
+) {
+  await fsPromises.mkdir(destination, { recursive: true });
+  const entries = await fsPromises.readdir(source, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const srcPath = path.join(source, entry.name);
+    const destPath = path.join(destination, entry.name);
+
+    if (entry.isDirectory()) {
+      await copyDirectoryRecursive(srcPath, destPath);
+    } else {
+      await fsPromises.copyFile(srcPath, destPath);
+    }
+  }
 }

@@ -25,6 +25,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { Button } from "@/components/ui/button";
 import { ExternalLink } from "lucide-react";
 import { ImportAppButton } from "@/components/ImportAppButton";
+import { showError } from "@/lib/toast";
 
 // Adding an export for attachments
 export interface HomeSubmitOptions {
@@ -133,6 +134,7 @@ export default function HomePage() {
       navigate({ to: "/chat", search: { id: result.chatId } });
     } catch (error) {
       console.error("Failed to create chat:", error);
+      showError("Failed to create app. " + (error as any).toString());
       setIsLoading(false); // Ensure loading state is reset on error
     }
     // No finally block needed for setIsLoading(false) here if navigation happens on success

@@ -12,7 +12,10 @@ import { promises as fsPromises } from "node:fs";
 
 // Import our utility modules
 import { withLock } from "../utils/lock_utils";
-import { getFilesRecursively } from "../utils/file_utils";
+import {
+  copyDirectoryRecursive,
+  getFilesRecursively,
+} from "../utils/file_utils";
 import {
   runningApps,
   processCounter,
@@ -187,50 +190,43 @@ export function registerAppHandlers() {
         })
         .returning();
 
-      // Start async operations in background
-      try {
-        await fsPromises.cp(
-          path.join(__dirname, "..", "..", "scaffold"),
-          fullAppPath,
-          {
-            recursive: true,
-            // Scaffold should *not* have node_modules anyways, but
-            // just in case, we filter it out.
-            filter: (source) => !source.includes("node_modules"),
-          },
-        );
-        // Initialize git repo and create first commit
-        await git.init({
-          fs: fs,
-          dir: fullAppPath,
-          defaultBranch: "main",
-        });
+      // Why do we not use fs.cp here?
+      // Because scaffold is inside ASAR and it does NOT
+      // behave like a regular directory if you use fs.cp
+      // https://www.electronjs.org/docs/latest/tutorial/asar-archives#limitations-of-the-node-api
+      await copyDirectoryRecursive(
+        path.join(__dirname, "..", "..", "scaffold"),
+        fullAppPath,
+      );
+      // Initialize git repo and create first commit
+      await git.init({
+        fs: fs,
+        dir: fullAppPath,
+        defaultBranch: "main",
+      });
 
-        // Stage all files
-        await git.add({
-          fs: fs,
-          dir: fullAppPath,
-          filepath: ".",
-        });
+      // Stage all files
+      await git.add({
+        fs: fs,
+        dir: fullAppPath,
+        filepath: ".",
+      });
 
-        // Create initial commit
-        const commitHash = await git.commit({
-          fs: fs,
-          dir: fullAppPath,
-          message: "Init Dyad app",
-          author: await getGitAuthor(),
-        });
+      // Create initial commit
+      const commitHash = await git.commit({
+        fs: fs,
+        dir: fullAppPath,
+        message: "Init Dyad app",
+        author: await getGitAuthor(),
+      });
 
-        // Update chat with initial commit hash
-        await db
-          .update(chats)
-          .set({
-            initialCommitHash: commitHash,
-          })
-          .where(eq(chats.id, chat.id));
-      } catch (error) {
-        logger.error("Error in background app initialization:", error);
-      }
+      // Update chat with initial commit hash
+      await db
+        .update(chats)
+        .set({
+          initialCommitHash: commitHash,
+        })
+        .where(eq(chats.id, chat.id));
 
       return { app, chatId: chat.id };
     },

@@ -100,11 +100,13 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
       onClose();
 
       navigate({ to: "/chat", search: { id: result.chatId } });
-      streamMessage({
-        prompt:
-          "Generate an AI_RULES.md file for this app. Describe the tech stack in 5-10 bullet points and describe clear rules about what libraries to use for what.",
-        chatId: result.chatId,
-      });
+      if (!hasAiRules) {
+        streamMessage({
+          prompt:
+            "Generate an AI_RULES.md file for this app. Describe the tech stack in 5-10 bullet points and describe clear rules about what libraries to use for what.",
+          chatId: result.chatId,
+        });
+      }
       setSelectedAppId(result.appId);
       await refreshApps();
     },

@@ -10,6 +10,7 @@ import { MessageSquare, Code, Bot, AlignLeft } from "lucide-react";
 import { chatInputValueAtom } from "@/atoms/chatAtoms";
 import { useAtom } from "jotai";
 import { useSettings } from "@/hooks/useSettings";
+import { IpcClient } from "@/ipc/ipc_client";
 
 interface TokenBarProps {
   chatId?: number;
@@ -125,6 +126,26 @@ export function TokenBar({ chatId }: TokenBarProps) {
         </Tooltip>
       </TooltipProvider>
       {error && <div className="text-red-500 text-xs mt-1">{error}</div>}
+      {(!settings?.enableProSmartFilesContextMode ||
+        !settings?.enableDyadPro) && (
+        <div className="text-xs text-center text-muted-foreground mt-2">
+          Optimize your tokens with{" "}
+          <a
+            onClick={() =>
+              settings?.enableDyadPro
+                ? IpcClient.getInstance().openExternalUrl(
+                    "https://www.dyad.sh/docs/guides/ai-models/pro-modes#smart-context",
+                  )
+                : IpcClient.getInstance().openExternalUrl(
+                    "https://dyad.sh/pro#ai",
+                  )
+            }
+            className="text-blue-500 dark:text-blue-400 cursor-pointer hover:underline"
+          >
+            Dyad Pro's Smart Context
+          </a>
+        </div>
+      )}
     </div>
   );
 }

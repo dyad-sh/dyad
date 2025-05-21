@@ -13,6 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Sparkles, Info } from "lucide-react";
 import { useSettings } from "@/hooks/useSettings";
+import { IpcClient } from "@/ipc/ipc_client";
 
 export function ProModeSelector() {
   const { settings, updateSettings } = useSettings();
@@ -33,9 +34,7 @@ export function ProModeSelector() {
     });
   };
 
-  if (!settings?.enableDyadPro) {
-    return null;
-  }
+  const proEnabled = Boolean(settings?.enableDyadPro);
 
   return (
     <Popover>
@@ -63,80 +62,104 @@ export function ProModeSelector() {
             </h4>
             <div className="h-px bg-gradient-to-r from-primary/50 via-primary/20 to-transparent" />
           </div>
-          <div className="flex items-center justify-between">
-            <div className="space-y-2">
-              <Label htmlFor="saver-mode">Saver Mode</Label>
-              <div className="flex items-center gap-1">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Info className="h-4 w-4 text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent side="right" className="max-w-72">
-                    Note: using the free Gemini API lets Google use your data to
-                    improve their models.
-                  </TooltipContent>
-                </Tooltip>
-                <p className="text-xs text-muted-foreground max-w-55">
-                  Uses your free Gemini API quota before consuming Dyad Pro AI
-                  credits
-                </p>
-              </div>
+          {!proEnabled && (
+            <div className="text-sm text-center text-muted-foreground">
+              <a
+                className="inline-flex items-center justify-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                onClick={() => {
+                  IpcClient.getInstance().openExternalUrl(
+                    "https://dyad.sh/pro#ai",
+                  );
+                }}
+              >
+                Unlock Pro modes
+              </a>
             </div>
-            <Switch
-              id="saver-mode"
-              checked={Boolean(settings?.enableProSaverMode)}
-              onCheckedChange={toggleSaverMode}
-            />
-          </div>
-          <div className="flex items-center justify-between">
-            <div className="space-y-2">
-              <Label htmlFor="lazy-edits">Turbo Edits</Label>
-              <div className="flex items-center gap-1">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Info className="h-4 w-4 text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent side="right" className="max-w-72">
-                    Edits files faster.
-                  </TooltipContent>
-                </Tooltip>
-                <p className="text-xs text-muted-foreground max-w-55">
-                  Makes editing files faster and cheaper.
-                </p>
-              </div>
-            </div>
-            <Switch
-              id="lazy-edits"
-              checked={Boolean(settings?.enableProLazyEditsMode)}
-              onCheckedChange={toggleLazyEdits}
-            />
-          </div>
-          <div className="flex items-center justify-between">
-            <div className="space-y-2">
-              <Label htmlFor="smart-context">Smart Context</Label>
-              <div className="flex items-center gap-1">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Info className="h-4 w-4 text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent side="right" className="max-w-72">
-                    Improve efficiency and save credits working on large
-                    codebases.
-                  </TooltipContent>
-                </Tooltip>
-                <p className="text-xs text-muted-foreground max-w-55">
-                  Automatically detects the most relevant files for your chat
-                </p>
-              </div>
-            </div>
-            <Switch
-              id="smart-context"
-              checked={Boolean(settings?.enableProSmartFilesContextMode)}
-              onCheckedChange={toggleSmartContext}
-            />
-          </div>
+          )}
+          <SelectorRow
+            id="saver-mode"
+            label="Saver Mode"
+            description="Uses your free Gemini API quota before consuming Dyad Pro AI credits"
+            tooltip="Note: using the free Gemini API lets Google use your data to
+                    improve their models."
+            proEnabled={proEnabled}
+            settingEnabled={Boolean(settings?.enableProSaverMode)}
+            toggle={toggleSaverMode}
+          />
+          <SelectorRow
+            id="lazy-edits"
+            label="Turbo Edits"
+            description="Makes editing files faster and cheaper."
+            tooltip="Uses a faster, cheaper model to generate full file updates."
+            proEnabled={proEnabled}
+            settingEnabled={Boolean(settings?.enableProLazyEditsMode)}
+            toggle={toggleLazyEdits}
+          />
+          <SelectorRow
+            id="smart-context"
+            label="Smart Context"
+            description="Automatically detects the most relevant files for your chat"
+            tooltip="Improve efficiency and save credits working on large codebases."
+            proEnabled={proEnabled}
+            settingEnabled={Boolean(settings?.enableProSmartFilesContextMode)}
+            toggle={toggleSmartContext}
+          />
         </div>
       </PopoverContent>
     </Popover>
+  );
+}
+
+function SelectorRow({
+  id,
+  label,
+  description,
+  tooltip,
+  proEnabled,
+  settingEnabled,
+  toggle,
+}: {
+  id: string;
+  label: string;
+  description: string;
+  tooltip: string;
+  proEnabled: boolean;
+  settingEnabled: boolean;
+  toggle: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between">
+      <div className="space-y-2">
+        <Label
+          htmlFor={id}
+          className={!proEnabled ? "text-muted-foreground/50" : ""}
+        >
+          {label}
+        </Label>
+        <div className="flex items-center gap-1">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Info
+                className={`h-4 w-4 cursor-help ${!proEnabled ? "text-muted-foreground/50" : "text-muted-foreground"}`}
+              />
+            </TooltipTrigger>
+            <TooltipContent side="right" className="max-w-72">
+              {tooltip}
+            </TooltipContent>
+          </Tooltip>
+          <p
+            className={`text-xs ${!proEnabled ? "text-muted-foreground/50" : "text-muted-foreground"} max-w-55`}
+          >
+            {description}
+          </p>
+        </div>
+      </div>
+      <Switch
+        id={id}
+        checked={proEnabled ? settingEnabled : false}
+        onCheckedChange={toggle}
+        disabled={!proEnabled}
+      />
+    </div>
   );
 }

@@ -1,14 +1,6 @@
 import { readSettings, writeSettings } from "./settings";
 
-export function handleDyadProReturn({
-  apiKey,
-  budgetResetAt,
-  maxBudget,
-}: {
-  apiKey: string;
-  budgetResetAt: string | null | undefined;
-  maxBudget: number | null | undefined;
-}) {
+export function handleDyadProReturn({ apiKey }: { apiKey: string }) {
   const settings = readSettings();
   writeSettings({
     providerSettings: {
@@ -20,13 +12,6 @@ export function handleDyadProReturn({
         },
       },
     },
-    dyadProBudget:
-      budgetResetAt && maxBudget
-        ? {
-            budgetResetAt,
-            maxBudget,
-          }
-        : undefined,
     enableDyadPro: true,
   });
 }

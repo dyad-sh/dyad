@@ -189,21 +189,12 @@ function handleDeepLinkReturn(url: string) {
   // dyad://dyad-pro-return?key=123&budget_reset_at=2025-05-26T16:31:13.492000Z&max_budget=100
   if (parsed.hostname === "dyad-pro-return") {
     const apiKey = parsed.searchParams.get("key");
-    // UTC time
-    // budget_reset_at: '2025-05-26T16:31:13.492000Z'
-    const budgetResetAt = parsed.searchParams.get("budget_reset_at");
-    const maxBudget = Number(parsed.searchParams.get("max_budget"));
     if (!apiKey) {
-      dialog.showErrorBox(
-        "Invalid URL",
-        "Expected key, budget_reset_at, and max_budget",
-      );
+      dialog.showErrorBox("Invalid URL", "Expected key");
       return;
     }
     handleDyadProReturn({
       apiKey,
-      budgetResetAt,
-      maxBudget,
     });
     // Send message to renderer to trigger re-render
     mainWindow?.webContents.send("deep-link-received", {

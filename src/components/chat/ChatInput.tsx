@@ -60,6 +60,7 @@ import { AttachmentsList } from "./AttachmentsList";
 import { DragDropOverlay } from "./DragDropOverlay";
 import { showError, showExtraFilesToast } from "@/lib/toast";
 import { ChatInputControls } from "../ChatInputControls";
+import { ChatErrorBox } from "./ChatErrorBox";
 const showTokenBarAtom = atom(false);
 
 export function ChatInput({ chatId }: { chatId?: number }) {
@@ -235,17 +236,11 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   return (
     <>
       {error && showError && (
-        <div className="relative mt-2 bg-red-50 border border-red-200 rounded-md shadow-sm p-2">
-          <button
-            onClick={dismissError}
-            className="absolute top-1 left-1 p-1 hover:bg-red-100 rounded"
-          >
-            <X size={14} className="text-red-500" />
-          </button>
-          <div className="px-6 py-1 text-sm">
-            <div className="text-red-700 text-wrap">{error}</div>
-          </div>
-        </div>
+        <ChatErrorBox
+          onDismiss={dismissError}
+          error={error}
+          isDyadProEnabled={settings.enableDyadPro ?? false}
+        />
       )}
       {/* Display loading or error state for proposal */}
       {isProposalLoading && (

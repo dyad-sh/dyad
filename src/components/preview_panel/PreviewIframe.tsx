@@ -38,7 +38,7 @@ interface ErrorBannerProps {
 
 const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
   const [isCollapsed, setIsCollapsed] = useState(true);
-
+  const { isStreaming } = useStreamChat();
   if (!error) return null;
 
   const getTruncatedError = () => {
@@ -92,8 +92,9 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
       {/* AI Fix button at the bottom */}
       <div className="mt-2 flex justify-end">
         <button
+          disabled={isStreaming}
           onClick={onAIFix}
-          className="cursor-pointer flex items-center space-x-1 px-2 py-0.5 bg-red-500 dark:bg-red-600 text-white rounded text-sm hover:bg-red-600 dark:hover:bg-red-700"
+          className="cursor-pointer flex items-center space-x-1 px-2 py-0.5 bg-red-500 dark:bg-red-600 text-white rounded text-sm hover:bg-red-600 dark:hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Sparkles size={14} />
           <span>Fix error with AI</span>

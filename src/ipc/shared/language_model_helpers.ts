@@ -84,7 +84,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     },
     // https://ai.google.dev/gemini-api/docs/models#gemini-2.5-flash-preview
     {
-      name: "gemini-2.5-flash-preview-04-17",
+      name: "gemini-2.5-flash-preview-05-20",
       displayName: "Gemini 2.5 Flash",
       description:
         "Preview version of Google's Gemini 2.5 Flash model (free tier available)",

@@ -17,6 +17,8 @@ const DEFAULT_SETTINGS: UserSettings = {
   telemetryUserId: uuidv4(),
   hasRunBefore: false,
   experiments: {},
+  enableProLazyEditsMode: true,
+  enableProSmartFilesContextMode: true,
 };
 
 const SETTINGS_FILE = "user-settings.json";

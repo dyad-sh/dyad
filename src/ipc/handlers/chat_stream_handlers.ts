@@ -215,6 +215,7 @@ export function registerChatStreamHandlers() {
           abortController,
           updatedChat,
         );
+        fullResponse = cleanThinkingByEscapingDyadTags(fullResponse);
       } else {
         // Normal AI processing for non-test prompts
         const settings = readSettings();
@@ -348,7 +349,10 @@ This conversation includes one or more image attachments. When the user uploads 
           ...codebasePrefix,
           ...limitedMessageHistory.map((msg) => ({
             role: msg.role as "user" | "assistant" | "system",
-            content: msg.content,
+            // Why remove thinking tags?
+            // Thinking tags are generally not critical for the context
+            // and eats up extra tokens.
+            content: removeThinkingTags(msg.content),
           })),
         ];
 
@@ -411,6 +415,7 @@ This conversation includes one or more image attachments. When the user uploads 
         try {
           for await (const textPart of textStream) {
             fullResponse += textPart;
+            fullResponse = cleanThinkingByEscapingDyadTags(fullResponse);
             if (
               fullResponse.includes("$$SUPABASE_CLIENT_CODE$$") &&
               updatedChat.app?.supabaseProjectId
@@ -706,4 +711,28 @@ async function prepareMessageWithAttachments(
     role: "user",
     content: contentParts,
   };
+}
+
+function cleanThinkingByEscapingDyadTags(text: string): string {
+  // Extract content inside <think> </think> tags
+  const thinkRegex = /<think>([\s\S]*?)<\/think>/g;
+
+  return text.replace(thinkRegex, (match, content) => {
+    // We are replacing the opening tag with a look-alike character
+    // to avoid issues where thinking content includes dyad tags
+    // and are mishandled by:
+    // 1. FE markdown parser
+    // 2. Main process response processor
+    const processedContent = content
+      .replace(/<dyad/g, "＜dyad")
+      .replace(/<\/dyad/g, "＜/dyad");
+
+    // Return the modified think tag with processed content
+    return `<think>${processedContent}</think>`;
+  });
+}
+
+function removeThinkingTags(text: string): string {
+  const thinkRegex = /<think>([\s\S]*?)<\/think>/g;
+  return text.replace(thinkRegex, "").trim();
 }

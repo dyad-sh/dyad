@@ -32,9 +32,28 @@ function createStreamChunk(
   return `data: ${JSON.stringify(chunk)}\n\n${isLast ? "data: [DONE]\n\n" : ""}`;
 }
 
+const CANNED_MESSAGE = `
+  <think>
+  \`<dyad-write>\`:
+  I'll think about the problem and write a bug report.
+
+  <dyad-write>
+
+  <dyad-write path="file1.txt">
+  Fake dyad write
+  </dyad-write>
+  </think>
+  
+  <dyad-write path="file1.txt">
+  A file (2)
+  </dyad-write>
+  More
+  EOM`;
+
 // Handle POST requests to /v1/chat/completions
 app.post("/v1/chat/completions", (req, res) => {
   const { stream = false, messages = [] } = req.body;
+  console.log("* Received messages", messages);
 
   // Check if the last message contains "[429]" to simulate rate limiting
   const lastMessage = messages[messages.length - 1];
@@ -61,7 +80,7 @@ app.post("/v1/chat/completions", (req, res) => {
           index: 0,
           message: {
             role: "assistant",
-            content: "hello world",
+            content: CANNED_MESSAGE,
           },
           finish_reason: "stop",
         },
@@ -75,7 +94,7 @@ app.post("/v1/chat/completions", (req, res) => {
   res.setHeader("Connection", "keep-alive");
 
   // Split the "hello world" message into characters to simulate streaming
-  const message = "hello world";
+  const message = CANNED_MESSAGE;
   const messageChars = message.split("");
 
   // Stream each character with a delay
@@ -94,7 +113,7 @@ app.post("/v1/chat/completions", (req, res) => {
       clearInterval(interval);
       res.end();
     }
-  }, 100);
+  }, 10);
 });
 
 // Start the server

@@ -57,7 +57,7 @@ export const DyadThink: React.FC<DyadThinkProps> = ({ children, node }) => {
       <div
         className="pt-6 overflow-hidden transition-all duration-300 ease-in-out"
         style={{
-          maxHeight: isExpanded ? "1000px" : "0px",
+          maxHeight: isExpanded ? "none" : "0px",
           opacity: isExpanded ? 1 : 0,
           marginBottom: isExpanded ? "0" : "-6px", // Compensate for padding
         }}

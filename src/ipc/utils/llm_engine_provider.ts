@@ -69,9 +69,8 @@ Creates a chat model for text generation.
 export function createDyadEngine(
   options: ExampleProviderSettings,
 ): DyadEngineProvider {
-  const baseURL = withoutTrailingSlash(
-    options.baseURL ?? "https://api.example.com/v1",
-  );
+  const baseURL = withoutTrailingSlash(options.baseURL);
+  logger.info("creating dyad engine with baseURL", baseURL);
   const getHeaders = () => ({
     Authorization: `Bearer ${loadApiKey({
       apiKey: options.apiKey,

@@ -5,6 +5,7 @@ import {
   previewPanelKeyAtom,
   selectedAppIdAtom,
 } from "../../atoms/appAtoms";
+import { IpcClient } from "@/ipc/ipc_client";
 
 import { CodeView } from "./CodeView";
 import { PreviewIframe } from "./PreviewIframe";
@@ -17,6 +18,7 @@ import {
   MoreVertical,
   Cog,
   Power,
+  Trash2,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -29,6 +31,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { showError, showSuccess } from "@/lib/toast";
+import { useMutation } from "@tanstack/react-query";
 
 type PreviewMode = "preview" | "code";
 
@@ -37,6 +41,7 @@ interface PreviewHeaderProps {
   setPreviewMode: (mode: PreviewMode) => void;
   onRestart: () => void;
   onCleanRestart: () => void;
+  onClearSessionData: () => void;
 }
 
 interface ConsoleHeaderProps {
@@ -51,6 +56,7 @@ const PreviewHeader = ({
   setPreviewMode,
   onRestart,
   onCleanRestart,
+  onClearSessionData,
 }: PreviewHeaderProps) => (
   <div className="flex items-center justify-between px-4 py-2 border-b border-border">
     <div className="relative flex space-x-2 bg-[var(--background-darkest)] rounded-md p-0.5">
@@ -111,6 +117,15 @@ const PreviewHeader = ({
               </span>
             </div>
           </DropdownMenuItem>
+          <DropdownMenuItem onClick={onClearSessionData}>
+            <Trash2 size={16} />
+            <div className="flex flex-col">
+              <span>Clear Preview Data</span>
+              <span className="text-xs text-muted-foreground">
+                Clears cookies and local storage for the app preview
+              </span>
+            </div>
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
@@ -146,7 +161,8 @@ export function PreviewPanel() {
   const [previewMode, setPreviewMode] = useAtom(previewModeAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const [isConsoleOpen, setIsConsoleOpen] = useState(false);
-  const { runApp, stopApp, restartApp, loading, app } = useRunApp();
+  const { runApp, stopApp, restartApp, loading, app, refreshAppIframe } =
+    useRunApp();
   const runningAppIdRef = useRef<number | null>(null);
   const key = useAtomValue(previewPanelKeyAtom);
   const appOutput = useAtomValue(appOutputAtom);
@@ -162,6 +178,29 @@ export function PreviewPanel() {
   const handleCleanRestart = useCallback(() => {
     restartApp({ removeNodeModules: true });
   }, [restartApp]);
+
+  const useClearSessionData = () => {
+    return useMutation({
+      mutationFn: () => {
+        const ipcClient = IpcClient.getInstance();
+        return ipcClient.clearSessionData();
+      },
+      onSuccess: async () => {
+        await refreshAppIframe();
+        showSuccess("Preview data cleared");
+        // Optionally invalidate relevant queries
+      },
+      onError: (error) => {
+        showError(`Error clearing preview data: ${error}`);
+      },
+    });
+  };
+
+  const { mutate: clearSessionData } = useClearSessionData();
+
+  const handleClearSessionData = useCallback(() => {
+    clearSessionData();
+  }, [selectedAppId, clearSessionData]);
 
   useEffect(() => {
     const previousAppId = runningAppIdRef.current;
@@ -214,6 +253,7 @@ export function PreviewPanel() {
         setPreviewMode={setPreviewMode}
         onRestart={handleRestart}
         onCleanRestart={handleCleanRestart}
+        onClearSessionData={handleClearSessionData}
       />
       <div className="flex-1 overflow-hidden">
         <PanelGroup direction="vertical">

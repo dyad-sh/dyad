@@ -74,6 +74,7 @@ const validInvokeChannels = [
   "select-app-folder",
   "check-app-name",
   "rename-branch",
+  "clear-session-data",
 ] as const;
 
 // Add valid receive channels

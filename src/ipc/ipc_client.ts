@@ -821,4 +821,8 @@ export class IpcClient {
   public async renameBranch(params: RenameBranchParams): Promise<void> {
     await this.ipcRenderer.invoke("rename-branch", params);
   }
+
+  async clearSessionData(): Promise<void> {
+    return this.ipcRenderer.invoke("clear-session-data");
+  }
 }

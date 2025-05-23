@@ -43,9 +43,25 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       maxOutputTokens: 100_000,
       contextWindow: 200_000,
     },
+    // https://platform.openai.com/docs/models/o4-mini
+    {
+      name: "o4-mini",
+      displayName: "o4 mini",
+      description: "Reasoning model",
+      maxOutputTokens: 100_000,
+      contextWindow: 200_000,
+    },
   ],
   // https://docs.anthropic.com/en/docs/about-claude/models/all-models#model-comparison-table
   anthropic: [
+    {
+      name: "claude-sonnet-4-20250514",
+      displayName: "Claude 4 Sonnet",
+      description: "Excellent coder",
+      maxOutputTokens: 64_000,
+      contextWindow: 200_000,
+      supportsTurboEdits: true,
+    },
     {
       name: "claude-3-7-sonnet-latest",
       displayName: "Claude 3.7 Sonnet",

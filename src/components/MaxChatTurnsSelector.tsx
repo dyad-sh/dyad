@@ -19,8 +19,8 @@ const defaultValue = "default";
 
 const options: OptionInfo[] = [
   {
-    value: "3",
-    label: "Economy (3)",
+    value: "2",
+    label: "Economy (2)",
     description:
       "Minimal context to reduce token usage and improve response times.",
   },
@@ -28,6 +28,11 @@ const options: OptionInfo[] = [
     value: defaultValue,
     label: `Default (${MAX_CHAT_TURNS_IN_CONTEXT})  `,
     description: "Balanced context size for most conversations.",
+  },
+  {
+    value: "5",
+    label: "Plus (5)",
+    description: "Slightly higher context size for detailed conversations.",
   },
   {
     value: "10",

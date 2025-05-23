@@ -41,6 +41,8 @@ const ignore = (file: string) => {
   return true;
 };
 
+const isEndToEndTestBuild = process.env.E2E_TEST_BUILD === "true";
+
 const config: ForgeConfig = {
   packagerConfig: {
     protocols: [
@@ -51,14 +53,18 @@ const config: ForgeConfig = {
     ],
     icon: "./assets/icon/logo",
 
-    osxSign: {
-      identity: process.env.APPLE_TEAM_ID,
-    },
-    osxNotarize: {
-      appleId: process.env.APPLE_ID!,
-      appleIdPassword: process.env.APPLE_PASSWORD!,
-      teamId: process.env.APPLE_TEAM_ID!,
-    },
+    osxSign: isEndToEndTestBuild
+      ? undefined
+      : {
+          identity: process.env.APPLE_TEAM_ID,
+        },
+    osxNotarize: isEndToEndTestBuild
+      ? undefined
+      : {
+          appleId: process.env.APPLE_ID!,
+          appleIdPassword: process.env.APPLE_PASSWORD!,
+          teamId: process.env.APPLE_TEAM_ID!,
+        },
     asar: true,
     ignore,
     // ignore: [/node_modules\/(?!(better-sqlite3|bindings|file-uri-to-path)\/)/],
@@ -124,7 +130,7 @@ const config: ForgeConfig = {
       [FuseV1Options.RunAsNode]: false,
       [FuseV1Options.EnableCookieEncryption]: true,
       [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
-      [FuseV1Options.EnableNodeCliInspectArguments]: false,
+      [FuseV1Options.EnableNodeCliInspectArguments]: isEndToEndTestBuild,
       [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
       [FuseV1Options.OnlyLoadAppFromAsar]: true,
     }),

@@ -65,6 +65,10 @@ export async function onFirstRunMaybe() {
  * applications folder.
  */
 async function promptMoveToApplicationsFolder(): Promise<void> {
+  // Why not in e2e tests?
+  // There's no way to stub this dialog in time, so we just skip it
+  // in e2e testing mode.
+  if (process.env.E2E_TEST_BUILD) return;
   if (process.platform !== "darwin") return;
   if (app.isInApplicationsFolder()) return;
   logger.log("Prompting user to move to applications folder");

@@ -17,7 +17,11 @@ defaults:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Why Mac?
+    # I can't run electron playwright on ubuntu-latest and
+    # Linux support for Dyad is experimental so not as important
+    # as Mac + Windows
+    runs-on: macos-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -33,3 +37,16 @@ jobs:
         run: npm run presubmit
       - name: Type-checking
         run: npm run ts
+      - name: Install Chromium browser for Playwright
+        run: npx playwright install chromium --with-deps
+      - name: Build
+        run: npm run pre:e2e
+      - name: E2E tests
+        # Add debug logging to make it easier to see what's failing
+        run: DEBUG=pw:browser npm run e2e
+      - uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 3

@@ -107,6 +107,16 @@ export function registerChatHandlers() {
     await db.delete(chats).where(eq(chats.id, chatId));
   });
 
+  handle(
+    "rename-chat",
+    async (_, { chatId, newTitle }: { chatId: number; newTitle: string }) => {
+      await db
+        .update(chats)
+        .set({ title: newTitle })
+        .where(eq(chats.id, chatId));
+    },
+  );
+
   handle("delete-messages", async (_, chatId: number): Promise<void> => {
     await db.delete(messages).where(eq(messages.chatId, chatId));
   });

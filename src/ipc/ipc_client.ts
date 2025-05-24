@@ -310,6 +310,13 @@ export class IpcClient {
     await this.ipcRenderer.invoke("delete-chat", chatId);
   }
 
+  public async renameChat(
+    chatId: number,
+    newTitle: string,
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("rename-chat", { chatId, newTitle });
+  }
+
   public async deleteMessages(chatId: number): Promise<void> {
     await this.ipcRenderer.invoke("delete-messages", chatId);
   }

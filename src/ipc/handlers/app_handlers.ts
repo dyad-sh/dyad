@@ -12,10 +12,7 @@ import { promises as fsPromises } from "node:fs";
 
 // Import our utility modules
 import { withLock } from "../utils/lock_utils";
-import {
-  copyDirectoryRecursive,
-  getFilesRecursively,
-} from "../utils/file_utils";
+import { getFilesRecursively } from "../utils/file_utils";
 import {
   runningApps,
   processCounter,
@@ -35,6 +32,7 @@ import { createLoggedHandler } from "./safe_handle";
 import { getLanguageModelProviders } from "../shared/language_model_helpers";
 import { startProxy } from "../utils/start_proxy_server";
 import { Worker } from "worker_threads";
+import { createFromTemplate } from "./createFromTemplate";
 
 const logger = log.scope("app_handlers");
 const handle = createLoggedHandler(logger);
@@ -190,14 +188,10 @@ export function registerAppHandlers() {
         })
         .returning();
 
-      // Why do we not use fs.cp here?
-      // Because scaffold is inside ASAR and it does NOT
-      // behave like a regular directory if you use fs.cp
-      // https://www.electronjs.org/docs/latest/tutorial/asar-archives#limitations-of-the-node-api
-      await copyDirectoryRecursive(
-        path.join(__dirname, "..", "..", "scaffold"),
+      await createFromTemplate({
         fullAppPath,
-      );
+      });
+
       // Initialize git repo and create first commit
       await git.init({
         fs: fs,

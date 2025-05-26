@@ -7,6 +7,7 @@ import type { Version } from "@/ipc/ipc_types";
 import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
 import { useCheckoutVersion } from "@/hooks/useCheckoutVersion";
+import { useLoadApp } from "@/hooks/useLoadApp";
 
 interface VersionPaneProps {
   isVisible: boolean;
@@ -15,6 +16,7 @@ interface VersionPaneProps {
 
 export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
   const appId = useAtomValue(selectedAppIdAtom);
+  const { refreshApp } = useLoadApp(appId);
   const {
     versions: liveVersions,
     refreshVersions,
@@ -78,6 +80,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
         console.error("Could not checkout version, unselecting version", error);
         setSelectedVersionId(null);
       }
+      await refreshApp();
     }
   };
 

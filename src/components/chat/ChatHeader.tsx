@@ -26,6 +26,8 @@ import { useStreamChat } from "@/hooks/useStreamChat";
 import { useCurrentBranch } from "@/hooks/useCurrentBranch";
 import { useCheckoutVersion } from "@/hooks/useCheckoutVersion";
 import { useRenameBranch } from "@/hooks/useRenameBranch";
+import { isAnyCheckoutVersionInProgressAtom } from "@/store/appAtoms";
+import { LoadingBar } from "../ui/LoadingBar";
 
 interface ChatHeaderProps {
   isVersionPaneOpen: boolean;
@@ -46,6 +48,9 @@ export function ChatHeader({
   const [selectedChatId, setSelectedChatId] = useAtom(selectedChatIdAtom);
   const { refreshChats } = useChats(appId);
   const { isStreaming } = useStreamChat();
+  const isAnyCheckoutVersionInProgress = useAtomValue(
+    isAnyCheckoutVersionInProgressAtom,
+  );
 
   const {
     branchInfo,
@@ -102,6 +107,7 @@ export function ChatHeader({
 
   return (
     <div className="flex flex-col w-full @container">
+      <LoadingBar isVisible={isAnyCheckoutVersionInProgress} />
       {/* If the version pane is open, it's expected to not always be on the main branch. */}
       {isNotMainBranch && !isVersionPaneOpen && (
         <div className="flex flex-col @sm:flex-row items-center justify-between px-4 py-2 bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200">
@@ -161,7 +167,8 @@ export function ChatHeader({
         </div>
       )}
 
-      <div className="@container flex items-center justify-between py-1.5">
+      {/* Why is this pt-0.5? Because the loading bar is h-1 (it always takes space) and we want the vertical spacing to be consistent.*/}
+      <div className="@container flex items-center justify-between pb-1.5 pt-0.5">
         <div className="flex items-center space-x-2">
           <Button
             onClick={handleNewChat}

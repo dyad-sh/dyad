@@ -1,5 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { IpcClient } from "@/ipc/ipc_client";
+import { useSetAtom } from "jotai";
+import { activeCheckoutCounterAtom } from "@/store/appAtoms";
 
 interface CheckoutVersionVariables {
   appId: number;
@@ -8,6 +10,7 @@ interface CheckoutVersionVariables {
 
 export function useCheckoutVersion() {
   const queryClient = useQueryClient();
+  const setActiveCheckouts = useSetAtom(activeCheckoutCounterAtom);
 
   const { isPending: isCheckingOutVersion, mutateAsync: checkoutVersion } =
     useMutation<void, Error, CheckoutVersionVariables>({
@@ -17,7 +20,12 @@ export function useCheckoutVersion() {
           throw new Error("App ID is null, cannot checkout version.");
         }
         const ipcClient = IpcClient.getInstance();
-        await ipcClient.checkoutVersion({ appId, versionId });
+        setActiveCheckouts((prev) => prev + 1); // Increment counter
+        try {
+          await ipcClient.checkoutVersion({ appId, versionId });
+        } finally {
+          setActiveCheckouts((prev) => prev - 1); // Decrement counter
+        }
       },
       onSuccess: (_, variables) => {
         // Invalidate queries that depend on the current version/branch

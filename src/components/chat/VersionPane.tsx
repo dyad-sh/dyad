@@ -72,7 +72,12 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
   const handleVersionClick = async (versionOid: string) => {
     if (appId) {
       setSelectedVersionId(versionOid);
-      await checkoutVersion({ appId, versionId: versionOid });
+      try {
+        await checkoutVersion({ appId, versionId: versionOid });
+      } catch (error) {
+        console.error("Could not checkout version, unselecting version", error);
+        setSelectedVersionId(null);
+      }
     }
   };
 

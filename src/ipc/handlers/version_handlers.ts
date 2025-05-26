@@ -225,7 +225,6 @@ export function registerVersionHandlers() {
           fs,
           dir: appPath,
           ref: versionId,
-          force: true,
         });
       });
     },

@@ -20,6 +20,16 @@ import { SqlQuery } from "../../lib/schemas";
 const readFile = fs.promises.readFile;
 const logger = log.scope("response_processor");
 
+/**
+ * Normalize the path to use forward slashes instead of backslashes.
+ * This is important to prevent weird Git issues, particularly on Windows.
+ * @param path Source path.
+ * @returns Normalized path.
+ */
+function normalizePath(path: string): string {
+  return path.replace(/\\/g, "/");
+}
+
 export function getDyadWriteTags(fullResponse: string): {
   path: string;
   content: string;
@@ -52,7 +62,7 @@ export function getDyadWriteTags(fullResponse: string): {
       }
       content = contentLines.join("\n");
 
-      tags.push({ path, content, description });
+      tags.push({ path: normalizePath(path), content, description });
     } else {
       logger.warn(
         "Found <dyad-write> tag without a valid 'path' attribute:",
@@ -72,7 +82,10 @@ export function getDyadRenameTags(fullResponse: string): {
   let match;
   const tags: { from: string; to: string }[] = [];
   while ((match = dyadRenameRegex.exec(fullResponse)) !== null) {
-    tags.push({ from: match[1], to: match[2] });
+    tags.push({
+      from: normalizePath(match[1]),
+      to: normalizePath(match[2]),
+    });
   }
   return tags;
 }
@@ -83,7 +96,7 @@ export function getDyadDeleteTags(fullResponse: string): string[] {
   let match;
   const paths: string[] = [];
   while ((match = dyadDeleteRegex.exec(fullResponse)) !== null) {
-    paths.push(match[1]);
+    paths.push(normalizePath(match[1]));
   }
   return paths;
 }

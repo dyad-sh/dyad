@@ -1,4 +1,4 @@
-import { Home, Inbox, Settings, HelpCircle } from "lucide-react";
+import { Home, Inbox, Settings, HelpCircle, Store } from "lucide-react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar"; // import useSidebar hook
 import { useEffect, useState, useRef } from "react";
@@ -37,6 +37,11 @@ const items = [
     title: "Settings",
     to: "/settings",
     icon: Settings,
+  },
+  {
+    title: "Hub",
+    to: "/hub",
+    icon: Store,
   },
 ];
 

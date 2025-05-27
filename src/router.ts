@@ -5,9 +5,11 @@ import { chatRoute } from "./routes/chat";
 import { settingsRoute } from "./routes/settings";
 import { providerSettingsRoute } from "./routes/settings/providers/$provider";
 import { appDetailsRoute } from "./routes/app-details";
+import { hubRoute } from "./routes/hub";
 
 const routeTree = rootRoute.addChildren([
   homeRoute,
+  hubRoute,
   chatRoute,
   appDetailsRoute,
   settingsRoute.addChildren([providerSettingsRoute]),

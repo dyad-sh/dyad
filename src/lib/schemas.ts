@@ -120,6 +120,7 @@ export const UserSettingsSchema = z.object({
   enableProSaverMode: z.boolean().optional(),
   enableProLazyEditsMode: z.boolean().optional(),
   enableProSmartFilesContextMode: z.boolean().optional(),
+  selectedTemplateId: z.string().optional(),
 
   ////////////////////////////////
   // DEPRECATED.

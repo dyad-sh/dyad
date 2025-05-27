@@ -175,6 +175,7 @@ export async function getModelClient(
         return {
           modelClient: autoModelClient,
           backupModelClients: [],
+          isEngineEnabled,
         };
       }
     } else {

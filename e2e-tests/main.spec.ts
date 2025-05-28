@@ -16,6 +16,7 @@ let electronApp: ElectronApplication;
 // This way it is always instantiated, even if the test does not use it explicitly.
 export const test = base.extend<{ attachScreenshotsToReport: void }>({
   attachScreenshotsToReport: [
+    // eslint-disable-next-line no-empty-pattern
     async ({}, use, testInfo) => {
       await use();
 

@@ -1,6 +1,10 @@
 // e.g. [dyad-qa=add-dep]
 // Canned responses for test prompts
 const TEST_RESPONSES: Record<string, string> = {
+  supabase: `Add supabase
+  <dyad-add-integration provider="supabase"></dyad-add-integration>
+  
+  EOM`,
   "add-dep": `I'll add that dependency for you.
   
   <dyad-add-dependency packages="deno"></dyad-add-dependency>

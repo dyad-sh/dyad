@@ -1,11 +1,10 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import { useAtomValue, atom, useAtom } from "jotai";
+import { useAtomValue } from "jotai";
 import { showError } from "@/lib/toast";
-import { useStreamChat } from "@/hooks/useStreamChat";
-import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+
 import { useLoadApp } from "@/hooks/useLoadApp";
 
 interface DyadAddIntegrationProps {
@@ -17,20 +16,21 @@ interface DyadAddIntegrationProps {
   children: React.ReactNode;
 }
 
-const isSetupAtom = atom(false);
-
 export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   node,
   children,
 }) => {
-  const { streamMessage } = useStreamChat();
-  const [isSetup, setIsSetup] = useAtom(isSetupAtom);
   const navigate = useNavigate();
 
   const { provider } = node.properties;
   const appId = useAtomValue(selectedAppIdAtom);
-  const { app } = useLoadApp(appId);
-  const selectedChatId = useAtomValue(selectedChatIdAtom);
+  const { app, refreshApp } = useLoadApp(appId);
+  useEffect(() => {
+    console.log("***USEEFEFECT");
+    if (app?.id !== appId) {
+      refreshApp();
+    }
+  }, [app, appId, refreshApp]);
 
   const handleSetupClick = () => {
     if (!appId) {
@@ -38,12 +38,12 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
       return;
     }
     navigate({ to: "/app-details", search: { appId } });
-    setIsSetup(true);
   };
 
   if (app?.supabaseProjectName) {
     return (
       <div className="flex flex-col  my-2 p-3 border border-green-300 rounded-lg bg-green-50 shadow-sm">
+        <div>name: {app.name}</div>
         <div className="flex items-center space-x-2">
           <svg
             className="w-5 h-5 text-green-600"
@@ -77,27 +77,6 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
           </span>
         </div>
       </div>
-    );
-  }
-
-  if (isSetup) {
-    return (
-      <Button
-        onClick={() => {
-          setIsSetup(false);
-          if (!selectedChatId) {
-            showError("No chat ID found");
-            return;
-          }
-          streamMessage({
-            prompt: "OK, I've setup Supabase. Continue",
-            chatId: selectedChatId,
-          });
-        }}
-        className="my-1"
-      >
-        Continue | I've setup {provider}
-      </Button>
     );
   }
 

@@ -4,3 +4,4 @@ coverage
 # generated files
 drizzle/
 **/pnpm-lock.yaml
+**/snapshots/**

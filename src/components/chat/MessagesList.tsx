@@ -34,7 +34,11 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
     const selectedChatId = useAtomValue(selectedChatIdAtom);
 
     return (
-      <div className="flex-1 overflow-y-auto p-4" ref={ref}>
+      <div
+        className="flex-1 overflow-y-auto p-4"
+        ref={ref}
+        data-testid="messages-list"
+      >
         {messages.length > 0 ? (
           messages.map((message, index) => (
             <ChatMessage

@@ -41,6 +41,8 @@ jobs:
         run: npx playwright install chromium --with-deps
       - name: Build
         run: npm run pre:e2e
+      - name: Prep test server
+        run: cd testing/fake-llm-server && npm install && npm run build && cd -
       - name: E2E tests
         # Add debug logging to make it easier to see what's failing
         run: DEBUG=pw:browser npm run e2e

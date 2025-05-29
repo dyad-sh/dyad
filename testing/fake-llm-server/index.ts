@@ -50,6 +50,10 @@ const CANNED_MESSAGE = `
   More
   EOM`;
 
+app.get("/health", (req, res) => {
+  res.send("OK");
+});
+
 // Handle POST requests to /v1/chat/completions
 app.post("/v1/chat/completions", (req, res) => {
   const { stream = false, messages = [] } = req.body;

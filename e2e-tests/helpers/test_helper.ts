@@ -1,8 +1,85 @@
-import { test as base } from "@playwright/test";
+import { test as base, Page, expect } from "@playwright/test";
 import { findLatestBuild, parseElectronApp } from "electron-playwright-helpers";
 import { ElectronApplication, _electron as electron } from "playwright";
 
 const showDebugLogs = process.env.DEBUG_LOGS === "true";
+
+class PageObject {
+  constructor(private page: Page) {}
+
+  async setUp() {
+    await this.goToSettingsTab();
+    await this.setUpTestProvider();
+    await this.setUpTestModel();
+    await this.goToAppsTab();
+    await this.selectTestModel();
+  }
+
+  async dumpMessages() {
+    await expect(this.page.getByTestId("messages-list")).toMatchAriaSnapshot();
+  }
+
+  async waitForChatCompletion() {
+    await expect(
+      this.page.getByRole("button", { name: "Retry" }),
+    ).toBeVisible();
+  }
+
+  async sendPrompt(prompt: string) {
+    await this.page
+      .getByRole("textbox", { name: "Ask Dyad to build..." })
+      .click();
+    await this.page
+      .getByRole("textbox", { name: "Ask Dyad to build..." })
+      .fill(prompt);
+    await this.page.getByRole("button", { name: "Start new chat" }).click();
+    await this.waitForChatCompletion();
+  }
+
+  async selectTestModel() {
+    await this.page.getByRole("button", { name: "Model: Auto" }).click();
+    await this.page.getByText("test-provider").click();
+    await this.page.getByText("test-model").click();
+  }
+
+  async setUpTestProvider() {
+    await this.page.getByText("Add custom providerConnect to").click();
+    // Fill out provider dialog
+    await this.page
+      .getByRole("textbox", { name: "Provider ID" })
+      .fill("testing");
+    await this.page.getByRole("textbox", { name: "Display Name" }).click();
+    await this.page
+      .getByRole("textbox", { name: "Display Name" })
+      .fill("test-provider");
+    await this.page.getByText("API Base URLThe base URL for").click();
+    await this.page
+      .getByRole("textbox", { name: "API Base URL" })
+      .fill("http://localhost:3500/v1");
+    await this.page.getByRole("button", { name: "Add Provider" }).click();
+  }
+
+  async setUpTestModel() {
+    await this.page
+      .getByRole("heading", { name: "test-provider Needs Setup" })
+      .click();
+    await this.page.getByRole("button", { name: "Add Custom Model" }).click();
+    await this.page
+      .getByRole("textbox", { name: "Model ID*" })
+      .fill("test-model");
+    await this.page.getByRole("textbox", { name: "Model ID*" }).press("Tab");
+    await this.page.getByRole("textbox", { name: "Name*" }).fill("test-model");
+    await this.page.getByRole("button", { name: "Add Model" }).click();
+  }
+
+  async goToSettingsTab() {
+    await this.page.getByRole("link", { name: "Settings" }).click();
+  }
+
+  async goToAppsTab() {
+    await this.page.getByRole("link", { name: "Apps" }).click();
+  }
+}
 
 // From https://github.com/microsoft/playwright/issues/8208#issuecomment-1435475930
 //
@@ -11,7 +88,17 @@ const showDebugLogs = process.env.DEBUG_LOGS === "true";
 export const test = base.extend<{
   attachScreenshotsToReport: void;
   electronApp: ElectronApplication;
+  po: PageObject;
 }>({
+  po: [
+    async ({ electronApp }, use) => {
+      const page = await electronApp.firstWindow();
+
+      const po = new PageObject(page);
+      await use(po);
+    },
+    { auto: true },
+  ],
   attachScreenshotsToReport: [
     async ({ page }, use, testInfo) => {
       await use();

@@ -58,6 +58,11 @@ export async function onFirstRunMaybe() {
       hasRunBefore: true,
     });
   }
+  if (process.env.E2E_TEST_BUILD) {
+    writeSettings({
+      isTestMode: true,
+    });
+  }
 }
 
 /**

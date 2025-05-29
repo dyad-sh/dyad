@@ -124,7 +124,9 @@ export default function HomePage() {
         chatId: result.chatId,
         attachments,
       });
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      await new Promise((resolve) =>
+        setTimeout(resolve, settings?.isTestMode ? 0 : 2000),
+      );
 
       setInputValue("");
       setSelectedAppId(result.app.id);

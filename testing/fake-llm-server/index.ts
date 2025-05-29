@@ -1,6 +1,8 @@
 import express from "express";
 import { createServer } from "http";
 import cors from "cors";
+import fs from "fs";
+import path from "path";
 
 // Create Express app
 const app = express();
@@ -72,6 +74,38 @@ app.post("/v1/chat/completions", (req, res) => {
     });
   }
 
+  // Check if the last message starts with "tc=" to load test case file
+  let messageContent = CANNED_MESSAGE;
+  if (
+    lastMessage &&
+    lastMessage.content &&
+    lastMessage.content.startsWith("tc=")
+  ) {
+    const testCaseName = lastMessage.content.slice(3); // Remove "tc=" prefix
+    const testFilePath = path.join(
+      __dirname,
+      "..",
+      "..",
+      "..",
+      "e2e-tests",
+      "fixtures",
+      `${testCaseName}.md`,
+    );
+
+    try {
+      if (fs.existsSync(testFilePath)) {
+        messageContent = fs.readFileSync(testFilePath, "utf-8");
+        console.log(`* Loaded test case: ${testCaseName}`);
+      } else {
+        console.log(`* Test case file not found: ${testFilePath}`);
+        messageContent = `Error: Test case file not found: ${testCaseName}.md`;
+      }
+    } catch (error) {
+      console.error(`* Error reading test case file: ${error}`);
+      messageContent = `Error: Could not read test case file: ${testCaseName}.md`;
+    }
+  }
+
   // Non-streaming response
   if (!stream) {
     return res.json({
@@ -84,7 +118,7 @@ app.post("/v1/chat/completions", (req, res) => {
           index: 0,
           message: {
             role: "assistant",
-            content: CANNED_MESSAGE,
+            content: messageContent,
           },
           finish_reason: "stop",
         },
@@ -97,27 +131,30 @@ app.post("/v1/chat/completions", (req, res) => {
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
 
-  // Split the "hello world" message into characters to simulate streaming
-  const message = CANNED_MESSAGE;
+  // Split the message into characters to simulate streaming
+  const message = messageContent;
   const messageChars = message.split("");
 
   // Stream each character with a delay
   let index = 0;
+  const batchSize = 8;
 
   // Send role first
   res.write(createStreamChunk("", "assistant"));
 
   const interval = setInterval(() => {
     if (index < messageChars.length) {
-      res.write(createStreamChunk(messageChars[index]));
-      index++;
+      // Get the next batch of characters (up to batchSize)
+      const batch = messageChars.slice(index, index + batchSize).join("");
+      res.write(createStreamChunk(batch));
+      index += batchSize;
     } else {
       // Send the final chunk
       res.write(createStreamChunk("", "assistant", true));
       clearInterval(interval);
       res.end();
     }
-  }, 10);
+  }, 1);
 });
 
 // Start the server

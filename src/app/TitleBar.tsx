@@ -72,6 +72,7 @@ export const TitleBar = () => {
         <div className="pl-20"></div>
         <img src={logo} alt="Dyad Logo" className="w-6 h-6 mr-2" />
         <Button
+          data-testid="title-bar-app-name-button"
           variant="outline"
           size="sm"
           className={`hidden @md:block no-app-region-drag text-sm font-medium ${
@@ -83,6 +84,7 @@ export const TitleBar = () => {
         </Button>
         {isDyadPro && (
           <Button
+            data-testid="title-bar-dyad-pro-button"
             onClick={() => {
               navigate({
                 to: providerSettingsRoute.id,

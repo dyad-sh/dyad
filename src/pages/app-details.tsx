@@ -161,7 +161,10 @@ export default function AppDetailsPage() {
   const fullAppPath = appBasePath.replace("$APP_BASE_PATH", selectedApp.path);
 
   return (
-    <div className="relative min-h-screen p-4 w-full">
+    <div
+      className="relative min-h-screen p-4 w-full"
+      data-testid="app-details-page"
+    >
       <Button
         onClick={() => router.history.back()}
         variant="outline"

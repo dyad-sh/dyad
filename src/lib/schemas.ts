@@ -123,6 +123,11 @@ export const UserSettingsSchema = z.object({
   selectedTemplateId: z.string().optional(),
 
   ////////////////////////////////
+  // E2E TESTING ONLY.
+  ////////////////////////////////
+  isTestMode: z.boolean().optional(),
+
+  ////////////////////////////////
   // DEPRECATED.
   ////////////////////////////////
   dyadProBudget: DyadProBudgetSchema.optional(),

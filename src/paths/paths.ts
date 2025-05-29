@@ -2,6 +2,9 @@ import path from "node:path";
 import os from "node:os";
 
 export function getDyadAppPath(appPath: string): string {
+  if (process.env.E2E_TEST_BUILD) {
+    return path.join("/tmp", "dyad-apps-test", appPath);
+  }
   return path.join(os.homedir(), "dyad-apps", appPath);
 }
 

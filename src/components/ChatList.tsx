@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 
 import { formatDistanceToNow } from "date-fns";
-import { PlusCircle, MoreVertical, Trash2 } from "lucide-react";
+import { PlusCircle, MoreVertical, Trash2, FileEdit } from "lucide-react";
 import { useAtom } from "jotai";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
@@ -90,6 +90,24 @@ export function ChatList({ show }: { show?: boolean }) {
     }
   };
 
+  const handleRenameChat = async (chatId: number) => {
+    const chat = chats.find((c) => c.id === chatId);
+    const currentTitle = chat?.title || "New Chat";
+    const newTitle = window.prompt("Enter new chat name:", currentTitle);
+
+    if (!newTitle) {
+      return; // User cancelled or entered an empty string
+    }
+
+    try {
+      await IpcClient.getInstance().renameChat(chatId, newTitle);
+      showSuccess("Chat renamed successfully");
+      await refreshChats();
+    } catch (error) {
+      showError(`Failed to rename chat: ${(error as any).toString()}`);
+    }
+  };
+
   const handleDeleteChat = async (chatId: number) => {
     try {
       await IpcClient.getInstance().deleteChat(chatId);
@@ -173,6 +191,12 @@ export function ChatList({ show }: { show?: boolean }) {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={() => handleRenameChat(chat.id)}
+                          >
+                            <FileEdit className="mr-2 h-4 w-4" />
+                            <span>Rename Chat</span>
+                          </DropdownMenuItem>
                           <DropdownMenuItem
                             variant="destructive"
                             onClick={() => handleDeleteChat(chat.id)}

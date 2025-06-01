@@ -52,3 +52,9 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 3
+      - uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        if: failure()
+        with:
+          name: test-results
+          path: test-results/
+          retention-days: 3

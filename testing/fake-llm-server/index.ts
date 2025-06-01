@@ -1,4 +1,4 @@
-import express from "express";
+import express, { Request, Response } from "express";
 import { createServer } from "http";
 import cors from "cors";
 import fs from "fs";
@@ -95,7 +95,7 @@ app.get("/ollama/api/tags", (req, res) => {
 let globalCounter = 0;
 
 app.post("/ollama/chat", (req, res) => {
-  // Tell the client we’re going to stream NDJSON
+  // Tell the client we're going to stream NDJSON
   res.setHeader("Content-Type", "application/x-ndjson");
   res.setHeader("Cache-Control", "no-cache");
 
@@ -139,8 +139,55 @@ app.post("/ollama/chat", (req, res) => {
   }, 300); // 300 ms delay – tweak as you like
 });
 
+// LM Studio specific endpoints
+app.get("/lmstudio/api/v0/models", (req, res) => {
+  const lmStudioModels = {
+    data: [
+      {
+        type: "llm",
+        id: "lmstudio-model-1",
+        object: "model",
+        publisher: "lmstudio",
+        state: "loaded",
+        max_context_length: 4096,
+        quantization: "Q4_0",
+        compatibility_type: "gguf",
+        arch: "llama",
+      },
+      {
+        type: "llm",
+        id: "lmstudio-model-2-chat",
+        object: "model",
+        publisher: "lmstudio",
+        state: "not-loaded",
+        max_context_length: 8192,
+        quantization: "Q5_K_M",
+        compatibility_type: "gguf",
+        arch: "mixtral",
+      },
+      {
+        type: "embedding", // Should be filtered out by client
+        id: "lmstudio-embedding-model",
+        object: "model",
+        publisher: "lmstudio",
+        state: "loaded",
+        max_context_length: 2048,
+        quantization: "F16",
+        compatibility_type: "gguf",
+        arch: "bert",
+      },
+    ],
+  };
+  console.log("* Sending fake LM Studio models");
+  res.json(lmStudioModels);
+});
+
+app.post("/lmstudio/v1/chat/completions", chatCompletionHandler);
+
 // Handle POST requests to /v1/chat/completions
-app.post("/v1/chat/completions", (req, res) => {
+app.post("/v1/chat/completions", chatCompletionHandler);
+
+function chatCompletionHandler(req: Request, res: Response) {
   const { stream = false, messages = [] } = req.body;
   console.log("* Received messages", messages);
 
@@ -270,8 +317,7 @@ app.post("/v1/chat/completions", (req, res) => {
       res.end();
     }
   }, 10);
-});
-
+}
 // Start the server
 const server = createServer(app);
 server.listen(PORT, () => {

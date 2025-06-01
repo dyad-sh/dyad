@@ -13,6 +13,7 @@ import { LanguageModelProvider } from "../ipc_types";
 import { llmErrorStore } from "@/main/llm_error_store";
 import { createDyadEngine } from "./llm_engine_provider";
 import { findLanguageModel } from "./findLanguageModel";
+import { LM_STUDIO_BASE_URL } from "./lm_studio_utils";
 
 const dyadLocalEngine = process.env.DYAD_LOCAL_ENGINE;
 const dyadGatewayUrl = process.env.DYAD_GATEWAY_URL;
@@ -257,7 +258,7 @@ function getRegularModelClient(
     }
     case "lmstudio": {
       // LM Studio uses OpenAI compatible API
-      const baseURL = providerConfig.apiBaseUrl || "http://localhost:1234/v1";
+      const baseURL = providerConfig.apiBaseUrl || LM_STUDIO_BASE_URL + "/v1";
       const provider = createOpenAICompatible({
         name: "lmstudio",
         baseURL,

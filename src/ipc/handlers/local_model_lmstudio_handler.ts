@@ -1,6 +1,7 @@
 import { ipcMain } from "electron";
 import log from "electron-log";
 import type { LocalModelListResponse, LocalModel } from "../ipc_types";
+import { LM_STUDIO_BASE_URL } from "../utils/lm_studio_utils";
 
 const logger = log.scope("lmstudio_handler");
 
@@ -19,7 +20,7 @@ export interface LMStudioModel {
 
 export async function fetchLMStudioModels(): Promise<LocalModelListResponse> {
   const modelsResponse: Response = await fetch(
-    "http://localhost:1234/api/v0/models",
+    `${LM_STUDIO_BASE_URL}/api/v0/models`,
   );
   if (!modelsResponse.ok) {
     throw new Error("Failed to fetch models from LM Studio");

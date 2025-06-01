@@ -22,4 +22,13 @@ test("undo", async ({ po }) => {
     // Also, could be slow.
     timeout: 15_000,
   });
+
+  await po.clickUndo();
+
+  await expect(
+    iframe.contentFrame().getByText("Welcome to Your Blank App"),
+  ).toBeVisible({
+    // Also, could be slow.
+    timeout: 15_000,
+  });
 });

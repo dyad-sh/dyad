@@ -4,7 +4,7 @@ import { LocalModelListResponse, LocalModel } from "../ipc_types";
 
 const logger = log.scope("ollama_handler");
 
-const OLLAMA_API_URL = "http://localhost:11434";
+const OLLAMA_API_URL = process.env.OLLAMA_HOST || "http://localhost:11434";
 
 interface OllamaModel {
   name: string;

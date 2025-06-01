@@ -246,7 +246,7 @@ function getRegularModelClient(
     case "ollama": {
       // Ollama typically runs locally and doesn't require an API key in the same way
       const provider = createOllama({
-        baseURL: providerConfig.apiBaseUrl,
+        baseURL: process.env.OLLAMA_HOST,
       });
       return {
         modelClient: {

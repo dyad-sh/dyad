@@ -56,7 +56,88 @@ app.get("/health", (req, res) => {
   res.send("OK");
 });
 
+// Ollama-specific endpoints
+app.get("/ollama/api/tags", (req, res) => {
+  const ollamaModels = {
+    models: [
+      {
+        name: "testollama",
+        modified_at: "2024-05-01T10:00:00.000Z",
+        size: 4700000000,
+        digest: "abcdef123456",
+        details: {
+          format: "gguf",
+          family: "llama",
+          families: ["llama"],
+          parameter_size: "8B",
+          quantization_level: "Q4_0",
+        },
+      },
+      {
+        name: "codellama:7b",
+        modified_at: "2024-04-25T12:30:00.000Z",
+        size: 3800000000,
+        digest: "fedcba654321",
+        details: {
+          format: "gguf",
+          family: "llama",
+          families: ["llama", "codellama"],
+          parameter_size: "7B",
+          quantization_level: "Q5_K_M",
+        },
+      },
+    ],
+  };
+  console.log("* Sending fake Ollama models");
+  res.json(ollamaModels);
+});
+
 let globalCounter = 0;
+
+app.post("/ollama/chat", (req, res) => {
+  // Tell the client we’re going to stream NDJSON
+  res.setHeader("Content-Type", "application/x-ndjson");
+  res.setHeader("Cache-Control", "no-cache");
+
+  // Chunk #1 – partial answer
+  const firstChunk = {
+    model: "llama3.2",
+    created_at: "2023-08-04T08:52:19.385406455-07:00",
+    message: {
+      role: "assistant",
+      content: "ollamachunk",
+      images: null,
+    },
+    done: false,
+  };
+
+  // Chunk #2 – final answer + metrics
+  const secondChunk = {
+    model: "llama3.2",
+    created_at: "2023-08-04T19:22:45.499127Z",
+    message: {
+      role: "assistant",
+      content: "",
+    },
+    done: true,
+    total_duration: 4883583458,
+    load_duration: 1334875,
+    prompt_eval_count: 26,
+    prompt_eval_duration: 342546000,
+    eval_count: 282,
+    eval_duration: 4535599000,
+  };
+
+  // Send the first object right away
+  res.write(JSON.stringify(firstChunk) + "\n");
+  res.write(JSON.stringify(firstChunk) + "\n");
+
+  // …and the second one a moment later to mimic streaming
+  setTimeout(() => {
+    res.write(JSON.stringify(secondChunk) + "\n");
+    res.end(); // Close the HTTP stream
+  }, 300); // 300 ms delay – tweak as you like
+});
 
 // Handle POST requests to /v1/chat/completions
 app.post("/v1/chat/completions", (req, res) => {
@@ -188,7 +269,7 @@ app.post("/v1/chat/completions", (req, res) => {
       clearInterval(interval);
       res.end();
     }
-  }, 1);
+  }, 10);
 });
 
 // Start the server

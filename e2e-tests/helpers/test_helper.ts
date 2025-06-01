@@ -20,6 +20,23 @@ class PageObject {
     await expect(this.page.getByTestId("messages-list")).toMatchAriaSnapshot();
   }
 
+  async approveProposal() {
+    await this.page.getByTestId("approve-proposal-button").click();
+  }
+
+  async rejectProposal() {
+    await this.page.getByTestId("reject-proposal-button").click();
+  }
+
+  getPreviewIframeElement() {
+    return this.page.getByTestId("preview-iframe-element");
+  }
+
+  async snapshotPreview() {
+    const iframe = this.getPreviewIframeElement();
+    await expect(iframe.contentFrame().locator("body")).toMatchAriaSnapshot();
+  }
+
   async snapshotServerDump() {
     // Get the text content of the messages list
     const messagesListText = await this.page
@@ -199,11 +216,12 @@ export const test = base.extend<{
     { auto: true },
   ],
   attachScreenshotsToReport: [
-    async ({ page }, use, testInfo) => {
+    async ({ electronApp }, use, testInfo) => {
       await use();
 
       // After the test we can check whether the test passed or failed.
       if (testInfo.status !== testInfo.expectedStatus) {
+        const page = await electronApp.firstWindow();
         const screenshot = await page.screenshot();
         await testInfo.attach("screenshot", {
           body: screenshot,

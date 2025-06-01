@@ -673,6 +673,7 @@ function ChatInputActions({
             variant="outline"
             onClick={onApprove}
             disabled={!isApprovable || isApproving || isRejecting}
+            data-testid="approve-proposal-button"
           >
             {isApproving ? (
               <Loader2 size={16} className="mr-1 animate-spin" />
@@ -687,6 +688,7 @@ function ChatInputActions({
             variant="outline"
             onClick={onReject}
             disabled={!isApprovable || isApproving || isRejecting}
+            data-testid="reject-proposal-button"
           >
             {isRejecting ? (
               <Loader2 size={16} className="mr-1 animate-spin" />

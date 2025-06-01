@@ -464,6 +464,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           </div>
         ) : (
           <iframe
+            data-testid="preview-iframe-element"
             onLoad={() => {
               setErrorMessage(undefined);
             }}

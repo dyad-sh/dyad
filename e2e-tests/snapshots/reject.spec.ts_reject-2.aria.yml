@@ -1,0 +1,11 @@
+- paragraph: tc=write-index
+- paragraph: OK, I'm going to do some writing now...
+- img
+- text: Index.tsx
+- img
+- text: "src/pages/Index.tsx Summary: write-description"
+- paragraph: And it's done!
+- img
+- text: Rejected
+- button "Retry":
+  - img

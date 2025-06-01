@@ -1,6 +1,7 @@
 import { test as base, Page, expect } from "@playwright/test";
 import { findLatestBuild, parseElectronApp } from "electron-playwright-helpers";
 import { ElectronApplication, _electron as electron } from "playwright";
+import fs from "fs";
 
 const showDebugLogs = process.env.DEBUG_LOGS === "true";
 
@@ -15,14 +16,44 @@ class PageObject {
     await this.selectTestModel();
   }
 
-  async dumpMessages() {
+  async snapshotMessages() {
     await expect(this.page.getByTestId("messages-list")).toMatchAriaSnapshot();
   }
 
+  async snapshotServerDump() {
+    // Get the text content of the messages list
+    const messagesListText = await this.page
+      .getByTestId("messages-list")
+      .textContent();
+
+    // Find the dump path using regex
+    const dumpPathMatch = messagesListText?.match(
+      /\[\[dyad-dump-path=([^\]]+)\]\]/,
+    );
+
+    if (!dumpPathMatch) {
+      throw new Error("No dump path found in messages list");
+    }
+
+    const dumpFilePath = dumpPathMatch[1];
+
+    // Read the JSON file
+    const dumpContent = fs.readFileSync(dumpFilePath, "utf-8");
+
+    // Perform snapshot comparison
+    expect(prettifyDump(dumpContent)).toMatchSnapshot("server-dump.txt");
+  }
+
   async waitForChatCompletion() {
-    await expect(
-      this.page.getByRole("button", { name: "Retry" }),
-    ).toBeVisible();
+    await expect(this.getRetryButton()).toBeVisible();
+  }
+
+  async clickRetry() {
+    await this.getRetryButton().click();
+  }
+
+  private getRetryButton() {
+    return this.page.getByRole("button", { name: "Retry" });
   }
 
   async sendPrompt(prompt: string) {
@@ -79,6 +110,56 @@ class PageObject {
   async goToAppsTab() {
     await this.page.getByRole("link", { name: "Apps" }).click();
   }
+
+  ////////////////////////////////
+  // Toast assertions
+  ////////////////////////////////
+
+  async expectNoToast() {
+    await expect(this.page.locator("[data-sonner-toast]")).toHaveCount(0);
+  }
+
+  async waitForToast(
+    type?: "success" | "error" | "warning" | "info",
+    timeout = 5000,
+  ) {
+    const selector = type
+      ? `[data-sonner-toast][data-type="${type}"]`
+      : "[data-sonner-toast]";
+
+    await this.page.waitForSelector(selector, { timeout });
+  }
+
+  async waitForToastWithText(text: string, timeout = 5000) {
+    await this.page.waitForSelector(`[data-sonner-toast]:has-text("${text}")`, {
+      timeout,
+    });
+  }
+
+  async assertToastVisible(type?: "success" | "error" | "warning" | "info") {
+    const selector = type
+      ? `[data-sonner-toast][data-type="${type}"]`
+      : "[data-sonner-toast]";
+
+    await expect(this.page.locator(selector)).toBeVisible();
+  }
+
+  async assertToastWithText(text: string) {
+    await expect(
+      this.page.locator(`[data-sonner-toast]:has-text("${text}")`),
+    ).toBeVisible();
+  }
+
+  async dismissAllToasts() {
+    // Click all close buttons if they exist
+    const closeButtons = this.page.locator(
+      "[data-sonner-toast] button[data-close-button]",
+    );
+    const count = await closeButtons.count();
+    for (let i = 0; i < count; i++) {
+      await closeButtons.nth(i).click();
+    }
+  }
 }
 
 // From https://github.com/microsoft/playwright/issues/8208#issuecomment-1435475930
@@ -114,52 +195,68 @@ export const test = base.extend<{
     },
     { auto: true },
   ],
-  electronApp: async ({}, use) => {
-    // find the latest build in the out directory
-    const latestBuild = findLatestBuild();
-    // parse the directory and find paths and other info
-    const appInfo = parseElectronApp(latestBuild);
-    process.env.E2E_TEST_BUILD = "true";
-    // This is just a hack to avoid the AI setup screen.
-    process.env.OPENAI_API_KEY = "sk-test";
-    const electronApp = await electron.launch({
-      args: [
-        appInfo.main,
-        "--enable-logging",
-        `--user-data-dir=/tmp/dyad-e2e-tests-${Date.now()}`,
-      ],
-      executablePath: appInfo.executable,
-    });
-
-    console.log("electronApp launched!");
-    if (showDebugLogs) {
-      // Listen to main process output immediately
-      electronApp.process().stdout?.on("data", (data) => {
-        console.log(`MAIN_PROCESS_STDOUT: ${data.toString()}`);
+  electronApp: [
+    async ({}, use) => {
+      // find the latest build in the out directory
+      const latestBuild = findLatestBuild();
+      // parse the directory and find paths and other info
+      const appInfo = parseElectronApp(latestBuild);
+      process.env.E2E_TEST_BUILD = "true";
+      // This is just a hack to avoid the AI setup screen.
+      process.env.OPENAI_API_KEY = "sk-test";
+      const electronApp = await electron.launch({
+        args: [
+          appInfo.main,
+          "--enable-logging",
+          `--user-data-dir=/tmp/dyad-e2e-tests-${Date.now()}`,
+        ],
+        executablePath: appInfo.executable,
       });
-      electronApp.process().stderr?.on("data", (data) => {
-        console.error(`MAIN_PROCESS_STDERR: ${data.toString()}`);
-      });
-    }
-    electronApp.on("close", () => {
-      console.log(`Electron app closed listener:`);
-    });
 
-    electronApp.on("window", async (page) => {
-      const filename = page.url()?.split("/").pop();
-      console.log(`Window opened: ${filename}`);
-
-      // capture errors
-      page.on("pageerror", (error) => {
-        console.error(error);
+      console.log("electronApp launched!");
+      if (showDebugLogs) {
+        // Listen to main process output immediately
+        electronApp.process().stdout?.on("data", (data) => {
+          console.log(`MAIN_PROCESS_STDOUT: ${data.toString()}`);
+        });
+        electronApp.process().stderr?.on("data", (data) => {
+          console.error(`MAIN_PROCESS_STDERR: ${data.toString()}`);
+        });
+      }
+      electronApp.on("close", () => {
+        console.log(`Electron app closed listener:`);
       });
-      // capture console messages
-      page.on("console", (msg) => {
-        console.log(msg.text());
-      });
-    });
 
-    await use(electronApp);
-    await electronApp.close();
-  },
+      electronApp.on("window", async (page) => {
+        const filename = page.url()?.split("/").pop();
+        console.log(`Window opened: ${filename}`);
+
+        // capture errors
+        page.on("pageerror", (error) => {
+          console.error(error);
+        });
+        // capture console messages
+        page.on("console", (msg) => {
+          console.log(msg.text());
+        });
+      });
+
+      await use(electronApp);
+      await electronApp.close();
+    },
+    { auto: true },
+  ],
 });
+
+function prettifyDump(dumpContent: string) {
+  const parsedDump = JSON.parse(dumpContent) as Array<{
+    role: string;
+    content: string;
+  }>;
+
+  return parsedDump
+    .map((message) => {
+      return `===\nrole: ${message.role}\nmessage: ${message.content}`;
+    })
+    .join("\n\n");
+}

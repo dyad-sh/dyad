@@ -1,0 +1,4 @@
+- paragraph: "[increment]"
+- paragraph: counter=2
+- button "Retry":
+  - img

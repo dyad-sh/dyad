@@ -56,6 +56,8 @@ app.get("/health", (req, res) => {
   res.send("OK");
 });
 
+let globalCounter = 0;
+
 // Handle POST requests to /v1/chat/completions
 app.post("/v1/chat/completions", (req, res) => {
   const { stream = false, messages = [] } = req.body;
@@ -74,8 +76,40 @@ app.post("/v1/chat/completions", (req, res) => {
     });
   }
 
-  // Check if the last message starts with "tc=" to load test case file
   let messageContent = CANNED_MESSAGE;
+
+  // Check if the last message is "[dump]" to write messages to file and return path
+  if (lastMessage && lastMessage.content === "[dump]") {
+    const timestamp = Date.now();
+    const generatedDir = path.join(__dirname, "generated");
+
+    // Create generated directory if it doesn't exist
+    if (!fs.existsSync(generatedDir)) {
+      fs.mkdirSync(generatedDir, { recursive: true });
+    }
+
+    const dumpFilePath = path.join(generatedDir, `${timestamp}.json`);
+
+    try {
+      fs.writeFileSync(
+        dumpFilePath,
+        JSON.stringify(messages, null, 2),
+        "utf-8",
+      );
+      console.log(`* Dumped messages to: ${dumpFilePath}`);
+      messageContent = `[[dyad-dump-path=${dumpFilePath}]]`;
+    } catch (error) {
+      console.error(`* Error writing dump file: ${error}`);
+      messageContent = `Error: Could not write dump file: ${error}`;
+    }
+  }
+
+  if (lastMessage && lastMessage.content === "[increment]") {
+    globalCounter++;
+    messageContent = `counter=${globalCounter}`;
+  }
+
+  // Check if the last message starts with "tc=" to load test case file
   if (
     lastMessage &&
     lastMessage.content &&

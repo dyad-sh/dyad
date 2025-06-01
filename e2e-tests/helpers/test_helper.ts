@@ -8,10 +8,14 @@ const showDebugLogs = process.env.DEBUG_LOGS === "true";
 class PageObject {
   constructor(private page: Page) {}
 
-  async setUp() {
+  async setUp({ autoApprove = false }: { autoApprove?: boolean } = {}) {
     await this.goToSettingsTab();
+    if (autoApprove) {
+      await this.toggleAutoApprove();
+    }
     await this.setUpTestProvider();
     await this.setUpTestModel();
+
     await this.goToAppsTab();
     await this.selectTestModel();
   }
@@ -140,6 +144,14 @@ class PageObject {
 
   async goToSettingsTab() {
     await this.page.getByRole("link", { name: "Settings" }).click();
+  }
+
+  ////////////////////////////////
+  // Settings related
+  ////////////////////////////////
+
+  async toggleAutoApprove() {
+    await this.page.getByRole("switch", { name: "Auto-approve" }).click();
   }
 
   async goToAppsTab() {

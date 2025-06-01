@@ -73,8 +73,16 @@ class PageObject {
     await this.getRetryButton().click();
   }
 
+  async clickUndo() {
+    await this.getUndoButton().click();
+  }
+
   private getRetryButton() {
     return this.page.getByRole("button", { name: "Retry" });
+  }
+
+  private getUndoButton() {
+    return this.page.getByRole("button", { name: "Undo" });
   }
 
   async sendPrompt(prompt: string) {
@@ -84,7 +92,7 @@ class PageObject {
     await this.page
       .getByRole("textbox", { name: "Ask Dyad to build..." })
       .fill(prompt);
-    await this.page.getByRole("button", { name: "Start new chat" }).click();
+    await this.page.getByRole("button", { name: "Send message" }).click();
     await this.waitForChatCompletion();
   }
 

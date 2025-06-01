@@ -79,7 +79,7 @@ export function HomeChatInput({
 
   return (
     <>
-      <div className="p-4">
+      <div className="p-4" data-testid="home-chat-input-container">
         <div
           className={`relative flex flex-col space-y-2 border border-border rounded-lg bg-(--background-lighter) shadow-sm ${
             isDraggingOver ? "ring-2 ring-blue-500 border-blue-500" : ""

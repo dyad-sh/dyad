@@ -7,7 +7,8 @@ import path from "path";
 // Create Express app
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
 const PORT = 3500;
 
@@ -205,9 +206,17 @@ function chatCompletionHandler(req: Request, res: Response) {
   }
 
   let messageContent = CANNED_MESSAGE;
-
+  console.error("LASTMESSAGE", lastMessage);
   // Check if the last message is "[dump]" to write messages to file and return path
-  if (lastMessage && lastMessage.content === "[dump]") {
+  if (
+    lastMessage &&
+    (Array.isArray(lastMessage.content)
+      ? lastMessage.content.some(
+          (part: { type: string; text: string }) =>
+            part.type === "text" && part.text.includes("[dump]"),
+        )
+      : lastMessage.content.includes("[dump]"))
+  ) {
     const timestamp = Date.now();
     const generatedDir = path.join(__dirname, "generated");
 
@@ -241,6 +250,7 @@ function chatCompletionHandler(req: Request, res: Response) {
   if (
     lastMessage &&
     lastMessage.content &&
+    typeof lastMessage.content === "string" &&
     lastMessage.content.startsWith("tc=")
   ) {
     const testCaseName = lastMessage.content.slice(3); // Remove "tc=" prefix

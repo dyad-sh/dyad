@@ -1,0 +1,7 @@
+- paragraph: "[dump]"
+- paragraph: "Attachments:"
+- list:
+  - listitem: logo.png (image/png)
+- paragraph: "[[dyad-dump-path=*]]"
+- button "Retry":
+  - img

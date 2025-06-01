@@ -1,0 +1,25 @@
+- paragraph: basic
+- 'button "Thinking `＜dyad-write>`: I''ll think about the problem and write a bug report. ＜dyad-write> ＜dyad-write path=\"file1.txt\"> Fake dyad write ＜/dyad-write>"':
+  - img
+  - img
+  - paragraph:
+    - code: "`＜dyad-write>`"
+    - text: ": I'll think about the problem and write a bug report."
+  - paragraph: ＜dyad-write>
+  - paragraph: ＜dyad-write path="file1.txt"> Fake dyad write ＜/dyad-write>
+- img
+- text: file1.txt
+- img
+- text: file1.txt
+- paragraph: More EOM
+- img
+- text: Approved
+- paragraph: "[dump]"
+- paragraph: "Attachments:"
+- list:
+  - listitem: logo.png (image/png)
+- paragraph: "[[dyad-dump-path=*]]"
+- img
+- text: Approved
+- button "Retry":
+  - img

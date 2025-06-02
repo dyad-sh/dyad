@@ -245,6 +245,10 @@ class PageObject {
       await closeButtons.nth(i).click();
     }
   }
+
+  async sleep(ms: number) {
+    await new Promise((resolve) => setTimeout(resolve, ms));
+  }
 }
 
 // From https://github.com/microsoft/playwright/issues/8208#issuecomment-1435475930

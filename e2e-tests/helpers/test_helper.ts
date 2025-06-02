@@ -50,6 +50,10 @@ class PageObject {
     await this.page.getByTestId("reject-proposal-button").click();
   }
 
+  async clickRestart() {
+    await this.page.getByRole("button", { name: "Restart" }).click();
+  }
+
   getPreviewIframeElement() {
     return this.page.getByTestId("preview-iframe-element");
   }
@@ -194,6 +198,14 @@ class PageObject {
 
   async goToAppsTab() {
     await this.page.getByRole("link", { name: "Apps" }).click();
+  }
+
+  async goToHubTab() {
+    await this.page.getByRole("link", { name: "Hub" }).click();
+  }
+
+  async selectTemplate(templateName: string) {
+    await this.page.getByRole("img", { name: templateName }).click();
   }
 
   ////////////////////////////////

@@ -2,11 +2,19 @@ import { test as base, Page, expect } from "@playwright/test";
 import { findLatestBuild, parseElectronApp } from "electron-playwright-helpers";
 import { ElectronApplication, _electron as electron } from "playwright";
 import fs from "fs";
+import path from "path";
 
 const showDebugLogs = process.env.DEBUG_LOGS === "true";
 
 class PageObject {
-  constructor(private page: Page) {}
+  private userDataDir: string;
+
+  constructor(
+    private page: Page,
+    { userDataDir }: { userDataDir: string },
+  ) {
+    this.userDataDir = userDataDir;
+  }
 
   async setUp({ autoApprove = false }: { autoApprove?: boolean } = {}) {
     await this.goToSettingsTab();
@@ -218,6 +226,30 @@ class PageObject {
     await this.page.getByRole("switch", { name: "Auto-approve" }).click();
   }
 
+  async snapshotSettings() {
+    const settings = path.join(this.userDataDir, "user-settings.json");
+    const settingsContent = fs.readFileSync(settings, "utf-8");
+    //  Sanitize the "telemetryUserId" since it's a UUID
+    const sanitizedSettingsContent = settingsContent.replace(
+      /"telemetryUserId": "[^"]*"/g,
+      '"telemetryUserId": "[UUID]"',
+    );
+
+    expect(sanitizedSettingsContent).toMatchSnapshot();
+  }
+
+  async clickTelemetryAccept() {
+    await this.page.getByTestId("telemetry-accept-button").click();
+  }
+
+  async clickTelemetryReject() {
+    await this.page.getByTestId("telemetry-reject-button").click();
+  }
+
+  async clickTelemetryLater() {
+    await this.page.getByTestId("telemetry-later-button").click();
+  }
+
   async goToAppsTab() {
     await this.page.getByRole("link", { name: "Apps" }).click();
   }
@@ -298,7 +330,9 @@ export const test = base.extend<{
     async ({ electronApp }, use) => {
       const page = await electronApp.firstWindow();
 
-      const po = new PageObject(page);
+      const po = new PageObject(page, {
+        userDataDir: (electronApp as any).$dyadUserDataDir,
+      });
       await use(po);
     },
     { auto: true },
@@ -331,17 +365,19 @@ export const test = base.extend<{
       process.env.E2E_TEST_BUILD = "true";
       // This is just a hack to avoid the AI setup screen.
       process.env.OPENAI_API_KEY = "sk-test";
+      const USER_DATA_DIR = `/tmp/dyad-e2e-tests-${Date.now()}`;
       const electronApp = await electron.launch({
         args: [
           appInfo.main,
           "--enable-logging",
-          `--user-data-dir=/tmp/dyad-e2e-tests-${Date.now()}`,
+          `--user-data-dir=${USER_DATA_DIR}`,
         ],
         executablePath: appInfo.executable,
         recordVideo: {
           dir: "test-results",
         },
       });
+      (electronApp as any).$dyadUserDataDir = USER_DATA_DIR;
 
       console.log("electronApp launched!");
       if (showDebugLogs) {

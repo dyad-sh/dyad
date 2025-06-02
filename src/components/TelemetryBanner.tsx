@@ -48,6 +48,7 @@ export function PrivacyBanner() {
             onClick={() => {
               updateSettings({ telemetryConsent: "opted_in" });
             }}
+            data-testid="telemetry-accept-button"
           >
             Accept
           </Button>
@@ -56,10 +57,15 @@ export function PrivacyBanner() {
             onClick={() => {
               updateSettings({ telemetryConsent: "opted_out" });
             }}
+            data-testid="telemetry-reject-button"
           >
             Reject
           </Button>
-          <Button variant="ghost" onClick={() => setHideBanner(true)}>
+          <Button
+            variant="ghost"
+            onClick={() => setHideBanner(true)}
+            data-testid="telemetry-later-button"
+          >
             Later
           </Button>
         </div>

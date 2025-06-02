@@ -1,0 +1,15 @@
+{
+  "selectedModel": {
+    "name": "auto",
+    "provider": "auto"
+  },
+  "providerSettings": {},
+  "telemetryConsent": "opted_out",
+  "telemetryUserId": "[UUID]",
+  "hasRunBefore": true,
+  "experiments": {},
+  "lastShownReleaseNotesVersion": "0.8.0",
+  "enableProLazyEditsMode": true,
+  "enableProSmartFilesContextMode": true,
+  "isTestMode": true
+}

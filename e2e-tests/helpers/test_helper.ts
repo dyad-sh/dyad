@@ -54,13 +54,19 @@ class PageObject {
     await this.page.getByRole("button", { name: "Restart" }).click();
   }
 
+  locateLoadingAppPreview() {
+    return this.page.getByText("Loading app preview...");
+  }
+
   getPreviewIframeElement() {
     return this.page.getByTestId("preview-iframe-element");
   }
 
   async snapshotPreview() {
     const iframe = this.getPreviewIframeElement();
-    await expect(iframe.contentFrame().locator("body")).toMatchAriaSnapshot();
+    await expect(iframe.contentFrame().locator("body")).toMatchAriaSnapshot({
+      timeout: 15_000,
+    });
   }
 
   async snapshotServerDump({

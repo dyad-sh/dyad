@@ -54,6 +54,22 @@ class PageObject {
     await this.page.getByRole("button", { name: "Restart" }).click();
   }
 
+  async clickPreviewRefresh() {
+    await this.page.getByTestId("preview-refresh-button").click();
+  }
+
+  async clickPreviewNavigateBack() {
+    await this.page.getByTestId("preview-navigate-back-button").click();
+  }
+
+  async clickPreviewNavigateForward() {
+    await this.page.getByTestId("preview-navigate-forward-button").click();
+  }
+
+  async clickPreviewOpenBrowser() {
+    await this.page.getByTestId("preview-open-browser-button").click();
+  }
+
   locateLoadingAppPreview() {
     return this.page.getByText("Loading app preview...");
   }

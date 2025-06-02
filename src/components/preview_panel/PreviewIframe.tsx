@@ -372,6 +372,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
             disabled={!canGoBack || loading || !selectedAppId}
             onClick={handleNavigateBack}
+            data-testid="preview-navigate-back-button"
           >
             <ArrowLeft size={16} />
           </button>
@@ -379,6 +380,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
             disabled={!canGoForward || loading || !selectedAppId}
             onClick={handleNavigateForward}
+            data-testid="preview-navigate-forward-button"
           >
             <ArrowRight size={16} />
           </button>
@@ -386,6 +388,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             onClick={handleReload}
             className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
             disabled={loading || !selectedAppId}
+            data-testid="preview-refresh-button"
           >
             <RefreshCw size={16} />
           </button>
@@ -429,6 +432,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         {/* Action Buttons */}
         <div className="flex space-x-1">
           <button
+            data-testid="preview-open-browser-button"
             onClick={() => {
               if (originalUrl) {
                 IpcClient.getInstance().openExternalUrl(originalUrl);

@@ -183,6 +183,7 @@ export default function AppDetailsPage() {
             size="sm"
             className="ml-1 p-0.5 h-auto"
             onClick={handleOpenRenameDialog}
+            data-testid="app-details-rename-app-button"
           >
             <Pencil className="h-3.5 w-3.5" />
           </Button>

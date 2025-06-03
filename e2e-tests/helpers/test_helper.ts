@@ -256,10 +256,19 @@ class PageObject {
     if (!currentAppName) {
       throw new Error("No current app name found");
     }
-    return path.join(this.userDataDir, "dyad-apps", currentAppName);
+    return this.getAppPath({ appName: currentAppName });
   }
+
+  getAppPath({ appName }: { appName: string }) {
+    return path.join(this.userDataDir, "dyad-apps", appName);
+  }
+
   async clickAppListItem({ appName }: { appName: string }) {
     await this.page.getByTestId(`app-list-item-${appName}`).click();
+  }
+
+  async clickAppDetailsRenameAppButton() {
+    await this.page.getByTestId("app-details-rename-app-button").click();
   }
 
   async clickAppDetailsMoreOptions() {

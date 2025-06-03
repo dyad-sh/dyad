@@ -10,7 +10,7 @@ class PageObject {
   private userDataDir: string;
 
   constructor(
-    private page: Page,
+    public page: Page,
     { userDataDir }: { userDataDir: string },
   ) {
     this.userDataDir = userDataDir;

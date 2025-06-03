@@ -101,6 +101,7 @@ const PreviewHeader = ({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
+            data-testid="preview-more-options-button"
             className="flex items-center justify-center p-1.5 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
             title="More options"
           >

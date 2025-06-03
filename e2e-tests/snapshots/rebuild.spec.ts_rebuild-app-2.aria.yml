@@ -1,0 +1,7 @@
+- region "Notifications (F8)":
+  - list
+- region "Notifications alt+T"
+- heading "Welcome to Your Blank App" [level=1]
+- paragraph: Start building your amazing project here!
+- link "Made with Dyad":
+  - /url: https://www.dyad.sh/

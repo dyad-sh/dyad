@@ -62,6 +62,15 @@ class PageObject {
     await this.page.getByRole("button", { name: "Restart" }).click();
   }
 
+  async clickRebuild() {
+    await this.clickPreviewMoreOptions();
+    await this.page.getByText("Rebuild").click();
+  }
+
+  async clickPreviewMoreOptions() {
+    await this.page.getByTestId("preview-more-options-button").click();
+  }
+
   async clickPreviewRefresh() {
     await this.page.getByTestId("preview-refresh-button").click();
   }
@@ -218,6 +227,25 @@ class PageObject {
     await this.page.getByRole("link", { name: "Settings" }).click();
   }
 
+  getTitleBarAppNameButton() {
+    return this.page.getByTestId("title-bar-app-name-button");
+  }
+
+  async getCurrentAppName() {
+    return (await this.getTitleBarAppNameButton().textContent())?.replace(
+      "App: ",
+      "",
+    );
+  }
+
+  async getCurrentAppPath() {
+    const currentAppName = await this.getCurrentAppName();
+    if (!currentAppName) {
+      throw new Error("No current app name found");
+    }
+    return path.join("/tmp", "dyad-apps-test", currentAppName);
+  }
+
   ////////////////////////////////
   // Settings related
   ////////////////////////////////
@@ -344,11 +372,15 @@ export const test = base.extend<{
       // After the test we can check whether the test passed or failed.
       if (testInfo.status !== testInfo.expectedStatus) {
         const page = await electronApp.firstWindow();
-        const screenshot = await page.screenshot();
-        await testInfo.attach("screenshot", {
-          body: screenshot,
-          contentType: "image/png",
-        });
+        try {
+          const screenshot = await page.screenshot({ timeout: 5_000 });
+          await testInfo.attach("screenshot", {
+            body: screenshot,
+            contentType: "image/png",
+          });
+        } catch (error) {
+          console.error("Error taking screenshot on failure", error);
+        }
       }
     },
     { auto: true },

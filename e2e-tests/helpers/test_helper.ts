@@ -163,6 +163,14 @@ class PageObject {
     return this.page.getByRole("textbox", { name: "Ask Dyad to build..." });
   }
 
+  clickNewChat({ index = 0 }: { index?: number } = {}) {
+    // There is two new chat buttons...
+    return this.page
+      .getByRole("button", { name: "New Chat" })
+      .nth(index)
+      .click();
+  }
+
   async sendPrompt(prompt: string) {
     await this.getChatInput().click();
     await this.getChatInput().fill(prompt);

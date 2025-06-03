@@ -63,7 +63,7 @@ export function AppList({ show }: { show?: boolean }) {
           ) : apps.length === 0 ? (
             <div className="py-2 px-4 text-sm text-gray-500">No apps found</div>
           ) : (
-            <SidebarMenu className="space-y-1">
+            <SidebarMenu className="space-y-1" data-testid="app-list">
               {apps.map((app) => (
                 <SidebarMenuItem key={app.id} className="mb-1">
                   <Button
@@ -74,6 +74,7 @@ export function AppList({ show }: { show?: boolean }) {
                         ? "bg-sidebar-accent text-sidebar-accent-foreground"
                         : ""
                     }`}
+                    data-testid={`app-list-item-${app.name}`}
                   >
                     <div className="flex flex-col w-full">
                       <span className="truncate">{app.name}</span>

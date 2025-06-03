@@ -192,7 +192,12 @@ export default function AppDetailsPage() {
         <div className="absolute top-2 right-2">
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0"
+                data-testid="app-details-more-options-button"
+              >
                 <MoreVertical className="h-4 w-4" />
               </Button>
             </PopoverTrigger>

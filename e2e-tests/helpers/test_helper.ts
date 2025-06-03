@@ -232,6 +232,10 @@ class PageObject {
     return this.page.getByTestId("title-bar-app-name-button");
   }
 
+  getAppListItem({ appName }: { appName: string }) {
+    return this.page.getByTestId(`app-list-item-${appName}`);
+  }
+
   async getCurrentAppName() {
     return (await this.getTitleBarAppNameButton().textContent())?.replace(
       "App: ",
@@ -245,6 +249,13 @@ class PageObject {
       throw new Error("No current app name found");
     }
     return path.join(this.userDataDir, "dyad-apps", currentAppName);
+  }
+  async clickAppListItem({ appName }: { appName: string }) {
+    await this.page.getByTestId(`app-list-item-${appName}`).click();
+  }
+
+  async clickAppDetailsMoreOptions() {
+    await this.page.getByTestId("app-details-more-options-button").click();
   }
 
   ////////////////////////////////

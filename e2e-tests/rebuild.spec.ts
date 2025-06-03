@@ -1,4 +1,4 @@
-import { test } from "./helpers/test_helper";
+import { test, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 import fs from "fs";
 import path from "path";
@@ -15,7 +15,7 @@ test("rebuild app", async ({ po }) => {
   await po.clickRebuild();
   await expect(po.locateLoadingAppPreview()).toBeVisible();
   await expect(po.locateLoadingAppPreview()).not.toBeVisible({
-    timeout: 15_000,
+    timeout: Timeout.LONG,
   });
 
   // Check that the file is removed with the rebuild

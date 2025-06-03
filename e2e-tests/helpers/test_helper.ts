@@ -3,8 +3,15 @@ import { findLatestBuild, parseElectronApp } from "electron-playwright-helpers";
 import { ElectronApplication, _electron as electron } from "playwright";
 import fs from "fs";
 import path from "path";
+import os from "os";
 
 const showDebugLogs = process.env.DEBUG_LOGS === "true";
+
+export const Timeout = {
+  // Why make this a constant? In some platforms, perhaps locally,
+  // we may want to shorten this.
+  LONG: 30_000,
+};
 
 class PageObject {
   private userDataDir: string;
@@ -99,7 +106,7 @@ class PageObject {
   async snapshotPreview() {
     const iframe = this.getPreviewIframeElement();
     await expect(iframe.contentFrame().locator("body")).toMatchAriaSnapshot({
-      timeout: 30_000,
+      timeout: Timeout.LONG,
     });
   }
 
@@ -469,11 +476,23 @@ export const test = base.extend<{
       });
 
       await use(electronApp);
-      await electronApp.close();
+      // Why are we doing a force kill on Windows?
+      //
+      // Otherwise, Playwright will just hang on the test cleanup
+      // because the electron app does NOT ever fully quit due to
+      // Windows' strict resource locking (e.g. file locking).
+      if (os.platform() === "win32") {
+        electronApp.process().kill();
+      } else {
+        await electronApp.close();
+      }
     },
     { auto: true },
   ],
 });
+
+// Wrapper that skips tests on Windows platform
+export const testSkipIfWindows = os.platform() === "win32" ? test.skip : test;
 
 function prettifyDump(
   dumpContent: string,
@@ -481,7 +500,7 @@ function prettifyDump(
 ) {
   const parsedDump = JSON.parse(dumpContent) as Array<{
     role: string;
-    content: string;
+    content: string | Array<{}>;
   }>;
 
   const messages = onlyLastMessage ? parsedDump.slice(-1) : parsedDump;
@@ -491,6 +510,8 @@ function prettifyDump(
       const content = Array.isArray(message.content)
         ? JSON.stringify(message.content)
         : message.content
+            // Normalize line endings to always use \n
+            .replace(/\r\n/g, "\n")
             // We remove package.json because it's flaky.
             // Depending on whether pnpm install is run, it will be modified,
             // and the contents and timestamp (thus affecting order) will be affected.

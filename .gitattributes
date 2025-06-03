@@ -1,0 +1,6 @@
+# Set the default behavior, in case people don't have core.autocrlf set.
+* text=auto
+
+# Make everything in the e2e-tests/snapshots directory use LF line endings.
+# Otherwise we'll get diffs in the snapshots when running on Windows.
+e2e-tests/snapshots/** text eol=lf

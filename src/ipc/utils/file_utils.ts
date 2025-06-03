@@ -39,13 +39,19 @@ export async function copyDirectoryRecursive(
 ) {
   await fsPromises.mkdir(destination, { recursive: true });
   const entries = await fsPromises.readdir(source, { withFileTypes: true });
+  // Why do we sort? This ensures stable ordering of files across platforms
+  // which is helpful for tests (and has no practical downsides).
+  entries.sort();
 
   for (const entry of entries) {
     const srcPath = path.join(source, entry.name);
     const destPath = path.join(destination, entry.name);
 
     if (entry.isDirectory()) {
-      await copyDirectoryRecursive(srcPath, destPath);
+      // Exclude node_modules directories
+      if (entry.name !== "node_modules") {
+        await copyDirectoryRecursive(srcPath, destPath);
+      }
     } else {
       await fsPromises.copyFile(srcPath, destPath);
     }

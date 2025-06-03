@@ -34,7 +34,7 @@
     "test:ui": "vitest --ui",
     "extract-codebase": "ts-node scripts/extract-codebase.ts",
     "prepare": "husky install",
-    "pre:e2e": "E2E_TEST_BUILD=true npm run package",
+    "pre:e2e": "cross-env E2E_TEST_BUILD=true npm run package",
     "e2e": "playwright test"
   },
   "keywords": [],
@@ -64,6 +64,7 @@
     "@typescript-eslint/eslint-plugin": "^5.62.0",
     "@typescript-eslint/parser": "^5.62.0",
     "@vitest/ui": "^3.1.1",
+    "cross-env": "^7.0.3",
     "drizzle-kit": "^0.30.6",
     "electron": "35.1.4",
     "eslint": "^8.57.1",

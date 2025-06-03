@@ -17,11 +17,19 @@ defaults:
 
 jobs:
   test:
-    # Why Mac?
+    # Why Mac and Windows?
     # I can't run electron playwright on ubuntu-latest and
     # Linux support for Dyad is experimental so not as important
     # as Mac + Windows
-    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          [
+            { name: "windows", image: "windows-latest" },
+            { name: "macos", image: "macos-latest" },
+          ]
+    runs-on: ${{ matrix.os.image }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -34,8 +42,12 @@ jobs:
       - name: Install node modules
         run: npm install
       - name: Presubmit check (e.g. lint, format)
+        # do not run this on Windows (it fails and not necessary)
+        if: contains(matrix.os.name, 'macos')
         run: npm run presubmit
       - name: Type-checking
+        # do not run this on windows (it's redunant)
+        if: contains(matrix.os.name, 'macos')
         run: npm run ts
       - name: Install Chromium browser for Playwright
         run: npx playwright install chromium --with-deps
@@ -44,8 +56,9 @@ jobs:
       - name: Prep test server
         run: cd testing/fake-llm-server && npm install && npm run build && cd -
       - name: E2E tests
-        # Add debug logging to make it easier to see what's failing
-        run: DEBUG=pw:browser npm run e2e
+        # You can add debug logging to make it easier to see what's failing
+        # by adding "DEBUG=pw:browser" in front.
+        run: npm run e2e
       - uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         if: failure()
         with:

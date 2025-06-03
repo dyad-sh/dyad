@@ -11,6 +11,7 @@ import { eq } from "drizzle-orm";
 import git from "isomorphic-git";
 import { getGitAuthor } from "../utils/git_author";
 import { ImportAppParams, ImportAppResult } from "../ipc_types";
+import { copyDirectoryRecursive } from "../utils/file_utils";
 
 const logger = log.scope("import-handlers");
 const handle = createLoggedHandler(logger);
@@ -88,11 +89,10 @@ export function registerImportHandlers() {
           throw error;
         }
       }
-      // Copy the app folder to the Dyad apps directory, excluding node_modules
-      await fs.cp(sourcePath, destPath, {
-        recursive: true,
-        filter: (source) => !source.includes("node_modules"),
-      });
+      // Copy the app folder to the Dyad apps directory.
+      // Why not use fs.cp? Because we want stable ordering for
+      // tests.
+      await copyDirectoryRecursive(sourcePath, destPath);
 
       const isGitRepo = await fs
         .access(path.join(destPath, ".git"))

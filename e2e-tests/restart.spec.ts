@@ -1,4 +1,4 @@
-import { test } from "./helpers/test_helper";
+import { test, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
 test("restart app", async ({ po }) => {
@@ -8,7 +8,7 @@ test("restart app", async ({ po }) => {
   await po.clickRestart();
   await expect(po.locateLoadingAppPreview()).toBeVisible();
   await expect(po.locateLoadingAppPreview()).not.toBeVisible({
-    timeout: 15_000,
+    timeout: Timeout.LONG,
   });
 
   await po.snapshotPreview();

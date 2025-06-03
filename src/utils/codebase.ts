@@ -226,7 +226,9 @@ async function collectFiles(dir: string, baseDir: string): Promise<string[]> {
 // Skip large configuration files or generated code (just include the path)
 function isOmittedFile(relativePath: string): boolean {
   return (
-    relativePath.includes(path.join("src", "components", "ui")) ||
+    // Why are we not using path.join here?
+    // Because we have already normalized the path to use /.
+    relativePath.includes("src/components/ui") ||
     relativePath.includes("eslint.config") ||
     relativePath.includes("tsconfig.json") ||
     relativePath.includes("package-lock.json") ||
@@ -243,7 +245,11 @@ const OMITTED_FILE_CONTENT = "// Contents omitted for brevity";
  */
 async function formatFile(filePath: string, baseDir: string): Promise<string> {
   try {
-    const relativePath = path.relative(baseDir, filePath);
+    const relativePath = path
+      .relative(baseDir, filePath)
+      // Why? Normalize Windows-style paths which causes lots of weird issues (e.g. Git commit)
+      .split(path.sep)
+      .join("/");
 
     if (isOmittedFile(relativePath)) {
       return `<dyad-file path="${relativePath}">
@@ -310,7 +316,11 @@ export async function extractCodebase(appPath: string): Promise<{
     const formattedContent = await formatFile(file, appPath);
 
     // Get raw content for the files array
-    const relativePath = path.relative(appPath, file);
+    const relativePath = path
+      .relative(appPath, file)
+      // Why? Normalize Windows-style paths which causes lots of weird issues (e.g. Git commit)
+      .split(path.sep)
+      .join("/");
     const fileContent = isOmittedFile(relativePath)
       ? OMITTED_FILE_CONTENT
       : await readFileWithCache(file);

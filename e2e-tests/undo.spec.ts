@@ -1,4 +1,4 @@
-import { test } from "./helpers/test_helper";
+import { test, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
 test("undo", async ({ po }) => {
@@ -11,7 +11,7 @@ test("undo", async ({ po }) => {
     iframe.contentFrame().getByText("Testing:write-index(2)!"),
   ).toBeVisible({
     // This can be pretty slow because it's waiting for the app to build.
-    timeout: 15_000,
+    timeout: Timeout.LONG,
   });
 
   await po.clickUndo();
@@ -20,7 +20,7 @@ test("undo", async ({ po }) => {
     iframe.contentFrame().getByText("Testing:write-index!"),
   ).toBeVisible({
     // Also, could be slow.
-    timeout: 15_000,
+    timeout: Timeout.LONG,
   });
 
   await po.clickUndo();
@@ -29,6 +29,6 @@ test("undo", async ({ po }) => {
     iframe.contentFrame().getByText("Welcome to Your Blank App"),
   ).toBeVisible({
     // Also, could be slow.
-    timeout: 15_000,
+    timeout: Timeout.LONG,
   });
 });

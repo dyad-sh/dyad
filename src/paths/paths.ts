@@ -3,7 +3,8 @@ import os from "node:os";
 
 export function getDyadAppPath(appPath: string): string {
   if (process.env.E2E_TEST_BUILD) {
-    return path.join("/tmp", "dyad-apps-test", appPath);
+    const electron = getElectron();
+    return path.join(electron!.app.getPath("userData"), "dyad-apps", appPath);
   }
   return path.join(os.homedir(), "dyad-apps", appPath);
 }

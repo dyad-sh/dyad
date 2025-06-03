@@ -1,0 +1,4 @@
+- paragraph: "[dump]"
+- paragraph: "[[dyad-dump-path=*]]"
+- button "Retry":
+  - img

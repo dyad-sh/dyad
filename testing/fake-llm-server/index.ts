@@ -180,14 +180,14 @@ app.get("/lmstudio/api/v0/models", (req, res) => {
   res.json(lmStudioModels);
 });
 
-app.post(
-  "/lmstudio/v1/chat/completions",
-  createChatCompletionHandler("lmstudio"),
-);
+["lmstudio", "gateway", "engine"].forEach((provider) => {
+  app.post(
+    `/${provider}/v1/chat/completions`,
+    createChatCompletionHandler(provider),
+  );
+});
 
-app.post("/engine/v1/chat/completions", createChatCompletionHandler("engine"));
-
-// Handle POST requests to /v1/chat/completions
+// Default test provider handler:
 app.post("/v1/chat/completions", createChatCompletionHandler("."));
 
 // Start the server

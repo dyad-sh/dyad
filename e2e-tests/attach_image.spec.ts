@@ -1,6 +1,11 @@
 import { test } from "./helpers/test_helper";
 import * as fs from "fs";
 
+// It's hard to read the snapshots, but they should be identical across
+// all test cases in this file, so we use the same snapshot name to ensure
+// the outputs are identical.
+const SNAPSHOT_NAME = "attach-image";
+
 // attach image is implemented in two separate components
 // - HomeChatInput
 // - ChatInput
@@ -13,7 +18,7 @@ test("attach image - home chat", async ({ po }) => {
     .locator("input[type='file']")
     .setInputFiles("e2e-tests/fixtures/images/logo.png");
   await po.sendPrompt("[dump]");
-  await po.snapshotServerDump("last-message");
+  await po.snapshotServerDump("last-message", { name: SNAPSHOT_NAME });
   await po.snapshotMessages({ replaceDumpPath: true });
 });
 
@@ -27,7 +32,7 @@ test("attach image - chat", async ({ po }) => {
     .locator("input[type='file']")
     .setInputFiles("e2e-tests/fixtures/images/logo.png");
   await po.sendPrompt("[dump]");
-  await po.snapshotServerDump("last-message");
+  await po.snapshotServerDump("last-message", { name: SNAPSHOT_NAME });
   await po.snapshotMessages({ replaceDumpPath: true });
 });
 
@@ -65,6 +70,6 @@ test("attach image via drag - chat", async ({ po }) => {
   // submit and verify
   await po.sendPrompt("[dump]");
   // Note: this should match EXACTLY the server dump from the previous test.
-  await po.snapshotServerDump("last-message");
+  await po.snapshotServerDump("last-message", { name: SNAPSHOT_NAME });
   await po.snapshotMessages({ replaceDumpPath: true });
 });

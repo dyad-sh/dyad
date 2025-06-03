@@ -141,6 +141,7 @@ class PageObject {
 
   async snapshotServerDump(
     type: "all-messages" | "last-message" | "request" = "all-messages",
+    { name = "" }: { name?: string } = {},
   ) {
     // Get the text content of the messages list
     const messagesListText = await this.page
@@ -164,14 +165,14 @@ class PageObject {
     // Perform snapshot comparison
     const parsedDump = JSON.parse(dumpContent);
     if (type === "request") {
-      expect(dumpContent).toMatchSnapshot("server-dump-request.json");
+      expect(dumpContent).toMatchSnapshot(name);
       return;
     }
     expect(
       prettifyDump(parsedDump["body"]["messages"], {
         onlyLastMessage: type === "last-message",
       }),
-    ).toMatchSnapshot("server-dump.txt");
+    ).toMatchSnapshot(name);
   }
 
   async waitForChatCompletion() {
@@ -473,6 +474,7 @@ export const test = base.extend<{
       process.env.LM_STUDIO_BASE_URL_FOR_TESTING =
         "http://localhost:3500/lmstudio";
       process.env.DYAD_LOCAL_ENGINE = "http://localhost:3500/engine/v1";
+      process.env.DYAD_GATEWAY_URL = "http://localhost:3500/gateway/v1";
       process.env.E2E_TEST_BUILD = "true";
       // This is just a hack to avoid the AI setup screen.
       process.env.OPENAI_API_KEY = "sk-test";

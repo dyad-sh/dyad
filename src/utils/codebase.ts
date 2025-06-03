@@ -339,6 +339,13 @@ export async function extractCodebase(appPath: string): Promise<{
 
   const endTime = Date.now();
   logger.log("extractCodebase: time taken", endTime - startTime);
+  if (process.env.E2E_TEST_BUILD) {
+    // Why? For some reason, file ordering is not stable on Windows.
+    // This is a workaround to ensure stable ordering, although
+    // ideally we'd like to sort it by modification time which is
+    // important for cache-ability.
+    filesArray.sort((a, b) => a.path.localeCompare(b.path));
+  }
   return {
     formattedOutput,
     files: filesArray,

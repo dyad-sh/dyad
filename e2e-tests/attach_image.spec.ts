@@ -13,7 +13,7 @@ test("attach image - home chat", async ({ po }) => {
     .locator("input[type='file']")
     .setInputFiles("e2e-tests/fixtures/images/logo.png");
   await po.sendPrompt("[dump]");
-  await po.snapshotServerDump({ onlyLastMessage: true });
+  await po.snapshotServerDump("last-message");
   await po.snapshotMessages({ replaceDumpPath: true });
 });
 
@@ -27,7 +27,7 @@ test("attach image - chat", async ({ po }) => {
     .locator("input[type='file']")
     .setInputFiles("e2e-tests/fixtures/images/logo.png");
   await po.sendPrompt("[dump]");
-  await po.snapshotServerDump({ onlyLastMessage: true });
+  await po.snapshotServerDump("last-message");
   await po.snapshotMessages({ replaceDumpPath: true });
 });
 
@@ -65,6 +65,6 @@ test("attach image via drag - chat", async ({ po }) => {
   // submit and verify
   await po.sendPrompt("[dump]");
   // Note: this should match EXACTLY the server dump from the previous test.
-  await po.snapshotServerDump({ onlyLastMessage: true });
+  await po.snapshotServerDump("last-message");
   await po.snapshotMessages({ replaceDumpPath: true });
 });

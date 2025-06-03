@@ -36,6 +36,35 @@ class PageObject {
     await this.selectTestModel();
   }
 
+  async setUpDyadPro({ autoApprove = false }: { autoApprove?: boolean } = {}) {
+    await this.goToSettingsTab();
+    if (autoApprove) {
+      await this.toggleAutoApprove();
+    }
+    await this.setUpDyadProvider();
+    await this.goToAppsTab();
+  }
+
+  async setUpDyadProvider() {
+    // await page.getByRole('link', { name: 'Settings' }).click();
+    await this.page
+      .locator("div")
+      .filter({ hasText: /^DyadNeeds Setup$/ })
+      .nth(1)
+      .click();
+    await this.page.getByRole("textbox", { name: "Set Dyad API Key" }).click();
+    await this.page
+      .getByRole("textbox", { name: "Set Dyad API Key" })
+      .fill("testdyadkey");
+    await this.page.getByRole("button", { name: "Save Key" }).click();
+    // await page.getByRole('link', { name: 'Apps' }).click();
+    // await page.getByTestId('home-chat-input-container').getByRole('button', { name: 'Pro' }).click();
+    // await page.getByRole('switch', { name: 'Turbo Edits' }).click();
+    // await page.getByRole('switch', { name: 'Turbo Edits' }).click();
+    // await page.locator('div').filter({ hasText: /^Import App$/ }).click();
+    // await page.getByRole('button', { name: 'Select Folder' }).press('Escape');
+  }
+
   async snapshotMessages({
     replaceDumpPath = false,
   }: { replaceDumpPath?: boolean } = {}) {
@@ -110,9 +139,9 @@ class PageObject {
     });
   }
 
-  async snapshotServerDump({
-    onlyLastMessage = false,
-  }: { onlyLastMessage?: boolean } = {}) {
+  async snapshotServerDump(
+    type: "all-messages" | "last-message" | "request" = "all-messages",
+  ) {
     // Get the text content of the messages list
     const messagesListText = await this.page
       .getByTestId("messages-list")
@@ -133,9 +162,16 @@ class PageObject {
     const dumpContent = fs.readFileSync(dumpFilePath, "utf-8");
 
     // Perform snapshot comparison
-    expect(prettifyDump(dumpContent, { onlyLastMessage })).toMatchSnapshot(
-      "server-dump.txt",
-    );
+    const parsedDump = JSON.parse(dumpContent);
+    if (type === "request") {
+      expect(dumpContent).toMatchSnapshot("server-dump-request.json");
+      return;
+    }
+    expect(
+      prettifyDump(parsedDump["body"]["messages"], {
+        onlyLastMessage: type === "last-message",
+      }),
+    ).toMatchSnapshot("server-dump.txt");
   }
 
   async waitForChatCompletion() {
@@ -183,6 +219,12 @@ class PageObject {
     await this.getChatInput().fill(prompt);
     await this.page.getByRole("button", { name: "Send message" }).click();
     await this.waitForChatCompletion();
+  }
+
+  async selectModel({ provider, model }: { provider: string; model: string }) {
+    await this.page.getByRole("button", { name: "Model: Auto" }).click();
+    await this.page.getByText(provider).click();
+    await this.page.getByText(model).click();
   }
 
   async selectTestModel() {
@@ -430,6 +472,7 @@ export const test = base.extend<{
       process.env.OLLAMA_HOST = "http://localhost:3500/ollama";
       process.env.LM_STUDIO_BASE_URL_FOR_TESTING =
         "http://localhost:3500/lmstudio";
+      process.env.DYAD_LOCAL_ENGINE = "http://localhost:3500/engine/v1";
       process.env.E2E_TEST_BUILD = "true";
       // This is just a hack to avoid the AI setup screen.
       process.env.OPENAI_API_KEY = "sk-test";
@@ -495,15 +538,13 @@ export const test = base.extend<{
 export const testSkipIfWindows = os.platform() === "win32" ? test.skip : test;
 
 function prettifyDump(
-  dumpContent: string,
-  { onlyLastMessage = false }: { onlyLastMessage?: boolean } = {},
-) {
-  const parsedDump = JSON.parse(dumpContent) as Array<{
+  allMessages: {
     role: string;
     content: string | Array<{}>;
-  }>;
-
-  const messages = onlyLastMessage ? parsedDump.slice(-1) : parsedDump;
+  }[],
+  { onlyLastMessage = false }: { onlyLastMessage?: boolean } = {},
+) {
+  const messages = onlyLastMessage ? allMessages.slice(-1) : allMessages;
 
   return messages
     .map((message) => {

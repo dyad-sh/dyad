@@ -15,6 +15,6 @@ test("create next.js app", async ({ po }) => {
   await po.clickRestart();
 
   // This can be pretty slow because it's waiting for the app to build.
-  await expect(po.getPreviewIframeElement()).toBeVisible({ timeout: 25_000 });
+  await expect(po.getPreviewIframeElement()).toBeVisible({ timeout: 50_000 });
   await po.snapshotPreview();
 });

@@ -99,7 +99,7 @@ class PageObject {
   async snapshotPreview() {
     const iframe = this.getPreviewIframeElement();
     await expect(iframe.contentFrame().locator("body")).toMatchAriaSnapshot({
-      timeout: 15_000,
+      timeout: 30_000,
     });
   }
 

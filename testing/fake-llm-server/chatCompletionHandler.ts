@@ -55,7 +55,7 @@ export const createChatCompletionHandler =
             },
             null,
             2,
-          ),
+          ).replace(/\r\n/g, "\n"),
           "utf-8",
         );
         console.log(`* Dumped messages to: ${dumpFilePath}`);

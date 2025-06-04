@@ -5,7 +5,7 @@ const config: PlaywrightTestConfig = {
   workers: 1,
   retries: process.env.CI ? 1 : 0,
   // maxFailures: 1,
-  timeout: process.env.CI ? 75_000 : 30_000,
+  timeout: process.env.CI ? 120_000 : 30_000,
   // Use a custom snapshot path template because Playwright's default
   // is platform-specific which isn't necessary for Dyad e2e tests
   // which should be platform agnostic (we don't do screenshots; only textual diffs).

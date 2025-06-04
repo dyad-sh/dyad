@@ -18,6 +18,7 @@ import { registerLanguageModelHandlers } from "./handlers/language_model_handler
 import { registerReleaseNoteHandlers } from "./handlers/release_note_handlers";
 import { registerImportHandlers } from "./handlers/import_handlers";
 import { registerSessionHandlers } from "./handlers/session_handlers";
+import { registerProHandlers } from "./handlers/pro_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -41,4 +42,5 @@ export function registerIpcHandlers() {
   registerReleaseNoteHandlers();
   registerImportHandlers();
   registerSessionHandlers();
+  registerProHandlers();
 }

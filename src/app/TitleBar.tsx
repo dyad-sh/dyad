@@ -13,6 +13,13 @@ import { useEffect, useState } from "react";
 import { DyadProSuccessDialog } from "@/components/DyadProSuccessDialog";
 import { useTheme } from "@/contexts/ThemeContext";
 import { IpcClient } from "@/ipc/ipc_client";
+import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
+import { UserBudgetInfo } from "@/ipc/ipc_types";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export const TitleBar = () => {
   const [selectedAppId] = useAtom(selectedAppIdAtom);
@@ -64,7 +71,7 @@ export const TitleBar = () => {
   };
 
   const isDyadPro = !!settings?.providerSettings?.auto?.apiKey?.value;
-  const isDyadProEnabled = settings?.enableDyadPro;
+  const isDyadProEnabled = Boolean(settings?.enableDyadPro);
 
   return (
     <>
@@ -82,25 +89,7 @@ export const TitleBar = () => {
         >
           {displayText}
         </Button>
-        {isDyadPro && (
-          <Button
-            data-testid="title-bar-dyad-pro-button"
-            onClick={() => {
-              navigate({
-                to: providerSettingsRoute.id,
-                params: { provider: "auto" },
-              });
-            }}
-            variant="outline"
-            className={cn(
-              "ml-4 no-app-region-drag h-7 bg-indigo-600 text-white dark:bg-indigo-600 dark:text-white",
-              !isDyadProEnabled && "bg-zinc-600 dark:bg-zinc-600",
-            )}
-            size="sm"
-          >
-            {isDyadProEnabled ? "Dyad Pro" : "Dyad Pro (disabled)"}
-          </Button>
-        )}
+        {isDyadPro && <DyadProButton isDyadProEnabled={isDyadProEnabled} />}
         {showWindowControls && <WindowsControls />}
       </div>
 
@@ -190,5 +179,60 @@ function WindowsControls() {
         </svg>
       </button>
     </div>
+  );
+}
+
+export function DyadProButton({
+  isDyadProEnabled,
+}: {
+  isDyadProEnabled: boolean;
+}) {
+  const { navigate } = useRouter();
+  const { userBudget } = useUserBudgetInfo();
+  return (
+    <Button
+      data-testid="title-bar-dyad-pro-button"
+      onClick={() => {
+        navigate({
+          to: providerSettingsRoute.id,
+          params: { provider: "auto" },
+        });
+      }}
+      variant="outline"
+      className={cn(
+        "ml-4 no-app-region-drag h-7 bg-indigo-600 text-white dark:bg-indigo-600 dark:text-white",
+        !isDyadProEnabled && "bg-zinc-600 dark:bg-zinc-600",
+      )}
+      size="sm"
+    >
+      {isDyadProEnabled ? "Dyad Pro" : "Dyad Pro (disabled)"}
+      {userBudget && <AICreditStatus userBudget={userBudget} />}
+    </Button>
+  );
+}
+
+export function AICreditStatus({ userBudget }: { userBudget: UserBudgetInfo }) {
+  const remaining = Math.round(
+    userBudget.totalCredits - userBudget.usedCredits,
+  );
+  return (
+    <Tooltip>
+      <TooltipTrigger>
+        <div className="text-xs mt-0.5">{remaining} credits left</div>
+      </TooltipTrigger>
+      <TooltipContent>
+        <div>
+          <p>
+            You have used {Math.round(userBudget.usedCredits)} credits out of{" "}
+            {userBudget.totalCredits}.
+          </p>
+          <p>
+            Your budget resets on{" "}
+            {userBudget.budgetResetDate.toLocaleDateString()}
+          </p>
+          <p>Note: there is a slight delay in updating the credit status.</p>
+        </div>
+      </TooltipContent>
+    </Tooltip>
   );
 }

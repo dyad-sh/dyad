@@ -30,6 +30,7 @@ import type {
   ImportAppResult,
   ImportAppParams,
   RenameBranchParams,
+  UserBudgetInfo,
 } from "./ipc_types";
 import type { ProposalResult } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
@@ -824,5 +825,10 @@ export class IpcClient {
 
   async clearSessionData(): Promise<void> {
     return this.ipcRenderer.invoke("clear-session-data");
+  }
+
+  // Method to get user budget information
+  public async getUserBudget(): Promise<UserBudgetInfo | null> {
+    return this.ipcRenderer.invoke("get-user-budget");
   }
 }

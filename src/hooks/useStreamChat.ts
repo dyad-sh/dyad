@@ -19,6 +19,7 @@ import { useProposal } from "./useProposal";
 import { useSearch } from "@tanstack/react-router";
 import { useRunApp } from "./useRunApp";
 import { useCountTokens } from "./useCountTokens";
+import { useUserBudgetInfo } from "./useUserBudgetInfo";
 
 export function getRandomNumberId() {
   return Math.floor(Math.random() * 1_000_000_000_000_000);
@@ -38,6 +39,7 @@ export function useStreamChat({
   const { refreshVersions } = useVersions(selectedAppId);
   const { refreshAppIframe } = useRunApp();
   const { countTokens } = useCountTokens();
+  const { refetchUserBudget } = useUserBudgetInfo();
 
   let chatId: number | undefined;
 
@@ -95,6 +97,8 @@ export function useStreamChat({
             }
             refreshProposal(chatId);
 
+            refetchUserBudget();
+
             // Keep the same as below
             setIsStreaming(false);
             refreshChats();
@@ -120,7 +124,7 @@ export function useStreamChat({
         setError(error instanceof Error ? error.message : String(error));
       }
     },
-    [setMessages, setIsStreaming, setIsPreviewOpen],
+    [setMessages, setIsStreaming, setIsPreviewOpen, refetchUserBudget],
   );
 
   return {

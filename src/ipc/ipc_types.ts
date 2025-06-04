@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 export interface AppOutput {
   type: "stdout" | "stderr" | "info" | "client-error";
   message: string;
@@ -207,3 +209,10 @@ export interface RenameBranchParams {
   oldBranchName: string;
   newBranchName: string;
 }
+
+export const UserBudgetInfoSchema = z.object({
+  usedCredits: z.number(),
+  totalCredits: z.number(),
+  budgetResetDate: z.date(),
+});
+export type UserBudgetInfo = z.infer<typeof UserBudgetInfoSchema>;

@@ -135,8 +135,12 @@ async function readFileWithCache(filePath: string): Promise<string | null> {
     }
 
     // Read file and update cache
-    const content = await fsAsync.readFile(filePath, "utf-8");
-    fileContentCache.set(filePath, { content, mtime: currentMtime });
+    const rawContent = await fsAsync.readFile(filePath, "utf-8");
+    const content = cleanContent({ content: rawContent, filePath });
+    fileContentCache.set(filePath, {
+      content,
+      mtime: currentMtime,
+    });
 
     // Manage cache size by clearing oldest entries when it gets too large
     if (fileContentCache.size > MAX_FILE_CACHE_SIZE) {
@@ -155,6 +159,32 @@ async function readFileWithCache(filePath: string): Promise<string | null> {
     logger.error(`Error reading file: ${filePath}`, error);
     return null;
   }
+}
+
+function cleanContent({
+  content,
+  filePath,
+}: {
+  content: string;
+  filePath: string;
+}): string {
+  // Why are we cleaning package.json?
+  // 1. It contains unnecessary information for LLM context
+  // 2. Fields like packageManager cause diffs in e2e test snapshots.
+  if (path.basename(filePath) === "package.json") {
+    try {
+      const { dependencies, devDependencies } = JSON.parse(content);
+      const cleanPackageJson = {
+        dependencies,
+        devDependencies,
+      };
+      return JSON.stringify(cleanPackageJson, null, 2);
+    } catch (error) {
+      logger.error(`Error cleaning package.json: ${filePath}`, error);
+      return content;
+    }
+  }
+  return content;
 }
 
 /**

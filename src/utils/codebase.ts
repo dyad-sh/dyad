@@ -370,6 +370,15 @@ async function sortFilesByModificationTime(files: string[]): Promise<string[]> {
     }),
   );
 
+  if (process.env.E2E_TEST_BUILD) {
+    // Why? For some reason, file ordering is not stable on Windows.
+    // This is a workaround to ensure stable ordering, although
+    // ideally we'd like to sort it by modification time which is
+    // important for cache-ability.
+    return fileStats
+      .sort((a, b) => a.file.localeCompare(b.file))
+      .map((item) => item.file);
+  }
   // Sort by modification time (oldest first)
   return fileStats.sort((a, b) => a.mtime - b.mtime).map((item) => item.file);
 }

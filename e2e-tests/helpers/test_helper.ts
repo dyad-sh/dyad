@@ -4,6 +4,7 @@ import { ElectronApplication, _electron as electron } from "playwright";
 import fs from "fs";
 import path from "path";
 import os from "os";
+import { execSync } from "child_process";
 
 const showDebugLogs = process.env.DEBUG_LOGS === "true";
 
@@ -478,7 +479,11 @@ export const test = base.extend<{
       process.env.E2E_TEST_BUILD = "true";
       // This is just a hack to avoid the AI setup screen.
       process.env.OPENAI_API_KEY = "sk-test";
-      const USER_DATA_DIR = `/tmp/dyad-e2e-tests-${Date.now()}`;
+      const baseTmpDir = os.tmpdir();
+      const USER_DATA_DIR = path.join(
+        baseTmpDir,
+        `dyad-e2e-tests-${Date.now()}`,
+      );
       const electronApp = await electron.launch({
         args: [
           appInfo.main,
@@ -486,9 +491,11 @@ export const test = base.extend<{
           `--user-data-dir=${USER_DATA_DIR}`,
         ],
         executablePath: appInfo.executable,
-        recordVideo: {
-          dir: "test-results",
-        },
+        // Strong suspicion this is causing issues on Windows with tests hanging due to error:
+        // ffmpeg failed to write: Error [ERR_STREAM_WRITE_AFTER_END]: write after end
+        // recordVideo: {
+        //   dir: "test-results",
+        // },
       });
       (electronApp as any).$dyadUserDataDir = USER_DATA_DIR;
 
@@ -527,7 +534,14 @@ export const test = base.extend<{
       // because the electron app does NOT ever fully quit due to
       // Windows' strict resource locking (e.g. file locking).
       if (os.platform() === "win32") {
-        electronApp.process().kill();
+        try {
+          execSync("taskkill /f /im dyad.exe");
+        } catch (error) {
+          console.warn(
+            "Failed to kill dyad.exe: (continuing with test cleanup)",
+            error,
+          );
+        }
       } else {
         await electronApp.close();
       }

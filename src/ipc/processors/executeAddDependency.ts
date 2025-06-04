@@ -19,7 +19,7 @@ export async function executeAddDependency({
   const packageStr = packages.join(" ");
 
   const { stdout, stderr } = await execPromise(
-    `(pnpm add ${packageStr}) || (npm install ${packageStr})`,
+    `(pnpm add ${packageStr}) || (npm install --legacy-peer-deps ${packageStr})`,
     {
       cwd: appPath,
     },

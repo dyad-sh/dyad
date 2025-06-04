@@ -27,5 +27,6 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src", "e2e-tests"],
+  "exclude": ["e2e-tests/fixtures"]
 }

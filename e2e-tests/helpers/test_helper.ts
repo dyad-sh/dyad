@@ -151,7 +151,7 @@ class PageObject {
 
     // Find the dump path using regex
     const dumpPathMatch = messagesListText?.match(
-      /\[\[dyad-dump-path=([^\]]+)\]\]/,
+      /.*\[\[dyad-dump-path=([^\]]+)\]\]/,
     );
 
     if (!dumpPathMatch) {
@@ -161,8 +161,9 @@ class PageObject {
     const dumpFilePath = dumpPathMatch[1];
 
     // Read the JSON file
-    const dumpContent = fs.readFileSync(dumpFilePath, "utf-8");
-
+    const dumpContent: string = (
+      fs.readFileSync(dumpFilePath, "utf-8") as any
+    ).replaceAll(/\[\[dyad-dump-path=([^\]]+)\]\]/g, "[[dyad-dump-path=*]]");
     // Perform snapshot comparison
     const parsedDump = JSON.parse(dumpContent);
     if (type === "request") {

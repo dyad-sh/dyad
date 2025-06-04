@@ -1,0 +1,12 @@
+- paragraph: tc=1
+- paragraph: "1"
+- paragraph: tc=2
+- paragraph: "2"
+- paragraph: "[dump] tc=3"
+- paragraph: /\[\[dyad-dump-path=\/Users\/will\/Documents\/GitHub\/dyad-zero\/testing\/fake-llm-server\/dist\/generated\/\d+\.json\]\]/
+- paragraph: "[dump] tc=4"
+- paragraph: /\[\[dyad-dump-path=\/Users\/will\/Documents\/GitHub\/dyad-zero\/testing\/fake-llm-server\/dist\/generated\/\d+\.json\]\]/
+- paragraph: "[dump] tc=5"
+- paragraph: /\[\[dyad-dump-path=\/Users\/will\/Documents\/GitHub\/dyad-zero\/testing\/fake-llm-server\/dist\/generated\/\d+\.json\]\]/
+- button "Retry":
+  - img

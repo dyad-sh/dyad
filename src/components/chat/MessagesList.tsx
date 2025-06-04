@@ -16,6 +16,8 @@ import { IpcClient } from "@/ipc/ipc_client";
 import { chatMessagesAtom } from "@/atoms/chatAtoms";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useSettings } from "@/hooks/useSettings";
+import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
+
 interface MessagesListProps {
   messages: Message[];
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
@@ -32,6 +34,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
     const [isUndoLoading, setIsUndoLoading] = useState(false);
     const [isRetryLoading, setIsRetryLoading] = useState(false);
     const selectedChatId = useAtomValue(selectedChatIdAtom);
+    const { userBudget } = useUserBudgetInfo();
 
     return (
       <div
@@ -217,24 +220,27 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
           </div>
         )}
 
-        {isStreaming && !settings?.enableDyadPro && messages.length > 0 && (
-          <div className="max-w-3xl mx-auto mt-4 py-2 px-1 border border-blue-500 rounded-lg bg-blue-50 text-center">
-            <p className="text-sm text-blue-700">
-              Tired of waiting on AI?
-              <a
-                onClick={() =>
-                  IpcClient.getInstance().openExternalUrl(
-                    "https://dyad.sh/pro#ai",
-                  )
-                }
-                className=" text-blue-600 hover:text-blue-800 underline ml-1 cursor-pointer"
-              >
-                Get Dyad Pro
-              </a>{" "}
-              for faster edits with Turbo Edits.
-            </p>
-          </div>
-        )}
+        {isStreaming &&
+          !settings?.enableDyadPro &&
+          !userBudget &&
+          messages.length > 0 && (
+            <div className="max-w-3xl mx-auto mt-4 py-2 px-1 border border-blue-500 rounded-lg bg-blue-50 text-center">
+              <p className="text-sm text-blue-700">
+                Tired of waiting on AI?
+                <a
+                  onClick={() =>
+                    IpcClient.getInstance().openExternalUrl(
+                      "https://dyad.sh/pro#ai",
+                    )
+                  }
+                  className=" text-blue-600 hover:text-blue-800 underline ml-1 cursor-pointer"
+                >
+                  Get Dyad Pro
+                </a>{" "}
+                for faster edits with Turbo Edits.
+              </p>
+            </div>
+          )}
         <div ref={messagesEndRef} />
       </div>
     );

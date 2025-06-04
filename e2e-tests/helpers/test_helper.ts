@@ -12,6 +12,7 @@ export const Timeout = {
   // Why make this a constant? In some platforms, perhaps locally,
   // we may want to shorten this.
   LONG: os.platform() === "win32" ? 60_000 : 30_000,
+  MEDIUM: os.platform() === "win32" ? 30_000 : 15_000,
 };
 
 class PageObject {
@@ -178,7 +179,9 @@ class PageObject {
   }
 
   async waitForChatCompletion() {
-    await expect(this.getRetryButton()).toBeVisible();
+    await expect(this.getRetryButton()).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
   }
 
   async clickRetry() {

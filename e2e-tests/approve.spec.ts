@@ -1,7 +1,7 @@
-import { test, Timeout } from "./helpers/test_helper";
+import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
-test("write to index, approve, check preview", async ({ po }) => {
+testSkipIfWindows("write to index, approve, check preview", async ({ po }) => {
   await po.setUp();
   await po.sendPrompt("tc=write-index");
   await po.snapshotMessages();

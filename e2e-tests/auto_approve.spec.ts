@@ -1,7 +1,7 @@
-import { test, Timeout } from "./helpers/test_helper";
+import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
-test("auto-approve", async ({ po }) => {
+testSkipIfWindows("auto-approve", async ({ po }) => {
   await po.setUp({ autoApprove: true });
   await po.sendPrompt("tc=write-index");
   await po.snapshotMessages();

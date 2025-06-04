@@ -1,6 +1,6 @@
-import { test } from "./helpers/test_helper";
+import { testSkipIfWindows } from "./helpers/test_helper";
 
-test("send message to engine", async ({ po }) => {
+testSkipIfWindows("send message to engine", async ({ po }) => {
   await po.setUpDyadPro();
   // By default, it's using auto which points to Flash 2.5 and doesn't
   // use engine.
@@ -11,7 +11,7 @@ test("send message to engine", async ({ po }) => {
   await po.snapshotMessages({ replaceDumpPath: true });
 });
 
-test("send message to gateway", async ({ po }) => {
+testSkipIfWindows("send message to gateway", async ({ po }) => {
   await po.setUpDyadPro();
   await po.selectModel({ provider: "Google", model: "Gemini 2.5 Flash" });
   await po.sendPrompt("[dump] tc=gateway-simple");
@@ -21,7 +21,7 @@ test("send message to gateway", async ({ po }) => {
 });
 
 // auto (defaults to Gemini 2.5 Flash)
-test("auto should send message to gateway", async ({ po }) => {
+testSkipIfWindows("auto should send message to gateway", async ({ po }) => {
   await po.setUpDyadPro();
   await po.sendPrompt("[dump] tc=gateway-simple");
 

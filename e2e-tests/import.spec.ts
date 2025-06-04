@@ -1,8 +1,8 @@
 import path from "path";
-import { test } from "./helpers/test_helper";
+import { testSkipIfWindows } from "./helpers/test_helper";
 import * as eph from "electron-playwright-helpers";
 
-test("import app", async ({ po }) => {
+testSkipIfWindows("import app", async ({ po }) => {
   await po.setUp();
   await po.page.getByRole("button", { name: "Import App" }).click();
   await eph.stubDialog(po.electronApp, "showOpenDialog", {
@@ -20,7 +20,7 @@ test("import app", async ({ po }) => {
   await po.snapshotMessages();
 });
 
-test("import app with AI rules", async ({ po }) => {
+testSkipIfWindows("import app with AI rules", async ({ po }) => {
   await po.setUp();
   await po.page.getByRole("button", { name: "Import App" }).click();
   await eph.stubDialog(po.electronApp, "showOpenDialog", {

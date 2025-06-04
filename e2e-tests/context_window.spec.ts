@@ -1,6 +1,6 @@
-import { test } from "./helpers/test_helper";
+import { testSkipIfWindows } from "./helpers/test_helper";
 
-test("context window", async ({ po }) => {
+testSkipIfWindows("context window", async ({ po }) => {
   await po.setUp();
   await po.sendPrompt("tc=1");
   await po.sendPrompt("tc=2");

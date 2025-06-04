@@ -1,7 +1,7 @@
-import { test } from "./helpers/test_helper";
+import { testSkipIfWindows } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
-test("switch versions", async ({ po }) => {
+testSkipIfWindows("switch versions", async ({ po }) => {
   await po.setUp({ autoApprove: true });
   await po.sendPrompt("tc=write-index");
 

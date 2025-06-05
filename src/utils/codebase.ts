@@ -3,6 +3,7 @@ import fsAsync from "node:fs/promises";
 import path from "node:path";
 import { isIgnored } from "isomorphic-git";
 import log from "electron-log";
+import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
 
 const logger = log.scope("utils/codebase");
 
@@ -369,7 +370,7 @@ export async function extractCodebase(appPath: string): Promise<{
 
   const endTime = Date.now();
   logger.log("extractCodebase: time taken", endTime - startTime);
-  if (process.env.E2E_TEST_BUILD) {
+  if (IS_TEST_BUILD) {
     // Why? For some reason, file ordering is not stable on Windows.
     // This is a workaround to ensure stable ordering, although
     // ideally we'd like to sort it by modification time which is
@@ -400,7 +401,7 @@ async function sortFilesByModificationTime(files: string[]): Promise<string[]> {
     }),
   );
 
-  if (process.env.E2E_TEST_BUILD) {
+  if (IS_TEST_BUILD) {
     // Why? For some reason, file ordering is not stable on Windows.
     // This is a workaround to ensure stable ordering, although
     // ideally we'd like to sort it by modification time which is

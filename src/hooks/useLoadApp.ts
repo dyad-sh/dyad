@@ -1,61 +1,46 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
+import { useQuery, QueryClient } from "@tanstack/react-query";
 import { IpcClient } from "@/ipc/ipc_client";
-
 import { useAtom } from "jotai";
 import { currentAppAtom } from "@/atoms/appAtoms";
+import { App } from "@/ipc/ipc_types";
 
 export function useLoadApp(appId: number | null) {
-  const [app, setApp] = useAtom(currentAppAtom);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+  const [, setApp] = useAtom(currentAppAtom);
+
+  const {
+    data: appData,
+    isLoading: loading,
+    error,
+    refetch: refreshApp,
+  } = useQuery<App | null, Error>({
+    queryKey: ["app", appId],
+    queryFn: async () => {
+      if (appId === null) {
+        return null;
+      }
+      const ipcClient = IpcClient.getInstance();
+      return ipcClient.getApp(appId);
+    },
+    enabled: appId !== null,
+    meta: { showErrorToast: true },
+  });
 
   useEffect(() => {
-    const loadApp = async () => {
-      if (appId === null) {
-        setApp(null);
-        setLoading(false);
-        return;
-      }
-
-      setLoading(true);
-      try {
-        const ipcClient = IpcClient.getInstance();
-        const appData = await ipcClient.getApp(appId);
-
-        setApp(appData);
-        setError(null);
-      } catch (error) {
-        console.error(`Error loading app ${appId}:`, error);
-        setError(error instanceof Error ? error : new Error(String(error)));
-        setApp(null);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadApp();
-  }, [appId]);
-
-  const refreshApp = async () => {
     if (appId === null) {
-      return;
-    }
-
-    setLoading(true);
-    try {
-      console.log("Refreshing app", appId);
-      const ipcClient = IpcClient.getInstance();
-      const appData = await ipcClient.getApp(appId);
-      console.log("App data", appData);
+      setApp(null);
+    } else if (appData !== undefined) {
       setApp(appData);
-      setError(null);
-    } catch (error) {
-      console.error(`Error refreshing app ${appId}:`, error);
-      setError(error instanceof Error ? error : new Error(String(error)));
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [appId, appData, setApp]);
 
-  return { app, loading, error, refreshApp };
+  return { app: appData, loading, error, refreshApp };
 }
+
+// Function to invalidate the app query
+export const invalidateAppQuery = (
+  queryClient: QueryClient,
+  { appId }: { appId: number | null },
+) => {
+  return queryClient.invalidateQueries({ queryKey: ["app", appId] });
+};

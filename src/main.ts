@@ -9,6 +9,7 @@ import log from "electron-log";
 import { readSettings, writeSettings } from "./main/settings";
 import { handleSupabaseOAuthReturn } from "./supabase_admin/supabase_return_handler";
 import { handleDyadProReturn } from "./main/pro";
+import { IS_TEST_BUILD } from "./ipc/utils/test_utils";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -58,7 +59,7 @@ export async function onFirstRunMaybe() {
       hasRunBefore: true,
     });
   }
-  if (process.env.E2E_TEST_BUILD) {
+  if (IS_TEST_BUILD) {
     writeSettings({
       isTestMode: true,
     });
@@ -73,7 +74,7 @@ async function promptMoveToApplicationsFolder(): Promise<void> {
   // Why not in e2e tests?
   // There's no way to stub this dialog in time, so we just skip it
   // in e2e testing mode.
-  if (process.env.E2E_TEST_BUILD) return;
+  if (IS_TEST_BUILD) return;
   if (process.platform !== "darwin") return;
   if (app.isInApplicationsFolder()) return;
   logger.log("Prompting user to move to applications folder");

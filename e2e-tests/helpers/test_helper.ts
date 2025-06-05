@@ -258,6 +258,10 @@ export class PageObject {
       .click();
   }
 
+  async clickBackButton() {
+    await this.page.getByRole("button", { name: "Back" }).click();
+  }
+
   async sendPrompt(prompt: string) {
     await this.getChatInput().click();
     await this.getChatInput().fill(prompt);
@@ -380,6 +384,10 @@ export class PageObject {
 
   async clickAppDetailsMoreOptions() {
     await this.page.getByTestId("app-details-more-options-button").click();
+  }
+
+  async clickConnectSupabaseButton() {
+    await this.page.getByTestId("connect-supabase-button").click();
   }
 
   ////////////////////////////////

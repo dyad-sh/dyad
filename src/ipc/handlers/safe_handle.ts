@@ -1,5 +1,6 @@
 import { ipcMain, IpcMainInvokeEvent } from "electron";
 import log from "electron-log";
+import { IS_TEST_BUILD } from "../utils/test_utils";
 
 export function createLoggedHandler(logger: log.LogFunctions) {
   return (
@@ -26,4 +27,12 @@ export function createLoggedHandler(logger: log.LogFunctions) {
       },
     );
   };
+}
+
+export function createTestOnlyLoggedHandler(logger: log.LogFunctions) {
+  if (!IS_TEST_BUILD) {
+    // Returns a no-op function for non-e2e test builds.
+    return () => {};
+  }
+  return createLoggedHandler(logger);
 }

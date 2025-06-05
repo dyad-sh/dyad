@@ -26,6 +26,8 @@ import { Button } from "@/components/ui/button";
 import { ExternalLink } from "lucide-react";
 import { ImportAppButton } from "@/components/ImportAppButton";
 import { showError } from "@/lib/toast";
+import { invalidateAppQuery } from "@/hooks/useLoadApp";
+import { useQueryClient } from "@tanstack/react-query";
 
 // Adding an export for attachments
 export interface HomeSubmitOptions {
@@ -47,7 +49,7 @@ export default function HomePage() {
   const [releaseNotesOpen, setReleaseNotesOpen] = useState(false);
   const [releaseUrl, setReleaseUrl] = useState("");
   const { theme } = useTheme();
-
+  const queryClient = useQueryClient();
   useEffect(() => {
     const updateLastVersionLaunched = async () => {
       if (
@@ -132,6 +134,7 @@ export default function HomePage() {
       setSelectedAppId(result.app.id);
       setIsPreviewOpen(false);
       await refreshApps(); // Ensure refreshApps is awaited if it's async
+      await invalidateAppQuery(queryClient, { appId: result.app.id });
       posthog.capture("home:chat-submit");
       navigate({ to: "/chat", search: { id: result.chatId } });
     } catch (error) {

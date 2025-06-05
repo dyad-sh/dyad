@@ -5,6 +5,7 @@ import {
   SupabaseManagementAPIError,
 } from "@dyad-sh/supabase-management-js";
 import log from "electron-log";
+import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
 
 const logger = log.scope("supabase_management_client");
 
@@ -122,6 +123,10 @@ export async function getSupabaseClient(): Promise<SupabaseManagementAPI> {
 export async function getSupabaseProjectName(
   projectId: string,
 ): Promise<string> {
+  if (IS_TEST_BUILD) {
+    return "Fake Supabase Project";
+  }
+
   const supabase = await getSupabaseClient();
   const projects = await supabase.getProjects();
   const project = projects?.find((p) => p.id === projectId);

@@ -647,6 +647,17 @@ export class IpcClient {
       app,
     });
   }
+
+  public async fakeHandleSupabaseConnect(params: {
+    appId: number;
+    fakeProjectId: string;
+  }): Promise<void> {
+    await this.ipcRenderer.invoke(
+      "supabase:fake-connect-and-set-project",
+      params,
+    );
+  }
+
   // --- End Supabase Management ---
 
   public async getSystemDebugInfo(): Promise<SystemDebugInfo> {

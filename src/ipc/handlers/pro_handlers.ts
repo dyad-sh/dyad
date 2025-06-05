@@ -3,6 +3,7 @@ import log from "electron-log";
 import { createLoggedHandler } from "./safe_handle";
 import { readSettings } from "../../main/settings"; // Assuming settings are read this way
 import { UserBudgetInfo, UserBudgetInfoSchema } from "../ipc_types";
+import { IS_TEST_BUILD } from "../utils/test_utils";
 
 const logger = log.scope("pro_handlers");
 const handle = createLoggedHandler(logger);
@@ -13,6 +14,10 @@ export function registerProHandlers() {
   // This method should try to avoid throwing errors because this is auxiliary
   // information and isn't critical to using the app
   handle("get-user-budget", async (): Promise<UserBudgetInfo | null> => {
+    if (IS_TEST_BUILD) {
+      // Avoid spamming the API in E2E tests.
+      return null;
+    }
     logger.info("Attempting to fetch user budget information.");
 
     const settings = readSettings();

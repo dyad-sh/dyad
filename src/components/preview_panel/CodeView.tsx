@@ -36,7 +36,7 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
         {/* Toolbar */}
         <div className="flex items-center p-2 border-b space-x-2">
           <button
-            onClick={refreshApp}
+            onClick={() => refreshApp()}
             className="p-1 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={loading || !app.id}
             title="Refresh Files"

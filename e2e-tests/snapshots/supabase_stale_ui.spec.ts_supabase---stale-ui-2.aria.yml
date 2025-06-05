@@ -1,0 +1,8 @@
+- paragraph: tc=add-supabase
+- paragraph: Adding supabase...
+- img
+- text: Supabase integration complete
+- paragraph: "This app is connected to Supabase project: Fake Supabase Project"
+- paragraph: Click the chat suggestion "Keep going" to continue.
+- button "Retry":
+  - img

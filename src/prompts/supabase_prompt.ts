@@ -71,7 +71,7 @@ useEffect(() => {
 }, []);
 
 
-Login page:
+Login page (NOTE: THIS FILE DOES NOT EXIST. YOU MUST GENERATE IT YOURSELF.):
 
 <dyad-write path="src/pages/Login.tsx" description="Creating a login page.">
 import { Auth } from '@supabase/auth-ui-react';

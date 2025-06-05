@@ -1,5 +1,8 @@
 import { IpcClient } from "@/ipc/ipc_client";
 import { X } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
 export function ChatErrorBox({
   onDismiss,
   error,
@@ -88,7 +91,7 @@ function ChatErrorContainer({
   children,
 }: {
   onDismiss: () => void;
-  children: React.ReactNode;
+  children: React.ReactNode | string;
 }) {
   return (
     <div className="relative mt-2 bg-red-50 border border-red-200 rounded-md shadow-sm p-2 mx-4">
@@ -99,7 +102,33 @@ function ChatErrorContainer({
         <X size={14} className="text-red-500" />
       </button>
       <div className="px-6 py-1 text-sm">
-        <div className="text-red-700 text-wrap">{children}</div>
+        <div className="text-red-700 text-wrap">
+          {typeof children === "string" ? (
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                a: ({ children: linkChildren, ...props }) => (
+                  <a
+                    {...props}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      if (props.href) {
+                        IpcClient.getInstance().openExternalUrl(props.href);
+                      }
+                    }}
+                    className="text-blue-500 hover:text-blue-700"
+                  >
+                    {linkChildren}
+                  </a>
+                ),
+              }}
+            >
+              {children}
+            </ReactMarkdown>
+          ) : (
+            children
+          )}
+        </div>
       </div>
     </div>
   );

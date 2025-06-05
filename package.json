@@ -134,6 +134,7 @@
     "react-markdown": "^10.1.0",
     "react-resizable-panels": "^2.1.7",
     "react-shiki": "^0.5.2",
+    "remark-gfm": "^4.0.1",
     "shell-env": "^4.0.1",
     "shiki": "^3.2.1",
     "sonner": "^2.0.3",

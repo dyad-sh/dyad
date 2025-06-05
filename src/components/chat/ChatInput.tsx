@@ -188,6 +188,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         showExtraFilesToast({
           files: result.extraFiles,
           error: result.extraFilesError,
+          posthog,
         });
       }
     } catch (err) {

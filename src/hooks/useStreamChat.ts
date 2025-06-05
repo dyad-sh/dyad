@@ -20,6 +20,7 @@ import { useSearch } from "@tanstack/react-router";
 import { useRunApp } from "./useRunApp";
 import { useCountTokens } from "./useCountTokens";
 import { useUserBudgetInfo } from "./useUserBudgetInfo";
+import { usePostHog } from "posthog-js/react";
 
 export function getRandomNumberId() {
   return Math.floor(Math.random() * 1_000_000_000_000_000);
@@ -40,7 +41,7 @@ export function useStreamChat({
   const { refreshAppIframe } = useRunApp();
   const { countTokens } = useCountTokens();
   const { refetchUserBudget } = useUserBudgetInfo();
-
+  const posthog = usePostHog();
   let chatId: number | undefined;
 
   if (hasChatId) {
@@ -93,6 +94,7 @@ export function useStreamChat({
               showExtraFilesToast({
                 files: response.extraFiles,
                 error: response.extraFilesError,
+                posthog,
               });
             }
             refreshProposal(chatId);

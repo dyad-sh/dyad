@@ -1,4 +1,5 @@
 import { toast } from "sonner";
+import { PostHog } from "posthog-js";
 
 /**
  * Toast utility functions for consistent notifications across the app
@@ -61,19 +62,28 @@ export const showLoading = <T>(
 export const showExtraFilesToast = ({
   files,
   error,
+  posthog,
 }: {
   files: string[];
   error?: string;
+  posthog: PostHog;
 }) => {
   if (error) {
     showError(
       `Error committing files ${files.join(", ")} changed outside of Dyad: ${error}`,
     );
+    posthog.capture("extra-files:error", {
+      files: files,
+      error,
+    });
   } else {
     showWarning(
       `Files changed outside of Dyad have automatically been committed:
     \n\n${files.join("\n")}`,
     );
+    posthog.capture("extra-files:warning", {
+      files: files,
+    });
   }
 };
 

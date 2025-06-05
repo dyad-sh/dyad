@@ -20,9 +20,7 @@ test("delete app", async ({ po }) => {
   await po.page.getByRole("button", { name: "Delete App" }).click();
 
   // Make sure the app is deleted
-  await expect(async () => {
-    expect(await po.getCurrentAppName()).toBe("(no app selected)");
-  }).toPass();
+  await po.isCurrentAppNameNone();
   expect(fs.existsSync(appPath)).toBe(false);
   expect(po.getAppListItem({ appName })).not.toBeVisible();
 });

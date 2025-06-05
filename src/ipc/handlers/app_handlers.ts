@@ -23,7 +23,7 @@ import { getEnvVar } from "../utils/read_env";
 import { readSettings } from "../../main/settings";
 
 import fixPath from "fix-path";
-import { getGitAuthor } from "../utils/git_author";
+
 import killPort from "kill-port";
 import util from "util";
 import log from "electron-log";
@@ -33,6 +33,7 @@ import { getLanguageModelProviders } from "../shared/language_model_helpers";
 import { startProxy } from "../utils/start_proxy_server";
 import { Worker } from "worker_threads";
 import { createFromTemplate } from "./createFromTemplate";
+import { gitCommit } from "../utils/git_utils";
 
 const logger = log.scope("app_handlers");
 const handle = createLoggedHandler(logger);
@@ -207,11 +208,9 @@ export function registerAppHandlers() {
       });
 
       // Create initial commit
-      const commitHash = await git.commit({
-        fs: fs,
-        dir: fullAppPath,
+      const commitHash = await gitCommit({
+        path: fullAppPath,
         message: "Init Dyad app",
-        author: await getGitAuthor(),
       });
 
       // Update chat with initial commit hash
@@ -521,11 +520,9 @@ export function registerAppHandlers() {
             filepath: filePath,
           });
 
-          await git.commit({
-            fs,
-            dir: appPath,
+          await gitCommit({
+            path: appPath,
             message: `Updated ${filePath}`,
-            author: await getGitAuthor(),
           });
         }
 

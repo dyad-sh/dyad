@@ -1,0 +1,19 @@
+=== a.txt ===
+a
+
+=== AI_RULES.md ===
+avoid AI_RULES auto-prompt
+
+
+=== b.txt ===
+b
+
+=== dir/c.txt ===
+dir/c.txt
+
+=== new-file.js ===
+new-file
+end of new-file
+
+=== to-be-edited.txt ===
+after-edit

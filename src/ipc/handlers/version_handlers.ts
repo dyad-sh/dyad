@@ -5,12 +5,11 @@ import type { Version, BranchResult } from "../ipc_types";
 import fs from "node:fs";
 import path from "node:path";
 import { getDyadAppPath } from "../../paths/paths";
-import git from "isomorphic-git";
-import { promises as fsPromises } from "node:fs";
+import git, { type ReadCommitResult } from "isomorphic-git";
 import { withLock } from "../utils/lock_utils";
-import { getGitAuthor } from "../utils/git_author";
 import log from "electron-log";
 import { createLoggedHandler } from "./safe_handle";
+import { gitCheckout, gitCommit, gitStageToRevert } from "../utils/git_utils";
 
 const logger = log.scope("version_handlers");
 
@@ -40,7 +39,7 @@ export function registerVersionHandlers() {
       depth: 10_000, // Limit to last 10_000 commits for performance
     });
 
-    return commits.map((commit) => ({
+    return commits.map((commit: ReadCommitResult) => ({
       oid: commit.oid,
       message: commit.commit.message,
       timestamp: commit.commit.author.timestamp,
@@ -102,65 +101,19 @@ export function registerVersionHandlers() {
 
         const appPath = getDyadAppPath(app.path);
 
-        await git.checkout({
-          fs,
-          dir: appPath,
+        await gitCheckout({
+          path: appPath,
           ref: "main",
-          force: true,
-        });
-        // Get status matrix comparing the target commit (previousVersionId as HEAD) with current working directory
-        const matrix = await git.statusMatrix({
-          fs,
-          dir: appPath,
-          ref: previousVersionId,
         });
 
-        // Process each file to revert to the state in previousVersionId
-        for (const [filepath, headStatus, workdirStatus] of matrix) {
-          const fullPath = path.join(appPath, filepath);
-
-          // If file exists in HEAD (previous version)
-          if (headStatus === 1) {
-            // If file doesn't exist or has changed in working directory, restore it from the target commit
-            if (workdirStatus !== 1) {
-              const { blob } = await git.readBlob({
-                fs,
-                dir: appPath,
-                oid: previousVersionId,
-                filepath,
-              });
-              await fsPromises.mkdir(path.dirname(fullPath), {
-                recursive: true,
-              });
-              await fsPromises.writeFile(fullPath, Buffer.from(blob));
-            }
-          }
-          // If file doesn't exist in HEAD but exists in working directory, delete it
-          else if (headStatus === 0 && workdirStatus !== 0) {
-            if (fs.existsSync(fullPath)) {
-              await fsPromises.unlink(fullPath);
-              await git.remove({
-                fs,
-                dir: appPath,
-                filepath: filepath,
-              });
-            }
-          }
-        }
-
-        // Stage all changes
-        await git.add({
-          fs,
-          dir: appPath,
-          filepath: ".",
+        await gitStageToRevert({
+          path: appPath,
+          targetOid: previousVersionId,
         });
 
-        // Create a revert commit
-        await git.commit({
-          fs,
-          dir: appPath,
+        await gitCommit({
+          path: appPath,
           message: `Reverted all changes back to version ${previousVersionId}`,
-          author: await getGitAuthor(),
         });
 
         // Find the chat and message associated with the commit hash
@@ -221,9 +174,8 @@ export function registerVersionHandlers() {
 
         const appPath = getDyadAppPath(app.path);
 
-        await git.checkout({
-          fs,
-          dir: appPath,
+        await gitCheckout({
+          path: appPath,
           ref: versionId,
         });
       });

@@ -9,9 +9,10 @@ import { db } from "@/db";
 import { chats } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import git from "isomorphic-git";
-import { getGitAuthor } from "../utils/git_author";
+
 import { ImportAppParams, ImportAppResult } from "../ipc_types";
 import { copyDirectoryRecursive } from "../utils/file_utils";
+import { gitCommit } from "../utils/git_utils";
 
 const logger = log.scope("import-handlers");
 const handle = createLoggedHandler(logger);
@@ -114,11 +115,9 @@ export function registerImportHandlers() {
         });
 
         // Create initial commit
-        await git.commit({
-          fs: fs,
-          dir: destPath,
+        await gitCommit({
+          path: destPath,
           message: "Init Dyad app",
-          author: await getGitAuthor(),
         });
       }
 

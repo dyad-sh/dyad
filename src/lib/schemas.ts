@@ -122,6 +122,8 @@ export const UserSettingsSchema = z.object({
   enableProSmartFilesContextMode: z.boolean().optional(),
   selectedTemplateId: z.string().optional(),
 
+  enableNativeGit: z.boolean().optional(),
+
   ////////////////////////////////
   // E2E TESTING ONLY.
   ////////////////////////////////

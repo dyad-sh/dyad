@@ -15,6 +15,7 @@ import { useRouter } from "@tanstack/react-router";
 import { GitHubIntegration } from "@/components/GitHubIntegration";
 import { SupabaseIntegration } from "@/components/SupabaseIntegration";
 import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
@@ -105,6 +106,35 @@ export default function SettingsPage() {
               <AutoApproveSwitch showToast={false} />
               <div className="text-sm text-gray-500 dark:text-gray-400">
                 This will automatically approve code changes and run them.
+              </div>
+            </div>
+
+            <div className="space-y-1 mt-4">
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="enable-native-git"
+                  checked={!!settings?.enableNativeGit}
+                  onCheckedChange={(checked) => {
+                    updateSettings({
+                      enableNativeGit: checked,
+                    });
+                  }}
+                />
+                <Label htmlFor="enable-native-git">Enable Native Git</Label>
+              </div>
+              <div className="text-sm text-gray-500 dark:text-gray-400">
+                (Experimental) Native Git offers faster performance but requires{" "}
+                <a
+                  onClick={() => {
+                    IpcClient.getInstance().openExternalUrl(
+                      "https://git-scm.com/downloads",
+                    );
+                  }}
+                  className="text-blue-600 hover:underline dark:text-blue-400"
+                >
+                  installing Git
+                </a>
+                .
               </div>
             </div>
 

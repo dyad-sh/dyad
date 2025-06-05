@@ -6,7 +6,6 @@ import { getDyadAppPath } from "../../paths/paths";
 import path from "node:path";
 import git from "isomorphic-git";
 
-import { getGitAuthor } from "../utils/git_author";
 import log from "electron-log";
 import { executeAddDependency } from "./executeAddDependency";
 import {
@@ -16,6 +15,7 @@ import {
 } from "../../supabase_admin/supabase_management_client";
 import { isServerFunction } from "../../supabase_admin/supabase_utils";
 import { SqlQuery } from "../../lib/schemas";
+import { gitCommit } from "../utils/git_utils";
 
 const readFile = fs.promises.readFile;
 const logger = log.scope("response_processor");
@@ -460,11 +460,9 @@ export async function processFullResponseActions(
         ? `[dyad] ${chatSummary} - ${changes.join(", ")}`
         : `[dyad] ${changes.join(", ")}`;
       // Use chat summary, if provided, or default for commit message
-      let commitHash = await git.commit({
-        fs,
-        dir: appPath,
+      let commitHash = await gitCommit({
+        path: appPath,
         message,
-        author: await getGitAuthor(),
       });
       logger.log(`Successfully committed changes: ${changes.join(", ")}`);
 
@@ -482,11 +480,9 @@ export async function processFullResponseActions(
           filepath: ".",
         });
         try {
-          commitHash = await git.commit({
-            fs,
-            dir: appPath,
+          commitHash = await gitCommit({
+            path: appPath,
             message: message + " + extra files edited outside of Dyad",
-            author: await getGitAuthor(),
             amend: true,
           });
           logger.log(

@@ -15,7 +15,7 @@ export const Timeout = {
   MEDIUM: os.platform() === "win32" ? 30_000 : 15_000,
 };
 
-class PageObject {
+export class PageObject {
   private userDataDir: string;
 
   constructor(
@@ -26,10 +26,16 @@ class PageObject {
     this.userDataDir = userDataDir;
   }
 
-  async setUp({ autoApprove = false }: { autoApprove?: boolean } = {}) {
+  async setUp({
+    autoApprove = false,
+    nativeGit = false,
+  }: { autoApprove?: boolean; nativeGit?: boolean } = {}) {
     await this.goToSettingsTab();
     if (autoApprove) {
       await this.toggleAutoApprove();
+    }
+    if (nativeGit) {
+      await this.toggleNativeGit();
     }
     await this.setUpTestProvider();
     await this.setUpTestModel();
@@ -65,6 +71,37 @@ class PageObject {
     // await page.getByRole('switch', { name: 'Turbo Edits' }).click();
     // await page.locator('div').filter({ hasText: /^Import App$/ }).click();
     // await page.getByRole('button', { name: 'Select Folder' }).press('Escape');
+  }
+
+  async snapshotAppFiles({ name }: { name?: string } = {}) {
+    const appPath = await this.getCurrentAppPath();
+    if (!appPath || !fs.existsSync(appPath)) {
+      throw new Error(`App path does not exist: ${appPath}`);
+    }
+
+    await expect(() => {
+      const filesData = generateAppFilesSnapshotData(appPath, appPath, [
+        ".git",
+        "node_modules",
+        // Avoid snapshotting lock files because they are getting generated
+        // automatically and cause noise, and not super important anyways.
+        "package-lock.json",
+        "pnpm-lock.yaml",
+      ]);
+
+      // Sort by relative path to ensure deterministic output
+      filesData.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+
+      const snapshotContent = filesData
+        .map((file) => `=== ${file.relativePath} ===\n${file.content}`)
+        .join("\n\n");
+
+      if (name) {
+        expect(snapshotContent).toMatchSnapshot(name);
+      } else {
+        expect(snapshotContent).toMatchSnapshot();
+      }
+    }).toPass();
   }
 
   async snapshotMessages({
@@ -134,9 +171,10 @@ class PageObject {
     return this.page.getByTestId("preview-iframe-element");
   }
 
-  async snapshotPreview() {
+  async snapshotPreview({ name }: { name?: string } = {}) {
     const iframe = this.getPreviewIframeElement();
     await expect(iframe.contentFrame().locator("body")).toMatchAriaSnapshot({
+      name,
       timeout: Timeout.LONG,
     });
   }
@@ -299,7 +337,21 @@ class PageObject {
     return this.page.getByTestId(`app-list-item-${appName}`);
   }
 
+  async isCurrentAppNameNone() {
+    await expect(async () => {
+      await expect(this.getTitleBarAppNameButton()).toContainText(
+        "no app selected",
+      );
+    }).toPass();
+  }
+
   async getCurrentAppName() {
+    // Make sure to wait for the app to be set to avoid a race condition.
+    await expect(async () => {
+      await expect(this.getTitleBarAppNameButton()).not.toContainText(
+        "no app selected",
+      );
+    }).toPass();
     return (await this.getTitleBarAppNameButton().textContent())?.replace(
       "App: ",
       "",
@@ -336,6 +388,10 @@ class PageObject {
 
   async toggleAutoApprove() {
     await this.page.getByRole("switch", { name: "Auto-approve" }).click();
+  }
+
+  async toggleNativeGit() {
+    await this.page.getByRole("switch", { name: "Enable Native Git" }).click();
   }
 
   async snapshotSettings() {
@@ -587,4 +643,49 @@ function prettifyDump(
       return `===\nrole: ${message.role}\nmessage: ${content}`;
     })
     .join("\n\n");
+}
+
+interface FileSnapshotData {
+  relativePath: string;
+  content: string;
+}
+
+function generateAppFilesSnapshotData(
+  currentPath: string,
+  basePath: string,
+  ignorePatterns: string[],
+): FileSnapshotData[] {
+  const entries = fs.readdirSync(currentPath, { withFileTypes: true });
+  let files: FileSnapshotData[] = [];
+
+  // Sort entries for deterministic order
+  entries.sort((a, b) => a.name.localeCompare(b.name));
+
+  for (const entry of entries) {
+    const entryPath = path.join(currentPath, entry.name);
+    if (ignorePatterns.includes(entry.name)) {
+      continue;
+    }
+
+    if (entry.isDirectory()) {
+      files = files.concat(
+        generateAppFilesSnapshotData(entryPath, basePath, ignorePatterns),
+      );
+    } else if (entry.isFile()) {
+      const relativePath = path.relative(basePath, entryPath);
+      try {
+        const content = fs.readFileSync(entryPath, "utf-8");
+        files.push({ relativePath, content });
+      } catch (error) {
+        // Could be a binary file or permission issue, log and add a placeholder
+        const e = error as Error;
+        console.warn(`Could not read file ${entryPath}: ${e.message}`);
+        files.push({
+          relativePath,
+          content: `[Error reading file: ${e.message}]`,
+        });
+      }
+    }
+  }
+  return files;
 }

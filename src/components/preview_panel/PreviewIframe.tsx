@@ -51,7 +51,10 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
   };
 
   return (
-    <div className="absolute top-2 left-2 right-2 z-10 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-md shadow-sm p-2">
+    <div
+      className="absolute top-2 left-2 right-2 z-10 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-md shadow-sm p-2"
+      data-testid="preview-error-banner"
+    >
       {/* Close button in top left */}
       <button
         onClick={onDismiss}

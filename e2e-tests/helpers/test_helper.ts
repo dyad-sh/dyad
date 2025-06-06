@@ -10,10 +10,10 @@ import { generateAppFilesSnapshotData } from "./generateAppFilesSnapshotData";
 const showDebugLogs = process.env.DEBUG_LOGS === "true";
 
 export const Timeout = {
-  // Why make this a constant? In some platforms, perhaps locally,
-  // we may want to shorten this.
-  LONG: os.platform() === "win32" ? 60_000 : 30_000,
-  MEDIUM: os.platform() === "win32" ? 30_000 : 15_000,
+  // Things generally take longer on CI, so we make them longer.
+  EXTRA_LONG: process.env.CI ? 120_000 : 60_000,
+  LONG: process.env.CI ? 60_000 : 30_000,
+  MEDIUM: process.env.CI ? 30_000 : 15_000,
 };
 
 export class PageObject {
@@ -163,6 +163,20 @@ export class PageObject {
 
   getPreviewIframeElement() {
     return this.page.getByTestId("preview-iframe-element");
+  }
+
+  async clickFixErrorWithAI() {
+    await this.page.getByRole("button", { name: "Fix error with AI" }).click();
+  }
+
+  async snapshotPreviewErrorBanner() {
+    await expect(this.locatePreviewErrorBanner()).toMatchAriaSnapshot({
+      timeout: Timeout.LONG,
+    });
+  }
+
+  locatePreviewErrorBanner() {
+    return this.page.getByTestId("preview-error-banner");
   }
 
   async snapshotPreview({ name }: { name?: string } = {}) {

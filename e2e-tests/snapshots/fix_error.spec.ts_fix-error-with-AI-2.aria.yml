@@ -1,0 +1,8 @@
+- button:
+  - img
+- img
+- text: "/Error Line 6 error Stack trace: Index \\(http:\\/\\/localhost:\\d+\\/src\\/pages\\/Index\\.tsx:6:6\\)/"
+- img
+- text: "Tip: Check if restarting the app fixes the error."
+- button "Fix error with AI":
+  - img

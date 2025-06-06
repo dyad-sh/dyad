@@ -24,6 +24,35 @@ export const createChatCompletionHandler =
     }
 
     let messageContent = CANNED_MESSAGE;
+
+    if (
+      lastMessage &&
+      typeof lastMessage.content === "string" &&
+      lastMessage.content.startsWith("Fix error: Error Line 6 error")
+    ) {
+      messageContent = `
+      Fixing the error...
+      <dyad-write path="src/pages/Index.tsx">
+      
+
+import { MadeWithDyad } from "@/components/made-with-dyad";
+
+const Index = () => {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-100">
+      <div className="text-center">
+        <h1 className="text-4xl font-bold mb-4">No more errors!</h1>
+      </div>
+      <MadeWithDyad />
+    </div>
+  );
+};
+
+export default Index;
+
+      </dyad-write>
+      `;
+    }
     console.error("LASTMESSAGE", lastMessage);
     // Check if the last message is "[dump]" to write messages to file and return path
     if (

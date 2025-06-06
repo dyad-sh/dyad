@@ -1,0 +1,8 @@
+- button:
+  - img
+- img
+- text: Error Line 6 error
+- img
+- text: "Tip: Check if restarting the app fixes the error."
+- button "Fix error with AI":
+  - img

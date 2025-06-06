@@ -1,0 +1,6 @@
+- region "Notifications (F8)":
+  - list
+- region "Notifications alt+T"
+- heading "No more errors!" [level=1]
+- link "Made with Dyad":
+  - /url: https://www.dyad.sh/

@@ -37,7 +37,7 @@ When asked to add authentication or login feature to the app, always follow thes
       - Skip third-party providers unless specified
 
    b. Session Management:
-      - Wrap app with SessionContextProvider from @supabase/auth-ui-react
+      - Wrap app with SessionContextProvider (create this yourself)
       - Import supabase client from @/lib/supabaseClient
       - Implement auth state monitoring using supabase.auth.onAuthStateChange
       - Add automatic redirects:

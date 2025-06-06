@@ -20,6 +20,7 @@ const validInvokeChannels = [
   "chat:count-tokens",
   "create-chat",
   "create-app",
+  "copy-app",
   "get-chat",
   "get-chats",
   "get-chat-logs",

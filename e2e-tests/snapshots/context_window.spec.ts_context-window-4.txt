@@ -9,7 +9,7 @@
   "telemetryUserId": "[UUID]",
   "hasRunBefore": true,
   "experiments": {},
-  "lastShownReleaseNotesVersion": "0.8.0",
+  "lastShownReleaseNotesVersion": "[scrubbed]",
   "maxChatTurnsInContext": 5,
   "enableProLazyEditsMode": true,
   "enableProSmartFilesContextMode": true,

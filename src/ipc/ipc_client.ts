@@ -31,6 +31,7 @@ import type {
   ImportAppParams,
   RenameBranchParams,
   UserBudgetInfo,
+  CopyAppParams,
 } from "./ipc_types";
 import type { ProposalResult } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
@@ -463,6 +464,10 @@ export class IpcClient {
       appName,
       appPath,
     });
+  }
+
+  public async copyApp(params: CopyAppParams): Promise<{ app: App }> {
+    return this.ipcRenderer.invoke("copy-app", params);
   }
 
   // Reset all - removes all app files, settings, and drops the database

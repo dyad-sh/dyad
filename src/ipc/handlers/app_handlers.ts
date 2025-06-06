@@ -2,7 +2,12 @@ import { ipcMain } from "electron";
 import { db, getDatabasePath } from "../../db";
 import { apps, chats } from "../../db/schema";
 import { desc, eq } from "drizzle-orm";
-import type { App, CreateAppParams, RenameBranchParams } from "../ipc_types";
+import type {
+  App,
+  CreateAppParams,
+  RenameBranchParams,
+  CopyAppParams,
+} from "../ipc_types";
 import fs from "node:fs";
 import path from "node:path";
 import { getDyadAppPath, getUserDataPath } from "../../paths/paths";
@@ -222,6 +227,89 @@ export function registerAppHandlers() {
         .where(eq(chats.id, chat.id));
 
       return { app, chatId: chat.id };
+    },
+  );
+
+  handle(
+    "copy-app",
+    async (_, params: CopyAppParams): Promise<{ app: any }> => {
+      const { appId, newAppName, withHistory } = params;
+
+      // 1. Check if an app with the new name already exists
+      const existingApp = await db.query.apps.findFirst({
+        where: eq(apps.name, newAppName),
+      });
+
+      if (existingApp) {
+        throw new Error(`An app named "${newAppName}" already exists.`);
+      }
+
+      // 2. Find the original app
+      const originalApp = await db.query.apps.findFirst({
+        where: eq(apps.id, appId),
+      });
+
+      if (!originalApp) {
+        throw new Error("Original app not found.");
+      }
+
+      const originalAppPath = getDyadAppPath(originalApp.path);
+      const newAppPath = getDyadAppPath(newAppName);
+
+      // 3. Copy the app folder
+      try {
+        await fsPromises.cp(originalAppPath, newAppPath, {
+          recursive: true,
+          filter: (source: string) => {
+            if (!withHistory && path.basename(source) === ".git") {
+              return false;
+            }
+            return true;
+          },
+        });
+      } catch (error) {
+        logger.error("Failed to copy app directory:", error);
+        throw new Error("Failed to copy app directory.");
+      }
+
+      if (!withHistory) {
+        // Initialize git repo and create first commit
+        await git.init({
+          fs: fs,
+          dir: newAppPath,
+          defaultBranch: "main",
+        });
+
+        // Stage all files
+        await git.add({
+          fs: fs,
+          dir: newAppPath,
+          filepath: ".",
+        });
+
+        // Create initial commit
+        await gitCommit({
+          path: newAppPath,
+          message: "Init Dyad app",
+        });
+      }
+
+      // 4. Create a new app entry in the database
+      const [newDbApp] = await db
+        .insert(apps)
+        .values({
+          name: newAppName,
+          path: newAppName, // Use the new name for the path
+          // Explicitly set these to null because we don't want to copy them over.
+          // Note: we could just leave them out since they're nullable field, but this
+          // is to make it explicit we intentionally don't want to copy them over.
+          supabaseProjectId: null,
+          githubOrg: null,
+          githubRepo: null,
+        })
+        .returning();
+
+      return { app: newDbApp };
     },
   );
 

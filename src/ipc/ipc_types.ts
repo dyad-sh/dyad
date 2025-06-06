@@ -199,6 +199,12 @@ export interface ImportAppParams {
   appName: string;
 }
 
+export interface CopyAppParams {
+  appId: number;
+  newAppName: string;
+  withHistory: boolean;
+}
+
 export interface ImportAppResult {
   appId: number;
   chatId: number;

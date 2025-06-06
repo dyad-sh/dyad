@@ -8,7 +8,7 @@
   "telemetryUserId": "[UUID]",
   "hasRunBefore": true,
   "experiments": {},
-  "lastShownReleaseNotesVersion": "0.8.0",
+  "lastShownReleaseNotesVersion": "[scrubbed]",
   "enableProLazyEditsMode": true,
   "enableProSmartFilesContextMode": true,
   "isTestMode": true

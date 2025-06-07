@@ -60,7 +60,7 @@ export function streamTextWithBackup(params: StreamTextWithBackupParams): {
       );
       const { textStream } = streamText({
         ...rest,
-        maxRetries: 0,
+        maxRetries: backupModelClients.length === 0 ? 3 : 0,
         model: currentModelClient.model,
         abortSignal: attemptAbort.signal,
         onError: (error) => {

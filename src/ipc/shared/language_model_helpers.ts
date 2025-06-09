@@ -58,7 +58,8 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       name: "claude-sonnet-4-20250514",
       displayName: "Claude 4 Sonnet",
       description: "Excellent coder",
-      maxOutputTokens: 64_000,
+      // See comment below for Claude 3.7 Sonnet for why we set this to 16k
+      maxOutputTokens: 16_000,
       contextWindow: 200_000,
       supportsTurboEdits: true,
     },
@@ -66,7 +67,11 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       name: "claude-3-7-sonnet-latest",
       displayName: "Claude 3.7 Sonnet",
       description: "Excellent coder",
-      maxOutputTokens: 64_000,
+      // Technically the max output tokens is 64k, *however* if the user has a lot of input tokens,
+      // then setting a high max output token will cause the request to fail because
+      // the max output tokens is *included* in the context window limit, see:
+      // https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking#max-tokens-and-context-window-size-with-extended-thinking
+      maxOutputTokens: 16_000,
       contextWindow: 200_000,
       supportsTurboEdits: true,
     },

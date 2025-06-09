@@ -19,6 +19,10 @@ vi.mock("node:fs", async () => {
       existsSync: vi.fn(),
       renameSync: vi.fn(),
       unlinkSync: vi.fn(),
+      lstatSync: vi.fn().mockReturnValue({ isDirectory: () => false }),
+      promises: {
+        readFile: vi.fn().mockResolvedValue(""),
+      },
     },
   };
 });
@@ -29,6 +33,7 @@ vi.mock("isomorphic-git", () => ({
     add: vi.fn().mockResolvedValue(undefined),
     remove: vi.fn().mockResolvedValue(undefined),
     commit: vi.fn().mockResolvedValue(undefined),
+    statusMatrix: vi.fn().mockResolvedValue([]),
   },
 }));
 
@@ -37,6 +42,7 @@ vi.mock("../paths/paths", () => ({
   getDyadAppPath: vi.fn().mockImplementation((appPath) => {
     return `/mock/user/data/path/${appPath}`;
   }),
+  getUserDataPath: vi.fn().mockReturnValue("/mock/user/data/path"),
 }));
 
 // Mock db
@@ -46,7 +52,15 @@ vi.mock("../db", () => ({
       chats: {
         findFirst: vi.fn(),
       },
+      messages: {
+        findFirst: vi.fn(),
+      },
     },
+    update: vi.fn(() => ({
+      set: vi.fn(() => ({
+        where: vi.fn().mockResolvedValue(undefined),
+      })),
+    })),
   },
 }));
 
@@ -99,6 +113,7 @@ console.log("TodoItem");
     expect(result).toEqual([
       {
         path: "src/components/TodoItem.tsx",
+        description: "Creating a component for individual todo items",
         content: `import React from "react";
 console.log("TodoItem");`,
       },
@@ -117,6 +132,7 @@ console.log("TodoItem");
     expect(result).toEqual([
       {
         path: "src/components/TodoItem.tsx",
+        description: "Creating a component for individual todo items",
         content: `import React from "react";
 console.log("TodoItem");`,
       },
@@ -515,6 +531,16 @@ describe("processFullResponse", () => {
       messages: [],
     } as any);
 
+    vi.mocked(db.query.messages.findFirst).mockResolvedValue({
+      id: 1,
+      chatId: 1,
+      role: "assistant",
+      content: "some content",
+      createdAt: new Date(),
+      approvalState: null,
+      commitHash: null,
+    } as any);
+
     // Default mock for existsSync to return true
     vi.mocked(fs.existsSync).mockReturnValue(true);
   });
@@ -528,7 +554,11 @@ describe("processFullResponse", () => {
         messageId: 1,
       },
     );
-    expect(result).toEqual({});
+    expect(result).toEqual({
+      updatedFiles: false,
+      extraFiles: undefined,
+      extraFilesError: undefined,
+    });
     expect(fs.mkdirSync).not.toHaveBeenCalled();
     expect(fs.writeFileSync).not.toHaveBeenCalled();
   });
@@ -703,7 +733,11 @@ describe("processFullResponse", () => {
     expect(fs.mkdirSync).toHaveBeenCalled();
     expect(fs.renameSync).not.toHaveBeenCalled();
     expect(git.commit).not.toHaveBeenCalled();
-    expect(result).toEqual({});
+    expect(result).toEqual({
+      updatedFiles: false,
+      extraFiles: undefined,
+      extraFilesError: undefined,
+    });
   });
 
   it("should process dyad-delete tags and delete files", async () => {
@@ -744,7 +778,11 @@ describe("processFullResponse", () => {
     expect(fs.unlinkSync).not.toHaveBeenCalled();
     expect(git.remove).not.toHaveBeenCalled();
     expect(git.commit).not.toHaveBeenCalled();
-    expect(result).toEqual({});
+    expect(result).toEqual({
+      updatedFiles: false,
+      extraFiles: undefined,
+      extraFilesError: undefined,
+    });
   });
 
   it("should process mixed operations (write, rename, delete) in one response", async () => {

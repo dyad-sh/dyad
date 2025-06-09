@@ -49,6 +49,10 @@ jobs:
         # do not run this on windows (it's redunant)
         if: contains(matrix.os.name, 'macos')
         run: npm run ts
+      - name: Unit tests
+        # do not run this on windows (it's redunant)
+        if: contains(matrix.os.name, 'macos')
+        run: npm run test
       - name: Install Chromium browser for Playwright
         run: npx playwright install chromium --with-deps
       - name: Build

@@ -2,6 +2,7 @@ import log from "electron-log";
 import fetch from "node-fetch";
 import { createLoggedHandler } from "./safe_handle";
 import { DoesReleaseNoteExistParams } from "../ipc_types";
+import { IS_TEST_BUILD } from "../utils/test_utils";
 
 const logger = log.scope("release_note_handlers");
 
@@ -17,6 +18,11 @@ export function registerReleaseNoteHandlers() {
         throw new Error("Invalid version provided");
       }
 
+      // For E2E tests, we don't want to check for release notes
+      // or show release notes, as it interferes with the tests.
+      if (IS_TEST_BUILD) {
+        return { exists: false };
+      }
       const releaseNoteUrl = `https://www.dyad.sh/docs/releases/${version}`;
 
       logger.debug(`Checking for release note at: ${releaseNoteUrl}`);

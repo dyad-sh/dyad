@@ -40,6 +40,25 @@ import { Worker } from "worker_threads";
 import { createFromTemplate } from "./createFromTemplate";
 import { gitCommit } from "../utils/git_utils";
 
+async function copyDir(
+  source: string,
+  destination: string,
+  filter?: (source: string) => boolean,
+) {
+  await fsPromises.cp(source, destination, {
+    recursive: true,
+    filter: (src: string) => {
+      if (path.basename(src) === "node_modules") {
+        return false;
+      }
+      if (filter) {
+        return filter(src);
+      }
+      return true;
+    },
+  });
+}
+
 const logger = log.scope("app_handlers");
 const handle = createLoggedHandler(logger);
 
@@ -258,14 +277,11 @@ export function registerAppHandlers() {
 
       // 3. Copy the app folder
       try {
-        await fsPromises.cp(originalAppPath, newAppPath, {
-          recursive: true,
-          filter: (source: string) => {
-            if (!withHistory && path.basename(source) === ".git") {
-              return false;
-            }
-            return true;
-          },
+        await copyDir(originalAppPath, newAppPath, (source: string) => {
+          if (!withHistory && path.basename(source) === ".git") {
+            return false;
+          }
+          return true;
         });
       } catch (error) {
         logger.error("Failed to copy app directory:", error);
@@ -744,10 +760,7 @@ export function registerAppHandlers() {
             });
 
             // Copy the directory without node_modules
-            await fsPromises.cp(oldAppPath, newAppPath, {
-              recursive: true,
-              filter: (source) => !source.includes("node_modules"),
-            });
+            await copyDir(oldAppPath, newAppPath);
           } catch (error: any) {
             logger.error(
               `Error moving app files from ${oldAppPath} to ${newAppPath}:`,
@@ -789,10 +802,7 @@ export function registerAppHandlers() {
           if (newAppPath !== oldAppPath) {
             try {
               // Copy back from new to old
-              await fsPromises.cp(newAppPath, oldAppPath, {
-                recursive: true,
-                filter: (source) => !source.includes("node_modules"),
-              });
+              await copyDir(newAppPath, oldAppPath);
               // Delete the new directory
               await fsPromises.rm(newAppPath, { recursive: true, force: true });
             } catch (rollbackError) {

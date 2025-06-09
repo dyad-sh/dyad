@@ -104,6 +104,7 @@ export interface SystemDebugInfo {
   platform: string;
   architecture: string;
   logs: string;
+  selectedLanguageModel: string;
 }
 
 export interface LocalModel {

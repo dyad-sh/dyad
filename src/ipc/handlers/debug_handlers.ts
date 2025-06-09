@@ -12,9 +12,16 @@ import { db } from "../../db";
 import { chats, apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import { getDyadAppPath } from "../../paths/paths";
+import { LargeLanguageModel } from "@/lib/schemas";
 
 // Shared function to get system debug info
-async function getSystemDebugInfo(): Promise<SystemDebugInfo> {
+async function getSystemDebugInfo({
+  linesOfLogs,
+  level,
+}: {
+  linesOfLogs: number;
+  level: "warn" | "info";
+}): Promise<SystemDebugInfo> {
   console.log("Getting system debug info");
 
   // Get Node.js and pnpm versions
@@ -63,8 +70,27 @@ async function getSystemDebugInfo(): Promise<SystemDebugInfo> {
     const logPath = log.transports.file.getFile().path;
     if (fs.existsSync(logPath)) {
       const logContent = fs.readFileSync(logPath, "utf8");
-      const logLines = logContent.split("\n");
-      logs = logLines.slice(-100).join("\n");
+
+      const logLines = logContent.split("\n").filter((line) => {
+        if (level === "info") {
+          return true;
+        }
+        // Example line:
+        // [2025-06-09 13:55:05.209] [debug] (runShellCommand) Command "which node" succeeded with code 0: /usr/local/bin/node
+        const logLevelRegex = /\[.*?\] \[(\w+)\]/;
+        const match = line.match(logLevelRegex);
+        if (!match) {
+          // Include non-matching lines (like stack traces) when filtering for warnings
+          return true;
+        }
+        const logLevel = match[1];
+        if (level === "warn") {
+          return logLevel === "warn" || logLevel === "error";
+        }
+        return true;
+      });
+
+      logs = logLines.slice(-linesOfLogs).join("\n");
     }
   } catch (err) {
     console.error("Failed to read log file:", err);
@@ -76,6 +102,8 @@ async function getSystemDebugInfo(): Promise<SystemDebugInfo> {
     pnpmVersion,
     nodePath,
     telemetryId,
+    selectedLanguageModel:
+      serializeModelForDebug(settings.selectedModel) || "unknown",
     telemetryConsent: settings.telemetryConsent || "unknown",
     telemetryUrl: "https://us.i.posthog.com", // Hardcoded from renderer.tsx
     dyadVersion,
@@ -90,7 +118,10 @@ export function registerDebugHandlers() {
     "get-system-debug-info",
     async (): Promise<SystemDebugInfo> => {
       console.log("IPC: get-system-debug-info called");
-      return getSystemDebugInfo();
+      return getSystemDebugInfo({
+        linesOfLogs: 20,
+        level: "warn",
+      });
     },
   );
 
@@ -100,8 +131,12 @@ export function registerDebugHandlers() {
       console.log(`IPC: get-chat-logs called for chat ${chatId}`);
 
       try {
-        // Get system debug info using the shared function
-        const debugInfo = await getSystemDebugInfo();
+        // We can retrieve a lot more lines here because we're not limited by the
+        // GitHub issue URL length limit.
+        const debugInfo = await getSystemDebugInfo({
+          linesOfLogs: 1_000,
+          level: "info",
+        });
 
         // Get chat data from database
         const chatRecord = await db.query.chats.findFirst({
@@ -155,4 +190,8 @@ export function registerDebugHandlers() {
   );
 
   console.log("Registered debug IPC handlers");
+}
+
+function serializeModelForDebug(model: LargeLanguageModel): string {
+  return `${model.provider}:${model.name} | customId: ${model.customModelId}`;
 }

@@ -83,10 +83,11 @@ export function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
 - Dyad Version: ${debugInfo.dyadVersion}
 - Platform: ${debugInfo.platform}
 - Architecture: ${debugInfo.architecture}
-- Node Version: ${debugInfo.nodeVersion || "Not available"}
-- PNPM Version: ${debugInfo.pnpmVersion || "Not available"}
-- Node Path: ${debugInfo.nodePath || "Not available"}
-- Telemetry ID: ${debugInfo.telemetryId || "Not available"}
+- Node Version: ${debugInfo.nodeVersion || "n/a"}
+- PNPM Version: ${debugInfo.pnpmVersion || "n/a"}
+- Node Path: ${debugInfo.nodePath || "n/a"}
+- Telemetry ID: ${debugInfo.telemetryId || "n/a"}
+- Model: ${debugInfo.selectedLanguageModel || "n/a"}
 
 ## Logs
 \`\`\`

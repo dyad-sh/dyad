@@ -20,7 +20,7 @@ import { useEffect, useState } from "react";
 import { useLocalModels } from "@/hooks/useLocalModels";
 import { useLocalLMSModels } from "@/hooks/useLMStudioModels";
 import { useLanguageModelsByProviders } from "@/hooks/useLanguageModelsByProviders";
-import { ChevronDown } from "lucide-react";
+
 import { LocalModel } from "@/ipc/ipc_types";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useSettings } from "@/hooks/useSettings";
@@ -130,10 +130,15 @@ export function ModelPicker() {
           className="flex items-center gap-2 h-8"
         >
           <span>
-            <span className="text-xs text-muted-foreground">Model:</span>{" "}
+            {modelDisplayName === "Auto" && (
+              <>
+                <span className="text-xs text-muted-foreground">
+                  Model:
+                </span>{" "}
+              </>
+            )}
             {modelDisplayName}
           </span>
-          <ChevronDown className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-64" align="start">

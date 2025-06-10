@@ -33,6 +33,7 @@ import { readFile, writeFile, unlink } from "fs/promises";
 import { getMaxTokens } from "../utils/token_utils";
 import { MAX_CHAT_TURNS_IN_CONTEXT } from "@/constants/settings_constants";
 import { streamTextWithBackup } from "../utils/stream_utils";
+import { cleanResponse } from "../utils/clean_response_utils";
 
 const logger = log.scope("chat_stream_handlers");
 
@@ -215,7 +216,7 @@ export function registerChatStreamHandlers() {
           abortController,
           updatedChat,
         );
-        fullResponse = cleanThinkingByEscapingDyadTags(fullResponse);
+        fullResponse = cleanResponse(fullResponse);
       } else {
         // Normal AI processing for non-test prompts
         const settings = readSettings();
@@ -415,7 +416,7 @@ This conversation includes one or more image attachments. When the user uploads 
         try {
           for await (const textPart of textStream) {
             fullResponse += textPart;
-            fullResponse = cleanThinkingByEscapingDyadTags(fullResponse);
+            fullResponse = cleanResponse(fullResponse);
             if (
               fullResponse.includes("$$SUPABASE_CLIENT_CODE$$") &&
               updatedChat.app?.supabaseProjectId
@@ -711,25 +712,6 @@ async function prepareMessageWithAttachments(
     role: "user",
     content: contentParts,
   };
-}
-
-function cleanThinkingByEscapingDyadTags(text: string): string {
-  // Extract content inside <think> </think> tags
-  const thinkRegex = /<think>([\s\S]*?)<\/think>/g;
-
-  return text.replace(thinkRegex, (match, content) => {
-    // We are replacing the opening tag with a look-alike character
-    // to avoid issues where thinking content includes dyad tags
-    // and are mishandled by:
-    // 1. FE markdown parser
-    // 2. Main process response processor
-    const processedContent = content
-      .replace(/<dyad/g, "＜dyad")
-      .replace(/<\/dyad/g, "＜/dyad");
-
-    // Return the modified think tag with processed content
-    return `<think>${processedContent}</think>`;
-  });
 }
 
 function removeThinkingTags(text: string): string {

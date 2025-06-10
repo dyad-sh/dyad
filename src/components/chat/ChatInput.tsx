@@ -341,7 +341,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
             )}
           </div>
           <div className="pl-2 pr-1 flex items-center justify-between">
-            <ChatInputControls />
+            <ChatInputControls showContextFilesPicker={true} />
             <button
               onClick={() => setShowTokenBar(!showTokenBar)}
               className="flex items-center px-2 py-1 text-xs text-muted-foreground hover:bg-muted rounded"

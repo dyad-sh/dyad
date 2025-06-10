@@ -100,6 +100,28 @@ export const DyadProBudgetSchema = z.object({
 });
 export type DyadProBudget = z.infer<typeof DyadProBudgetSchema>;
 
+export const GlobPathSchema = z.object({
+  globPath: z.string(),
+});
+
+export type GlobPath = z.infer<typeof GlobPathSchema>;
+
+export const AppChatContextSchema = z.object({
+  contextPaths: z.array(GlobPathSchema),
+  smartContextAutoIncludes: z.array(GlobPathSchema),
+});
+export type AppChatContext = z.infer<typeof AppChatContextSchema>;
+
+export type ContextPathResult = GlobPath & {
+  files: number;
+  tokens: number;
+};
+
+export type ContextPathResults = {
+  contextPaths: ContextPathResult[];
+  smartContextAutoIncludes: ContextPathResult[];
+};
+
 /**
  * Zod schema for user settings
  */

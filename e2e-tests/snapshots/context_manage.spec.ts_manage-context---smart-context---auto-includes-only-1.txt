@@ -1,0 +1,92 @@
+{
+  "body": {
+    "model": "gemini/gemini-2.5-pro-preview-05-06",
+    "max_tokens": 65535,
+    "temperature": 0,
+    "messages": [
+      {
+        "role": "system",
+        "content": "[[SYSTEM_MESSAGE]]"
+      },
+      {
+        "role": "user",
+        "content": "[dump]"
+      }
+    ],
+    "stream": true,
+    "dyad_options": {
+      "files": [
+        {
+          "path": "a.ts",
+          "content": "// a.ts\n",
+          "force": true
+        },
+        {
+          "path": "AI_RULES.md",
+          "content": "# AI_RULES.md\n",
+          "force": false
+        },
+        {
+          "path": "exclude/exclude.ts",
+          "content": "// exclude.ts: this file is not in any of the globs\n",
+          "force": false
+        },
+        {
+          "path": "exclude/exclude.tsx",
+          "content": "// exclude.tsx: this file is not in any of the globs\n",
+          "force": false
+        },
+        {
+          "path": "manual/file.ts",
+          "content": "",
+          "force": true
+        },
+        {
+          "path": "manual/sub-manual/sub-manual.js",
+          "content": "",
+          "force": true
+        },
+        {
+          "path": "src/components/ui/button.tsx",
+          "content": "// Contents omitted for brevity",
+          "force": false
+        },
+        {
+          "path": "src/components/ui/helper.ts",
+          "content": "// Contents omitted for brevity",
+          "force": false
+        },
+        {
+          "path": "src/dir/some.css",
+          "content": "/* some.css */\n",
+          "force": false
+        },
+        {
+          "path": "src/foo.ts",
+          "content": "// foo.ts\n",
+          "force": false
+        },
+        {
+          "path": "src/sub/sub1.ts",
+          "content": "// sub/sub1.ts\n",
+          "force": false
+        },
+        {
+          "path": "src/sub/sub2.tsx",
+          "content": "// sub/sub2.tsx\n",
+          "force": false
+        },
+        {
+          "path": "src/very-large-file.ts",
+          "content": "// very-large-file.ts\n\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n",
+          "force": false
+        }
+      ],
+      "enable_lazy_edits": true,
+      "enable_smart_files_context": true
+    }
+  },
+  "headers": {
+    "authorization": "Bearer testdyadkey"
+  }
+}

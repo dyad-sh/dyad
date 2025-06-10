@@ -1,0 +1,13 @@
+- dialog:
+  - heading "Codebase Context" [level=3]
+  - paragraph:
+    - text: Select the files to use as context.
+    - img
+  - textbox "src/**/*.tsx"
+  - button "Add"
+  - text: /src\/\*\*\/\*\.ts 4 files, ~\d+ tokens/
+  - button:
+    - img
+  - text: /src\/sub\/\*\* 2 files, ~\d+ tokens/
+  - button:
+    - img

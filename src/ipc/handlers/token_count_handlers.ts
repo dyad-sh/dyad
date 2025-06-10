@@ -18,6 +18,7 @@ import { TokenCountParams } from "../ipc_types";
 import { TokenCountResult } from "../ipc_types";
 import { estimateTokens, getContextWindow } from "../utils/token_utils";
 import { createLoggedHandler } from "./safe_handle";
+import { validateChatContext } from "../utils/context_paths_utils";
 
 const logger = log.scope("token_count_handlers");
 
@@ -73,7 +74,12 @@ export function registerTokenCountHandlers() {
 
       if (chat.app) {
         const appPath = getDyadAppPath(chat.app.path);
-        codebaseInfo = (await extractCodebase(appPath)).formattedOutput;
+        codebaseInfo = (
+          await extractCodebase({
+            appPath,
+            chatContext: validateChatContext(chat.app.chatContext),
+          })
+        ).formattedOutput;
         codebaseTokens = estimateTokens(codebaseInfo);
         logger.log(
           `Extracted codebase information from ${appPath}, tokens: ${codebaseTokens}`,

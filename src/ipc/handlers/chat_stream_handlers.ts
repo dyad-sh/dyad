@@ -33,6 +33,7 @@ import { readFile, writeFile, unlink } from "fs/promises";
 import { getMaxTokens } from "../utils/token_utils";
 import { MAX_CHAT_TURNS_IN_CONTEXT } from "@/constants/settings_constants";
 import { streamTextWithBackup } from "../utils/stream_utils";
+import { validateChatContext } from "../utils/context_paths_utils";
 
 const logger = log.scope("chat_stream_handlers");
 
@@ -226,7 +227,10 @@ export function registerChatStreamHandlers() {
         if (updatedChat.app) {
           const appPath = getDyadAppPath(updatedChat.app.path);
           try {
-            const out = await extractCodebase(appPath);
+            const out = await extractCodebase({
+              appPath,
+              chatContext: validateChatContext(updatedChat.app.chatContext),
+            });
             codebaseInfo = out.formattedOutput;
             files = out.files;
             logger.log(`Extracted codebase information from ${appPath}`);

@@ -1,0 +1,8 @@
+- dialog:
+  - heading "Codebase Context" [level=3]
+  - paragraph:
+    - text: Select the files to use as context.
+    - img
+  - textbox "src/**/*.tsx"
+  - button "Add"
+  - paragraph: Dyad will use the entire codebase as context.

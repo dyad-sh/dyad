@@ -3,9 +3,9 @@ import {
   type ChatSummary,
   ChatSummariesSchema,
   type UserSettings,
+  type ContextPathResults,
 } from "../lib/schemas";
 import type {
-  App,
   AppOutput,
   Chat,
   ChatResponseEnd,
@@ -32,8 +32,9 @@ import type {
   RenameBranchParams,
   UserBudgetInfo,
   CopyAppParams,
+  App,
 } from "./ipc_types";
-import type { ProposalResult } from "@/lib/schemas";
+import type { AppChatContext, ProposalResult } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
 
 export interface ChatStreamCallbacks {
@@ -846,5 +847,18 @@ export class IpcClient {
   // Method to get user budget information
   public async getUserBudget(): Promise<UserBudgetInfo | null> {
     return this.ipcRenderer.invoke("get-user-budget");
+  }
+
+  public async getChatContextResults(params: {
+    appId: number;
+  }): Promise<ContextPathResults> {
+    return this.ipcRenderer.invoke("get-context-paths", params);
+  }
+
+  public async setChatContext(params: {
+    appId: number;
+    chatContext: AppChatContext;
+  }): Promise<void> {
+    return this.ipcRenderer.invoke("set-context-paths", params);
   }
 }

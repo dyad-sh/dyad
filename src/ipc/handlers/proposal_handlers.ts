@@ -31,6 +31,7 @@ import { getDyadAppPath } from "../../paths/paths";
 import { withLock } from "../utils/lock_utils";
 import { createLoggedHandler } from "./safe_handle";
 import { ApproveProposalResult } from "../ipc_types";
+import { validateChatContext } from "../utils/context_paths_utils";
 
 const logger = log.scope("proposal_handlers");
 const handle = createLoggedHandler(logger);
@@ -41,6 +42,7 @@ interface CodebaseTokenCache {
   messageContent: string;
   tokenCount: number;
   timestamp: number;
+  chatContext: string;
 }
 
 // Cache expiration time (5 minutes)
@@ -74,6 +76,7 @@ async function getCodebaseTokenCount(
   messageId: number,
   messageContent: string,
   appPath: string,
+  chatContext: unknown,
 ): Promise<number> {
   // Clean up expired cache entries first
   cleanupExpiredCacheEntries();
@@ -86,6 +89,7 @@ async function getCodebaseTokenCount(
     cacheEntry &&
     cacheEntry.messageId === messageId &&
     cacheEntry.messageContent === messageContent &&
+    cacheEntry.chatContext === JSON.stringify(chatContext) &&
     now - cacheEntry.timestamp < CACHE_EXPIRATION_MS
   ) {
     logger.log(`Using cached codebase token count for chatId: ${chatId}`);
@@ -94,8 +98,12 @@ async function getCodebaseTokenCount(
 
   // Calculate and cache the token count
   logger.log(`Calculating codebase token count for chatId: ${chatId}`);
-  const codebase = (await extractCodebase(getDyadAppPath(appPath)))
-    .formattedOutput;
+  const codebase = (
+    await extractCodebase({
+      appPath: getDyadAppPath(appPath),
+      chatContext: validateChatContext(chatContext),
+    })
+  ).formattedOutput;
   const tokenCount = estimateTokens(codebase);
 
   // Store in cache
@@ -105,6 +113,7 @@ async function getCodebaseTokenCount(
     messageContent,
     tokenCount,
     timestamp: now,
+    chatContext: JSON.stringify(chatContext),
   });
 
   return tokenCount;
@@ -277,6 +286,7 @@ const getProposalHandler = async (
           latestAssistantMessage.id,
           latestAssistantMessage.content || "",
           chat.app.path,
+          chat.app.chatContext,
         );
 
         const totalTokens = messagesTokenCount + codebaseTokenCount;

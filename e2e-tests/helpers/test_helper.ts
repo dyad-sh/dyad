@@ -1,5 +1,5 @@
 import { test as base, Page, expect } from "@playwright/test";
-import { findLatestBuild, parseElectronApp } from "electron-playwright-helpers";
+import * as eph from "electron-playwright-helpers";
 import { ElectronApplication, _electron as electron } from "playwright";
 import fs from "fs";
 import path from "path";
@@ -15,6 +15,54 @@ export const Timeout = {
   LONG: process.env.CI ? 60_000 : 30_000,
   MEDIUM: process.env.CI ? 30_000 : 15_000,
 };
+
+export class ContextFilesPickerDialog {
+  constructor(
+    public page: Page,
+    public close: () => Promise<void>,
+  ) {}
+
+  async addManualContextFile(path: string) {
+    await this.page.getByTestId("manual-context-files-input").fill(path);
+    await this.page.getByTestId("manual-context-files-add-button").click();
+  }
+
+  async addAutoIncludeContextFile(path: string) {
+    await this.page.getByTestId("auto-include-context-files-input").fill(path);
+    await this.page
+      .getByTestId("auto-include-context-files-add-button")
+      .click();
+  }
+
+  async removeManualContextFile() {
+    await this.page
+      .getByTestId("manual-context-files-remove-button")
+      .first()
+      .click();
+  }
+
+  async removeAutoIncludeContextFile() {
+    await this.page
+      .getByTestId("auto-include-context-files-remove-button")
+      .first()
+      .click();
+  }
+}
+
+class ProModesDialog {
+  constructor(
+    public page: Page,
+    public close: () => Promise<void>,
+  ) {}
+
+  async toggleSmartContext() {
+    await this.page.getByRole("switch", { name: "Smart Context" }).click();
+  }
+
+  async toggleTurboEdits() {
+    await this.page.getByRole("switch", { name: "Turbo Edits" }).click();
+  }
+}
 
 export class PageObject {
   private userDataDir: string;
@@ -45,6 +93,15 @@ export class PageObject {
     await this.selectTestModel();
   }
 
+  async importApp(appDir: string) {
+    await this.page.getByRole("button", { name: "Import App" }).click();
+    await eph.stubDialog(this.electronApp, "showOpenDialog", {
+      filePaths: [path.join(__dirname, "..", "fixtures", "import-app", appDir)],
+    });
+    await this.page.getByRole("button", { name: "Select Folder" }).click();
+    await this.page.getByRole("button", { name: "Import" }).click();
+  }
+
   async setUpDyadPro({ autoApprove = false }: { autoApprove?: boolean } = {}) {
     await this.goToSettingsTab();
     if (autoApprove) {
@@ -72,6 +129,32 @@ export class PageObject {
     // await page.getByRole('switch', { name: 'Turbo Edits' }).click();
     // await page.locator('div').filter({ hasText: /^Import App$/ }).click();
     // await page.getByRole('button', { name: 'Select Folder' }).press('Escape');
+  }
+
+  async openContextFilesPicker() {
+    const contextButton = this.page.getByRole("button", {
+      name: "Context",
+      exact: true,
+    });
+    await contextButton.click();
+    return new ContextFilesPickerDialog(this.page, async () => {
+      await contextButton.click();
+    });
+  }
+
+  async openProModesDialog(): Promise<ProModesDialog> {
+    const proButton = this.page
+      // Assumes you're on the chat page.
+      .getByTestId("chat-input-container")
+      .getByRole("button", { name: "Pro", exact: true });
+    await proButton.click();
+    return new ProModesDialog(this.page, async () => {
+      await proButton.click();
+    });
+  }
+
+  async snapshotDialog() {
+    await expect(this.page.getByRole("dialog")).toMatchAriaSnapshot();
   }
 
   async snapshotAppFiles({ name }: { name?: string } = {}) {
@@ -214,7 +297,17 @@ export class PageObject {
     // Perform snapshot comparison
     const parsedDump = JSON.parse(dumpContent);
     if (type === "request") {
-      expect(dumpContent).toMatchSnapshot(name);
+      parsedDump["body"]["messages"] = parsedDump["body"]["messages"].map(
+        (message: any) => {
+          if (message.role === "system") {
+            message.content = "[[SYSTEM_MESSAGE]]";
+          }
+          return message;
+        },
+      );
+      expect(
+        JSON.stringify(parsedDump, null, 2).replace(/\\r\\n/g, "\\n"),
+      ).toMatchSnapshot(name);
       return;
     }
     expect(
@@ -555,9 +648,9 @@ export const test = base.extend<{
   electronApp: [
     async ({}, use) => {
       // find the latest build in the out directory
-      const latestBuild = findLatestBuild();
+      const latestBuild = eph.findLatestBuild();
       // parse the directory and find paths and other info
-      const appInfo = parseElectronApp(latestBuild);
+      const appInfo = eph.parseElectronApp(latestBuild);
       process.env.OLLAMA_HOST = "http://localhost:3500/ollama";
       process.env.LM_STUDIO_BASE_URL_FOR_TESTING =
         "http://localhost:3500/lmstudio";

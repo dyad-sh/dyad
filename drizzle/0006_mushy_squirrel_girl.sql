@@ -1,0 +1,1 @@
+ALTER TABLE `apps` ADD `chat_context` text;

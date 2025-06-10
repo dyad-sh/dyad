@@ -77,6 +77,8 @@ const validInvokeChannels = [
   "rename-branch",
   "clear-session-data",
   "get-user-budget",
+  "get-context-paths",
+  "set-context-paths",
   // Test-only channels
   // These should ALWAYS be guarded with IS_TEST_BUILD in the main process.
   // We can't detect with IS_TEST_BUILD in the preload script because

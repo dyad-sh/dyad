@@ -18,10 +18,6 @@ import { IpcClient } from "@/ipc/ipc_client";
 export function ProModeSelector() {
   const { settings, updateSettings } = useSettings();
 
-  const toggleSaverMode = () => {
-    updateSettings({ enableProSaverMode: !settings?.enableProSaverMode });
-  };
-
   const toggleLazyEdits = () => {
     updateSettings({
       enableProLazyEditsMode: !settings?.enableProLazyEditsMode,
@@ -76,16 +72,6 @@ export function ProModeSelector() {
               </a>
             </div>
           )}
-          <SelectorRow
-            id="saver-mode"
-            label="Saver Mode"
-            description="Uses your free Gemini API quota before consuming Dyad Pro AI credits"
-            tooltip="Note: using the free Gemini API lets Google use your data to
-                    improve their models."
-            proEnabled={proEnabled}
-            settingEnabled={Boolean(settings?.enableProSaverMode)}
-            toggle={toggleSaverMode}
-          />
           <SelectorRow
             id="lazy-edits"
             label="Turbo Edits"

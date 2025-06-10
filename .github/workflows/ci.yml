@@ -39,6 +39,25 @@ jobs:
           node-version-file: package.json
           cache: npm
           cache-dependency-path: package-lock.json
+      - name: Setup pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+        with:
+          version: latest
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+      # Not strictly needed but makes the e2e tests faster (and less flaky)
+      - name: Install scaffold dependencies
+        run: cd scaffold && pnpm install
       - name: Install node modules
         run: npm install
       - name: Presubmit check (e.g. lint, format)
@@ -66,12 +85,12 @@ jobs:
       - uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         if: failure()
         with:
-          name: playwright-report
+          name: playwright-report-${{runner.os}}
           path: playwright-report/
           retention-days: 3
       - uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         if: failure()
         with:
-          name: test-results
+          name: test-results-${{runner.os}}
           path: test-results/
           retention-days: 3

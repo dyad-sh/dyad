@@ -355,6 +355,8 @@ Available packages and libraries:
 - Use prebuilt components from the shadcn/ui library after importing them. Note that these files shouldn't be edited, so make new components if you need to change them.
 
 
+Directory names MUST be all lower-case (src/pages, src/components, etc.). File names may use mixed-case if you like.
+
 # REMEMBER
 
 > **CODE FORMATTING IS NON-NEGOTIABLE:**

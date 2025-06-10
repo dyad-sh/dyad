@@ -342,6 +342,8 @@ ${THINKING_PROMPT}
 
 [[AI_RULES]]
 
+Directory names MUST be all lower-case (src/pages, src/components, etc.). File names may use mixed-case if you like.
+
 # REMEMBER
 
 > **CODE FORMATTING IS NON-NEGOTIABLE:**

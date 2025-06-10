@@ -40,7 +40,7 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
       - name: Install node modules
-        run: npm install
+        run: npm ci --no-audit --no-fund --progress=false
       - name: Presubmit check (e.g. lint, format)
         # do not run this on Windows (it fails and not necessary)
         if: contains(matrix.os.name, 'macos')

@@ -1,5 +1,4 @@
 import {
-  SendIcon,
   StopCircleIcon,
   X,
   ChevronDown,
@@ -15,8 +14,9 @@ import {
   Database,
   ChevronsUpDown,
   ChevronsDownUp,
-  BarChart2,
   Paperclip,
+  ChartColumnIncreasing,
+  SendHorizontalIcon,
 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -313,28 +313,10 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               disabled={isStreaming}
             />
 
-            {/* File attachment button */}
-            <button
-              onClick={handleAttachmentClick}
-              className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
-              disabled={isStreaming}
-              title="Attach files"
-            >
-              <Paperclip size={20} />
-            </button>
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileChange}
-              className="hidden"
-              multiple
-              accept=".jpg,.jpeg,.png,.gif,.webp,.txt,.md,.js,.ts,.html,.css,.json,.csv"
-            />
-
             {isStreaming ? (
               <button
                 onClick={handleCancel}
-                className="px-2 py-2 mt-1 mr-2 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg"
+                className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg"
                 title="Cancel generation"
               >
                 <StopCircleIcon size={20} />
@@ -343,23 +325,62 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               <button
                 onClick={handleSubmit}
                 disabled={!inputValue.trim() && attachments.length === 0}
-                className="px-2 py-2 mt-1 mr-2 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
+                className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
                 title="Send message"
               >
-                <SendIcon size={20} />
+                <SendHorizontalIcon size={20} />
               </button>
             )}
           </div>
-          <div className="pl-2 pr-1 flex items-center justify-between">
-            <ChatInputControls showContextFilesPicker={true} />
-            <button
-              onClick={() => setShowTokenBar(!showTokenBar)}
-              className="flex items-center px-2 py-1 text-xs text-muted-foreground hover:bg-muted rounded"
-              title={showTokenBar ? "Hide token usage" : "Show token usage"}
-            >
-              <BarChart2 size={14} className="mr-1" />
-              {showTokenBar ? "Hide tokens" : "Tokens"}
-            </button>
+          <div className="pl-2 pr-1 flex items-center justify-between pb-2">
+            <div className="flex items-center">
+              <ChatInputControls showContextFilesPicker={true} />
+              {/* File attachment button */}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      onClick={handleAttachmentClick}
+                      disabled={isStreaming}
+                      title="Attach files"
+                      size="sm"
+                    >
+                      <Paperclip size={20} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Attach files</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                className="hidden"
+                multiple
+                accept=".jpg,.jpeg,.png,.gif,.webp,.txt,.md,.js,.ts,.html,.css,.json,.csv"
+              />
+            </div>
+
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    onClick={() => setShowTokenBar(!showTokenBar)}
+                    variant="ghost"
+                    className={`has-[>svg]:px-2 ${
+                      showTokenBar ? "text-purple-500 bg-purple-100" : ""
+                    }`}
+                    size="sm"
+                  >
+                    <ChartColumnIncreasing size={14} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {showTokenBar ? "Hide token usage" : "Show token usage"}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
           {/* TokenBar is only displayed when showTokenBar is true */}
           {showTokenBar && <TokenBar chatId={chatId} />}

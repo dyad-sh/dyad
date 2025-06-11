@@ -132,10 +132,7 @@ export class PageObject {
   }
 
   async openContextFilesPicker() {
-    const contextButton = this.page.getByRole("button", {
-      name: "Context",
-      exact: true,
-    });
+    const contextButton = this.page.getByTestId("codebase-context-button");
     await contextButton.click();
     return new ContextFilesPickerDialog(this.page, async () => {
       await contextButton.click();

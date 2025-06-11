@@ -8,10 +8,17 @@ export function ChatInputControls({
   showContextFilesPicker?: boolean;
 }) {
   return (
-    <div className="pb-2 flex gap-2">
+    <div className="flex">
       <ModelPicker />
-      {showContextFilesPicker && <ContextFilesPicker />}
+      <div className="w-2"></div>
       <ProModeSelector />
+      <div className="w-1"></div>
+      {showContextFilesPicker && (
+        <>
+          <ContextFilesPicker />
+          <div className="w-0.5"></div>
+        </>
+      )}
     </div>
   );
 }

@@ -6,7 +6,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 
-import { FileCode, InfoIcon, Trash2 } from "lucide-react";
+import { InfoIcon, Settings2, Trash2 } from "lucide-react";
 import { useState } from "react";
 import {
   Tooltip,
@@ -84,12 +84,22 @@ export function ContextFilesPicker() {
 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
-      <PopoverTrigger asChild>
-        <Button variant="ghost" className="gap-2">
-          <FileCode className="size-4" />
-          <span>Context</span>
-        </Button>
-      </PopoverTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              className="has-[>svg]:px-2"
+              size="sm"
+              data-testid="codebase-context-button"
+            >
+              <Settings2 className="size-4" />
+            </Button>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent>Codebase Context</TooltipContent>
+      </Tooltip>
+
       <PopoverContent className="w-96" align="start">
         <div className="relative space-y-4">
           <div>

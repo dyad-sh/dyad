@@ -123,25 +123,34 @@ export function ModelPicker() {
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="flex items-center gap-2 h-8"
-        >
-          <span>
-            {modelDisplayName === "Auto" && (
-              <>
-                <span className="text-xs text-muted-foreground">
-                  Model:
-                </span>{" "}
-              </>
-            )}
-            {modelDisplayName}
-          </span>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-64" align="start">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex items-center gap-2 h-8 max-w-[160px] px-2"
+            >
+              <span className="truncate">
+                {modelDisplayName === "Auto" && (
+                  <>
+                    <span className="text-xs text-muted-foreground">
+                      Model:
+                    </span>{" "}
+                  </>
+                )}
+                {modelDisplayName}
+              </span>
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent>{modelDisplayName}</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent
+        className="w-64"
+        align="start"
+        onCloseAutoFocus={(e) => e.preventDefault()}
+      >
         <DropdownMenuLabel>Cloud Models</DropdownMenuLabel>
         <DropdownMenuSeparator />
 

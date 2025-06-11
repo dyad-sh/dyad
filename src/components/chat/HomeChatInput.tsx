@@ -145,7 +145,7 @@ export function HomeChatInput({
               </button>
             )}
           </div>
-          <div className="px-2">
+          <div className="px-2 pb-2">
             <ChatInputControls />
           </div>
         </div>

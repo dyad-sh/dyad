@@ -62,6 +62,7 @@ export function generateAppFilesSnapshotData(
   basePath: string,
 ): FileSnapshotData[] {
   const ignorePatterns = [
+    ".DS_Store",
     ".git",
     "node_modules",
     // Avoid snapshotting lock files because they are getting generated

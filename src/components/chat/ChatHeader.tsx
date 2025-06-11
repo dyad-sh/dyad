@@ -191,6 +191,7 @@ export function ChatHeader({
         </div>
 
         <button
+          data-testid="toggle-preview-panel-button"
           onClick={onTogglePreview}
           className="cursor-pointer p-2 hover:bg-(--background-lightest) rounded-md"
         >

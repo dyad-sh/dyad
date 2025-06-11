@@ -20,6 +20,7 @@ import { registerImportHandlers } from "./handlers/import_handlers";
 import { registerSessionHandlers } from "./handlers/session_handlers";
 import { registerProHandlers } from "./handlers/pro_handlers";
 import { registerContextPathsHandlers } from "./handlers/context_paths_handlers";
+import { registerAppUpgradeHandlers } from "./handlers/app_upgrade_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -45,4 +46,5 @@ export function registerIpcHandlers() {
   registerSessionHandlers();
   registerProHandlers();
   registerContextPathsHandlers();
+  registerAppUpgradeHandlers();
 }

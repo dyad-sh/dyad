@@ -1,0 +1,14 @@
+===
+role: user
+message: [dump] make it smaller
+
+Selected component: h1 (file: src/pages/Index.tsx)
+
+Snippet:
+```
+      <header className="flex-1 flex flex-col items-center justify-center px-4 py-16">
+        <h1 className="text-5xl font-extrabold mb-4 text-foreground text-center"> // <-- EDIT HERE
+          Launch Your Next Project
+        </h1>
+        <p className="text-xl text-muted-foreground mb-8 text-center max-w-xl">
+```

@@ -21,6 +21,7 @@ export interface ChatStreamParams {
     type: string;
     data: string; // Base64 encoded file data
   }>;
+  selectedComponent: ComponentSelection | null;
 }
 
 export interface ChatResponseEnd {
@@ -223,3 +224,19 @@ export const UserBudgetInfoSchema = z.object({
   budgetResetDate: z.date(),
 });
 export type UserBudgetInfo = z.infer<typeof UserBudgetInfoSchema>;
+
+export interface ComponentSelection {
+  id: string;
+  name: string;
+  relativePath: string;
+  lineNumber: number;
+  columnNumber: number;
+}
+
+export interface AppUpgrade {
+  id: string;
+  title: string;
+  description: string;
+  manualUpgradeUrl: string;
+  isNeeded: boolean;
+}

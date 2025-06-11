@@ -61,7 +61,7 @@ let rememberedOrigin = null; // e.g. "http://localhost:5173"
 
 let stacktraceJsContent = null;
 let dyadShimContent = null;
-
+let dyadComponentSelectorClientContent = null;
 try {
   const stackTraceLibPath = path.join(
     __dirname,
@@ -89,6 +89,24 @@ try {
   );
 }
 
+try {
+  const dyadComponentSelectorClientPath = path.join(
+    __dirname,
+    "dyad-component-selector-client.js",
+  );
+  dyadComponentSelectorClientContent = fs.readFileSync(
+    dyadComponentSelectorClientPath,
+    "utf-8",
+  );
+  parentPort?.postMessage(
+    "[proxy-worker] dyad-component-selector-client.js loaded.",
+  );
+} catch (error) {
+  parentPort?.postMessage(
+    `[proxy-worker] Failed to read dyad-component-selector-client.js: ${error.message}`,
+  );
+}
+
 /* ---------------------- helper: need to inject? ------------------------ */
 function needsInjection(pathname) {
   return pathname.endsWith("index.html") || pathname === "/";
@@ -99,25 +117,35 @@ function injectHTML(buf) {
   // These are strings that were used since the first version of the dyad shim.
   // If the dyad shim is used from legacy apps which came pre-baked with the shim
   // as a vite plugin, then do not inject the shim twice to avoid weird behaviors.
-  if (txt.includes("window-error") && txt.includes("unhandled-rejection")) {
-    return buf;
-  }
+  const legacyAppWithShim =
+    txt.includes("window-error") && txt.includes("unhandled-rejection");
 
   const scripts = [];
 
-  if (stacktraceJsContent)
-    scripts.push(`<script>${stacktraceJsContent}</script>`);
-  else
-    scripts.push(
-      '<script>console.warn("[proxy-worker] stacktrace.js was not injected.");</script>',
-    );
+  if (!legacyAppWithShim) {
+    if (stacktraceJsContent) {
+      scripts.push(`<script>${stacktraceJsContent}</script>`);
+    } else {
+      scripts.push(
+        '<script>console.warn("[proxy-worker] stacktrace.js was not injected.");</script>',
+      );
+    }
 
-  if (dyadShimContent) scripts.push(`<script>${dyadShimContent}</script>`);
-  else
+    if (dyadShimContent) {
+      scripts.push(`<script>${dyadShimContent}</script>`);
+    } else {
+      scripts.push(
+        '<script>console.warn("[proxy-worker] dyad shim was not injected.");</script>',
+      );
+    }
+  }
+  if (dyadComponentSelectorClientContent) {
+    scripts.push(`<script>${dyadComponentSelectorClientContent}</script>`);
+  } else {
     scripts.push(
-      '<script>console.warn("[proxy-worker] dyad shim was not injected.");</script>',
+      '<script>console.warn("[proxy-worker] dyad component selector client was not injected.");</script>',
     );
-
+  }
   const allScripts = scripts.join("\n");
 
   const headRegex = /<head[^>]*>/i;

@@ -1,0 +1,45 @@
+{
+  "name": "@dyad-sh/nextjs-webpack-component-tagger",
+  "version": "0.8.0",
+  "description": "A webpack loader that automatically adds data attributes to your React components in Next.js.",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "dev": "npm run build -- --watch",
+    "lint": "eslint . --max-warnings 0",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "webpack",
+    "webpack-loader",
+    "nextjs",
+    "react",
+    "dyad"
+  ],
+  "author": "Dyad",
+  "license": "Apache-2.0",
+  "peerDependencies": {
+    "webpack": "^5.0.0"
+  },
+  "dependencies": {
+    "@babel/parser": "^7.23.0",
+    "estree-walker": "^2.0.2",
+    "magic-string": "^0.30.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.8.9",
+    "@types/webpack": "^5.28.5",
+    "eslint": "^8.52.0",
+    "tsup": "^8.0.2",
+    "typescript": "^5.2.2"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

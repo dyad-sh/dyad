@@ -61,6 +61,9 @@ import { DragDropOverlay } from "./DragDropOverlay";
 import { showError, showExtraFilesToast } from "@/lib/toast";
 import { ChatInputControls } from "../ChatInputControls";
 import { ChatErrorBox } from "./ChatErrorBox";
+import { selectedComponentPreviewAtom } from "@/atoms/previewAtoms";
+import { SelectedComponentDisplay } from "./SelectedComponentDisplay";
+
 const showTokenBarAtom = atom(false);
 
 export function ChatInput({ chatId }: { chatId?: number }) {
@@ -78,6 +81,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const [, setMessages] = useAtom<Message[]>(chatMessagesAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const [showTokenBar, setShowTokenBar] = useAtom(showTokenBarAtom);
+  const [selectedComponent, setSelectedComponent] = useAtom(
+    selectedComponentPreviewAtom,
+  );
 
   // Use the attachments hook
   const {
@@ -148,6 +154,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
     const currentInput = inputValue;
     setInputValue("");
+    setSelectedComponent(null);
 
     // Send message with attachments and clear them after sending
     await streamMessage({
@@ -155,6 +162,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       chatId,
       attachments,
       redo: false,
+      selectedComponent,
     });
     clearAttachments();
     posthog.capture("chat:submit");
@@ -281,6 +289,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               isRejecting={isRejecting}
             />
           )}
+
+          <SelectedComponentDisplay />
 
           {/* Use the AttachmentsList component */}
           <AttachmentsList

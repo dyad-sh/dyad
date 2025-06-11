@@ -33,6 +33,8 @@ import type {
   UserBudgetInfo,
   CopyAppParams,
   App,
+  ComponentSelection,
+  AppUpgrade,
 } from "./ipc_types";
 import type { AppChatContext, ProposalResult } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
@@ -224,6 +226,7 @@ export class IpcClient {
   public streamMessage(
     prompt: string,
     options: {
+      selectedComponent: ComponentSelection | null;
       chatId: number;
       redo?: boolean;
       attachments?: File[];
@@ -232,7 +235,15 @@ export class IpcClient {
       onError: (error: string) => void;
     },
   ): void {
-    const { chatId, redo, attachments, onUpdate, onEnd, onError } = options;
+    const {
+      chatId,
+      redo,
+      attachments,
+      selectedComponent,
+      onUpdate,
+      onEnd,
+      onError,
+    } = options;
     this.chatStreams.set(chatId, { onUpdate, onEnd, onError });
 
     // Handle file attachments if provided
@@ -264,6 +275,7 @@ export class IpcClient {
               prompt,
               chatId,
               redo,
+              selectedComponent,
               attachments: fileDataArray,
             })
             .catch((err) => {
@@ -284,6 +296,7 @@ export class IpcClient {
           prompt,
           chatId,
           redo,
+          selectedComponent,
         })
         .catch((err) => {
           showError(err);
@@ -859,6 +872,19 @@ export class IpcClient {
     appId: number;
     chatContext: AppChatContext;
   }): Promise<void> {
-    return this.ipcRenderer.invoke("set-context-paths", params);
+    await this.ipcRenderer.invoke("set-context-paths", params);
+  }
+
+  public async getAppUpgrades(params: {
+    appId: number;
+  }): Promise<AppUpgrade[]> {
+    return this.ipcRenderer.invoke("get-app-upgrades", params);
+  }
+
+  public async executeAppUpgrade(params: {
+    appId: number;
+    upgradeId: string;
+  }): Promise<void> {
+    return this.ipcRenderer.invoke("execute-app-upgrade", params);
   }
 }

@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import type { Message } from "@/ipc/ipc_types";
+import type { ComponentSelection, Message } from "@/ipc/ipc_types";
 import { useAtom, useSetAtom } from "jotai";
 import {
   chatErrorAtom,
@@ -56,11 +56,13 @@ export function useStreamChat({
       chatId,
       redo,
       attachments,
+      selectedComponent,
     }: {
       prompt: string;
       chatId: number;
       redo?: boolean;
       attachments?: File[];
+      selectedComponent?: ComponentSelection | null;
     }) => {
       if (
         (!prompt.trim() && (!attachments || attachments.length === 0)) ||
@@ -74,6 +76,7 @@ export function useStreamChat({
       let hasIncrementedStreamCount = false;
       try {
         IpcClient.getInstance().streamMessage(prompt, {
+          selectedComponent: selectedComponent ?? null,
           chatId,
           redo,
           attachments,

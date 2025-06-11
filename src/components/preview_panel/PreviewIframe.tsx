@@ -17,6 +17,7 @@ import {
   ChevronDown,
   Lightbulb,
   ChevronRight,
+  MousePointerClick,
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
@@ -29,6 +30,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useStreamChat } from "@/hooks/useStreamChat";
+import { selectedComponentPreviewAtom } from "@/atoms/previewAtoms";
+import { ComponentSelection } from "@/ipc/ipc_types";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface ErrorBannerProps {
   error: string | undefined;
@@ -165,17 +174,48 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   }, [routerContent]);
 
   // Navigation state
+  const [isComponentSelectorInitialized, setIsComponentSelectorInitialized] =
+    useState(false);
   const [canGoBack, setCanGoBack] = useState(false);
   const [canGoForward, setCanGoForward] = useState(false);
   const [navigationHistory, setNavigationHistory] = useState<string[]>([]);
   const [currentHistoryPosition, setCurrentHistoryPosition] = useState(0);
+  const [selectedComponentPreview, setSelectedComponentPreview] = useAtom(
+    selectedComponentPreviewAtom,
+  );
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [isPicking, setIsPicking] = useState(false);
+
+  // Deactivate component selector when selection is cleared
+  useEffect(() => {
+    if (!selectedComponentPreview) {
+      if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage(
+          { type: "deactivate-dyad-component-selector" },
+          "*",
+        );
+      }
+      setIsPicking(false);
+    }
+  }, [selectedComponentPreview]);
 
   // Add message listener for iframe errors and navigation events
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       // Only handle messages from our iframe
       if (event.source !== iframeRef.current?.contentWindow) {
+        return;
+      }
+
+      if (event.data?.type === "dyad-component-selector-initialized") {
+        setIsComponentSelectorInitialized(true);
+        return;
+      }
+
+      if (event.data?.type === "dyad-component-selected") {
+        console.log("Component picked:", event.data);
+        setSelectedComponentPreview(parseComponentSelection(event.data));
+        setIsPicking(false);
         return;
       }
 
@@ -262,6 +302,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     selectedAppId,
     errorMessage,
     setErrorMessage,
+    setIsComponentSelectorInitialized,
+    setSelectedComponentPreview,
   ]);
 
   useEffect(() => {
@@ -279,6 +321,22 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       setCanGoForward(false);
     }
   }, [appUrl]);
+
+  // Function to activate component selector in the iframe
+  const handleActivateComponentSelector = () => {
+    if (iframeRef.current?.contentWindow) {
+      const newIsPicking = !isPicking;
+      setIsPicking(newIsPicking);
+      iframeRef.current.contentWindow.postMessage(
+        {
+          type: newIsPicking
+            ? "activate-dyad-component-selector"
+            : "deactivate-dyad-component-selector",
+        },
+        "*",
+      );
+    }
+  };
 
   // Function to navigate back
   const handleNavigateBack = () => {
@@ -371,6 +429,33 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       <div className="flex items-center p-2 border-b space-x-2 ">
         {/* Navigation Buttons */}
         <div className="flex space-x-1">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={handleActivateComponentSelector}
+                  className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
+                    isPicking
+                      ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
+                      : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
+                  }`}
+                  disabled={
+                    loading || !selectedAppId || !isComponentSelectorInitialized
+                  }
+                  data-testid="preview-pick-element-button"
+                >
+                  <MousePointerClick size={16} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>
+                  {isPicking
+                    ? "Deactivate component selector"
+                    : "Select component"}
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <button
             className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
             disabled={!canGoBack || loading || !selectedAppId}
@@ -486,3 +571,48 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     </div>
   );
 };
+
+function parseComponentSelection(data: any): ComponentSelection | null {
+  if (
+    !data ||
+    data.type !== "dyad-component-selected" ||
+    typeof data.id !== "string" ||
+    typeof data.name !== "string"
+  ) {
+    return null;
+  }
+
+  const { id, name } = data;
+
+  // The id is expected to be in the format "filepath:line:column"
+  const parts = id.split(":");
+  if (parts.length < 3) {
+    console.error(`Invalid component selection id format: "${id}"`);
+    return null;
+  }
+
+  const columnStr = parts.pop();
+  const lineStr = parts.pop();
+  const relativePath = parts.join(":");
+
+  if (!columnStr || !lineStr || !relativePath) {
+    console.error(`Could not parse component selection from id: "${id}"`);
+    return null;
+  }
+
+  const lineNumber = parseInt(lineStr, 10);
+  const columnNumber = parseInt(columnStr, 10);
+
+  if (isNaN(lineNumber) || isNaN(columnNumber)) {
+    console.error(`Could not parse line/column from id: "${id}"`);
+    return null;
+  }
+
+  return {
+    id,
+    name,
+    relativePath,
+    lineNumber,
+    columnNumber,
+  };
+}

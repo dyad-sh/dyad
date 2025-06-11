@@ -79,6 +79,8 @@ const validInvokeChannels = [
   "get-user-budget",
   "get-context-paths",
   "set-context-paths",
+  "get-app-upgrades",
+  "execute-app-upgrade",
   // Test-only channels
   // These should ALWAYS be guarded with IS_TEST_BUILD in the main process.
   // We can't detect with IS_TEST_BUILD in the preload script because

@@ -220,6 +220,20 @@ export class PageObject {
     await this.page.getByText("Rebuild").click();
   }
 
+  async clickTogglePreviewPanel() {
+    await this.page.getByTestId("toggle-preview-panel-button").click();
+  }
+
+  async clickPreviewPickElement() {
+    await this.page
+      .getByTestId("preview-pick-element-button")
+      .click({ timeout: Timeout.LONG });
+  }
+
+  async clickDeselectComponent() {
+    await this.page.getByRole("button", { name: "Deselect component" }).click();
+  }
+
   async clickPreviewMoreOptions() {
     await this.page.getByTestId("preview-more-options-button").click();
   }
@@ -260,6 +274,18 @@ export class PageObject {
 
   locatePreviewErrorBanner() {
     return this.page.getByTestId("preview-error-banner");
+  }
+
+  async snapshotChatInputContainer() {
+    await expect(this.getChatInputContainer()).toMatchAriaSnapshot();
+  }
+
+  getSelectedComponentDisplay() {
+    return this.page.getByTestId("selected-component-display");
+  }
+
+  async snapshotSelectedComponentDisplay() {
+    await expect(this.getSelectedComponentDisplay()).toMatchAriaSnapshot();
   }
 
   async snapshotPreview({ name }: { name?: string } = {}) {
@@ -481,6 +507,16 @@ export class PageObject {
 
   async clickOpenInChatButton() {
     await this.page.getByRole("button", { name: "Open in Chat" }).click();
+  }
+
+  async clickAppUpgradeButton({ upgradeId }: { upgradeId: string }) {
+    await this.page.getByTestId(`app-upgrade-${upgradeId}`).click();
+  }
+
+  async expectNoAppUpgrades() {
+    await expect(this.page.getByTestId("no-app-upgrades-needed")).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
   }
 
   async clickAppDetailsRenameAppButton() {

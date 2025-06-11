@@ -442,6 +442,8 @@ export function registerAppHandlers() {
 
         const appPath = getDyadAppPath(app.path);
         try {
+          // Kill any orphaned process on port 32100 (in case previous run left it)
+          await killProcessOnPort(32100);
           await executeApp({ appPath, appId, event });
 
           return;

@@ -39,6 +39,7 @@ import { Loader2 } from "lucide-react";
 import { invalidateAppQuery } from "@/hooks/useLoadApp";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useCheckName } from "@/hooks/useCheckName";
+import { AppUpgrades } from "@/components/AppUpgrades";
 
 export default function AppDetailsPage() {
   const navigate = useNavigate();
@@ -341,6 +342,7 @@ export default function AppDetailsPage() {
           </Button>
           <GitHubConnector appId={appId} folderName={selectedApp.path} />
           {appId && <SupabaseConnector appId={appId} />}
+          <AppUpgrades appId={appId} />
         </div>
 
         {/* Rename Dialog */}

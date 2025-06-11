@@ -160,7 +160,45 @@ export function registerChatStreamHandlers() {
       }
 
       // Add user message to database with attachment info
-      const userPrompt = req.prompt + (attachmentInfo ? attachmentInfo : "");
+      let userPrompt = req.prompt + (attachmentInfo ? attachmentInfo : "");
+      if (req.selectedComponent) {
+        let componentSnippet = "[component snippet not available]";
+        try {
+          const componentFileContent = await readFile(
+            path.join(
+              getDyadAppPath(chat.app.path),
+              req.selectedComponent.relativePath,
+            ),
+            "utf8",
+          );
+          const lines = componentFileContent.split("\n");
+          const selectedIndex = req.selectedComponent.lineNumber - 1;
+
+          // Let's get one line before and three after for context.
+          const startIndex = Math.max(0, selectedIndex - 1);
+          const endIndex = Math.min(lines.length, selectedIndex + 4);
+
+          const snippetLines = lines.slice(startIndex, endIndex);
+          const selectedLineInSnippetIndex = selectedIndex - startIndex;
+
+          if (snippetLines[selectedLineInSnippetIndex]) {
+            snippetLines[selectedLineInSnippetIndex] =
+              `${snippetLines[selectedLineInSnippetIndex]} // <-- EDIT HERE`;
+          }
+
+          componentSnippet = snippetLines.join("\n");
+        } catch (err) {
+          logger.error(`Error reading selected component file content: ${err}`);
+        }
+
+        userPrompt += `\n\nSelected component: ${req.selectedComponent.name} (file: ${req.selectedComponent.relativePath})
+
+Snippet:
+\`\`\`
+${componentSnippet}
+\`\`\`
+`;
+      }
       await db
         .insert(messages)
         .values({
@@ -228,7 +266,16 @@ export function registerChatStreamHandlers() {
           try {
             const out = await extractCodebase({
               appPath,
-              chatContext: validateChatContext(updatedChat.app.chatContext),
+              chatContext: req.selectedComponent
+                ? {
+                    contextPaths: [
+                      {
+                        globPath: req.selectedComponent.relativePath,
+                      },
+                    ],
+                    smartContextAutoIncludes: [],
+                  }
+                : validateChatContext(updatedChat.app.chatContext),
             });
             codebaseInfo = out.formattedOutput;
             files = out.files;

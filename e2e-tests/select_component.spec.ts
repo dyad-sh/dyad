@@ -61,6 +61,8 @@ testSkipIfWindows("upgrade app to select component", async ({ po }) => {
   await po.expectNoAppUpgrades();
   await po.snapshotAppFiles();
   await po.clickOpenInChatButton();
+  // There should be another version from the upgrade being committed.
+  await expect(po.page.getByText("Version 2")).toBeVisible();
 
   await po.clickPreviewPickElement();
 

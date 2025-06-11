@@ -74,7 +74,7 @@ export async function gitStageToRevert({
       return;
     }
 
-    // Safety: refuse to run if the work-tree isn’t clean.
+    // Safety: refuse to run if the work-tree isn't clean.
     const { stdout: wtStatus } = await execAsync(
       `git -C "${path}" status --porcelain`,
     );
@@ -136,5 +136,15 @@ export async function gitStageToRevert({
       dir: path,
       filepath: ".",
     });
+  }
+}
+
+export async function gitAddAll({ path }: { path: string }): Promise<void> {
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    await execAsync(`git -C "${path}" add .`);
+    return;
+  } else {
+    return git.add({ fs, dir: path, filepath: "." });
   }
 }

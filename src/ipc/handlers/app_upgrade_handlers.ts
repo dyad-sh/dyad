@@ -8,6 +8,7 @@ import { getDyadAppPath } from "../../paths/paths";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { gitAddAll, gitCommit } from "../utils/git_utils";
 
 const logger = log.scope("app_upgrade_handlers");
 const handle = createLoggedHandler(logger);
@@ -109,7 +110,7 @@ async function applyComponentTagger(appPath: string) {
   await fs.promises.writeFile(viteConfigPath, content);
 
   // Install the dependency
-  return new Promise<void>((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     logger.info("Installing component-tagger dependency");
     const process = spawn(
       "pnpm add -D @dyad-sh/react-vite-component-tagger || npm install --save-dev --legacy-peer-deps @dyad-sh/react-vite-component-tagger",
@@ -138,6 +139,22 @@ async function applyComponentTagger(appPath: string) {
       reject(err);
     });
   });
+
+  // Commit changes
+  try {
+    logger.info("Staging and committing changes");
+    await gitAddAll({ path: appPath });
+    await gitCommit({
+      path: appPath,
+      message: "[dyad] add Dyad component tagger",
+    });
+    logger.info("Successfully committed changes");
+  } catch (err) {
+    logger.warn(
+      `Failed to commit changes. This may happen if the project is not in a git repository, or if there are no changes to commit.`,
+      err,
+    );
+  }
 }
 
 export function registerAppUpgradeHandlers() {

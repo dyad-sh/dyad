@@ -113,42 +113,46 @@ export function createDyadEngine(
       defaultObjectGenerationMode:
         "tool" as LanguageModelV1ObjectGenerationMode,
       // Custom fetch implementation that adds files to the request
-      fetch: files?.length
-        ? (input: RequestInfo | URL, init?: RequestInit) => {
-            // Use default fetch if no init or body
-            if (!init || !init.body || typeof init.body !== "string") {
-              return (options.fetch || fetch)(input, init);
-            }
+      fetch: (input: RequestInfo | URL, init?: RequestInit) => {
+        // Use default fetch if no init or body
+        if (!init || !init.body || typeof init.body !== "string") {
+          return (options.fetch || fetch)(input, init);
+        }
 
-            try {
-              // Parse the request body to manipulate it
-              const parsedBody = JSON.parse(init.body);
+        try {
+          // Parse the request body to manipulate it
+          const parsedBody = JSON.parse(init.body);
+          console.log("parsedBody", parsedBody);
+          // TODO: not sure if this is OK with other models...
+          // parsedBody.thinking = {
+          //   type: "enabled",
+          //   include_thoughts: true,
+          // };
 
-              // Add files to the request if they exist
-              if (files?.length) {
-                parsedBody.dyad_options = {
-                  files,
-                  enable_lazy_edits: options.dyadOptions.enableLazyEdits,
-                  enable_smart_files_context:
-                    options.dyadOptions.enableSmartFilesContext,
-                };
-              }
-
-              // Return modified request with files included
-              const modifiedInit = {
-                ...init,
-                body: JSON.stringify(parsedBody),
-              };
-
-              // Use the provided fetch or default fetch
-              return (options.fetch || fetch)(input, modifiedInit);
-            } catch (e) {
-              logger.error("Error parsing request body", e);
-              // If parsing fails, use original request
-              return (options.fetch || fetch)(input, init);
-            }
+          // Add files to the request if they exist
+          if (files?.length) {
+            parsedBody.dyad_options = {
+              files,
+              enable_lazy_edits: options.dyadOptions.enableLazyEdits,
+              enable_smart_files_context:
+                options.dyadOptions.enableSmartFilesContext,
+            };
           }
-        : options.fetch,
+
+          // Return modified request with files included
+          const modifiedInit = {
+            ...init,
+            body: JSON.stringify(parsedBody),
+          };
+
+          // Use the provided fetch or default fetch
+          return (options.fetch || fetch)(input, modifiedInit);
+        } catch (e) {
+          logger.error("Error parsing request body", e);
+          // If parsing fails, use original request
+          return (options.fetch || fetch)(input, init);
+        }
+      },
     };
 
     return new OpenAICompatibleChatLanguageModel(modelId, restSettings, config);

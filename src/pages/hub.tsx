@@ -5,13 +5,14 @@ import { useRouter } from "@tanstack/react-router";
 import { useSettings } from "@/hooks/useSettings";
 import { IpcClient } from "@/ipc/ipc_client";
 import { DEFAULT_TEMPLATE_ID, templatesData } from "@/shared/templates";
+import { NeonConnector } from "@/components/NeonConnector";
 
 const HubPage: React.FC = () => {
   const router = useRouter();
 
   return (
     <div className="min-h-screen px-8 py-4">
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-5xl mx-auto pb-12">
         <Button
           onClick={() => router.history.back()}
           variant="outline"
@@ -22,6 +23,7 @@ const HubPage: React.FC = () => {
           Go Back
         </Button>
         <TemplatesHub />
+        <BackendSection />
       </div>
     </div>
   );
@@ -41,7 +43,7 @@ function TemplatesHub() {
     <>
       <header className="mb-8 text-left">
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-          Pick your default template
+          Templates
         </h1>
         <p className="text-md text-gray-600 dark:text-gray-400">
           Choose a starting point for your new project.
@@ -122,10 +124,29 @@ function TemplatesHub() {
           );
         })}
       </div>
-      <div className="mt-2 pb-12">
+      <div className="mt-2">
         <p className="text-sm text-gray-500 dark:text-gray-400">
           *Experimental templates may have bugs.
         </p>
+      </div>
+    </>
+  );
+}
+
+function BackendSection() {
+  return (
+    <>
+      <header className="mb-4 text-left mt-12">
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+          Backend Services
+        </h1>
+        <p className="text-md text-gray-600 dark:text-gray-400">
+          Connect to backend services for your projects.
+        </p>
+      </header>
+
+      <div className="grid grid-cols-1 gap-6">
+        <NeonConnector />
       </div>
     </>
   );

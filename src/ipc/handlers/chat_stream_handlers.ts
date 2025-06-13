@@ -33,6 +33,7 @@ import { readFile, writeFile, unlink } from "fs/promises";
 import { getMaxTokens } from "../utils/token_utils";
 import { MAX_CHAT_TURNS_IN_CONTEXT } from "@/constants/settings_constants";
 import { validateChatContext } from "../utils/context_paths_utils";
+import { GoogleGenerativeAIProviderOptions } from "@ai-sdk/google";
 
 const logger = log.scope("chat_stream_handlers");
 
@@ -443,11 +444,26 @@ This conversation includes one or more image attachments. When the user uploads 
         }
 
         // When calling streamText, the messages need to be properly formatted for mixed content
-        const { textStream } = streamText({
+        const { fullStream } = streamText({
           maxTokens: await getMaxTokens(settings.selectedModel),
           temperature: 0,
           maxRetries: 2,
           model: modelClient.model,
+          providerOptions: {
+            "dyad-gateway": {
+              // thinking: {
+              //   type: "enabled",
+              //   include_thoughts: true,
+              // },
+            },
+            google: {
+              // Options are nested under 'google' for Vertex provider
+              thinkingConfig: {
+                includeThoughts: true,
+                // thinkingBudget: 2048, // Optional
+              },
+            } satisfies GoogleGenerativeAIProviderOptions,
+          },
           system: systemPrompt,
           messages: chatMessages.filter((m) => m.content),
           onError: (error: any) => {
@@ -465,10 +481,38 @@ This conversation includes one or more image attachments. When the user uploads 
         });
 
         // Process the stream as before
+        let inThinkingBlock = false;
         try {
-          for await (const textPart of textStream) {
-            fullResponse += textPart;
-            fullResponse = cleanThinkingByEscapingDyadTags(fullResponse);
+          for await (const part of fullStream) {
+            let chunk = "";
+            if (part.type === "text-delta") {
+              if (inThinkingBlock) {
+                chunk = "</think>";
+                inThinkingBlock = false;
+              }
+              chunk += part.textDelta;
+            } else if (part.type === "reasoning") {
+              if (!inThinkingBlock) {
+                chunk = "<think>";
+                inThinkingBlock = true;
+              }
+              // Escape dyad tags in reasoning content
+              // We are replacing the opening tag with a look-alike character
+              // to avoid issues where thinking content includes dyad tags
+              // and are mishandled by:
+              // 1. FE markdown parser
+              // 2. Main process response processor
+              chunk += part.textDelta
+                .replace(/<dyad/g, "＜dyad")
+                .replace(/<\/dyad/g, "＜/dyad");
+            }
+
+            if (!chunk) {
+              continue;
+            }
+
+            fullResponse += chunk;
+
             if (
               fullResponse.includes("$$SUPABASE_CLIENT_CODE$$") &&
               updatedChat.app?.supabaseProjectId
@@ -505,6 +549,27 @@ This conversation includes one or more image attachments. When the user uploads 
               logger.log(`Stream for chat ${req.chatId} was aborted`);
               break;
             }
+          }
+
+          if (inThinkingBlock) {
+            const chunk = "</think>";
+            fullResponse += chunk;
+            partialResponses.set(req.chatId, fullResponse);
+
+            const currentMessages = [...updatedChat.messages];
+            if (
+              currentMessages.length > 0 &&
+              currentMessages[currentMessages.length - 1].role === "assistant"
+            ) {
+              currentMessages[currentMessages.length - 1].content =
+                fullResponse;
+            }
+
+            event.sender.send("chat:response:chunk", {
+              chatId: req.chatId,
+              messages: currentMessages,
+            });
+            inThinkingBlock = false;
           }
         } catch (streamError) {
           // Check if this was an abort error

@@ -687,7 +687,7 @@ export const test = base.extend<{
       process.env.OLLAMA_HOST = "http://localhost:3500/ollama";
       process.env.LM_STUDIO_BASE_URL_FOR_TESTING =
         "http://localhost:3500/lmstudio";
-      process.env.DYAD_LOCAL_ENGINE = "http://localhost:3500/engine/v1";
+      process.env.DYAD_ENGINE_URL = "http://localhost:3500/engine/v1";
       process.env.DYAD_GATEWAY_URL = "http://localhost:3500/gateway/v1";
       process.env.E2E_TEST_BUILD = "true";
       // This is just a hack to avoid the AI setup screen.

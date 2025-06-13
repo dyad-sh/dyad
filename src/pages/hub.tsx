@@ -75,11 +75,16 @@ const HubPage: React.FC = () => {
                     >
                       {template.title}
                     </h2>
-                    {template.isOfficial && (
+                    {template.isOfficial && !template.isExperimental && (
                       <span
                         className={`text-xs font-semibold px-2 py-0.5 rounded-full ${isSelected ? "bg-blue-100 text-blue-700 dark:bg-blue-600 dark:text-blue-100" : "bg-green-100 text-green-800 dark:bg-green-700 dark:text-green-200"}`}
                       >
                         Official
+                      </span>
+                    )}
+                    {template.isExperimental && (
+                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-700 dark:text-yellow-200">
+                        Experimental
                       </span>
                     )}
                   </div>
@@ -106,6 +111,11 @@ const HubPage: React.FC = () => {
               </div>
             );
           })}
+        </div>
+        <div className="mt-2 pb-12">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            *Experimental templates may have bugs.
+          </p>
         </div>
       </div>
     </div>

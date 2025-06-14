@@ -119,11 +119,29 @@ function TemplatesHub() {
                     <ArrowLeft className="w-4 h-4 ml-1 transform rotate-180" />
                   </a>
                 )}
+
+                {/* Create app button - shows when this template is selected */}
+                {isSelected && (
+                  <div className="pt-3 border-gray-200 dark:border-gray-700">
+                    <Button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // TODO: Implement create app functionality
+                        console.log("Creating app with template:", template.id);
+                      }}
+                      size="sm"
+                      className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold"
+                    >
+                      Create App
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
           );
         })}
       </div>
+
       <div className="mt-2">
         <p className="text-sm text-gray-500 dark:text-gray-400">
           *Experimental templates may have bugs.

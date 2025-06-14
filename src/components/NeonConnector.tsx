@@ -87,7 +87,7 @@ export function NeonConnector() {
               await IpcClient.getInstance().fakeHandleNeonConnect();
             } else {
               await IpcClient.getInstance().openExternalUrl(
-                "https://neon-oauth.dyad.sh/api/connect-neon/login",
+                "http://localhost:3500/api/integrations/neon/login/",
               );
             }
           }}

@@ -94,7 +94,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
   google: [
     // https://ai.google.dev/gemini-api/docs/models#gemini-2.5-pro-preview-03-25
     {
-      name: "gemini-2.5-pro-preview-05-06",
+      name: "gemini-2.5-pro-preview-06-05",
       displayName: "Gemini 2.5 Pro",
       description: "Preview version of Google's Gemini 2.5 Pro model",
       // See Flash 2.5 comment below (go 1 below just to be safe, even though it seems OK now).

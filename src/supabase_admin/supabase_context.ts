@@ -3,9 +3,16 @@ import { SUPABASE_SCHEMA_QUERY } from "./supabase_schema_query";
 
 async function getPublishableKey({ projectId }: { projectId: string }) {
   const supabase = await getSupabaseClient();
-  const keys = await supabase.getProjectApiKeys(projectId);
+  let keys;
+  try {
+    keys = await supabase.getProjectApiKeys(projectId);
+  } catch (error) {
+    throw new Error(
+      `Failed to fetch API keys for Supabase project "${projectId}". This could be due to: 1) Invalid project ID, 2) Network connectivity issues, or 3) Supabase API unavailability. Original error: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
   if (!keys) {
-    throw new Error("No keys found for project");
+    throw new Error("No keys found for Supabase project " + projectId);
   }
   const publishableKey = keys.find(
     (key) =>

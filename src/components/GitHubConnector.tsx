@@ -365,7 +365,24 @@ export function GitHubConnector({ appId, folderName }: GitHubConnectorProps) {
             {isDisconnecting ? "Disconnecting..." : "Disconnect from repo"}
           </Button>
         </div>
-        {syncError && <p className="text-red-600 mt-2">{syncError}</p>}
+        {syncError && (
+          <p className="text-red-600 mt-2">
+            {syncError}{" "}
+            <a
+              onClick={(e) => {
+                e.preventDefault();
+                IpcClient.getInstance().openExternalUrl(
+                  "https://www.dyad.sh/docs/integrations/github#troubleshooting",
+                );
+              }}
+              className="cursor-pointer text-blue-600 hover:underline dark:text-blue-400"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              See troubleshooting guide
+            </a>
+          </p>
+        )}
         {syncSuccess && (
           <p className="text-green-600 mt-2">Successfully pushed to GitHub!</p>
         )}

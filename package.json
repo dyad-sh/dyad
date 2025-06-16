@@ -14,8 +14,8 @@
   "scripts": {
     "clean": "rm -rf out && rm -rf scaffold/node_modules",
     "start": "electron-forge start",
-    "dev:engine": "DYAD_LOCAL_ENGINE=http://localhost:8080/v1 npm start",
-    "staging:engine": "DYAD_LOCAL_ENGINE=https://staging---dyad-llm-engine-kq7pivehnq-uc.a.run.app/v1 npm start",
+    "dev:engine": "DYAD_ENGINE_URL=http://localhost:8080/v1 npm start",
+    "staging:engine": "DYAD_ENGINE_URL=https://staging---dyad-llm-engine-kq7pivehnq-uc.a.run.app/v1 npm start",
     "staging:gateway": "DYAD_GATEWAY_URL=https://staging---litellm-gcp-cloud-run-kq7pivehnq-uc.a.run.app/v1 npm start",
     "package": "npm run clean && electron-forge package",
     "make": "npm run clean && electron-forge make",

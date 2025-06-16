@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import { useRouter } from "@tanstack/react-router";
@@ -6,6 +6,7 @@ import { useSettings } from "@/hooks/useSettings";
 import { IpcClient } from "@/ipc/ipc_client";
 import { DEFAULT_TEMPLATE_ID, templatesData } from "@/shared/templates";
 import { NeonConnector } from "@/components/NeonConnector";
+import { CreateAppDialog } from "@/components/CreateAppDialog";
 
 const HubPage: React.FC = () => {
   const router = useRouter();
@@ -31,12 +32,20 @@ const HubPage: React.FC = () => {
 
 function TemplatesHub() {
   const { settings, updateSettings } = useSettings();
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [selectedTemplateForCreation, setSelectedTemplateForCreation] =
+    useState<string | null>(null);
 
   const selectedTemplateId =
     settings?.selectedTemplateId || DEFAULT_TEMPLATE_ID;
 
   const handleTemplateSelect = (templateId: string) => {
     updateSettings({ selectedTemplateId: templateId });
+  };
+
+  const handleCreateApp = (templateId: string) => {
+    setSelectedTemplateForCreation(templateId);
+    setIsCreateDialogOpen(true);
   };
 
   return (
@@ -126,8 +135,7 @@ function TemplatesHub() {
                     <Button
                       onClick={(e) => {
                         e.stopPropagation();
-                        // TODO: Implement create app functionality
-                        console.log("Creating app with template:", template.id);
+                        handleCreateApp(template.id);
                       }}
                       size="sm"
                       className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold"
@@ -147,6 +155,17 @@ function TemplatesHub() {
           *Experimental templates may have bugs.
         </p>
       </div>
+
+      <CreateAppDialog
+        open={isCreateDialogOpen}
+        onOpenChange={setIsCreateDialogOpen}
+        templateTitle={
+          selectedTemplateForCreation
+            ? templatesData.find((t) => t.id === selectedTemplateForCreation)
+                ?.title
+            : undefined
+        }
+      />
     </>
   );
 }

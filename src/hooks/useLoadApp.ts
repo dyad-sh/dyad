@@ -23,7 +23,9 @@ export function useLoadApp(appId: number | null) {
       return ipcClient.getApp(appId);
     },
     enabled: appId !== null,
-    meta: { showErrorToast: true },
+    // Deliberately not showing error toast here because
+    // this will pop up when app is deleted.
+    // meta: { showErrorToast: true },
   });
 
   useEffect(() => {

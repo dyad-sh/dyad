@@ -669,24 +669,25 @@ export function registerAppHandlers() {
           }
         }
 
+        // Delete app from database
+        try {
+          await db.delete(apps).where(eq(apps.id, appId));
+          // Note: Associated chats will cascade delete
+        } catch (error: any) {
+          logger.error(`Error deleting app ${appId} from database:`, error);
+          throw new Error(
+            `Failed to delete app from database: ${error.message}`,
+          );
+        }
+
         // Delete app files
         const appPath = getDyadAppPath(app.path);
         try {
           await fsPromises.rm(appPath, { recursive: true, force: true });
         } catch (error: any) {
           logger.error(`Error deleting app files for app ${appId}:`, error);
-          throw new Error(`Failed to delete app files: ${error.message}`);
-        }
-
-        // Delete app from database
-        try {
-          await db.delete(apps).where(eq(apps.id, appId));
-          // Note: Associated chats will cascade delete if that's set up in the schema
-          return;
-        } catch (error: any) {
-          logger.error(`Error deleting app ${appId} from database:`, error);
           throw new Error(
-            `Failed to delete app from database: ${error.message}`,
+            `App deleted from database, but failed to delete app files. Please delete app files from ${appPath} manually.\n\nError: ${error.message}`,
           );
         }
       });

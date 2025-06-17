@@ -22,7 +22,8 @@ export function registerVersionHandlers() {
     });
 
     if (!app) {
-      throw new Error("App not found");
+      // The app might have just been deleted, so we return an empty array.
+      return [];
     }
 
     const appPath = getDyadAppPath(app.path);

@@ -86,6 +86,7 @@ export default function AppDetailsPage() {
       await refreshApps();
       navigate({ to: "/", search: {} });
     } catch (error) {
+      setIsDeleteDialogOpen(false);
       showError(error);
     } finally {
       setIsDeleting(false);

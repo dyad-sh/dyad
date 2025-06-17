@@ -1,5 +1,7 @@
 import { toast } from "sonner";
 import { PostHog } from "posthog-js";
+import React from "react";
+import { CustomErrorToast } from "../components/CustomErrorToast";
 
 /**
  * Toast utility functions for consistent notifications across the app
@@ -18,8 +20,54 @@ export const showSuccess = (message: string) => {
  * @param message The error message to display
  */
 export const showError = (message: any) => {
-  toast.error(message.toString());
+  const errorMessage = message.toString();
   console.error(message);
+
+  const onCopy = (toastId: string | number) => {
+    navigator.clipboard.writeText(errorMessage);
+
+    // Update the toast to show the 'copied' state
+    toast.custom(
+      (t) => (
+        <CustomErrorToast
+          message={errorMessage}
+          toastId={t}
+          copied={true}
+          onCopy={() => onCopy(t)}
+        />
+      ),
+      { id: toastId, duration: Infinity },
+    );
+
+    // After 2 seconds, revert the toast back to the original state
+    setTimeout(() => {
+      toast.custom(
+        (t) => (
+          <CustomErrorToast
+            message={errorMessage}
+            toastId={t}
+            copied={false}
+            onCopy={() => onCopy(t)}
+          />
+        ),
+        { id: toastId, duration: Infinity },
+      );
+    }, 2000);
+  };
+
+  // Use custom error toast with enhanced features
+  const toastId = toast.custom(
+    (t) => (
+      <CustomErrorToast
+        message={errorMessage}
+        toastId={t}
+        onCopy={() => onCopy(t)}
+      />
+    ),
+    { duration: 4000 },
+  );
+
+  return toastId;
 };
 
 /**
@@ -37,26 +85,6 @@ export const showWarning = (message: string) => {
  */
 export const showInfo = (message: string) => {
   toast.info(message);
-};
-
-/**
- * Show a loading toast that can be updated with success/error
- * @param loadingMessage The message to show while loading
- * @param promise The promise to track
- * @param successMessage Optional success message
- * @param errorMessage Optional error message
- */
-export const showLoading = <T>(
-  loadingMessage: string,
-  promise: Promise<T>,
-  successMessage?: string,
-  errorMessage?: string,
-) => {
-  return toast.promise(promise, {
-    loading: loadingMessage,
-    success: () => successMessage || "Operation completed successfully",
-    error: (err) => errorMessage || `Error: ${err.message || "Unknown error"}`,
-  });
 };
 
 export const showExtraFilesToast = ({

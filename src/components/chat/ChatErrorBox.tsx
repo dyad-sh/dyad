@@ -66,6 +66,10 @@ export function ChatErrorBox({
       </ChatInfoContainer>
     );
   }
+  // This is a very long list of model fallbacks that clutters the error message.
+  if (error.includes("Fallbacks=")) {
+    error = error.split("Fallbacks=")[0];
+  }
   return <ChatErrorContainer onDismiss={onDismiss}>{error}</ChatErrorContainer>;
 }
 

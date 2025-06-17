@@ -1,3 +1,5 @@
+import { safeSend } from "../utils/safe_sender";
+
 // e.g. [dyad-qa=add-dep]
 // Canned responses for test prompts
 const TEST_RESPONSES: Record<string, string> = {
@@ -64,7 +66,7 @@ export async function streamTestResponse(
     fullResponse += chunk + " ";
 
     // Send the current accumulated response
-    event.sender.send("chat:response:chunk", {
+    safeSend(event.sender, "chat:response:chunk", {
       chatId: chatId,
       messages: [
         ...updatedChat.messages,

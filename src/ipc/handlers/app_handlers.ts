@@ -39,6 +39,7 @@ import { startProxy } from "../utils/start_proxy_server";
 import { Worker } from "worker_threads";
 import { createFromTemplate } from "./createFromTemplate";
 import { gitCommit } from "../utils/git_utils";
+import { safeSend } from "../utils/safe_sender";
 
 async function copyDir(
   source: string,
@@ -126,7 +127,7 @@ async function executeAppLocalNode({
     const message = util.stripVTControlCharacters(data.toString());
     logger.debug(`App ${appId} (PID: ${process.pid}) stdout: ${message}`);
 
-    event.sender.send("app:output", {
+    safeSend(event.sender, "app:output", {
       type: "stdout",
       message,
       appId,
@@ -135,7 +136,7 @@ async function executeAppLocalNode({
     if (urlMatch) {
       proxyWorker = await startProxy(urlMatch[1], {
         onStarted: (proxyUrl) => {
-          event.sender.send("app:output", {
+          safeSend(event.sender, "app:output", {
             type: "stdout",
             message: `[dyad-proxy-server]started=[${proxyUrl}] original=[${urlMatch[1]}]`,
             appId,
@@ -148,7 +149,7 @@ async function executeAppLocalNode({
   process.stderr?.on("data", (data) => {
     const message = util.stripVTControlCharacters(data.toString());
     logger.error(`App ${appId} (PID: ${process.pid}) stderr: ${message}`);
-    event.sender.send("app:output", {
+    safeSend(event.sender, "app:output", {
       type: "stderr",
       message,
       appId,

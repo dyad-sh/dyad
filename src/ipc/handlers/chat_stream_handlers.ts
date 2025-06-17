@@ -37,6 +37,8 @@ import { GoogleGenerativeAIProviderOptions } from "@ai-sdk/google";
 
 import { getExtraProviderOptions } from "../utils/thinking_utils";
 
+import { safeSend } from "../utils/safe_sender";
+
 const logger = log.scope("chat_stream_handlers");
 
 // Track active streams for cancellation
@@ -237,7 +239,7 @@ ${componentSnippet}
       }
 
       // Send the messages right away so that the loading state is shown for the message.
-      event.sender.send("chat:response:chunk", {
+      safeSend(event.sender, "chat:response:chunk", {
         chatId: req.chatId,
         messages: updatedChat.messages,
       });
@@ -540,7 +542,7 @@ This conversation includes one or more image attachments. When the user uploads 
             }
 
             // Update the assistant message in the database
-            event.sender.send("chat:response:chunk", {
+            safeSend(event.sender, "chat:response:chunk", {
               chatId: req.chatId,
               messages: currentMessages,
             });
@@ -622,27 +624,28 @@ This conversation includes one or more image attachments. When the user uploads 
             },
           });
 
-          event.sender.send("chat:response:chunk", {
+          safeSend(event.sender, "chat:response:chunk", {
             chatId: req.chatId,
             messages: chat!.messages,
           });
 
           if (status.error) {
-            event.sender.send(
+            safeSend(
+              event.sender,
               "chat:response:error",
               `Sorry, there was an error applying the AI's changes: ${status.error}`,
             );
           }
 
           // Signal that the stream has completed
-          event.sender.send("chat:response:end", {
+          safeSend(event.sender, "chat:response:end", {
             chatId: req.chatId,
             updatedFiles: status.updatedFiles ?? false,
             extraFiles: status.extraFiles,
             extraFilesError: status.extraFilesError,
           } satisfies ChatResponseEnd);
         } else {
-          event.sender.send("chat:response:end", {
+          safeSend(event.sender, "chat:response:end", {
             chatId: req.chatId,
             updatedFiles: false,
           } satisfies ChatResponseEnd);
@@ -674,7 +677,8 @@ This conversation includes one or more image attachments. When the user uploads 
       return req.chatId;
     } catch (error) {
       logger.error("Error calling LLM:", error);
-      event.sender.send(
+      safeSend(
+        event.sender,
         "chat:response:error",
         `Sorry, there was an error processing your request: ${error}`,
       );
@@ -698,7 +702,7 @@ This conversation includes one or more image attachments. When the user uploads 
     }
 
     // Send the end event to the renderer
-    event.sender.send("chat:response:end", {
+    safeSend(event.sender, "chat:response:end", {
       chatId,
       updatedFiles: false,
     } satisfies ChatResponseEnd);

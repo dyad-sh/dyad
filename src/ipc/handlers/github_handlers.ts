@@ -356,8 +356,44 @@ async function handleCreateRepo(
     }),
   });
   if (!res.ok) {
-    const data = await res.json();
-    throw new Error(data.message || "Failed to create repo");
+    let errorMessage = `Failed to create repository (${res.status} ${res.statusText})`;
+    try {
+      const data = await res.json();
+      logger.error("GitHub API error when creating repo:", {
+        status: res.status,
+        statusText: res.statusText,
+        response: data,
+      });
+
+      // Handle specific GitHub API error cases
+      if (data.message) {
+        errorMessage = data.message;
+      }
+
+      // Handle validation errors with more details
+      if (data.errors && Array.isArray(data.errors)) {
+        const errorDetails = data.errors
+          .map((err: any) => {
+            if (typeof err === "string") return err;
+            if (err.message) return err.message;
+            if (err.code) return `${err.field || "field"}: ${err.code}`;
+            return JSON.stringify(err);
+          })
+          .join(", ");
+        errorMessage = `${data.message || "Repository creation failed"}: ${errorDetails}`;
+      }
+    } catch (jsonError) {
+      // If response is not JSON, fall back to status text
+      logger.error("Failed to parse GitHub API error response:", {
+        status: res.status,
+        statusText: res.statusText,
+        jsonError:
+          jsonError instanceof Error ? jsonError.message : String(jsonError),
+      });
+      errorMessage = `GitHub API error: ${res.status} ${res.statusText}`;
+    }
+
+    throw new Error(errorMessage);
   }
   // Store org and repo in the app's DB row (apps table)
   await updateAppGithubRepo(appId, owner, repo);

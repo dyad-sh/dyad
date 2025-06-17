@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Github, Clipboard, Check } from "lucide-react";
 import { IpcClient } from "@/ipc/ipc_client";
@@ -126,26 +126,45 @@ export function GitHubConnector({ appId, folderName }: GitHubConnectorProps) {
   // TODO: After device flow, fetch and store the GitHub username/org in settings for use here
   const githubOrg = ""; // Use empty string for now (GitHub API will default to the authenticated user)
 
-  const handleRepoNameBlur = async () => {
-    setRepoCheckError(null);
-    setRepoAvailable(null);
-    if (!repoName) return;
-    setIsCheckingRepo(true);
-    try {
-      const result = await IpcClient.getInstance().checkGithubRepoAvailable(
-        githubOrg,
-        repoName,
-      );
-      setRepoAvailable(result.available);
-      if (!result.available) {
-        setRepoCheckError(result.error || "Repository name is not available.");
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const checkRepoAvailability = useCallback(
+    async (name: string) => {
+      setRepoCheckError(null);
+      setRepoAvailable(null);
+      if (!name) return;
+      setIsCheckingRepo(true);
+      try {
+        const result = await IpcClient.getInstance().checkGithubRepoAvailable(
+          githubOrg,
+          name,
+        );
+        setRepoAvailable(result.available);
+        if (!result.available) {
+          setRepoCheckError(
+            result.error || "Repository name is not available.",
+          );
+        }
+      } catch (err: any) {
+        setRepoCheckError(err.message || "Failed to check repo availability.");
+      } finally {
+        setIsCheckingRepo(false);
       }
-    } catch (err: any) {
-      setRepoCheckError(err.message || "Failed to check repo availability.");
-    } finally {
-      setIsCheckingRepo(false);
-    }
-  };
+    },
+    [githubOrg],
+  );
+
+  const debouncedCheckRepoAvailability = useCallback(
+    (name: string) => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+      debounceTimeoutRef.current = setTimeout(() => {
+        checkRepoAvailability(name);
+      }, 500);
+    },
+    [checkRepoAvailability],
+  );
 
   const handleCreateRepo = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -401,11 +420,12 @@ export function GitHubConnector({ appId, folderName }: GitHubConnectorProps) {
             className="w-full border rounded px-2 py-1"
             value={repoName}
             onChange={(e) => {
-              setRepoName(e.target.value);
+              const newValue = e.target.value;
+              setRepoName(newValue);
               setRepoAvailable(null);
               setRepoCheckError(null);
+              debouncedCheckRepoAvailability(newValue);
             }}
-            onBlur={handleRepoNameBlur}
             disabled={isCreatingRepo}
           />
           {isCheckingRepo && (

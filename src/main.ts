@@ -162,7 +162,14 @@ app.on("open-url", (event, url) => {
 
 function handleDeepLinkReturn(url: string) {
   // example url: "dyad://supabase-oauth-return?token=a&refreshToken=b"
-  const parsed = new URL(url);
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    log.info("Invalid deep link URL", url);
+    return;
+  }
+
   // Intentionally do NOT log the full URL which may contain sensitive tokens.
   log.log(
     "Handling deep link: protocol",

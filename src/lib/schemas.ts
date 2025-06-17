@@ -142,6 +142,7 @@ export const UserSettingsSchema = z.object({
   enableProLazyEditsMode: z.boolean().optional(),
   enableProSmartFilesContextMode: z.boolean().optional(),
   selectedTemplateId: z.string().optional(),
+  enableSupabaseWriteSqlMigration: z.boolean().optional(),
 
   enableNativeGit: z.boolean().optional(),
 

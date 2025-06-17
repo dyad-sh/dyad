@@ -1,7 +1,12 @@
+import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 import { getSupabaseClient } from "./supabase_management_client";
 import { SUPABASE_SCHEMA_QUERY } from "./supabase_schema_query";
 
 async function getPublishableKey({ projectId }: { projectId: string }) {
+  if (IS_TEST_BUILD) {
+    return "test-publishable-key";
+  }
+
   const supabase = await getSupabaseClient();
   let keys;
   try {
@@ -50,6 +55,10 @@ export async function getSupabaseContext({
 }: {
   supabaseProjectId: string;
 }) {
+  if (IS_TEST_BUILD) {
+    return "[[TEST_BUILD_SUPABASE_CONTEXT]]";
+  }
+
   const supabase = await getSupabaseClient();
   const publishableKey = await getPublishableKey({
     projectId: supabaseProjectId,

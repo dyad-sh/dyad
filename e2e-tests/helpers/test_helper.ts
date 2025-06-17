@@ -579,6 +579,10 @@ export class PageObject {
     await this.page.getByRole("link", { name: "Apps" }).click();
   }
 
+  async goToChatTab() {
+    await this.page.getByRole("link", { name: "Chat" }).click();
+  }
+
   async goToHubTab() {
     await this.page.getByRole("link", { name: "Hub" }).click();
   }

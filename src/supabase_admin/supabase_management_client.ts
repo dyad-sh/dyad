@@ -140,6 +140,10 @@ export async function executeSupabaseSql({
   supabaseProjectId: string;
   query: string;
 }): Promise<string> {
+  if (IS_TEST_BUILD) {
+    return "{}";
+  }
+
   const supabase = await getSupabaseClient();
   const result = await supabase.runQuery(supabaseProjectId, query);
   return JSON.stringify(result);

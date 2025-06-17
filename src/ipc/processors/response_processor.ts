@@ -14,8 +14,10 @@ import {
   executeSupabaseSql,
 } from "../../supabase_admin/supabase_management_client";
 import { isServerFunction } from "../../supabase_admin/supabase_utils";
-import { SqlQuery } from "../../lib/schemas";
+import { SqlQuery, UserSettings } from "../../lib/schemas";
 import { gitCommit } from "../utils/git_utils";
+import { readSettings } from "@/main/settings";
+import { writeMigrationFile } from "../utils/file_utils";
 
 const readFile = fs.promises.readFile;
 const logger = log.scope("response_processor");
@@ -207,6 +209,7 @@ export async function processFullResponseActions(
     return {};
   }
 
+  const settings: UserSettings = readSettings();
   const appPath = getDyadAppPath(chatWithApp.app.path);
   const writtenFiles: string[] = [];
   const renamedFiles: string[] = [];
@@ -247,6 +250,22 @@ export async function processFullResponseActions(
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
             query: query.content,
           });
+
+          // Only write migration file if SQL execution succeeded
+          if (settings.enableSupabaseWriteSqlMigration) {
+            try {
+              await writeMigrationFile(
+                appPath,
+                query.content,
+                query.description,
+              );
+            } catch (error) {
+              errors.push({
+                message: `Failed to write SQL migration file for: ${query.description}`,
+                error: error,
+              });
+            }
+          }
         } catch (error) {
           errors.push({
             message: `Failed to execute SQL query: ${query.content}`,

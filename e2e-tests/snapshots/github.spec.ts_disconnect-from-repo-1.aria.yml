@@ -1,0 +1,10 @@
+- button "Set up your GitHub repo":
+  - img
+- button "Create new repo"
+- button "Connect to existing repo"
+- text: Repository Name
+- textbox: "[scrubbed]"
+- paragraph: Repository name is available!
+- text: Branch
+- textbox "main"
+- button "Create Repo"

@@ -1,0 +1,1 @@
+ALTER TABLE `apps` ADD `github_branch` text;

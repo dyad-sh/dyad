@@ -21,6 +21,7 @@
     "@types/cors": "^2.8.18",
     "@types/express": "^4.17.21",
     "@types/node": "^20.17.46",
+    "git-http-mock-server": "^2.0.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
   }

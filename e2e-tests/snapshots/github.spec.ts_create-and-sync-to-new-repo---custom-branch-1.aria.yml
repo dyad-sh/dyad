@@ -1,0 +1,5 @@
+- paragraph: "Connected to GitHub Repo:"
+- text: testuser/test-new-repo
+- paragraph: "Branch: new-branch"
+- button "Sync to GitHub"
+- button "Disconnect from repo"

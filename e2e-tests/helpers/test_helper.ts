@@ -64,21 +64,149 @@ class ProModesDialog {
   }
 }
 
+class GitHubConnector {
+  constructor(public page: Page) {}
+
+  async connect() {
+    await this.page.getByRole("button", { name: "Connect to GitHub" }).click();
+  }
+
+  getSetupYourGitHubRepoButton() {
+    return this.page.getByText("Set up your GitHub repo");
+  }
+
+  getCreateNewRepoModeButton() {
+    return this.page.getByRole("button", { name: "Create new repo" });
+  }
+
+  getConnectToExistingRepoModeButton() {
+    return this.page.getByRole("button", { name: "Connect to existing repo" });
+  }
+
+  async clickCreateRepoButton() {
+    await this.page.getByRole("button", { name: "Create Repo" }).click();
+  }
+
+  async fillCreateRepoName(name: string) {
+    await this.page.getByTestId("github-create-repo-name-input").fill(name);
+  }
+
+  async fillNewRepoBranchName(name: string) {
+    await this.page.getByTestId("github-new-repo-branch-input").fill(name);
+  }
+
+  async selectRepo(repo: string) {
+    await this.page.getByTestId("github-repo-select").click();
+    await this.page.getByRole("option", { name: repo }).click();
+  }
+
+  async selectBranch(branch: string) {
+    await this.page.getByTestId("github-branch-select").click();
+    await this.page.getByRole("option", { name: branch }).click();
+  }
+
+  async selectCustomBranch(branch: string) {
+    await this.page.getByTestId("github-branch-select").click();
+    await this.page
+      .getByRole("option", { name: "✏️ Type custom branch name" })
+      .click();
+    await this.page.getByTestId("github-custom-branch-input").click();
+    await this.page.getByTestId("github-custom-branch-input").fill(branch);
+  }
+
+  async clickConnectToRepoButton() {
+    await this.page.getByRole("button", { name: "Connect to repo" }).click();
+  }
+
+  async snapshotConnectedRepo() {
+    await expect(
+      this.page.getByTestId("github-connected-repo"),
+    ).toMatchAriaSnapshot();
+  }
+
+  async snapshotSetupRepo() {
+    await expect(
+      this.page.getByTestId("github-setup-repo"),
+    ).toMatchAriaSnapshot();
+  }
+
+  async snapshotUnconnectedRepo() {
+    await expect(
+      this.page.getByTestId("github-unconnected-repo"),
+    ).toMatchAriaSnapshot();
+  }
+
+  async clickSyncToGithubButton() {
+    await this.page.getByRole("button", { name: "Sync to GitHub" }).click();
+  }
+
+  async clickDisconnectRepoButton() {
+    await this.page
+      .getByRole("button", { name: "Disconnect from repo" })
+      .click();
+  }
+
+  async clearPushEvents() {
+    const response = await this.page.request.post(
+      "http://localhost:3500/github/api/test/clear-push-events",
+    );
+    return await response.json();
+  }
+
+  async getPushEvents(repo?: string) {
+    const url = repo
+      ? `http://localhost:3500/github/api/test/push-events?repo=${repo}`
+      : "http://localhost:3500/github/api/test/push-events";
+    const response = await this.page.request.get(url);
+    return await response.json();
+  }
+
+  async verifyPushEvent(expectedEvent: {
+    repo: string;
+    branch: string;
+    operation?: "push" | "create" | "delete";
+  }) {
+    const pushEvents = await this.getPushEvents(expectedEvent.repo);
+    const matchingEvent = pushEvents.find(
+      (event: any) =>
+        event.repo === expectedEvent.repo &&
+        event.branch === expectedEvent.branch &&
+        (!expectedEvent.operation ||
+          event.operation === expectedEvent.operation),
+    );
+
+    if (!matchingEvent) {
+      throw new Error(
+        `Expected push event not found. Expected: ${JSON.stringify(expectedEvent)}. ` +
+          `Actual events: ${JSON.stringify(pushEvents)}`,
+      );
+    }
+
+    return matchingEvent;
+  }
+}
+
 export class PageObject {
   private userDataDir: string;
-
+  public githubConnector: GitHubConnector;
   constructor(
     public electronApp: ElectronApplication,
     public page: Page,
     { userDataDir }: { userDataDir: string },
   ) {
     this.userDataDir = userDataDir;
+    this.githubConnector = new GitHubConnector(this.page);
+  }
+
+  private async baseSetup() {
+    await this.githubConnector.clearPushEvents();
   }
 
   async setUp({
     autoApprove = false,
     nativeGit = false,
   }: { autoApprove?: boolean; nativeGit?: boolean } = {}) {
+    await this.baseSetup();
     await this.goToSettingsTab();
     if (autoApprove) {
       await this.toggleAutoApprove();
@@ -93,16 +221,8 @@ export class PageObject {
     await this.selectTestModel();
   }
 
-  async importApp(appDir: string) {
-    await this.page.getByRole("button", { name: "Import App" }).click();
-    await eph.stubDialog(this.electronApp, "showOpenDialog", {
-      filePaths: [path.join(__dirname, "..", "fixtures", "import-app", appDir)],
-    });
-    await this.page.getByRole("button", { name: "Select Folder" }).click();
-    await this.page.getByRole("button", { name: "Import" }).click();
-  }
-
   async setUpDyadPro({ autoApprove = false }: { autoApprove?: boolean } = {}) {
+    await this.baseSetup();
     await this.goToSettingsTab();
     if (autoApprove) {
       await this.toggleAutoApprove();
@@ -112,7 +232,6 @@ export class PageObject {
   }
 
   async setUpDyadProvider() {
-    // await page.getByRole('link', { name: 'Settings' }).click();
     await this.page
       .locator("div")
       .filter({ hasText: /^DyadNeeds Setup$/ })
@@ -123,12 +242,15 @@ export class PageObject {
       .getByRole("textbox", { name: "Set Dyad API Key" })
       .fill("testdyadkey");
     await this.page.getByRole("button", { name: "Save Key" }).click();
-    // await page.getByRole('link', { name: 'Apps' }).click();
-    // await page.getByTestId('home-chat-input-container').getByRole('button', { name: 'Pro' }).click();
-    // await page.getByRole('switch', { name: 'Turbo Edits' }).click();
-    // await page.getByRole('switch', { name: 'Turbo Edits' }).click();
-    // await page.locator('div').filter({ hasText: /^Import App$/ }).click();
-    // await page.getByRole('button', { name: 'Select Folder' }).press('Escape');
+  }
+
+  async importApp(appDir: string) {
+    await this.page.getByRole("button", { name: "Import App" }).click();
+    await eph.stubDialog(this.electronApp, "showOpenDialog", {
+      filePaths: [path.join(__dirname, "..", "fixtures", "import-app", appDir)],
+    });
+    await this.page.getByRole("button", { name: "Select Folder" }).click();
+    await this.page.getByRole("button", { name: "Import" }).click();
   }
 
   async openContextFilesPicker() {

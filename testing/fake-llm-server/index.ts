@@ -2,6 +2,19 @@ import express from "express";
 import { createServer } from "http";
 import cors from "cors";
 import { createChatCompletionHandler } from "./chatCompletionHandler";
+import {
+  handleDeviceCode,
+  handleAccessToken,
+  handleUser,
+  handleUserEmails,
+  handleUserRepos,
+  handleRepo,
+  handleRepoBranches,
+  handleOrgRepos,
+  handleGitPush,
+  handleGetPushEvents,
+  handleClearPushEvents,
+} from "./githubHandler";
 
 // Create Express app
 const app = express();
@@ -178,6 +191,29 @@ app.get("/lmstudio/api/v0/models", (req, res) => {
 
 // Default test provider handler:
 app.post("/v1/chat/completions", createChatCompletionHandler("."));
+
+// GitHub API Mock Endpoints
+console.log("Setting up GitHub mock endpoints");
+
+// GitHub OAuth Device Flow
+app.post("/github/login/device/code", handleDeviceCode);
+app.post("/github/login/oauth/access_token", handleAccessToken);
+
+// GitHub API endpoints
+app.get("/github/api/user", handleUser);
+app.get("/github/api/user/emails", handleUserEmails);
+app.get("/github/api/user/repos", handleUserRepos);
+app.post("/github/api/user/repos", handleUserRepos);
+app.get("/github/api/repos/:owner/:repo", handleRepo);
+app.get("/github/api/repos/:owner/:repo/branches", handleRepoBranches);
+app.post("/github/api/orgs/:org/repos", handleOrgRepos);
+
+// GitHub test endpoints for verifying push operations
+app.get("/github/api/test/push-events", handleGetPushEvents);
+app.post("/github/api/test/clear-push-events", handleClearPushEvents);
+
+// GitHub Git endpoints - intercept all paths with /github/git prefix
+app.all("/github/git/*", handleGitPush);
 
 // Start the server
 const server = createServer(app);

@@ -26,6 +26,7 @@ jobs:
       matrix:
         os:
           [
+            { name: "windows-arm", image: "windows-11-arm" },
             { name: "windows", image: "windows-latest" },
             { name: "macos", image: "macos-latest" },
           ]
@@ -68,9 +69,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          key: ${{ matrix.os.name }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
-            ${{ runner.os }}-pnpm-store-
+            ${{ matrix.os.name }}-pnpm-store-
       # Not strictly needed but makes the e2e tests faster (and less flaky)
       - name: Install scaffold dependencies
         run: cd scaffold && pnpm install
@@ -89,12 +90,12 @@ jobs:
       - uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         if: failure()
         with:
-          name: playwright-report-${{runner.os}}
+          name: playwright-report-${{ matrix.os.name }}
           path: playwright-report/
           retention-days: 3
       - uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         if: failure()
         with:
-          name: test-results-${{runner.os}}
+          name: test-results-${{ matrix.os.name }}
           path: test-results/
           retention-days: 3

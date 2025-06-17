@@ -116,6 +116,7 @@ export async function getModelClient(
         ? createDyadEngine({
             apiKey: dyadApiKey,
             baseURL: dyadEngineUrl ?? "https://engine.dyad.sh/v1",
+            originalProviderId: model.provider,
             dyadOptions: {
               enableLazyEdits: settings.enableProLazyEditsMode,
               enableSmartFilesContext: settings.enableProSmartFilesContextMode,
@@ -150,7 +151,7 @@ export async function getModelClient(
               }
             : undefined,
         ),
-        builtinProviderId: "auto",
+        builtinProviderId: model.provider,
       };
 
       return {

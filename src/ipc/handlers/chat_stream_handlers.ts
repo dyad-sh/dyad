@@ -33,6 +33,9 @@ import { readFile, writeFile, unlink } from "fs/promises";
 import { getMaxTokens } from "../utils/token_utils";
 import { MAX_CHAT_TURNS_IN_CONTEXT } from "@/constants/settings_constants";
 import { validateChatContext } from "../utils/context_paths_utils";
+import { GoogleGenerativeAIProviderOptions } from "@ai-sdk/google";
+
+import { getExtraProviderOptions } from "../utils/thinking_utils";
 
 const logger = log.scope("chat_stream_handlers");
 
@@ -443,17 +446,31 @@ This conversation includes one or more image attachments. When the user uploads 
         }
 
         // When calling streamText, the messages need to be properly formatted for mixed content
-        const { textStream } = streamText({
+        const { fullStream } = streamText({
           maxTokens: await getMaxTokens(settings.selectedModel),
           temperature: 0,
           maxRetries: 2,
           model: modelClient.model,
+          providerOptions: {
+            "dyad-gateway": getExtraProviderOptions(
+              modelClient.builtinProviderId,
+            ),
+            google: {
+              thinkingConfig: {
+                includeThoughts: true,
+              },
+            } satisfies GoogleGenerativeAIProviderOptions,
+          },
           system: systemPrompt,
           messages: chatMessages.filter((m) => m.content),
           onError: (error: any) => {
             logger.error("Error streaming text:", error);
-            const message =
-              (error as any)?.error?.message || JSON.stringify(error);
+            let errorMessage = (error as any)?.error?.message;
+            const responseBody = error?.error?.responseBody;
+            if (errorMessage && responseBody) {
+              errorMessage += "\n\nDetails: " + responseBody;
+            }
+            const message = errorMessage || JSON.stringify(error);
             event.sender.send(
               "chat:response:error",
               `Sorry, there was an error from the AI: ${message}`,
@@ -465,10 +482,38 @@ This conversation includes one or more image attachments. When the user uploads 
         });
 
         // Process the stream as before
+        let inThinkingBlock = false;
         try {
-          for await (const textPart of textStream) {
-            fullResponse += textPart;
-            fullResponse = cleanThinkingByEscapingDyadTags(fullResponse);
+          for await (const part of fullStream) {
+            let chunk = "";
+            if (part.type === "text-delta") {
+              if (inThinkingBlock) {
+                chunk = "</think>";
+                inThinkingBlock = false;
+              }
+              chunk += part.textDelta;
+            } else if (part.type === "reasoning") {
+              if (!inThinkingBlock) {
+                chunk = "<think>";
+                inThinkingBlock = true;
+              }
+              // Escape dyad tags in reasoning content
+              // We are replacing the opening tag with a look-alike character
+              // to avoid issues where thinking content includes dyad tags
+              // and are mishandled by:
+              // 1. FE markdown parser
+              // 2. Main process response processor
+              chunk += part.textDelta
+                .replace(/<dyad/g, "＜dyad")
+                .replace(/<\/dyad/g, "＜/dyad");
+            }
+
+            if (!chunk) {
+              continue;
+            }
+
+            fullResponse += chunk;
+
             if (
               fullResponse.includes("$$SUPABASE_CLIENT_CODE$$") &&
               updatedChat.app?.supabaseProjectId

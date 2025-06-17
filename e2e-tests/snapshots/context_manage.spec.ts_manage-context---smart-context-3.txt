@@ -22,6 +22,10 @@
       }
     ],
     "stream": true,
+    "thinking": {
+      "type": "enabled",
+      "include_thoughts": true
+    },
     "dyad_options": {
       "files": [
         {

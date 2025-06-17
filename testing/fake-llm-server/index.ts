@@ -35,17 +35,6 @@ export function createStreamChunk(
 }
 
 export const CANNED_MESSAGE = `
-  <think>
-  \`<dyad-write>\`:
-  I'll think about the problem and write a bug report.
-
-  <dyad-write>
-
-  <dyad-write path="file1.txt">
-  Fake dyad write
-  </dyad-write>
-  </think>
-  
   <dyad-write path="file1.txt">
   A file (2)
   </dyad-write>

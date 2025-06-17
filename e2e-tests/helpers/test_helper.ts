@@ -139,10 +139,14 @@ export class PageObject {
     });
   }
 
-  async openProModesDialog(): Promise<ProModesDialog> {
+  async openProModesDialog({
+    location = "chat-input-container",
+  }: {
+    location?: "chat-input-container" | "home-chat-input-container";
+  } = {}): Promise<ProModesDialog> {
     const proButton = this.page
       // Assumes you're on the chat page.
-      .getByTestId("chat-input-container")
+      .getByTestId(location)
       .getByRole("button", { name: "Pro", exact: true });
     await proButton.click();
     return new ProModesDialog(this.page, async () => {
@@ -396,7 +400,7 @@ export class PageObject {
   async selectModel({ provider, model }: { provider: string; model: string }) {
     await this.page.getByRole("button", { name: "Model: Auto" }).click();
     await this.page.getByText(provider).click();
-    await this.page.getByText(model).click();
+    await this.page.getByText(model, { exact: true }).click();
   }
 
   async selectTestModel() {

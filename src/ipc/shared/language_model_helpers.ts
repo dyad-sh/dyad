@@ -6,6 +6,10 @@ import {
 import type { LanguageModelProvider, LanguageModel } from "@/ipc/ipc_types";
 import { eq } from "drizzle-orm";
 
+export const PROVIDERS_THAT_SUPPORT_THINKING: (keyof typeof MODEL_OPTIONS)[] = [
+  "google",
+];
+
 export interface ModelOption {
   name: string;
   displayName: string;

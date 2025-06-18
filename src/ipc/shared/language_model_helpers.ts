@@ -132,6 +132,13 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       maxOutputTokens: 32_000,
       contextWindow: 128_000,
     },
+    {
+      name: "deepseek/deepseek-r1-0528",
+      displayName: "DeepSeek R1",
+      description: "Good reasoning model with excellent price for performance",
+      maxOutputTokens: 32_000,
+      contextWindow: 128_000,
+    },
   ],
   auto: [
     {

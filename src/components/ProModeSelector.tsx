@@ -40,10 +40,10 @@ export function ProModeSelector() {
             <Button
               variant="outline"
               size="sm"
-              className="has-[>svg]:px-2 flex items-center gap-1.5 h-8 border-primary/50 hover:bg-primary/10 font-medium shadow-sm shadow-primary/10 transition-all hover:shadow-md hover:shadow-primary/15"
+              className="has-[>svg]:px-1.5 flex items-center gap-1.5 h-8 border-primary/50 hover:bg-primary/10 font-medium shadow-sm shadow-primary/10 transition-all hover:shadow-md hover:shadow-primary/15"
             >
               <Sparkles className="h-4 w-4 text-primary" />
-              <span className="text-primary font-medium">Pro</span>
+              <span className="text-primary font-medium text-xs-sm">Pro</span>
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>

@@ -69,6 +69,9 @@ export type ProviderSetting = z.infer<typeof ProviderSettingSchema>;
 export const RuntimeModeSchema = z.enum(["web-sandbox", "local-node", "unset"]);
 export type RuntimeMode = z.infer<typeof RuntimeModeSchema>;
 
+export const ChatModeSchema = z.enum(["build", "ask"]);
+export type ChatMode = z.infer<typeof ChatModeSchema>;
+
 export const GitHubSecretsSchema = z.object({
   accessToken: SecretSchema.nullable(),
 });
@@ -143,6 +146,7 @@ export const UserSettingsSchema = z.object({
   enableProSmartFilesContextMode: z.boolean().optional(),
   selectedTemplateId: z.string().optional(),
   enableSupabaseWriteSqlMigration: z.boolean().optional(),
+  selectedChatMode: ChatModeSchema.optional(),
 
   enableNativeGit: z.boolean().optional(),
 

@@ -347,6 +347,7 @@ ${componentSnippet}
 
         let systemPrompt = constructSystemPrompt({
           aiRules: await readAiRules(getDyadAppPath(updatedChat.app.path)),
+          chatMode: settings.selectedChatMode,
         });
         if (
           updatedChat.app?.supabaseProjectId &&
@@ -410,7 +411,10 @@ This conversation includes one or more image attachments. When the user uploads 
             // Why remove thinking tags?
             // Thinking tags are generally not critical for the context
             // and eats up extra tokens.
-            content: removeThinkingTags(msg.content),
+            content:
+              settings.selectedChatMode === "ask"
+                ? removeDyadTags(removeThinkingTags(msg.content))
+                : removeThinkingTags(msg.content),
           })),
         ];
 
@@ -608,8 +612,11 @@ This conversation includes one or more image attachments. When the user uploads 
           .update(messages)
           .set({ content: fullResponse })
           .where(eq(messages.id, placeholderAssistantMessage.id));
-
-        if (readSettings().autoApproveChanges) {
+        const settings = readSettings();
+        if (
+          settings.autoApproveChanges &&
+          settings.selectedChatMode !== "ask"
+        ) {
           const status = await processFullResponseActions(
             fullResponse,
             req.chatId,
@@ -819,4 +826,9 @@ async function prepareMessageWithAttachments(
 function removeThinkingTags(text: string): string {
   const thinkRegex = /<think>([\s\S]*?)<\/think>/g;
   return text.replace(thinkRegex, "").trim();
+}
+
+export function removeDyadTags(text: string): string {
+  const dyadRegex = /<dyad-[^>]*>[\s\S]*?<\/dyad-[^>]*>/g;
+  return text.replace(dyadRegex, "").trim();
 }

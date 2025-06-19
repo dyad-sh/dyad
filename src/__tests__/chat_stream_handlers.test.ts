@@ -6,6 +6,7 @@ import {
   processFullResponseActions,
   getDyadAddDependencyTags,
 } from "../ipc/processors/response_processor";
+import { removeDyadTags } from "../ipc/handlers/chat_stream_handlers";
 import fs from "node:fs";
 import git from "isomorphic-git";
 import { db } from "../db";
@@ -17,13 +18,22 @@ vi.mock("node:fs", async () => {
     default: {
       mkdirSync: vi.fn(),
       writeFileSync: vi.fn(),
-      existsSync: vi.fn(),
+      existsSync: vi.fn().mockReturnValue(false), // Default to false to avoid creating temp directory
       renameSync: vi.fn(),
       unlinkSync: vi.fn(),
       lstatSync: vi.fn().mockReturnValue({ isDirectory: () => false }),
       promises: {
         readFile: vi.fn().mockResolvedValue(""),
       },
+    },
+    existsSync: vi.fn().mockReturnValue(false), // Also mock the named export
+    mkdirSync: vi.fn(),
+    writeFileSync: vi.fn(),
+    renameSync: vi.fn(),
+    unlinkSync: vi.fn(),
+    lstatSync: vi.fn().mockReturnValue({ isDirectory: () => false }),
+    promises: {
+      readFile: vi.fn().mockResolvedValue(""),
     },
   };
 });
@@ -940,5 +950,112 @@ describe("processFullResponse", () => {
     );
 
     expect(result).toEqual({ updatedFiles: true });
+  });
+});
+
+describe("removeDyadTags", () => {
+  it("should return empty string when input is empty", () => {
+    const result = removeDyadTags("");
+    expect(result).toBe("");
+  });
+
+  it("should return the same text when no dyad tags are present", () => {
+    const text = "This is a regular text without any dyad tags.";
+    const result = removeDyadTags(text);
+    expect(result).toBe(text);
+  });
+
+  it("should remove a single dyad-write tag", () => {
+    const text = `Before text <dyad-write path="src/file.js">console.log('hello');</dyad-write> After text`;
+    const result = removeDyadTags(text);
+    expect(result).toBe("Before text  After text");
+  });
+
+  it("should remove a single dyad-delete tag", () => {
+    const text = `Before text <dyad-delete path="src/file.js"></dyad-delete> After text`;
+    const result = removeDyadTags(text);
+    expect(result).toBe("Before text  After text");
+  });
+
+  it("should remove a single dyad-rename tag", () => {
+    const text = `Before text <dyad-rename from="old.js" to="new.js"></dyad-rename> After text`;
+    const result = removeDyadTags(text);
+    expect(result).toBe("Before text  After text");
+  });
+
+  it("should remove multiple different dyad tags", () => {
+    const text = `Start <dyad-write path="file1.js">code here</dyad-write> middle <dyad-delete path="file2.js"></dyad-delete> end <dyad-rename from="old.js" to="new.js"></dyad-rename> finish`;
+    const result = removeDyadTags(text);
+    expect(result).toBe("Start  middle  end  finish");
+  });
+
+  it("should remove dyad tags with multiline content", () => {
+    const text = `Before
+<dyad-write path="src/component.tsx" description="A React component">
+import React from 'react';
+
+const Component = () => {
+  return <div>Hello World</div>;
+};
+
+export default Component;
+</dyad-write>
+After`;
+    const result = removeDyadTags(text);
+    expect(result).toBe("Before\n\nAfter");
+  });
+
+  it("should handle dyad tags with complex attributes", () => {
+    const text = `Text <dyad-write path="src/file.js" description="Complex component with quotes" version="1.0">const x = "hello world";</dyad-write> more text`;
+    const result = removeDyadTags(text);
+    expect(result).toBe("Text  more text");
+  });
+
+  it("should remove dyad tags and trim whitespace", () => {
+    const text = `  <dyad-write path="file.js">code</dyad-write>  `;
+    const result = removeDyadTags(text);
+    expect(result).toBe("");
+  });
+
+  it("should handle nested content that looks like tags", () => {
+    const text = `<dyad-write path="file.js">
+const html = '<div>Hello</div>';
+const component = <Component />;
+</dyad-write>`;
+    const result = removeDyadTags(text);
+    expect(result).toBe("");
+  });
+
+  it("should handle self-closing dyad tags", () => {
+    const text = `Before <dyad-delete path="file.js" /> After`;
+    const result = removeDyadTags(text);
+    expect(result).toBe('Before <dyad-delete path="file.js" /> After');
+  });
+
+  it("should handle malformed dyad tags gracefully", () => {
+    const text = `Before <dyad-write path="file.js">unclosed tag After`;
+    const result = removeDyadTags(text);
+    expect(result).toBe('Before <dyad-write path="file.js">unclosed tag After');
+  });
+
+  it("should handle dyad tags with special characters in content", () => {
+    const text = `<dyad-write path="file.js">
+const regex = /<div[^>]*>.*?<\/div>/g;
+const special = "Special chars: @#$%^&*()[]{}|\\";
+</dyad-write>`;
+    const result = removeDyadTags(text);
+    expect(result).toBe("");
+  });
+
+  it("should handle multiple dyad tags of the same type", () => {
+    const text = `<dyad-write path="file1.js">code1</dyad-write> between <dyad-write path="file2.js">code2</dyad-write>`;
+    const result = removeDyadTags(text);
+    expect(result).toBe("between");
+  });
+
+  it("should handle dyad tags with custom tag names", () => {
+    const text = `Before <dyad-custom-action param="value">content</dyad-custom-action> After`;
+    const result = removeDyadTags(text);
+    expect(result).toBe("Before  After");
   });
 });

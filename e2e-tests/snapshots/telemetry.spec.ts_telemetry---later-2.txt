@@ -11,5 +11,6 @@
   "lastShownReleaseNotesVersion": "[scrubbed]",
   "enableProLazyEditsMode": true,
   "enableProSmartFilesContextMode": true,
+  "selectedChatMode": "build",
   "isTestMode": true
 }

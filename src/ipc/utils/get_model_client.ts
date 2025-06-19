@@ -116,7 +116,10 @@ export async function getModelClient(
             baseURL: dyadEngineUrl ?? "https://engine.dyad.sh/v1",
             originalProviderId: model.provider,
             dyadOptions: {
-              enableLazyEdits: settings.enableProLazyEditsMode,
+              enableLazyEdits:
+                settings.selectedChatMode === "ask"
+                  ? false
+                  : settings.enableProLazyEditsMode,
               enableSmartFilesContext: settings.enableProSmartFilesContextMode,
             },
           })

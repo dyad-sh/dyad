@@ -19,6 +19,7 @@ import { TokenCountResult } from "../ipc_types";
 import { estimateTokens, getContextWindow } from "../utils/token_utils";
 import { createLoggedHandler } from "./safe_handle";
 import { validateChatContext } from "../utils/context_paths_utils";
+import { readSettings } from "@/main/settings";
 
 const logger = log.scope("token_count_handlers");
 
@@ -51,9 +52,11 @@ export function registerTokenCountHandlers() {
       // Count input tokens
       const inputTokens = estimateTokens(req.input);
 
+      const settings = readSettings();
       // Count system prompt tokens
       let systemPrompt = constructSystemPrompt({
         aiRules: await readAiRules(getDyadAppPath(chat.app.path)),
+        chatMode: settings.selectedChatMode,
       });
       let supabaseContext = "";
 

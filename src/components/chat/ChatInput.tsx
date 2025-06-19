@@ -272,23 +272,25 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           onDrop={handleDrop}
         >
           {/* Only render ChatInputActions if proposal is loaded */}
-          {proposal && proposalResult?.chatId === chatId && (
-            <ChatInputActions
-              proposal={proposal}
-              onApprove={handleApprove}
-              onReject={handleReject}
-              isApprovable={
-                !isProposalLoading &&
-                !!proposal &&
-                !!messageId &&
-                !isApproving &&
-                !isRejecting &&
-                !isStreaming
-              }
-              isApproving={isApproving}
-              isRejecting={isRejecting}
-            />
-          )}
+          {proposal &&
+            proposalResult?.chatId === chatId &&
+            settings.selectedChatMode !== "ask" && (
+              <ChatInputActions
+                proposal={proposal}
+                onApprove={handleApprove}
+                onReject={handleReject}
+                isApprovable={
+                  !isProposalLoading &&
+                  !!proposal &&
+                  !!messageId &&
+                  !isApproving &&
+                  !isRejecting &&
+                  !isStreaming
+                }
+                isApproving={isApproving}
+                isRejecting={isRejecting}
+              />
+            )}
 
           <SelectedComponentDisplay />
 

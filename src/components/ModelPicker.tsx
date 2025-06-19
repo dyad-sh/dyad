@@ -129,7 +129,7 @@ export function ModelPicker() {
             <Button
               variant="outline"
               size="sm"
-              className="flex items-center gap-2 h-8 max-w-[160px] px-2"
+              className="flex items-center gap-2 h-8 max-w-[130px] px-1.5 text-xs-sm"
             >
               <span className="truncate">
                 {modelDisplayName === "Auto" && (

@@ -293,3 +293,8 @@
 .animate-marquee {
   animation: marquee 2s linear infinite;
 }
+
+/* In-between text-xs and text-sm */
+.text-xs-sm {
+  font-size: 0.82rem;
+}

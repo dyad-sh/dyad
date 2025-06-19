@@ -253,6 +253,11 @@ export class PageObject {
     await this.page.getByRole("button", { name: "Import" }).click();
   }
 
+  async selectChatMode(mode: "build" | "ask") {
+    await this.page.getByTestId("chat-mode-selector").click();
+    await this.page.getByRole("option", { name: mode }).click();
+  }
+
   async openContextFilesPicker() {
     const contextButton = this.page.getByTestId("codebase-context-button");
     await contextButton.click();

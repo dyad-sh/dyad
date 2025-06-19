@@ -11,7 +11,7 @@ import log from "electron-log";
 import { getLanguageModelProviders } from "../shared/language_model_helpers";
 import { LanguageModelProvider } from "../ipc_types";
 import { createDyadEngine } from "./llm_engine_provider";
-import { findLanguageModel } from "./findLanguageModel";
+
 import { LM_STUDIO_BASE_URL } from "./lm_studio_utils";
 
 const dyadEngineUrl = process.env.DYAD_ENGINE_URL;
@@ -102,14 +102,9 @@ export async function getModelClient(
     // IMPORTANT: some providers like OpenAI have an empty string gateway prefix,
     // so we do a nullish and not a truthy check here.
     if (providerConfig.gatewayPrefix != null || dyadEngineUrl) {
-      const languageModel = await findLanguageModel(model);
-      const engineProMode =
+      const isEngineEnabled =
         settings.enableProSmartFilesContextMode ||
         settings.enableProLazyEditsMode;
-      // Currently engine is only used for turbo edits.
-      const isEngineEnabled = Boolean(
-        engineProMode && languageModel?.type === "cloud",
-      );
       const provider = isEngineEnabled
         ? createDyadEngine({
             apiKey: dyadApiKey,
@@ -146,7 +141,7 @@ export async function getModelClient(
       const autoModelClient = {
         model: provider(
           `${providerConfig.gatewayPrefix || ""}${modelName}`,
-          engineProMode
+          isEngineEnabled
             ? {
                 files,
               }

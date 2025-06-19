@@ -20,11 +20,11 @@ const dyadGatewayUrl = process.env.DYAD_GATEWAY_URL;
 const AUTO_MODELS = [
   {
     provider: "google",
-    name: "gemini-2.5-flash-preview-05-20",
+    name: "gemini-2.5-flash",
   },
   {
     provider: "anthropic",
-    name: "claude-3-7-sonnet-latest",
+    name: "claude-sonnet-4-20250514",
   },
   {
     provider: "openai",

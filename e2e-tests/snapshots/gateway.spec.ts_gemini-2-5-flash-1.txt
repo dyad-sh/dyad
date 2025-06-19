@@ -1,6 +1,6 @@
 {
   "body": {
-    "model": "gemini/gemini-2.5-flash-preview-05-20",
+    "model": "gemini/gemini-2.5-flash",
     "max_tokens": 65535,
     "temperature": 0,
     "thinking": {

@@ -25,7 +25,7 @@ import {
   getSupabaseClientCode,
 } from "../../supabase_admin/supabase_context";
 import { SUMMARIZE_CHAT_SYSTEM_PROMPT } from "../../prompts/summarize_chat_system_prompt";
-import * as fs from "fs";
+import fs from "node:fs";
 import * as path from "path";
 import * as os from "os";
 import * as crypto from "crypto";
@@ -38,6 +38,7 @@ import { GoogleGenerativeAIProviderOptions } from "@ai-sdk/google";
 import { getExtraProviderOptions } from "../utils/thinking_utils";
 
 import { safeSend } from "../utils/safe_sender";
+import { cleanFullResponse } from "../utils/cleanFullResponse";
 
 const logger = log.scope("chat_stream_handlers");
 
@@ -258,7 +259,6 @@ ${componentSnippet}
           abortController,
           updatedChat,
         );
-        fullResponse = cleanThinkingByEscapingDyadTags(fullResponse);
       } else {
         // Normal AI processing for non-test prompts
         const settings = readSettings();
@@ -515,6 +515,7 @@ This conversation includes one or more image attachments. When the user uploads 
             }
 
             fullResponse += chunk;
+            fullResponse = cleanFullResponse(fullResponse);
 
             if (
               fullResponse.includes("$$SUPABASE_CLIENT_CODE$$") &&
@@ -813,25 +814,6 @@ async function prepareMessageWithAttachments(
     role: "user",
     content: contentParts,
   };
-}
-
-function cleanThinkingByEscapingDyadTags(text: string): string {
-  // Extract content inside <think> </think> tags
-  const thinkRegex = /<think>([\s\S]*?)<\/think>/g;
-
-  return text.replace(thinkRegex, (match, content) => {
-    // We are replacing the opening tag with a look-alike character
-    // to avoid issues where thinking content includes dyad tags
-    // and are mishandled by:
-    // 1. FE markdown parser
-    // 2. Main process response processor
-    const processedContent = content
-      .replace(/<dyad/g, "＜dyad")
-      .replace(/<\/dyad/g, "＜/dyad");
-
-    // Return the modified think tag with processed content
-    return `<think>${processedContent}</think>`;
-  });
 }
 
 function removeThinkingTags(text: string): string {

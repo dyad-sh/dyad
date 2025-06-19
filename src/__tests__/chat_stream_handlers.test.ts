@@ -9,6 +9,7 @@ import {
 import fs from "node:fs";
 import git from "isomorphic-git";
 import { db } from "../db";
+import { cleanFullResponse } from "@/ipc/utils/cleanFullResponse";
 
 // Mock fs with default export
 vi.mock("node:fs", async () => {
@@ -135,6 +136,110 @@ console.log("TodoItem");
         description: "Creating a component for individual todo items",
         content: `import React from "react";
 console.log("TodoItem");`,
+      },
+    ]);
+  });
+
+  it("should handle missing description", () => {
+    const result = getDyadWriteTags(`
+      <dyad-write path="src/pages/locations/neighborhoods/louisville/Highlands.tsx">
+import React from 'react';
+</dyad-write>
+    `);
+    expect(result).toEqual([
+      {
+        path: "src/pages/locations/neighborhoods/louisville/Highlands.tsx",
+        description: undefined,
+        content: `import React from 'react';`,
+      },
+    ]);
+  });
+
+  it("should handle extra space", () => {
+    const result = getDyadWriteTags(
+      cleanFullResponse(`
+      <dyad-write path="src/pages/locations/neighborhoods/louisville/Highlands.tsx" description="Updating Highlands neighborhood page to use <a> tags." >
+import React from 'react';
+</dyad-write>
+    `),
+    );
+    expect(result).toEqual([
+      {
+        path: "src/pages/locations/neighborhoods/louisville/Highlands.tsx",
+        description: "Updating Highlands neighborhood page to use ＜a＞ tags.",
+        content: `import React from 'react';`,
+      },
+    ]);
+  });
+
+  it("should handle nested tags", () => {
+    const result = getDyadWriteTags(
+      cleanFullResponse(`
+      BEFORE TAG
+  <dyad-write path="src/pages/locations/neighborhoods/louisville/Highlands.tsx" description="Updating Highlands neighborhood page to use <a> tags.">
+import React from 'react';
+</dyad-write>
+AFTER TAG
+    `),
+    );
+    expect(result).toEqual([
+      {
+        path: "src/pages/locations/neighborhoods/louisville/Highlands.tsx",
+        description: "Updating Highlands neighborhood page to use ＜a＞ tags.",
+        content: `import React from 'react';`,
+      },
+    ]);
+  });
+
+  it("should handle nested tags after preprocessing", () => {
+    // Simulate the preprocessing step that cleanFullResponse would do
+    const inputWithNestedTags = `
+      BEFORE TAG
+  <dyad-write path="src/pages/locations/neighborhoods/louisville/Highlands.tsx" description="Updating Highlands neighborhood page to use <a> tags.">
+import React from 'react';
+</dyad-write>
+AFTER TAG
+    `;
+
+    const cleanedInput = cleanFullResponse(inputWithNestedTags);
+
+    const result = getDyadWriteTags(cleanedInput);
+    expect(result).toEqual([
+      {
+        path: "src/pages/locations/neighborhoods/louisville/Highlands.tsx",
+        description: "Updating Highlands neighborhood page to use ＜a＞ tags.",
+        content: `import React from 'react';`,
+      },
+    ]);
+  });
+
+  it("should handle multiple nested tags after preprocessing", () => {
+    const inputWithMultipleNestedTags = `<dyad-write path="src/file.tsx" description="Testing <div> and <span> and <a> tags.">content</dyad-write>`;
+
+    // This simulates what cleanFullResponse should do
+    const cleanedInput = cleanFullResponse(inputWithMultipleNestedTags);
+    const result = getDyadWriteTags(cleanedInput);
+    expect(result).toEqual([
+      {
+        path: "src/file.tsx",
+        description: "Testing ＜div＞ and ＜span＞ and ＜a＞ tags.",
+        content: `content`,
+      },
+    ]);
+  });
+
+  it("should handle nested tags in multiple attributes", () => {
+    const inputWithNestedInMultipleAttrs = `<dyad-write path="src/<component>.tsx" description="Testing <div> tags.">content</dyad-write>`;
+
+    // This simulates what cleanFullResponse should do
+    const cleanedInput = cleanFullResponse(inputWithNestedInMultipleAttrs);
+
+    const result = getDyadWriteTags(cleanedInput);
+    expect(result).toEqual([
+      {
+        path: "src/＜component＞.tsx",
+        description: "Testing ＜div＞ tags.",
+        content: `content`,
       },
     ]);
   });

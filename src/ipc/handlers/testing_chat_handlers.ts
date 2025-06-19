@@ -1,4 +1,5 @@
 import { safeSend } from "../utils/safe_sender";
+import { cleanFullResponse } from "../utils/cleanFullResponse";
 
 // e.g. [dyad-qa=add-dep]
 // Canned responses for test prompts
@@ -18,6 +19,12 @@ const TEST_RESPONSES: Record<string, string> = {
   <dyad-add-dependency packages="react-router-dom react-query"></dyad-add-dependency>
   
   EOM`,
+  "string-literal-leak": `BEFORE TAG
+  <dyad-write path="src/pages/locations/neighborhoods/louisville/Highlands.tsx" description="Updating Highlands neighborhood page to use <a> tags.">
+import React from 'react';
+</dyad-write>
+AFTER TAG
+`,
 };
 
 /**
@@ -64,6 +71,7 @@ export async function streamTestResponse(
 
     // Add the word plus a space
     fullResponse += chunk + " ";
+    fullResponse = cleanFullResponse(fullResponse);
 
     // Send the current accumulated response
     safeSend(event.sender, "chat:response:chunk", {

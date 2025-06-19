@@ -108,9 +108,7 @@ export async function getModelClient(
         settings.enableProLazyEditsMode;
       // Currently engine is only used for turbo edits.
       const isEngineEnabled = Boolean(
-        engineProMode &&
-          languageModel?.type === "cloud" &&
-          languageModel?.supportsTurboEdits,
+        engineProMode && languageModel?.type === "cloud",
       );
       const provider = isEngineEnabled
         ? createDyadEngine({

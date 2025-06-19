@@ -34,10 +34,9 @@ testSkipIfWindows(
   },
 );
 
-// auto (defaults to Gemini 2.5 Flash)
-testSkipIfWindows("auto should send message to gateway", async ({ po }) => {
+testSkipIfWindows("auto should send message to engine", async ({ po }) => {
   await po.setUpDyadPro();
-  await po.sendPrompt("[dump] tc=gateway-simple");
+  await po.sendPrompt("[dump] tc=turbo-edits");
 
   await po.snapshotServerDump("request");
   await po.snapshotMessages({ replaceDumpPath: true });

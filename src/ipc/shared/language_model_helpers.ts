@@ -17,7 +17,6 @@ export interface ModelOption {
   tag?: string;
   maxOutputTokens?: number;
   contextWindow?: number;
-  supportsTurboEdits?: boolean;
 }
 
 export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
@@ -29,7 +28,6 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       description: "OpenAI's flagship model",
       maxOutputTokens: 32_768,
       contextWindow: 1_047_576,
-      supportsTurboEdits: true,
     },
     // https://platform.openai.com/docs/models/gpt-4.1-mini
     {
@@ -69,7 +67,6 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       // See comment below for Claude 3.7 Sonnet for why we set this to 16k
       maxOutputTokens: 16_000,
       contextWindow: 200_000,
-      supportsTurboEdits: true,
     },
     {
       name: "claude-3-7-sonnet-latest",
@@ -81,7 +78,6 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       // https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking#max-tokens-and-context-window-size-with-extended-thinking
       maxOutputTokens: 16_000,
       contextWindow: 200_000,
-      supportsTurboEdits: true,
     },
     {
       name: "claude-3-5-sonnet-20241022",
@@ -89,7 +85,6 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       description: "Good coder, excellent at following instructions",
       maxOutputTokens: 8_000,
       contextWindow: 200_000,
-      supportsTurboEdits: true,
     },
     {
       name: "claude-3-5-haiku-20241022",
@@ -109,7 +104,6 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       maxOutputTokens: 65_536 - 1,
       // Gemini context window = input token + output token
       contextWindow: 1_048_576,
-      supportsTurboEdits: true,
     },
     // https://ai.google.dev/gemini-api/docs/models#gemini-2.5-flash-preview
     {

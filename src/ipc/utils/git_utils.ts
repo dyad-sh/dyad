@@ -9,6 +9,23 @@ import { readSettings } from "../../main/settings";
 
 const execAsync = promisify(exec);
 
+async function verboseExecAsync(
+  command: string,
+): Promise<{ stdout: string; stderr: string }> {
+  try {
+    return await execAsync(command);
+  } catch (error: any) {
+    let errorMessage = `Error: ${error.message}`;
+    if (error.stdout) {
+      errorMessage += `\nStdout: ${error.stdout}`;
+    }
+    if (error.stderr) {
+      errorMessage += `\nStderr: ${error.stderr}`;
+    }
+    throw new Error(errorMessage);
+  }
+}
+
 export async function gitCommit({
   path,
   message,
@@ -24,7 +41,8 @@ export async function gitCommit({
     if (amend) {
       command += " --amend";
     }
-    await execAsync(command);
+
+    await verboseExecAsync(command);
     const { stdout } = await execAsync(`git -C "${path}" rev-parse HEAD`);
     return stdout.trim();
   } else {

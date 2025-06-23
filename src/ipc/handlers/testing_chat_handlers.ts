@@ -19,6 +19,11 @@ const TEST_RESPONSES: Record<string, string> = {
   <dyad-add-dependency packages="react-router-dom react-query"></dyad-add-dependency>
   
   EOM`,
+  write: `Hello world
+  <dyad-write path="src/hello.ts" content="Hello world">
+  console.log("Hello world");
+  </dyad-write>
+  EOM`,
   "string-literal-leak": `BEFORE TAG
   <dyad-write path="src/pages/locations/neighborhoods/louisville/Highlands.tsx" description="Updating Highlands neighborhood page to use <a> tags.">
 import React from 'react';

@@ -37,6 +37,7 @@ export function HomeChatInput({
     handleDragLeave,
     handleDrop,
     clearAttachments,
+    handlePaste,
   } = useAttachments();
 
   const adjustHeight = () => {
@@ -103,6 +104,7 @@ export function HomeChatInput({
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyPress={handleKeyPress}
+              onPaste={handlePaste}
               placeholder="Ask Dyad to build..."
               className="flex-1 p-2 focus:outline-none overflow-y-auto min-h-[40px] max-h-[200px]"
               style={{ resize: "none" }}

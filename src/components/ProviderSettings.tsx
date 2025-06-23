@@ -17,11 +17,11 @@ import { AlertTriangle } from "lucide-react";
 import { useState } from "react";
 
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -143,22 +143,29 @@ export function ProviderSettingsGrid() {
                     className="absolute top-2 right-2"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <DropdownMenu>
-                      <DropdownMenuTrigger className="focus:outline-none">
-                        <div className="p-1 hover:bg-muted rounded-full">
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="p-1 hover:bg-muted rounded-full focus:outline-none"
+                          data-testid="custom-provider-more-options"
+                        >
                           <MoreVertical className="h-4 w-4 text-muted-foreground" />
-                        </div>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          className="text-destructive focus:text-destructive"
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent align="end" className="w-48 p-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="w-full justify-start text-destructive hover:text-destructive hover:bg-destructive/10"
                           onClick={() => setProviderToDelete(provider.id)}
                         >
                           <Trash2 className="h-4 w-4 mr-2" />
                           Delete Provider
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                        </Button>
+                      </PopoverContent>
+                    </Popover>
                   </div>
                 )}
               </Card>

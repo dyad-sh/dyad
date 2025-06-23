@@ -13,6 +13,8 @@ export function useAttachments() {
     if (e.target.files && e.target.files.length > 0) {
       const files = Array.from(e.target.files);
       setAttachments((attachments) => [...attachments, ...files]);
+      // Clear the input value so the same file can be selected again
+      e.target.value = "";
     }
   };
 

@@ -2,9 +2,3 @@
   - heading "Blank page" [level=1]
 - link "Made with Dyad":
   - /url: https://www.dyad.sh/
-- status:
-  - img
-  - text: Static route
-  - button "Hide static indicator":
-    - img
-- alert

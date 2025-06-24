@@ -286,6 +286,11 @@ export class PageObject {
   }
 
   async snapshotAppFiles({ name }: { name?: string } = {}) {
+    const currentAppName = await this.getCurrentAppName();
+    if (!currentAppName) {
+      throw new Error("No app selected");
+    }
+    const normalizedAppName = currentAppName.toLowerCase().replace(/-/g, "");
     const appPath = await this.getCurrentAppPath();
     if (!appPath || !fs.existsSync(appPath)) {
       throw new Error(`App path does not exist: ${appPath}`);
@@ -298,7 +303,14 @@ export class PageObject {
       filesData.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
 
       const snapshotContent = filesData
-        .map((file) => `=== ${file.relativePath} ===\n${file.content}`)
+        .map(
+          (file) =>
+            `=== ${file.relativePath.replace(normalizedAppName, "[[normalizedAppName]]")} ===\n${file.content
+              .split(normalizedAppName)
+              .join("[[normalizedAppName]]")
+              .split(currentAppName)
+              .join("[[appName]]")}`,
+        )
         .join("\n\n");
 
       if (name) {
@@ -643,7 +655,7 @@ export class PageObject {
 
   async expectNoAppUpgrades() {
     await expect(this.page.getByTestId("no-app-upgrades-needed")).toBeVisible({
-      timeout: Timeout.MEDIUM,
+      timeout: Timeout.LONG,
     });
   }
 

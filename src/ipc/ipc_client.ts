@@ -917,4 +917,21 @@ export class IpcClient {
   }): Promise<void> {
     return this.ipcRenderer.invoke("execute-app-upgrade", params);
   }
+
+  // Capacitor methods
+  public async isCapacitor(params: { appId: number }): Promise<boolean> {
+    return this.ipcRenderer.invoke("is-capacitor", params);
+  }
+
+  public async syncCapacitor(params: { appId: number }): Promise<void> {
+    return this.ipcRenderer.invoke("sync-capacitor", params);
+  }
+
+  public async openIos(params: { appId: number }): Promise<void> {
+    return this.ipcRenderer.invoke("open-ios", params);
+  }
+
+  public async openAndroid(params: { appId: number }): Promise<void> {
+    return this.ipcRenderer.invoke("open-android", params);
+  }
 }

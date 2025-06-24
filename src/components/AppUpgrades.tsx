@@ -39,8 +39,13 @@ export function AppUpgrades({ appId }: { appId: number | null }) {
         upgradeId,
       });
     },
-    onSuccess: () => {
+    onSuccess: (_, upgradeId) => {
       queryClient.invalidateQueries({ queryKey: ["app-upgrades", appId] });
+      if (upgradeId === "capacitor") {
+        // Capacitor upgrade is done, so we need to invalidate the Capacitor
+        // query to show the new status.
+        queryClient.invalidateQueries({ queryKey: ["is-capacitor", appId] });
+      }
     },
   });
 

@@ -285,7 +285,7 @@ export class PageObject {
     await expect(this.page.getByRole("dialog")).toMatchAriaSnapshot();
   }
 
-  async snapshotAppFiles({ name }: { name?: string } = {}) {
+  async snapshotAppFiles({ name }: { name: string }) {
     const currentAppName = await this.getCurrentAppName();
     if (!currentAppName) {
       throw new Error("No app selected");

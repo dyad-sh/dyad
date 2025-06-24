@@ -6,7 +6,10 @@ import {
   processFullResponseActions,
   getDyadAddDependencyTags,
 } from "../ipc/processors/response_processor";
-import { removeDyadTags } from "../ipc/handlers/chat_stream_handlers";
+import {
+  removeDyadTags,
+  hasUnclosedDyadWrite,
+} from "../ipc/handlers/chat_stream_handlers";
 import fs from "node:fs";
 import git from "isomorphic-git";
 import { db } from "../db";
@@ -1040,7 +1043,7 @@ const component = <Component />;
 
   it("should handle dyad tags with special characters in content", () => {
     const text = `<dyad-write path="file.js">
-const regex = /<div[^>]*>.*?<\/div>/g;
+const regex = /<div[^>]*>.*?</div>/g;
 const special = "Special chars: @#$%^&*()[]{}|\\";
 </dyad-write>`;
     const result = removeDyadTags(text);
@@ -1057,5 +1060,147 @@ const special = "Special chars: @#$%^&*()[]{}|\\";
     const text = `Before <dyad-custom-action param="value">content</dyad-custom-action> After`;
     const result = removeDyadTags(text);
     expect(result).toBe("Before  After");
+  });
+});
+
+describe("hasUnclosedDyadWrite", () => {
+  it("should return false when there are no dyad-write tags", () => {
+    const text = "This is just regular text without any dyad tags.";
+    const result = hasUnclosedDyadWrite(text);
+    expect(result).toBe(false);
+  });
+
+  it("should return false when dyad-write tag is properly closed", () => {
+    const text = `<dyad-write path="src/file.js">console.log('hello');</dyad-write>`;
+    const result = hasUnclosedDyadWrite(text);
+    expect(result).toBe(false);
+  });
+
+  it("should return true when dyad-write tag is not closed", () => {
+    const text = `<dyad-write path="src/file.js">console.log('hello');`;
+    const result = hasUnclosedDyadWrite(text);
+    expect(result).toBe(true);
+  });
+
+  it("should return false when dyad-write tag with attributes is properly closed", () => {
+    const text = `<dyad-write path="src/file.js" description="A test file">console.log('hello');</dyad-write>`;
+    const result = hasUnclosedDyadWrite(text);
+    expect(result).toBe(false);
+  });
+
+  it("should return true when dyad-write tag with attributes is not closed", () => {
+    const text = `<dyad-write path="src/file.js" description="A test file">console.log('hello');`;
+    const result = hasUnclosedDyadWrite(text);
+    expect(result).toBe(true);
+  });
+
+  it("should return false when there are multiple closed dyad-write tags", () => {
+    const text = `<dyad-write path="src/file1.js">code1</dyad-write>
+    Some text in between
+    <dyad-write path="src/file2.js">code2</dyad-write>`;
+    const result = hasUnclosedDyadWrite(text);
+    expect(result).toBe(false);
+  });
+
+  it("should return true when the last dyad-write tag is unclosed", () => {
+    const text = `<dyad-write path="src/file1.js">code1</dyad-write>
+    Some text in between
+    <dyad-write path="src/file2.js">code2`;
+    const result = hasUnclosedDyadWrite(text);
+    expect(result).toBe(true);
+  });
+
+  it("should return false when first tag is unclosed but last tag is closed", () => {
+    const text = `<dyad-write path="src/file1.js">code1
+    Some text in between
+    <dyad-write path="src/file2.js">code2</dyad-write>`;
+    const result = hasUnclosedDyadWrite(text);
+    expect(result).toBe(false);
+  });
+
+  it("should handle multiline content correctly", () => {
+    const text = `<dyad-write path="src/component.tsx" description="React component">
+import React from 'react';
+
+const Component = () => {
+  return (
+    <div>
+      <h1>Hello World</h1>
+    </div>
+  );
+};
+
+export default Component;
+</dyad-write>`;
+    const result = hasUnclosedDyadWrite(text);
+    expect(result).toBe(false);
+  });
+
+  it("should handle multiline unclosed content correctly", () => {
+    const text = `<dyad-write path="src/component.tsx" description="React component">
+import React from 'react';
+
+const Component = () => {
+  return (
+    <div>
+      <h1>Hello World</h1>
+    </div>
+  );
+};
+
+export default Component;`;
+    const result = hasUnclosedDyadWrite(text);
+    expect(result).toBe(true);
+  });
+
+  it("should handle complex attributes correctly", () => {
+    const text = `<dyad-write path="src/file.js" description="File with quotes and special chars" version="1.0" author="test">
+const message = "Hello 'world'";
+const regex = /<div[^>]*>/g;
+</dyad-write>`;
+    const result = hasUnclosedDyadWrite(text);
+    expect(result).toBe(false);
+  });
+
+  it("should handle text before and after dyad-write tags", () => {
+    const text = `Some text before the tag
+<dyad-write path="src/file.js">console.log('hello');</dyad-write>
+Some text after the tag`;
+    const result = hasUnclosedDyadWrite(text);
+    expect(result).toBe(false);
+  });
+
+  it("should handle unclosed tag with text after", () => {
+    const text = `Some text before the tag
+<dyad-write path="src/file.js">console.log('hello');
+Some text after the unclosed tag`;
+    const result = hasUnclosedDyadWrite(text);
+    expect(result).toBe(true);
+  });
+
+  it("should handle empty dyad-write tags", () => {
+    const text = `<dyad-write path="src/file.js"></dyad-write>`;
+    const result = hasUnclosedDyadWrite(text);
+    expect(result).toBe(false);
+  });
+
+  it("should handle unclosed empty dyad-write tags", () => {
+    const text = `<dyad-write path="src/file.js">`;
+    const result = hasUnclosedDyadWrite(text);
+    expect(result).toBe(true);
+  });
+
+  it("should focus on the last opening tag when there are mixed states", () => {
+    const text = `<dyad-write path="src/file1.js">completed content</dyad-write>
+    <dyad-write path="src/file2.js">unclosed content
+    <dyad-write path="src/file3.js">final content</dyad-write>`;
+    const result = hasUnclosedDyadWrite(text);
+    expect(result).toBe(false);
+  });
+
+  it("should handle tags with special characters in attributes", () => {
+    const text = `<dyad-write path="src/file-name_with.special@chars.js" description="File with special chars in path">content</dyad-write>`;
+    const result = hasUnclosedDyadWrite(text);
+    expect(result).toBe(false);
   });
 });

@@ -451,41 +451,86 @@ This conversation includes one or more image attachments. When the user uploads 
           ];
         }
 
-        // When calling streamText, the messages need to be properly formatted for mixed content
-        const { fullStream } = streamText({
-          maxTokens: await getMaxTokens(settings.selectedModel),
-          temperature: 0,
-          maxRetries: 2,
-          model: modelClient.model,
-          providerOptions: {
-            "dyad-gateway": getExtraProviderOptions(
-              modelClient.builtinProviderId,
-            ),
-            google: {
-              thinkingConfig: {
-                includeThoughts: true,
-              },
-            } satisfies GoogleGenerativeAIProviderOptions,
-          },
-          system: systemPrompt,
-          messages: chatMessages.filter((m) => m.content),
-          onError: (error: any) => {
-            logger.error("Error streaming text:", error);
-            let errorMessage = (error as any)?.error?.message;
-            const responseBody = error?.error?.responseBody;
-            if (errorMessage && responseBody) {
-              errorMessage += "\n\nDetails: " + responseBody;
-            }
-            const message = errorMessage || JSON.stringify(error);
-            event.sender.send(
-              "chat:response:error",
-              `Sorry, there was an error from the AI: ${message}`,
+        const simpleStreamText = async ({
+          chatMessages,
+        }: {
+          chatMessages: CoreMessage[];
+        }) => {
+          return streamText({
+            maxTokens: await getMaxTokens(settings.selectedModel),
+            temperature: 0,
+            maxRetries: 2,
+            model: modelClient.model,
+            providerOptions: {
+              "dyad-gateway": getExtraProviderOptions(
+                modelClient.builtinProviderId,
+              ),
+              google: {
+                thinkingConfig: {
+                  includeThoughts: true,
+                },
+              } satisfies GoogleGenerativeAIProviderOptions,
+            },
+            system: systemPrompt,
+            messages: chatMessages.filter((m) => m.content),
+            onError: (error: any) => {
+              logger.error("Error streaming text:", error);
+              let errorMessage = (error as any)?.error?.message;
+              const responseBody = error?.error?.responseBody;
+              if (errorMessage && responseBody) {
+                errorMessage += "\n\nDetails: " + responseBody;
+              }
+              const message = errorMessage || JSON.stringify(error);
+              event.sender.send(
+                "chat:response:error",
+                `Sorry, there was an error from the AI: ${message}`,
+              );
+              // Clean up the abort controller
+              activeStreams.delete(req.chatId);
+            },
+            abortSignal: abortController.signal,
+          });
+        };
+
+        const processResponseChunkUpdate = async ({
+          fullResponse,
+        }: {
+          fullResponse: string;
+        }) => {
+          if (
+            fullResponse.includes("$$SUPABASE_CLIENT_CODE$$") &&
+            updatedChat.app?.supabaseProjectId
+          ) {
+            const supabaseClientCode = await getSupabaseClientCode({
+              projectId: updatedChat.app?.supabaseProjectId,
+            });
+            fullResponse = fullResponse.replace(
+              "$$SUPABASE_CLIENT_CODE$$",
+              supabaseClientCode,
             );
-            // Clean up the abort controller
-            activeStreams.delete(req.chatId);
-          },
-          abortSignal: abortController.signal,
-        });
+          }
+          // Store the current partial response
+          partialResponses.set(req.chatId, fullResponse);
+
+          // Update the placeholder assistant message content in the messages array
+          const currentMessages = [...updatedChat.messages];
+          if (
+            currentMessages.length > 0 &&
+            currentMessages[currentMessages.length - 1].role === "assistant"
+          ) {
+            currentMessages[currentMessages.length - 1].content = fullResponse;
+          }
+
+          // Update the assistant message in the database
+          safeSend(event.sender, "chat:response:chunk", {
+            chatId: req.chatId,
+            messages: currentMessages,
+          });
+          return fullResponse;
+        };
+
+        // When calling streamText, the messages need to be properly formatted for mixed content
+        const { fullStream } = await simpleStreamText({ chatMessages });
 
         // Process the stream as before
         let inThinkingBlock = false;
@@ -520,42 +565,53 @@ This conversation includes one or more image attachments. When the user uploads 
 
             fullResponse += chunk;
             fullResponse = cleanFullResponse(fullResponse);
-
-            if (
-              fullResponse.includes("$$SUPABASE_CLIENT_CODE$$") &&
-              updatedChat.app?.supabaseProjectId
-            ) {
-              const supabaseClientCode = await getSupabaseClientCode({
-                projectId: updatedChat.app?.supabaseProjectId,
-              });
-              fullResponse = fullResponse.replace(
-                "$$SUPABASE_CLIENT_CODE$$",
-                supabaseClientCode,
-              );
-            }
-            // Store the current partial response
-            partialResponses.set(req.chatId, fullResponse);
-
-            // Update the placeholder assistant message content in the messages array
-            const currentMessages = [...updatedChat.messages];
-            if (
-              currentMessages.length > 0 &&
-              currentMessages[currentMessages.length - 1].role === "assistant"
-            ) {
-              currentMessages[currentMessages.length - 1].content =
-                fullResponse;
-            }
-
-            // Update the assistant message in the database
-            safeSend(event.sender, "chat:response:chunk", {
-              chatId: req.chatId,
-              messages: currentMessages,
+            fullResponse = await processResponseChunkUpdate({
+              fullResponse,
             });
 
             // If the stream was aborted, exit early
             if (abortController.signal.aborted) {
               logger.log(`Stream for chat ${req.chatId} was aborted`);
               break;
+            }
+          }
+
+          if (
+            !abortController.signal.aborted &&
+            settings.selectedChatMode !== "ask" &&
+            hasUnclosedDyadWrite(fullResponse)
+          ) {
+            let continuationAttempts = 0;
+            while (
+              hasUnclosedDyadWrite(fullResponse) &&
+              continuationAttempts < 2 &&
+              !abortController.signal.aborted
+            ) {
+              logger.warn(
+                `Received unclosed dyad-write tag, attempting to continue, attempt #${continuationAttempts + 1}`,
+              );
+              continuationAttempts++;
+
+              const { fullStream: contStream } = await simpleStreamText({
+                // Build messages: replay history then pre-fill assistant with current partial.
+                chatMessages: [
+                  ...chatMessages,
+                  { role: "assistant", content: fullResponse },
+                ],
+              });
+              for await (const part of contStream) {
+                // If the stream was aborted, exit early
+                if (abortController.signal.aborted) {
+                  logger.log(`Stream for chat ${req.chatId} was aborted`);
+                  break;
+                }
+                if (part.type !== "text-delta") continue; // ignore reasoning for continuation
+                fullResponse += part.textDelta;
+                fullResponse = cleanFullResponse(fullResponse);
+                fullResponse = await processResponseChunkUpdate({
+                  fullResponse,
+                });
+              }
             }
           }
         } catch (streamError) {
@@ -831,4 +887,26 @@ function removeThinkingTags(text: string): string {
 export function removeDyadTags(text: string): string {
   const dyadRegex = /<dyad-[^>]*>[\s\S]*?<\/dyad-[^>]*>/g;
   return text.replace(dyadRegex, "").trim();
+}
+
+export function hasUnclosedDyadWrite(text: string): boolean {
+  // Find the last opening dyad-write tag
+  const openRegex = /<dyad-write[^>]*>/g;
+  let lastOpenIndex = -1;
+  let match;
+
+  while ((match = openRegex.exec(text)) !== null) {
+    lastOpenIndex = match.index;
+  }
+
+  // If no opening tag found, there's nothing unclosed
+  if (lastOpenIndex === -1) {
+    return false;
+  }
+
+  // Look for a closing tag after the last opening tag
+  const textAfterLastOpen = text.substring(lastOpenIndex);
+  const hasClosingTag = /<\/dyad-write>/.test(textAfterLastOpen);
+
+  return !hasClosingTag;
 }

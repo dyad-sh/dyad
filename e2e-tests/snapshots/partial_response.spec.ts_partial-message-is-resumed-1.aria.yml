@@ -1,0 +1,21 @@
+- paragraph: /Generate an AI_RULES\.md file for this app\. Describe the tech stack in 5-\d+ bullet points and describe clear rules about what libraries to use for what\./
+- img
+- text: file1.txt
+- img
+- text: file1.txt
+- paragraph: More EOM
+- img
+- text: Approved
+- paragraph: tc=partial-write
+- paragraph: START OF MESSAGE
+- img
+- text: new-file.ts
+- img
+- text: "src/new-file.ts Summary: this file will be partially written"
+- paragraph: "[[dyad-dump-path=*]]"
+- img
+- text: Approved
+- button "Undo":
+  - img
+- button "Retry":
+  - img

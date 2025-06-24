@@ -64,35 +64,7 @@ export default Index;
           )
         : lastMessage.content.includes("[dump]"))
     ) {
-      const timestamp = Date.now();
-      const generatedDir = path.join(__dirname, "generated");
-
-      // Create generated directory if it doesn't exist
-      if (!fs.existsSync(generatedDir)) {
-        fs.mkdirSync(generatedDir, { recursive: true });
-      }
-
-      const dumpFilePath = path.join(generatedDir, `${timestamp}.json`);
-
-      try {
-        fs.writeFileSync(
-          dumpFilePath,
-          JSON.stringify(
-            {
-              body: req.body,
-              headers: { authorization: req.headers["authorization"] },
-            },
-            null,
-            2,
-          ).replace(/\r\n/g, "\n"),
-          "utf-8",
-        );
-        console.log(`* Dumped messages to: ${dumpFilePath}`);
-        messageContent = `[[dyad-dump-path=${dumpFilePath}]]`;
-      } catch (error) {
-        console.error(`* Error writing dump file: ${error}`);
-        messageContent = `Error: Could not write dump file: ${error}`;
-      }
+      messageContent = generateDump(req);
     }
 
     if (lastMessage && lastMessage.content === "[increment]") {
@@ -131,6 +103,16 @@ export default Index;
         console.error(`* Error reading test case file: ${error}`);
         messageContent = `Error: Could not read test case file: ${testCaseName}.md`;
       }
+    }
+
+    if (
+      lastMessage &&
+      lastMessage.content &&
+      typeof lastMessage.content === "string" &&
+      lastMessage.content.trim().endsWith("[[STRING_TO_BE_FINISHED]]")
+    ) {
+      messageContent = `[[STRING_IS_FINISHED]]";</dyad-write>\nFinished writing file.`;
+      messageContent += "\n\n" + generateDump(req);
     }
 
     // Non-streaming response
@@ -183,3 +165,35 @@ export default Index;
       }
     }, 10);
   };
+
+function generateDump(req: Request) {
+  const timestamp = Date.now();
+  const generatedDir = path.join(__dirname, "generated");
+
+  // Create generated directory if it doesn't exist
+  if (!fs.existsSync(generatedDir)) {
+    fs.mkdirSync(generatedDir, { recursive: true });
+  }
+
+  const dumpFilePath = path.join(generatedDir, `${timestamp}.json`);
+
+  try {
+    fs.writeFileSync(
+      dumpFilePath,
+      JSON.stringify(
+        {
+          body: req.body,
+          headers: { authorization: req.headers["authorization"] },
+        },
+        null,
+        2,
+      ).replace(/\r\n/g, "\n"),
+      "utf-8",
+    );
+    console.log(`* Dumped messages to: ${dumpFilePath}`);
+    return `[[dyad-dump-path=${dumpFilePath}]]`;
+  } catch (error) {
+    console.error(`* Error writing dump file: ${error}`);
+    return `Error: Could not write dump file: ${error}`;
+  }
+}

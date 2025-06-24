@@ -649,8 +649,22 @@ export class PageObject {
     await this.page.getByRole("button", { name: "Open in Chat" }).click();
   }
 
+  locateAppUpgradeButton({ upgradeId }: { upgradeId: string }) {
+    return this.page.getByTestId(`app-upgrade-${upgradeId}`);
+  }
+
   async clickAppUpgradeButton({ upgradeId }: { upgradeId: string }) {
-    await this.page.getByTestId(`app-upgrade-${upgradeId}`).click();
+    await this.locateAppUpgradeButton({ upgradeId }).click();
+  }
+
+  async expectAppUpgradeButtonIsNotVisible({
+    upgradeId,
+  }: {
+    upgradeId: string;
+  }) {
+    await expect(this.locateAppUpgradeButton({ upgradeId })).toBeHidden({
+      timeout: Timeout.MEDIUM,
+    });
   }
 
   async expectNoAppUpgrades() {

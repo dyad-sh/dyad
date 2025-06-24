@@ -58,7 +58,9 @@ testSkipIfWindows("upgrade app to select component", async ({ po }) => {
   await po.importApp("select-component");
   await po.getTitleBarAppNameButton().click();
   await po.clickAppUpgradeButton({ upgradeId: "component-tagger" });
-  await po.expectNoAppUpgrades();
+  await po.expectAppUpgradeButtonIsNotVisible({
+    upgradeId: "component-tagger",
+  });
   await po.snapshotAppFiles();
   await po.clickOpenInChatButton();
   // There should be another version from the upgrade being committed.

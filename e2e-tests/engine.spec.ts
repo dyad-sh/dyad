@@ -34,10 +34,29 @@ testSkipIfWindows(
   },
 );
 
-testSkipIfWindows("auto should send message to engine", async ({ po }) => {
-  await po.setUpDyadPro();
-  await po.sendPrompt("[dump] tc=turbo-edits");
+testSkipIfWindows(
+  "smart auto should send message to engine",
+  async ({ po }) => {
+    await po.setUpDyadPro();
+    await po.sendPrompt("[dump] tc=turbo-edits");
 
-  await po.snapshotServerDump("request");
-  await po.snapshotMessages({ replaceDumpPath: true });
-});
+    await po.snapshotServerDump("request");
+    await po.snapshotMessages({ replaceDumpPath: true });
+  },
+);
+
+testSkipIfWindows(
+  "regular auto should send message to engine",
+  async ({ po }) => {
+    await po.setUpDyadPro();
+    const proModesDialog = await po.openProModesDialog({
+      location: "home-chat-input-container",
+    });
+    await proModesDialog.toggleSmartContext();
+    await proModesDialog.close();
+    await po.sendPrompt("[dump] tc=turbo-edits");
+
+    await po.snapshotServerDump("request");
+    await po.snapshotMessages({ replaceDumpPath: true });
+  },
+);

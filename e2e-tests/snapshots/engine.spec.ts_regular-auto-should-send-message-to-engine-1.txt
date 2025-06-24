@@ -1,7 +1,7 @@
 {
   "body": {
-    "model": "gemini/gemini-2.5-flash",
-    "max_tokens": 8000,
+    "model": "dyad/auto",
+    "max_tokens": 32000,
     "temperature": 0,
     "messages": [
       {
@@ -367,7 +367,7 @@
         }
       ],
       "enable_lazy_edits": true,
-      "enable_smart_files_context": true
+      "enable_smart_files_context": false
     }
   },
   "headers": {

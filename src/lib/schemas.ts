@@ -168,6 +168,13 @@ export const UserSettingsSchema = z.object({
  */
 export type UserSettings = z.infer<typeof UserSettingsSchema>;
 
+export function isDyadProEnabled(settings: UserSettings): boolean {
+  return (
+    settings.enableDyadPro === true &&
+    !!settings.providerSettings?.auto?.apiKey?.value
+  );
+}
+
 // Define interfaces for the props
 export interface SecurityRisk {
   type: "warning" | "danger";

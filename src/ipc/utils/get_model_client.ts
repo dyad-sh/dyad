@@ -54,39 +54,6 @@ export async function getModelClient(
   const allProviders = await getLanguageModelProviders();
 
   const dyadApiKey = settings.providerSettings?.auto?.apiKey?.value;
-  // Handle 'auto' provider by trying each model in AUTO_MODELS until one works
-  if (model.provider === "auto") {
-    for (const autoModel of AUTO_MODELS) {
-      const providerInfo = allProviders.find(
-        (p) => p.id === autoModel.provider,
-      );
-      const envVarName = providerInfo?.envVarName;
-
-      const apiKey =
-        dyadApiKey ||
-        settings.providerSettings?.[autoModel.provider]?.apiKey?.value ||
-        (envVarName ? getEnvVar(envVarName) : undefined);
-
-      if (apiKey) {
-        logger.log(
-          `Using provider: ${autoModel.provider} model: ${autoModel.name}`,
-        );
-        // Recursively call with the specific model found
-        return await getModelClient(
-          {
-            provider: autoModel.provider,
-            name: autoModel.name,
-          },
-          settings,
-          files,
-        );
-      }
-    }
-    // If no models have API keys, throw an error
-    throw new Error(
-      "No API keys available for any model supported by the 'auto' provider.",
-    );
-  }
 
   // --- Handle specific provider ---
   const providerConfig = allProviders.find((p) => p.id === model.provider);
@@ -160,6 +127,38 @@ export async function getModelClient(
       );
       // Fall through to regular provider logic if gateway prefix is missing
     }
+  }
+  // Handle 'auto' provider by trying each model in AUTO_MODELS until one works
+  if (model.provider === "auto") {
+    for (const autoModel of AUTO_MODELS) {
+      const providerInfo = allProviders.find(
+        (p) => p.id === autoModel.provider,
+      );
+      const envVarName = providerInfo?.envVarName;
+
+      const apiKey =
+        settings.providerSettings?.[autoModel.provider]?.apiKey?.value ||
+        (envVarName ? getEnvVar(envVarName) : undefined);
+
+      if (apiKey) {
+        logger.log(
+          `Using provider: ${autoModel.provider} model: ${autoModel.name}`,
+        );
+        // Recursively call with the specific model found
+        return await getModelClient(
+          {
+            provider: autoModel.provider,
+            name: autoModel.name,
+          },
+          settings,
+          files,
+        );
+      }
+    }
+    // If no models have API keys, throw an error
+    throw new Error(
+      "No API keys available for any model supported by the 'auto' provider.",
+    );
   }
   return getRegularModelClient(model, settings, providerConfig);
 }

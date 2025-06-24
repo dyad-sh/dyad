@@ -8,6 +8,7 @@ import { eq } from "drizzle-orm";
 
 export const PROVIDERS_THAT_SUPPORT_THINKING: (keyof typeof MODEL_OPTIONS)[] = [
   "google",
+  "auto",
 ];
 
 export interface ModelOption {
@@ -139,6 +140,11 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       displayName: "Auto",
       description: "Automatically selects the best model",
       tag: "Default",
+      // These are below Gemini 2.5 Pro & Flash limits
+      // which are the ones defaulted to for both regular auto
+      // and smart auto.
+      maxOutputTokens: 32_000,
+      contextWindow: 1_000_000,
     },
   ],
 };
@@ -186,7 +192,7 @@ export const CLOUD_PROVIDERS: Record<
   auto: {
     displayName: "Dyad",
     websiteUrl: "https://academy.dyad.sh/settings",
-    gatewayPrefix: "",
+    gatewayPrefix: "dyad/",
   },
 };
 

@@ -305,30 +305,55 @@ export async function processFullResponseActions(
       }
     }
 
-    // Process all file writes
-    for (const tag of dyadWriteTags) {
-      const filePath = tag.path;
-      const content = tag.content;
+    //////////////////////
+    // File operations //
+    // Do it in this order:
+    // 1. Deletes
+    // 2. Renames
+    // 3. Writes
+    //
+    // Why?
+    // - Deleting first avoids path conflicts before the other operations.
+    // - LLMs like to rename and then edit the same file.
+    //////////////////////
+
+    // Process all file deletions
+    for (const filePath of dyadDeletePaths) {
       const fullFilePath = path.join(appPath, filePath);
 
-      // Ensure directory exists
-      const dirPath = path.dirname(fullFilePath);
-      fs.mkdirSync(dirPath, { recursive: true });
+      // Delete the file if it exists
+      if (fs.existsSync(fullFilePath)) {
+        if (fs.lstatSync(fullFilePath).isDirectory()) {
+          fs.rmdirSync(fullFilePath, { recursive: true });
+        } else {
+          fs.unlinkSync(fullFilePath);
+        }
+        logger.log(`Successfully deleted file: ${fullFilePath}`);
+        deletedFiles.push(filePath);
 
-      // Write file content
-      fs.writeFileSync(fullFilePath, content);
-      logger.log(`Successfully wrote file: ${fullFilePath}`);
-      writtenFiles.push(filePath);
+        // Remove the file from git
+        try {
+          await git.remove({
+            fs,
+            dir: appPath,
+            filepath: filePath,
+          });
+        } catch (error) {
+          logger.warn(`Failed to git remove deleted file ${filePath}:`, error);
+          // Continue even if remove fails as the file was still deleted
+        }
+      } else {
+        logger.warn(`File to delete does not exist: ${fullFilePath}`);
+      }
       if (isServerFunction(filePath)) {
         try {
-          await deploySupabaseFunctions({
+          await deleteSupabaseFunction({
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
-            functionName: path.basename(path.dirname(filePath)),
-            content: content,
+            functionName: getFunctionNameFromPath(filePath),
           });
         } catch (error) {
           errors.push({
-            message: `Failed to deploy Supabase function: ${filePath}`,
+            message: `Failed to delete Supabase function: ${filePath}`,
             error: error,
           });
         }
@@ -398,43 +423,30 @@ export async function processFullResponseActions(
       }
     }
 
-    // Process all file deletions
-    for (const filePath of dyadDeletePaths) {
+    // Process all file writes
+    for (const tag of dyadWriteTags) {
+      const filePath = tag.path;
+      const content = tag.content;
       const fullFilePath = path.join(appPath, filePath);
 
-      // Delete the file if it exists
-      if (fs.existsSync(fullFilePath)) {
-        if (fs.lstatSync(fullFilePath).isDirectory()) {
-          fs.rmdirSync(fullFilePath, { recursive: true });
-        } else {
-          fs.unlinkSync(fullFilePath);
-        }
-        logger.log(`Successfully deleted file: ${fullFilePath}`);
-        deletedFiles.push(filePath);
+      // Ensure directory exists
+      const dirPath = path.dirname(fullFilePath);
+      fs.mkdirSync(dirPath, { recursive: true });
 
-        // Remove the file from git
-        try {
-          await git.remove({
-            fs,
-            dir: appPath,
-            filepath: filePath,
-          });
-        } catch (error) {
-          logger.warn(`Failed to git remove deleted file ${filePath}:`, error);
-          // Continue even if remove fails as the file was still deleted
-        }
-      } else {
-        logger.warn(`File to delete does not exist: ${fullFilePath}`);
-      }
+      // Write file content
+      fs.writeFileSync(fullFilePath, content);
+      logger.log(`Successfully wrote file: ${fullFilePath}`);
+      writtenFiles.push(filePath);
       if (isServerFunction(filePath)) {
         try {
-          await deleteSupabaseFunction({
+          await deploySupabaseFunctions({
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
-            functionName: getFunctionNameFromPath(filePath),
+            functionName: path.basename(path.dirname(filePath)),
+            content: content,
           });
         } catch (error) {
           errors.push({
-            message: `Failed to delete Supabase function: ${filePath}`,
+            message: `Failed to deploy Supabase function: ${filePath}`,
             error: error,
           });
         }

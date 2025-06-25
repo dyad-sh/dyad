@@ -5,6 +5,7 @@ import fs from "node:fs";
 import { getDyadAppPath } from "../../paths/paths";
 import path from "node:path";
 import git from "isomorphic-git";
+import { safeJoin } from "../utils/path_utils";
 
 import log from "electron-log";
 import { executeAddDependency } from "./executeAddDependency";
@@ -296,11 +297,11 @@ export async function processFullResponseActions(
       }
       writtenFiles.push("package.json");
       const pnpmFilename = "pnpm-lock.yaml";
-      if (fs.existsSync(path.join(appPath, pnpmFilename))) {
+      if (fs.existsSync(safeJoin(appPath, pnpmFilename))) {
         writtenFiles.push(pnpmFilename);
       }
       const packageLockFilename = "package-lock.json";
-      if (fs.existsSync(path.join(appPath, packageLockFilename))) {
+      if (fs.existsSync(safeJoin(appPath, packageLockFilename))) {
         writtenFiles.push(packageLockFilename);
       }
     }
@@ -319,7 +320,7 @@ export async function processFullResponseActions(
 
     // Process all file deletions
     for (const filePath of dyadDeletePaths) {
-      const fullFilePath = path.join(appPath, filePath);
+      const fullFilePath = safeJoin(appPath, filePath);
 
       // Delete the file if it exists
       if (fs.existsSync(fullFilePath)) {
@@ -362,8 +363,8 @@ export async function processFullResponseActions(
 
     // Process all file renames
     for (const tag of dyadRenameTags) {
-      const fromPath = path.join(appPath, tag.from);
-      const toPath = path.join(appPath, tag.to);
+      const fromPath = safeJoin(appPath, tag.from);
+      const toPath = safeJoin(appPath, tag.to);
 
       // Ensure target directory exists
       const dirPath = path.dirname(toPath);
@@ -427,7 +428,7 @@ export async function processFullResponseActions(
     for (const tag of dyadWriteTags) {
       const filePath = tag.path;
       const content = tag.content;
-      const fullFilePath = path.join(appPath, filePath);
+      const fullFilePath = safeJoin(appPath, filePath);
 
       // Ensure directory exists
       const dirPath = path.dirname(fullFilePath);

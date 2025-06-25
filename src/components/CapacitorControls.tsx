@@ -209,7 +209,7 @@ export function CapacitorControls({ appId }: CapacitorControlsProps) {
 
           {errorDetails && (
             <div className="relative">
-              <div className="max-h-[50vh] w-full rounded border p-4 bg-gray-50 dark:bg-gray-900 overflow-y-auto">
+              <div className="max-h-[50vh] w-full max-w-md rounded border p-4 bg-gray-50 dark:bg-gray-900 overflow-y-auto">
                 <pre className="text-xs whitespace-pre-wrap font-mono">
                   {errorDetails.message}
                 </pre>

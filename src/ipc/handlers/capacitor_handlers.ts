@@ -66,6 +66,10 @@ export function registerCapacitorHandlers() {
         cwd: appPath,
         successMessage: "Capacitor sync completed successfully",
         errorPrefix: "Failed to sync Capacitor",
+        env: {
+          ...process.env,
+          LANG: "en_US.UTF-8",
+        },
       });
     },
   );

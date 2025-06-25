@@ -8,11 +8,13 @@ export async function simpleSpawn({
   cwd,
   successMessage,
   errorPrefix,
+  env,
 }: {
   command: string;
   cwd: string;
   successMessage: string;
   errorPrefix: string;
+  env?: Record<string, string>;
 }): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     logger.info(`Running: ${command}`);
@@ -20,6 +22,7 @@ export async function simpleSpawn({
       cwd,
       shell: true,
       stdio: "pipe",
+      env,
     });
 
     let stdout = "";

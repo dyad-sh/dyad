@@ -446,7 +446,7 @@ This conversation includes one or more image attachments. When the user uploads 
               role: "user",
               content:
                 "Summarize the following chat: " +
-                formatMessages(previousChat?.messages ?? []),
+                formatMessagesForSummary(previousChat?.messages ?? []),
             } satisfies CoreMessage,
           ];
         }
@@ -775,10 +775,31 @@ This conversation includes one or more image attachments. When the user uploads 
   });
 }
 
-export function formatMessages(
+export function formatMessagesForSummary(
   messages: { role: string; content: string | undefined }[],
 ) {
-  return messages
+  if (messages.length <= 8) {
+    // If we have 8 or fewer messages, include all of them
+    return messages
+      .map((m) => `<message role="${m.role}">${m.content}</message>`)
+      .join("\n");
+  }
+
+  // Take first 2 messages and last 6 messages
+  const firstMessages = messages.slice(0, 2);
+  const lastMessages = messages.slice(-6);
+
+  // Combine them with an indicator of skipped messages
+  const combinedMessages = [
+    ...firstMessages,
+    {
+      role: "system",
+      content: `[... ${messages.length - 8} messages omitted ...]`,
+    },
+    ...lastMessages,
+  ];
+
+  return combinedMessages
     .map((m) => `<message role="${m.role}">${m.content}</message>`)
     .join("\n");
 }

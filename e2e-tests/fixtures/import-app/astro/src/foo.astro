@@ -1,0 +1,41 @@
+---
+// Component script (runs at build time)
+const greeting = "Hello World";
+const currentTime = new Date().toLocaleString();
+---
+
+<div class="hello-world">
+  <h1>{greeting}</h1>
+  <p>Welcome to Astro!</p>
+  <p class="timestamp">Generated at: {currentTime}</p>
+</div>
+
+<style>
+  .hello-world {
+    padding: 2rem;
+    text-align: center;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 8px;
+    max-width: 500px;
+    margin: 2rem auto;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  }
+
+  h1 {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+    font-weight: bold;
+  }
+
+  p {
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .timestamp {
+    font-size: 0.9rem;
+    opacity: 0.8;
+    font-style: italic;
+  }
+</style>

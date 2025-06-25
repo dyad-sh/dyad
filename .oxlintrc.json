@@ -1,4 +1,5 @@
 {
+  "ignorePatterns": ["e2e-tests/fixtures/**/*"],
   "rules": {
     "eslint/no-unused-vars": "error",
     "eslint/no-empty-pattern": "off"

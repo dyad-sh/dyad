@@ -23,6 +23,12 @@ const ALLOWED_EXTENSIONS = [
   ".css",
   ".html",
   ".md",
+  ".astro",
+  ".vue",
+  ".svelte",
+  ".scss",
+  ".sass",
+  ".less",
 ];
 
 // Directories to always exclude

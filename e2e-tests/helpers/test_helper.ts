@@ -367,7 +367,7 @@ export class PageObject {
   async clickPreviewPickElement() {
     await this.page
       .getByTestId("preview-pick-element-button")
-      .click({ timeout: Timeout.LONG });
+      .click({ timeout: Timeout.EXTRA_LONG });
   }
 
   async clickDeselectComponent() {

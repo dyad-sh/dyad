@@ -29,6 +29,14 @@ const ALLOWED_EXTENSIONS = [
   ".scss",
   ".sass",
   ".less",
+  // Needed for Capacitor projects
+  ".xml",
+  ".plist",
+  ".entitlements",
+  ".kt",
+  ".java",
+  ".gradle",
+  ".swift",
 ];
 
 // Directories to always exclude

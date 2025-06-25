@@ -464,6 +464,7 @@ This conversation includes one or more image attachments. When the user uploads 
             providerOptions: {
               "dyad-gateway": getExtraProviderOptions(
                 modelClient.builtinProviderId,
+                settings,
               ),
               google: {
                 thinkingConfig: {

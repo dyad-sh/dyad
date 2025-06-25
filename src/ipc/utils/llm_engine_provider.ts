@@ -12,6 +12,7 @@ import {
 import { OpenAICompatibleChatSettings } from "@ai-sdk/openai-compatible";
 import log from "electron-log";
 import { getExtraProviderOptions } from "./thinking_utils";
+import type { UserSettings } from "../../lib/schemas";
 
 const logger = log.scope("llm_engine_provider");
 
@@ -48,6 +49,7 @@ or to provide a custom fetch implementation for e.g. testing.
     enableLazyEdits?: boolean;
     enableSmartFilesContext?: boolean;
   };
+  settings: UserSettings;
 }
 
 export interface DyadEngineProvider {
@@ -125,7 +127,10 @@ export function createDyadEngine(
           // Parse the request body to manipulate it
           const parsedBody = {
             ...JSON.parse(init.body),
-            ...getExtraProviderOptions(options.originalProviderId),
+            ...getExtraProviderOptions(
+              options.originalProviderId,
+              options.settings,
+            ),
           };
 
           // Add files to the request if they exist

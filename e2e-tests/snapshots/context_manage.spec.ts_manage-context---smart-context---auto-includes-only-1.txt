@@ -16,7 +16,8 @@
     "stream": true,
     "thinking": {
       "type": "enabled",
-      "include_thoughts": true
+      "include_thoughts": true,
+      "budget_tokens": 4000
     },
     "dyad_options": {
       "files": [

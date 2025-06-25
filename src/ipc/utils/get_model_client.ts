@@ -84,6 +84,7 @@ export async function getModelClient(
                   : settings.enableProLazyEditsMode,
               enableSmartFilesContext: settings.enableProSmartFilesContextMode,
             },
+            settings,
           })
         : createOpenAICompatible({
             name: "dyad-gateway",

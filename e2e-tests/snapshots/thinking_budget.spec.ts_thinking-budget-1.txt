@@ -1,0 +1,25 @@
+{
+  "selectedModel": {
+    "name": "gemini-2.5-pro",
+    "provider": "google"
+  },
+  "providerSettings": {
+    "auto": {
+      "apiKey": {
+        "value": "testdyadkey",
+        "encryptionType": "plaintext"
+      }
+    }
+  },
+  "telemetryConsent": "unset",
+  "telemetryUserId": "[UUID]",
+  "hasRunBefore": true,
+  "enableDyadPro": true,
+  "experiments": {},
+  "lastShownReleaseNotesVersion": "[scrubbed]",
+  "thinkingBudget": "low",
+  "enableProLazyEditsMode": true,
+  "enableProSmartFilesContextMode": true,
+  "selectedChatMode": "build",
+  "isTestMode": true
+}

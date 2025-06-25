@@ -7,6 +7,7 @@ import { showSuccess, showError } from "@/lib/toast";
 import { AutoApproveSwitch } from "@/components/AutoApproveSwitch";
 import { TelemetrySwitch } from "@/components/TelemetrySwitch";
 import { MaxChatTurnsSelector } from "@/components/MaxChatTurnsSelector";
+import { ThinkingBudgetSelector } from "@/components/ThinkingBudgetSelector";
 import { useSettings } from "@/hooks/useSettings";
 import { useAppVersion } from "@/hooks/useAppVersion";
 import { Button } from "@/components/ui/button";
@@ -136,6 +137,10 @@ export default function SettingsPage() {
                 </a>
                 .
               </div>
+            </div>
+
+            <div className="mt-4">
+              <ThinkingBudgetSelector />
             </div>
 
             <div className="mt-4">

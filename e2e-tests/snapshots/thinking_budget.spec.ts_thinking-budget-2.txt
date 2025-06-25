@@ -10,14 +10,22 @@
       },
       {
         "role": "user",
-        "content": "[dump] tc=turbo-edits"
+        "content": "tc=1"
+      },
+      {
+        "role": "assistant",
+        "content": "Error: Test case file not found: 1.md"
+      },
+      {
+        "role": "user",
+        "content": "[dump] hi"
       }
     ],
     "stream": true,
     "thinking": {
       "type": "enabled",
       "include_thoughts": true,
-      "budget_tokens": 4000
+      "budget_tokens": 1000
     },
     "dyad_options": {
       "files": [

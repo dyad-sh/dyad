@@ -709,6 +709,17 @@ export class IpcClient {
 
   // --- End Supabase Management ---
 
+  // --- Neon Management ---
+  public async disconnectNeon(): Promise<void> {
+    await this.ipcRenderer.invoke("neon:disconnect");
+  }
+
+  public async fakeHandleNeonConnect(): Promise<void> {
+    await this.ipcRenderer.invoke("neon:fake-connect");
+  }
+
+  // --- End Neon Management ---
+
   public async getSystemDebugInfo(): Promise<SystemDebugInfo> {
     return this.ipcRenderer.invoke("get-system-debug-info");
   }

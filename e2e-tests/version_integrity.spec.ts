@@ -34,10 +34,12 @@ const runVersionIntegrityTest = async (po: PageObject, nativeGit: boolean) => {
 
   // Open version pane
   await po.page.getByRole("button", { name: "Version 3" }).click();
-  await po.page.getByText("Init Dyad app Undo").click();
+  await po.page.getByText("Init Dyad app Restore").click();
   await po.snapshotAppFiles({ name: "v1" });
 
-  await po.page.getByRole("button", { name: "Undo to latest version" }).click();
+  await po.page
+    .getByRole("button", { name: "Restore to this version" })
+    .click();
   // Should be same as the previous snapshot, but just to be sure.
   await po.snapshotAppFiles({ name: "v1" });
 };

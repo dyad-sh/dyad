@@ -8,6 +8,11 @@ import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
 import { useCheckoutVersion } from "@/hooks/useCheckoutVersion";
 import { useLoadApp } from "@/hooks/useLoadApp";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface VersionPaneProps {
   isVisible: boolean;
@@ -153,25 +158,30 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                     </p>
                   )}
 
-                  <button
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      setSelectedVersionId(null);
-                      await revertVersion({
-                        versionId: version.oid,
-                      });
-                      // Close the pane after revert to force a refresh on next open
-                      onClose();
-                    }}
-                    className={cn(
-                      "invisible mt-1 flex items-center gap-1 px-2 py-0.5 text-sm font-medium bg-(--primary) text-(--primary-foreground) hover:bg-background-lightest rounded-md transition-colors",
-                      selectedVersionId === version.oid && "visible",
-                    )}
-                    aria-label="Undo to latest version"
-                  >
-                    <RotateCcw size={12} />
-                    <span>Undo</span>
-                  </button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          setSelectedVersionId(null);
+                          await revertVersion({
+                            versionId: version.oid,
+                          });
+                          // Close the pane after revert to force a refresh on next open
+                          onClose();
+                        }}
+                        className={cn(
+                          "invisible mt-1 flex items-center gap-1 px-2 py-0.5 text-sm font-medium bg-(--primary) text-(--primary-foreground) hover:bg-background-lightest rounded-md transition-colors",
+                          selectedVersionId === version.oid && "visible",
+                        )}
+                        aria-label="Restore to this version"
+                      >
+                        <RotateCcw size={12} />
+                        <span>Restore</span>
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Restore to this version</TooltipContent>
+                  </Tooltip>
                 </div>
               </div>
             ))}

@@ -11,10 +11,12 @@ const runSwitchVersionTest = async (po: PageObject, nativeGit: boolean) => {
     await po.page.getByRole("button", { name: "Version" }).textContent(),
   ).toBe("Version 2");
   await po.page.getByRole("button", { name: "Version" }).click();
-  await po.page.getByText("Init Dyad app Undo").click();
+  await po.page.getByText("Init Dyad app Restore").click();
   await po.snapshotPreview({ name: `v1` });
 
-  await po.page.getByRole("button", { name: "Undo to latest version" }).click();
+  await po.page
+    .getByRole("button", { name: "Restore to this version" })
+    .click();
   // Should be same as the previous snapshot, but just to be sure.
   await po.snapshotPreview({ name: `v1` });
 

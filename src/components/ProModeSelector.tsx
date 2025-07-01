@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Sparkles, Info } from "lucide-react";
 import { useSettings } from "@/hooks/useSettings";
 import { IpcClient } from "@/ipc/ipc_client";
+import { hasDyadProKey } from "@/lib/schemas";
 
 export function ProModeSelector() {
   const { settings, updateSettings } = useSettings();
@@ -30,7 +31,14 @@ export function ProModeSelector() {
     });
   };
 
-  const proEnabled = Boolean(settings?.enableDyadPro);
+  const toggleProEnabled = () => {
+    updateSettings({
+      enableDyadPro: !settings?.enableDyadPro,
+    });
+  };
+
+  const hasProKey = settings ? hasDyadProKey(settings) : false;
+  const proModeTogglable = hasProKey && Boolean(settings?.enableDyadPro);
 
   return (
     <Popover>
@@ -58,7 +66,7 @@ export function ProModeSelector() {
             </h4>
             <div className="h-px bg-gradient-to-r from-primary/50 via-primary/20 to-transparent" />
           </div>
-          {!proEnabled && (
+          {!hasProKey && (
             <div className="text-sm text-center text-muted-foreground">
               <a
                 className="inline-flex items-center justify-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -72,24 +80,35 @@ export function ProModeSelector() {
               </a>
             </div>
           )}
-          <SelectorRow
-            id="lazy-edits"
-            label="Turbo Edits"
-            description="Makes editing files faster and cheaper."
-            tooltip="Uses a faster, cheaper model to generate full file updates."
-            proEnabled={proEnabled}
-            settingEnabled={Boolean(settings?.enableProLazyEditsMode)}
-            toggle={toggleLazyEdits}
-          />
-          <SelectorRow
-            id="smart-context"
-            label="Smart Context"
-            description="Automatically detects the most relevant files for your chat"
-            tooltip="Improve efficiency and save credits working on large codebases."
-            proEnabled={proEnabled}
-            settingEnabled={Boolean(settings?.enableProSmartFilesContextMode)}
-            toggle={toggleSmartContext}
-          />
+          <div className="flex flex-col gap-5">
+            <SelectorRow
+              id="pro-enabled"
+              label="Enable Dyad Pro"
+              description="Use Dyad Pro AI credits"
+              tooltip="Uses Dyad Pro AI credits for the main AI model and Pro modes."
+              isTogglable={hasProKey}
+              settingEnabled={Boolean(settings?.enableDyadPro)}
+              toggle={toggleProEnabled}
+            />
+            <SelectorRow
+              id="lazy-edits"
+              label="Turbo Edits"
+              description="Makes file edits faster and cheaper"
+              tooltip="Uses a faster, cheaper model to generate full file updates."
+              isTogglable={proModeTogglable}
+              settingEnabled={Boolean(settings?.enableProLazyEditsMode)}
+              toggle={toggleLazyEdits}
+            />
+            <SelectorRow
+              id="smart-context"
+              label="Smart Context"
+              description="Optimizes your AI's code context"
+              tooltip="Improve efficiency and save credits working on large codebases."
+              isTogglable={proModeTogglable}
+              settingEnabled={Boolean(settings?.enableProSmartFilesContextMode)}
+              toggle={toggleSmartContext}
+            />
+          </div>
         </div>
       </PopoverContent>
     </Popover>
@@ -101,7 +120,7 @@ function SelectorRow({
   label,
   description,
   tooltip,
-  proEnabled,
+  isTogglable,
   settingEnabled,
   toggle,
 }: {
@@ -109,16 +128,16 @@ function SelectorRow({
   label: string;
   description: string;
   tooltip: string;
-  proEnabled: boolean;
+  isTogglable: boolean;
   settingEnabled: boolean;
   toggle: () => void;
 }) {
   return (
     <div className="flex items-center justify-between">
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         <Label
           htmlFor={id}
-          className={!proEnabled ? "text-muted-foreground/50" : ""}
+          className={!isTogglable ? "text-muted-foreground/50" : ""}
         >
           {label}
         </Label>
@@ -126,7 +145,7 @@ function SelectorRow({
           <Tooltip>
             <TooltipTrigger asChild>
               <Info
-                className={`h-4 w-4 cursor-help ${!proEnabled ? "text-muted-foreground/50" : "text-muted-foreground"}`}
+                className={`h-4 w-4 cursor-help ${!isTogglable ? "text-muted-foreground/50" : "text-muted-foreground"}`}
               />
             </TooltipTrigger>
             <TooltipContent side="right" className="max-w-72">
@@ -134,7 +153,7 @@ function SelectorRow({
             </TooltipContent>
           </Tooltip>
           <p
-            className={`text-xs ${!proEnabled ? "text-muted-foreground/50" : "text-muted-foreground"} max-w-55`}
+            className={`text-xs ${!isTogglable ? "text-muted-foreground/50" : "text-muted-foreground"} max-w-55`}
           >
             {description}
           </p>
@@ -142,9 +161,9 @@ function SelectorRow({
       </div>
       <Switch
         id={id}
-        checked={proEnabled ? settingEnabled : false}
+        checked={isTogglable ? settingEnabled : false}
         onCheckedChange={toggle}
-        disabled={!proEnabled}
+        disabled={!isTogglable}
       />
     </div>
   );

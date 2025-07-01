@@ -29,6 +29,9 @@ const ALLOWED_EXTENSIONS = [
   ".scss",
   ".sass",
   ".less",
+  // GitHub Actions
+  ".yml",
+  ".yaml",
   // Needed for Capacitor projects
   ".xml",
   ".plist",
@@ -42,8 +45,23 @@ const ALLOWED_EXTENSIONS = [
 // Directories to always exclude
 const EXCLUDED_DIRS = ["node_modules", ".git", "dist", "build"];
 
+// Files to always exclude
+const EXCLUDED_FILES = ["pnpm-lock.yaml", "package-lock.json"];
+
 // Files to always include, regardless of extension
 const ALWAYS_INCLUDE_FILES = ["package.json"];
+
+// File patterns to omit (contents will be replaced with a placeholder)
+//
+// Why are we not using path.join here?
+// Because we have already normalized the path to use /.
+const OMITTED_FILES = [
+  "src/components/ui",
+  "eslint.config",
+  "tsconfig.json",
+
+  ".env",
+];
 
 // Maximum file size to include (in bytes) - 100KB
 const MAX_FILE_SIZE = 100 * 1024;
@@ -242,6 +260,11 @@ async function collectFiles(dir: string, baseDir: string): Promise<string[]> {
         const subDirFiles = await collectFiles(fullPath, baseDir);
         files.push(...subDirFiles);
       } else if (entry.isFile()) {
+        // Skip excluded files
+        if (EXCLUDED_FILES.includes(entry.name)) {
+          return;
+        }
+
         // Check file extension and filename
         const ext = path.extname(entry.name).toLowerCase();
         const shouldAlwaysInclude = ALWAYS_INCLUDE_FILES.includes(entry.name);
@@ -273,17 +296,7 @@ async function collectFiles(dir: string, baseDir: string): Promise<string[]> {
 
 // Skip large configuration files or generated code (just include the path)
 function isOmittedFile(relativePath: string): boolean {
-  return (
-    // Why are we not using path.join here?
-    // Because we have already normalized the path to use /.
-    relativePath.includes("src/components/ui") ||
-    relativePath.includes("eslint.config") ||
-    relativePath.includes("tsconfig.json") ||
-    relativePath.includes("package-lock.json") ||
-    // These should already be excluded based on file type, but
-    // just in case, we'll redact the contents here.
-    relativePath.includes(".env")
-  );
+  return OMITTED_FILES.some((pattern) => relativePath.includes(pattern));
 }
 
 const OMITTED_FILE_CONTENT = "// Contents omitted for brevity";

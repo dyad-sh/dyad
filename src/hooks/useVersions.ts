@@ -60,6 +60,9 @@ export function useVersions(appId: number | null) {
           const chat = await IpcClient.getInstance().getChat(selectedChatId);
           setMessages(chat.messages);
         }
+        await queryClient.invalidateQueries({
+          queryKey: ["problems", appId],
+        });
       },
       meta: { showErrorToast: true },
     },

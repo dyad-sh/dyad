@@ -40,6 +40,7 @@ import { Worker } from "worker_threads";
 import { createFromTemplate } from "./createFromTemplate";
 import { gitCommit } from "../utils/git_utils";
 import { safeSend } from "../utils/safe_sender";
+import { normalizePath } from "../processors/normalizePath";
 
 async function copyDir(
   source: string,
@@ -345,6 +346,9 @@ export function registerAppHandlers() {
 
     try {
       files = getFilesRecursively(appPath, appPath);
+      // Normalize the path to use forward slashes so file tree (UI)
+      // can parse it more consistently across platforms.
+      files = files.map((path) => normalizePath(path));
     } catch (error) {
       logger.error(`Error reading files for app ${appId}:`, error);
       // Return app even if files couldn't be read

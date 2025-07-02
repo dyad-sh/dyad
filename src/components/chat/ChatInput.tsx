@@ -316,7 +316,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               placeholder="Ask Dyad to build..."
               className="flex-1 p-2 focus:outline-none overflow-y-auto min-h-[40px] max-h-[200px]"
               style={{ resize: "none" }}
-              disabled={isStreaming}
             />
 
             {isStreaming ? (
@@ -348,7 +347,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                     <Button
                       variant="ghost"
                       onClick={handleAttachmentClick}
-                      disabled={isStreaming}
                       title="Attach files"
                       size="sm"
                     >

@@ -1,0 +1,29 @@
+- paragraph: tc=create-ts-errors-complex
+- paragraph: Tests delete-rename-write order
+- img
+- text: main.tsx Delete src/main.tsx
+- img
+- text: "App.tsx → main.tsx Rename From: src/App.tsx To: src/main.tsx"
+- img
+- text: main.tsx
+- img
+- text: "src/main.tsx Summary: final main.tsx file."
+- paragraph: EOM
+- img
+- text: Auto-fix1 problems
+- img
+- img
+- text: bad-file.ts
+- img
+- text: "src/bad-file.ts Summary: Fix remaining error."
+- paragraph: "[[dyad-dump-path=*]]"
+- img
+- text: Auto-fix1 problems
+- img
+- img
+- text: bad-file.ts
+- img
+- text: "src/bad-file.ts Summary: Fix remaining error."
+- paragraph: "[[dyad-dump-path=*]]"
+- button "Retry":
+  - img

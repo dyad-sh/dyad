@@ -1,0 +1,10 @@
+- img
+- text: 1 error
+- button "Recheck":
+  - img
+- button "Fix All":
+  - img
+- img
+- img
+- text: src/bad-file.tsx 2:1
+- paragraph: Cannot find name 'nonExistentFunction'.

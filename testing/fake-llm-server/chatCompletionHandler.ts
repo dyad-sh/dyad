@@ -25,6 +25,55 @@ export const createChatCompletionHandler =
 
     let messageContent = CANNED_MESSAGE;
 
+    // TS auto-fix prefixes
+    if (
+      lastMessage &&
+      typeof lastMessage.content === "string" &&
+      lastMessage.content.startsWith(
+        "Fix these 2 TypeScript compile-time error",
+      )
+    ) {
+      // Fix errors in create-ts-errors.md and introduce a new error
+      messageContent = `
+<dyad-write path="src/bad-file.ts" description="Fix 2 errors and introduce a new error.">
+// Import doesn't exist
+// import NonExistentClass from 'non-existent-class';
+
+
+const x = new Object();
+x.nonExistentMethod2();
+</dyad-write>
+
+      `;
+    }
+    if (
+      lastMessage &&
+      typeof lastMessage.content === "string" &&
+      lastMessage.content.startsWith(
+        "Fix these 1 TypeScript compile-time error",
+      )
+    ) {
+      // Fix errors in create-ts-errors.md and introduce a new error
+      messageContent = `
+<dyad-write path="src/bad-file.ts" description="Fix remaining error.">
+// Import doesn't exist
+// import NonExistentClass from 'non-existent-class';
+
+
+const x = new Object();
+x.toString(); // replaced with existing method
+</dyad-write>
+
+      `;
+    }
+
+    if (
+      lastMessage &&
+      typeof lastMessage.content === "string" &&
+      lastMessage.content.includes("TypeScript compile-time error")
+    ) {
+      messageContent += "\n\n" + generateDump(req);
+    }
     if (
       lastMessage &&
       typeof lastMessage.content === "string" &&

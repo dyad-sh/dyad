@@ -1,0 +1,47 @@
+- paragraph: tc=create-unfixable-ts-errors
+- paragraph: This should not get fixed
+- img
+- text: bad-file.ts
+- img
+- text: "src/bad-file.ts Summary: This will produce 5 TypeScript errors."
+- paragraph: EOM
+- img
+- text: Auto-fix5 problems
+- img
+- img
+- text: file1.txt
+- img
+- text: file1.txt
+- paragraph: More EOM
+- paragraph: "[[dyad-dump-path=*]]"
+- img
+- text: Auto-fix5 problems
+- img
+- text: "1"
+- img
+- text: /src\/bad-file\.ts 1:\d+ TS2307/
+- paragraph: Cannot find module 'non-existent-class' or its corresponding type declarations.
+- text: "2"
+- img
+- text: /src\/bad-file\.ts 2:\d+ TS2307/
+- paragraph: Cannot find module 'non-existent-class' or its corresponding type declarations.
+- text: "3"
+- img
+- text: /src\/bad-file\.ts 3:\d+ TS2307/
+- paragraph: Cannot find module 'non-existent-class' or its corresponding type declarations.
+- text: "4"
+- img
+- text: /src\/bad-file\.ts 4:\d+ TS2307/
+- paragraph: Cannot find module 'non-existent-class' or its corresponding type declarations.
+- text: "5"
+- img
+- text: /src\/bad-file\.ts 5:\d+ TS2307/
+- paragraph: Cannot find module 'non-existent-class' or its corresponding type declarations.
+- img
+- text: file1.txt
+- img
+- text: file1.txt
+- paragraph: More EOM
+- paragraph: "[[dyad-dump-path=*]]"
+- button "Retry":
+  - img

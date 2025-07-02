@@ -22,6 +22,7 @@ import { registerProHandlers } from "./handlers/pro_handlers";
 import { registerContextPathsHandlers } from "./handlers/context_paths_handlers";
 import { registerAppUpgradeHandlers } from "./handlers/app_upgrade_handlers";
 import { registerCapacitorHandlers } from "./handlers/capacitor_handlers";
+import { registerProblemsHandlers } from "./handlers/problems_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -33,6 +34,7 @@ export function registerIpcHandlers() {
   registerDependencyHandlers();
   registerGithubHandlers();
   registerNodeHandlers();
+  registerProblemsHandlers();
   registerProposalHandlers();
   registerDebugHandlers();
   registerSupabaseHandlers();

@@ -21,6 +21,7 @@ import { useRunApp } from "./useRunApp";
 import { useCountTokens } from "./useCountTokens";
 import { useUserBudgetInfo } from "./useUserBudgetInfo";
 import { usePostHog } from "posthog-js/react";
+import { useCheckProblems } from "./useCheckProblems";
 
 export function getRandomNumberId() {
   return Math.floor(Math.random() * 1_000_000_000_000_000);
@@ -41,6 +42,7 @@ export function useStreamChat({
   const { refreshAppIframe } = useRunApp();
   const { countTokens } = useCountTokens();
   const { refetchUserBudget } = useUserBudgetInfo();
+  const { checkProblems } = useCheckProblems(selectedAppId);
   const posthog = usePostHog();
   let chatId: number | undefined;
 
@@ -73,6 +75,7 @@ export function useStreamChat({
 
       setError(null);
       setIsStreaming(true);
+
       let hasIncrementedStreamCount = false;
       try {
         IpcClient.getInstance().streamMessage(prompt, {
@@ -92,6 +95,7 @@ export function useStreamChat({
             if (response.updatedFiles) {
               setIsPreviewOpen(true);
               refreshAppIframe();
+              checkProblems();
             }
             if (response.extraFiles) {
               showExtraFilesToast({
@@ -129,7 +133,14 @@ export function useStreamChat({
         setError(error instanceof Error ? error.message : String(error));
       }
     },
-    [setMessages, setIsStreaming, setIsPreviewOpen, refetchUserBudget],
+    [
+      setMessages,
+      setIsStreaming,
+      setIsPreviewOpen,
+      checkProblems,
+      selectedAppId,
+      refetchUserBudget,
+    ],
   );
 
   return {

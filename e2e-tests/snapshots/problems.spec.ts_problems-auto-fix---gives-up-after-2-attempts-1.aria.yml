@@ -1,0 +1,23 @@
+- img
+- text: Auto-fix5 problems
+- img
+- text: "1"
+- img
+- text: /src\/bad-file\.ts 1:\d+ TS2307/
+- paragraph: Cannot find module 'non-existent-class' or its corresponding type declarations.
+- text: "2"
+- img
+- text: /src\/bad-file\.ts 2:\d+ TS2307/
+- paragraph: Cannot find module 'non-existent-class' or its corresponding type declarations.
+- text: "3"
+- img
+- text: /src\/bad-file\.ts 3:\d+ TS2307/
+- paragraph: Cannot find module 'non-existent-class' or its corresponding type declarations.
+- text: "4"
+- img
+- text: /src\/bad-file\.ts 4:\d+ TS2307/
+- paragraph: Cannot find module 'non-existent-class' or its corresponding type declarations.
+- text: "5"
+- img
+- text: /src\/bad-file\.ts 5:\d+ TS2307/
+- paragraph: Cannot find module 'non-existent-class' or its corresponding type declarations.

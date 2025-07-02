@@ -81,10 +81,7 @@ testSkipIfWindows("upgrade app to select component", async ({ po }) => {
 testSkipIfWindows("select component next.js", async ({ po }) => {
   await po.setUp();
 
-  // Select Next.js template
-  await po.goToHubTab();
-  await po.selectTemplate("Next.js Template");
-  await po.goToAppsTab();
+  await po.selectHubTemplate("Next.js Template");
 
   await po.sendPrompt("tc=basic");
   await po.clickTogglePreviewPanel();

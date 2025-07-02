@@ -1,5 +1,12 @@
 import { ipcMain } from "electron";
-import { CoreMessage, TextPart, ImagePart, streamText } from "ai";
+import {
+  CoreMessage,
+  TextPart,
+  ImagePart,
+  streamText,
+  ToolSet,
+  TextStreamPart,
+} from "ai";
 import { db } from "../../db";
 import { chats, messages } from "../../db/schema";
 import { and, eq, isNull } from "drizzle-orm";
@@ -14,11 +21,11 @@ import {
 import { getDyadAppPath } from "../../paths/paths";
 import { readSettings } from "../../main/settings";
 import type { ChatResponseEnd, ChatStreamParams } from "../ipc_types";
-import { extractCodebase } from "../../utils/codebase";
+import { extractCodebase, readFileWithCache } from "../../utils/codebase";
 import { processFullResponseActions } from "../processors/response_processor";
 import { streamTestResponse } from "./testing_chat_handlers";
 import { getTestResponse } from "./testing_chat_handlers";
-import { getModelClient } from "../utils/get_model_client";
+import { getModelClient, ModelClient } from "../utils/get_model_client";
 import log from "electron-log";
 import {
   getSupabaseContext,
@@ -39,6 +46,12 @@ import { getExtraProviderOptions } from "../utils/thinking_utils";
 
 import { safeSend } from "../utils/safe_sender";
 import { cleanFullResponse } from "../utils/cleanFullResponse";
+import { generateProblemReport } from "../processors/tsc";
+import { createProblemFixPrompt } from "@/shared/problem_prompt";
+import { AsyncVirtualFileSystem } from "@/utils/VirtualFilesystem";
+import { fileExists } from "../utils/file_utils";
+
+type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
 const logger = log.scope("chat_stream_handlers");
 
@@ -68,9 +81,74 @@ async function isTextFile(filePath: string): Promise<boolean> {
   return TEXT_FILE_EXTENSIONS.includes(ext);
 }
 
+function escapeXml(unsafe: string): string {
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 // Ensure the temp directory exists
 if (!fs.existsSync(TEMP_DIR)) {
   fs.mkdirSync(TEMP_DIR, { recursive: true });
+}
+
+// Helper function to process stream chunks
+async function processStreamChunks({
+  fullStream,
+  fullResponse,
+  abortController,
+  chatId,
+  processResponseChunkUpdate,
+}: {
+  fullStream: AsyncIterableStream<TextStreamPart<ToolSet>>;
+  fullResponse: string;
+  abortController: AbortController;
+  chatId: number;
+  processResponseChunkUpdate: (params: {
+    fullResponse: string;
+  }) => Promise<string>;
+}): Promise<{ fullResponse: string; incrementalResponse: string }> {
+  let incrementalResponse = "";
+  let inThinkingBlock = false;
+
+  for await (const part of fullStream) {
+    let chunk = "";
+    if (part.type === "text-delta") {
+      if (inThinkingBlock) {
+        chunk = "</think>";
+        inThinkingBlock = false;
+      }
+      chunk += part.textDelta;
+    } else if (part.type === "reasoning") {
+      if (!inThinkingBlock) {
+        chunk = "<think>";
+        inThinkingBlock = true;
+      }
+
+      chunk += escapeDyadTags(part.textDelta);
+    }
+
+    if (!chunk) {
+      continue;
+    }
+
+    fullResponse += chunk;
+    incrementalResponse += chunk;
+    fullResponse = cleanFullResponse(fullResponse);
+    fullResponse = await processResponseChunkUpdate({
+      fullResponse,
+    });
+
+    // If the stream was aborted, exit early
+    if (abortController.signal.aborted) {
+      logger.log(`Stream for chat ${chatId} was aborted`);
+      break;
+    }
+  }
+
+  return { fullResponse, incrementalResponse };
 }
 
 export function registerChatStreamHandlers() {
@@ -263,32 +341,24 @@ ${componentSnippet}
         // Normal AI processing for non-test prompts
         const settings = readSettings();
 
-        // Extract codebase information if app is associated with the chat
-        let codebaseInfo = "";
-        let files: { path: string; content: string }[] = [];
-        if (updatedChat.app) {
-          const appPath = getDyadAppPath(updatedChat.app.path);
-          try {
-            const out = await extractCodebase({
-              appPath,
-              chatContext: req.selectedComponent
-                ? {
-                    contextPaths: [
-                      {
-                        globPath: req.selectedComponent.relativePath,
-                      },
-                    ],
-                    smartContextAutoIncludes: [],
-                  }
-                : validateChatContext(updatedChat.app.chatContext),
-            });
-            codebaseInfo = out.formattedOutput;
-            files = out.files;
-            logger.log(`Extracted codebase information from ${appPath}`);
-          } catch (error) {
-            logger.error("Error extracting codebase:", error);
-          }
-        }
+        const appPath = getDyadAppPath(updatedChat.app.path);
+        const chatContext = req.selectedComponent
+          ? {
+              contextPaths: [
+                {
+                  globPath: req.selectedComponent.relativePath,
+                },
+              ],
+              smartContextAutoIncludes: [],
+            }
+          : validateChatContext(updatedChat.app.chatContext);
+
+        const { formattedOutput: codebaseInfo, files } = await extractCodebase({
+          appPath,
+          chatContext,
+        });
+
+        logger.log(`Extracted codebase information from ${appPath}`);
         logger.log(
           "codebaseInfo: length",
           codebaseInfo.length,
@@ -396,7 +466,7 @@ This conversation includes one or more image attachments. When the user uploads 
           : ([
               {
                 role: "user",
-                content: "This is my codebase. " + codebaseInfo,
+                content: createCodebasePrompt(codebaseInfo),
               },
               {
                 role: "assistant",
@@ -413,8 +483,8 @@ This conversation includes one or more image attachments. When the user uploads 
             // and eats up extra tokens.
             content:
               settings.selectedChatMode === "ask"
-                ? removeDyadTags(removeThinkingTags(msg.content))
-                : removeThinkingTags(msg.content),
+                ? removeDyadTags(removeNonEssentialTags(msg.content))
+                : removeNonEssentialTags(msg.content),
           })),
         ];
 
@@ -453,8 +523,10 @@ This conversation includes one or more image attachments. When the user uploads 
 
         const simpleStreamText = async ({
           chatMessages,
+          modelClient,
         }: {
           chatMessages: CoreMessage[];
+          modelClient: ModelClient;
         }) => {
           return streamText({
             maxTokens: await getMaxTokens(settings.selectedModel),
@@ -531,51 +603,21 @@ This conversation includes one or more image attachments. When the user uploads 
         };
 
         // When calling streamText, the messages need to be properly formatted for mixed content
-        const { fullStream } = await simpleStreamText({ chatMessages });
+        const { fullStream } = await simpleStreamText({
+          chatMessages,
+          modelClient,
+        });
 
         // Process the stream as before
-        let inThinkingBlock = false;
         try {
-          for await (const part of fullStream) {
-            let chunk = "";
-            if (part.type === "text-delta") {
-              if (inThinkingBlock) {
-                chunk = "</think>";
-                inThinkingBlock = false;
-              }
-              chunk += part.textDelta;
-            } else if (part.type === "reasoning") {
-              if (!inThinkingBlock) {
-                chunk = "<think>";
-                inThinkingBlock = true;
-              }
-              // Escape dyad tags in reasoning content
-              // We are replacing the opening tag with a look-alike character
-              // to avoid issues where thinking content includes dyad tags
-              // and are mishandled by:
-              // 1. FE markdown parser
-              // 2. Main process response processor
-              chunk += part.textDelta
-                .replace(/<dyad/g, "＜dyad")
-                .replace(/<\/dyad/g, "＜/dyad");
-            }
-
-            if (!chunk) {
-              continue;
-            }
-
-            fullResponse += chunk;
-            fullResponse = cleanFullResponse(fullResponse);
-            fullResponse = await processResponseChunkUpdate({
-              fullResponse,
-            });
-
-            // If the stream was aborted, exit early
-            if (abortController.signal.aborted) {
-              logger.log(`Stream for chat ${req.chatId} was aborted`);
-              break;
-            }
-          }
+          const result = await processStreamChunks({
+            fullStream,
+            fullResponse,
+            abortController,
+            chatId: req.chatId,
+            processResponseChunkUpdate,
+          });
+          fullResponse = result.fullResponse;
 
           if (
             !abortController.signal.aborted &&
@@ -599,6 +641,7 @@ This conversation includes one or more image attachments. When the user uploads 
                   ...chatMessages,
                   { role: "assistant", content: fullResponse },
                 ],
+                modelClient,
               });
               for await (const part of contStream) {
                 // If the stream was aborted, exit early
@@ -613,6 +656,117 @@ This conversation includes one or more image attachments. When the user uploads 
                   fullResponse,
                 });
               }
+            }
+          }
+          if (
+            !abortController.signal.aborted &&
+            settings.enableAutoFixProblems &&
+            settings.selectedChatMode !== "ask"
+          ) {
+            try {
+              // IF auto-fix is enabled
+              let problemReport = await generateProblemReport({
+                fullResponse,
+                appPath: getDyadAppPath(updatedChat.app.path),
+              });
+
+              let autoFixAttempts = 0;
+              const originalFullResponse = fullResponse;
+              const previousAttempts: CoreMessage[] = [];
+              while (
+                problemReport.problems.length > 0 &&
+                autoFixAttempts < 2 &&
+                !abortController.signal.aborted
+              ) {
+                fullResponse += `<dyad-problem-report summary="${problemReport.problems.length} problems">
+${problemReport.problems
+  .map(
+    (problem) =>
+      `<problem file="${escapeXml(problem.file)}" line="${problem.line}" column="${problem.column}" code="${problem.code}">${escapeXml(problem.message)}</problem>`,
+  )
+  .join("\n")}
+</dyad-problem-report>`;
+
+                logger.info(
+                  `Attempting to auto-fix problems, attempt #${autoFixAttempts + 1}`,
+                );
+                autoFixAttempts++;
+                const problemFixPrompt = createProblemFixPrompt(problemReport);
+
+                const virtualFileSystem = new AsyncVirtualFileSystem(
+                  getDyadAppPath(updatedChat.app.path),
+                  {
+                    fileExists: (fileName: string) => fileExists(fileName),
+                    readFile: (fileName: string) => readFileWithCache(fileName),
+                  },
+                );
+                virtualFileSystem.applyResponseChanges(fullResponse);
+
+                const { formattedOutput: codebaseInfo, files } =
+                  await extractCodebase({
+                    appPath,
+                    chatContext,
+                    virtualFileSystem,
+                  });
+                const { modelClient } = await getModelClient(
+                  settings.selectedModel,
+                  settings,
+                  files,
+                );
+
+                const { fullStream } = await simpleStreamText({
+                  modelClient,
+                  chatMessages: [
+                    ...chatMessages.map((msg, index) => {
+                      if (
+                        index === 0 &&
+                        msg.role === "user" &&
+                        typeof msg.content === "string" &&
+                        msg.content.startsWith(CODEBASE_PROMPT_PREFIX)
+                      ) {
+                        return {
+                          role: "user",
+                          content: createCodebasePrompt(codebaseInfo),
+                        } as const;
+                      }
+                      return msg;
+                    }),
+                    {
+                      role: "assistant",
+                      content: originalFullResponse,
+                    },
+                    ...previousAttempts,
+                    { role: "user", content: problemFixPrompt },
+                  ],
+                });
+                previousAttempts.push({
+                  role: "user",
+                  content: problemFixPrompt,
+                });
+                const result = await processStreamChunks({
+                  fullStream,
+                  fullResponse,
+                  abortController,
+                  chatId: req.chatId,
+                  processResponseChunkUpdate,
+                });
+                fullResponse = result.fullResponse;
+                previousAttempts.push({
+                  role: "assistant",
+                  content: result.incrementalResponse,
+                });
+
+                problemReport = await generateProblemReport({
+                  fullResponse,
+                  appPath: getDyadAppPath(updatedChat.app.path),
+                });
+              }
+            } catch (error) {
+              logger.error(
+                "Error generating problem report or auto-fixing:",
+                settings.enableAutoFixProblems,
+                error,
+              );
             }
           }
         } catch (streamError) {
@@ -901,9 +1055,19 @@ async function prepareMessageWithAttachments(
   };
 }
 
+function removeNonEssentialTags(text: string): string {
+  return removeProblemReportTags(removeThinkingTags(text));
+}
+
 function removeThinkingTags(text: string): string {
   const thinkRegex = /<think>([\s\S]*?)<\/think>/g;
   return text.replace(thinkRegex, "").trim();
+}
+
+export function removeProblemReportTags(text: string): string {
+  const problemReportRegex =
+    /<dyad-problem-report[^>]*>[\s\S]*?<\/dyad-problem-report>/g;
+  return text.replace(problemReportRegex, "").trim();
 }
 
 export function removeDyadTags(text: string): string {
@@ -931,4 +1095,19 @@ export function hasUnclosedDyadWrite(text: string): boolean {
   const hasClosingTag = /<\/dyad-write>/.test(textAfterLastOpen);
 
   return !hasClosingTag;
+}
+
+function escapeDyadTags(text: string): string {
+  // Escape dyad tags in reasoning content
+  // We are replacing the opening tag with a look-alike character
+  // to avoid issues where thinking content includes dyad tags
+  // and are mishandled by:
+  // 1. FE markdown parser
+  // 2. Main process response processor
+  return text.replace(/<dyad/g, "＜dyad").replace(/<\/dyad/g, "＜/dyad");
+}
+
+const CODEBASE_PROMPT_PREFIX = "This is my codebase.";
+function createCodebasePrompt(codebaseInfo: string): string {
+  return `${CODEBASE_PROMPT_PREFIX} ${codebaseInfo}`;
 }

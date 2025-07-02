@@ -1,0 +1,9 @@
+- paragraph: tc=create-ts-errors
+- paragraph: This will get a TypeScript error.
+- img
+- text: bad-file.ts
+- img
+- text: "src/bad-file.ts Summary: This will get a TypeScript error."
+- paragraph: EOM
+- button "Retry":
+  - img

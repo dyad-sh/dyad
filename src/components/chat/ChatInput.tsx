@@ -63,6 +63,7 @@ import { ChatInputControls } from "../ChatInputControls";
 import { ChatErrorBox } from "./ChatErrorBox";
 import { selectedComponentPreviewAtom } from "@/atoms/previewAtoms";
 import { SelectedComponentDisplay } from "./SelectedComponentDisplay";
+import { useCheckProblems } from "@/hooks/useCheckProblems";
 
 const showTokenBarAtom = atom(false);
 
@@ -84,7 +85,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const [selectedComponent, setSelectedComponent] = useAtom(
     selectedComponentPreviewAtom,
   );
-
+  const { checkProblems } = useCheckProblems(appId);
   // Use the attachments hook
   const {
     attachments,
@@ -207,6 +208,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       setIsApproving(false);
       setIsPreviewOpen(true);
       refreshVersions();
+      checkProblems();
 
       // Keep same as handleReject
       refreshProposal();

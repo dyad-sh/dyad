@@ -149,6 +149,7 @@ export const UserSettingsSchema = z.object({
   enableSupabaseWriteSqlMigration: z.boolean().optional(),
   selectedChatMode: ChatModeSchema.optional(),
 
+  enableAutoFixProblems: z.boolean().optional(),
   enableNativeGit: z.boolean().optional(),
 
   ////////////////////////////////

@@ -92,3 +92,10 @@ export async function writeMigrationFile(
 
   await fsExtra.writeFile(migrationFilePath, queryContent);
 }
+
+export async function fileExists(filePath: string) {
+  return fsPromises
+    .access(filePath)
+    .then(() => true)
+    .catch(() => false);
+}

@@ -3,10 +3,7 @@ import { expect } from "@playwright/test";
 
 test("create next.js app", async ({ po }) => {
   await po.setUp();
-  // Select Next.js template
-  await po.goToHubTab();
-  await po.selectTemplate("Next.js Template");
-  await po.goToAppsTab();
+  await po.selectHubTemplate("Next.js Template");
 
   // Create an app
   await po.sendPrompt("tc=edit-made-with-dyad");

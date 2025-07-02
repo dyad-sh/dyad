@@ -7,6 +7,7 @@ import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
 import { glob } from "glob";
 import { AppChatContext } from "../lib/schemas";
 import { readSettings } from "@/main/settings";
+import { AsyncVirtualFileSystem } from "./VirtualFilesystem";
 
 const logger = log.scope("utils/codebase");
 
@@ -156,8 +157,19 @@ async function isGitIgnored(
 /**
  * Read file contents with caching based on last modified time
  */
-async function readFileWithCache(filePath: string): Promise<string | null> {
+export async function readFileWithCache(
+  filePath: string,
+  virtualFileSystem?: AsyncVirtualFileSystem,
+): Promise<string | undefined> {
   try {
+    // Check virtual filesystem first if provided
+    if (virtualFileSystem) {
+      const virtualContent = await virtualFileSystem.readFile(filePath);
+      if (virtualContent != null) {
+        return cleanContent({ content: virtualContent, filePath });
+      }
+    }
+
     // Get file stats to check the modification time
     const stats = await fsAsync.stat(filePath);
     const currentMtime = stats.mtimeMs;
@@ -193,7 +205,7 @@ async function readFileWithCache(filePath: string): Promise<string | null> {
     return content;
   } catch (error) {
     logger.error(`Error reading file: ${filePath}`, error);
-    return null;
+    return undefined;
   }
 }
 
@@ -304,7 +316,11 @@ const OMITTED_FILE_CONTENT = "// Contents omitted for brevity";
 /**
  * Format a file for inclusion in the codebase extract
  */
-async function formatFile(filePath: string, baseDir: string): Promise<string> {
+async function formatFile(
+  filePath: string,
+  baseDir: string,
+  virtualFileSystem?: AsyncVirtualFileSystem,
+): Promise<string> {
   try {
     const relativePath = path
       .relative(baseDir, filePath)
@@ -320,9 +336,9 @@ ${OMITTED_FILE_CONTENT}
 `;
     }
 
-    const content = await readFileWithCache(filePath);
+    const content = await readFileWithCache(filePath, virtualFileSystem);
 
-    if (content === null) {
+    if (content == null) {
       return `<dyad-file path="${relativePath}">
 // Error reading file
 </dyad-file>
@@ -354,14 +370,17 @@ export type CodebaseFile = {
 /**
  * Extract and format codebase files as a string to be included in prompts
  * @param appPath - Path to the codebase to extract
+ * @param virtualFileSystem - Optional virtual filesystem to apply modifications
  * @returns Object containing formatted output and individual files
  */
 export async function extractCodebase({
   appPath,
   chatContext,
+  virtualFileSystem,
 }: {
   appPath: string;
   chatContext: AppChatContext;
+  virtualFileSystem?: AsyncVirtualFileSystem;
 }): Promise<{
   formattedOutput: string;
   files: CodebaseFile[];
@@ -382,6 +401,26 @@ export async function extractCodebase({
 
   // Collect all relevant files
   let files = await collectFiles(appPath, appPath);
+
+  // Apply virtual filesystem modifications if provided
+  if (virtualFileSystem) {
+    // Filter out deleted files
+    const deletedFiles = new Set(
+      virtualFileSystem
+        .getDeletedFiles()
+        .map((relativePath) => path.resolve(appPath, relativePath)),
+    );
+    files = files.filter((file) => !deletedFiles.has(file));
+
+    // Add virtual files
+    const virtualFiles = virtualFileSystem.getVirtualFiles();
+    for (const virtualFile of virtualFiles) {
+      const absolutePath = path.resolve(appPath, virtualFile.path);
+      if (!files.includes(absolutePath)) {
+        files.push(absolutePath);
+      }
+    }
+  }
 
   // Collect files from contextPaths and smartContextAutoIncludes
   const { contextPaths, smartContextAutoIncludes } = chatContext;
@@ -443,7 +482,7 @@ export async function extractCodebase({
   // Format files and collect individual file contents
   const filesArray: CodebaseFile[] = [];
   const formatPromises = sortedFiles.map(async (file) => {
-    const formattedContent = await formatFile(file, appPath);
+    const formattedContent = await formatFile(file, appPath, virtualFileSystem);
 
     // Get raw content for the files array
     const relativePath = path
@@ -456,8 +495,8 @@ export async function extractCodebase({
 
     const fileContent = isOmittedFile(relativePath)
       ? OMITTED_FILE_CONTENT
-      : await readFileWithCache(file);
-    if (fileContent !== null) {
+      : await readFileWithCache(file, virtualFileSystem);
+    if (fileContent != null) {
       filesArray.push({
         path: relativePath,
         content: fileContent,
@@ -498,7 +537,8 @@ async function sortFilesByModificationTime(files: string[]): Promise<string[]> {
         return { file, mtime: stats.mtimeMs };
       } catch (error) {
         // If there's an error getting stats, use current time as fallback
-        logger.error(`Error getting file stats for ${file}:`, error);
+        // This can happen with virtual files, so it's not a big deal.
+        logger.warn(`Error getting file stats for ${file}:`, error);
         return { file, mtime: Date.now() };
       }
     }),

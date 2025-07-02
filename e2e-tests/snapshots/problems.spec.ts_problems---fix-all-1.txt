@@ -1,0 +1,9 @@
+===
+role: user
+message: Fix these 3 TypeScript compile-time errors:
+
+1. src/bad-file.tsx:2:1 - Cannot find name 'nonExistentFunction1'. (TS2304)
+2. src/bad-file.tsx:3:1 - Cannot find name 'nonExistentFunction2'. (TS2304)
+3. src/bad-file.tsx:4:1 - Cannot find name 'nonExistentFunction3'. (TS2304)
+
+Please fix all errors in a concise way.

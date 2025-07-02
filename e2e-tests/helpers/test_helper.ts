@@ -205,7 +205,12 @@ export class PageObject {
   async setUp({
     autoApprove = false,
     nativeGit = false,
-  }: { autoApprove?: boolean; nativeGit?: boolean } = {}) {
+    disableAutoFixProblems = false,
+  }: {
+    autoApprove?: boolean;
+    nativeGit?: boolean;
+    disableAutoFixProblems?: boolean;
+  } = {}) {
     await this.baseSetup();
     await this.goToSettingsTab();
     if (autoApprove) {
@@ -213,6 +218,9 @@ export class PageObject {
     }
     if (nativeGit) {
       await this.toggleNativeGit();
+    }
+    if (disableAutoFixProblems) {
+      await this.toggleAutoFixProblems();
     }
     await this.setUpTestProvider();
     await this.setUpTestModel();
@@ -229,6 +237,61 @@ export class PageObject {
     }
     await this.setUpDyadProvider();
     await this.goToAppsTab();
+  }
+
+  async runPnpmInstall() {
+    const appPath = await this.getCurrentAppPath();
+    if (!appPath) {
+      throw new Error("No app selected");
+    }
+
+    const maxRetries = 3;
+    let lastError: any;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(
+          `Running 'pnpm install' in ${appPath} (attempt ${attempt}/${maxRetries})`,
+        );
+        execSync("pnpm install", {
+          cwd: appPath,
+          stdio: "pipe",
+          encoding: "utf8",
+        });
+        console.log(`'pnpm install' succeeded on attempt ${attempt}`);
+        return; // Success, exit the function
+      } catch (error: any) {
+        lastError = error;
+        console.error(
+          `Attempt ${attempt}/${maxRetries} failed to run 'pnpm install' in ${appPath}`,
+        );
+        console.error(`Exit code: ${error.status}`);
+        console.error(`Command: ${error.cmd || "pnpm install"}`);
+
+        if (error.stdout) {
+          console.error(`STDOUT:\n${error.stdout}`);
+        }
+
+        if (error.stderr) {
+          console.error(`STDERR:\n${error.stderr}`);
+        }
+
+        // If this wasn't the last attempt, wait a bit before retrying
+        if (attempt < maxRetries) {
+          const delayMs = 1000 * attempt; // Exponential backoff: 1s, 2s
+          console.log(`Waiting ${delayMs}ms before retry...`);
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
+      }
+    }
+
+    // All attempts failed, throw the last error with enhanced message
+    throw new Error(
+      `pnpm install failed in ${appPath} after ${maxRetries} attempts. ` +
+        `Exit code: ${lastError.status}. ` +
+        `${lastError.stderr ? `Error: ${lastError.stderr}` : ""}` +
+        `${lastError.stdout ? ` Output: ${lastError.stdout}` : ""}`,
+    );
   }
 
   async setUpDyadProvider() {
@@ -335,7 +398,7 @@ export class PageObject {
           throw new Error("Messages list not found");
         }
         messagesList.innerHTML = messagesList.innerHTML.replace(
-          /\[\[dyad-dump-path=([^\]]+)\]\]/,
+          /\[\[dyad-dump-path=([^\]]+)\]\]/g,
           "[[dyad-dump-path=*]]",
         );
       });
@@ -353,6 +416,27 @@ export class PageObject {
 
   async clickRestart() {
     await this.page.getByRole("button", { name: "Restart" }).click();
+  }
+
+  ////////////////////////////////
+  // Preview panel
+  ////////////////////////////////
+
+  async selectPreviewMode(mode: "code" | "problems" | "preview") {
+    await this.page.getByTestId(`${mode}-mode-button`).click();
+  }
+
+  async clickRecheckProblems() {
+    await this.page.getByTestId("recheck-button").click();
+  }
+
+  async clickFixAllProblems() {
+    await this.page.getByTestId("fix-all-button").click();
+    await this.waitForChatCompletion();
+  }
+
+  async snapshotProblemsPane() {
+    await expect(this.page.getByTestId("problems-pane")).toMatchAriaSnapshot();
   }
 
   async clickRebuild() {
@@ -402,6 +486,12 @@ export class PageObject {
     return this.page.getByTestId("preview-iframe-element");
   }
 
+  expectPreviewIframeIsVisible() {
+    return expect(this.getPreviewIframeElement()).toBeVisible({
+      timeout: Timeout.LONG,
+    });
+  }
+
   async clickFixErrorWithAI() {
     await this.page.getByRole("button", { name: "Fix error with AI" }).click();
   }
@@ -438,23 +528,46 @@ export class PageObject {
 
   async snapshotServerDump(
     type: "all-messages" | "last-message" | "request" = "all-messages",
-    { name = "" }: { name?: string } = {},
+    { name = "", dumpIndex = -1 }: { name?: string; dumpIndex?: number } = {},
   ) {
     // Get the text content of the messages list
     const messagesListText = await this.page
       .getByTestId("messages-list")
       .textContent();
 
-    // Find the dump path using regex
-    const dumpPathMatch = messagesListText?.match(
-      /.*\[\[dyad-dump-path=([^\]]+)\]\]/,
+    // Find ALL dump paths using global regex
+    const dumpPathMatches = messagesListText?.match(
+      /\[\[dyad-dump-path=([^\]]+)\]\]/g,
     );
 
-    if (!dumpPathMatch) {
+    if (!dumpPathMatches || dumpPathMatches.length === 0) {
       throw new Error("No dump path found in messages list");
     }
 
-    const dumpFilePath = dumpPathMatch[1];
+    // Extract the actual paths from the matches
+    const dumpPaths = dumpPathMatches
+      .map((match) => {
+        const pathMatch = match.match(/\[\[dyad-dump-path=([^\]]+)\]\]/);
+        return pathMatch ? pathMatch[1] : null;
+      })
+      .filter(Boolean);
+
+    // Select the dump path based on index
+    // -1 means last, -2 means second to last, etc.
+    // 0 means first, 1 means second, etc.
+    const selectedIndex =
+      dumpIndex < 0 ? dumpPaths.length + dumpIndex : dumpIndex;
+
+    if (selectedIndex < 0 || selectedIndex >= dumpPaths.length) {
+      throw new Error(
+        `Dump index ${dumpIndex} is out of range. Found ${dumpPaths.length} dump paths.`,
+      );
+    }
+
+    const dumpFilePath = dumpPaths[selectedIndex];
+    if (!dumpFilePath) {
+      throw new Error("No dump file path found");
+    }
 
     // Read the JSON file
     const dumpContent: string = (
@@ -701,6 +814,10 @@ export class PageObject {
     await this.page.getByRole("switch", { name: "Enable Native Git" }).click();
   }
 
+  async toggleAutoFixProblems() {
+    await this.page.getByRole("switch", { name: "Auto-fix problems" }).click();
+  }
+
   async snapshotSettings() {
     const settings = path.join(this.userDataDir, "user-settings.json");
     const settingsContent = fs.readFileSync(settings, "utf-8");
@@ -740,8 +857,14 @@ export class PageObject {
     await this.page.getByRole("link", { name: "Hub" }).click();
   }
 
-  async selectTemplate(templateName: string) {
+  private async selectTemplate(templateName: string) {
     await this.page.getByRole("img", { name: templateName }).click();
+  }
+
+  async selectHubTemplate(templateName: "Next.js Template") {
+    await this.goToHubTab();
+    await this.selectTemplate(templateName);
+    await this.goToAppsTab();
   }
 
   ////////////////////////////////

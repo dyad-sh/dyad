@@ -9,6 +9,7 @@ import type {
   AppOutput,
   Chat,
   ChatResponseEnd,
+  ChatProblemsEvent,
   CreateAppParams,
   CreateAppResult,
   ListAppsResponse,
@@ -35,6 +36,7 @@ import type {
   App,
   ComponentSelection,
   AppUpgrade,
+  ProblemReport,
 } from "./ipc_types";
 import type { AppChatContext, ProposalResult } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
@@ -233,6 +235,7 @@ export class IpcClient {
       onUpdate: (messages: Message[]) => void;
       onEnd: (response: ChatResponseEnd) => void;
       onError: (error: string) => void;
+      onProblems?: (problems: ChatProblemsEvent) => void;
     },
   ): void {
     const {
@@ -933,5 +936,11 @@ export class IpcClient {
 
   public async openAndroid(params: { appId: number }): Promise<void> {
     return this.ipcRenderer.invoke("open-android", params);
+  }
+
+  public async checkProblems(params: {
+    appId: number;
+  }): Promise<ProblemReport> {
+    return this.ipcRenderer.invoke("check-problems", params);
   }
 }

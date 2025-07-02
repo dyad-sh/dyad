@@ -31,6 +31,12 @@ export interface ChatResponseEnd {
   extraFilesError?: string;
 }
 
+export interface ChatProblemsEvent {
+  chatId: number;
+  appId: number;
+  problems: ProblemReport;
+}
+
 export interface CreateAppParams {
   name: string;
 }
@@ -239,4 +245,16 @@ export interface AppUpgrade {
   description: string;
   manualUpgradeUrl: string;
   isNeeded: boolean;
+}
+
+export interface Problem {
+  file: string;
+  line: number;
+  column: number;
+  message: string;
+  code: number;
+}
+
+export interface ProblemReport {
+  problems: Problem[];
 }

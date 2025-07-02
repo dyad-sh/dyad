@@ -15,6 +15,7 @@ import { useAtomValue } from "jotai";
 import { isStreamingAtom } from "@/atoms/chatAtoms";
 import { CustomTagState } from "./stateTypes";
 import { DyadOutput } from "./DyadOutput";
+import { DyadProblemSummary } from "./DyadProblemSummary";
 import { IpcClient } from "@/ipc/ipc_client";
 
 interface DyadMarkdownParserProps {
@@ -117,6 +118,7 @@ function preprocessUnclosedTags(content: string): {
     "dyad-execute-sql",
     "dyad-add-integration",
     "dyad-output",
+    "dyad-problem-report",
     "dyad-chat-summary",
     "dyad-edit",
     "dyad-codebase-context",
@@ -182,6 +184,7 @@ function parseCustomTags(content: string): ContentPiece[] {
     "dyad-execute-sql",
     "dyad-add-integration",
     "dyad-output",
+    "dyad-problem-report",
     "dyad-chat-summary",
     "dyad-edit",
     "dyad-codebase-context",
@@ -402,6 +405,13 @@ function renderCustomTag(
         >
           {content}
         </DyadOutput>
+      );
+
+    case "dyad-problem-report":
+      return (
+        <DyadProblemSummary summary={attributes.summary}>
+          {content}
+        </DyadProblemSummary>
       );
 
     case "dyad-chat-summary":

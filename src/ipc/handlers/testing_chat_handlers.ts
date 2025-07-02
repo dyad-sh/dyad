@@ -4,6 +4,16 @@ import { cleanFullResponse } from "../utils/cleanFullResponse";
 // e.g. [dyad-qa=add-dep]
 // Canned responses for test prompts
 const TEST_RESPONSES: Record<string, string> = {
+  "ts-error": `This will get a TypeScript error.
+  
+  <dyad-write path="src/bad-file.ts" description="This will get a TypeScript error.">
+  import NonExistentClass from 'non-existent-class';
+
+  const x = new Object();
+  x.nonExistentMethod();
+  </dyad-write>
+  
+  EOM`,
   "add-dep": `I'll add that dependency for you.
   
   <dyad-add-dependency packages="deno"></dyad-add-dependency>

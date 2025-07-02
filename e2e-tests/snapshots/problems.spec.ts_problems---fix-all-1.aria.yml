@@ -1,0 +1,21 @@
+- paragraph: tc=create-ts-errors
+- paragraph: This will get a TypeScript error.
+- img
+- text: bad-file.ts
+- img
+- text: "src/bad-file.ts Summary: This will get a TypeScript error."
+- paragraph: EOM
+- paragraph: "Fix these 3 TypeScript compile-time errors:"
+- list:
+  - listitem: src/bad-file.tsx:2:1 - Cannot find name 'nonExistentFunction1'. (TS2304)
+  - listitem: src/bad-file.tsx:3:1 - Cannot find name 'nonExistentFunction2'. (TS2304)
+  - listitem: src/bad-file.tsx:4:1 - Cannot find name 'nonExistentFunction3'. (TS2304)
+- paragraph: Please fix all errors in a concise way.
+- img
+- text: file1.txt
+- img
+- text: file1.txt
+- paragraph: More EOM
+- paragraph: "[[dyad-dump-path=*]]"
+- button "Retry":
+  - img

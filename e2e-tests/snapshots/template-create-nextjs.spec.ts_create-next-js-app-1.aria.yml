@@ -2,9 +2,6 @@
   - heading "Blank page" [level=1]
 - link "Made with Dyad (EDITED)":
   - /url: https://www.dyad.sh/
-- status:
-  - img
-  - text: Static route
-  - button "Hide static indicator":
-    - img
 - alert
+- button "Open Next.js Dev Tools":
+  - img

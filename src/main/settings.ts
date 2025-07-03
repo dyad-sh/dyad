@@ -20,7 +20,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   enableProLazyEditsMode: true,
   enableProSmartFilesContextMode: true,
   selectedChatMode: "build",
-  enableAutoFixProblems: true,
+  enableAutoFixProblems: false,
 };
 
 const SETTINGS_FILE = "user-settings.json";

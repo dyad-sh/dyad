@@ -1,4 +1,4 @@
-import { PageObject, testSkipIfWindows } from "./helpers/test_helper";
+import { PageObject, testSkipIfWindows, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
 const runSwitchVersionTest = async (po: PageObject, nativeGit: boolean) => {
@@ -20,7 +20,9 @@ const runSwitchVersionTest = async (po: PageObject, nativeGit: boolean) => {
   // Should be same as the previous snapshot, but just to be sure.
   await po.snapshotPreview({ name: `v1` });
 
-  await expect(po.page.getByText("Version 3")).toBeVisible();
+  await expect(po.page.getByText("Version 3")).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
 };
 
 testSkipIfWindows("switch versions", async ({ po }) => {

@@ -22,6 +22,7 @@ import { useCountTokens } from "./useCountTokens";
 import { useUserBudgetInfo } from "./useUserBudgetInfo";
 import { usePostHog } from "posthog-js/react";
 import { useCheckProblems } from "./useCheckProblems";
+import { useSettings } from "./useSettings";
 
 export function getRandomNumberId() {
   return Math.floor(Math.random() * 1_000_000_000_000_000);
@@ -43,6 +44,7 @@ export function useStreamChat({
   const { countTokens } = useCountTokens();
   const { refetchUserBudget } = useUserBudgetInfo();
   const { checkProblems } = useCheckProblems(selectedAppId);
+  const { settings } = useSettings();
   const posthog = usePostHog();
   let chatId: number | undefined;
 
@@ -95,7 +97,9 @@ export function useStreamChat({
             if (response.updatedFiles) {
               setIsPreviewOpen(true);
               refreshAppIframe();
-              checkProblems();
+              if (settings?.enableAutoFixProblems) {
+                checkProblems();
+              }
             }
             if (response.extraFiles) {
               showExtraFilesToast({
@@ -140,6 +144,7 @@ export function useStreamChat({
       checkProblems,
       selectedAppId,
       refetchUserBudget,
+      settings,
     ],
   );
 

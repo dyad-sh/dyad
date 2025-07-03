@@ -208,7 +208,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       setIsApproving(false);
       setIsPreviewOpen(true);
       refreshVersions();
-      checkProblems();
+      if (settings?.enableAutoFixProblems) {
+        checkProblems();
+      }
 
       // Keep same as handleReject
       refreshProposal();

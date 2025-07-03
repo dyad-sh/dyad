@@ -733,7 +733,7 @@ ${problemReport.problems
                     }),
                     {
                       role: "assistant",
-                      content: originalFullResponse,
+                      content: removeNonEssentialTags(originalFullResponse),
                     },
                     ...previousAttempts,
                     { role: "user", content: problemFixPrompt },
@@ -753,7 +753,7 @@ ${problemReport.problems
                 fullResponse = result.fullResponse;
                 previousAttempts.push({
                   role: "assistant",
-                  content: result.incrementalResponse,
+                  content: removeNonEssentialTags(result.incrementalResponse),
                 });
 
                 problemReport = await generateProblemReport({

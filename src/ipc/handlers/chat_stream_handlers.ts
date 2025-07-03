@@ -22,7 +22,10 @@ import { getDyadAppPath } from "../../paths/paths";
 import { readSettings } from "../../main/settings";
 import type { ChatResponseEnd, ChatStreamParams } from "../ipc_types";
 import { extractCodebase, readFileWithCache } from "../../utils/codebase";
-import { processFullResponseActions } from "../processors/response_processor";
+import {
+  getDyadAddDependencyTags,
+  processFullResponseActions,
+} from "../processors/response_processor";
 import { streamTestResponse } from "./testing_chat_handlers";
 import { getTestResponse } from "./testing_chat_handlers";
 import { getModelClient, ModelClient } from "../utils/get_model_client";
@@ -658,8 +661,13 @@ This conversation includes one or more image attachments. When the user uploads 
               }
             }
           }
+          const addDependencies = getDyadAddDependencyTags(fullResponse);
           if (
             !abortController.signal.aborted &&
+            // If there are dependencies, we don't want to auto-fix problems
+            // because there's going to be type errors since the packages aren't
+            // installed yet.
+            addDependencies.length === 0 &&
             settings.enableAutoFixProblems &&
             settings.selectedChatMode !== "ask"
           ) {

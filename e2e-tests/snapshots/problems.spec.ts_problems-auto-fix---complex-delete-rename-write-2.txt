@@ -405,7 +405,6 @@ finalMainTsxFileWithError();
 </dyad-write>
 EOM
 
-
 ===
 role: user
 message: Fix these 1 TypeScript compile-time error:
@@ -416,8 +415,7 @@ Please fix all errors in a concise way.
 
 ===
 role: assistant
-message: 
-<dyad-write path="src/bad-file.ts" description="Fix remaining error.">
+message: <dyad-write path="src/bad-file.ts" description="Fix remaining error.">
 // Import doesn't exist
 // import NonExistentClass from 'non-existent-class';
 

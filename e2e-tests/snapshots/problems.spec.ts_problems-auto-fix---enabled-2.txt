@@ -417,7 +417,6 @@ x.nonExistentMethod();
 
 EOM
 
-
 ===
 role: user
 message: Fix these 2 TypeScript compile-time errors:
@@ -429,8 +428,7 @@ Please fix all errors in a concise way.
 
 ===
 role: assistant
-message: 
-<dyad-write path="src/bad-file.ts" description="Fix 2 errors and introduce a new error.">
+message: <dyad-write path="src/bad-file.ts" description="Fix 2 errors and introduce a new error.">
 // Import doesn't exist
 // import NonExistentClass from 'non-existent-class';
 

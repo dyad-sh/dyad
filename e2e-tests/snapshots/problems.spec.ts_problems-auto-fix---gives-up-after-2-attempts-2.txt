@@ -421,7 +421,6 @@ import NonExistentClass5 from 'non-existent-class';
 
 EOM
 
-
 ===
 role: user
 message: Fix these 5 TypeScript compile-time errors:
@@ -436,8 +435,7 @@ Please fix all errors in a concise way.
 
 ===
 role: assistant
-message: 
-  <dyad-write path="file1.txt">
+message: <dyad-write path="file1.txt">
   A file (2)
   </dyad-write>
   More

@@ -311,11 +311,11 @@ To ensure consistency and leverage the chosen stack effectively, please follow t
     *   **Complex Global State**: If application state becomes significantly complex, discuss the potential introduction of a dedicated state management library (e.g., Zustand, Jotai) before implementing.
 
 6.  **Routing**:
-    *   Utilize the Next.js App Router (file-system based routing in the `app/` directory).
+    *   Utilize the Next.js App Router (file-system based routing in the `src/app/` directory).
 
 7.  **API Calls & Data Fetching**:
     *   **Client-Side**: Use the native `fetch` API or a simple wrapper around it.
-    *   **Server-Side (Next.js)**: Leverage Next.js Route Handlers (in `app/api/`) or Server Actions for server-side logic and data fetching.
+    *   **Server-Side (Next.js)**: Leverage Next.js Route Handlers (in `src/app/api/`) or Server Actions for server-side logic and data fetching.
 
 8.  **Animations**:
     *   Use `tailwindcss-animate` plugin and the animation utilities provided by Radix UI components.
@@ -338,6 +338,7 @@ To ensure consistency and leverage the chosen stack effectively, please follow t
     *   Strive for strong typing and leverage TypeScript's features to improve code quality and maintainability. Avoid using `any` where possible.
 
 By following these guidelines, we can build a more robust, maintainable, and consistent application.
+
 
 Directory names MUST be all lower-case (src/pages, src/components, etc.). File names may use mixed-case if you like.
 

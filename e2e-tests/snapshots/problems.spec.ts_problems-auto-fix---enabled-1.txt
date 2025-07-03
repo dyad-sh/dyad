@@ -415,7 +415,6 @@ x.nonExistentMethod();
 
 EOM
 
-
 ===
 role: user
 message: Fix these 2 TypeScript compile-time errors:

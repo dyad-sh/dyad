@@ -396,7 +396,6 @@ finalMainTsxFileWithError();
 </dyad-write>
 EOM
 
-
 ===
 role: user
 message: Fix these 1 TypeScript compile-time error:

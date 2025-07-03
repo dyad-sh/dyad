@@ -417,7 +417,6 @@ import NonExistentClass5 from 'non-existent-class';
 
 EOM
 
-
 ===
 role: user
 message: Fix these 5 TypeScript compile-time errors:

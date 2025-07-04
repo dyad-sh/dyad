@@ -15,6 +15,8 @@ import { useStreamChat } from "@/hooks/useStreamChat";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
 import { createProblemFixPrompt } from "@/shared/problem_prompt";
 import { showError } from "@/lib/toast";
+import { useSettings } from "@/hooks/useSettings";
+import { AutoFixProblemsSwitch } from "../AutoFixProblemsSwitch";
 
 interface ProblemItemProps {
   problem: Problem;
@@ -62,6 +64,7 @@ const RecheckButton = ({
   variant = "outline",
   className = "h-7 px-3 text-xs",
 }: RecheckButtonProps) => {
+  const { settings } = useSettings();
   const { checkProblems, isChecking } = useCheckProblems(appId);
 
   const handleRecheck = async () => {
@@ -70,6 +73,21 @@ const RecheckButton = ({
       showError(res.error);
     }
   };
+
+  if (!settings?.enableAutoFixProblems) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-center p-8">
+        <div className="w-16 h-16 rounded-full bg-[var(--background-darkest)] flex items-center justify-center mb-4">
+          <Wrench size={24} className="text-muted-foreground" />
+        </div>
+        <h3 className="text-lg font-medium mb-2">Enable Auto-Fix Problems</h3>
+        <p className="text-sm text-muted-foreground max-w-md mb-4">
+          You need to enable autofix problems to use the Problem pane.
+        </p>
+        <AutoFixProblemsSwitch showToast={true} />
+      </div>
+    );
+  }
 
   return (
     <Button
@@ -179,14 +197,6 @@ export function _Problems() {
   if (!problemReport) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center p-8">
-        <div className="w-16 h-16 rounded-full bg-[var(--background-darkest)] flex items-center justify-center mb-4">
-          <FileText size={24} className="text-muted-foreground" />
-        </div>
-        <h3 className="text-lg font-medium mb-2">No Problems Data</h3>
-        <p className="text-sm text-muted-foreground max-w-md mb-4">
-          No TypeScript diagnostics available for this app yet. Problems will
-          appear here after running type checking.
-        </p>
         <RecheckButton appId={selectedAppId} />
       </div>
     );

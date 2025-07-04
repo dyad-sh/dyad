@@ -1,14 +1,18 @@
 import { db } from "../../db";
-import { ipcMain } from "electron";
+
 import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import { generateProblemReport } from "../processors/tsc";
 import { getDyadAppPath } from "@/paths/paths";
-import { logger } from "./app_upgrade_handlers";
+import log from "electron-log";
+import { createLoggedHandler } from "./safe_handle";
+
+const logger = log.scope("problems_handlers");
+const handle = createLoggedHandler(logger);
 
 export function registerProblemsHandlers() {
   // Handler to check problems using autofix with empty response
-  ipcMain.handle("check-problems", async (event, params: { appId: number }) => {
+  handle("check-problems", async (event, params: { appId: number }) => {
     try {
       // Get the app to find its path
       const app = await db.query.apps.findFirst({

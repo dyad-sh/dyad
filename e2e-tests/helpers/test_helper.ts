@@ -205,11 +205,11 @@ export class PageObject {
   async setUp({
     autoApprove = false,
     nativeGit = false,
-    disableAutoFixProblems = false,
+    enableAutoFixProblems = false,
   }: {
     autoApprove?: boolean;
     nativeGit?: boolean;
-    disableAutoFixProblems?: boolean;
+    enableAutoFixProblems?: boolean;
   } = {}) {
     await this.baseSetup();
     await this.goToSettingsTab();
@@ -219,7 +219,7 @@ export class PageObject {
     if (nativeGit) {
       await this.toggleNativeGit();
     }
-    if (disableAutoFixProblems) {
+    if (enableAutoFixProblems) {
       await this.toggleAutoFixProblems();
     }
     await this.setUpTestProvider();

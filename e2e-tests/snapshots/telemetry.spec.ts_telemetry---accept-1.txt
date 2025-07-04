@@ -11,6 +11,6 @@
   "enableProLazyEditsMode": true,
   "enableProSmartFilesContextMode": true,
   "selectedChatMode": "build",
-  "enableAutoFixProblems": true,
+  "enableAutoFixProblems": false,
   "isTestMode": true
 }

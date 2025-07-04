@@ -6,7 +6,7 @@ import path from "path";
 const MINIMAL_APP = "minimal-with-ai-rules";
 
 test("problems auto-fix - enabled", async ({ po }) => {
-  await po.setUp();
+  await po.setUp({ enableAutoFixProblems: true });
   await po.importApp(MINIMAL_APP);
   await po.expectPreviewIframeIsVisible();
 
@@ -19,7 +19,7 @@ test("problems auto-fix - enabled", async ({ po }) => {
 });
 
 test("problems auto-fix - gives up after 2 attempts", async ({ po }) => {
-  await po.setUp();
+  await po.setUp({ enableAutoFixProblems: true });
   await po.importApp(MINIMAL_APP);
   await po.expectPreviewIframeIsVisible();
 
@@ -36,7 +36,7 @@ test("problems auto-fix - gives up after 2 attempts", async ({ po }) => {
 });
 
 test("problems auto-fix - complex delete-rename-write", async ({ po }) => {
-  await po.setUp();
+  await po.setUp({ enableAutoFixProblems: true });
   await po.importApp(MINIMAL_APP);
   await po.expectPreviewIframeIsVisible();
 
@@ -49,7 +49,7 @@ test("problems auto-fix - complex delete-rename-write", async ({ po }) => {
 });
 
 test("problems auto-fix - disabled", async ({ po }) => {
-  await po.setUp({ disableAutoFixProblems: true });
+  await po.setUp({ enableAutoFixProblems: false });
   await po.importApp(MINIMAL_APP);
   await po.expectPreviewIframeIsVisible();
 
@@ -59,7 +59,7 @@ test("problems auto-fix - disabled", async ({ po }) => {
 });
 
 test("problems - fix all", async ({ po }) => {
-  await po.setUp({ disableAutoFixProblems: true });
+  await po.setUp({ enableAutoFixProblems: true });
   await po.importApp(MINIMAL_APP);
   const appPath = await po.getCurrentAppPath();
   const badFilePath = path.join(appPath, "src", "bad-file.tsx");
@@ -84,7 +84,7 @@ export default App;
 });
 
 test("problems - manual edit (react/vite)", async ({ po }) => {
-  await po.setUp();
+  await po.setUp({ enableAutoFixProblems: true });
   await po.sendPrompt("tc=1");
 
   const appPath = await po.getCurrentAppPath();
@@ -111,7 +111,7 @@ export default App;
 });
 
 test("problems - manual edit (next.js)", async ({ po }) => {
-  await po.setUp();
+  await po.setUp({ enableAutoFixProblems: true });
   await po.selectHubTemplate("Next.js Template");
   await po.sendPrompt("tc=1");
 

@@ -23,3 +23,30 @@ npm install
 ```sh
 npm start
 ```
+
+## Testing
+
+**Unit tests:**
+
+```sh
+npm run test
+```
+
+**E2E tests:**
+
+```sh
+# Run all e2e tests (builds the app first)
+npm run pre:e2e && npm run e2e
+
+# Run a specific shard (useful for debugging or parallel development)
+npm run e2e:shard 1/4
+
+# Run sharded tests locally
+npm run pre:e2e
+npm run e2e:shard 1/4 &
+npm run e2e:shard 2/4 &
+npm run e2e:shard 3/4 &
+npm run e2e:shard 4/4 &
+```
+
+The CI system automatically runs e2e tests in 4 parallel shards for faster execution and then merges the results.

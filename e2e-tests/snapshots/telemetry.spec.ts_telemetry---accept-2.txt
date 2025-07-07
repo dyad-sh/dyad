@@ -13,5 +13,6 @@
   "enableProSmartFilesContextMode": true,
   "selectedChatMode": "build",
   "enableAutoFixProblems": false,
+  "enableAutoUpdate": true,
   "isTestMode": true
 }

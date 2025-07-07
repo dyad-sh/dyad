@@ -17,7 +17,11 @@ log.scope.labelPadding = false;
 
 const logger = log.scope("main");
 
-updateElectronApp(); // additional configuration options available
+// Check settings before enabling auto-update
+const settings = readSettings();
+if (settings.enableAutoUpdate) {
+  updateElectronApp({ logger }); // additional configuration options available
+}
 
 // Load environment variables from .env file
 dotenv.config();

@@ -68,7 +68,7 @@ export function ProviderSettingsGrid() {
   if (isLoading) {
     return (
       <div className="p-6">
-        <h2 className="text-2xl font-bold mb-6">AI Providers</h2>
+        <h2 className="text-lg font-medium mb-6">AI Providers</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3, 4, 5].map((i) => (
             <Card key={i} className="border-border">
@@ -86,7 +86,7 @@ export function ProviderSettingsGrid() {
   if (error) {
     return (
       <div className="p-6">
-        <h2 className="text-2xl font-bold mb-6">AI Providers</h2>
+        <h2 className="text-lg font-medium mb-6">AI Providers</h2>
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>Error</AlertTitle>
@@ -100,7 +100,7 @@ export function ProviderSettingsGrid() {
 
   return (
     <div className="p-6">
-      <h2 className="text-2xl font-bold mb-6">AI Providers</h2>
+      <h2 className="text-lg font-medium mb-6">AI Providers</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {providers
           ?.filter((p) => p.type !== "local")
@@ -116,7 +116,7 @@ export function ProviderSettingsGrid() {
                   className="p-4 cursor-pointer"
                   onClick={() => handleProviderClick(provider.id)}
                 >
-                  <CardTitle className="text-xl flex items-center justify-between">
+                  <CardTitle className="text-lg font-medium flex items-center justify-between">
                     {provider.name}
                     {isProviderSetup(provider.id) ? (
                       <span className="ml-3 text-sm font-medium text-green-500 bg-green-50 dark:bg-green-900/30 border border-green-500/50 dark:border-green-500/50 px-2 py-1 rounded-full">
@@ -178,8 +178,8 @@ export function ProviderSettingsGrid() {
           onClick={() => setIsDialogOpen(true)}
         >
           <CardHeader className="p-4 flex flex-col items-center justify-center h-full">
-            <PlusIcon className="h-10 w-10 text-muted-foreground mb-2" />
-            <CardTitle className="text-xl text-center">
+            <PlusIcon className="h-8 w-8 text-muted-foreground mb-2" />
+            <CardTitle className="text-lg font-medium text-center">
               Add custom provider
             </CardTitle>
             <CardDescription className="text-center">

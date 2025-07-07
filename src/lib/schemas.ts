@@ -151,6 +151,7 @@ export const UserSettingsSchema = z.object({
 
   enableAutoFixProblems: z.boolean().optional(),
   enableNativeGit: z.boolean().optional(),
+  enableAutoUpdate: z.boolean(),
 
   ////////////////////////////////
   // E2E TESTING ONLY.

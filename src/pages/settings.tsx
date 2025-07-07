@@ -18,9 +18,9 @@ import { SupabaseIntegration } from "@/components/SupabaseIntegration";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { AutoFixProblemsSwitch } from "@/components/AutoFixProblemsSwitch";
+import { AutoUpdateSwitch } from "@/components/AutoUpdateSwitch";
 
 export default function SettingsPage() {
-  const { theme, setTheme } = useTheme();
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const appVersion = useAppVersion();
@@ -60,108 +60,25 @@ export default function SettingsPage() {
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
             Settings
           </h1>
-
-          {/* App Version Section */}
-          <div className="flex items-center text-sm text-gray-500 dark:text-gray-400">
-            <span className="mr-2 font-medium">App Version:</span>
-            <span className="bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded text-gray-800 dark:text-gray-200 font-mono">
-              {appVersion ? appVersion : "-"}
-            </span>
-          </div>
         </div>
 
         <div className="space-y-6">
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
-            <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
-              General Settings
-            </h2>
+          <GeneralSettings appVersion={appVersion} />
+          <WorkflowSettings />
+          <AISettings />
 
-            <div className="space-y-4 mb-4">
-              <div className="flex items-center gap-4">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Theme
-                </label>
-
-                <div className="relative bg-gray-100 dark:bg-gray-700 rounded-lg p-1 flex">
-                  {(["system", "light", "dark"] as const).map((option) => (
-                    <button
-                      key={option}
-                      onClick={() => setTheme(option)}
-                      className={`
-                        px-4 py-1.5 text-sm font-medium rounded-md
-                        transition-all duration-200
-                        ${
-                          theme === option
-                            ? "bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm"
-                            : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
-                        }
-                      `}
-                    >
-                      {option.charAt(0).toUpperCase() + option.slice(1)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <AutoApproveSwitch showToast={false} />
-              <div className="text-sm text-gray-500 dark:text-gray-400">
-                This will automatically approve code changes and run them.
-              </div>
-            </div>
-
-            <div className="space-y-1 mt-4">
-              <AutoFixProblemsSwitch />
-              <div className="text-sm text-gray-500 dark:text-gray-400">
-                This will automatically fix TypeScript errors.
-              </div>
-            </div>
-
-            <div className="space-y-1 mt-4">
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="enable-native-git"
-                  checked={!!settings?.enableNativeGit}
-                  onCheckedChange={(checked) => {
-                    updateSettings({
-                      enableNativeGit: checked,
-                    });
-                  }}
-                />
-                <Label htmlFor="enable-native-git">Enable Native Git</Label>
-              </div>
-              <div className="text-sm text-gray-500 dark:text-gray-400">
-                (Experimental) Native Git offers faster performance but requires{" "}
-                <a
-                  onClick={() => {
-                    IpcClient.getInstance().openExternalUrl(
-                      "https://git-scm.com/downloads",
-                    );
-                  }}
-                  className="text-blue-600 hover:underline dark:text-blue-400"
-                >
-                  installing Git
-                </a>
-                .
-              </div>
-            </div>
-
-            <div className="mt-4">
-              <ThinkingBudgetSelector />
-            </div>
-
-            <div className="mt-4">
-              <MaxChatTurnsSelector />
-            </div>
-          </div>
-
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm">
+          <div
+            id="provider-settings"
+            className="bg-white dark:bg-gray-800 rounded-xl shadow-sm"
+          >
             <ProviderSettingsGrid />
           </div>
 
           <div className="space-y-6">
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+            <div
+              id="telemetry"
+              className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6"
+            >
               <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
                 Telemetry
               </h2>
@@ -182,7 +99,10 @@ export default function SettingsPage() {
           </div>
 
           {/* Integrations Section */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+          <div
+            id="integrations"
+            className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6"
+          >
             <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
               Integrations
             </h2>
@@ -193,41 +113,74 @@ export default function SettingsPage() {
           </div>
 
           {/* Experiments Section */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
+          <div
+            id="experiments"
+            className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6"
+          >
             <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
               Experiments
             </h2>
             <div className="space-y-4">
-              {/* Enable File Editing Experiment */}
-              <div className="flex items-center justify-between">
-                <label
-                  htmlFor="enable-file-editing"
-                  className="text-sm font-medium text-gray-700 dark:text-gray-300"
-                >
-                  Enable File Editing
-                </label>
-                <Switch
-                  id="enable-file-editing"
-                  checked={!!settings?.experiments?.enableFileEditing}
-                  onCheckedChange={(checked) => {
-                    updateSettings({
-                      experiments: {
-                        ...settings?.experiments,
-                        enableFileEditing: checked,
-                      },
-                    });
-                  }}
-                />
+              <div className="space-y-1 mt-4">
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="enable-native-git"
+                    checked={!!settings?.enableNativeGit}
+                    onCheckedChange={(checked) => {
+                      updateSettings({
+                        enableNativeGit: checked,
+                      });
+                    }}
+                  />
+                  <Label htmlFor="enable-native-git">Enable Native Git</Label>
+                </div>
+                <div className="text-sm text-gray-500 dark:text-gray-400">
+                  Native Git offers faster performance but requires{" "}
+                  <a
+                    onClick={() => {
+                      IpcClient.getInstance().openExternalUrl(
+                        "https://git-scm.com/downloads",
+                      );
+                    }}
+                    className="text-blue-600 hover:underline dark:text-blue-400"
+                  >
+                    installing Git
+                  </a>
+                  .
+                </div>
               </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                File editing is not reliable and requires you to manually commit
-                changes and update Supabase edge functions.
-              </p>
+              {/* Enable File Editing Experiment */}
+              <div className="space-y-1">
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="enable-file-editing"
+                    checked={!!settings?.experiments?.enableFileEditing}
+                    onCheckedChange={(checked) =>
+                      updateSettings({
+                        experiments: {
+                          ...settings?.experiments,
+                          enableFileEditing: checked,
+                        },
+                      })
+                    }
+                  />
+                  <Label htmlFor="enable-file-editing">
+                    Enable File Editing
+                  </Label>
+                </div>
+                <div className="text-sm text-gray-500 dark:text-gray-400">
+                  File editing is not reliable and requires you to manually
+                  commit changes and update Supabase edge functions.
+                </div>
+              </div>
             </div>
           </div>
 
           {/* Danger Zone */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 border border-red-200 dark:border-red-800">
+          <div
+            id="danger-zone"
+            className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 border border-red-200 dark:border-red-800"
+          >
             <h2 className="text-lg font-medium text-red-600 dark:text-red-400 mb-4">
               Danger Zone
             </h2>
@@ -265,6 +218,111 @@ export default function SettingsPage() {
         onConfirm={handleResetEverything}
         onCancel={() => setIsResetDialogOpen(false)}
       />
+    </div>
+  );
+}
+
+export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
+  const { theme, setTheme } = useTheme();
+
+  return (
+    <div
+      id="general-settings"
+      className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6"
+    >
+      <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+        General Settings
+      </h2>
+
+      <div className="space-y-4 mb-4">
+        <div className="flex items-center gap-4">
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            Theme
+          </label>
+
+          <div className="relative bg-gray-100 dark:bg-gray-700 rounded-lg p-1 flex">
+            {(["system", "light", "dark"] as const).map((option) => (
+              <button
+                key={option}
+                onClick={() => setTheme(option)}
+                className={`
+                px-4 py-1.5 text-sm font-medium rounded-md
+                transition-all duration-200
+                ${
+                  theme === option
+                    ? "bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm"
+                    : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+                }
+              `}
+              >
+                {option.charAt(0).toUpperCase() + option.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-1 mt-4">
+        <AutoUpdateSwitch />
+        <div className="text-sm text-gray-500 dark:text-gray-400">
+          This will automatically update the app when new versions are
+          available.
+        </div>
+      </div>
+
+      <div className="flex items-center text-sm text-gray-500 dark:text-gray-400 mt-4">
+        <span className="mr-2 font-medium">App Version:</span>
+        <span className="bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded text-gray-800 dark:text-gray-200 font-mono">
+          {appVersion ? appVersion : "-"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+export function WorkflowSettings() {
+  return (
+    <div
+      id="workflow-settings"
+      className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6"
+    >
+      <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+        Workflow Settings
+      </h2>
+
+      <div className="space-y-1">
+        <AutoApproveSwitch showToast={false} />
+        <div className="text-sm text-gray-500 dark:text-gray-400">
+          This will automatically approve code changes and run them.
+        </div>
+      </div>
+
+      <div className="space-y-1 mt-4">
+        <AutoFixProblemsSwitch />
+        <div className="text-sm text-gray-500 dark:text-gray-400">
+          This will automatically fix TypeScript errors.
+        </div>
+      </div>
+    </div>
+  );
+}
+export function AISettings() {
+  return (
+    <div
+      id="ai-settings"
+      className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6"
+    >
+      <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+        AI Settings
+      </h2>
+
+      <div className="mt-4">
+        <ThinkingBudgetSelector />
+      </div>
+
+      <div className="mt-4">
+        <MaxChatTurnsSelector />
+      </div>
     </div>
   );
 }

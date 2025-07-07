@@ -833,6 +833,10 @@ export class PageObject {
     expect(sanitizedSettingsContent).toMatchSnapshot();
   }
 
+  async toggleAutoUpdate() {
+    await this.page.getByRole("switch", { name: "Auto-update" }).click();
+  }
+
   async clickTelemetryAccept() {
     await this.page.getByTestId("telemetry-accept-button").click();
   }

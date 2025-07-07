@@ -21,6 +21,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   enableProSmartFilesContextMode: true,
   selectedChatMode: "build",
   enableAutoFixProblems: false,
+  enableAutoUpdate: true,
 };
 
 const SETTINGS_FILE = "user-settings.json";

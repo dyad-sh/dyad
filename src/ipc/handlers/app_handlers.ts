@@ -1,4 +1,4 @@
-import { ipcMain } from "electron";
+import { ipcMain, app } from "electron";
 import { db, getDatabasePath } from "../../db";
 import { apps, chats } from "../../db/schema";
 import { desc, eq } from "drizzle-orm";
@@ -186,6 +186,11 @@ async function killProcessOnPort(port: number): Promise<void> {
 }
 
 export function registerAppHandlers() {
+  handle("restart-dyad", async () => {
+    app.relaunch();
+    app.quit();
+  });
+
   handle(
     "create-app",
     async (

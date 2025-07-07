@@ -20,6 +20,7 @@ import {
 import { ChatList } from "./ChatList";
 import { AppList } from "./AppList";
 import { HelpDialog } from "./HelpDialog"; // Import the new dialog
+import { SettingsList } from "./SettingsList";
 
 // Menu items.
 const items = [
@@ -49,6 +50,7 @@ const items = [
 type HoverState =
   | "start-hover:app"
   | "start-hover:chat"
+  | "start-hover:settings"
   | "clear-hover"
   | "no-hover";
 
@@ -60,10 +62,7 @@ export function AppSidebar() {
   const [isDropdownOpen] = useAtom(dropdownOpenAtom);
 
   useEffect(() => {
-    if (
-      (hoverState === "start-hover:app" || hoverState === "start-hover:chat") &&
-      state === "collapsed"
-    ) {
+    if (hoverState.startsWith("start-hover") && state === "collapsed") {
       expandedByHover.current = true;
       toggleSidebar();
     }
@@ -84,17 +83,22 @@ export function AppSidebar() {
     routerState.location.pathname === "/" ||
     routerState.location.pathname.startsWith("/app-details");
   const isChatRoute = routerState.location.pathname === "/chat";
+  const isSettingsRoute = routerState.location.pathname.startsWith("/settings");
 
   let selectedItem: string | null = null;
   if (hoverState === "start-hover:app") {
     selectedItem = "Apps";
   } else if (hoverState === "start-hover:chat") {
     selectedItem = "Chat";
+  } else if (hoverState === "start-hover:settings") {
+    selectedItem = "Settings";
   } else if (state === "expanded") {
     if (isAppRoute) {
       selectedItem = "Apps";
     } else if (isChatRoute) {
       selectedItem = "Chat";
+    } else if (isSettingsRoute) {
+      selectedItem = "Settings";
     }
   }
 
@@ -122,6 +126,7 @@ export function AppSidebar() {
           <div className="w-[240px]">
             <AppList show={selectedItem === "Apps"} />
             <ChatList show={selectedItem === "Chat"} />
+            <SettingsList show={selectedItem === "Settings"} />
           </div>
         </div>
       </SidebarContent>
@@ -188,6 +193,8 @@ function AppIcons({
                         onHoverChange("start-hover:app");
                       } else if (item.title === "Chat") {
                         onHoverChange("start-hover:chat");
+                      } else if (item.title === "Settings") {
+                        onHoverChange("start-hover:settings");
                       }
                     }}
                   >

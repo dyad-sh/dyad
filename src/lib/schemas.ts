@@ -193,11 +193,6 @@ export interface FileChange {
   isServerFunction: boolean;
 }
 
-export interface SqlQuery {
-  content: string;
-  description?: string;
-}
-
 export interface CodeProposal {
   type: "code-proposal";
   title: string;
@@ -267,4 +262,9 @@ export interface ProposalResult {
   proposal: Proposal;
   chatId: number;
   messageId: number;
+}
+
+export interface SqlQuery {
+  content: string;
+  description?: string;
 }

@@ -9,16 +9,16 @@ import { messages, chats } from "../../db/schema";
 import { desc, eq, and } from "drizzle-orm";
 import path from "node:path"; // Import path for basename
 // Import tag parsers
+import { processFullResponseActions } from "../processors/response_processor";
 import {
-  getDyadAddDependencyTags,
-  getDyadChatSummaryTag,
+  getDyadWriteTags,
+  getDyadRenameTags,
   getDyadDeleteTags,
   getDyadExecuteSqlTags,
-  getDyadRenameTags,
-  getDyadWriteTags,
+  getDyadAddDependencyTags,
+  getDyadChatSummaryTag,
   getDyadCommandTags,
-  processFullResponseActions,
-} from "../processors/response_processor";
+} from "../utils/dyad_tag_parser";
 import log from "electron-log";
 import { isServerFunction } from "../../supabase_admin/supabase_utils";
 import {

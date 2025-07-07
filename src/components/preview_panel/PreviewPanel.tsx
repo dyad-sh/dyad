@@ -198,9 +198,9 @@ const PreviewHeader = ({
             <DropdownMenuItem onClick={onClearSessionData}>
               <Trash2 size={16} />
               <div className="flex flex-col">
-                <span>Clear Preview Data</span>
+                <span>Clear Cache</span>
                 <span className="text-xs text-muted-foreground">
-                  Clears cookies and local storage for the app preview
+                  Clears cookies and local storage and other app cache
                 </span>
               </div>
             </DropdownMenuItem>

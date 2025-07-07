@@ -22,7 +22,8 @@ const ignore = (file: string) => {
   if (file.startsWith("/scaffold")) {
     return false;
   }
-  if (file.startsWith("/worker")) {
+
+  if (file.startsWith("/worker") && !file.startsWith("/workers")) {
     return false;
   }
   if (file.startsWith("/node_modules/stacktrace-js")) {
@@ -120,6 +121,11 @@ const config: ForgeConfig = {
           entry: "src/preload.ts",
           config: "vite.preload.config.mts",
           target: "preload",
+        },
+        {
+          entry: "workers/tsc/tsc_worker.ts",
+          config: "vite.worker.config.mts",
+          target: "main",
         },
       ],
       renderer: [

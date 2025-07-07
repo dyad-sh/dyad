@@ -22,10 +22,7 @@ import { getDyadAppPath } from "../../paths/paths";
 import { readSettings } from "../../main/settings";
 import type { ChatResponseEnd, ChatStreamParams } from "../ipc_types";
 import { extractCodebase, readFileWithCache } from "../../utils/codebase";
-import {
-  getDyadAddDependencyTags,
-  processFullResponseActions,
-} from "../processors/response_processor";
+import { processFullResponseActions } from "../processors/response_processor";
 import { streamTestResponse } from "./testing_chat_handlers";
 import { getTestResponse } from "./testing_chat_handlers";
 import { getModelClient, ModelClient } from "../utils/get_model_client";
@@ -51,7 +48,13 @@ import { safeSend } from "../utils/safe_sender";
 import { cleanFullResponse } from "../utils/cleanFullResponse";
 import { generateProblemReport } from "../processors/tsc";
 import { createProblemFixPrompt } from "@/shared/problem_prompt";
-import { AsyncVirtualFileSystem } from "@/utils/VirtualFilesystem";
+import { AsyncVirtualFileSystem } from "../../../shared/VirtualFilesystem";
+import {
+  getDyadAddDependencyTags,
+  getDyadWriteTags,
+  getDyadDeleteTags,
+  getDyadRenameTags,
+} from "../utils/dyad_tag_parser";
 import { fileExists } from "../utils/file_utils";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
@@ -708,7 +711,14 @@ ${problemReport.problems
                     readFile: (fileName: string) => readFileWithCache(fileName),
                   },
                 );
-                virtualFileSystem.applyResponseChanges(fullResponse);
+                const writeTags = getDyadWriteTags(fullResponse);
+                const renameTags = getDyadRenameTags(fullResponse);
+                const deletePaths = getDyadDeleteTags(fullResponse);
+                virtualFileSystem.applyResponseChanges({
+                  deletePaths,
+                  renameTags,
+                  writeTags,
+                });
 
                 const { formattedOutput: codebaseInfo, files } =
                   await extractCodebase({

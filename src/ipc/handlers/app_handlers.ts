@@ -40,7 +40,7 @@ import { Worker } from "worker_threads";
 import { createFromTemplate } from "./createFromTemplate";
 import { gitCommit } from "../utils/git_utils";
 import { safeSend } from "../utils/safe_sender";
-import { normalizePath } from "../processors/normalizePath";
+import { normalizePath } from "../../../shared/normalizePath";
 
 async function copyDir(
   source: string,

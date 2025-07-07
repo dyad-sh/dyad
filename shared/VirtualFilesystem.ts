@@ -1,30 +1,13 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+
 import {
-  getDyadWriteTags,
-  getDyadRenameTags,
-  getDyadDeleteTags,
-} from "../ipc/processors/response_processor";
-import { normalizePath } from "../ipc/processors/normalizePath";
-
-import log from "electron-log";
-
-const logger = log.scope("VirtualFileSystem");
-
-export interface VirtualFile {
-  path: string;
-  content: string;
-}
-
-export interface VirtualRename {
-  from: string;
-  to: string;
-}
-
-export interface SyncFileSystemDelegate {
-  fileExists?: (fileName: string) => boolean;
-  readFile?: (fileName: string) => string | undefined;
-}
+  SyncFileSystemDelegate,
+  SyncVirtualFileSystem,
+  VirtualChanges,
+  VirtualFile,
+} from "./tsc_types";
+import { normalizePath } from "./normalizePath";
 
 export interface AsyncFileSystemDelegate {
   fileExists?: (fileName: string) => Promise<boolean>;
@@ -78,11 +61,11 @@ export abstract class BaseVirtualFileSystem {
   /**
    * Apply changes from a response containing dyad tags
    */
-  public applyResponseChanges(fullResponse: string): void {
-    const writeTags = getDyadWriteTags(fullResponse);
-    const renameTags = getDyadRenameTags(fullResponse);
-    const deletePaths = getDyadDeleteTags(fullResponse);
-
+  public applyResponseChanges({
+    deletePaths,
+    renameTags,
+    writeTags,
+  }: VirtualChanges): void {
     // Process deletions
     for (const deletePath of deletePaths) {
       this.deleteFile(deletePath);
@@ -147,7 +130,7 @@ export abstract class BaseVirtualFileSystem {
         this.virtualFiles.set(toNormalized, content);
       } catch (error) {
         // If we can't read the source file, we'll let the consumer handle it
-        logger.warn(
+        console.warn(
           `Could not read source file for rename: ${fromPath}`,
           error,
         );
@@ -214,7 +197,10 @@ export abstract class BaseVirtualFileSystem {
 /**
  * Synchronous virtual filesystem
  */
-export class SyncVirtualFileSystem extends BaseVirtualFileSystem {
+export class SyncVirtualFileSystemImpl
+  extends BaseVirtualFileSystem
+  implements SyncVirtualFileSystem
+{
   private delegate: SyncFileSystemDelegate;
 
   constructor(baseDir: string, delegate?: SyncFileSystemDelegate) {

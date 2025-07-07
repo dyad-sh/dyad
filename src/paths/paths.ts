@@ -10,6 +10,11 @@ export function getDyadAppPath(appPath: string): string {
   return path.join(os.homedir(), "dyad-apps", appPath);
 }
 
+export function getTypeScriptCachePath(): string {
+  const electron = getElectron();
+  return path.join(electron!.app.getPath("sessionData"), "typescript-cache");
+}
+
 /**
  * Gets the user data path, handling both Electron and non-Electron environments
  * In Electron: returns the app's userData directory

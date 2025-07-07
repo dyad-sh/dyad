@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "System",
+    "lib": ["ES2022"],
+    "outFile": "./dist/tsc_worker.js",
+    "rootDir": "../../",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "moduleResolution": "node",
+    "declaration": false,
+    "sourceMap": true,
+    "allowSyntheticDefaultImports": true,
+    "baseUrl": "./"
+  },
+  "include": ["*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

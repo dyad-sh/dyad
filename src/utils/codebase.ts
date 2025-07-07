@@ -7,7 +7,7 @@ import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
 import { glob } from "glob";
 import { AppChatContext } from "../lib/schemas";
 import { readSettings } from "@/main/settings";
-import { AsyncVirtualFileSystem } from "./VirtualFilesystem";
+import { AsyncVirtualFileSystem } from "../../shared/VirtualFilesystem";
 
 const logger = log.scope("utils/codebase");
 

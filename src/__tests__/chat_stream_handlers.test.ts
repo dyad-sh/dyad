@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+
 import {
   getDyadWriteTags,
   getDyadRenameTags,
-  getDyadDeleteTags,
-  processFullResponseActions,
   getDyadAddDependencyTags,
-} from "../ipc/processors/response_processor";
+  getDyadDeleteTags,
+} from "../ipc/utils/dyad_tag_parser";
+
+import { processFullResponseActions } from "../ipc/processors/response_processor";
 import {
   removeDyadTags,
   hasUnclosedDyadWrite,

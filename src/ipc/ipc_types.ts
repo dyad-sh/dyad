@@ -1,4 +1,6 @@
 import { z } from "zod";
+import type { ProblemReport, Problem } from "../../shared/tsc_types";
+export type { ProblemReport, Problem };
 
 export interface AppOutput {
   type: "stdout" | "stderr" | "info" | "client-error";
@@ -245,16 +247,4 @@ export interface AppUpgrade {
   description: string;
   manualUpgradeUrl: string;
   isNeeded: boolean;
-}
-
-export interface Problem {
-  file: string;
-  line: number;
-  column: number;
-  message: string;
-  code: number;
-}
-
-export interface ProblemReport {
-  problems: Problem[];
 }

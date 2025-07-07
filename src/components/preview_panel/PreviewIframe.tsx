@@ -565,6 +565,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             title={`Preview for App ${selectedAppId}`}
             className="w-full h-full border-none bg-white dark:bg-gray-950"
             src={appUrl}
+            allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
           />
         )}
       </div>

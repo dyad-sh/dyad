@@ -54,7 +54,6 @@ export default function HomePage() {
     const updateLastVersionLaunched = async () => {
       if (
         appVersion &&
-        appVersion.match(/^\d+\.\d+\.\d+$/) &&
         settings &&
         settings.lastShownReleaseNotesVersion !== appVersion
       ) {

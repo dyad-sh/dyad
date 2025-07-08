@@ -37,6 +37,7 @@ import type {
   ComponentSelection,
   AppUpgrade,
   ProblemReport,
+  EditAppFileReturnType,
 } from "./ipc_types";
 import type { AppChatContext, ProposalResult } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
@@ -220,8 +221,8 @@ export class IpcClient {
     appId: number,
     filePath: string,
     content: string,
-  ): Promise<void> {
-    await this.ipcRenderer.invoke("edit-app-file", {
+  ): Promise<EditAppFileReturnType> {
+    return this.ipcRenderer.invoke("edit-app-file", {
       appId,
       filePath,
       content,

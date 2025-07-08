@@ -150,30 +150,6 @@ export default function SettingsPage() {
                   .
                 </div>
               </div>
-              {/* Enable File Editing Experiment */}
-              <div className="space-y-1">
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="enable-file-editing"
-                    checked={!!settings?.experiments?.enableFileEditing}
-                    onCheckedChange={(checked) =>
-                      updateSettings({
-                        experiments: {
-                          ...settings?.experiments,
-                          enableFileEditing: checked,
-                        },
-                      })
-                    }
-                  />
-                  <Label htmlFor="enable-file-editing">
-                    Enable File Editing
-                  </Label>
-                </div>
-                <div className="text-sm text-gray-500 dark:text-gray-400">
-                  File editing is not reliable and requires you to manually
-                  commit changes and update Supabase edge functions.
-                </div>
-              </div>
             </div>
           </div>
 

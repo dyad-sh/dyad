@@ -4,6 +4,9 @@ import path from "node:path";
 import fsExtra from "fs-extra";
 import { generateCuteAppName } from "../../lib/utils";
 
+// Directories to exclude when scanning files
+const EXCLUDED_DIRS = ["node_modules", ".git", ".next"];
+
 /**
  * Recursively gets all files in a directory, excluding node_modules and .git
  * @param dir The directory to scan
@@ -22,8 +25,8 @@ export function getFilesRecursively(dir: string, baseDir: string): string[] {
     const res = path.join(dir, dirent.name);
     if (dirent.isDirectory()) {
       // For directories, concat the results of recursive call
-      // Exclude node_modules and .git directories
-      if (dirent.name !== "node_modules" && dirent.name !== ".git") {
+      // Exclude specified directories
+      if (!EXCLUDED_DIRS.includes(dirent.name)) {
         files.push(...getFilesRecursively(res, baseDir));
       }
     } else {

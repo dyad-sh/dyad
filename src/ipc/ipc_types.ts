@@ -248,3 +248,7 @@ export interface AppUpgrade {
   manualUpgradeUrl: string;
   isNeeded: boolean;
 }
+
+export interface EditAppFileReturnType {
+  warning?: string;
+}

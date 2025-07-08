@@ -187,7 +187,7 @@ class GitHubConnector {
 }
 
 export class PageObject {
-  private userDataDir: string;
+  public userDataDir: string;
   public githubConnector: GitHubConnector;
   constructor(
     public electronApp: ElectronApplication,
@@ -935,15 +935,27 @@ export class PageObject {
   }
 }
 
+interface ElectronConfig {
+  preLaunchHook?: ({ userDataDir }: { userDataDir: string }) => Promise<void>;
+}
+
 // From https://github.com/microsoft/playwright/issues/8208#issuecomment-1435475930
 //
 // Note how we mark the fixture as { auto: true }.
 // This way it is always instantiated, even if the test does not use it explicitly.
 export const test = base.extend<{
+  electronConfig: ElectronConfig;
   attachScreenshotsToReport: void;
   electronApp: ElectronApplication;
   po: PageObject;
 }>({
+  electronConfig: [
+    async ({}, use) => {
+      // Default configuration - tests can override this fixture
+      await use({});
+    },
+    { auto: true },
+  ],
   po: [
     async ({ electronApp }, use) => {
       const page = await electronApp.firstWindow();
@@ -976,7 +988,7 @@ export const test = base.extend<{
     { auto: true },
   ],
   electronApp: [
-    async ({}, use) => {
+    async ({ electronConfig }, use) => {
       // find the latest build in the out directory
       const latestBuild = eph.findLatestBuild();
       // parse the directory and find paths and other info
@@ -990,15 +1002,15 @@ export const test = base.extend<{
       // This is just a hack to avoid the AI setup screen.
       process.env.OPENAI_API_KEY = "sk-test";
       const baseTmpDir = os.tmpdir();
-      const USER_DATA_DIR = path.join(
-        baseTmpDir,
-        `dyad-e2e-tests-${Date.now()}`,
-      );
+      const userDataDir = path.join(baseTmpDir, `dyad-e2e-tests-${Date.now()}`);
+      if (electronConfig.preLaunchHook) {
+        await electronConfig.preLaunchHook({ userDataDir });
+      }
       const electronApp = await electron.launch({
         args: [
           appInfo.main,
           "--enable-logging",
-          `--user-data-dir=${USER_DATA_DIR}`,
+          `--user-data-dir=${userDataDir}`,
         ],
         executablePath: appInfo.executable,
         // Strong suspicion this is causing issues on Windows with tests hanging due to error:
@@ -1007,7 +1019,7 @@ export const test = base.extend<{
         //   dir: "test-results",
         // },
       });
-      (electronApp as any).$dyadUserDataDir = USER_DATA_DIR;
+      (electronApp as any).$dyadUserDataDir = userDataDir;
 
       console.log("electronApp launched!");
       if (showDebugLogs) {
@@ -1063,6 +1075,14 @@ export const test = base.extend<{
     { auto: true },
   ],
 });
+
+export function testWithConfig(config: ElectronConfig) {
+  return test.extend({
+    electronConfig: async ({}, use) => {
+      await use(config);
+    },
+  });
+}
 
 // Wrapper that skips tests on Windows platform
 export const testSkipIfWindows = os.platform() === "win32" ? test.skip : test;

@@ -27,7 +27,7 @@ const DEFAULT_SETTINGS: UserSettings = {
 
 const SETTINGS_FILE = "user-settings.json";
 
-function getSettingsFilePath(): string {
+export function getSettingsFilePath(): string {
   return path.join(getUserDataPath(), SETTINGS_FILE);
 }
 

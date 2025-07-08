@@ -6,10 +6,16 @@ import dotenv from "dotenv";
 import started from "electron-squirrel-startup";
 import { updateElectronApp, UpdateSourceType } from "update-electron-app";
 import log from "electron-log";
-import { readSettings, writeSettings } from "./main/settings";
+import {
+  getSettingsFilePath,
+  readSettings,
+  writeSettings,
+} from "./main/settings";
 import { handleSupabaseOAuthReturn } from "./supabase_admin/supabase_return_handler";
 import { handleDyadProReturn } from "./main/pro";
 import { IS_TEST_BUILD } from "./ipc/utils/test_utils";
+import { BackupManager } from "./backup_manager";
+import { getDatabasePath, initializeDatabase } from "./db";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -58,10 +64,19 @@ if (process.defaultApp) {
 }
 
 export async function onReady() {
+  try {
+    const backupManager = new BackupManager({
+      settingsFile: getSettingsFilePath(),
+      dbFile: getDatabasePath(),
+    });
+    await backupManager.initialize();
+  } catch (e) {
+    logger.error("Error initializing backup manager", e);
+  }
+  initializeDatabase();
   await onFirstRunMaybe();
+  createWindow();
 }
-
-app.whenReady().then(onReady);
 
 /**
  * Is this the first run of Fiddle? If so, perform
@@ -164,11 +179,7 @@ if (!gotTheLock) {
     // the commandLine is array of strings in which last element is deep link url
     handleDeepLinkReturn(commandLine.pop()!);
   });
-
-  // Create mainWindow, load the rest of the app, etc...
-  app.whenReady().then(() => {
-    createWindow();
-  });
+  app.whenReady().then(onReady);
 }
 
 // Handle the protocol. In this case, we choose to show an Error Box.

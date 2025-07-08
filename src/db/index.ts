@@ -1,3 +1,4 @@
+// db.ts
 import {
   type BetterSQLite3Database,
   drizzle,
@@ -8,7 +9,6 @@ import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import path from "node:path";
 import fs from "node:fs";
 import { getDyadAppPath, getUserDataPath } from "../paths/paths";
-
 import log from "electron-log";
 
 const logger = log.scope("db");
@@ -36,10 +36,8 @@ export function initializeDatabase(): BetterSQLite3Database<typeof schema> & {
 
   // Check if the database file exists and remove it if it has issues
   try {
-    // If the file exists but is empty or corrupted, it might cause issues
     if (fs.existsSync(dbPath)) {
       const stats = fs.statSync(dbPath);
-      // If the file is very small, it might be corrupted
       if (stats.size < 100) {
         logger.log("Database file exists but may be corrupted. Removing it...");
         fs.unlinkSync(dbPath);
@@ -50,16 +48,11 @@ export function initializeDatabase(): BetterSQLite3Database<typeof schema> & {
   }
 
   fs.mkdirSync(getUserDataPath(), { recursive: true });
-  // Just a convenient time to create it.
   fs.mkdirSync(getDyadAppPath("."), { recursive: true });
 
-  // Open the database with a higher timeout
   const sqlite = new Database(dbPath, { timeout: 10000 });
-
-  // Enable foreign key constraints
   sqlite.pragma("foreign_keys = ON");
 
-  // Create DB instance with schema
   _db = drizzle(sqlite, { schema });
 
   try {
@@ -77,13 +70,25 @@ export function initializeDatabase(): BetterSQLite3Database<typeof schema> & {
   return _db as any;
 }
 
-// Initialize database on import
-try {
-  initializeDatabase();
-} catch (error) {
-  logger.error("Failed to initialize database:", error);
+/**
+ * Get the database instance (throws if not initialized)
+ */
+export function getDb(): BetterSQLite3Database<typeof schema> & {
+  $client: Database.Database;
+} {
+  if (!_db) {
+    throw new Error(
+      "Database not initialized. Call initializeDatabase() first.",
+    );
+  }
+  return _db as any;
 }
 
-export const db = _db as any as BetterSQLite3Database<typeof schema> & {
+export const db = new Proxy({} as any, {
+  get(target, prop) {
+    const database = getDb();
+    return database[prop as keyof typeof database];
+  },
+}) as BetterSQLite3Database<typeof schema> & {
   $client: Database.Database;
 };

@@ -1,6 +1,6 @@
 - img
 - text: 1 error
-- button "Recheck":
+- button "Run checks":
   - img
 - button "Fix All":
   - img

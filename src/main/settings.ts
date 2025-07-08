@@ -4,6 +4,9 @@ import { getUserDataPath } from "../paths/paths";
 import { UserSettingsSchema, type UserSettings, Secret } from "../lib/schemas";
 import { safeStorage } from "electron";
 import { v4 as uuidv4 } from "uuid";
+import log from "electron-log";
+
+const logger = log.scope("settings");
 
 // IF YOU NEED TO UPDATE THIS, YOU'RE PROBABLY DOING SOMETHING WRONG!
 // Need to maintain backwards compatibility!
@@ -87,7 +90,7 @@ export function readSettings(): UserSettings {
 
     return validatedSettings;
   } catch (error) {
-    console.error("Error reading settings:", error);
+    logger.error("Error reading settings:", error);
     return DEFAULT_SETTINGS;
   }
 }
@@ -124,7 +127,7 @@ export function writeSettings(settings: Partial<UserSettings>): void {
     const validatedSettings = UserSettingsSchema.parse(newSettings);
     fs.writeFileSync(filePath, JSON.stringify(validatedSettings, null, 2));
   } catch (error) {
-    console.error("Error writing settings:", error);
+    logger.error("Error writing settings:", error);
   }
 }
 

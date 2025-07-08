@@ -4,7 +4,7 @@
     "provider": "auto"
   },
   "providerSettings": {},
-  "telemetryConsent": "opted_in",
+  "telemetryConsent": "unset",
   "telemetryUserId": "[UUID]",
   "hasRunBefore": true,
   "experiments": {},
@@ -14,6 +14,6 @@
   "selectedChatMode": "build",
   "enableAutoFixProblems": false,
   "enableAutoUpdate": true,
-  "releaseChannel": "stable",
+  "releaseChannel": "beta",
   "isTestMode": true
 }

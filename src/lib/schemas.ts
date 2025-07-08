@@ -125,6 +125,9 @@ export type ContextPathResults = {
   smartContextAutoIncludes: ContextPathResult[];
 };
 
+export const ReleaseChannelSchema = z.enum(["stable", "beta"]);
+export type ReleaseChannel = z.infer<typeof ReleaseChannelSchema>;
+
 /**
  * Zod schema for user settings
  */
@@ -152,6 +155,7 @@ export const UserSettingsSchema = z.object({
   enableAutoFixProblems: z.boolean().optional(),
   enableNativeGit: z.boolean().optional(),
   enableAutoUpdate: z.boolean(),
+  releaseChannel: ReleaseChannelSchema,
 
   ////////////////////////////////
   // E2E TESTING ONLY.

@@ -19,6 +19,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { AutoFixProblemsSwitch } from "@/components/AutoFixProblemsSwitch";
 import { AutoUpdateSwitch } from "@/components/AutoUpdateSwitch";
+import { ReleaseChannelSelector } from "@/components/ReleaseChannelSelector";
 
 export default function SettingsPage() {
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
@@ -268,6 +269,10 @@ export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
           This will automatically update the app when new versions are
           available.
         </div>
+      </div>
+
+      <div className="mt-4">
+        <ReleaseChannelSelector />
       </div>
 
       <div className="flex items-center text-sm text-gray-500 dark:text-gray-400 mt-4">

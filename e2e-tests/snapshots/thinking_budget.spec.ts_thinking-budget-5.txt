@@ -23,5 +23,6 @@
   "selectedChatMode": "build",
   "enableAutoFixProblems": false,
   "enableAutoUpdate": true,
+  "releaseChannel": "stable",
   "isTestMode": true
 }

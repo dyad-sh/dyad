@@ -837,6 +837,15 @@ export class PageObject {
     await this.page.getByRole("switch", { name: "Auto-update" }).click();
   }
 
+  async changeReleaseChannel(channel: "stable" | "beta") {
+    // await page.getByRole('combobox').filter({ hasText: 'Stable' }).click();
+    // await page.getByRole('option', { name: 'Beta' }).dblclick();
+    await this.page.getByRole("combobox", { name: "Release Channel" }).click();
+    await this.page
+      .getByRole("option", { name: channel === "stable" ? "Stable" : "Beta" })
+      .click();
+  }
+
   async clickTelemetryAccept() {
     await this.page.getByTestId("telemetry-accept-button").click();
   }

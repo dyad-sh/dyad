@@ -22,6 +22,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   selectedChatMode: "build",
   enableAutoFixProblems: false,
   enableAutoUpdate: true,
+  releaseChannel: "stable",
 };
 
 const SETTINGS_FILE = "user-settings.json";

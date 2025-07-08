@@ -4,7 +4,7 @@ import { registerIpcHandlers } from "./ipc/ipc_host";
 import dotenv from "dotenv";
 // @ts-ignore
 import started from "electron-squirrel-startup";
-import { updateElectronApp } from "update-electron-app";
+import { updateElectronApp, UpdateSourceType } from "update-electron-app";
 import log from "electron-log";
 import { readSettings, writeSettings } from "./main/settings";
 import { handleSupabaseOAuthReturn } from "./supabase_admin/supabase_return_handler";
@@ -20,7 +20,19 @@ const logger = log.scope("main");
 // Check settings before enabling auto-update
 const settings = readSettings();
 if (settings.enableAutoUpdate) {
-  updateElectronApp({ logger }); // additional configuration options available
+  // Technically we could just pass the releaseChannel directly to the host,
+  // but this is more explicit and falls back to stable if there's an unknown
+  // release channel.
+  const postfix = settings.releaseChannel === "beta" ? "beta" : "stable";
+  const host = `https://api.dyad.sh/v1/update/${postfix}`;
+  updateElectronApp({
+    logger,
+    updateSource: {
+      type: UpdateSourceType.ElectronPublicUpdateService,
+      repo: "dyad-sh/dyad",
+      host,
+    },
+  }); // additional configuration options available
 }
 
 // Load environment variables from .env file

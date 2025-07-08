@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useAtom, useAtomValue } from "jotai";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
@@ -7,6 +8,7 @@ import {
   FileText,
   Wrench,
   RefreshCw,
+  Check,
 } from "lucide-react";
 import { Problem, ProblemReport } from "@/ipc/ipc_types";
 import { Button } from "@/components/ui/button";
@@ -15,8 +17,6 @@ import { useStreamChat } from "@/hooks/useStreamChat";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
 import { createProblemFixPrompt } from "@/shared/problem_prompt";
 import { showError } from "@/lib/toast";
-import { useSettings } from "@/hooks/useSettings";
-import { AutoFixProblemsSwitch } from "../AutoFixProblemsSwitch";
 
 interface ProblemItemProps {
   problem: Problem;
@@ -64,45 +64,37 @@ const RecheckButton = ({
   variant = "outline",
   className = "h-7 px-3 text-xs",
 }: RecheckButtonProps) => {
-  const { settings } = useSettings();
   const { checkProblems, isChecking } = useCheckProblems(appId);
+  const [showingFeedback, setShowingFeedback] = useState(false);
 
   const handleRecheck = async () => {
+    setShowingFeedback(true);
+
     const res = await checkProblems();
+
+    setShowingFeedback(false);
+
     if (res.error) {
       showError(res.error);
     }
   };
 
-  if (!settings?.enableAutoFixProblems) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full text-center p-8">
-        <div className="w-16 h-16 rounded-full bg-[var(--background-darkest)] flex items-center justify-center mb-4">
-          <Wrench size={24} className="text-muted-foreground" />
-        </div>
-        <h3 className="text-lg font-medium mb-2">Enable Auto-Fix Problems</h3>
-        <p className="text-sm text-muted-foreground max-w-md mb-4">
-          You need to enable autofix problems to use the Problem pane.
-        </p>
-        <AutoFixProblemsSwitch showToast={true} />
-      </div>
-    );
-  }
+  const isShowingChecking = isChecking || showingFeedback;
 
   return (
     <Button
       size={size}
       variant={variant}
       onClick={handleRecheck}
-      disabled={isChecking}
+      disabled={isShowingChecking}
       className={className}
       data-testid="recheck-button"
     >
       <RefreshCw
         size={14}
-        className={`mr-1 ${isChecking ? "animate-spin" : ""}`}
+        className={`mr-1 ${isShowingChecking ? "animate-spin" : ""}`}
       />
-      {isChecking ? "Checking..." : "Recheck"}
+      {isShowingChecking ? "Checking..." : "Run checks"}
     </Button>
   );
 };
@@ -130,10 +122,13 @@ const ProblemsSummary = ({ problemReport, appId }: ProblemsSummaryProps) => {
   if (problems.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-32 text-center">
+        <p className="mt-6 text-sm font-medium text-muted-foreground mb-3">
+          No problems found
+        </p>
         <div className="w-12 h-12 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center mb-3">
-          <div className="w-6 h-6 rounded-full bg-green-500"></div>
+          <Check size={20} className="text-green-600 dark:text-green-400" />
         </div>
-        <p className="text-sm text-muted-foreground mb-3">No problems found</p>
+
         <RecheckButton appId={appId} />
       </div>
     );
@@ -197,6 +192,13 @@ export function _Problems() {
   if (!problemReport) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center p-8">
+        <div className="w-16 h-16 rounded-full bg-[var(--background-darkest)] flex items-center justify-center mb-4">
+          <AlertTriangle size={24} className="text-muted-foreground" />
+        </div>
+        <h3 className="text-lg font-medium mb-2">No Problems Report</h3>
+        <p className="text-sm text-muted-foreground max-w-md mb-4">
+          Run checks to scan your app for TypeScript errors and other problems.
+        </p>
         <RecheckButton appId={selectedAppId} />
       </div>
     );

@@ -4,7 +4,40 @@ import { LocalModelListResponse, LocalModel } from "../ipc_types";
 
 const logger = log.scope("ollama_handler");
 
-const OLLAMA_API_URL = process.env.OLLAMA_HOST || "http://localhost:11434";
+export function parseOllamaHost(host?: string): string {
+  if (!host) {
+    return "http://localhost:11434";
+  }
+
+  // If it already has a protocol, use as-is
+  if (host.startsWith("http://") || host.startsWith("https://")) {
+    return host;
+  }
+
+  // Check for bracketed IPv6 with port: [::1]:8080
+  if (host.startsWith("[") && host.includes("]:")) {
+    return `http://${host}`;
+  }
+
+  // Check for regular host:port (but not plain IPv6)
+  if (
+    host.includes(":") &&
+    !host.includes("::") &&
+    host.split(":").length === 2
+  ) {
+    return `http://${host}`;
+  }
+
+  // Check if it's a plain IPv6 address (contains :: or multiple colons)
+  if (host.includes("::") || host.split(":").length > 2) {
+    return `http://[${host}]:11434`;
+  }
+
+  // If it's just a hostname, add default port
+  return `http://${host}:11434`;
+}
+
+const OLLAMA_API_URL = parseOllamaHost(process.env.OLLAMA_HOST);
 
 interface OllamaModel {
   name: string;

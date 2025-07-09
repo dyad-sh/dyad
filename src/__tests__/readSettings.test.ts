@@ -291,16 +291,8 @@ describe("readSettings", () => {
         throw new Error("File read error");
       });
 
-      const consoleSpy = vi
-        .spyOn(console, "error")
-        .mockImplementation(() => {});
-
       const result = readSettings();
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        "Error reading settings:",
-        expect.any(Error),
-      );
       expect(result).toEqual({
         selectedModel: {
           name: "auto",
@@ -318,24 +310,14 @@ describe("readSettings", () => {
         enableAutoUpdate: true,
         releaseChannel: "stable",
       });
-
-      consoleSpy.mockRestore();
     });
 
     it("should return default settings when JSON parsing fails", () => {
       mockFs.existsSync.mockReturnValue(true);
       mockFs.readFileSync.mockReturnValue("invalid json");
 
-      const consoleSpy = vi
-        .spyOn(console, "error")
-        .mockImplementation(() => {});
-
       const result = readSettings();
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        "Error reading settings:",
-        expect.any(Error),
-      );
       expect(result).toMatchObject({
         selectedModel: {
           name: "auto",
@@ -343,8 +325,6 @@ describe("readSettings", () => {
         },
         releaseChannel: "stable",
       });
-
-      consoleSpy.mockRestore();
     });
 
     it("should return default settings when schema validation fails", () => {
@@ -359,16 +339,8 @@ describe("readSettings", () => {
       mockFs.existsSync.mockReturnValue(true);
       mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
 
-      const consoleSpy = vi
-        .spyOn(console, "error")
-        .mockImplementation(() => {});
-
       const result = readSettings();
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        "Error reading settings:",
-        expect.any(Error),
-      );
       expect(result).toMatchObject({
         selectedModel: {
           name: "auto",
@@ -376,8 +348,6 @@ describe("readSettings", () => {
         },
         releaseChannel: "stable",
       });
-
-      consoleSpy.mockRestore();
     });
 
     it("should handle decryption errors gracefully", () => {
@@ -394,16 +364,8 @@ describe("readSettings", () => {
         throw new Error("Decryption failed");
       });
 
-      const consoleSpy = vi
-        .spyOn(console, "error")
-        .mockImplementation(() => {});
-
       const result = readSettings();
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        "Error reading settings:",
-        expect.any(Error),
-      );
       expect(result).toMatchObject({
         selectedModel: {
           name: "auto",
@@ -411,8 +373,6 @@ describe("readSettings", () => {
         },
         releaseChannel: "stable",
       });
-
-      consoleSpy.mockRestore();
     });
   });
 

@@ -37,7 +37,8 @@
     "extract-codebase": "ts-node scripts/extract-codebase.ts",
     "prepare": "husky install",
     "pre:e2e": "cross-env E2E_TEST_BUILD=true npm run package",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "e2e:shard": "playwright test --shard"
   },
   "keywords": [],
   "author": {

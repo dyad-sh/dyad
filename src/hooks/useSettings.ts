@@ -4,6 +4,7 @@ import { userSettingsAtom, envVarsAtom } from "@/atoms/appAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
 import { type UserSettings } from "@/lib/schemas";
 import { usePostHog } from "posthog-js/react";
+import { useAppVersion } from "./useAppVersion";
 
 const TELEMETRY_CONSENT_KEY = "dyadTelemetryConsent";
 const TELEMETRY_USER_ID_KEY = "dyadTelemetryUserId";
@@ -24,6 +25,7 @@ export function useSettings() {
   const [envVars, setEnvVarsAtom] = useAtom(envVarsAtom);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const appVersion = useAppVersion();
   const loadInitialData = useCallback(async () => {
     setLoading(true);
     try {
@@ -34,9 +36,10 @@ export function useSettings() {
         ipcClient.getEnvVars(),
       ]);
       processSettingsForTelemetry(userSettings);
-      if (!isInitialLoad) {
+      if (!isInitialLoad && appVersion) {
         posthog.capture("app:initial-load", {
           isPro: Boolean(userSettings.providerSettings?.auto?.apiKey?.value),
+          appVersion,
         });
         isInitialLoad = true;
       }
@@ -49,7 +52,7 @@ export function useSettings() {
     } finally {
       setLoading(false);
     }
-  }, [setSettingsAtom, setEnvVarsAtom]);
+  }, [setSettingsAtom, setEnvVarsAtom, appVersion]);
 
   useEffect(() => {
     // Only run once on mount, dependencies are stable getters/setters

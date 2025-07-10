@@ -112,6 +112,11 @@ export function generateAppFilesSnapshotData(
         if (entry.name === "package.json") {
           const packageJson = JSON.parse(content);
           packageJson.packageManager = "<scrubbed>";
+          for (const key in packageJson.dependencies) {
+            if (key.startsWith("@capacitor/")) {
+              packageJson.dependencies[key] = "<scrubbed>";
+            }
+          }
           content = JSON.stringify(packageJson, null, 2);
         }
         files.push({ relativePath, content });

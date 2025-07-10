@@ -90,6 +90,14 @@ export const SupabaseSchema = z.object({
 });
 export type Supabase = z.infer<typeof SupabaseSchema>;
 
+export const NeonSchema = z.object({
+  accessToken: SecretSchema.optional(),
+  refreshToken: SecretSchema.optional(),
+  expiresIn: z.number().optional(),
+  tokenTimestamp: z.number().optional(),
+});
+export type Neon = z.infer<typeof NeonSchema>;
+
 export const ExperimentsSchema = z.object({
   // Deprecated
   enableSupabaseIntegration: z.boolean().describe("DEPRECATED").optional(),
@@ -137,6 +145,7 @@ export const UserSettingsSchema = z.object({
   githubUser: GithubUserSchema.optional(),
   githubAccessToken: SecretSchema.optional(),
   supabase: SupabaseSchema.optional(),
+  neon: NeonSchema.optional(),
   autoApproveChanges: z.boolean().optional(),
   telemetryConsent: z.enum(["opted_in", "opted_out", "unset"]).optional(),
   telemetryUserId: z.string().optional(),

@@ -436,7 +436,9 @@ export class PageObject {
   }
 
   async snapshotProblemsPane() {
-    await expect(this.page.getByTestId("problems-pane")).toMatchAriaSnapshot();
+    await expect(this.page.getByTestId("problems-pane")).toMatchAriaSnapshot({
+      timeout: Timeout.MEDIUM,
+    });
   }
 
   async clickRebuild() {

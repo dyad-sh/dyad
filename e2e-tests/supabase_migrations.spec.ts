@@ -3,6 +3,7 @@ import { test } from "./helpers/test_helper";
 import fs from "fs-extra";
 import path from "path";
 import { execSync } from "child_process";
+import os from "node:os";
 
 test("supabase migrations", async ({ po }) => {
   // Turning on native Git to catch this edge case:
@@ -46,12 +47,17 @@ test("supabase migrations", async ({ po }) => {
   expect(await fs.readFile(path.join(migrationsDir, files[0]), "utf8")).toEqual(
     "CREATE TABLE users (id serial primary key);",
   );
-  // Make sure git is clean.
-  const gitStatus = execSync("git status --porcelain", {
-    cwd: appPath,
-    encoding: "utf8",
-  }).trim();
-  expect(gitStatus).toBe("");
+
+  // Skip this check on Windows because git isn't configured and
+  // the mac test will catch this regression.
+  if (os.platform() !== "win32") {
+    // Make sure git is clean.
+    const gitStatus = execSync("git status --porcelain", {
+      cwd: appPath,
+      encoding: "utf8",
+    }).trim();
+    expect(gitStatus).toBe("");
+  }
 
   // Send a prompt that triggers a migration
   await po.sendPrompt("tc=execute-sql-no-description");

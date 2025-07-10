@@ -18,6 +18,7 @@ import {
   Lightbulb,
   ChevronRight,
   MousePointerClick,
+  Power,
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
@@ -38,6 +39,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useRunApp } from "@/hooks/useRunApp";
 
 interface ErrorBannerProps {
   error: string | undefined;
@@ -129,7 +131,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const [availableRoutes, setAvailableRoutes] = useState<
     Array<{ path: string; label: string }>
   >([]);
-
+  const { restartApp } = useRunApp();
   // Load router related files to extract routes
   const { content: routerContent } = useLoadAppFile(
     selectedAppId,
@@ -423,6 +425,10 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     );
   }
 
+  const onRestart = () => {
+    restartApp();
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* Browser-style header */}
@@ -519,6 +525,14 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
         {/* Action Buttons */}
         <div className="flex space-x-1">
+          <button
+            onClick={onRestart}
+            className="flex items-center space-x-1 px-3 py-1 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
+            title="Restart App"
+          >
+            <Power size={16} />
+            <span>Restart</span>
+          </button>
           <button
             data-testid="preview-open-browser-button"
             onClick={() => {

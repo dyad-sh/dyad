@@ -1,4 +1,5 @@
-import { useState, useCallback } from "react";
+import { useCallback } from "react";
+import { atom } from "jotai";
 import { IpcClient } from "@/ipc/ipc_client";
 import {
   appOutputAtom,
@@ -11,8 +12,10 @@ import {
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { AppOutput } from "@/ipc/ipc_types";
 
+const useRunAppLoadingAtom = atom(false);
+
 export function useRunApp() {
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useAtom(useRunAppLoadingAtom);
   const [app, setApp] = useAtom(currentAppAtom);
   const setAppOutput = useSetAtom(appOutputAtom);
   const [appUrlObj, setAppUrlObj] = useAtom(appUrlAtom);

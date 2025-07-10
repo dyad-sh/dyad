@@ -5,211 +5,21 @@ import {
   previewPanelKeyAtom,
   selectedAppIdAtom,
 } from "../../atoms/appAtoms";
-import { IpcClient } from "@/ipc/ipc_client";
 
 import { CodeView } from "./CodeView";
 import { PreviewIframe } from "./PreviewIframe";
 import { Problems } from "./Problems";
-import {
-  Eye,
-  Code,
-  ChevronDown,
-  ChevronUp,
-  Logs,
-  MoreVertical,
-  Cog,
-  Power,
-  Trash2,
-  AlertTriangle,
-} from "lucide-react";
-import { motion } from "framer-motion";
-import { useEffect, useRef, useState, useCallback } from "react";
+import { ChevronDown, ChevronUp, Logs } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { PanelGroup, Panel, PanelResizeHandle } from "react-resizable-panels";
 import { Console } from "./Console";
 import { useRunApp } from "@/hooks/useRunApp";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { showError, showSuccess } from "@/lib/toast";
-import { useMutation } from "@tanstack/react-query";
-import { useCheckProblems } from "@/hooks/useCheckProblems";
-
-type PreviewMode = "preview" | "code" | "problems";
-
-interface PreviewHeaderProps {
-  previewMode: PreviewMode;
-  setPreviewMode: (mode: PreviewMode) => void;
-  onRestart: () => void;
-  onCleanRestart: () => void;
-  onClearSessionData: () => void;
-}
 
 interface ConsoleHeaderProps {
   isOpen: boolean;
   onToggle: () => void;
   latestMessage?: string;
 }
-
-// Preview Header component with preview mode toggle
-const PreviewHeader = ({
-  previewMode,
-  setPreviewMode,
-  onRestart,
-  onCleanRestart,
-  onClearSessionData,
-}: PreviewHeaderProps) => {
-  const selectedAppId = useAtomValue(selectedAppIdAtom);
-  const previewRef = useRef<HTMLButtonElement>(null);
-  const codeRef = useRef<HTMLButtonElement>(null);
-  const problemsRef = useRef<HTMLButtonElement>(null);
-  const [indicatorStyle, setIndicatorStyle] = useState({ left: 0, width: 0 });
-  const { problemReport } = useCheckProblems(selectedAppId);
-  // Get the problem count for the selected app
-  const problemCount = problemReport ? problemReport.problems.length : 0;
-
-  // Format the problem count for display
-  const formatProblemCount = (count: number): string => {
-    if (count === 0) return "";
-    if (count > 100) return "100+";
-    return count.toString();
-  };
-
-  const displayCount = formatProblemCount(problemCount);
-
-  // Update indicator position when mode changes
-  useEffect(() => {
-    const updateIndicator = () => {
-      let targetRef: React.RefObject<HTMLButtonElement | null>;
-
-      switch (previewMode) {
-        case "preview":
-          targetRef = previewRef;
-          break;
-        case "code":
-          targetRef = codeRef;
-          break;
-        case "problems":
-          targetRef = problemsRef;
-          break;
-        default:
-          return;
-      }
-
-      if (targetRef.current) {
-        const button = targetRef.current;
-        const container = button.parentElement;
-        if (container) {
-          const containerRect = container.getBoundingClientRect();
-          const buttonRect = button.getBoundingClientRect();
-          const left = buttonRect.left - containerRect.left;
-          const width = buttonRect.width;
-
-          setIndicatorStyle({ left, width });
-        }
-      }
-    };
-
-    // Small delay to ensure DOM is updated
-    const timeoutId = setTimeout(updateIndicator, 10);
-    return () => clearTimeout(timeoutId);
-  }, [previewMode, displayCount]);
-
-  return (
-    <div className="flex items-center justify-between px-4 py-2 border-b border-border">
-      <div className="relative flex bg-[var(--background-darkest)] rounded-md p-0.5">
-        <motion.div
-          className="absolute top-0.5 bottom-0.5 bg-[var(--background-lightest)] shadow rounded-md"
-          animate={{
-            left: indicatorStyle.left,
-            width: indicatorStyle.width,
-          }}
-          transition={{
-            type: "spring",
-            stiffness: 600,
-            damping: 35,
-            mass: 0.6,
-          }}
-        />
-        <button
-          data-testid="preview-mode-button"
-          ref={previewRef}
-          className="relative flex items-center gap-1 px-2 py-1 rounded-md text-sm font-medium z-10"
-          onClick={() => setPreviewMode("preview")}
-        >
-          <Eye size={14} />
-          <span>Preview</span>
-        </button>
-        <button
-          data-testid="problems-mode-button"
-          ref={problemsRef}
-          className="relative flex items-center gap-1 px-2 py-1 rounded-md text-sm font-medium z-10"
-          onClick={() => setPreviewMode("problems")}
-        >
-          <AlertTriangle size={14} />
-          <span>Problems</span>
-          {displayCount && (
-            <span className="ml-0.5 px-1 py-0.5 text-xs font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-full min-w-[16px] text-center">
-              {displayCount}
-            </span>
-          )}
-        </button>
-        <button
-          data-testid="code-mode-button"
-          ref={codeRef}
-          className="relative flex items-center gap-1 px-2 py-1 rounded-md text-sm font-medium z-10"
-          onClick={() => setPreviewMode("code")}
-        >
-          <Code size={14} />
-          <span>Code</span>
-        </button>
-      </div>
-      <div className="flex items-center">
-        <button
-          onClick={onRestart}
-          className="flex items-center space-x-1 px-3 py-1 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
-          title="Restart App"
-        >
-          <Power size={16} />
-          <span>Restart</span>
-        </button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              data-testid="preview-more-options-button"
-              className="flex items-center justify-center p-1.5 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
-              title="More options"
-            >
-              <MoreVertical size={16} />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-60">
-            <DropdownMenuItem onClick={onCleanRestart}>
-              <Cog size={16} />
-              <div className="flex flex-col">
-                <span>Rebuild</span>
-                <span className="text-xs text-muted-foreground">
-                  Re-installs node_modules and restarts
-                </span>
-              </div>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onClearSessionData}>
-              <Trash2 size={16} />
-              <div className="flex flex-col">
-                <span>Clear Cache</span>
-                <span className="text-xs text-muted-foreground">
-                  Clears cookies and local storage and other app cache
-                </span>
-              </div>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    </div>
-  );
-};
 
 // Console header component
 const ConsoleHeader = ({
@@ -237,11 +47,10 @@ const ConsoleHeader = ({
 
 // Main PreviewPanel component
 export function PreviewPanel() {
-  const [previewMode, setPreviewMode] = useAtom(previewModeAtom);
+  const [previewMode] = useAtom(previewModeAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const [isConsoleOpen, setIsConsoleOpen] = useState(false);
-  const { runApp, stopApp, restartApp, loading, app, refreshAppIframe } =
-    useRunApp();
+  const { runApp, stopApp, loading, app } = useRunApp();
   const runningAppIdRef = useRef<number | null>(null);
   const key = useAtomValue(previewPanelKeyAtom);
   const appOutput = useAtomValue(appOutputAtom);
@@ -249,37 +58,6 @@ export function PreviewPanel() {
   const messageCount = appOutput.length;
   const latestMessage =
     messageCount > 0 ? appOutput[messageCount - 1]?.message : undefined;
-
-  const handleRestart = useCallback(() => {
-    restartApp();
-  }, [restartApp]);
-
-  const handleCleanRestart = useCallback(() => {
-    restartApp({ removeNodeModules: true });
-  }, [restartApp]);
-
-  const useClearSessionData = () => {
-    return useMutation({
-      mutationFn: () => {
-        const ipcClient = IpcClient.getInstance();
-        return ipcClient.clearSessionData();
-      },
-      onSuccess: async () => {
-        await refreshAppIframe();
-        showSuccess("Preview data cleared");
-        // Optionally invalidate relevant queries
-      },
-      onError: (error) => {
-        showError(`Error clearing preview data: ${error}`);
-      },
-    });
-  };
-
-  const { mutate: clearSessionData } = useClearSessionData();
-
-  const handleClearSessionData = useCallback(() => {
-    clearSessionData();
-  }, [selectedAppId, clearSessionData]);
 
   useEffect(() => {
     const previousAppId = runningAppIdRef.current;
@@ -327,13 +105,6 @@ export function PreviewPanel() {
   }, [selectedAppId, runApp, stopApp]);
   return (
     <div className="flex flex-col h-full">
-      <PreviewHeader
-        previewMode={previewMode}
-        setPreviewMode={setPreviewMode}
-        onRestart={handleRestart}
-        onCleanRestart={handleCleanRestart}
-        onClearSessionData={handleClearSessionData}
-      />
       <div className="flex-1 overflow-hidden">
         <PanelGroup direction="vertical">
           <Panel id="content" minSize={30}>

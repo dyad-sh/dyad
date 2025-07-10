@@ -1,7 +1,7 @@
 import { useAtom } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useLoadApps } from "@/hooks/useLoadApps";
-import { useRouter } from "@tanstack/react-router";
+import { useRouter, useLocation } from "@tanstack/react-router";
 import { useSettings } from "@/hooks/useSettings";
 import { Button } from "@/components/ui/button";
 // @ts-ignore
@@ -20,11 +20,13 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { PreviewHeader } from "@/components/preview_panel/PreviewHeader";
 
 export const TitleBar = () => {
   const [selectedAppId] = useAtom(selectedAppIdAtom);
   const { apps } = useLoadApps();
   const { navigate } = useRouter();
+  const location = useLocation();
   const { settings, refreshSettings } = useSettings();
   const [isSuccessDialogOpen, setIsSuccessDialogOpen] = useState(false);
   const [showWindowControls, setShowWindowControls] = useState(false);
@@ -90,6 +92,14 @@ export const TitleBar = () => {
           {displayText}
         </Button>
         {isDyadPro && <DyadProButton isDyadProEnabled={isDyadProEnabled} />}
+
+        {/* Preview Header */}
+        {location.pathname === "/chat" && (
+          <div className="flex-1 flex justify-end no-app-region-drag">
+            <PreviewHeader />
+          </div>
+        )}
+
         {showWindowControls && <WindowsControls />}
       </div>
 

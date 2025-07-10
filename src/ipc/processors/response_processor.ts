@@ -92,7 +92,6 @@ export async function processFullResponseActions(
     const dyadExecuteSqlQueries = chatWithApp.app.supabaseProjectId
       ? getDyadExecuteSqlTags(fullResponse)
       : [];
-    let writtenSqlMigrationFiles = 0;
 
     const message = await db.query.messages.findFirst({
       where: and(
@@ -119,12 +118,12 @@ export async function processFullResponseActions(
           // Only write migration file if SQL execution succeeded
           if (settings.enableSupabaseWriteSqlMigration) {
             try {
-              await writeMigrationFile(
+              const migrationFilePath = await writeMigrationFile(
                 appPath,
                 query.content,
                 query.description,
               );
-              writtenSqlMigrationFiles++;
+              writtenFiles.push(migrationFilePath);
             } catch (error) {
               errors.push({
                 message: `Failed to write SQL migration file for: ${query.description}`,
@@ -322,8 +321,7 @@ export async function processFullResponseActions(
       writtenFiles.length > 0 ||
       renamedFiles.length > 0 ||
       deletedFiles.length > 0 ||
-      dyadAddDependencyPackages.length > 0 ||
-      writtenSqlMigrationFiles > 0;
+      dyadAddDependencyPackages.length > 0;
 
     let uncommittedFiles: string[] = [];
     let extraFilesError: string | undefined;

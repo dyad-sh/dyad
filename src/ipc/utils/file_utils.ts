@@ -67,7 +67,7 @@ export async function writeMigrationFile(
   appPath: string,
   queryContent: string,
   queryDescription?: string,
-) {
+): Promise<string> {
   const migrationsDir = path.join(appPath, "supabase", "migrations");
   await fsExtra.ensureDir(migrationsDir);
 
@@ -94,6 +94,7 @@ export async function writeMigrationFile(
   const migrationFilePath = path.join(migrationsDir, migrationFileName);
 
   await fsExtra.writeFile(migrationFilePath, queryContent);
+  return path.relative(appPath, migrationFilePath);
 }
 
 export async function fileExists(filePath: string) {

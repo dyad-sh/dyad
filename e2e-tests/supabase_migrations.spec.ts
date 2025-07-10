@@ -2,9 +2,12 @@ import { expect } from "@playwright/test";
 import { test } from "./helpers/test_helper";
 import fs from "fs-extra";
 import path from "path";
+import { execSync } from "child_process";
 
 test("supabase migrations", async ({ po }) => {
-  await po.setUp({ autoApprove: true });
+  // Turning on native Git to catch this edge case:
+  // https://github.com/dyad-sh/dyad/issues/608
+  await po.setUp({ autoApprove: true, nativeGit: true });
   await po.sendPrompt("tc=add-supabase");
 
   // Connect to Supabase
@@ -43,6 +46,12 @@ test("supabase migrations", async ({ po }) => {
   expect(await fs.readFile(path.join(migrationsDir, files[0]), "utf8")).toEqual(
     "CREATE TABLE users (id serial primary key);",
   );
+  // Make sure git is clean.
+  const gitStatus = execSync("git status --porcelain", {
+    cwd: appPath,
+    encoding: "utf8",
+  }).trim();
+  expect(gitStatus).toBe("");
 
   // Send a prompt that triggers a migration
   await po.sendPrompt("tc=execute-sql-no-description");

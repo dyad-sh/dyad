@@ -4,6 +4,7 @@ import * as crypto from "crypto";
 import { testWithConfig, test, PageObject } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
+const BACKUP_SETTINGS = { testFixture: true };
 const testWithLastVersion = testWithConfig({
   preLaunchHook: async ({ userDataDir }) => {
     fs.mkdirSync(path.join(userDataDir), { recursive: true });
@@ -11,6 +12,10 @@ const testWithLastVersion = testWithConfig({
     fs.copyFileSync(
       path.join(__dirname, "fixtures", "backups", "empty-v0.12.0-beta.1.db"),
       path.join(userDataDir, "sqlite.db"),
+    );
+    fs.writeFileSync(
+      path.join(userDataDir, "user-settings.json"),
+      JSON.stringify(BACKUP_SETTINGS, null, 2),
     );
   },
 });
@@ -20,6 +25,10 @@ const testWithMultipleBackups = testWithConfig({
     fs.mkdirSync(path.join(userDataDir), { recursive: true });
     // Make sure there's a last version file so the version upgrade is detected.
     fs.writeFileSync(path.join(userDataDir, ".last_version"), "0.1.0");
+    fs.writeFileSync(
+      path.join(userDataDir, "user-settings.json"),
+      JSON.stringify(BACKUP_SETTINGS, null, 2),
+    );
 
     // Create backups directory
     const backupsDir = path.join(userDataDir, "backups");
@@ -132,17 +141,11 @@ testWithLastVersion(
     expect(backupMetadata.checksums.database).toBeDefined();
 
     // Compare the backup files to the original files
-    const originalSettings = fs.readFileSync(
-      path.join(po.userDataDir, "user-settings.json"),
-      "utf8",
-    );
     const backupSettings = fs.readFileSync(
       path.join(backupDir, "user-settings.json"),
       "utf8",
     );
-    expect(cleanSettings(backupSettings)).toEqual(
-      cleanSettings(originalSettings),
-    );
+    expect(backupSettings).toEqual(JSON.stringify(BACKUP_SETTINGS, null, 2));
 
     // For database, verify the backup file exists and has correct checksum
     const backupDbPath = path.join(backupDir, "sqlite.db");
@@ -213,14 +216,6 @@ testWithMultipleBackups(
     }
   },
 );
-
-function cleanSettings(settings: string) {
-  const parsed = JSON.parse(settings);
-  delete parsed.hasRunBefore;
-  delete parsed.isTestMode;
-  delete parsed.lastShownReleaseNotesVersion;
-  return parsed;
-}
 
 function calculateChecksum(filePath: string): string {
   const fileBuffer = fs.readFileSync(filePath);

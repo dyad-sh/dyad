@@ -9,6 +9,7 @@ import {
 import { CodeView } from "./CodeView";
 import { PreviewIframe } from "./PreviewIframe";
 import { Problems } from "./Problems";
+import { ConfigurePanel } from "./ConfigurePanel";
 import { ChevronDown, ChevronUp, Logs } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { PanelGroup, Panel, PanelResizeHandle } from "react-resizable-panels";
@@ -113,6 +114,8 @@ export function PreviewPanel() {
                 <PreviewIframe key={key} loading={loading} />
               ) : previewMode === "code" ? (
                 <CodeView loading={loading} app={app} />
+              ) : previewMode === "configure" ? (
+                <ConfigurePanel />
               ) : (
                 <Problems />
               )}

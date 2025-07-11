@@ -252,3 +252,17 @@ export interface AppUpgrade {
 export interface EditAppFileReturnType {
   warning?: string;
 }
+
+export interface EnvVar {
+  key: string;
+  value: string;
+}
+
+export interface SetAppEnvVarsParams {
+  appId: number;
+  envVars: EnvVar[];
+}
+
+export interface GetAppEnvVarsParams {
+  appId: number;
+}

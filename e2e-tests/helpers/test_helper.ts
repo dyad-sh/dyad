@@ -422,7 +422,7 @@ export class PageObject {
   // Preview panel
   ////////////////////////////////
 
-  async selectPreviewMode(mode: "code" | "problems" | "preview") {
+  async selectPreviewMode(mode: "code" | "problems" | "preview" | "configure") {
     await this.page.getByTestId(`${mode}-mode-button`).click();
   }
 

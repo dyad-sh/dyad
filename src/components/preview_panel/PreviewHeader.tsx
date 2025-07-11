@@ -9,6 +9,7 @@ import {
   Cog,
   Trash2,
   AlertTriangle,
+  Wrench,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -25,7 +26,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 
-export type PreviewMode = "preview" | "code" | "problems";
+export type PreviewMode = "preview" | "code" | "problems" | "configure";
 
 // Preview Header component with preview mode toggle
 export const PreviewHeader = () => {
@@ -35,6 +36,7 @@ export const PreviewHeader = () => {
   const previewRef = useRef<HTMLButtonElement>(null);
   const codeRef = useRef<HTMLButtonElement>(null);
   const problemsRef = useRef<HTMLButtonElement>(null);
+  const configureRef = useRef<HTMLButtonElement>(null);
   const [indicatorStyle, setIndicatorStyle] = useState({ left: 0, width: 0 });
   const { problemReport } = useCheckProblems(selectedAppId);
   const { restartApp, refreshAppIframe } = useRunApp();
@@ -101,6 +103,9 @@ export const PreviewHeader = () => {
         case "problems":
           targetRef = problemsRef;
           break;
+        case "configure":
+          targetRef = configureRef;
+          break;
         default:
           return;
       }
@@ -146,7 +151,7 @@ export const PreviewHeader = () => {
         <button
           data-testid="preview-mode-button"
           ref={previewRef}
-          className="cursor-pointer relative flex items-center gap-1 px-2 py-1 rounded-md text-sm font-medium z-10"
+          className="cursor-pointer relative flex items-center gap-1 px-2 py-1 rounded-md text-sm font-medium z-10 hover:bg-[var(--background)]"
           onClick={() => selectPanel("preview")}
         >
           <Eye size={14} />
@@ -155,7 +160,7 @@ export const PreviewHeader = () => {
         <button
           data-testid="problems-mode-button"
           ref={problemsRef}
-          className="cursor-pointer relative flex items-center gap-1 px-2 py-1 rounded-md text-sm font-medium z-10"
+          className="cursor-pointer relative flex items-center gap-1 px-2 py-1 rounded-md text-sm font-medium z-10 hover:bg-[var(--background)]"
           onClick={() => selectPanel("problems")}
         >
           <AlertTriangle size={14} />
@@ -166,14 +171,24 @@ export const PreviewHeader = () => {
             </span>
           )}
         </button>
+
         <button
           data-testid="code-mode-button"
           ref={codeRef}
-          className="cursor-pointer relative flex items-center gap-1 px-2 py-1 rounded-md text-sm font-medium z-10"
+          className="cursor-pointer relative flex items-center gap-1 px-2 py-1 rounded-md text-sm font-medium z-10 hover:bg-[var(--background)]"
           onClick={() => selectPanel("code")}
         >
           <Code size={14} />
           <span>Code</span>
+        </button>
+        <button
+          data-testid="configure-mode-button"
+          ref={configureRef}
+          className="cursor-pointer relative flex items-center gap-1 px-2 py-1 rounded-md text-sm font-medium z-10 hover:bg-[var(--background)]"
+          onClick={() => selectPanel("configure")}
+        >
+          <Wrench size={14} />
+          <span>Configure</span>
         </button>
       </div>
       <div className="flex items-center">

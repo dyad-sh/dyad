@@ -26,6 +26,8 @@ const validInvokeChannels = [
   "get-chat-logs",
   "list-apps",
   "get-app",
+  "get-app-env-vars",
+  "set-app-env-vars",
   "edit-app-file",
   "read-app-file",
   "run-app",

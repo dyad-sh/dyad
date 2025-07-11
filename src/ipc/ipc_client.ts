@@ -38,6 +38,8 @@ import type {
   AppUpgrade,
   ProblemReport,
   EditAppFileReturnType,
+  GetAppEnvVarsParams,
+  SetAppEnvVarsParams,
 } from "./ipc_types";
 import type { AppChatContext, ProposalResult } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
@@ -181,6 +183,16 @@ export class IpcClient {
 
   public async getApp(appId: number): Promise<App> {
     return this.ipcRenderer.invoke("get-app", appId);
+  }
+
+  public async getAppEnvVars(
+    params: GetAppEnvVarsParams,
+  ): Promise<{ key: string; value: string }[]> {
+    return this.ipcRenderer.invoke("get-app-env-vars", params);
+  }
+
+  public async setAppEnvVars(params: SetAppEnvVarsParams): Promise<void> {
+    return this.ipcRenderer.invoke("set-app-env-vars", params);
   }
 
   public async getChat(chatId: number): Promise<Chat> {

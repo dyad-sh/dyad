@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useSettings } from "@/hooks/useSettings";
 import type { ChatMode } from "@/lib/schemas";
+import { cn } from "@/lib/utils";
 
 export function ChatModeSelector() {
   const { settings, updateSettings } = useSettings();
@@ -39,7 +40,12 @@ export function ChatModeSelector() {
         <TooltipTrigger asChild>
           <MiniSelectTrigger
             data-testid="chat-mode-selector"
-            className="h-6 w-fit px-1.5 py-0 text-xs-sm font-medium shadow-none bg-background hover:bg-muted/50 focus:bg-muted/50 gap-0.5"
+            className={cn(
+              "h-6 w-fit px-1.5 py-0 text-xs-sm font-medium shadow-none gap-0.5",
+              selectedMode === "build"
+                ? "bg-background hover:bg-muted/50 focus:bg-muted/50"
+                : "bg-primary/10 hover:bg-primary/20 focus:bg-primary/20 text-primary border-primary/20 dark:bg-primary/20 dark:hover:bg-primary/30 dark:focus:bg-primary/30",
+            )}
             size="sm"
           >
             <SelectValue>{getModeDisplayName(selectedMode)}</SelectValue>

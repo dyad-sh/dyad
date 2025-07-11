@@ -64,8 +64,8 @@ const OMITTED_FILES = [
   ".env",
 ];
 
-// Maximum file size to include (in bytes) - 100KB
-const MAX_FILE_SIZE = 100 * 1024;
+// Maximum file size to include (in bytes) - 1MB
+const MAX_FILE_SIZE = 1000 * 1024;
 
 // Maximum size for fileContentCache
 const MAX_FILE_CACHE_SIZE = 500;

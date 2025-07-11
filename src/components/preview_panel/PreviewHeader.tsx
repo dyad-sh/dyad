@@ -21,12 +21,21 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { showError, showSuccess } from "@/lib/toast";
 import { useMutation } from "@tanstack/react-query";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 
 export type PreviewMode = "preview" | "code" | "problems" | "configure";
+
+const BUTTON_CLASS_NAME =
+  "cursor-pointer relative flex items-center gap-1 px-2 py-1 rounded-md text-[13px] font-medium z-10 hover:bg-[var(--background)]";
 
 // Preview Header component with preview mode toggle
 export const PreviewHeader = () => {
@@ -38,8 +47,21 @@ export const PreviewHeader = () => {
   const problemsRef = useRef<HTMLButtonElement>(null);
   const configureRef = useRef<HTMLButtonElement>(null);
   const [indicatorStyle, setIndicatorStyle] = useState({ left: 0, width: 0 });
+  const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const { problemReport } = useCheckProblems(selectedAppId);
   const { restartApp, refreshAppIframe } = useRunApp();
+
+  const isCompact = windowWidth < 840;
+
+  // Track window width
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowWidth(window.innerWidth);
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   const selectPanel = (panel: PreviewMode) => {
     if (previewMode === panel) {
@@ -130,100 +152,128 @@ export const PreviewHeader = () => {
     // Small delay to ensure DOM is updated
     const timeoutId = setTimeout(updateIndicator, 10);
     return () => clearTimeout(timeoutId);
-  }, [previewMode, displayCount, isPreviewOpen]);
+  }, [previewMode, displayCount, isPreviewOpen, isCompact]);
+
+  const renderButton = (
+    mode: PreviewMode,
+    ref: React.RefObject<HTMLButtonElement | null>,
+    icon: React.ReactNode,
+    text: string,
+    testId: string,
+    badge?: React.ReactNode,
+  ) => {
+    const buttonContent = (
+      <button
+        data-testid={testId}
+        ref={ref}
+        className={BUTTON_CLASS_NAME}
+        onClick={() => selectPanel(mode)}
+      >
+        {icon}
+        {!isCompact && <span>{text}</span>}
+        {badge}
+      </button>
+    );
+
+    if (isCompact) {
+      return (
+        <Tooltip>
+          <TooltipTrigger asChild>{buttonContent}</TooltipTrigger>
+          <TooltipContent>
+            <p>{text}</p>
+          </TooltipContent>
+        </Tooltip>
+      );
+    }
+
+    return buttonContent;
+  };
 
   return (
-    <div className="flex items-center justify-between px-4 py-2 mt-1 border-b border-border">
-      <div className="relative flex rounded-md p-0.5 gap-2">
-        <motion.div
-          className="absolute top-0.5 bottom-0.5 bg-[var(--background-lightest)] shadow rounded-md"
-          animate={{
-            left: indicatorStyle.left,
-            width: indicatorStyle.width,
-          }}
-          transition={{
-            type: "spring",
-            stiffness: 600,
-            damping: 35,
-            mass: 0.6,
-          }}
-        />
-        <button
-          data-testid="preview-mode-button"
-          ref={previewRef}
-          className="cursor-pointer relative flex items-center gap-1 px-2 py-1 rounded-md text-sm font-medium z-10 hover:bg-[var(--background)]"
-          onClick={() => selectPanel("preview")}
-        >
-          <Eye size={14} />
-          <span>Preview</span>
-        </button>
-        <button
-          data-testid="problems-mode-button"
-          ref={problemsRef}
-          className="cursor-pointer relative flex items-center gap-1 px-2 py-1 rounded-md text-sm font-medium z-10 hover:bg-[var(--background)]"
-          onClick={() => selectPanel("problems")}
-        >
-          <AlertTriangle size={14} />
-          <span>Problems</span>
-          {displayCount && (
-            <span className="ml-0.5 px-1 py-0.5 text-xs font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-full min-w-[16px] text-center">
-              {displayCount}
-            </span>
+    <TooltipProvider>
+      <div className="flex items-center justify-between px-1 py-2 mt-1 border-b border-border">
+        <div className="relative flex rounded-md p-0.5 gap-0.5">
+          <motion.div
+            className="absolute top-0.5 bottom-0.5 bg-[var(--background-lightest)] shadow rounded-md"
+            animate={{
+              left: indicatorStyle.left,
+              width: indicatorStyle.width,
+            }}
+            transition={{
+              type: "spring",
+              stiffness: 600,
+              damping: 35,
+              mass: 0.6,
+            }}
+          />
+          {renderButton(
+            "preview",
+            previewRef,
+            <Eye size={14} />,
+            "Preview",
+            "preview-mode-button",
           )}
-        </button>
-
-        <button
-          data-testid="code-mode-button"
-          ref={codeRef}
-          className="cursor-pointer relative flex items-center gap-1 px-2 py-1 rounded-md text-sm font-medium z-10 hover:bg-[var(--background)]"
-          onClick={() => selectPanel("code")}
-        >
-          <Code size={14} />
-          <span>Code</span>
-        </button>
-        <button
-          data-testid="configure-mode-button"
-          ref={configureRef}
-          className="cursor-pointer relative flex items-center gap-1 px-2 py-1 rounded-md text-sm font-medium z-10 hover:bg-[var(--background)]"
-          onClick={() => selectPanel("configure")}
-        >
-          <Wrench size={14} />
-          <span>Configure</span>
-        </button>
+          {renderButton(
+            "problems",
+            problemsRef,
+            <AlertTriangle size={14} />,
+            "Problems",
+            "problems-mode-button",
+            displayCount && (
+              <span className="ml-0.5 px-1 py-0.5 text-xs font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-full min-w-[16px] text-center">
+                {displayCount}
+              </span>
+            ),
+          )}
+          {renderButton(
+            "code",
+            codeRef,
+            <Code size={14} />,
+            "Code",
+            "code-mode-button",
+          )}
+          {renderButton(
+            "configure",
+            configureRef,
+            <Wrench size={14} />,
+            "Configure",
+            "configure-mode-button",
+          )}
+        </div>
+        <div className="flex items-center">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                data-testid="preview-more-options-button"
+                className="flex items-center justify-center p-1.5 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
+                title="More options"
+              >
+                <MoreVertical size={16} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-60">
+              <DropdownMenuItem onClick={onCleanRestart}>
+                <Cog size={16} />
+                <div className="flex flex-col">
+                  <span>Rebuild</span>
+                  <span className="text-xs text-muted-foreground">
+                    Re-installs node_modules and restarts
+                  </span>
+                </div>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onClearSessionData}>
+                <Trash2 size={16} />
+                <div className="flex flex-col">
+                  <span>Clear Cache</span>
+                  <span className="text-xs text-muted-foreground">
+                    Clears cookies and local storage and other app cache
+                  </span>
+                </div>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
-      <div className="flex items-center">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              data-testid="preview-more-options-button"
-              className="flex items-center justify-center p-1.5 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
-              title="More options"
-            >
-              <MoreVertical size={16} />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-60">
-            <DropdownMenuItem onClick={onCleanRestart}>
-              <Cog size={16} />
-              <div className="flex flex-col">
-                <span>Rebuild</span>
-                <span className="text-xs text-muted-foreground">
-                  Re-installs node_modules and restarts
-                </span>
-              </div>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onClearSessionData}>
-              <Trash2 size={16} />
-              <div className="flex flex-col">
-                <span>Clear Cache</span>
-                <span className="text-xs text-muted-foreground">
-                  Clears cookies and local storage and other app cache
-                </span>
-              </div>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    </div>
+    </TooltipProvider>
   );
 };

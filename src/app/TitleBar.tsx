@@ -78,13 +78,13 @@ export const TitleBar = () => {
   return (
     <>
       <div className="@container z-11 w-full h-11 bg-(--sidebar) absolute top-0 left-0 app-region-drag flex items-center">
-        <div className="pl-20"></div>
-        <img src={logo} alt="Dyad Logo" className="w-6 h-6 mr-2" />
+        <div className="pl-18"></div>
+        <img src={logo} alt="Dyad Logo" className="w-6 h-6 mr-0.5" />
         <Button
           data-testid="title-bar-app-name-button"
           variant="outline"
           size="sm"
-          className={`hidden @md:block no-app-region-drag text-sm font-medium ${
+          className={`hidden @2xl:block no-app-region-drag text-xs max-w-38 truncate font-medium ${
             selectedApp ? "cursor-pointer" : ""
           }`}
           onClick={handleAppClick}
@@ -210,13 +210,15 @@ export function DyadProButton({
       }}
       variant="outline"
       className={cn(
-        "ml-4 no-app-region-drag h-7 bg-indigo-600 text-white dark:bg-indigo-600 dark:text-white",
+        "hidden @2xl:block ml-1 no-app-region-drag h-7 bg-indigo-600 text-white dark:bg-indigo-600 dark:text-white text-xs px-2 pt-1 pb-1",
         !isDyadProEnabled && "bg-zinc-600 dark:bg-zinc-600",
       )}
       size="sm"
     >
-      {isDyadProEnabled ? "Dyad Pro" : "Dyad Pro (disabled)"}
-      {userBudget && <AICreditStatus userBudget={userBudget} />}
+      {isDyadProEnabled ? "Pro" : "Pro (off)"}
+      {userBudget && isDyadProEnabled && (
+        <AICreditStatus userBudget={userBudget} />
+      )}
     </Button>
   );
 }

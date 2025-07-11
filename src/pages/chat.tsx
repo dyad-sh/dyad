@@ -9,7 +9,7 @@ import { ChatPanel } from "../components/ChatPanel";
 import { PreviewPanel } from "../components/preview_panel/PreviewPanel";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
-import { useAtom, useAtomValue } from "jotai";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import { useChats } from "@/hooks/useChats";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
@@ -20,13 +20,15 @@ export default function ChatPage() {
   const [isPreviewOpen, setIsPreviewOpen] = useAtom(isPreviewOpenAtom);
   const [isResizing, setIsResizing] = useState(false);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
+  const setSelectedAppId = useSetAtom(selectedAppIdAtom);
   const { chats, loading } = useChats(selectedAppId);
 
   useEffect(() => {
     if (!chatId && chats.length && !loading) {
       // Not a real navigation, just a redirect, when the user navigates to /chat
       // without a chatId, we redirect to the first chat
-      navigate({ to: "/chat", search: { id: chats[0]?.id }, replace: true });
+      setSelectedAppId(chats[0].appId);
+      navigate({ to: "/chat", search: { id: chats[0].id }, replace: true });
     }
   }, [chatId, chats, loading, navigate]);
 

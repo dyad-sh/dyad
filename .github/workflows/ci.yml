@@ -38,10 +38,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version-file: package.json
-          cache: npm
-          cache-dependency-path: package-lock.json
+      - name: Setup bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
       - name: Install node modules
-        run: npm ci --no-audit --no-fund --progress=false
+        run: bun install --frozen-lockfile
       - name: Presubmit check (e.g. lint, format)
         # do not run this on Windows (it fails and not necessary)
         if: contains(matrix.os.name, 'macos')

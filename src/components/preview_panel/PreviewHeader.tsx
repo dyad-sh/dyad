@@ -35,7 +35,7 @@ import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 export type PreviewMode = "preview" | "code" | "problems" | "configure";
 
 const BUTTON_CLASS_NAME =
-  "cursor-pointer relative flex items-center gap-1 px-2 py-1 rounded-md text-[13px] font-medium z-10 hover:bg-[var(--background)]";
+  "no-app-region-drag cursor-pointer relative flex items-center gap-1 px-2 py-1 rounded-md text-[13px] font-medium z-10 hover:bg-[var(--background)]";
 
 // Preview Header component with preview mode toggle
 export const PreviewHeader = () => {
@@ -245,7 +245,7 @@ export const PreviewHeader = () => {
             <DropdownMenuTrigger asChild>
               <button
                 data-testid="preview-more-options-button"
-                className="flex items-center justify-center p-1.5 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
+                className="no-app-region-drag flex items-center justify-center p-1.5 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
                 title="More options"
               >
                 <MoreVertical size={16} />

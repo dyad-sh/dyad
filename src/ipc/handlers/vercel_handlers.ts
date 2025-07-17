@@ -286,7 +286,6 @@ async function handleCreateProject(
         framework: detectedFramework,
       },
     });
-
     if (!projectData.id) {
       throw new Error("Failed to create project: No project ID returned.");
     }
@@ -294,13 +293,18 @@ async function handleCreateProject(
     // Get the default team ID
     const teamId = await getDefaultTeamId(accessToken);
 
+    const projectDomains = await vercel.projects.getProjectDomains({
+      idOrName: projectData.id,
+    });
+    const projectUrl = "https://" + projectDomains.domains[0].name;
+
     // Store project info in the app's DB row
     await updateAppVercelProject({
       appId,
       projectId: projectData.id,
       projectName: projectData.name,
       teamId: teamId,
-      deploymentUrl: null, // Will be set after first deployment
+      deploymentUrl: projectUrl,
     });
 
     logger.info(
@@ -322,21 +326,11 @@ async function handleCreateProject(
             repo: app.githubRepo,
             ref: app.githubBranch || "main",
           },
-          // projectSettings: {
-          //   framework: "vite",
-          // },
         },
       });
 
       if (deploymentData.url) {
-        // Update deployment URL in the database
-        const deploymentUrl = `https://${deploymentData.url}`;
-        await db
-          .update(apps)
-          .set({ vercelDeploymentUrl: deploymentUrl })
-          .where(eq(apps.id, appId));
-
-        logger.info(`First deployment successful: ${deploymentUrl}`);
+        logger.info(`First deployment successful: ${deploymentData.url}`);
       } else {
         logger.warn("First deployment failed: No deployment URL returned");
       }

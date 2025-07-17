@@ -10,6 +10,7 @@ import {
   Trash2,
   AlertTriangle,
   Wrench,
+  Globe,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -32,7 +33,12 @@ import { useMutation } from "@tanstack/react-query";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 
-export type PreviewMode = "preview" | "code" | "problems" | "configure";
+export type PreviewMode =
+  | "preview"
+  | "code"
+  | "problems"
+  | "configure"
+  | "publish";
 
 const BUTTON_CLASS_NAME =
   "no-app-region-drag cursor-pointer relative flex items-center gap-1 px-2 py-1 rounded-md text-[13px] font-medium z-10 hover:bg-[var(--background)]";
@@ -46,12 +52,13 @@ export const PreviewHeader = () => {
   const codeRef = useRef<HTMLButtonElement>(null);
   const problemsRef = useRef<HTMLButtonElement>(null);
   const configureRef = useRef<HTMLButtonElement>(null);
+  const publishRef = useRef<HTMLButtonElement>(null);
   const [indicatorStyle, setIndicatorStyle] = useState({ left: 0, width: 0 });
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const { problemReport } = useCheckProblems(selectedAppId);
   const { restartApp, refreshAppIframe } = useRunApp();
 
-  const isCompact = windowWidth < 840;
+  const isCompact = windowWidth < 860;
 
   // Track window width
   useEffect(() => {
@@ -127,6 +134,9 @@ export const PreviewHeader = () => {
           break;
         case "configure":
           targetRef = configureRef;
+          break;
+        case "publish":
+          targetRef = publishRef;
           break;
         default:
           return;
@@ -238,6 +248,13 @@ export const PreviewHeader = () => {
             <Wrench size={14} />,
             "Configure",
             "configure-mode-button",
+          )}
+          {renderButton(
+            "publish",
+            publishRef,
+            <Globe size={14} />,
+            "Publish",
+            "publish-mode-button",
           )}
         </div>
         <div className="flex items-center">

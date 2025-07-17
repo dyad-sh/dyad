@@ -111,6 +111,7 @@
     "@tanstack/react-query": "^5.75.5",
     "@tanstack/react-router": "^1.114.34",
     "@types/uuid": "^10.0.0",
+    "@vercel/sdk": "^1.10.0",
     "@vitejs/plugin-react": "^4.3.4",
     "ai": "^4.3.4",
     "better-sqlite3": "^11.9.1",

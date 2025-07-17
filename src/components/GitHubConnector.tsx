@@ -5,7 +5,6 @@ import {
   Clipboard,
   Check,
   AlertTriangle,
-  ChevronDown,
   ChevronRight,
 } from "lucide-react";
 import { IpcClient } from "@/ipc/ipc_client";
@@ -32,6 +31,7 @@ import { Label } from "@/components/ui/label";
 interface GitHubConnectorProps {
   appId: number | null;
   folderName: string;
+  expanded?: boolean;
 }
 
 interface GitHubRepo {
@@ -57,6 +57,7 @@ interface UnconnectedGitHubConnectorProps {
   settings: any;
   refreshSettings: () => void;
   refreshApp: () => void;
+  expanded?: boolean;
 }
 
 function ConnectedGitHubConnector({
@@ -112,10 +113,7 @@ function ConnectedGitHubConnector({
   };
 
   return (
-    <div
-      className="mt-4 w-full border border-gray-200 rounded-md p-4"
-      data-testid="github-connected-repo"
-    >
+    <div className="w-full" data-testid="github-connected-repo">
       <p>Connected to GitHub Repo:</p>
       <a
         onClick={(e) => {
@@ -271,9 +269,10 @@ function UnconnectedGitHubConnector({
   settings,
   refreshSettings,
   refreshApp,
+  expanded,
 }: UnconnectedGitHubConnectorProps) {
   // --- Collapsible State ---
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(expanded || false);
 
   // --- GitHub Device Flow State ---
   const [githubUserCode, setGithubUserCode] = useState<string | null>(null);
@@ -636,22 +635,19 @@ function UnconnectedGitHubConnector({
   }
 
   return (
-    <div
-      className="mt-4 w-full border border-gray-200 rounded-md"
-      data-testid="github-setup-repo"
-    >
+    <div className="w-full" data-testid="github-setup-repo">
       {/* Collapsible Header */}
       <button
         type="button"
-        onClick={() => setIsExpanded(!isExpanded)}
-        className={`cursor-pointer w-full p-4 text-left transition-colors rounded-md flex items-center justify-between ${
-          !isExpanded ? "hover:bg-gray-50 dark:hover:bg-gray-800/50" : ""
+        onClick={!isExpanded ? () => setIsExpanded(true) : undefined}
+        className={`w-full p-4 text-left transition-colors rounded-md flex items-center justify-between ${
+          !isExpanded
+            ? "cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50"
+            : ""
         }`}
       >
         <span className="font-medium">Set up your GitHub repo</span>
-        {isExpanded ? (
-          <ChevronDown className="h-4 w-4 text-gray-500" />
-        ) : (
+        {isExpanded ? undefined : (
           <ChevronRight className="h-4 w-4 text-gray-500" />
         )}
       </button>
@@ -879,7 +875,11 @@ function UnconnectedGitHubConnector({
   );
 }
 
-export function GitHubConnector({ appId, folderName }: GitHubConnectorProps) {
+export function GitHubConnector({
+  appId,
+  folderName,
+  expanded,
+}: GitHubConnectorProps) {
   const { app, refreshApp } = useLoadApp(appId);
   const { settings, refreshSettings } = useSettings();
 
@@ -899,6 +899,7 @@ export function GitHubConnector({ appId, folderName }: GitHubConnectorProps) {
         settings={settings}
         refreshSettings={refreshSettings}
         refreshApp={refreshApp}
+        expanded={expanded}
       />
     );
   }

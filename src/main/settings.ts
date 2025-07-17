@@ -74,6 +74,13 @@ export function readSettings(): UserSettings {
         encryptionType,
       };
     }
+    if (combinedSettings.vercelAccessToken) {
+      const encryptionType = combinedSettings.vercelAccessToken.encryptionType;
+      combinedSettings.vercelAccessToken = {
+        value: decrypt(combinedSettings.vercelAccessToken),
+        encryptionType,
+      };
+    }
     for (const provider in combinedSettings.providerSettings) {
       if (combinedSettings.providerSettings[provider].apiKey) {
         const encryptionType =
@@ -103,6 +110,11 @@ export function writeSettings(settings: Partial<UserSettings>): void {
     if (newSettings.githubAccessToken) {
       newSettings.githubAccessToken = encrypt(
         newSettings.githubAccessToken.value,
+      );
+    }
+    if (newSettings.vercelAccessToken) {
+      newSettings.vercelAccessToken = encrypt(
+        newSettings.vercelAccessToken.value,
       );
     }
     if (newSettings.supabase) {

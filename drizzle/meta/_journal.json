@@ -57,6 +57,13 @@
       "when": 1750186036000,
       "tag": "0007_dapper_overlord",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1752625491756,
+      "tag": "0008_medical_vulcan",
+      "breakpoints": true
     }
   ]
 }

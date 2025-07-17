@@ -342,7 +342,9 @@ export default function AppDetailsPage() {
             Open in Chat
             <MessageCircle className="h-4 w-4" />
           </Button>
-          <GitHubConnector appId={appId} folderName={selectedApp.path} />
+          <div className="border border-gray-200 rounded-md p-4">
+            <GitHubConnector appId={appId} folderName={selectedApp.path} />
+          </div>
           {appId && <SupabaseConnector appId={appId} />}
           {appId && <CapacitorControls appId={appId} />}
           <AppUpgrades appId={appId} />

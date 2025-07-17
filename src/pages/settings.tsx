@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import { useRouter } from "@tanstack/react-router";
 import { GitHubIntegration } from "@/components/GitHubIntegration";
+import { VercelIntegration } from "@/components/VercelIntegration";
 import { SupabaseIntegration } from "@/components/SupabaseIntegration";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -109,6 +110,7 @@ export default function SettingsPage() {
             </h2>
             <div className="space-y-4">
               <GitHubIntegration />
+              <VercelIntegration />
               <SupabaseIntegration />
             </div>
           </div>

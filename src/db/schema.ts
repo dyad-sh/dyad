@@ -16,6 +16,10 @@ export const apps = sqliteTable("apps", {
   githubRepo: text("github_repo"),
   githubBranch: text("github_branch"),
   supabaseProjectId: text("supabase_project_id"),
+  vercelProjectId: text("vercel_project_id"),
+  vercelProjectName: text("vercel_project_name"),
+  vercelTeamId: text("vercel_team_id"),
+  vercelDeploymentUrl: text("vercel_deployment_url"),
   chatContext: text("chat_context", { mode: "json" }),
 });
 

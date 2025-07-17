@@ -5,6 +5,7 @@ import { registerSettingsHandlers } from "./handlers/settings_handlers";
 import { registerShellHandlers } from "./handlers/shell_handler";
 import { registerDependencyHandlers } from "./handlers/dependency_handlers";
 import { registerGithubHandlers } from "./handlers/github_handlers";
+import { registerVercelHandlers } from "./handlers/vercel_handlers";
 import { registerNodeHandlers } from "./handlers/node_handlers";
 import { registerProposalHandlers } from "./handlers/proposal_handlers";
 import { registerDebugHandlers } from "./handlers/debug_handlers";
@@ -34,6 +35,7 @@ export function registerIpcHandlers() {
   registerShellHandlers();
   registerDependencyHandlers();
   registerGithubHandlers();
+  registerVercelHandlers();
   registerNodeHandlers();
   registerProblemsHandlers();
   registerProposalHandlers();

@@ -46,6 +46,7 @@ import { gitCommit } from "../utils/git_utils";
 import { safeSend } from "../utils/safe_sender";
 import { normalizePath } from "../../../shared/normalizePath";
 import { isServerFunction } from "@/supabase_admin/supabase_utils";
+import { getVercelTeamSlug } from "../utils/vercel_utils";
 
 async function copyDir(
   source: string,
@@ -370,10 +371,16 @@ export function registerAppHandlers() {
       supabaseProjectName = await getSupabaseProjectName(app.supabaseProjectId);
     }
 
+    let vercelTeamSlug: string | null = null;
+    if (app.vercelTeamId) {
+      vercelTeamSlug = await getVercelTeamSlug(app.vercelTeamId);
+    }
+
     return {
       ...app,
       files,
       supabaseProjectName,
+      vercelTeamSlug,
     };
   });
 

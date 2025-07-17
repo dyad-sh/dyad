@@ -75,6 +75,10 @@ export function createDyadEngine(
 ): DyadEngineProvider {
   const baseURL = withoutTrailingSlash(options.baseURL);
   logger.info("creating dyad engine with baseURL", baseURL);
+
+  // Track request ID attempts
+  const requestIdAttempts = new Map<string, number>();
+
   const getHeaders = () => ({
     Authorization: `Bearer ${loadApiKey({
       apiKey: options.apiKey,
@@ -91,8 +95,8 @@ export function createDyadEngine(
     fetch?: FetchFunction;
   }
 
-  const getCommonModelConfig = (modelType: string): CommonModelConfig => ({
-    provider: `example.${modelType}`,
+  const getCommonModelConfig = (): CommonModelConfig => ({
+    provider: `dyad-engine`,
     url: ({ path }) => {
       const url = new URL(`${baseURL}${path}`);
       if (options.queryParams) {
@@ -113,7 +117,7 @@ export function createDyadEngine(
 
     // Create configuration with file handling
     const config = {
-      ...getCommonModelConfig("chat"),
+      ...getCommonModelConfig(),
       defaultObjectGenerationMode:
         "tool" as LanguageModelV1ObjectGenerationMode,
       // Custom fetch implementation that adds files to the request
@@ -132,6 +136,18 @@ export function createDyadEngine(
               options.settings,
             ),
           };
+          const requestId = parsedBody.dyadRequestId;
+          if ("dyadRequestId" in parsedBody) {
+            delete parsedBody.dyadRequestId;
+          }
+
+          // Track and modify requestId with attempt number
+          let modifiedRequestId = requestId;
+          if (requestId) {
+            const currentAttempt = (requestIdAttempts.get(requestId) || 0) + 1;
+            requestIdAttempts.set(requestId, currentAttempt);
+            modifiedRequestId = `${requestId}:attempt-${currentAttempt}`;
+          }
 
           // Add files to the request if they exist
           if (files?.length) {
@@ -143,9 +159,15 @@ export function createDyadEngine(
             };
           }
 
-          // Return modified request with files included
+          // Return modified request with files included and requestId in headers
           const modifiedInit = {
             ...init,
+            headers: {
+              ...init.headers,
+              ...(modifiedRequestId && {
+                "X-Dyad-Request-Id": modifiedRequestId,
+              }),
+            },
             body: JSON.stringify(parsedBody),
           };
 

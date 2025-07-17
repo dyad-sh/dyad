@@ -1,3 +1,4 @@
+import { v4 as uuidv4 } from "uuid";
 import { ipcMain } from "electron";
 import {
   CoreMessage,
@@ -534,12 +535,16 @@ This conversation includes one or more image attachments. When the user uploads 
           chatMessages: CoreMessage[];
           modelClient: ModelClient;
         }) => {
+          const dyadRequestId = uuidv4();
           return streamText({
             maxTokens: await getMaxTokens(settings.selectedModel),
             temperature: 0,
             maxRetries: 2,
             model: modelClient.model,
             providerOptions: {
+              "dyad-engine": {
+                dyadRequestId,
+              },
               "dyad-gateway": getExtraProviderOptions(
                 modelClient.builtinProviderId,
                 settings,
@@ -560,9 +565,12 @@ This conversation includes one or more image attachments. When the user uploads 
                 errorMessage += "\n\nDetails: " + responseBody;
               }
               const message = errorMessage || JSON.stringify(error);
+              const requestIdPrefix = isEngineEnabled
+                ? `[Request ID: ${dyadRequestId}] `
+                : "";
               event.sender.send(
                 "chat:response:error",
-                `Sorry, there was an error from the AI: ${message}`,
+                `Sorry, there was an error from the AI: ${requestIdPrefix}${message}`,
               );
               // Clean up the abort controller
               activeStreams.delete(req.chatId);

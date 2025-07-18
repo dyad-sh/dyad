@@ -126,6 +126,14 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       maxOutputTokens: 32_000,
       contextWindow: 128_000,
     },
+    // https://openrouter.ai/moonshotai/kimi-k2
+    {
+      name: "moonshotai/kimi-k2",
+      displayName: "Kimi K2",
+      description: "Powerful cost-effective model",
+      maxOutputTokens: 32_000,
+      contextWindow: 131_000,
+    },
     {
       name: "deepseek/deepseek-r1-0528",
       displayName: "DeepSeek R1",

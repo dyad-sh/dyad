@@ -47,7 +47,7 @@ export function NeonConnector() {
       <Card className="mt-1">
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
-            Neon Database{" "}
+            Neon Database Connection{" "}
             <Button
               variant="outline"
               onClick={() => {
@@ -60,7 +60,7 @@ export function NeonConnector() {
               asChild
             >
               <div className="flex items-center gap-1">
-                <NeonSvg isDarkMode={isDarkMode} />
+                <NeonSvg isDarkMode={isDarkMode} className="h-4 w-4" />
                 <ExternalLink className="h-3 w-3" />
               </div>
             </Button>
@@ -104,7 +104,13 @@ export function NeonConnector() {
   );
 }
 
-function NeonSvg({ isDarkMode }: { isDarkMode?: boolean }) {
+function NeonSvg({
+  isDarkMode,
+  className,
+}: {
+  isDarkMode?: boolean;
+  className?: string;
+}) {
   const textColor = isDarkMode ? "#fff" : "#000";
 
   return (
@@ -114,6 +120,7 @@ function NeonSvg({ isDarkMode }: { isDarkMode?: boolean }) {
       height="18"
       fill="none"
       viewBox="0 0 102 28"
+      className={className}
     >
       <path
         fill="#12FFF7"

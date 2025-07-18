@@ -71,6 +71,13 @@
       "when": 1752860999012,
       "tag": "0009_flat_morlun",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1752868649600,
+      "tag": "0010_rapid_sentinel",
+      "breakpoints": true
     }
   ]
 }

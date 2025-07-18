@@ -18,6 +18,8 @@ import { Template } from "@/shared/templates";
 import { IpcClient } from "@/ipc/ipc_client";
 import { v4 as uuidv4 } from "uuid";
 import { useRouter } from "@tanstack/react-router";
+import { showError } from "@/lib/toast";
+import { Loader2 } from "lucide-react";
 
 interface CreateAppDialogProps {
   open: boolean;
@@ -32,7 +34,8 @@ export function CreateAppDialog({
 }: CreateAppDialogProps) {
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
   const [appName, setAppName] = useState("");
-  const { createApp, isCreating } = useCreateApp();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { createApp } = useCreateApp();
   const { data: nameCheckResult } = useCheckName(appName);
   const router = useRouter();
   const handleSubmit = async (e: React.FormEvent) => {
@@ -46,42 +49,56 @@ export function CreateAppDialog({
       return;
     }
 
-    const result = await createApp({ name: appName.trim() });
-    if (template?.requiresNeon) {
-      console.log("Creating Neon project");
-      const neonProject = await IpcClient.getInstance().createNeonProject({
-        name: appName.trim(),
-        appId: result.app.id,
+    setIsSubmitting(true);
+    try {
+      const result = await createApp({ name: appName.trim() });
+      if (template?.requiresNeon) {
+        try {
+          console.log("Creating Neon project");
+          const neonProject = await IpcClient.getInstance().createNeonProject({
+            name: appName.trim(),
+            appId: result.app.id,
+          });
+
+          console.log("Neon project created", neonProject);
+          await IpcClient.getInstance().setAppEnvVars({
+            appId: result.app.id,
+            envVars: [
+              {
+                key: "POSTGRES_URL",
+                value: neonProject.connectionString,
+              },
+              {
+                key: "PAYLOAD_SECRET",
+                value: uuidv4(),
+              },
+            ],
+          });
+          console.log("App env vars set");
+        } catch (error) {
+          showError(error as any);
+          throw error;
+        }
+      }
+      setSelectedAppId(result.app.id);
+      // Navigate to the new app's first chat
+      router.navigate({
+        to: "/chat",
+        search: { id: result.chatId },
       });
-      console.log("Neon project created", neonProject);
-      await IpcClient.getInstance().setAppEnvVars({
-        appId: result.app.id,
-        envVars: [
-          {
-            key: "POSTGRES_URL",
-            value: neonProject.connectionString,
-          },
-          {
-            key: "PAYLOAD_SECRET",
-            value: uuidv4(),
-          },
-        ],
-      });
-      console.log("App env vars set");
+      setAppName("");
+      onOpenChange(false);
+    } catch (error) {
+      // Error is already handled by createApp hook or shown above
+      console.error("Error creating app:", error);
+    } finally {
+      setIsSubmitting(false);
     }
-    setSelectedAppId(result.app.id);
-    // Navigate to the new app's first chat
-    router.navigate({
-      to: "/chat",
-      search: { id: result.chatId },
-    });
-    setAppName("");
-    onOpenChange(false);
   };
 
   const isNameValid = appName.trim().length > 0;
   const nameExists = nameCheckResult?.exists;
-  const canSubmit = isNameValid && !nameExists && !isCreating;
+  const canSubmit = isNameValid && !nameExists && !isSubmitting;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -103,6 +120,7 @@ export function CreateAppDialog({
                 onChange={(e) => setAppName(e.target.value)}
                 placeholder="Enter app name..."
                 className={nameExists ? "border-red-500" : ""}
+                disabled={isSubmitting}
               />
               {nameExists && (
                 <p className="text-sm text-red-500">
@@ -117,7 +135,7 @@ export function CreateAppDialog({
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
-              disabled={isCreating}
+              disabled={isSubmitting}
             >
               Cancel
             </Button>
@@ -126,7 +144,10 @@ export function CreateAppDialog({
               disabled={!canSubmit}
               className="bg-indigo-600 hover:bg-indigo-700"
             >
-              {isCreating ? "Creating..." : "Create App"}
+              {isSubmitting && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              {isSubmitting ? "Creating..." : "Create App"}
             </Button>
           </DialogFooter>
         </form>

@@ -41,7 +41,8 @@ export async function refreshNeonToken(): Promise<void> {
   try {
     // Make request to Neon refresh endpoint
     const response = await fetch(
-      "https://neon-oauth.dyad.sh/api/connect-neon/refresh",
+      "https://oauth.dyad.sh/api/integrations/neon/refresh",
+
       {
         method: "POST",
         headers: {
@@ -98,6 +99,57 @@ export async function getNeonClient(): Promise<Api<unknown>> {
           connection_uris: [
             {
               connection_uri: "postgresql://test:test@test.neon.tech/test",
+            },
+          ],
+        },
+      }),
+      createProjectBranch: async (projectId: string, params: any) => ({
+        data: {
+          branch: {
+            id: "test-dev-branch-id",
+            name: params.branch?.name || "development",
+            project_id: projectId,
+            parent_id: "test-branch-id",
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          connection_uris: [
+            {
+              connection_uri: "postgresql://test:test@test-dev.neon.tech/test",
+            },
+          ],
+        },
+      }),
+      getProject: async (projectId: string) => ({
+        data: {
+          project: {
+            id: projectId,
+            name: "Test Project",
+            org_id: "test-org-id",
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            default_branch_id: "test-branch-id",
+          },
+        },
+      }),
+      listProjectBranches: async (projectId: string) => ({
+        data: {
+          branches: [
+            {
+              id: "test-branch-id",
+              name: "main",
+              project_id: projectId,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              default: true,
+            },
+            {
+              id: "test-dev-branch-id",
+              name: "development",
+              project_id: projectId,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              default: false,
             },
           ],
         },

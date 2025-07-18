@@ -51,6 +51,8 @@ import type {
   VercelProject,
   CreateNeonProjectParams,
   NeonProject,
+  GetNeonProjectParams,
+  GetNeonProjectResponse,
 } from "./ipc_types";
 import type { AppChatContext, ProposalResult } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
@@ -810,6 +812,12 @@ export class IpcClient {
     params: CreateNeonProjectParams,
   ): Promise<NeonProject> {
     return this.ipcRenderer.invoke("neon:create-project", params);
+  }
+
+  public async getNeonProject(
+    params: GetNeonProjectParams,
+  ): Promise<GetNeonProjectResponse> {
+    return this.ipcRenderer.invoke("neon:get-project", params);
   }
 
   // --- End Neon Management ---

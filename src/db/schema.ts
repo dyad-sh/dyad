@@ -17,6 +17,7 @@ export const apps = sqliteTable("apps", {
   githubBranch: text("github_branch"),
   supabaseProjectId: text("supabase_project_id"),
   neonProjectId: text("neon_project_id"),
+  neonBranchId: text("neon_branch_id"),
   vercelProjectId: text("vercel_project_id"),
   vercelProjectName: text("vercel_project_name"),
   vercelTeamId: text("vercel_team_id"),

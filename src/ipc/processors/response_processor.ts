@@ -73,6 +73,10 @@ export async function processFullResponseActions(
     return {};
   }
 
+  if (chatWithApp.app.neonProjectId) {
+    // GET THE LSN AND PUT IT IN
+  }
+
   const settings: UserSettings = readSettings();
   const appPath = getDyadAppPath(chatWithApp.app.path);
   const writtenFiles: string[] = [];

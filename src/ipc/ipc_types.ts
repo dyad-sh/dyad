@@ -86,6 +86,8 @@ export interface App {
   githubBranch: string | null;
   supabaseProjectId: string | null;
   supabaseProjectName: string | null;
+  neonProjectId: string | null;
+  neonBranchId: string | null;
   vercelProjectId: string | null;
   vercelProjectName: string | null;
   vercelTeamSlug: string | null;
@@ -332,4 +334,23 @@ export interface NeonProject {
   id: string;
   name: string;
   connectionString: string;
+  branchId: string;
+}
+
+export interface NeonBranch {
+  type: "production" | "development" | "snapshot";
+  branchId: string;
+  branchName: string;
+  lastUpdated: string; // ISO timestamp
+}
+
+export interface GetNeonProjectParams {
+  appId: number;
+}
+
+export interface GetNeonProjectResponse {
+  projectId: string;
+  projectName: string;
+  orgId: string;
+  branches: NeonBranch[];
 }

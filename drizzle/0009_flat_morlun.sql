@@ -1,0 +1,1 @@
+ALTER TABLE `apps` ADD `neon_project_id` text;

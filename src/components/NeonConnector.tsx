@@ -15,7 +15,7 @@ import { ExternalLink } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 
 export function NeonConnector() {
-  const { settings, refreshSettings } = useSettings();
+  const { settings, refreshSettings, updateSettings } = useSettings();
   const { lastDeepLink } = useDeepLink();
   const { isDarkMode } = useTheme();
 
@@ -27,11 +27,13 @@ export function NeonConnector() {
       }
     };
     handleDeepLink();
-  }, [lastDeepLink, refreshSettings]);
+  }, [lastDeepLink]);
 
   const handleDisconnect = async () => {
     try {
-      await IpcClient.getInstance().disconnectNeon();
+      await updateSettings({
+        neon: undefined,
+      });
       await refreshSettings();
       toast.success("Disconnected from Neon successfully");
     } catch (error) {
@@ -87,7 +89,7 @@ export function NeonConnector() {
               await IpcClient.getInstance().fakeHandleNeonConnect();
             } else {
               await IpcClient.getInstance().openExternalUrl(
-                "http://localhost:3500/api/integrations/neon/login/",
+                "https://oauth.dyad.sh/api/integrations/neon/login",
               );
             }
           }}

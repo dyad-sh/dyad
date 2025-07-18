@@ -6,6 +6,7 @@ export interface Template {
   githubUrl?: string;
   isOfficial: boolean;
   isExperimental?: boolean;
+  requiresNeon?: boolean;
 }
 
 export const DEFAULT_TEMPLATE_ID = "react";
@@ -37,6 +38,7 @@ export const templatesData: Template[] = [
     githubUrl: "https://github.com/dyad-sh/mini-store-template",
     isOfficial: true,
     isExperimental: true,
+    requiresNeon: true,
   },
 ];
 

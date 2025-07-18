@@ -3,10 +3,15 @@ import type { ProblemReport, Problem } from "../../shared/tsc_types";
 export type { ProblemReport, Problem };
 
 export interface AppOutput {
-  type: "stdout" | "stderr" | "info" | "client-error";
+  type: "stdout" | "stderr" | "info" | "client-error" | "input-requested";
   message: string;
   timestamp: number;
   appId: number;
+}
+
+export interface RespondToAppInputParams {
+  appId: number;
+  response: string;
 }
 
 export interface ListAppsResponse {
@@ -315,4 +320,16 @@ export interface VercelProject {
   id: string;
   name: string;
   framework: string | null;
+}
+
+// --- Neon Types ---
+export interface CreateNeonProjectParams {
+  name: string;
+  appId: number;
+}
+
+export interface NeonProject {
+  id: string;
+  name: string;
+  connectionString: string;
 }

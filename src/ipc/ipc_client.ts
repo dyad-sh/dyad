@@ -49,6 +49,8 @@ import type {
   IsVercelProjectAvailableParams,
   SaveVercelAccessTokenParams,
   VercelProject,
+  CreateNeonProjectParams,
+  NeonProject,
 } from "./ipc_types";
 import type { AppChatContext, ProposalResult } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
@@ -395,6 +397,22 @@ export class IpcClient {
       });
       this.appStreams.set(appId, { onOutput });
       return result;
+    } catch (error) {
+      showError(error);
+      throw error;
+    }
+  }
+
+  // Respond to an app input request (y/n prompts)
+  public async respondToAppInput(
+    appId: number,
+    response: string,
+  ): Promise<void> {
+    try {
+      await this.ipcRenderer.invoke("respond-to-app-input", {
+        appId,
+        response,
+      });
     } catch (error) {
       showError(error);
       throw error;
@@ -784,12 +802,14 @@ export class IpcClient {
   // --- End Supabase Management ---
 
   // --- Neon Management ---
-  public async disconnectNeon(): Promise<void> {
-    await this.ipcRenderer.invoke("neon:disconnect");
-  }
-
   public async fakeHandleNeonConnect(): Promise<void> {
     await this.ipcRenderer.invoke("neon:fake-connect");
+  }
+
+  public async createNeonProject(
+    params: CreateNeonProjectParams,
+  ): Promise<NeonProject> {
+    return this.ipcRenderer.invoke("neon:create-project", params);
   }
 
   // --- End Neon Management ---

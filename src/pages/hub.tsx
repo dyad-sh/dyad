@@ -4,9 +4,14 @@ import { ArrowLeft } from "lucide-react";
 import { useRouter } from "@tanstack/react-router";
 import { useSettings } from "@/hooks/useSettings";
 import { IpcClient } from "@/ipc/ipc_client";
-import { DEFAULT_TEMPLATE_ID, templatesData } from "@/shared/templates";
+import {
+  DEFAULT_TEMPLATE_ID,
+  Template,
+  templatesData,
+} from "@/shared/templates";
 import { NeonConnector } from "@/components/NeonConnector";
 import { CreateAppDialog } from "@/components/CreateAppDialog";
+import { UserSettings } from "@/lib/schemas";
 
 const HubPage: React.FC = () => {
   const router = useRouter();
@@ -131,18 +136,11 @@ function TemplatesHub() {
 
                 {/* Create app button - shows when this template is selected */}
                 {isSelected && (
-                  <div className="pt-3 border-gray-200 dark:border-gray-700">
-                    <Button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleCreateApp(template.id);
-                      }}
-                      size="sm"
-                      className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold"
-                    >
-                      Create App
-                    </Button>
-                  </div>
+                  <CreateAppButton
+                    template={template}
+                    handleCreateApp={handleCreateApp}
+                    settings={settings}
+                  />
                 )}
               </div>
             </div>
@@ -159,10 +157,9 @@ function TemplatesHub() {
       <CreateAppDialog
         open={isCreateDialogOpen}
         onOpenChange={setIsCreateDialogOpen}
-        templateTitle={
+        template={
           selectedTemplateForCreation
             ? templatesData.find((t) => t.id === selectedTemplateForCreation)
-                ?.title
             : undefined
         }
       />
@@ -170,6 +167,43 @@ function TemplatesHub() {
   );
 }
 
+function CreateAppButton({
+  template,
+  handleCreateApp,
+  settings,
+}: {
+  template: Template;
+  handleCreateApp: (templateId: string) => void;
+  settings: UserSettings | null;
+}) {
+  if (template.requiresNeon && !settings?.neon?.accessToken) {
+    return (
+      <div className="pt-3 border-gray-200 dark:border-gray-700">
+        <Button
+          size="sm"
+          disabled
+          className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold opacity-50"
+        >
+          Requires Neon
+        </Button>
+      </div>
+    );
+  }
+  return (
+    <div className="pt-3 border-gray-200 dark:border-gray-700">
+      <Button
+        onClick={(e) => {
+          e.stopPropagation();
+          handleCreateApp(template.id);
+        }}
+        size="sm"
+        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold"
+      >
+        Create App
+      </Button>
+    </div>
+  );
+}
 function BackendSection() {
   return (
     <>

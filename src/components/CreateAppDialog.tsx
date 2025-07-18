@@ -12,22 +12,29 @@ import {
 } from "@/components/ui/dialog";
 import { useCreateApp } from "@/hooks/useCreateApp";
 import { useCheckName } from "@/hooks/useCheckName";
+import { useSetAtom } from "jotai";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { Template } from "@/shared/templates";
+import { IpcClient } from "@/ipc/ipc_client";
+import { v4 as uuidv4 } from "uuid";
+import { useRouter } from "@tanstack/react-router";
 
 interface CreateAppDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  templateTitle?: string;
+  template: Template | undefined;
 }
 
 export function CreateAppDialog({
   open,
   onOpenChange,
-  templateTitle,
+  template,
 }: CreateAppDialogProps) {
+  const setSelectedAppId = useSetAtom(selectedAppIdAtom);
   const [appName, setAppName] = useState("");
   const { createApp, isCreating } = useCreateApp();
   const { data: nameCheckResult } = useCheckName(appName);
-
+  const router = useRouter();
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -39,7 +46,35 @@ export function CreateAppDialog({
       return;
     }
 
-    await createApp({ name: appName.trim() });
+    const result = await createApp({ name: appName.trim() });
+    if (template?.requiresNeon) {
+      console.log("Creating Neon project");
+      const neonProject = await IpcClient.getInstance().createNeonProject({
+        name: appName.trim(),
+        appId: result.app.id,
+      });
+      console.log("Neon project created", neonProject);
+      await IpcClient.getInstance().setAppEnvVars({
+        appId: result.app.id,
+        envVars: [
+          {
+            key: "POSTGRES_URL",
+            value: neonProject.connectionString,
+          },
+          {
+            key: "PAYLOAD_SECRET",
+            value: uuidv4(),
+          },
+        ],
+      });
+      console.log("App env vars set");
+    }
+    setSelectedAppId(result.app.id);
+    // Navigate to the new app's first chat
+    router.navigate({
+      to: "/chat",
+      search: { id: result.chatId },
+    });
     setAppName("");
     onOpenChange(false);
   };
@@ -54,9 +89,7 @@ export function CreateAppDialog({
         <DialogHeader>
           <DialogTitle>Create New App</DialogTitle>
           <DialogDescription>
-            {templateTitle
-              ? `Create a new app using the ${templateTitle} template.`
-              : "Create a new app with the selected template."}
+            {`Create a new app using the ${template?.title} template.`}
           </DialogDescription>
         </DialogHeader>
 

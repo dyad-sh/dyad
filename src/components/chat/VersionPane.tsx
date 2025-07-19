@@ -1,8 +1,9 @@
 import { useAtom, useAtomValue } from "jotai";
 import { selectedAppIdAtom, selectedVersionIdAtom } from "@/atoms/appAtoms";
 import { useVersions } from "@/hooks/useVersions";
+import { useFavorites } from "@/hooks/useFavorites";
 import { formatDistanceToNow } from "date-fns";
-import { RotateCcw, X } from "lucide-react";
+import { RotateCcw, X, Star, Database } from "lucide-react";
 import type { Version } from "@/ipc/ipc_types";
 import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
@@ -27,6 +28,8 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
     refreshVersions,
     revertVersion,
   } = useVersions(appId);
+  const { isFavorited, toggleFavorite, isUpdatingFavorite } =
+    useFavorites(appId);
   const [selectedVersionId, setSelectedVersionId] = useAtom(
     selectedVersionIdAtom,
   );
@@ -126,9 +129,24 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                 }}
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-medium text-xs">
-                    Version {versions.length - index}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-xs">
+                      Version {versions.length - index}
+                    </span>
+                    {version.hasDbSnapshot && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 rounded-md">
+                            <Database size={10} />
+                            <span>DB</span>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          Database snapshot available
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
                   <span className="text-xs opacity-90">
                     {formatDistanceToNow(new Date(version.timestamp * 1000), {
                       addSuffix: true,
@@ -158,30 +176,73 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                     </p>
                   )}
 
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          setSelectedVersionId(null);
-                          await revertVersion({
-                            versionId: version.oid,
-                          });
-                          // Close the pane after revert to force a refresh on next open
-                          onClose();
-                        }}
-                        className={cn(
-                          "invisible mt-1 flex items-center gap-1 px-2 py-0.5 text-sm font-medium bg-(--primary) text-(--primary-foreground) hover:bg-background-lightest rounded-md transition-colors",
-                          selectedVersionId === version.oid && "visible",
-                        )}
-                        aria-label="Restore to this version"
-                      >
-                        <RotateCcw size={12} />
-                        <span>Restore</span>
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>Restore to this version</TooltipContent>
-                  </Tooltip>
+                  <div className="flex items-center gap-1">
+                    {/* Star button for favorites */}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            if (!isUpdatingFavorite) {
+                              await toggleFavorite(version.oid);
+                            }
+                          }}
+                          disabled={isUpdatingFavorite}
+                          className={cn(
+                            "p-1 rounded-md transition-colors hover:bg-(--background-lightest)",
+                            isFavorited(version.oid)
+                              ? "text-yellow-500"
+                              : "text-gray-400 hover:text-yellow-500",
+                            isUpdatingFavorite &&
+                              "opacity-50 cursor-not-allowed",
+                          )}
+                          aria-label={
+                            isFavorited(version.oid)
+                              ? "Remove from favorites"
+                              : "Add to favorites"
+                          }
+                        >
+                          <Star
+                            size={14}
+                            fill={
+                              isFavorited(version.oid) ? "currentColor" : "none"
+                            }
+                          />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {isFavorited(version.oid)
+                          ? "Remove from favorites"
+                          : "Add to favorites"}
+                      </TooltipContent>
+                    </Tooltip>
+
+                    {/* Restore button */}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            setSelectedVersionId(null);
+                            await revertVersion({
+                              versionId: version.oid,
+                            });
+                            // Close the pane after revert to force a refresh on next open
+                            onClose();
+                          }}
+                          className={cn(
+                            "invisible mt-1 flex items-center gap-1 px-2 py-0.5 text-sm font-medium bg-(--primary) text-(--primary-foreground) hover:bg-background-lightest rounded-md transition-colors",
+                            selectedVersionId === version.oid && "visible",
+                          )}
+                          aria-label="Restore to this version"
+                        >
+                          <RotateCcw size={12} />
+                          <span>Restore</span>
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>Restore to this version</TooltipContent>
+                    </Tooltip>
+                  </div>
                 </div>
               </div>
             ))}

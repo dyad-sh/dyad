@@ -65,6 +65,7 @@ export interface Message {
   content: string;
   approvalState?: "approved" | "rejected" | null;
   commitHash?: string | null;
+  dbTimestamp?: string | null;
 }
 
 export interface Chat {
@@ -72,6 +73,7 @@ export interface Chat {
   title: string;
   messages: Message[];
   initialCommitHash?: string | null;
+  dbTimestamp?: string | null;
 }
 
 export interface App {
@@ -98,6 +100,7 @@ export interface Version {
   oid: string;
   message: string;
   timestamp: number;
+  hasDbSnapshot?: boolean;
 }
 
 export type BranchResult = { branch: string };
@@ -353,4 +356,51 @@ export interface GetNeonProjectResponse {
   projectName: string;
   orgId: string;
   branches: NeonBranch[];
+}
+
+// Snapshot management types
+export interface Snapshot {
+  id: number;
+  appId: number;
+  commitHash: string;
+  dbTimestamp: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CreateSnapshotParams {
+  appId: number;
+  commitHash: string;
+  dbTimestamp?: string;
+}
+
+export interface ListSnapshotsParams {
+  appId: number;
+}
+
+export interface DeleteSnapshotParams {
+  snapshotId: number;
+}
+
+// Favorites management types
+export interface Favorite {
+  id: number;
+  appId: number;
+  commitHash: string;
+  neonBranchId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CreateFavoriteParams {
+  appId: number;
+  commitHash: string;
+}
+
+export interface ListFavoritesParams {
+  appId: number;
+}
+
+export interface DeleteFavoriteParams {
+  favoriteId: number;
 }

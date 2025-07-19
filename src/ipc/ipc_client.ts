@@ -1053,4 +1053,42 @@ export class IpcClient {
   }): Promise<ProblemReport> {
     return this.ipcRenderer.invoke("check-problems", params);
   }
+
+  // Snapshot management methods
+  public async listSnapshots(params: {
+    appId: number;
+  }): Promise<import("./ipc_types").Snapshot[]> {
+    return this.ipcRenderer.invoke("list-snapshots", params);
+  }
+
+  public async createSnapshot(params: {
+    appId: number;
+    commitHash: string;
+    dbTimestamp?: string;
+  }): Promise<import("./ipc_types").Snapshot> {
+    return this.ipcRenderer.invoke("create-snapshot", params);
+  }
+
+  public async deleteSnapshot(params: { snapshotId: number }): Promise<void> {
+    return this.ipcRenderer.invoke("delete-snapshot", params);
+  }
+
+  // Favorites management methods
+  public async listFavorites(params: {
+    appId: number;
+  }): Promise<import("./ipc_types").Favorite[]> {
+    return this.ipcRenderer.invoke("list-favorites", params);
+  }
+
+  public async createFavorite(params: {
+    appId: number;
+    commitHash: string;
+    neonBranchId?: string;
+  }): Promise<import("./ipc_types").Favorite> {
+    return this.ipcRenderer.invoke("create-favorite", params);
+  }
+
+  public async deleteFavorite(params: { favoriteId: number }): Promise<void> {
+    return this.ipcRenderer.invoke("delete-favorite", params);
+  }
 }

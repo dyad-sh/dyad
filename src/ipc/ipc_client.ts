@@ -49,6 +49,10 @@ import type {
   IsVercelProjectAvailableParams,
   SaveVercelAccessTokenParams,
   VercelProject,
+  CreateNeonProjectParams,
+  NeonProject,
+  GetNeonProjectParams,
+  GetNeonProjectResponse,
 } from "./ipc_types";
 import type { AppChatContext, ProposalResult } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
@@ -395,6 +399,22 @@ export class IpcClient {
       });
       this.appStreams.set(appId, { onOutput });
       return result;
+    } catch (error) {
+      showError(error);
+      throw error;
+    }
+  }
+
+  // Respond to an app input request (y/n prompts)
+  public async respondToAppInput(
+    appId: number,
+    response: string,
+  ): Promise<void> {
+    try {
+      await this.ipcRenderer.invoke("respond-to-app-input", {
+        appId,
+        response,
+      });
     } catch (error) {
       showError(error);
       throw error;
@@ -783,6 +803,25 @@ export class IpcClient {
 
   // --- End Supabase Management ---
 
+  // --- Neon Management ---
+  public async fakeHandleNeonConnect(): Promise<void> {
+    await this.ipcRenderer.invoke("neon:fake-connect");
+  }
+
+  public async createNeonProject(
+    params: CreateNeonProjectParams,
+  ): Promise<NeonProject> {
+    return this.ipcRenderer.invoke("neon:create-project", params);
+  }
+
+  public async getNeonProject(
+    params: GetNeonProjectParams,
+  ): Promise<GetNeonProjectResponse> {
+    return this.ipcRenderer.invoke("neon:get-project", params);
+  }
+
+  // --- End Neon Management ---
+
   public async getSystemDebugInfo(): Promise<SystemDebugInfo> {
     return this.ipcRenderer.invoke("get-system-debug-info");
   }
@@ -1013,5 +1052,43 @@ export class IpcClient {
     appId: number;
   }): Promise<ProblemReport> {
     return this.ipcRenderer.invoke("check-problems", params);
+  }
+
+  // Snapshot management methods
+  public async listSnapshots(params: {
+    appId: number;
+  }): Promise<import("./ipc_types").Snapshot[]> {
+    return this.ipcRenderer.invoke("list-snapshots", params);
+  }
+
+  public async createSnapshot(params: {
+    appId: number;
+    commitHash: string;
+    dbTimestamp?: string;
+  }): Promise<import("./ipc_types").Snapshot> {
+    return this.ipcRenderer.invoke("create-snapshot", params);
+  }
+
+  public async deleteSnapshot(params: { snapshotId: number }): Promise<void> {
+    return this.ipcRenderer.invoke("delete-snapshot", params);
+  }
+
+  // Favorites management methods
+  public async listFavorites(params: {
+    appId: number;
+  }): Promise<import("./ipc_types").Favorite[]> {
+    return this.ipcRenderer.invoke("list-favorites", params);
+  }
+
+  public async createFavorite(params: {
+    appId: number;
+    commitHash: string;
+    neonBranchId?: string;
+  }): Promise<import("./ipc_types").Favorite> {
+    return this.ipcRenderer.invoke("create-favorite", params);
+  }
+
+  public async deleteFavorite(params: { favoriteId: number }): Promise<void> {
+    return this.ipcRenderer.invoke("delete-favorite", params);
   }
 }

@@ -64,6 +64,48 @@
       "when": 1752625491756,
       "tag": "0008_medical_vulcan",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1752860999012,
+      "tag": "0009_flat_morlun",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1752868649600,
+      "tag": "0010_rapid_sentinel",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1752874056580,
+      "tag": "0011_pretty_ink",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1752874094419,
+      "tag": "0012_moaning_marvex",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1752875406186,
+      "tag": "0013_confused_nitro",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1752880193132,
+      "tag": "0014_wild_red_skull",
+      "breakpoints": true
     }
   ]
 }

@@ -26,6 +26,7 @@ import {
   getDyadAddDependencyTags,
   getDyadExecuteSqlTags,
 } from "../utils/dyad_tag_parser";
+import { retrieveAndStoreTimestamp } from "../utils/neon_lsn_utils";
 
 const readFile = fs.promises.readFile;
 const logger = log.scope("response_processor");
@@ -71,6 +72,25 @@ export async function processFullResponseActions(
   if (!chatWithApp || !chatWithApp.app) {
     logger.error(`No app found for chat ID: ${chatId}`);
     return {};
+  }
+
+  if (chatWithApp.app.neonProjectId) {
+    // GET THE TIMESTAMP AND PUT IT IN
+    try {
+      await retrieveAndStoreTimestamp({
+        chatId,
+        messageId,
+        appId: chatWithApp.app.id,
+        neonProjectId: chatWithApp.app.neonProjectId,
+        neonBranchId: chatWithApp.app.neonBranchId!,
+      });
+    } catch (error) {
+      logger.error("Error retrieving and storing timestamp:", error);
+      throw new Error(
+        "Could not store timestamp in chat; database backup functionality is not working: " +
+          error,
+      );
+    }
   }
 
   const settings: UserSettings = readSettings();

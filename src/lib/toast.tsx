@@ -2,6 +2,7 @@ import { toast } from "sonner";
 import { PostHog } from "posthog-js";
 import React from "react";
 import { CustomErrorToast } from "../components/CustomErrorToast";
+import { InputRequestToast } from "../components/InputRequestToast";
 
 /**
  * Toast utility functions for consistent notifications across the app
@@ -85,6 +86,29 @@ export const showWarning = (message: string) => {
  */
 export const showInfo = (message: string) => {
   toast.info(message);
+};
+
+/**
+ * Show an input request toast for interactive prompts (y/n)
+ * @param message The prompt message to display
+ * @param onResponse Callback function called when user responds
+ */
+export const showInputRequest = (
+  message: string,
+  onResponse: (response: "y" | "n") => void,
+) => {
+  const toastId = toast.custom(
+    (t) => (
+      <InputRequestToast
+        message={message}
+        toastId={t}
+        onResponse={onResponse}
+      />
+    ),
+    { duration: Infinity }, // Don't auto-close
+  );
+
+  return toastId;
 };
 
 export const showExtraFilesToast = ({

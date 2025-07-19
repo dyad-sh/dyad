@@ -33,6 +33,7 @@ const validInvokeChannels = [
   "run-app",
   "stop-app",
   "restart-app",
+  "respond-to-app-input",
   "list-versions",
   "revert-version",
   "checkout-version",
@@ -55,6 +56,8 @@ const validInvokeChannels = [
   "github:connect-existing-repo",
   "github:push",
   "github:disconnect",
+  "neon:create-project",
+  "neon:get-project",
   "vercel:save-token",
   "vercel:list-projects",
   "vercel:is-project-available",
@@ -99,6 +102,14 @@ const validInvokeChannels = [
   "open-android",
   "check-problems",
   "restart-dyad",
+  // Snapshot management channels
+  "list-snapshots",
+  "create-snapshot",
+  "delete-snapshot",
+  // Favorites management channels
+  "list-favorites",
+  "create-favorite",
+  "delete-favorite",
   // Test-only channels
   // These should ALWAYS be guarded with IS_TEST_BUILD in the main process.
   // We can't detect with IS_TEST_BUILD in the preload script because

@@ -239,6 +239,217 @@ async function executeAppLocalNode({
   });
 }
 
+async function executeAppInDocker({
+  appPath,
+  appId,
+  event,
+}: {
+  appPath: string;
+  appId: number;
+  event: Electron.IpcMainInvokeEvent;
+}): Promise<void> {
+  const containerName = `dyad-app-${appId}`;
+
+  // First, check if Docker is available
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const checkDocker = spawn("docker", ["--version"], { stdio: "pipe" });
+      checkDocker.on("close", (code) => {
+        if (code === 0) {
+          resolve();
+        } else {
+          reject(new Error("Docker is not available"));
+        }
+      });
+      checkDocker.on("error", () => {
+        reject(new Error("Docker is not available"));
+      });
+    });
+  } catch (error) {
+    throw new Error(
+      "Docker is required but not available. Please install Docker Desktop and ensure it's running.",
+    );
+  }
+
+  // Stop and remove any existing container with the same name
+  try {
+    await new Promise<void>((resolve) => {
+      const stopContainer = spawn("docker", ["stop", containerName], {
+        stdio: "pipe",
+      });
+      stopContainer.on("close", () => {
+        const removeContainer = spawn("docker", ["rm", containerName], {
+          stdio: "pipe",
+        });
+        removeContainer.on("close", () => resolve());
+        removeContainer.on("error", () => resolve()); // Container might not exist
+      });
+      stopContainer.on("error", () => resolve()); // Container might not exist
+    });
+  } catch (error) {
+    // Ignore errors here - container might not exist
+  }
+
+  // Create a Dockerfile in the app directory if it doesn't exist
+  const dockerfilePath = path.join(appPath, "Dockerfile.dyad");
+  if (!fs.existsSync(dockerfilePath)) {
+    const dockerfileContent = `FROM node:18-alpine
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+COPY pnpm-lock.yaml* ./
+
+# Install pnpm
+RUN npm install -g pnpm
+
+# Install dependencies
+RUN pnpm install || (npm install --legacy-peer-deps)
+
+# Copy source code
+COPY . .
+
+# Expose port
+EXPOSE 32100
+
+# Start the development server
+CMD ["sh", "-c", "pnpm run dev --port 32100 --host 0.0.0.0 || npm run dev -- --port 32100 --host 0.0.0.0"]
+`;
+
+    try {
+      await fsPromises.writeFile(dockerfilePath, dockerfileContent, "utf-8");
+    } catch (error) {
+      logger.error(`Failed to create Dockerfile for app ${appId}:`, error);
+      throw new Error(`Failed to create Dockerfile: ${error}`);
+    }
+  }
+
+  // Build the Docker image
+  const buildProcess = spawn(
+    "docker",
+    ["build", "-f", "Dockerfile.dyad", "-t", `dyad-app-${appId}`, "."],
+    {
+      cwd: appPath,
+      stdio: "pipe",
+    },
+  );
+
+  let buildError = "";
+  buildProcess.stderr?.on("data", (data) => {
+    buildError += data.toString();
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    buildProcess.on("close", (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`Docker build failed: ${buildError}`));
+      }
+    });
+    buildProcess.on("error", (err) => {
+      reject(new Error(`Docker build process error: ${err.message}`));
+    });
+  });
+
+  // Run the Docker container
+  const process = spawn(
+    "docker",
+    [
+      "run",
+      "--rm",
+      "--name",
+      containerName,
+      "-p",
+      "32100:32100",
+      "-v",
+      `${appPath}:/app`,
+      "-w",
+      "/app",
+      `dyad-app-${appId}`,
+    ],
+    {
+      stdio: "pipe",
+      detached: false,
+    },
+  );
+
+  // Check if process spawned correctly
+  if (!process.pid) {
+    // Attempt to capture any immediate errors if possible
+    let errorOutput = "";
+    process.stderr?.on("data", (data) => (errorOutput += data));
+    await new Promise((resolve) => process.on("error", resolve)); // Wait for error event
+    throw new Error(
+      `Failed to spawn Docker container for app ${appId}. Error: ${
+        errorOutput || "Unknown spawn error"
+      }`,
+    );
+  }
+
+  // Increment the counter and store the process reference with its ID
+  const currentProcessId = processCounter.increment();
+  runningApps.set(appId, { process, processId: currentProcessId });
+
+  // Log output
+  process.stdout?.on("data", async (data) => {
+    const message = util.stripVTControlCharacters(data.toString());
+    logger.debug(
+      `App ${appId} (Container PID: ${process.pid}) stdout: ${message}`,
+    );
+
+    safeSend(event.sender, "app:output", {
+      type: "stdout",
+      message,
+      appId,
+    });
+    const urlMatch = message.match(/(https?:\/\/localhost:\d+\/?)/);
+    if (urlMatch) {
+      proxyWorker = await startProxy(urlMatch[1], {
+        onStarted: (proxyUrl) => {
+          safeSend(event.sender, "app:output", {
+            type: "stdout",
+            message: `[dyad-proxy-server]started=[${proxyUrl}] original=[${urlMatch[1]}]`,
+            appId,
+          });
+        },
+      });
+    }
+  });
+
+  process.stderr?.on("data", (data) => {
+    const message = util.stripVTControlCharacters(data.toString());
+    logger.error(
+      `App ${appId} (Container PID: ${process.pid}) stderr: ${message}`,
+    );
+    safeSend(event.sender, "app:output", {
+      type: "stderr",
+      message,
+      appId,
+    });
+  });
+
+  // Handle process exit/close
+  process.on("close", (code, signal) => {
+    logger.log(
+      `App ${appId} (Container PID: ${process.pid}) process closed with code ${code}, signal ${signal}.`,
+    );
+    removeAppIfCurrentProcess(appId, process);
+  });
+
+  // Handle errors during process lifecycle (e.g., command not found)
+  process.on("error", (err) => {
+    logger.error(
+      `Error in app ${appId} (Container PID: ${process.pid}) process: ${err.message}`,
+    );
+    removeAppIfCurrentProcess(appId, process);
+    // Note: We don't throw here as the error is asynchronous. The caller got a success response already.
+    // Consider adding ipcRenderer event emission to notify UI of the error.
+  });
+}
+
 // Helper to kill process on a specific port (cross-platform, using kill-port)
 async function killProcessOnPort(port: number): Promise<void> {
   try {

@@ -57,7 +57,9 @@ export async function refreshSupabaseToken(): Promise<void> {
     );
 
     if (!response.ok) {
-      throw new Error(`Token refresh failed: ${response.statusText}`);
+      throw new Error(
+        `Supabase token refresh failed. Try going to Settings to disconnect Supabase and then reconnect to Supabase. Error status: ${response.statusText}`,
+      );
     }
 
     const {

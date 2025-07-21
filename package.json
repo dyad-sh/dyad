@@ -20,6 +20,7 @@
     "package": "npm run clean && electron-forge package",
     "make": "npm run clean && electron-forge make",
     "publish": "npm run clean && electron-forge publish",
+    "verify-release": "node scripts/verify-release-assets.js",
     "ts": "npm run ts:main && npm run ts:workers",
     "ts:main": "npx tsc -p tsconfig.app.json --noEmit",
     "ts:workers": "npx tsc -p workers/tsc/tsconfig.json --noEmit",

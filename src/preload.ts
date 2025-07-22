@@ -79,6 +79,7 @@ const validInvokeChannels = [
   "get-system-platform",
   "upload-to-signed-url",
   "delete-chat",
+  "update-chat",
   "delete-messages",
   "start-chat-stream",
   "does-release-note-exist",

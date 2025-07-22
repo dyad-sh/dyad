@@ -316,3 +316,8 @@ export interface VercelProject {
   name: string;
   framework: string | null;
 }
+
+export interface UpdateChatParams {
+  chatId: number;
+  title: string;
+}

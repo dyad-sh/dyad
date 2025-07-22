@@ -9,6 +9,7 @@ import { createLoggedHandler } from "./safe_handle";
 
 import log from "electron-log";
 import { getDyadAppPath } from "../../paths/paths";
+import { UpdateChatParams } from "../ipc_types";
 
 const logger = log.scope("chat_handlers");
 const handle = createLoggedHandler(logger);
@@ -105,6 +106,10 @@ export function registerChatHandlers() {
 
   handle("delete-chat", async (_, chatId: number): Promise<void> => {
     await db.delete(chats).where(eq(chats.id, chatId));
+  });
+
+  handle("update-chat", async (_, { chatId, title }: UpdateChatParams) => {
+    await db.update(chats).set({ title }).where(eq(chats.id, chatId));
   });
 
   handle("delete-messages", async (_, chatId: number): Promise<void> => {

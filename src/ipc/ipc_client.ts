@@ -49,6 +49,7 @@ import type {
   IsVercelProjectAvailableParams,
   SaveVercelAccessTokenParams,
   VercelProject,
+  UpdateChatParams,
 } from "./ipc_types";
 import type { AppChatContext, ProposalResult } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
@@ -349,6 +350,10 @@ export class IpcClient {
   // Create a new chat for an app
   public async createChat(appId: number): Promise<number> {
     return this.ipcRenderer.invoke("create-chat", appId);
+  }
+
+  public async updateChat(params: UpdateChatParams): Promise<void> {
+    return this.ipcRenderer.invoke("update-chat", params);
   }
 
   public async deleteChat(chatId: number): Promise<void> {

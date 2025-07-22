@@ -320,7 +320,7 @@ You need to first add Supabase to your app and then we can add auth.
 ===
 role: user
 message: This is my codebase. <dyad-file path="src/components/ui/helper.ts">
-// Contents omitted for brevity
+// File contents excluded from context
 </dyad-file>
 
 <dyad-file path="src/foo.ts">

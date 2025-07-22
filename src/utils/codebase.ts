@@ -277,10 +277,6 @@ async function collectFiles(dir: string, baseDir: string): Promise<string[]> {
           return;
         }
 
-        // Check file extension and filename
-        const ext = path.extname(entry.name).toLowerCase();
-        const shouldAlwaysInclude = ALWAYS_INCLUDE_FILES.includes(entry.name);
-
         // Skip files that are too large
         try {
           const stats = await fsAsync.stat(fullPath);
@@ -292,9 +288,8 @@ async function collectFiles(dir: string, baseDir: string): Promise<string[]> {
           return;
         }
 
-        if (ALLOWED_EXTENSIONS.includes(ext) || shouldAlwaysInclude) {
-          files.push(fullPath);
-        }
+        // Include all files in the list
+        files.push(fullPath);
       }
     });
 
@@ -311,25 +306,48 @@ function isOmittedFile(relativePath: string): boolean {
   return OMITTED_FILES.some((pattern) => relativePath.includes(pattern));
 }
 
-const OMITTED_FILE_CONTENT = "// Contents omitted for brevity";
+const OMITTED_FILE_CONTENT = "// File contents excluded from context";
+
+/**
+ * Check if file contents should be read based on extension and inclusion rules
+ */
+function shouldReadFileContents({
+  filePath,
+  normalizedRelativePath,
+}: {
+  filePath: string;
+  normalizedRelativePath: string;
+}): boolean {
+  const ext = path.extname(filePath).toLowerCase();
+  const fileName = path.basename(filePath);
+
+  // OMITTED_FILES takes precedence - never read if omitted
+  if (isOmittedFile(normalizedRelativePath)) {
+    return false;
+  }
+
+  // Check if file should be included based on extension or filename
+  return (
+    ALLOWED_EXTENSIONS.includes(ext) || ALWAYS_INCLUDE_FILES.includes(fileName)
+  );
+}
 
 /**
  * Format a file for inclusion in the codebase extract
  */
-async function formatFile(
-  filePath: string,
-  baseDir: string,
-  virtualFileSystem?: AsyncVirtualFileSystem,
-): Promise<string> {
+async function formatFile({
+  filePath,
+  normalizedRelativePath,
+  virtualFileSystem,
+}: {
+  filePath: string;
+  normalizedRelativePath: string;
+  virtualFileSystem?: AsyncVirtualFileSystem;
+}): Promise<string> {
   try {
-    const relativePath = path
-      .relative(baseDir, filePath)
-      // Why? Normalize Windows-style paths which causes lots of weird issues (e.g. Git commit)
-      .split(path.sep)
-      .join("/");
-
-    if (isOmittedFile(relativePath)) {
-      return `<dyad-file path="${relativePath}">
+    // Check if we should read file contents
+    if (!shouldReadFileContents({ filePath, normalizedRelativePath })) {
+      return `<dyad-file path="${normalizedRelativePath}">
 ${OMITTED_FILE_CONTENT}
 </dyad-file>
 
@@ -339,21 +357,21 @@ ${OMITTED_FILE_CONTENT}
     const content = await readFileWithCache(filePath, virtualFileSystem);
 
     if (content == null) {
-      return `<dyad-file path="${relativePath}">
+      return `<dyad-file path="${normalizedRelativePath}">
 // Error reading file
 </dyad-file>
 
 `;
     }
 
-    return `<dyad-file path="${relativePath}">
+    return `<dyad-file path="${normalizedRelativePath}">
 ${content}
 </dyad-file>
 
 `;
   } catch (error) {
     logger.error(`Error reading file: ${filePath}`, error);
-    return `<dyad-file path="${path.relative(baseDir, filePath)}">
+    return `<dyad-file path="${normalizedRelativePath}">
 // Error reading file: ${error}
 </dyad-file>
 
@@ -482,27 +500,34 @@ export async function extractCodebase({
   // Format files and collect individual file contents
   const filesArray: CodebaseFile[] = [];
   const formatPromises = sortedFiles.map(async (file) => {
-    const formattedContent = await formatFile(file, appPath, virtualFileSystem);
-
     // Get raw content for the files array
-    const relativePath = path
+    const normalizedRelativePath = path
       .relative(appPath, file)
       // Why? Normalize Windows-style paths which causes lots of weird issues (e.g. Git commit)
       .split(path.sep)
       .join("/");
+    const formattedContent = await formatFile({
+      filePath: file,
+      normalizedRelativePath,
+      virtualFileSystem,
+    });
 
     const isForced = autoIncludedFiles.has(path.normalize(file));
 
-    const fileContent = isOmittedFile(relativePath)
-      ? OMITTED_FILE_CONTENT
-      : await readFileWithCache(file, virtualFileSystem);
-    if (fileContent != null) {
-      filesArray.push({
-        path: relativePath,
-        content: fileContent,
-        force: isForced,
-      });
+    // Determine file content based on whether we should read it
+    let fileContent: string;
+    if (!shouldReadFileContents({ filePath: file, normalizedRelativePath })) {
+      fileContent = OMITTED_FILE_CONTENT;
+    } else {
+      const readContent = await readFileWithCache(file, virtualFileSystem);
+      fileContent = readContent ?? "// Error reading file";
     }
+
+    filesArray.push({
+      path: normalizedRelativePath,
+      content: fileContent,
+      force: isForced,
+    });
 
     return formattedContent;
   });

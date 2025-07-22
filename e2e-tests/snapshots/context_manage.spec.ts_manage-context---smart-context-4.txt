@@ -38,6 +38,11 @@
     "dyad_options": {
       "files": [
         {
+          "path": ".env.foobar",
+          "content": "// File contents excluded from context",
+          "force": false
+        },
+        {
           "path": "a.ts",
           "content": "// a.ts\n",
           "force": false
@@ -58,6 +63,11 @@
           "force": false
         },
         {
+          "path": "manual/baz.json",
+          "content": "// File contents excluded from context",
+          "force": false
+        },
+        {
           "path": "manual/file.ts",
           "content": "",
           "force": false
@@ -69,12 +79,12 @@
         },
         {
           "path": "src/components/ui/button.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/helper.ts",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {

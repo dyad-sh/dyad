@@ -27,6 +27,11 @@
           "force": true
         },
         {
+          "path": "manual/baz.json",
+          "content": "// File contents excluded from context",
+          "force": true
+        },
+        {
           "path": "manual/file.ts",
           "content": "",
           "force": true
@@ -38,7 +43,7 @@
         },
         {
           "path": "src/components/ui/helper.ts",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {

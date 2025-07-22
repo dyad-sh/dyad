@@ -38,13 +38,23 @@
     "dyad_options": {
       "files": [
         {
+          "path": ".gitignore",
+          "content": "// File contents excluded from context",
+          "force": false
+        },
+        {
           "path": "AI_RULES.md",
           "content": "# Tech Stack\n\n- You are building a React application.\n- Use TypeScript.\n- Use React Router. KEEP the routes in src/App.tsx\n- Always put source code in the src folder.\n- Put pages into src/pages/\n- Put components into src/components/\n- The main page (default page) is src/pages/Index.tsx\n- UPDATE the main page to include the new components. OTHERWISE, the user can NOT see any components!\n- ALWAYS try to use the shadcn/ui library.\n- Tailwind CSS: always use Tailwind CSS for styling components. Utilize Tailwind classes extensively for layout, spacing, colors, and other design aspects.\n\nAvailable packages and libraries:\n\n- The lucide-react package is installed for icons.\n- You ALREADY have ALL the shadcn/ui components and their dependencies installed. So you don't need to install them again.\n- You have ALL the necessary Radix UI components installed.\n- Use prebuilt components from the shadcn/ui library after importing them. Note that these files shouldn't be edited, so make new components if you need to change them.\n",
           "force": false
         },
         {
+          "path": "components.json",
+          "content": "// File contents excluded from context",
+          "force": false
+        },
+        {
           "path": "eslint.config.js",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
@@ -60,6 +70,21 @@
         {
           "path": "postcss.config.js",
           "content": "export default {\n  plugins: {\n    tailwindcss: {},\n    autoprefixer: {},\n  },\n};\n",
+          "force": false
+        },
+        {
+          "path": "public/favicon.ico",
+          "content": "// File contents excluded from context",
+          "force": false
+        },
+        {
+          "path": "public/placeholder.svg",
+          "content": "// File contents excluded from context",
+          "force": false
+        },
+        {
+          "path": "public/robots.txt",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
@@ -84,247 +109,247 @@
         },
         {
           "path": "src/components/ui/accordion.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/alert-dialog.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/alert.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/aspect-ratio.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/avatar.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/badge.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/breadcrumb.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/button.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/calendar.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/card.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/carousel.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/chart.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/checkbox.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/collapsible.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/command.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/context-menu.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/dialog.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/drawer.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/dropdown-menu.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/form.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/hover-card.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/input-otp.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/input.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/label.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/menubar.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/navigation-menu.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/pagination.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/popover.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/progress.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/radio-group.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/resizable.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/scroll-area.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/select.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/separator.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/sheet.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/sidebar.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/skeleton.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/slider.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/sonner.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/switch.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/table.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/tabs.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/textarea.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/toast.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/toaster.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/toggle-group.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/toggle.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/tooltip.tsx",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
           "path": "src/components/ui/use-toast.ts",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {
@@ -375,6 +400,21 @@
         {
           "path": "tailwind.config.ts",
           "content": "import type { Config } from \"tailwindcss\";\n\nexport default {\n  darkMode: [\"class\"],\n  content: [\n    \"./pages/**/*.{ts,tsx}\",\n    \"./components/**/*.{ts,tsx}\",\n    \"./app/**/*.{ts,tsx}\",\n    \"./src/**/*.{ts,tsx}\",\n  ],\n  prefix: \"\",\n  theme: {\n    container: {\n      center: true,\n      padding: \"2rem\",\n      screens: {\n        \"2xl\": \"1400px\",\n      },\n    },\n    extend: {\n      colors: {\n        border: \"hsl(var(--border))\",\n        input: \"hsl(var(--input))\",\n        ring: \"hsl(var(--ring))\",\n        background: \"hsl(var(--background))\",\n        foreground: \"hsl(var(--foreground))\",\n        primary: {\n          DEFAULT: \"hsl(var(--primary))\",\n          foreground: \"hsl(var(--primary-foreground))\",\n        },\n        secondary: {\n          DEFAULT: \"hsl(var(--secondary))\",\n          foreground: \"hsl(var(--secondary-foreground))\",\n        },\n        destructive: {\n          DEFAULT: \"hsl(var(--destructive))\",\n          foreground: \"hsl(var(--destructive-foreground))\",\n        },\n        muted: {\n          DEFAULT: \"hsl(var(--muted))\",\n          foreground: \"hsl(var(--muted-foreground))\",\n        },\n        accent: {\n          DEFAULT: \"hsl(var(--accent))\",\n          foreground: \"hsl(var(--accent-foreground))\",\n        },\n        popover: {\n          DEFAULT: \"hsl(var(--popover))\",\n          foreground: \"hsl(var(--popover-foreground))\",\n        },\n        card: {\n          DEFAULT: \"hsl(var(--card))\",\n          foreground: \"hsl(var(--card-foreground))\",\n        },\n        sidebar: {\n          DEFAULT: \"hsl(var(--sidebar-background))\",\n          foreground: \"hsl(var(--sidebar-foreground))\",\n          primary: \"hsl(var(--sidebar-primary))\",\n          \"primary-foreground\": \"hsl(var(--sidebar-primary-foreground))\",\n          accent: \"hsl(var(--sidebar-accent))\",\n          \"accent-foreground\": \"hsl(var(--sidebar-accent-foreground))\",\n          border: \"hsl(var(--sidebar-border))\",\n          ring: \"hsl(var(--sidebar-ring))\",\n        },\n      },\n      borderRadius: {\n        lg: \"var(--radius)\",\n        md: \"calc(var(--radius) - 2px)\",\n        sm: \"calc(var(--radius) - 4px)\",\n      },\n      keyframes: {\n        \"accordion-down\": {\n          from: {\n            height: \"0\",\n          },\n          to: {\n            height: \"var(--radix-accordion-content-height)\",\n          },\n        },\n        \"accordion-up\": {\n          from: {\n            height: \"var(--radix-accordion-content-height)\",\n          },\n          to: {\n            height: \"0\",\n          },\n        },\n      },\n      animation: {\n        \"accordion-down\": \"accordion-down 0.2s ease-out\",\n        \"accordion-up\": \"accordion-up 0.2s ease-out\",\n      },\n    },\n  },\n  plugins: [require(\"tailwindcss-animate\")],\n} satisfies Config;\n",
+          "force": false
+        },
+        {
+          "path": "tsconfig.app.json",
+          "content": "// File contents excluded from context",
+          "force": false
+        },
+        {
+          "path": "tsconfig.json",
+          "content": "// File contents excluded from context",
+          "force": false
+        },
+        {
+          "path": "tsconfig.node.json",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {

@@ -31,7 +31,7 @@
       "files": [
         {
           "path": "src/components/ui/helper.ts",
-          "content": "// Contents omitted for brevity",
+          "content": "// File contents excluded from context",
           "force": false
         },
         {

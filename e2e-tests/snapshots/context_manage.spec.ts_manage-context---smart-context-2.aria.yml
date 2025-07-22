@@ -20,6 +20,6 @@
   - text: /a\.ts 1 files, ~\d+ tokens/
   - button:
     - img
-  - text: /manual\/\*\* 2 files, ~\d+ tokens/
+  - text: /manual\/\*\* 3 files, ~\d+ tokens/
   - button:
     - img

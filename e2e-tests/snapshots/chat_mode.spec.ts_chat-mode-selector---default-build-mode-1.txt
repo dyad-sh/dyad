@@ -335,7 +335,15 @@ You need to first add Supabase to your app and then we can add auth.
 
 ===
 role: user
-message: This is my codebase. <dyad-file path="index.html">
+message: This is my codebase. <dyad-file path=".gitignore">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="file1.txt">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="index.html">
 <!doctype html>
 <html lang="en">
   <head>
@@ -370,6 +378,18 @@ createRoot(document.getElementById("root")!).render(<App />);
 <dyad-file path="src/vite-env.d.ts">
 /// <reference types="vite/client" />
 
+</dyad-file>
+
+<dyad-file path="tsconfig.app.json">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="tsconfig.json">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="tsconfig.node.json">
+// File contents excluded from context
 </dyad-file>
 
 <dyad-file path="vite.config.ts">

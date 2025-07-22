@@ -22,6 +22,7 @@ export interface ChatStreamParams {
     name: string;
     type: string;
     data: string; // Base64 encoded file data
+    attachmentType: "upload-to-codebase" | "chat-context"; // FileAttachment type
   }>;
   selectedComponent: ComponentSelection | null;
 }
@@ -320,4 +321,21 @@ export interface VercelProject {
 export interface UpdateChatParams {
   chatId: number;
   title: string;
+}
+
+export interface UploadFileToCodebaseParams {
+  appId: number;
+  filePath: string;
+  fileData: string; // Base64 encoded file data
+  fileName: string;
+}
+
+export interface UploadFileToCodebaseResult {
+  success: boolean;
+  filePath: string;
+}
+
+export interface FileAttachment {
+  file: File;
+  type: "upload-to-codebase" | "chat-context";
 }

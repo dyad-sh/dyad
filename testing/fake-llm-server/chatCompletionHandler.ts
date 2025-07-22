@@ -24,6 +24,24 @@ export const createChatCompletionHandler =
     }
 
     let messageContent = CANNED_MESSAGE;
+    console.error("LASTMESSAGE********", lastMessage.content);
+
+    if (
+      lastMessage &&
+      Array.isArray(lastMessage.content) &&
+      lastMessage.content.some(
+        (part: { type: string; text: string }) =>
+          part.type === "text" &&
+          part.text.includes("[[UPLOAD_IMAGE_TO_CODEBASE]]"),
+      )
+    ) {
+      messageContent = `Uploading image to codebase
+<dyad-write path="new/image/file.png" description="Uploaded image to codebase">
+DYAD_ATTACHMENT_0
+</dyad-write>
+`;
+      messageContent += "\n\n" + generateDump(req);
+    }
 
     // TS auto-fix prefixes
     if (

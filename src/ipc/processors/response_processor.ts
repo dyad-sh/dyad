@@ -26,6 +26,7 @@ import {
   getDyadAddDependencyTags,
   getDyadExecuteSqlTags,
 } from "../utils/dyad_tag_parser";
+import { FileUploadsState } from "../utils/file_uploads_state";
 
 const readFile = fs.promises.readFile;
 const logger = log.scope("response_processor");
@@ -53,13 +54,19 @@ export async function processFullResponseActions(
   {
     chatSummary,
     messageId,
-  }: { chatSummary: string | undefined; messageId: number },
+  }: {
+    chatSummary: string | undefined;
+    messageId: number;
+  },
 ): Promise<{
   updatedFiles?: boolean;
   error?: string;
   extraFiles?: string[];
   extraFilesError?: string;
 }> {
+  const fileUploadsState = FileUploadsState.getInstance();
+  const fileUploadsMap = fileUploadsState.getFileUploadsForChat(chatId);
+  fileUploadsState.clear();
   logger.log("processFullResponseActions for chatId", chatId);
   // Get the app associated with the chat
   const chatWithApp = await db.query.chats.findFirst({
@@ -289,8 +296,32 @@ export async function processFullResponseActions(
     // Process all file writes
     for (const tag of dyadWriteTags) {
       const filePath = tag.path;
-      const content = tag.content;
+      let content: string | Buffer = tag.content;
       const fullFilePath = safeJoin(appPath, filePath);
+
+      // Check if content (stripped of whitespace) exactly matches a file ID and replace with actual file content
+      if (fileUploadsMap) {
+        const trimmedContent = tag.content.trim();
+        const fileInfo = fileUploadsMap.get(trimmedContent);
+        if (fileInfo) {
+          try {
+            const fileContent = await readFile(fileInfo.filePath);
+            content = fileContent;
+            logger.log(
+              `Replaced file ID ${trimmedContent} with content from ${fileInfo.originalName}`,
+            );
+          } catch (error) {
+            logger.error(
+              `Failed to read uploaded file ${fileInfo.originalName}:`,
+              error,
+            );
+            errors.push({
+              message: `Failed to read uploaded file: ${fileInfo.originalName}`,
+              error: error,
+            });
+          }
+        }
+      }
 
       // Ensure directory exists
       const dirPath = path.dirname(fullFilePath);
@@ -300,7 +331,7 @@ export async function processFullResponseActions(
       fs.writeFileSync(fullFilePath, content);
       logger.log(`Successfully wrote file: ${fullFilePath}`);
       writtenFiles.push(filePath);
-      if (isServerFunction(filePath)) {
+      if (isServerFunction(filePath) && typeof content === "string") {
         try {
           await deploySupabaseFunctions({
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,

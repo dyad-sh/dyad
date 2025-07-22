@@ -14,7 +14,6 @@ import {
   Database,
   ChevronsUpDown,
   ChevronsDownUp,
-  Paperclip,
   ChartColumnIncreasing,
   SendHorizontalIcon,
 } from "lucide-react";
@@ -58,6 +57,7 @@ import { useVersions } from "@/hooks/useVersions";
 import { useAttachments } from "@/hooks/useAttachments";
 import { AttachmentsList } from "./AttachmentsList";
 import { DragDropOverlay } from "./DragDropOverlay";
+import { FileAttachmentDropdown } from "./FileAttachmentDropdown";
 import { showError, showExtraFilesToast } from "@/lib/toast";
 import { ChatInputControls } from "../ChatInputControls";
 import { ChatErrorBox } from "./ChatErrorBox";
@@ -89,10 +89,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   // Use the attachments hook
   const {
     attachments,
-    fileInputRef,
     isDraggingOver,
-    handleAttachmentClick,
-    handleFileChange,
+    handleFileSelect,
     removeAttachment,
     handleDragOver,
     handleDragLeave,
@@ -342,29 +340,10 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           <div className="pl-2 pr-1 flex items-center justify-between pb-2">
             <div className="flex items-center">
               <ChatInputControls showContextFilesPicker={true} />
-              {/* File attachment button */}
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      onClick={handleAttachmentClick}
-                      title="Attach files"
-                      size="sm"
-                    >
-                      <Paperclip size={20} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Attach files</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileChange}
-                className="hidden"
-                multiple
-                accept=".jpg,.jpeg,.png,.gif,.webp,.txt,.md,.js,.ts,.html,.css,.json,.csv"
+              {/* File attachment dropdown */}
+              <FileAttachmentDropdown
+                onFileSelect={handleFileSelect}
+                disabled={isStreaming}
               />
             </div>
 

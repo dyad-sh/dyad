@@ -1,4 +1,6 @@
+import path from "path";
 import { test } from "./helpers/test_helper";
+import { expect } from "@playwright/test";
 import * as fs from "fs";
 
 // It's hard to read the snapshots, but they should be identical across
@@ -15,7 +17,7 @@ test("attach image - home chat", async ({ po }) => {
 
   await po
     .getHomeChatInputContainer()
-    .locator("input[type='file']")
+    .getByTestId("chat-context-file-input")
     .setInputFiles("e2e-tests/fixtures/images/logo.png");
   await po.sendPrompt("[dump]");
   await po.snapshotServerDump("last-message", { name: SNAPSHOT_NAME });
@@ -29,11 +31,38 @@ test("attach image - chat", async ({ po }) => {
   // attach via file input (click-to-upload)
   await po
     .getChatInputContainer()
-    .locator("input[type='file']")
+    .getByTestId("chat-context-file-input")
     .setInputFiles("e2e-tests/fixtures/images/logo.png");
   await po.sendPrompt("[dump]");
   await po.snapshotServerDump("last-message", { name: SNAPSHOT_NAME });
   await po.snapshotMessages({ replaceDumpPath: true });
+});
+
+test("attach image - chat - upload to codebase", async ({ po }) => {
+  await po.setUp({ autoApprove: true });
+  await po.sendPrompt("basic");
+
+  // attach via file input (click-to-upload)
+  await po
+    .getChatInputContainer()
+    .getByTestId("upload-to-codebase-file-input")
+    .setInputFiles("e2e-tests/fixtures/images/logo.png");
+  await po.sendPrompt("[[UPLOAD_IMAGE_TO_CODEBASE]]");
+
+  await po.snapshotServerDump("last-message", { name: "upload-to-codebase" });
+  await po.snapshotMessages({ replaceDumpPath: true });
+
+  // new/image/file.png
+  const appPath = await po.getCurrentAppPath();
+  const filePath = path.join(appPath, "new", "image", "file.png");
+  expect(fs.existsSync(filePath)).toBe(true);
+  // check contents of filePath is equal in value to e2e-tests/fixtures/images/logo.png
+  const expectedContents = fs.readFileSync(
+    "e2e-tests/fixtures/images/logo.png",
+    "base64",
+  );
+  const actualContents = fs.readFileSync(filePath, "base64");
+  expect(actualContents).toBe(expectedContents);
 });
 
 // attach image via drag-and-drop to chat input container

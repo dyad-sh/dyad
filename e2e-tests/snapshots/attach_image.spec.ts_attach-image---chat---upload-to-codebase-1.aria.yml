@@ -1,0 +1,23 @@
+- paragraph: basic
+- img
+- text: file1.txt
+- img
+- text: file1.txt
+- paragraph: More EOM
+- img
+- text: Approved
+- paragraph: "[[UPLOAD_IMAGE_TO_CODEBASE]]"
+- paragraph: "Attachments:"
+- paragraph: "File to upload to codebase: logo.png (file id: DYAD_ATTACHMENT_0)"
+- paragraph: Uploading image to codebase
+- img
+- text: file.png
+- img
+- text: "new/image/file.png Summary: Uploaded image to codebase"
+- paragraph: "[[dyad-dump-path=*]]"
+- img
+- text: Approved
+- button "Undo":
+  - img
+- button "Retry":
+  - img

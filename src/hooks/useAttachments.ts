@@ -1,7 +1,8 @@
 import React, { useState, useRef } from "react";
+import type { FileAttachment } from "@/ipc/ipc_types";
 
 export function useAttachments() {
-  const [attachments, setAttachments] = useState<File[]>([]);
+  const [attachments, setAttachments] = useState<FileAttachment[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
 
@@ -9,13 +10,32 @@ export function useAttachments() {
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    type: "chat-context" | "upload-to-codebase" = "chat-context",
+  ) => {
     if (e.target.files && e.target.files.length > 0) {
       const files = Array.from(e.target.files);
-      setAttachments((attachments) => [...attachments, ...files]);
+      const fileAttachments: FileAttachment[] = files.map((file) => ({
+        file,
+        type,
+      }));
+      setAttachments((attachments) => [...attachments, ...fileAttachments]);
       // Clear the input value so the same file can be selected again
       e.target.value = "";
     }
+  };
+
+  const handleFileSelect = (
+    fileList: FileList,
+    type: "chat-context" | "upload-to-codebase",
+  ) => {
+    const files = Array.from(fileList);
+    const fileAttachments: FileAttachment[] = files.map((file) => ({
+      file,
+      type,
+    }));
+    setAttachments((attachments) => [...attachments, ...fileAttachments]);
   };
 
   const removeAttachment = (index: number) => {
@@ -37,7 +57,11 @@ export function useAttachments() {
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const files = Array.from(e.dataTransfer.files);
-      setAttachments((attachments) => [...attachments, ...files]);
+      const fileAttachments: FileAttachment[] = files.map((file) => ({
+        file,
+        type: "chat-context" as const,
+      }));
+      setAttachments((attachments) => [...attachments, ...fileAttachments]);
     }
   };
 
@@ -45,8 +69,15 @@ export function useAttachments() {
     setAttachments([]);
   };
 
-  const addAttachments = (files: File[]) => {
-    setAttachments((attachments) => [...attachments, ...files]);
+  const addAttachments = (
+    files: File[],
+    type: "chat-context" | "upload-to-codebase" = "chat-context",
+  ) => {
+    const fileAttachments: FileAttachment[] = files.map((file) => ({
+      file,
+      type,
+    }));
+    setAttachments((attachments) => [...attachments, ...fileAttachments]);
   };
 
   const handlePaste = async (e: React.ClipboardEvent) => {
@@ -82,7 +113,7 @@ export function useAttachments() {
       }
 
       if (imageFiles.length > 0) {
-        addAttachments(imageFiles);
+        addAttachments(imageFiles, "chat-context");
         // Show a brief toast or indication that image was pasted
         console.log(`Pasted ${imageFiles.length} image(s) from clipboard`);
       }
@@ -95,6 +126,7 @@ export function useAttachments() {
     isDraggingOver,
     handleAttachmentClick,
     handleFileChange,
+    handleFileSelect,
     removeAttachment,
     handleDragOver,
     handleDragLeave,

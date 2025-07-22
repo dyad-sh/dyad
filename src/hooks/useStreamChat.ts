@@ -1,5 +1,9 @@
 import { useCallback } from "react";
-import type { ComponentSelection, Message } from "@/ipc/ipc_types";
+import type {
+  ComponentSelection,
+  Message,
+  FileAttachment,
+} from "@/ipc/ipc_types";
 import { useAtom, useSetAtom } from "jotai";
 import {
   chatErrorAtom,
@@ -65,7 +69,7 @@ export function useStreamChat({
       prompt: string;
       chatId: number;
       redo?: boolean;
-      attachments?: File[];
+      attachments?: FileAttachment[];
       selectedComponent?: ComponentSelection | null;
     }) => {
       if (

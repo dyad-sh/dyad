@@ -29,9 +29,11 @@ import { showError } from "@/lib/toast";
 import { invalidateAppQuery } from "@/hooks/useLoadApp";
 import { useQueryClient } from "@tanstack/react-query";
 
+import type { FileAttachment } from "@/ipc/ipc_types";
+
 // Adding an export for attachments
 export interface HomeSubmitOptions {
-  attachments?: File[];
+  attachments?: FileAttachment[];
 }
 
 export default function HomePage() {

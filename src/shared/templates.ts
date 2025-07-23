@@ -7,17 +7,27 @@ export interface Template {
   isOfficial: boolean;
 }
 
-export const DEFAULT_TEMPLATE_ID = "react";
+// API Template interface from the external API
+export interface ApiTemplate {
+  githubOrg: string;
+  githubRepo: string;
+  title: string;
+  description: string;
+  imageUrl: string;
+}
 
-export const templatesData: Template[] = [
-  {
-    id: "react",
-    title: "React.js Template",
-    description: "Uses React.js, Vite, Shadcn, Tailwind and TypeScript.",
-    imageUrl:
-      "https://github.com/user-attachments/assets/5b700eab-b28c-498e-96de-8649b14c16d9",
-    isOfficial: true,
-  },
+export const DEFAULT_TEMPLATE_ID = "react";
+export const DEFAULT_TEMPLATE = {
+  id: "react",
+  title: "React.js Template",
+  description: "Uses React.js, Vite, Shadcn, Tailwind and TypeScript.",
+  imageUrl:
+    "https://github.com/user-attachments/assets/5b700eab-b28c-498e-96de-8649b14c16d9",
+  isOfficial: true,
+};
+
+export const localTemplatesData: Template[] = [
+  DEFAULT_TEMPLATE,
   {
     id: "next",
     title: "Next.js Template",
@@ -28,11 +38,3 @@ export const templatesData: Template[] = [
     isOfficial: true,
   },
 ];
-
-export function getTemplateOrThrow(templateId: string): Template {
-  const template = templatesData.find((template) => template.id === templateId);
-  if (!template) {
-    throw new Error(`Template ${templateId} not found`);
-  }
-  return template;
-}

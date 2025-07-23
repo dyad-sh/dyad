@@ -10,6 +10,7 @@
   "experiments": {},
   "enableProLazyEditsMode": true,
   "enableProSmartFilesContextMode": true,
+  "selectedTemplateId": "react",
   "selectedChatMode": "build",
   "enableAutoFixProblems": false,
   "enableAutoUpdate": true,

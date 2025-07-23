@@ -4,6 +4,7 @@ import path from "node:path";
 import { safeStorage } from "electron";
 import { readSettings, getSettingsFilePath } from "@/main/settings";
 import { getUserDataPath } from "@/paths/paths";
+import { UserSettings } from "@/lib/schemas";
 
 // Mock dependencies
 vi.mock("node:fs");
@@ -50,23 +51,26 @@ describe("readSettings", () => {
         mockSettingsPath,
         expect.stringContaining('"selectedModel"'),
       );
-      expect(result).toEqual({
-        selectedModel: {
-          name: "auto",
-          provider: "auto",
-        },
-        providerSettings: {},
-        telemetryConsent: "unset",
-        telemetryUserId: expect.any(String),
-        hasRunBefore: false,
-        experiments: {},
-        enableProLazyEditsMode: true,
-        enableProSmartFilesContextMode: true,
-        selectedChatMode: "build",
-        enableAutoFixProblems: false,
-        enableAutoUpdate: true,
-        releaseChannel: "stable",
-      });
+      expect(scrubSettings(result)).toMatchInlineSnapshot(`
+        {
+          "enableAutoFixProblems": false,
+          "enableAutoUpdate": true,
+          "enableProLazyEditsMode": true,
+          "enableProSmartFilesContextMode": true,
+          "experiments": {},
+          "hasRunBefore": false,
+          "providerSettings": {},
+          "releaseChannel": "stable",
+          "selectedChatMode": "build",
+          "selectedModel": {
+            "name": "auto",
+            "provider": "auto",
+          },
+          "selectedTemplateId": "react",
+          "telemetryConsent": "unset",
+          "telemetryUserId": "[scrubbed]",
+        }
+      `);
     });
   });
 
@@ -293,23 +297,26 @@ describe("readSettings", () => {
 
       const result = readSettings();
 
-      expect(result).toEqual({
-        selectedModel: {
-          name: "auto",
-          provider: "auto",
-        },
-        providerSettings: {},
-        telemetryConsent: "unset",
-        telemetryUserId: expect.any(String),
-        hasRunBefore: false,
-        experiments: {},
-        enableProLazyEditsMode: true,
-        enableProSmartFilesContextMode: true,
-        selectedChatMode: "build",
-        enableAutoFixProblems: false,
-        enableAutoUpdate: true,
-        releaseChannel: "stable",
-      });
+      expect(scrubSettings(result)).toMatchInlineSnapshot(`
+        {
+          "enableAutoFixProblems": false,
+          "enableAutoUpdate": true,
+          "enableProLazyEditsMode": true,
+          "enableProSmartFilesContextMode": true,
+          "experiments": {},
+          "hasRunBefore": false,
+          "providerSettings": {},
+          "releaseChannel": "stable",
+          "selectedChatMode": "build",
+          "selectedModel": {
+            "name": "auto",
+            "provider": "auto",
+          },
+          "selectedTemplateId": "react",
+          "telemetryConsent": "unset",
+          "telemetryUserId": "[scrubbed]",
+        }
+      `);
     });
 
     it("should return default settings when JSON parsing fails", () => {
@@ -389,3 +396,10 @@ describe("readSettings", () => {
     });
   });
 });
+
+function scrubSettings(result: UserSettings) {
+  return {
+    ...result,
+    telemetryUserId: "[scrubbed]",
+  };
+}

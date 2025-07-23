@@ -25,6 +25,7 @@ import { registerAppUpgradeHandlers } from "./handlers/app_upgrade_handlers";
 import { registerCapacitorHandlers } from "./handlers/capacitor_handlers";
 import { registerProblemsHandlers } from "./handlers/problems_handlers";
 import { registerAppEnvVarsHandlers } from "./handlers/app_env_vars_handlers";
+import { registerTemplateHandlers } from "./handlers/template_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -55,4 +56,5 @@ export function registerIpcHandlers() {
   registerAppUpgradeHandlers();
   registerCapacitorHandlers();
   registerAppEnvVarsHandlers();
+  registerTemplateHandlers();
 }

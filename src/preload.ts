@@ -100,6 +100,7 @@ const validInvokeChannels = [
   "open-android",
   "check-problems",
   "restart-dyad",
+  "get-templates",
   // Test-only channels
   // These should ALWAYS be guarded with IS_TEST_BUILD in the main process.
   // We can't detect with IS_TEST_BUILD in the preload script because

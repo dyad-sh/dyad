@@ -52,6 +52,7 @@ import type {
   UpdateChatParams,
   FileAttachment,
 } from "./ipc_types";
+import type { Template } from "../shared/templates";
 import type { AppChatContext, ProposalResult } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
 
@@ -1023,5 +1024,10 @@ export class IpcClient {
     appId: number;
   }): Promise<ProblemReport> {
     return this.ipcRenderer.invoke("check-problems", params);
+  }
+
+  // Template methods
+  public async getTemplates(): Promise<Template[]> {
+    return this.ipcRenderer.invoke("get-templates");
   }
 }

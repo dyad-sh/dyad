@@ -5,6 +5,7 @@ import { UserSettingsSchema, type UserSettings, Secret } from "../lib/schemas";
 import { safeStorage } from "electron";
 import { v4 as uuidv4 } from "uuid";
 import log from "electron-log";
+import { DEFAULT_TEMPLATE_ID } from "@/shared/templates";
 
 const logger = log.scope("settings");
 
@@ -26,6 +27,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   enableAutoFixProblems: false,
   enableAutoUpdate: true,
   releaseChannel: "stable",
+  selectedTemplateId: DEFAULT_TEMPLATE_ID,
 };
 
 const SETTINGS_FILE = "user-settings.json";

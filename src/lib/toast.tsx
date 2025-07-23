@@ -64,7 +64,7 @@ export const showError = (message: any) => {
         onCopy={() => onCopy(t)}
       />
     ),
-    { duration: 4000 },
+    { duration: 8_000 },
   );
 
   return toastId;

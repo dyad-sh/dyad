@@ -112,7 +112,7 @@ export default App;
 
 test("problems - manual edit (next.js)", async ({ po }) => {
   await po.setUp({ enableAutoFixProblems: true });
-  await po.selectHubTemplate("Next.js Template");
+  await po.goToHubAndSelectTemplate("Next.js Template");
   await po.sendPrompt("tc=1");
 
   const appPath = await po.getCurrentAppPath();

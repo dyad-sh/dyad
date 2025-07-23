@@ -160,6 +160,66 @@ async function processStreamChunks({
   return { fullResponse, incrementalResponse };
 }
 
+// Helper function to parse app mentions from prompt
+function parseAppMentions(prompt: string): string[] {
+  // Match @AppName patterns in the prompt
+  const mentionRegex = /@(\w+(?:\s+\w+)*)/g;
+  const mentions: string[] = [];
+  let match;
+
+  while ((match = mentionRegex.exec(prompt)) !== null) {
+    mentions.push(match[1]);
+  }
+
+  return mentions;
+}
+
+// Helper function to extract codebases from mentioned apps
+async function extractMentionedAppsCodebases(
+  mentionedAppNames: string[],
+  excludeCurrentAppId?: number,
+): Promise<{ appName: string; codebaseInfo: string }[]> {
+  if (mentionedAppNames.length === 0) {
+    return [];
+  }
+
+  // Get all apps
+  const allApps = await db.query.apps.findMany();
+
+  const mentionedApps = allApps.filter(
+    (app) =>
+      mentionedAppNames.some(
+        (mentionName) => app.name.toLowerCase() === mentionName.toLowerCase(),
+      ) && app.id !== excludeCurrentAppId,
+  );
+
+  const results: { appName: string; codebaseInfo: string }[] = [];
+
+  for (const app of mentionedApps) {
+    try {
+      const appPath = getDyadAppPath(app.path);
+      const chatContext = validateChatContext(app.chatContext);
+
+      const { formattedOutput } = await extractCodebase({
+        appPath,
+        chatContext,
+      });
+
+      results.push({
+        appName: app.name,
+        codebaseInfo: formattedOutput,
+      });
+
+      logger.log(`Extracted codebase for mentioned app: ${app.name}`);
+    } catch (error) {
+      logger.error(`Error extracting codebase for app ${app.name}:`, error);
+      // Continue with other apps even if one fails
+    }
+  }
+
+  return results;
+}
+
 export function registerChatStreamHandlers() {
   ipcMain.handle("chat:stream", async (event, req: ChatStreamParams) => {
     try {
@@ -380,10 +440,38 @@ ${componentSnippet}
             }
           : validateChatContext(updatedChat.app.chatContext);
 
-        const { formattedOutput: codebaseInfo, files } = await extractCodebase({
-          appPath,
-          chatContext,
-        });
+        // Parse app mentions from the prompt
+        const mentionedAppNames = parseAppMentions(req.prompt);
+
+        // Extract codebase for current app
+        const { formattedOutput: currentAppCodebaseInfo, files } =
+          await extractCodebase({
+            appPath,
+            chatContext,
+          });
+
+        // Extract codebases for mentioned apps
+        const mentionedAppsCodebases = await extractMentionedAppsCodebases(
+          mentionedAppNames,
+          updatedChat.app.id, // Exclude current app
+        );
+
+        // Combine current app codebase with mentioned apps' codebases
+        let codebaseInfo = currentAppCodebaseInfo;
+        if (mentionedAppsCodebases.length > 0) {
+          const mentionedAppsSection = mentionedAppsCodebases
+            .map(
+              ({ appName, codebaseInfo }) =>
+                `\n\n=== Referenced App: ${appName} ===\n${codebaseInfo}`,
+            )
+            .join("");
+
+          codebaseInfo = currentAppCodebaseInfo + mentionedAppsSection;
+
+          logger.log(
+            `Added ${mentionedAppsCodebases.length} mentioned app codebases`,
+          );
+        }
 
         logger.log(`Extracted codebase information from ${appPath}`);
         logger.log(
@@ -446,6 +534,15 @@ ${componentSnippet}
           aiRules: await readAiRules(getDyadAppPath(updatedChat.app.path)),
           chatMode: settings.selectedChatMode,
         });
+
+        // Add information about mentioned apps if any
+        if (mentionedAppsCodebases.length > 0) {
+          const mentionedAppsList = mentionedAppsCodebases
+            .map(({ appName }) => appName)
+            .join(", ");
+
+          systemPrompt += `\n\n# Referenced Apps\nThe user has mentioned the following apps in their prompt: ${mentionedAppsList}. Their codebases have been included in the context for your reference. When referring to these apps, you can understand their structure and code to provide better assistance.`;
+        }
         if (
           updatedChat.app?.supabaseProjectId &&
           settings.supabase?.accessToken?.value
@@ -787,12 +884,32 @@ ${problemReport.problems
                   writeTags,
                 });
 
-                const { formattedOutput: codebaseInfo, files } =
+                const { formattedOutput: currentAppCodebaseInfo, files } =
                   await extractCodebase({
                     appPath,
                     chatContext,
                     virtualFileSystem,
                   });
+
+                // Extract codebases for mentioned apps (reuse the same mentioned apps)
+                const mentionedAppsCodebases =
+                  await extractMentionedAppsCodebases(
+                    mentionedAppNames,
+                    updatedChat.app.id,
+                  );
+
+                // Combine current app codebase with mentioned apps' codebases
+                let codebaseInfo = currentAppCodebaseInfo;
+                if (mentionedAppsCodebases.length > 0) {
+                  const mentionedAppsSection = mentionedAppsCodebases
+                    .map(
+                      ({ appName, codebaseInfo }) =>
+                        `\n\n=== Referenced App: ${appName} ===\n${codebaseInfo}`,
+                    )
+                    .join("");
+
+                  codebaseInfo = currentAppCodebaseInfo + mentionedAppsSection;
+                }
                 const { modelClient } = await getModelClient(
                   settings.selectedModel,
                   settings,

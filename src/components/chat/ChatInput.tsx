@@ -314,7 +314,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               onSubmit={handleSubmit}
               onPaste={handlePaste}
               placeholder="Ask Dyad to build..."
-              disabled={isStreaming}
             />
 
             {isStreaming ? (

@@ -56,7 +56,7 @@ jobs:
         shell: bash
       - name: Code signing with Software Trust Manager
         if: contains(matrix.os.name, 'windows')
-        uses: digicert/ssm-code-signing@v1.0.0
+        uses: digicert/ssm-code-signing@v1.1.0
       - name: Sync certificate (Windows)
         if: contains(matrix.os.name, 'windows')
         run: |

@@ -102,6 +102,7 @@ const config: ForgeConfig = {
         },
         draft: true,
         force: true,
+        prerelease: true,
       },
     },
   ],

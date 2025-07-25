@@ -137,10 +137,7 @@ export const versions = sqliteTable(
       .notNull()
       .references(() => apps.id, { onDelete: "cascade" }),
     commitHash: text("commit_hash").notNull(),
-    isFavorite: integer("is_favorite", { mode: "boolean" })
-      .notNull()
-      .default(false),
-    neonBranchId: text("neon_branch_id"),
+    neonDbTimestamp: text("neon_db_timestamp"),
     createdAt: integer("created_at", { mode: "timestamp" })
       .notNull()
       .default(sql`(unixepoch())`),

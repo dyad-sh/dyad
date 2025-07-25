@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "8d674618-c1e9-4294-9594-9fe104e9b837",
+  "id": "4d1fc225-7395-4d56-8d0d-7f76fed4a8d8",
   "prevId": "553360d1-7173-4bb0-9f31-ab49a0010279",
   "tables": {
     "apps": {
@@ -443,16 +443,8 @@
           "notNull": true,
           "autoincrement": false
         },
-        "is_favorite": {
-          "name": "is_favorite",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
-        },
-        "neon_branch_id": {
-          "name": "neon_branch_id",
+        "neon_db_timestamp": {
+          "name": "neon_db_timestamp",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

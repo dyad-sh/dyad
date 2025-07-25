@@ -1,9 +1,8 @@
 import { useAtom, useAtomValue } from "jotai";
 import { selectedAppIdAtom, selectedVersionIdAtom } from "@/atoms/appAtoms";
 import { useVersions } from "@/hooks/useVersions";
-import { useFavorites } from "@/hooks/useFavorites";
 import { formatDistanceToNow } from "date-fns";
-import { RotateCcw, X, Star, Database, Loader2, List } from "lucide-react";
+import { RotateCcw, X, Database, Loader2 } from "lucide-react";
 import type { Version } from "@/ipc/ipc_types";
 import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
@@ -14,7 +13,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Button } from "@/components/ui/button";
+
 import { useRunApp } from "@/hooks/useRunApp";
 
 interface VersionPaneProps {
@@ -32,15 +31,13 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
     revertVersion,
     isRevertingVersion,
   } = useVersions(appId);
-  const { markFavorite, unmarkFavorite, isUpdatingFavorite } =
-    useFavorites(appId);
+
   const [selectedVersionId, setSelectedVersionId] = useAtom(
     selectedVersionIdAtom,
   );
   const { checkoutVersion, isCheckingOutVersion } = useCheckoutVersion();
   const wasVisibleRef = useRef(false);
   const [cachedVersions, setCachedVersions] = useState<Version[]>([]);
-  const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
 
   useEffect(() => {
     async function updatePaneState() {
@@ -58,9 +55,6 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
         if (appId) {
           await checkoutVersion({ appId, versionId: "main" });
         }
-      }
-      if (!isVisible) {
-        setShowOnlyFavorites(false);
       }
 
       wasVisibleRef.current = isVisible;
@@ -97,41 +91,19 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
         setSelectedVersionId(null);
       }
       await refreshApp();
-      if (version.dbBranch) {
+      if (version.dbTimestamp) {
         await restartApp();
       }
     }
   };
 
-  const isFavorite = (version: Version) => {
-    return liveVersions.find((v) => v.oid === version.oid)?.isFavorite;
-  };
-
-  const allVersions = cachedVersions.length > 0 ? cachedVersions : liveVersions;
-  const versions = showOnlyFavorites
-    ? allVersions.filter((version) => isFavorite(version))
-    : allVersions;
-
-  console.log("versions", versions);
+  const versions = cachedVersions.length > 0 ? cachedVersions : liveVersions;
 
   return (
     <div className="h-full border-t border-2 border-border w-full">
       <div className="p-2 border-b border-border flex items-center justify-between">
         <h2 className="text-base font-medium pl-2">Version History</h2>
         <div className="flex items-center gap-2">
-          <Button
-            onClick={() => setShowOnlyFavorites(!showOnlyFavorites)}
-            variant="outline"
-            size="sm"
-            className="text-xs"
-          >
-            {showOnlyFavorites ? (
-              <List size={12} className="mr-1" />
-            ) : (
-              <Star size={12} className="mr-1" fill="none" />
-            )}
-            {showOnlyFavorites ? "Show all" : "Show favorites"}
-          </Button>
           <button
             onClick={onClose}
             className="p-1 hover:bg-(--background-lightest) rounded-md  "
@@ -143,11 +115,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
       </div>
       <div className="overflow-y-auto h-[calc(100%-60px)]">
         {versions.length === 0 ? (
-          <div className="p-4 ">
-            {showOnlyFavorites
-              ? "No favorite versions available"
-              : "No versions available"}
-          </div>
+          <div className="p-4 ">No versions available</div>
         ) : (
           <div className="divide-y divide-border">
             {versions.map((version: Version) => (
@@ -171,54 +139,13 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-xs">
                       Version{" "}
-                      {allVersions.length -
-                        allVersions.findIndex(
-                          (v) => v.oid === version.oid,
-                        )}{" "}
+                      {versions.length -
+                        versions.findIndex((v) => v.oid === version.oid)}{" "}
                       ({version.oid.slice(0, 7)})
                     </span>
                     {/* Star button for favorites */}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            if (!isUpdatingFavorite) {
-                              if (isFavorite(version)) {
-                                await unmarkFavorite(version.oid);
-                              } else {
-                                await markFavorite(version.oid);
-                              }
-                            }
-                          }}
-                          disabled={isUpdatingFavorite}
-                          className={cn(
-                            "p-1 rounded-md transition-colors hover:bg-(--background-lightest)",
-                            isFavorite(version)
-                              ? "text-yellow-500"
-                              : "text-gray-400 hover:text-yellow-500",
-                            isUpdatingFavorite &&
-                              "opacity-50 cursor-not-allowed",
-                          )}
-                          aria-label={
-                            isFavorite(version)
-                              ? "Remove from favorites"
-                              : "Add to favorites"
-                          }
-                        >
-                          <Star
-                            size={14}
-                            fill={isFavorite(version) ? "currentColor" : "none"}
-                          />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        {isFavorite(version)
-                          ? "Remove from favorites"
-                          : "Add to favorites"}
-                      </TooltipContent>
-                    </Tooltip>
-                    {version.dbBranch && (
+
+                    {version.dbTimestamp && (
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <div className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 rounded-md">
@@ -227,8 +154,8 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                           </div>
                         </TooltipTrigger>
                         <TooltipContent>
-                          Database snapshot available at branch{" "}
-                          {version.dbBranch}
+                          Database snapshot available at timestamp{" "}
+                          {version.dbTimestamp}
                         </TooltipContent>
                       </Tooltip>
                     )}
@@ -262,12 +189,12 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                         ? version.message.replace(
                             /Reverted all changes back to version ([a-f0-9]+)/,
                             (_, hash) => {
-                              const targetIndex = allVersions.findIndex(
+                              const targetIndex = versions.findIndex(
                                 (v) => v.oid === hash,
                               );
                               return targetIndex !== -1
                                 ? `Reverted all changes back to version ${
-                                    allVersions.length - targetIndex
+                                    versions.length - targetIndex
                                   }`
                                 : version.message;
                             },
@@ -284,16 +211,14 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                           onClick={async (e) => {
                             e.stopPropagation();
                             setSelectedVersionId(null);
+                            // Close the pane after revert to force a refresh on next open
+                            onClose();
                             await revertVersion({
                               versionId: version.oid,
                             });
-                            if (version.dbBranch) {
-                              // Intentionally do not await because this takes a long time
-                              // and we want to close the pane immediately
-                              restartApp();
+                            if (version.dbTimestamp) {
+                              await restartApp();
                             }
-                            // Close the pane after revert to force a refresh on next open
-                            onClose();
                           }}
                           disabled={isRevertingVersion}
                           className={cn(

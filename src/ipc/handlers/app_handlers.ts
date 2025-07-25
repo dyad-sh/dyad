@@ -47,7 +47,7 @@ import { safeSend } from "../utils/safe_sender";
 import { normalizePath } from "../../../shared/normalizePath";
 import { isServerFunction } from "@/supabase_admin/supabase_utils";
 import { getVercelTeamSlug } from "../utils/vercel_utils";
-import { storeBranchAtCurrentVersion } from "../utils/neon_store_branch_utils";
+import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 
 async function copyDir(
   source: string,
@@ -651,15 +651,16 @@ export function registerAppHandlers() {
 
       if (app.neonProjectId && app.neonDevelopmentBranchId) {
         try {
-          await storeBranchAtCurrentVersion({
+          await storeDbTimestampAtCurrentVersion({
             appId: app.id,
-            neonProjectId: app.neonProjectId,
-            neonBranchId: app.neonDevelopmentBranchId,
           });
         } catch (error) {
-          logger.error("Error creating Neon branch at current version:", error);
+          logger.error(
+            "Error storing Neon timestamp at current version:",
+            error,
+          );
           throw new Error(
-            "Could not create Neon branch; database versioning functionality is not working: " +
+            "Could not store Neon timestamp at current version; database versioning functionality is not working: " +
               error,
           );
         }

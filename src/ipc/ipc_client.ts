@@ -55,7 +55,8 @@ import type {
   NeonProject,
   GetNeonProjectParams,
   GetNeonProjectResponse,
-  DeleteNeonBranchParams,
+  RevertVersionResponse,
+  RevertVersionParams,
 } from "./ipc_types";
 import type { Template } from "../shared/templates";
 import type { AppChatContext, ProposalResult } from "@/lib/schemas";
@@ -458,17 +459,10 @@ export class IpcClient {
   }
 
   // Revert to a specific version
-  public async revertVersion({
-    appId,
-    previousVersionId,
-  }: {
-    appId: number;
-    previousVersionId: string;
-  }): Promise<void> {
-    await this.ipcRenderer.invoke("revert-version", {
-      appId,
-      previousVersionId,
-    });
+  public async revertVersion(
+    params: RevertVersionParams,
+  ): Promise<RevertVersionResponse> {
+    return this.ipcRenderer.invoke("revert-version", params);
   }
 
   // Checkout a specific version without creating a revert commit
@@ -832,10 +826,6 @@ export class IpcClient {
     return this.ipcRenderer.invoke("neon:get-project", params);
   }
 
-  public async deleteNeonBranch(params: DeleteNeonBranchParams): Promise<void> {
-    return this.ipcRenderer.invoke("neon:delete-branch", params);
-  }
-
   // --- End Neon Management ---
 
   public async getSystemDebugInfo(): Promise<SystemDebugInfo> {
@@ -1073,19 +1063,5 @@ export class IpcClient {
   // Template methods
   public async getTemplates(): Promise<Template[]> {
     return this.ipcRenderer.invoke("get-templates");
-  }
-
-  public async markFavorite(params: {
-    appId: number;
-    commitHash: string;
-  }): Promise<void> {
-    return this.ipcRenderer.invoke("mark-favorite", params);
-  }
-
-  public async unmarkFavorite(params: {
-    appId: number;
-    commitHash: string;
-  }): Promise<void> {
-    return this.ipcRenderer.invoke("unmark-favorite", params);
   }
 }

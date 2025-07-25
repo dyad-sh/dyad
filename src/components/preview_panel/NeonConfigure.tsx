@@ -3,27 +3,14 @@ import { useAtomValue } from "jotai";
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import { Database, GitBranch, Trash2 } from "lucide-react";
+
+import {} from "@/components/ui/alert-dialog";
+import { Database, GitBranch } from "lucide-react";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useLoadApp } from "@/hooks/useLoadApp";
-import { useDeleteNeonBranch } from "@/hooks/useDeleteNeonBranch";
 import { IpcClient } from "@/ipc/ipc_client";
 import type { GetNeonProjectResponse, NeonBranch } from "@/ipc/ipc_types";
 import { NeonDisconnectButton } from "@/components/NeonDisconnectButton";
-import { NeonBranchGraph } from "./NeonBranchGraph";
-import { toast } from "sonner";
 
 const getBranchTypeColor = (type: NeonBranch["type"]) => {
   switch (type) {
@@ -47,8 +34,7 @@ const formatDate = (dateString: string) => {
 export const NeonConfigure = () => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { app } = useLoadApp(selectedAppId);
-  const { deleteNeonBranch } = useDeleteNeonBranch();
-  const [deletingBranchId, setDeletingBranchId] = useState<string | null>(null);
+  const [] = useState<string | null>(null);
 
   // Query to get Neon project information
   const {
@@ -117,30 +103,6 @@ export const NeonConfigure = () => {
     return null;
   }
 
-  const handleDeleteBranch = async (branch: NeonBranch) => {
-    if (!selectedAppId) return;
-
-    try {
-      setDeletingBranchId(branch.branchId);
-      await deleteNeonBranch({
-        appId: selectedAppId,
-        branchId: branch.branchId,
-        branchName: branch.branchName,
-      });
-      toast.success(`Successfully deleted branch "${branch.branchName}"`);
-    } catch (error) {
-      // Error is already handled by the hook
-      console.error("Failed to delete branch:", error);
-    } finally {
-      setDeletingBranchId(null);
-    }
-  };
-
-  const canDeleteBranch = (branch: NeonBranch) => {
-    // Don't allow deletion of production, development, or preview branches
-    return branch.type === "snapshot";
-  };
-
   return (
     <Card>
       <CardHeader>
@@ -171,9 +133,6 @@ export const NeonConfigure = () => {
             </div>
           </div>
         </div>
-
-        {/* Branch Hierarchy Graph */}
-        <NeonBranchGraph branches={neonProject.branches} />
 
         {/* Branches */}
         <div className="space-y-2">
@@ -211,48 +170,6 @@ export const NeonConfigure = () => {
                     Updated: {formatDate(branch.lastUpdated)}
                   </div>
                 </div>
-                {canDeleteBranch(branch) && (
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={deletingBranchId === branch.branchId}
-                        className="ml-2 text-destructive hover:text-destructive"
-                      >
-                        <Trash2 size={14} />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Delete Neon Branch</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Are you sure you want to delete the branch "
-                          {branch.branchName}"?
-                          <br />
-                          <br />
-                          <strong className="text-red-600">
-                            This action is permanent and cannot be undone.
-                          </strong>
-                          <br />
-                          All data in this branch will be permanently lost.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction
-                          onClick={() => handleDeleteBranch(branch)}
-                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                          disabled={deletingBranchId === branch.branchId}
-                        >
-                          {deletingBranchId === branch.branchId
-                            ? "Deleting..."
-                            : "Delete Branch"}
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                )}
               </div>
             ))}
           </div>

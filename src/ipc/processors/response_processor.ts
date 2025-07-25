@@ -26,7 +26,7 @@ import {
   getDyadAddDependencyTags,
   getDyadExecuteSqlTags,
 } from "../utils/dyad_tag_parser";
-import { storeBranchAtCurrentVersion } from "../utils/neon_store_branch_utils";
+import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 
 import { FileUploadsState } from "../utils/file_uploads_state";
 
@@ -87,10 +87,8 @@ export async function processFullResponseActions(
     chatWithApp.app.neonDevelopmentBranchId
   ) {
     try {
-      await storeBranchAtCurrentVersion({
+      await storeDbTimestampAtCurrentVersion({
         appId: chatWithApp.app.id,
-        neonProjectId: chatWithApp.app.neonProjectId,
-        neonBranchId: chatWithApp.app.neonDevelopmentBranchId,
       });
     } catch (error) {
       logger.error("Error creating Neon branch at current version:", error);

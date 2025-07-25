@@ -102,8 +102,7 @@ export interface Version {
   oid: string;
   message: string;
   timestamp: number;
-  dbBranch?: string | null;
-  isFavorite: boolean;
+  dbTimestamp?: string | null;
 }
 
 export type BranchResult = { branch: string };
@@ -385,55 +384,11 @@ export interface GetNeonProjectResponse {
   branches: NeonBranch[];
 }
 
-export interface DeleteNeonBranchParams {
+export interface RevertVersionParams {
   appId: number;
-  branchId: string;
-  branchName: string; // For confirmation display
+  previousVersionId: string;
 }
 
-// Snapshot management types
-export interface Snapshot {
-  id: number;
-  appId: number;
-  commitHash: string;
-  dbTimestamp: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface CreateSnapshotParams {
-  appId: number;
-  commitHash: string;
-  dbTimestamp?: string;
-}
-
-export interface ListSnapshotsParams {
-  appId: number;
-}
-
-export interface DeleteSnapshotParams {
-  snapshotId: number;
-}
-
-// Favorites management types
-export interface Favorite {
-  id: number;
-  appId: number;
-  commitHash: string;
-  neonBranchId: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface CreateFavoriteParams {
-  appId: number;
-  commitHash: string;
-}
-
-export interface ListFavoritesParams {
-  appId: number;
-}
-
-export interface DeleteFavoriteParams {
-  favoriteId: number;
-}
+export type RevertVersionResponse =
+  | { successMessage: string }
+  | { warningMessage: string };

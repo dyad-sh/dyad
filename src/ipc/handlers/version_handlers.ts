@@ -1,7 +1,12 @@
 import { db } from "../../db";
 import { apps, messages, versions } from "../../db/schema";
 import { desc, eq, and, gt } from "drizzle-orm";
-import type { Version, BranchResult } from "../ipc_types";
+import type {
+  Version,
+  BranchResult,
+  RevertVersionParams,
+  RevertVersionResponse,
+} from "../ipc_types";
 import fs from "node:fs";
 import path from "node:path";
 import { getDyadAppPath } from "../../paths/paths";
@@ -16,179 +21,40 @@ import {
   getNeonErrorMessage,
 } from "../../neon_admin/neon_management_client";
 import { updatePostgresUrlEnvVar } from "../utils/app_env_var_utils";
+import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
+import { retryOnLocked } from "../utils/retryOnLocked";
 
 const logger = log.scope("version_handlers");
 
 const handle = createLoggedHandler(logger);
 
-/**
- * Restore branch updates the development branch so that it matches the branch id of the target commit hash.
- */
-async function restoreBranch({
+async function restoreBranchForPreview({
   appId,
-  targetCommitHash,
+  dbTimestamp,
   neonProjectId,
-  branchIdToUpdate,
-  preserve,
+  previewBranchId,
+  developmentBranchId,
 }: {
   appId: number;
-  targetCommitHash: string;
+  dbTimestamp: string;
   neonProjectId: string;
-  branchIdToUpdate: string;
-  preserve: {
-    branchName: string;
-    commitHash: string;
-  };
-}): Promise<void> {
-  console.log("RESTORING BRANCH for id", branchIdToUpdate);
-  try {
-    const targetVersion = await db.query.versions.findFirst({
-      where: and(
-        eq(versions.appId, appId),
-        eq(versions.commitHash, targetCommitHash),
-      ),
-    });
-
-    if (!targetVersion) {
-      throw new Error(`Version ${targetCommitHash} not found`);
-    }
-
-    if (!targetVersion.neonBranchId) {
-      throw new Error(
-        `Version ${targetCommitHash} does not have a Neon branch`,
-      );
-    }
-
-    // Use the existing favorite branch to restore from
-    logger.info(
-      `Found source branch ${targetVersion.neonBranchId} for commit ${targetCommitHash}`,
-    );
-
-    const neonClient = await getNeonClient();
-
-    try {
-      const branchResponse = await neonClient.restoreProjectBranch(
-        neonProjectId,
-        branchIdToUpdate,
-        {
-          source_branch_id: targetVersion.neonBranchId,
-          preserve_under_name: preserve?.branchName,
-        },
-      );
-
-      if (!branchResponse.data.branch) {
-        throw new Error(
-          "Failed to restore from branch: No branch data returned.",
-        );
-      }
-      // The branch id is the same as branchIdToUpdate.
-
-      console.log("*****BRANCH RESPONSE*****", branchResponse.data.branch.id);
-
-      // branchResponse.data.branch.id
-
-      // delete old branch if possible
-
-      // const preservedVersion = await db.query.versions.findFirst({
-      //   where: and(
-      //     eq(versions.appId, appId),
-      //     eq(versions.commitHash, preserve?.commitHash),
-      //   ),
-      // });
-      // if (!preservedVersion) {
-      //   // Create preserved version if it doesn't exist
-      //   await db.insert(versions).values({
-      //     appId,
-      //     commitHash: preserve?.commitHash,
-      //     isFavorite: false,
-      //     neonBranchId: null,
-      //   });
-      // }
-
-      // await db
-      //   .update(versions)
-      //   .set({
-      //     neonBranchId: branch.id,
-      //   })
-      //   .where(
-      //     and(
-      //       eq(versions.appId, appId),
-      //       eq(versions.commitHash, preserve.commitHash),
-      //     ),
-      //   );
-      // logger.info(
-      //   `Successfully updated version ${preserve.commitHash} with preserved branch ${branch.id}`,
-      // );
-
-      logger.info(
-        `Successfully restored current branch from branch ${targetVersion.neonBranchId} for commit ${targetCommitHash}`,
-      );
-    } catch (neonError) {
-      const errorMessage = getNeonErrorMessage(neonError);
-      throw new Error(`Failed to restore Neon branch: ${errorMessage}`);
-    }
-  } catch (error) {
-    logger.error("Error in restoreToFavoriteOrSnapshot:", error);
-    throw error;
-  }
-}
-
-async function restoreBranchForCheckout({
-  appId,
-  targetCommitHash,
-  neonProjectId,
-  branchIdToUpdate,
-}: {
-  appId: number;
-  targetCommitHash: string;
-  neonProjectId: string;
-  branchIdToUpdate: string;
+  previewBranchId: string;
+  developmentBranchId: string;
 }): Promise<void> {
   try {
-    const targetVersion = await db.query.versions.findFirst({
-      where: and(
-        eq(versions.appId, appId),
-        eq(versions.commitHash, targetCommitHash),
-      ),
-    });
-
-    if (!targetVersion || !targetVersion.neonBranchId) {
-      // It's OK if there isn't a Neon branch for this version.
-      return;
-    }
-
-    // Use the existing favorite branch to restore from
-    logger.info(
-      `Found favorite branch ${targetVersion.neonBranchId} for commit ${targetCommitHash}`,
-    );
-
     const neonClient = await getNeonClient();
-
-    try {
-      const branchResponse = await neonClient.restoreProjectBranch(
-        neonProjectId,
-        branchIdToUpdate,
-        {
-          source_branch_id: targetVersion.neonBranchId,
-        },
-      );
-
-      if (!branchResponse.data.branch) {
-        throw new Error(
-          "Failed to restore from branch: No branch data returned.",
-        );
-      }
-
-      logger.info(
-        `Successfully restored current branch from branch ${targetVersion.neonBranchId} for commit ${targetCommitHash}`,
-      );
-    } catch (neonError) {
-      const errorMessage = getNeonErrorMessage(neonError);
-      throw new Error(`Failed to restore Neon branch: ${errorMessage}`);
-    }
+    await retryOnLocked(
+      () =>
+        neonClient.restoreProjectBranch(neonProjectId, previewBranchId, {
+          source_branch_id: developmentBranchId,
+          source_timestamp: dbTimestamp,
+        }),
+      `Restore preview branch ${previewBranchId} for app ${appId}`,
+    );
   } catch (error) {
-    logger.error("Error in restoreToFavoriteOrSnapshot:", error);
-    throw error;
+    const errorMessage = getNeonErrorMessage(error);
+    logger.error("Error in restoreBranchForPreview:", errorMessage);
+    throw new Error(errorMessage);
   }
 }
 
@@ -225,13 +91,12 @@ export function registerVersionHandlers() {
     // Create a map of commitHash -> snapshot info for quick lookup
     const snapshotMap = new Map<
       string,
-      { neonBranchId: string | null; createdAt: Date; isFavorite: boolean }
+      { neonDbTimestamp: string | null; createdAt: Date }
     >();
     for (const snapshot of appSnapshots) {
       snapshotMap.set(snapshot.commitHash, {
-        neonBranchId: snapshot.neonBranchId,
+        neonDbTimestamp: snapshot.neonDbTimestamp,
         createdAt: snapshot.createdAt,
-        isFavorite: snapshot.isFavorite,
       });
     }
 
@@ -241,8 +106,7 @@ export function registerVersionHandlers() {
         oid: commit.oid,
         message: commit.commit.message,
         timestamp: commit.commit.author.timestamp,
-        dbBranch: snapshotInfo?.neonBranchId,
-        isFavorite: snapshotInfo?.isFavorite || false,
+        dbTimestamp: snapshotInfo?.neonDbTimestamp,
       };
     }) satisfies Version[];
   });
@@ -286,12 +150,11 @@ export function registerVersionHandlers() {
     "revert-version",
     async (
       _,
-      {
-        appId,
-        previousVersionId,
-      }: { appId: number; previousVersionId: string },
-    ): Promise<void> => {
+      { appId, previousVersionId }: RevertVersionParams,
+    ): Promise<RevertVersionResponse> => {
       return withLock(appId, async () => {
+        let successMessage = "Restored version";
+        let warningMessage: string | undefined = undefined;
         const app = await db.query.apps.findFirst({
           where: eq(apps.id, appId),
         });
@@ -312,6 +175,14 @@ export function registerVersionHandlers() {
           path: appPath,
           ref: "main",
         });
+
+        if (app.neonProjectId && app.neonDevelopmentBranchId) {
+          // We are going to add a new commit on top, so let's store
+          // the current timestamp at the current version.
+          await storeDbTimestampAtCurrentVersion({
+            appId,
+          });
+        }
 
         await gitStageToRevert({
           path: appPath,
@@ -362,30 +233,72 @@ export function registerVersionHandlers() {
         }
 
         if (app.neonProjectId && app.neonDevelopmentBranchId) {
-          try {
-            await restoreBranch({
-              appId,
-              targetCommitHash: previousVersionId,
-              neonProjectId: app.neonProjectId,
-              branchIdToUpdate: app.neonDevelopmentBranchId,
-              preserve: {
-                branchName: `restore_before-${currentCommitHash}-timestamp-${new Date().toISOString()}`,
-                commitHash: currentCommitHash,
-              },
-            });
-          } catch (error) {
-            throw new Error(
-              "Error restoring database for target hash: " + error,
-            );
+          const version = await db.query.versions.findFirst({
+            where: and(
+              eq(versions.appId, appId),
+              eq(versions.commitHash, previousVersionId),
+            ),
+          });
+          if (version && version.neonDbTimestamp) {
+            try {
+              const preserveBranchName = `preserve_${currentCommitHash}-${Date.now()}`;
+              const neonClient = await getNeonClient();
+              const response = await retryOnLocked(
+                () =>
+                  neonClient.restoreProjectBranch(
+                    app.neonProjectId!,
+                    app.neonDevelopmentBranchId!,
+                    {
+                      source_branch_id: app.neonDevelopmentBranchId!,
+                      source_timestamp: version.neonDbTimestamp!,
+                      preserve_under_name: preserveBranchName,
+                    },
+                  ),
+                `Restore development branch ${app.neonDevelopmentBranchId} for app ${appId}`,
+              );
+              const preserveBranchId = response.data.branch.parent_id;
+              if (!preserveBranchId) {
+                throw new Error("Preserve branch ID not found");
+              }
+              logger.info(
+                `Deleting preserve branch ${preserveBranchId} for app ${appId}`,
+              );
+              try {
+                await retryOnLocked(
+                  () =>
+                    neonClient.deleteProjectBranch(
+                      app.neonProjectId!,
+                      preserveBranchId,
+                    ),
+                  `Delete preserve branch ${preserveBranchId} for app ${appId}`,
+                  { retryBranchWithChildError: true },
+                );
+              } catch (error) {
+                const errorMessage = getNeonErrorMessage(error);
+                logger.error("Error in deleteProjectBranch:", errorMessage);
+                warningMessage = `Failed to delete preserve branch. Delete branch ${preserveBranchName} manually in Neon Console.`;
+                // Do not throw, just log because the user can later delete the branch manually.
+              }
+            } catch (error) {
+              const errorMessage = getNeonErrorMessage(error);
+              logger.error("Error in restoreBranchForCheckout:", errorMessage);
+              warningMessage = `Could not restore database because of error: ${errorMessage}`;
+              // Do not throw, so we can finish switching the postgres branch
+              // It might throw because they picked a timestamp that's too old.
+            }
+            successMessage =
+              "Successfully restored to version (including database)";
           }
-
-          // MAY BE REMOVE THIS
           await switchPostgresToDevelopmentBranch({
             neonProjectId: app.neonProjectId,
             neonDevelopmentBranchId: app.neonDevelopmentBranchId,
             appPath: app.path,
           });
         }
+        if (warningMessage) {
+          return { warningMessage };
+        }
+        return { successMessage };
       });
     },
   );
@@ -394,7 +307,7 @@ export function registerVersionHandlers() {
     "checkout-version",
     async (
       _,
-      { appId, versionId }: { appId: number; versionId: string },
+      { appId, versionId: gitRef }: { appId: number; versionId: string },
     ): Promise<void> => {
       return withLock(appId, async () => {
         const app = await db.query.apps.findFirst({
@@ -410,7 +323,7 @@ export function registerVersionHandlers() {
           app.neonDevelopmentBranchId &&
           app.neonPreviewBranchId
         ) {
-          if (versionId === "main") {
+          if (gitRef === "main") {
             logger.info(
               `Switching Postgres to development branch for app ${appId}`,
             );
@@ -423,192 +336,46 @@ export function registerVersionHandlers() {
             logger.info(
               `Switching Postgres to preview branch for app ${appId}`,
             );
-            // SWITCH the env var for POSTGRES_URL to the preview branch
-            const neonClient = await getNeonClient();
-            const connectionUri = await neonClient.getConnectionUri({
-              projectId: app.neonProjectId,
-              branch_id: app.neonPreviewBranchId,
-              // This is the default database name for Neon
-              database_name: "neondb",
-              // This is the default role name for Neon
-              role_name: "neondb_owner",
+
+            const version = await db.query.versions.findFirst({
+              where: and(
+                eq(versions.appId, appId),
+                eq(versions.commitHash, gitRef),
+              ),
             });
 
-            await updatePostgresUrlEnvVar({
-              appPath: app.path,
-              connectionUri: connectionUri.data.uri,
-            });
+            if (version && version.neonDbTimestamp) {
+              // SWITCH the env var for POSTGRES_URL to the preview branch
+              const neonClient = await getNeonClient();
+              const connectionUri = await neonClient.getConnectionUri({
+                projectId: app.neonProjectId,
+                branch_id: app.neonPreviewBranchId,
+                // This is the default database name for Neon
+                database_name: "neondb",
+                // This is the default role name for Neon
+                role_name: "neondb_owner",
+              });
 
-            await restoreBranchForCheckout({
-              appId,
-              targetCommitHash: versionId,
-              neonProjectId: app.neonProjectId,
-              branchIdToUpdate: app.neonPreviewBranchId,
-            });
+              await updatePostgresUrlEnvVar({
+                appPath: app.path,
+                connectionUri: connectionUri.data.uri,
+              });
+
+              await restoreBranchForPreview({
+                appId,
+                dbTimestamp: version.neonDbTimestamp,
+                neonProjectId: app.neonProjectId,
+                previewBranchId: app.neonPreviewBranchId,
+                developmentBranchId: app.neonDevelopmentBranchId,
+              });
+            }
           }
         }
         const fullAppPath = getDyadAppPath(app.path);
         await gitCheckout({
           path: fullAppPath,
-          ref: versionId,
+          ref: gitRef,
         });
-      });
-    },
-  );
-
-  handle(
-    "mark-favorite",
-    async (
-      _,
-      { appId, commitHash }: { appId: number; commitHash: string },
-    ): Promise<void> => {
-      return withLock(appId, async () => {
-        const userFriendlyCommitHash = commitHash.slice(0, 7);
-        const app = await db.query.apps.findFirst({
-          where: eq(apps.id, appId),
-        });
-
-        if (!app) {
-          throw new Error("App not found");
-        }
-
-        // Throw an error if there are more than three versions which are favorite and have a Neon branch
-        const favoriteVersionsWithBranch = await db.query.versions.findMany({
-          where: and(eq(versions.appId, appId), eq(versions.isFavorite, true)),
-        });
-
-        const favoriteVersionsWithNeonBranch =
-          favoriteVersionsWithBranch.filter(
-            (version) => version.neonBranchId !== null,
-          );
-
-        // Check if marking this version as favorite would exceed the limit
-        const existingVersion = await db.query.versions.findFirst({
-          where: and(
-            eq(versions.appId, appId),
-            eq(versions.commitHash, commitHash),
-          ),
-        });
-
-        // If this is not already a favorite version with a Neon branch, check the limit
-        const wouldExceedLimit =
-          !existingVersion?.isFavorite &&
-          favoriteVersionsWithNeonBranch.length >= 3;
-
-        if (app.neonProjectId && wouldExceedLimit) {
-          throw new Error(
-            `Cannot mark version ${userFriendlyCommitHash} as favorite: Maximum of 3 favorite versions with Neon branches allowed. Currently have ${favoriteVersionsWithNeonBranch.length} favorite versions.`,
-          );
-        }
-
-        // existingVersion is already declared above for the limit check
-
-        if (existingVersion) {
-          // If marking as favorite and there is no Neon branch associated, throw an error
-          if (app.neonProjectId && !existingVersion.neonBranchId) {
-            throw new Error(
-              `Cannot mark version ${userFriendlyCommitHash} as favorite: No Neon branch associated with this version`,
-            );
-          }
-
-          // Update existing version
-          await db
-            .update(versions)
-            .set({
-              isFavorite: true,
-              updatedAt: new Date(),
-            })
-            .where(
-              and(
-                eq(versions.appId, appId),
-                eq(versions.commitHash, commitHash),
-              ),
-            );
-        } else {
-          // Create new version record as favorite
-          // Note: neonBranchId will be null initially and should be set when a Neon branch is created
-          await db.insert(versions).values({
-            appId,
-            commitHash,
-            isFavorite: true,
-            neonBranchId: null,
-          });
-        }
-
-        logger.info(`Marked commit ${commitHash} as favorite for app ${appId}`);
-      });
-    },
-  );
-
-  handle(
-    "unmark-favorite",
-    async (
-      _,
-      { appId, commitHash }: { appId: number; commitHash: string },
-    ): Promise<void> => {
-      return withLock(appId, async () => {
-        const app = await db.query.apps.findFirst({
-          where: eq(apps.id, appId),
-        });
-
-        if (!app) {
-          throw new Error("App not found");
-        }
-
-        // Find the version record
-        const existingVersion = await db.query.versions.findFirst({
-          where: and(
-            eq(versions.appId, appId),
-            eq(versions.commitHash, commitHash),
-          ),
-        });
-
-        // If there's a Neon branch associated with this version, delete it first
-        if (existingVersion?.neonBranchId && app.neonProjectId) {
-          try {
-            const neonClient = await getNeonClient();
-            await neonClient.deleteProjectBranch(
-              app.neonProjectId,
-              existingVersion.neonBranchId,
-            );
-            logger.info(
-              `Deleted Neon branch ${existingVersion.neonBranchId} for commit ${commitHash}`,
-            );
-          } catch (neonError) {
-            const errorMessage = getNeonErrorMessage(neonError);
-            throw new Error(`Failed to delete Neon branch: ${errorMessage}`);
-          }
-        }
-
-        if (existingVersion) {
-          // Update the version to not be a favorite and clear the Neon branch ID
-          await db
-            .update(versions)
-            .set({
-              isFavorite: false,
-              neonBranchId: null,
-              updatedAt: new Date(),
-            })
-            .where(
-              and(
-                eq(versions.appId, appId),
-                eq(versions.commitHash, commitHash),
-              ),
-            );
-        } else {
-          // Handle the case where the version might not exist already in the DB table
-          // Create a new version record marked as not favorite
-          await db.insert(versions).values({
-            appId,
-            commitHash,
-            isFavorite: false,
-            neonBranchId: null,
-          });
-        }
-
-        logger.info(
-          `Unmarked commit ${commitHash} as favorite for app ${appId}`,
-        );
       });
     },
   );

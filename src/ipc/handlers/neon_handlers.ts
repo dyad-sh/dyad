@@ -13,69 +13,17 @@ import {
   GetNeonProjectParams,
   GetNeonProjectResponse,
   NeonBranch,
-  DeleteNeonBranchParams,
 } from "../ipc_types";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import { ipcMain } from "electron";
 import { EndpointType } from "@neondatabase/api-client";
+import { retryOnLocked } from "../utils/retryOnLocked";
 
-const logger = log.scope("neon_handlers");
+export const logger = log.scope("neon_handlers");
 
 const testOnlyHandle = createTestOnlyLoggedHandler(logger);
-
-// Retry configuration
-const RETRY_CONFIG = {
-  maxRetries: 5,
-  baseDelay: 1000, // 1 second
-  maxDelay: 30_000, // 30 seconds
-  jitterFactor: 0.1, // 10% jitter
-};
-
-/**
- * Retries an async operation with exponential backoff on locked errors (423)
- */
-async function retryOnLocked<T>(
-  operation: () => Promise<T>,
-  context: string,
-): Promise<T> {
-  let lastError: any;
-
-  for (let attempt = 0; attempt <= RETRY_CONFIG.maxRetries; attempt++) {
-    try {
-      return await operation();
-    } catch (error: any) {
-      lastError = error;
-
-      // Only retry on locked errors
-      if (!isLockedError(error)) {
-        throw error;
-      }
-
-      // Don't retry if we've exhausted all attempts
-      if (attempt === RETRY_CONFIG.maxRetries) {
-        logger.error(
-          `${context}: Failed after ${RETRY_CONFIG.maxRetries + 1} attempts due to locked error`,
-        );
-        throw error;
-      }
-
-      // Calculate delay with exponential backoff and jitter
-      const baseDelay = RETRY_CONFIG.baseDelay * Math.pow(2, attempt);
-      const jitter = baseDelay * RETRY_CONFIG.jitterFactor * Math.random();
-      const delay = Math.min(baseDelay + jitter, RETRY_CONFIG.maxDelay);
-
-      logger.warn(
-        `${context}: Locked error (attempt ${attempt + 1}/${RETRY_CONFIG.maxRetries + 1}), retrying in ${Math.round(delay)}ms`,
-      );
-
-      await new Promise((resolve) => setTimeout(resolve, delay));
-    }
-  }
-
-  throw lastError;
-}
 
 export function registerNeonHandlers() {
   // Do not use log handler because there's sensitive data in the response
@@ -292,74 +240,6 @@ export function registerNeonHandlers() {
     },
   );
 
-  ipcMain.handle(
-    "neon:delete-branch",
-    async (
-      _,
-      { appId, branchId, branchName }: DeleteNeonBranchParams,
-    ): Promise<void> => {
-      logger.info(
-        `Deleting Neon branch: ${branchId} (${branchName}) for app ${appId}`,
-      );
-
-      try {
-        // Get the app from the database to find the neonProjectId
-        const app = await db
-          .select()
-          .from(apps)
-          .where(eq(apps.id, appId))
-          .limit(1);
-
-        if (app.length === 0) {
-          throw new Error(`App with ID ${appId} not found`);
-        }
-
-        const appData = app[0];
-        if (!appData.neonProjectId) {
-          throw new Error(`No Neon project found for app ${appId}`);
-        }
-
-        // Prevent deletion of protected branches
-        if (
-          branchId === appData.neonDevelopmentBranchId ||
-          branchId === appData.neonPreviewBranchId
-        ) {
-          throw new Error(
-            `Cannot delete protected branch: ${branchName}. This branch is configured as a development or preview branch for this app.`,
-          );
-        }
-
-        const neonClient = await getNeonClient();
-
-        // Check if the branch exists before attempting to delete
-        try {
-          await neonClient.getProjectBranch(appData.neonProjectId, branchId);
-        } catch (error: any) {
-          if (error.response?.status === 404) {
-            throw new Error(`Branch ${branchName} not found`);
-          }
-          throw error;
-        }
-
-        // Delete the branch with retry on locked errors
-        await retryOnLocked(
-          () =>
-            neonClient.deleteProjectBranch(appData.neonProjectId!, branchId),
-          `Delete branch ${branchId} (${branchName}) for app ${appId}`,
-        );
-
-        logger.info(
-          `Successfully deleted Neon branch: ${branchId} (${branchName}) for app ${appId}`,
-        );
-      } catch (error: any) {
-        const errorMessage = getNeonErrorMessage(error);
-        const message = `Failed to delete Neon branch ${branchName} for app ${appId}: ${errorMessage}`;
-        logger.error(message);
-        throw new Error(message);
-      }
-    },
-  );
-
   testOnlyHandle("neon:fake-connect", async (event) => {
     // Call handleNeonOAuthReturn with fake data
     handleNeonOAuthReturn({
@@ -378,6 +258,6 @@ export function registerNeonHandlers() {
   });
 }
 
-function isLockedError(error: any): boolean {
+export function isLockedError(error: any): boolean {
   return error.response?.status === 423;
 }

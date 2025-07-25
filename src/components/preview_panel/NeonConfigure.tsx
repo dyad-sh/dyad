@@ -22,6 +22,7 @@ import { useDeleteNeonBranch } from "@/hooks/useDeleteNeonBranch";
 import { IpcClient } from "@/ipc/ipc_client";
 import type { GetNeonProjectResponse, NeonBranch } from "@/ipc/ipc_types";
 import { NeonDisconnectButton } from "@/components/NeonDisconnectButton";
+import { NeonBranchGraph } from "./NeonBranchGraph";
 import { toast } from "sonner";
 
 const getBranchTypeColor = (type: NeonBranch["type"]) => {
@@ -170,6 +171,9 @@ export const NeonConfigure = () => {
             </div>
           </div>
         </div>
+
+        {/* Branch Hierarchy Graph */}
+        <NeonBranchGraph branches={neonProject.branches} />
 
         {/* Branches */}
         <div className="space-y-2">

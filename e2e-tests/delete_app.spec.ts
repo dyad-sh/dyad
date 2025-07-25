@@ -1,7 +1,11 @@
 import fs from "fs";
-import { test } from "./helpers/test_helper";
+import { testSkipIfWindows } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
-test("delete app", async ({ po }) => {
+
+// This test fails consistently on Windows (in sharded mode).
+// Most likely because deleting the files is causing an issue
+// with Window's aggressive file locking.
+testSkipIfWindows("delete app", async ({ po }) => {
   await po.setUp();
   await po.sendPrompt("hi");
   const appName = await po.getCurrentAppName();

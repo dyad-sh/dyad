@@ -120,15 +120,26 @@ export function ChatHeader({
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <span className="flex items-center  gap-1">
-                          <strong>Warning:</strong>
-                          <span>You are not on a branch</span>
-                          <Info size={14} />
+                          {isAnyCheckoutVersionInProgress ? (
+                            <>
+                              <span>
+                                Please wait, switching back to latest version...
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <strong>Warning:</strong>
+                              <span>You are not on a branch</span>
+                              <Info size={14} />
+                            </>
+                          )}
                         </span>
                       </TooltipTrigger>
                       <TooltipContent>
                         <p>
-                          Checkout main branch, otherwise changes will not be
-                          saved properly
+                          {isAnyCheckoutVersionInProgress
+                            ? "Version checkout is currently in progress"
+                            : "Checkout main branch, otherwise changes will not be saved properly"}
                         </p>
                       </TooltipContent>
                     </Tooltip>
@@ -152,7 +163,7 @@ export function ChatHeader({
             >
               {isRenamingBranch ? "Renaming..." : "Rename master to main"}
             </Button>
-          ) : (
+          ) : isAnyCheckoutVersionInProgress && !isCheckingOutVersion ? null : (
             <Button
               variant="outline"
               size="sm"

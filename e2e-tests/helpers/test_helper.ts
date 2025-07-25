@@ -481,11 +481,11 @@ export class PageObject {
   }
 
   locateLoadingAppPreview() {
-    return this.page.getByText("Loading app preview...");
+    return this.page.getByText("Preparing app preview...");
   }
 
   locateStartingAppPreview() {
-    return this.page.getByText("Starting up your app...");
+    return this.page.getByText("Starting your app server...");
   }
 
   getPreviewIframeElement() {

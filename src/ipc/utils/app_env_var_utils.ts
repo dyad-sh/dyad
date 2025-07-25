@@ -3,7 +3,58 @@
  * Environment variables are sensitive and should not be logged.
  */
 
+import { getDyadAppPath } from "@/paths/paths";
 import { EnvVar } from "../ipc_types";
+import path from "path";
+import fs from "fs";
+
+export const ENV_FILE_NAME = ".env.local";
+
+function getEnvFilePath({ appPath }: { appPath: string }): string {
+  return path.join(getDyadAppPath(appPath), ENV_FILE_NAME);
+}
+
+export async function updatePostgresUrlEnvVar({
+  appPath,
+  connectionUri,
+}: {
+  appPath: string;
+  connectionUri: string;
+}) {
+  // Given the connection uri, update the env var for POSTGRES_URL
+  const envVars = parseEnvFile(await readEnvFile({ appPath }));
+  for (const envVar of envVars) {
+    if (envVar.key === "POSTGRES_URL") {
+      envVar.value = connectionUri;
+    }
+  }
+  const envFileContents = serializeEnvFile(envVars);
+  await fs.promises.writeFile(getEnvFilePath({ appPath }), envFileContents);
+}
+
+export async function readPostgresUrlFromEnvFile({
+  appPath,
+}: {
+  appPath: string;
+}): Promise<string> {
+  const contents = await readEnvFile({ appPath });
+  const envVars = parseEnvFile(contents);
+  const postgresUrl = envVars.find(
+    (envVar) => envVar.key === "POSTGRES_URL",
+  )?.value;
+  if (!postgresUrl) {
+    throw new Error("POSTGRES_URL not found in .env.local");
+  }
+  return postgresUrl;
+}
+
+export async function readEnvFile({
+  appPath,
+}: {
+  appPath: string;
+}): Promise<string> {
+  return fs.promises.readFile(getEnvFilePath({ appPath }), "utf8");
+}
 
 // Helper function to parse .env.local file content
 export function parseEnvFile(content: string): EnvVar[] {

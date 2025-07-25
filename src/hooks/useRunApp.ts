@@ -11,6 +11,7 @@ import {
 } from "@/atoms/appAtoms";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { AppOutput } from "@/ipc/ipc_types";
+import { showInputRequest } from "@/lib/toast";
 
 const useRunAppLoadingAtom = atom(false);
 
@@ -45,41 +46,65 @@ export function useRunApp() {
       }
     }
   };
-  const runApp = useCallback(async (appId: number) => {
-    setLoading(true);
-    try {
-      const ipcClient = IpcClient.getInstance();
-      console.debug("Running app", appId);
 
-      // Clear the URL and add restart message
-      if (appUrlObj?.appId !== appId) {
-        setAppUrlObj({ appUrl: null, appId: null, originalUrl: null });
+  const processAppOutput = useCallback(
+    (output: AppOutput) => {
+      // Handle input requests specially
+      if (output.type === "input-requested") {
+        showInputRequest(output.message, async (response) => {
+          try {
+            const ipcClient = IpcClient.getInstance();
+            await ipcClient.respondToAppInput(output.appId, response);
+          } catch (error) {
+            console.error("Failed to respond to app input:", error);
+          }
+        });
+        return; // Don't add to regular output
       }
-      setAppOutput((prev) => [
-        ...prev,
-        {
-          message: "Trying to restart app...",
-          type: "stdout",
-          appId,
-          timestamp: Date.now(),
-        },
-      ]);
-      const app = await ipcClient.getApp(appId);
-      setApp(app);
-      await ipcClient.runApp(appId, (output) => {
-        setAppOutput((prev) => [...prev, output]);
-        processProxyServerOutput(output);
-      });
-      setPreviewErrorMessage(undefined);
-    } catch (error) {
-      console.error(`Error running app ${appId}:`, error);
-      setPreviewErrorMessage(
-        error instanceof Error ? error.message : error?.toString(),
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+
+      // Add to regular app output
+      setAppOutput((prev) => [...prev, output]);
+
+      // Process proxy server output
+      processProxyServerOutput(output);
+    },
+    [setAppOutput],
+  );
+  const runApp = useCallback(
+    async (appId: number) => {
+      setLoading(true);
+      try {
+        const ipcClient = IpcClient.getInstance();
+        console.debug("Running app", appId);
+
+        // Clear the URL and add restart message
+        if (appUrlObj?.appId !== appId) {
+          setAppUrlObj({ appUrl: null, appId: null, originalUrl: null });
+        }
+        setAppOutput((prev) => [
+          ...prev,
+          {
+            message: "Trying to restart app...",
+            type: "stdout",
+            appId,
+            timestamp: Date.now(),
+          },
+        ]);
+        const app = await ipcClient.getApp(appId);
+        setApp(app);
+        await ipcClient.runApp(appId, processAppOutput);
+        setPreviewErrorMessage(undefined);
+      } catch (error) {
+        console.error(`Error running app ${appId}:`, error);
+        setPreviewErrorMessage(
+          error instanceof Error ? error.message : error?.toString(),
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [processAppOutput],
+  );
 
   const stopApp = useCallback(async (appId: number) => {
     if (appId === null) {
@@ -139,15 +164,15 @@ export function useRunApp() {
         await ipcClient.restartApp(
           appId,
           (output) => {
-            setAppOutput((prev) => [...prev, output]);
+            // Handle HMR updates before processing
             if (
               output.message.includes("hmr update") &&
               output.message.includes("[vite]")
             ) {
               onHotModuleReload();
-              return;
             }
-            processProxyServerOutput(output);
+            // Process normally (including input requests)
+            processAppOutput(output);
           },
           removeNodeModules,
         );
@@ -161,7 +186,15 @@ export function useRunApp() {
         setLoading(false);
       }
     },
-    [appId, setApp, setAppOutput, setAppUrlObj, setPreviewPanelKey],
+    [
+      appId,
+      setApp,
+      setAppOutput,
+      setAppUrlObj,
+      setPreviewPanelKey,
+      processAppOutput,
+      onHotModuleReload,
+    ],
   );
 
   const refreshAppIframe = useCallback(async () => {

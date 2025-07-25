@@ -69,6 +69,27 @@ export function readSettings(): UserSettings {
         }
       }
     }
+    const neon = combinedSettings.neon;
+    if (neon) {
+      if (neon.refreshToken) {
+        const encryptionType = neon.refreshToken.encryptionType;
+        if (encryptionType) {
+          neon.refreshToken = {
+            value: decrypt(neon.refreshToken),
+            encryptionType,
+          };
+        }
+      }
+      if (neon.accessToken) {
+        const encryptionType = neon.accessToken.encryptionType;
+        if (encryptionType) {
+          neon.accessToken = {
+            value: decrypt(neon.accessToken),
+            encryptionType,
+          };
+        }
+      }
+    }
     if (combinedSettings.githubAccessToken) {
       const encryptionType = combinedSettings.githubAccessToken.encryptionType;
       combinedSettings.githubAccessToken = {
@@ -128,6 +149,18 @@ export function writeSettings(settings: Partial<UserSettings>): void {
       if (newSettings.supabase.refreshToken) {
         newSettings.supabase.refreshToken = encrypt(
           newSettings.supabase.refreshToken.value,
+        );
+      }
+    }
+    if (newSettings.neon) {
+      if (newSettings.neon.accessToken) {
+        newSettings.neon.accessToken = encrypt(
+          newSettings.neon.accessToken.value,
+        );
+      }
+      if (newSettings.neon.refreshToken) {
+        newSettings.neon.refreshToken = encrypt(
+          newSettings.neon.refreshToken.value,
         );
       }
     }

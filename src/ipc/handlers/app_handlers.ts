@@ -47,6 +47,7 @@ import { safeSend } from "../utils/safe_sender";
 import { normalizePath } from "../../../shared/normalizePath";
 import { isServerFunction } from "@/supabase_admin/supabase_utils";
 import { getVercelTeamSlug } from "../utils/vercel_utils";
+import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 
 async function copyDir(
   source: string,
@@ -134,22 +135,37 @@ async function executeAppLocalNode({
     const message = util.stripVTControlCharacters(data.toString());
     logger.debug(`App ${appId} (PID: ${process.pid}) stdout: ${message}`);
 
-    safeSend(event.sender, "app:output", {
-      type: "stdout",
-      message,
-      appId,
-    });
-    const urlMatch = message.match(/(https?:\/\/localhost:\d+\/?)/);
-    if (urlMatch) {
-      proxyWorker = await startProxy(urlMatch[1], {
-        onStarted: (proxyUrl) => {
-          safeSend(event.sender, "app:output", {
-            type: "stdout",
-            message: `[dyad-proxy-server]started=[${proxyUrl}] original=[${urlMatch[1]}]`,
-            appId,
-          });
-        },
+    // Check if this is an interactive prompt requiring user input
+    const inputRequestPattern = /\s*›\s*\([yY]\/[nN]\)\s*$/;
+    const isInputRequest = inputRequestPattern.test(message);
+
+    if (isInputRequest) {
+      // Send special input-requested event for interactive prompts
+      safeSend(event.sender, "app:output", {
+        type: "input-requested",
+        message,
+        appId,
       });
+    } else {
+      // Normal stdout handling
+      safeSend(event.sender, "app:output", {
+        type: "stdout",
+        message,
+        appId,
+      });
+
+      const urlMatch = message.match(/(https?:\/\/localhost:\d+\/?)/);
+      if (urlMatch) {
+        proxyWorker = await startProxy(urlMatch[1], {
+          onStarted: (proxyUrl) => {
+            safeSend(event.sender, "app:output", {
+              type: "stdout",
+              message: `[dyad-proxy-server]started=[${proxyUrl}] original=[${urlMatch[1]}]`,
+              appId,
+            });
+          },
+        });
+      }
     }
   });
 
@@ -633,6 +649,23 @@ export function registerAppHandlers() {
         throw new Error("Invalid file path");
       }
 
+      if (app.neonProjectId && app.neonDevelopmentBranchId) {
+        try {
+          await storeDbTimestampAtCurrentVersion({
+            appId: app.id,
+          });
+        } catch (error) {
+          logger.error(
+            "Error storing Neon timestamp at current version:",
+            error,
+          );
+          throw new Error(
+            "Could not store Neon timestamp at current version; database versioning functionality is not working: " +
+              error,
+          );
+        }
+      }
+
       // Ensure directory exists
       const dirPath = path.dirname(fullPath);
       await fsPromises.mkdir(dirPath, { recursive: true });
@@ -968,4 +1001,30 @@ export function registerAppHandlers() {
       }
     });
   });
+
+  handle(
+    "respond-to-app-input",
+    async (_, { appId, response }: { appId: number; response: string }) => {
+      const appInfo = runningApps.get(appId);
+
+      if (!appInfo) {
+        throw new Error(`App ${appId} is not running`);
+      }
+
+      const { process } = appInfo;
+
+      if (!process.stdin) {
+        throw new Error(`App ${appId} process has no stdin available`);
+      }
+
+      try {
+        // Write the response to stdin with a newline
+        process.stdin.write(`${response}\n`);
+        logger.debug(`Sent response '${response}' to app ${appId} stdin`);
+      } catch (error: any) {
+        logger.error(`Error sending response to app ${appId}:`, error);
+        throw new Error(`Failed to send response to app: ${error.message}`);
+      }
+    },
+  );
 }

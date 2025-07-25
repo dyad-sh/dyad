@@ -23,6 +23,7 @@ import { showError, showSuccess } from "@/lib/toast";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
 import { useNavigate } from "@tanstack/react-router";
+import { NeonConfigure } from "./NeonConfigure";
 
 const EnvironmentVariablesTitle = () => (
   <div className="flex items-center gap-2">
@@ -396,6 +397,12 @@ export const ConfigurePanel = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Neon Database Configuration */}
+      {/* Neon Connector */}
+      <div className="grid grid-cols-1 gap-6">
+        <NeonConfigure />
+      </div>
     </div>
   );
 };

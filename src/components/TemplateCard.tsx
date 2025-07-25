@@ -4,17 +4,21 @@ import { IpcClient } from "@/ipc/ipc_client";
 import { useSettings } from "@/hooks/useSettings";
 import { CommunityCodeConsentDialog } from "./CommunityCodeConsentDialog";
 import type { Template } from "@/shared/templates";
+import { Button } from "./ui/button";
+import { cn } from "@/lib/utils";
 
 interface TemplateCardProps {
   template: Template;
   isSelected: boolean;
   onSelect: (templateId: string) => void;
+  onCreateApp: () => void;
 }
 
 export const TemplateCard: React.FC<TemplateCardProps> = ({
   template,
   isSelected,
   onSelect,
+  onCreateApp,
 }) => {
   const { settings, updateSettings } = useSettings();
   const [showConsentDialog, setShowConsentDialog] = useState(false);
@@ -93,7 +97,7 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
             >
               {template.title}
             </h2>
-            {template.isOfficial && (
+            {template.isOfficial && !template.isExperimental && (
               <span
                 className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
                   isSelected
@@ -104,8 +108,13 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
                 Official
               </span>
             )}
+            {template.isExperimental && (
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-700 dark:text-yellow-200">
+                Experimental
+              </span>
+            )}
           </div>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mb-3 h-8 overflow-y-auto">
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-3 h-10 overflow-y-auto">
             {template.description}
           </p>
           {template.githubUrl && (
@@ -121,6 +130,20 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
               <ArrowLeft className="w-4 h-4 ml-1 transform rotate-180" />
             </a>
           )}
+
+          <Button
+            onClick={(e) => {
+              e.stopPropagation();
+              onCreateApp();
+            }}
+            size="sm"
+            className={cn(
+              "w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold mt-2",
+              settings?.selectedTemplateId !== template.id && "invisible",
+            )}
+          >
+            Create App
+          </Button>
         </div>
       </div>
 

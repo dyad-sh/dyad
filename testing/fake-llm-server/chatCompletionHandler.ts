@@ -24,7 +24,6 @@ export const createChatCompletionHandler =
     }
 
     let messageContent = CANNED_MESSAGE;
-    console.error("LASTMESSAGE********", lastMessage.content);
 
     if (
       lastMessage &&

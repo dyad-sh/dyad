@@ -13,6 +13,7 @@ import {
   GetNeonProjectParams,
   GetNeonProjectResponse,
   NeonBranch,
+  DeleteNeonBranchParams,
 } from "../ipc_types";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
@@ -118,6 +119,7 @@ export function registerNeonHandlers() {
             neonClient.createProjectBranch(project.id, {
               endpoints: [{ type: EndpointType.ReadWrite }],
               branch: {
+                init_source: "schema-only",
                 name: "development",
               },
             }),
@@ -141,6 +143,7 @@ export function registerNeonHandlers() {
               endpoints: [{ type: EndpointType.ReadWrite }],
               branch: {
                 name: "preview",
+                parent_id: developmentBranch.id,
               },
             }),
           `Create preview branch for project ${project.id}`,
@@ -249,11 +252,22 @@ export function registerNeonHandlers() {
               type = "snapshot";
             }
 
+            // Find parent branch name if parent_id exists
+            let parentBranchName: string | undefined;
+            if (branch.parent_id) {
+              const parentBranch = branchesResponse.data.branches?.find(
+                (b) => b.id === branch.parent_id,
+              );
+              parentBranchName = parentBranch?.name;
+            }
+
             return {
               type,
               branchId: branch.id,
               branchName: branch.name,
               lastUpdated: branch.updated_at,
+              parentBranchId: branch.parent_id,
+              parentBranchName,
             };
           },
         );
@@ -274,6 +288,74 @@ export function registerNeonHandlers() {
           error,
         );
         throw error;
+      }
+    },
+  );
+
+  ipcMain.handle(
+    "neon:delete-branch",
+    async (
+      _,
+      { appId, branchId, branchName }: DeleteNeonBranchParams,
+    ): Promise<void> => {
+      logger.info(
+        `Deleting Neon branch: ${branchId} (${branchName}) for app ${appId}`,
+      );
+
+      try {
+        // Get the app from the database to find the neonProjectId
+        const app = await db
+          .select()
+          .from(apps)
+          .where(eq(apps.id, appId))
+          .limit(1);
+
+        if (app.length === 0) {
+          throw new Error(`App with ID ${appId} not found`);
+        }
+
+        const appData = app[0];
+        if (!appData.neonProjectId) {
+          throw new Error(`No Neon project found for app ${appId}`);
+        }
+
+        // Prevent deletion of protected branches
+        if (
+          branchId === appData.neonDevelopmentBranchId ||
+          branchId === appData.neonPreviewBranchId
+        ) {
+          throw new Error(
+            `Cannot delete protected branch: ${branchName}. This branch is configured as a development or preview branch for this app.`,
+          );
+        }
+
+        const neonClient = await getNeonClient();
+
+        // Check if the branch exists before attempting to delete
+        try {
+          await neonClient.getProjectBranch(appData.neonProjectId, branchId);
+        } catch (error: any) {
+          if (error.response?.status === 404) {
+            throw new Error(`Branch ${branchName} not found`);
+          }
+          throw error;
+        }
+
+        // Delete the branch with retry on locked errors
+        await retryOnLocked(
+          () =>
+            neonClient.deleteProjectBranch(appData.neonProjectId!, branchId),
+          `Delete branch ${branchId} (${branchName}) for app ${appId}`,
+        );
+
+        logger.info(
+          `Successfully deleted Neon branch: ${branchId} (${branchName}) for app ${appId}`,
+        );
+      } catch (error: any) {
+        const errorMessage = getNeonErrorMessage(error);
+        const message = `Failed to delete Neon branch ${branchName} for app ${appId}: ${errorMessage}`;
+        logger.error(message);
+        throw new Error(message);
       }
     },
   );

@@ -370,6 +370,8 @@ export interface NeonBranch {
   branchId: string;
   branchName: string;
   lastUpdated: string; // ISO timestamp
+  parentBranchId?: string; // ID of the parent branch
+  parentBranchName?: string; // Name of the parent branch
 }
 
 export interface GetNeonProjectParams {
@@ -381,6 +383,12 @@ export interface GetNeonProjectResponse {
   projectName: string;
   orgId: string;
   branches: NeonBranch[];
+}
+
+export interface DeleteNeonBranchParams {
+  appId: number;
+  branchId: string;
+  branchName: string; // For confirmation display
 }
 
 // Snapshot management types

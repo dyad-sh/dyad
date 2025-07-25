@@ -58,6 +58,7 @@ const validInvokeChannels = [
   "github:disconnect",
   "neon:create-project",
   "neon:get-project",
+  "neon:delete-branch",
   "vercel:save-token",
   "vercel:list-projects",
   "vercel:is-project-available",

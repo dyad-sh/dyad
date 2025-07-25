@@ -55,6 +55,7 @@ import type {
   NeonProject,
   GetNeonProjectParams,
   GetNeonProjectResponse,
+  DeleteNeonBranchParams,
 } from "./ipc_types";
 import type { Template } from "../shared/templates";
 import type { AppChatContext, ProposalResult } from "@/lib/schemas";
@@ -829,6 +830,10 @@ export class IpcClient {
     params: GetNeonProjectParams,
   ): Promise<GetNeonProjectResponse> {
     return this.ipcRenderer.invoke("neon:get-project", params);
+  }
+
+  public async deleteNeonBranch(params: DeleteNeonBranchParams): Promise<void> {
+    return this.ipcRenderer.invoke("neon:delete-branch", params);
   }
 
   // --- End Neon Management ---

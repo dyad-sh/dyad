@@ -144,21 +144,37 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                       ({version.oid.slice(0, 7)})
                     </span>
                     {/* Star button for favorites */}
-
-                    {version.dbTimestamp && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 rounded-md">
-                            <Database size={10} />
-                            <span>DB</span>
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          Database snapshot available at timestamp{" "}
-                          {version.dbTimestamp}
-                        </TooltipContent>
-                      </Tooltip>
-                    )}
+                    {/* example format: '2025-07-25T21:52:01Z' */}
+                    {version.dbTimestamp &&
+                      (() => {
+                        const timestampMs = new Date(
+                          version.dbTimestamp,
+                        ).getTime();
+                        const isExpired =
+                          Date.now() - timestampMs > 24 * 60 * 60 * 1000;
+                        return (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div
+                                className={cn(
+                                  "inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded-md",
+                                  isExpired
+                                    ? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+                                    : "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+                                )}
+                              >
+                                <Database size={10} />
+                                <span>DB</span>
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {isExpired
+                                ? "DB snapshot may have expired (older than 24 hours)"
+                                : `Database snapshot available at timestamp ${version.dbTimestamp}`}
+                            </TooltipContent>
+                          </Tooltip>
+                        );
+                      })()}
                   </div>
                   <div className="flex items-center gap-2">
                     {isCheckingOutVersion &&

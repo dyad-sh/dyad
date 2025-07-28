@@ -3,6 +3,7 @@ import { promises as fsPromises } from "node:fs";
 import path from "node:path";
 import fsExtra from "fs-extra";
 import { generateCuteAppName } from "../../lib/utils";
+import { normalizePath } from "../../../shared/normalizePath";
 
 // Directories to exclude when scanning files
 const EXCLUDED_DIRS = ["node_modules", ".git", ".next"];
@@ -94,7 +95,7 @@ export async function writeMigrationFile(
   const migrationFilePath = path.join(migrationsDir, migrationFileName);
 
   await fsExtra.writeFile(migrationFilePath, queryContent);
-  return path.relative(appPath, migrationFilePath);
+  return normalizePath(path.relative(appPath, migrationFilePath));
 }
 
 export async function fileExists(filePath: string) {

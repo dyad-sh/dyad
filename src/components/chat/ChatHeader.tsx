@@ -99,7 +99,7 @@ export function ChatHeader({
   };
 
   // REMINDER: KEEP UP TO DATE WITH app_handlers.ts
-  const versionPostfix = versions.length === 10_000 ? `+` : "";
+  const versionPostfix = versions.length === 100_000 ? `+` : "";
 
   const isNotMainBranch = branchInfo && branchInfo.branch !== "main";
 

@@ -37,7 +37,7 @@ export function registerVersionHandlers() {
       fs,
       dir: appPath,
       // KEEP UP TO DATE WITH ChatHeader.tsx
-      depth: 10_000, // Limit to last 10_000 commits for performance
+      depth: 100_000, // Limit to last 100_000 commits for performance
     });
 
     return commits.map((commit: ReadCommitResult) => ({

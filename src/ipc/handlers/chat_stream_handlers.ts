@@ -580,6 +580,14 @@ This conversation includes one or more image attachments. When the user uploads 
           modelClient: ModelClient;
         }) => {
           const dyadRequestId = uuidv4();
+          if (isEngineEnabled) {
+            logger.log(
+              "sending AI request to engine with request id:",
+              dyadRequestId,
+            );
+          } else {
+            logger.log("sending AI request");
+          }
           return streamText({
             maxTokens: await getMaxTokens(settings.selectedModel),
             temperature: 0,

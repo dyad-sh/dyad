@@ -188,12 +188,25 @@ async function runSingleProject(
       continue;
     }
 
+    // Extract the problematic line with context
+    const sourceLines = diagnostic.file.getFullText().split(/\r?\n/);
+    const lineBefore = line > 0 ? sourceLines[line - 1] : "";
+    const problematicLine = sourceLines[line] || "";
+    const lineAfter =
+      line < sourceLines.length - 1 ? sourceLines[line + 1] : "";
+
+    let snippet = "";
+    if (lineBefore) snippet += lineBefore + "\n";
+    snippet += problematicLine + " // <-- TypeScript compiler error here\n";
+    if (lineAfter) snippet += lineAfter;
+
     problems.push({
       file: normalizePath(path.relative(appPath, diagnostic.file.fileName)),
       line: line + 1, // Convert to 1-based
       column: character + 1, // Convert to 1-based
       message,
       code: diagnostic.code,
+      snippet: snippet.trim(),
     });
   }
 

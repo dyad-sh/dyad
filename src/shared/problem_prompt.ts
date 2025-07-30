@@ -16,6 +16,10 @@ export function createProblemFixPrompt(problemReport: ProblemReport): string {
 
   problems.forEach((problem, index) => {
     prompt += `${index + 1}. ${problem.file}:${problem.line}:${problem.column} - ${problem.message} (TS${problem.code})\n`;
+    if (problem.snippet) {
+      prompt += `\`\`\`\n${problem.snippet}\n\`\`\`\n`;
+    }
+    prompt += "\n";
   });
 
   prompt += "\nPlease fix all errors in a concise way.";

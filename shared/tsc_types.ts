@@ -17,6 +17,7 @@ export interface Problem {
   column: number;
   message: string;
   code: number;
+  snippet: string;
 }
 
 export interface ProblemReport {

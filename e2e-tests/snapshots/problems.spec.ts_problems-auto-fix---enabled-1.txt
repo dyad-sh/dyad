@@ -436,6 +436,15 @@ role: user
 message: Fix these 2 TypeScript compile-time errors:
 
 1. src/bad-file.ts:1:30 - Cannot find module 'non-existent-class' or its corresponding type declarations. (TS2307)
+```
+import NonExistentClass from 'non-existent-class'; // <-- TypeScript compiler error here
+```
+
 2. src/bad-file.ts:4:3 - Property 'nonExistentMethod' does not exist on type 'Object'. (TS2339)
+```
+const x = new Object();
+x.nonExistentMethod(); // <-- TypeScript compiler error here
+```
+
 
 Please fix all errors in a concise way.

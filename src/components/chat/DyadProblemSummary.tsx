@@ -7,13 +7,15 @@ import {
 } from "lucide-react";
 import type { Problem } from "@/ipc/ipc_types";
 
+type ProblemWithoutSnippet = Omit<Problem, "snippet">;
+
 interface DyadProblemSummaryProps {
   summary?: string;
   children?: React.ReactNode;
 }
 
 interface ProblemItemProps {
-  problem: Problem;
+  problem: ProblemWithoutSnippet;
   index: number;
 }
 
@@ -54,13 +56,13 @@ export const DyadProblemSummary: React.FC<DyadProblemSummaryProps> = ({
   const [isContentVisible, setIsContentVisible] = useState(false);
 
   // Parse problems from children content if available
-  const problems: Problem[] = React.useMemo(() => {
+  const problems: ProblemWithoutSnippet[] = React.useMemo(() => {
     if (!children || typeof children !== "string") return [];
 
     // Parse structured format with <problem> tags
     const problemTagRegex =
       /<problem\s+file="([^"]+)"\s+line="(\d+)"\s+column="(\d+)"\s+code="(\d+)">([^<]+)<\/problem>/g;
-    const problems: Problem[] = [];
+    const problems: ProblemWithoutSnippet[] = [];
     let match;
 
     while ((match = problemTagRegex.exec(children)) !== null) {

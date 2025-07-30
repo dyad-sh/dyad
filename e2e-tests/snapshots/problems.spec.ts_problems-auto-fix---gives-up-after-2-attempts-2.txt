@@ -442,10 +442,38 @@ role: user
 message: Fix these 5 TypeScript compile-time errors:
 
 1. src/bad-file.ts:1:30 - Cannot find module 'non-existent-class' or its corresponding type declarations. (TS2307)
+```
+import NonExistentClass from 'non-existent-class'; // <-- TypeScript compiler error here
+import NonExistentClass2 from 'non-existent-class';
+```
+
 2. src/bad-file.ts:2:31 - Cannot find module 'non-existent-class' or its corresponding type declarations. (TS2307)
+```
+import NonExistentClass from 'non-existent-class';
+import NonExistentClass2 from 'non-existent-class'; // <-- TypeScript compiler error here
+import NonExistentClass3 from 'non-existent-class';
+```
+
 3. src/bad-file.ts:3:31 - Cannot find module 'non-existent-class' or its corresponding type declarations. (TS2307)
+```
+import NonExistentClass2 from 'non-existent-class';
+import NonExistentClass3 from 'non-existent-class'; // <-- TypeScript compiler error here
+import NonExistentClass4 from 'non-existent-class';
+```
+
 4. src/bad-file.ts:4:31 - Cannot find module 'non-existent-class' or its corresponding type declarations. (TS2307)
+```
+import NonExistentClass3 from 'non-existent-class';
+import NonExistentClass4 from 'non-existent-class'; // <-- TypeScript compiler error here
+import NonExistentClass5 from 'non-existent-class';
+```
+
 5. src/bad-file.ts:5:31 - Cannot find module 'non-existent-class' or its corresponding type declarations. (TS2307)
+```
+import NonExistentClass4 from 'non-existent-class';
+import NonExistentClass5 from 'non-existent-class'; // <-- TypeScript compiler error here
+```
+
 
 Please fix all errors in a concise way.
 
@@ -464,9 +492,37 @@ role: user
 message: Fix these 5 TypeScript compile-time errors:
 
 1. src/bad-file.ts:1:30 - Cannot find module 'non-existent-class' or its corresponding type declarations. (TS2307)
+```
+import NonExistentClass from 'non-existent-class'; // <-- TypeScript compiler error here
+import NonExistentClass2 from 'non-existent-class';
+```
+
 2. src/bad-file.ts:2:31 - Cannot find module 'non-existent-class' or its corresponding type declarations. (TS2307)
+```
+import NonExistentClass from 'non-existent-class';
+import NonExistentClass2 from 'non-existent-class'; // <-- TypeScript compiler error here
+import NonExistentClass3 from 'non-existent-class';
+```
+
 3. src/bad-file.ts:3:31 - Cannot find module 'non-existent-class' or its corresponding type declarations. (TS2307)
+```
+import NonExistentClass2 from 'non-existent-class';
+import NonExistentClass3 from 'non-existent-class'; // <-- TypeScript compiler error here
+import NonExistentClass4 from 'non-existent-class';
+```
+
 4. src/bad-file.ts:4:31 - Cannot find module 'non-existent-class' or its corresponding type declarations. (TS2307)
+```
+import NonExistentClass3 from 'non-existent-class';
+import NonExistentClass4 from 'non-existent-class'; // <-- TypeScript compiler error here
+import NonExistentClass5 from 'non-existent-class';
+```
+
 5. src/bad-file.ts:5:31 - Cannot find module 'non-existent-class' or its corresponding type declarations. (TS2307)
+```
+import NonExistentClass4 from 'non-existent-class';
+import NonExistentClass5 from 'non-existent-class'; // <-- TypeScript compiler error here
+```
+
 
 Please fix all errors in a concise way.

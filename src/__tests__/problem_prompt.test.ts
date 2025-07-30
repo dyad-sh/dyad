@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import { createProblemFixPrompt } from "../shared/problem_prompt";
 import type { ProblemReport } from "../ipc/ipc_types";
 
+const snippet = `SNIPPET`;
+
 describe("problem_prompt", () => {
   describe("createProblemFixPrompt", () => {
     it("should return a message when no problems exist", () => {
@@ -22,6 +24,7 @@ describe("problem_prompt", () => {
             column: 23,
             message: "Property 'onClick' does not exist on type 'ButtonProps'.",
             code: 2339,
+            snippet,
           },
         ],
       };
@@ -39,6 +42,7 @@ describe("problem_prompt", () => {
             column: 23,
             message: "Property 'onClick' does not exist on type 'ButtonProps'.",
             code: 2339,
+            snippet,
           },
           {
             file: "src/components/Button.tsx",
@@ -47,6 +51,7 @@ describe("problem_prompt", () => {
             message:
               "Type 'string | undefined' is not assignable to type 'string'.",
             code: 2322,
+            snippet,
           },
           {
             file: "src/hooks/useApi.ts",
@@ -55,6 +60,7 @@ describe("problem_prompt", () => {
             message:
               "Argument of type 'unknown' is not assignable to parameter of type 'string'.",
             code: 2345,
+            snippet,
           },
           {
             file: "src/utils/helpers.ts",
@@ -63,6 +69,7 @@ describe("problem_prompt", () => {
             message:
               "Function lacks ending return statement and return type does not include 'undefined'.",
             code: 2366,
+            snippet,
           },
         ],
       };
@@ -81,6 +88,7 @@ describe("problem_prompt", () => {
             message:
               "Type '{ children: string; }' is missing the following properties from type 'UserProfileProps': user, onEdit",
             code: 2739,
+            snippet,
           },
           {
             file: "src/components/UserProfile.tsx",
@@ -88,6 +96,7 @@ describe("problem_prompt", () => {
             column: 15,
             message: "Object is possibly 'null'.",
             code: 2531,
+            snippet,
           },
           {
             file: "src/hooks/useLocalStorage.ts",
@@ -95,6 +104,7 @@ describe("problem_prompt", () => {
             column: 12,
             message: "Type 'string | null' is not assignable to type 'T'.",
             code: 2322,
+            snippet,
           },
           {
             file: "src/types/api.ts",
@@ -102,6 +112,7 @@ describe("problem_prompt", () => {
             column: 3,
             message: "Duplicate identifier 'UserRole'.",
             code: 2300,
+            snippet,
           },
         ],
       };
@@ -130,6 +141,7 @@ describe("problem_prompt", () => {
             column: 5,
             message: "Cannot find name 'consol'. Did you mean 'console'?",
             code: 2552,
+            snippet,
           },
         ],
       };
@@ -148,6 +160,7 @@ describe("problem_prompt", () => {
             message:
               "Cannot find module 'react-dom/client' or its corresponding type declarations.",
             code: 2307,
+            snippet,
           },
           {
             file: "src/components/Modal.tsx",
@@ -156,6 +169,7 @@ describe("problem_prompt", () => {
             message:
               "Property 'isOpen' does not exist on type 'IntrinsicAttributes & ModalProps'.",
             code: 2339,
+            snippet,
           },
         ],
       };
@@ -177,6 +191,7 @@ describe("problem_prompt", () => {
             message:
               "Property 'price' is missing in type '{ name: string; description: string; }' but required in type 'Product'.",
             code: 2741,
+            snippet,
           },
           // Incorrect event handler type
           {
@@ -186,6 +201,7 @@ describe("problem_prompt", () => {
             message:
               "Type '(value: string) => void' is not assignable to type 'ChangeEventHandler<HTMLInputElement>'.",
             code: 2322,
+            snippet,
           },
           // Async/await without Promise return type
           {
@@ -195,6 +211,7 @@ describe("problem_prompt", () => {
             message:
               "Function lacks ending return statement and return type does not include 'undefined'.",
             code: 2366,
+            snippet,
           },
           // Strict null check
           {
@@ -203,6 +220,7 @@ describe("problem_prompt", () => {
             column: 25,
             message: "Object is possibly 'undefined'.",
             code: 2532,
+            snippet,
           },
         ],
       };

@@ -5,12 +5,53 @@
 - img
 - text: "src/bad-file.ts Summary: This will get a TypeScript error."
 - paragraph: EOM
+- img
+- text: Auto-fix5 problems
+- img
+- img
+- text: file1.txt
+- img
+- text: file1.txt
+- paragraph: More EOM
+- paragraph: "[[dyad-dump-path=*]]"
+- img
+- text: Auto-fix5 problems
+- img
+- img
+- text: file1.txt
+- img
+- text: file1.txt
+- paragraph: More EOM
+- paragraph: "[[dyad-dump-path=*]]"
 - paragraph: "Fix these 3 TypeScript compile-time errors:"
 - list:
   - listitem: src/bad-file.tsx:2:1 - Cannot find name 'nonExistentFunction1'. (TS2304)
+- code: const App = () => <div>Minimal imported app</div>; nonExistentFunction1(); // <-- TypeScript compiler error here nonExistentFunction2();
+- list:
   - listitem: src/bad-file.tsx:3:1 - Cannot find name 'nonExistentFunction2'. (TS2304)
+- code: nonExistentFunction1(); nonExistentFunction2(); // <-- TypeScript compiler error here nonExistentFunction3();
+- list:
   - listitem: src/bad-file.tsx:4:1 - Cannot find name 'nonExistentFunction3'. (TS2304)
+- code: nonExistentFunction2(); nonExistentFunction3(); // <-- TypeScript compiler error here
 - paragraph: Please fix all errors in a concise way.
+- img
+- text: file1.txt
+- img
+- text: file1.txt
+- paragraph: More EOM
+- paragraph: "[[dyad-dump-path=*]]"
+- img
+- text: Auto-fix3 problems
+- img
+- img
+- text: file1.txt
+- img
+- text: file1.txt
+- paragraph: More EOM
+- paragraph: "[[dyad-dump-path=*]]"
+- img
+- text: Auto-fix3 problems
+- img
 - img
 - text: file1.txt
 - img

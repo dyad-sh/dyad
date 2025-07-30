@@ -109,6 +109,7 @@ const ProblemsSummary = ({ problemReport, appId }: ProblemsSummaryProps) => {
   const { problems } = problemReport;
   const totalErrors = problems.length;
   const [selectedChatId] = useAtom(selectedChatIdAtom);
+
   const handleFixAll = () => {
     if (!selectedChatId) {
       return;

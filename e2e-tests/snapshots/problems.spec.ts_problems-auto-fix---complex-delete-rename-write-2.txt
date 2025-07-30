@@ -426,6 +426,10 @@ role: user
 message: Fix these 1 TypeScript compile-time error:
 
 1. src/main.tsx:1:1 - Cannot find name 'finalMainTsxFileWithError'. (TS2304)
+```
+finalMainTsxFileWithError(); // <-- TypeScript compiler error here
+```
+
 
 Please fix all errors in a concise way.
 
@@ -449,5 +453,9 @@ role: user
 message: Fix these 1 TypeScript compile-time error:
 
 1. src/main.tsx:1:1 - Cannot find name 'finalMainTsxFileWithError'. (TS2304)
+```
+finalMainTsxFileWithError(); // <-- TypeScript compiler error here
+```
+
 
 Please fix all errors in a concise way.

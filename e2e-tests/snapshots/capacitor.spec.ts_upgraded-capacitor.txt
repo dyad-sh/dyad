@@ -7801,6 +7801,18 @@ export default {
 }
 
 
+=== vercel.json ===
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
+
+
 === vite.config.ts ===
 import { defineConfig } from "vite";
 import dyadComponentTagger from "@dyad-sh/react-vite-component-tagger";

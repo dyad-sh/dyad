@@ -1260,6 +1260,19 @@ export default {
 // File contents excluded from context
 </dyad-file>
 
+<dyad-file path="vercel.json">
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
+
+</dyad-file>
+
 <dyad-file path="vite.config.ts">
 import { defineConfig } from "vite";
 import dyadComponentTagger from "@dyad-sh/react-vite-component-tagger";

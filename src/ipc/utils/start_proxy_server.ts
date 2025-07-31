@@ -29,11 +29,6 @@ export async function startProxy(
   const worker = new Worker(
     path.resolve(__dirname, "..", "..", "worker", "proxy_server.js"),
     {
-      env: {
-        ...process.env, // inherit parent env
-
-        TARGET_URL: targetOrigin,
-      },
       workerData: {
         targetOrigin,
         port,

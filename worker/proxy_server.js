@@ -2,12 +2,7 @@
  * proxy.js – zero-dependency worker-based HTTP/WS forwarder
  */
 
-const {
-  Worker,
-  isMainThread,
-  parentPort,
-  workerData,
-} = require("worker_threads");
+const { parentPort, workerData } = require("worker_threads");
 
 const http = require("http");
 const https = require("https");
@@ -16,33 +11,14 @@ const { URL } = require("url");
 const fs = require("fs");
 const path = require("path");
 
-/* ─────────────────── configuration (main thread only) ─────────────────── */
-
-const LISTEN_HOST = "localhost";
-
-if (isMainThread) {
-  // Stand-alone mode: fork the worker and pass through the env as-is
-  const w = new Worker(__filename, {
-    workerData: {
-      targetOrigin: process.env.TARGET_URL, // may be undefined
-    },
-  });
-
-  w.on("message", (m) => console.log("[proxy-worker]", m));
-  w.on("error", (e) => console.error("[proxy-worker] error:", e));
-  w.on("exit", (c) => console.log("[proxy-worker] exited", c));
-  console.log("proxy worker launching …");
-  return; // do not execute the rest of the file in the main thread
-}
-
 /* ──────────────────────────── worker code ─────────────────────────────── */
-
-const LISTEN_PORT = process.env.LISTEN_PORT || workerData.port;
+const LISTEN_HOST = "localhost";
+const LISTEN_PORT = workerData.port;
 let rememberedOrigin = null; // e.g. "http://localhost:5173"
 
-/* ---------- pre-configure rememberedOrigin from env or workerData ------- */
+/* ---------- pre-configure rememberedOrigin from workerData ------- */
 {
-  const fixed = process.env.TARGET_URL || workerData?.targetOrigin;
+  const fixed = workerData?.targetOrigin;
   if (fixed) {
     try {
       rememberedOrigin = new URL(fixed).origin;
@@ -51,7 +27,7 @@ let rememberedOrigin = null; // e.g. "http://localhost:5173"
       );
     } catch {
       throw new Error(
-        `Invalid TARGET_URL "${fixed}". Must be absolute http/https URL.`,
+        `Invalid target origin "${fixed}". Must be absolute http/https URL.`,
       );
     }
   }
@@ -162,21 +138,7 @@ function injectHTML(buf) {
 
 /* ---------------- helper: build upstream URL from request -------------- */
 function buildTargetURL(clientReq) {
-  // Support the old "?url=" mechanism
-  const parsedLocal = new URL(clientReq.url, `http://${LISTEN_HOST}`);
-  const urlParam = parsedLocal.searchParams.get("url");
-  if (urlParam) {
-    const abs = new URL(urlParam);
-    if (!/^https?:$/.test(abs.protocol))
-      throw new Error("only http/https targets allowed");
-    rememberedOrigin = abs.origin; // remember for later
-    return abs;
-  }
-
-  if (!rememberedOrigin)
-    throw new Error(
-      "No upstream configured. Use ?url=… once or set TARGET_URL env var.",
-    );
+  if (!rememberedOrigin) throw new Error("No upstream configured.");
 
   // Forward to the remembered origin keeping path & query
   return new URL(clientReq.url, rememberedOrigin);

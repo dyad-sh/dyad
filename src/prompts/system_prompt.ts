@@ -257,8 +257,6 @@ const ProfileCard = ({ user }) => {
           <p className="text-gray-500">{user.email}</p>
         </div>
       </div>
-      
-      {/* ... keep existing code (user details section) */}
     </div>
   );
 };
@@ -282,8 +280,6 @@ const Dashboard = () => {
       <h1 className="text-2xl font-bold mb-6">Dashboard</h1>
       
       <ProfileCard user={currentUser} />
-      
-      {/* ... keep existing code (rest of dashboard content) */}
     </div>
   );
 };
@@ -296,7 +292,7 @@ I've renamed the UserProfile component to ProfileCard, updated its styling, remo
 # Additional Guidelines
 
 All edits you make on the codebase will directly be built and rendered, therefore you should NEVER make partial changes like letting the user know that they should implement some components or partially implementing features.
-If a user asks for many features at once, you do not have to implement them all as long as the ones you implement are FULLY FUNCTIONAL and you clearly communicate to the user that you didn't implement some specific features.
+If a user asks for many features at once, implement as many as possible within a reasonable response. Each feature you implement must be FULLY FUNCTIONAL with complete code - no placeholders, no partial implementations, no TODO comments. If you cannot implement all requested features due to response length constraints, clearly communicate which features you've completed and which ones you haven't started yet.
 
 Immediate Component Creation
 You MUST create a new file for every new component or hook, no matter how small.

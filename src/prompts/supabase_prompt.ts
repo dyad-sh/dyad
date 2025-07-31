@@ -104,68 +104,178 @@ The description should be a short description of what the code is doing and be u
 
 You will need to setup the database schema.
 
+### Row Level Security (RLS)
+
+**⚠️ SECURITY WARNING: ALWAYS ENABLE RLS ON ALL TABLES**
+
+Row Level Security (RLS) is MANDATORY for all tables in Supabase. Without RLS policies, ANY user can read, insert, update, or delete ANY data in your database, creating massive security vulnerabilities.
+
+#### RLS Best Practices (REQUIRED):
+
+1. **Enable RLS on Every Table:**
+<dyad-execute-sql description="Enable RLS on table">
+ALTER TABLE table_name ENABLE ROW LEVEL SECURITY;
+</dyad-execute-sql>
+
+2. **Create Appropriate Policies for Each Operation:**
+   - SELECT policies (who can read data)
+   - INSERT policies (who can create data)
+   - UPDATE policies (who can modify data)
+   - DELETE policies (who can remove data)
+
+3. **Common RLS Policy Patterns:**
+
+   **Public Read Access:** (ONLY USE THIS IF SPECIFICALLY REQUESTED)
+<dyad-execute-sql description="Create public read access policy">
+CREATE POLICY "Public read access" ON table_name FOR SELECT USING (true);
+</dyad-execute-sql>
+
+   **User-specific Data Access:**
+<dyad-execute-sql description="Create user-specific data access policy">
+CREATE POLICY "Users can only see their own data" ON table_name 
+FOR SELECT TO authenticated USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can only insert their own data" ON table_name 
+FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can only update their own data" ON table_name 
+FOR UPDATE TO authenticated USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can only delete their own data" ON table_name 
+FOR DELETE TO authenticated USING (auth.uid() = user_id);
+</dyad-execute-sql>
+
+#### RLS Policy Creation Template:
+
+When creating any table, ALWAYS follow this pattern:
+
+<dyad-execute-sql description="Create table">
+-- Create table
+CREATE TABLE table_name (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  -- other columns
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Enable RLS (REQUIRED)
+ALTER TABLE table_name ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for each operation needed
+CREATE POLICY "policy_name_select" ON table_name 
+FOR SELECT TO authenticated USING (auth.uid() = user_id);
+
+CREATE POLICY "policy_name_insert" ON table_name 
+FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "policy_name_update" ON table_name 
+FOR UPDATE TO authenticated USING (auth.uid() = user_id);
+
+CREATE POLICY "policy_name_delete" ON table_name 
+FOR DELETE TO authenticated USING (auth.uid() = user_id);
+</dyad-execute-sql>
+
+**REMINDER: If you create a table without proper RLS policies, any user can access, modify, or delete ALL data in that table.**
+
+#### Security Checklist for Every Database Operation:
+
+Before creating any table or database schema, verify:
+
+- ✅ RLS is enabled on the table
+- ✅ Appropriate SELECT policies are defined
+- ✅ Appropriate INSERT policies are defined
+- ✅ Appropriate UPDATE policies are defined  
+- ✅ Appropriate DELETE policies are defined
+- ✅ Policies follow the principle of least privilege
+- ✅ User can only access their own data (unless public access is specifically required)
+- ✅ All user-specific policies include \`TO authenticated\` for additional security
+
+**Remember: Without proper RLS policies, your database is completely exposed to unauthorized access.**
+
 ## Creating User Profiles
 
 If the user wants to create a user profile, use the following code:
 
-### Create profiles table in public schema
+### Create profiles table in public schema with proper RLS
 
-<dyad-execute-sql description="Create profiles table in public schema">
+<dyad-execute-sql description="Create profiles table with proper RLS security">
+-- Create profiles table
 CREATE TABLE public.profiles (
-  id UUID NOT NULL REFERENCES auth.users ON DELETE CASCADE,
+  id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   first_name TEXT,
   last_name TEXT,
+  avatar_url TEXT,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   PRIMARY KEY (id)
 );
 
-alter table public.profiles enable row level security;
+-- Enable RLS (REQUIRED for security)
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
-create policy "Public profiles are viewable by everyone." on profiles for select using ( true );
+-- Create secure policies for each operation
+CREATE POLICY "profiles_select_policy" ON public.profiles 
+FOR SELECT TO authenticated USING (auth.uid() = id);
 
-create policy "Users can insert their own profile." on profiles for insert with check ( auth.uid() = id );
+CREATE POLICY "profiles_insert_policy" ON public.profiles 
+FOR INSERT TO authenticated WITH CHECK (auth.uid() = id);
 
-create policy "Users can update own profile." on profiles for update using ( auth.uid() = id );
+CREATE POLICY "profiles_update_policy" ON public.profiles 
+FOR UPDATE TO authenticated USING (auth.uid() = id);
+
+CREATE POLICY "profiles_delete_policy" ON public.profiles 
+FOR DELETE TO authenticated USING (auth.uid() = id);
+</dyad-execute-sql>
+
+**SECURITY NOTE:** These policies ensure users can only access, modify, and delete their own profile data. If you need public profile visibility (e.g., for a social app), add an additional public read policy only if specifically required:
+
+<dyad-execute-sql description="Optional: Add public read access (only if needed)">
+-- ONLY add this policy if public profile viewing is specifically required
+CREATE POLICY "profiles_public_read_policy" ON public.profiles 
+FOR SELECT USING (true);
 </dyad-execute-sql>
 
 **IMPORTANT:** For security, Auth schema isn't exposed in the API. Create user tables in public schema to access user data via API.
 
 **CAUTION:** Only use primary keys as foreign key references for Supabase-managed schemas like auth.users. While PostgreSQL allows referencing columns backed by unique indexes, primary keys are guaranteed not to change.
 
-
 ## Auto-Update Profiles on Signup
-
 
 ### Function to insert profile when user signs up
 
 <dyad-execute-sql description="Create function to insert profile when user signs up">
-CREATE FUNCTION public.handle_new_user()
+CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER
 LANGUAGE PLPGSQL
 SECURITY DEFINER SET search_path = ''
 AS $$
 BEGIN
   INSERT INTO public.profiles (id, first_name, last_name)
-  VALUES (new.id, new.raw_user_meta_data ->> 'first_name', new.raw_user_meta_data ->> 'last_name');
+  VALUES (
+    new.id, 
+    new.raw_user_meta_data ->> 'first_name', 
+    new.raw_user_meta_data ->> 'last_name'
+  );
   RETURN new;
 END;
 $$;
 
 -- Trigger the function on user creation
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 </dyad-execute-sql>
 
 ## Server-side Edge Functions
 
-## When to Use Edge Functions
+### When to Use Edge Functions
 
 - Use edge functions for:
   - API-to-API communications
   - Handling sensitive API tokens or secrets
   - Typical backend work requiring server-side logic
 
-## Key Implementation Principles
+### Key Implementation Principles
 
 1. Location:
 - Write functions in the supabase/functions folder

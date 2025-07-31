@@ -49,6 +49,8 @@ interface ConnectedGitHubConnectorProps {
   appId: number;
   app: any;
   refreshApp: () => void;
+  triggerAutoSync?: boolean;
+  onAutoSyncComplete?: () => void;
 }
 
 interface UnconnectedGitHubConnectorProps {
@@ -56,7 +58,7 @@ interface UnconnectedGitHubConnectorProps {
   folderName: string;
   settings: any;
   refreshSettings: () => void;
-  refreshApp: () => void;
+  handleRepoSetupComplete: () => void;
   expanded?: boolean;
 }
 
@@ -64,6 +66,8 @@ function ConnectedGitHubConnector({
   appId,
   app,
   refreshApp,
+  triggerAutoSync,
+  onAutoSyncComplete,
 }: ConnectedGitHubConnectorProps) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -71,6 +75,7 @@ function ConnectedGitHubConnector({
   const [showForceDialog, setShowForceDialog] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [disconnectError, setDisconnectError] = useState<string | null>(null);
+  const autoSyncTriggeredRef = useRef(false);
 
   const handleDisconnectRepo = async () => {
     setIsDisconnecting(true);
@@ -85,32 +90,51 @@ function ConnectedGitHubConnector({
     }
   };
 
-  const handleSyncToGithub = async (force: boolean = false) => {
-    setIsSyncing(true);
-    setSyncError(null);
-    setSyncSuccess(false);
-    setShowForceDialog(false);
+  const handleSyncToGithub = useCallback(
+    async (force: boolean = false) => {
+      setIsSyncing(true);
+      setSyncError(null);
+      setSyncSuccess(false);
+      setShowForceDialog(false);
 
-    try {
-      const result = await IpcClient.getInstance().syncGithubRepo(appId, force);
-      if (result.success) {
-        setSyncSuccess(true);
-      } else {
-        setSyncError(result.error || "Failed to sync to GitHub.");
-        // If it's a push rejection error, show the force dialog
-        if (
-          result.error?.includes("rejected") ||
-          result.error?.includes("non-fast-forward")
-        ) {
-          // Don't show force dialog immediately, let user see the error first
+      try {
+        const result = await IpcClient.getInstance().syncGithubRepo(
+          appId,
+          force,
+        );
+        if (result.success) {
+          setSyncSuccess(true);
+        } else {
+          setSyncError(result.error || "Failed to sync to GitHub.");
+          // If it's a push rejection error, show the force dialog
+          if (
+            result.error?.includes("rejected") ||
+            result.error?.includes("non-fast-forward")
+          ) {
+            // Don't show force dialog immediately, let user see the error first
+          }
         }
+      } catch (err: any) {
+        setSyncError(err.message || "Failed to sync to GitHub.");
+      } finally {
+        setIsSyncing(false);
       }
-    } catch (err: any) {
-      setSyncError(err.message || "Failed to sync to GitHub.");
-    } finally {
-      setIsSyncing(false);
+    },
+    [appId],
+  );
+
+  // Auto-sync when triggerAutoSync prop is true
+  useEffect(() => {
+    if (triggerAutoSync && !autoSyncTriggeredRef.current) {
+      autoSyncTriggeredRef.current = true;
+      handleSyncToGithub(false).finally(() => {
+        onAutoSyncComplete?.();
+      });
+    } else if (!triggerAutoSync) {
+      // Reset the ref when triggerAutoSync becomes false
+      autoSyncTriggeredRef.current = false;
     }
-  };
+  }, [triggerAutoSync]); // Only depend on triggerAutoSync to avoid unnecessary re-runs
 
   return (
     <div className="w-full" data-testid="github-connected-repo">
@@ -268,7 +292,7 @@ function UnconnectedGitHubConnector({
   folderName,
   settings,
   refreshSettings,
-  refreshApp,
+  handleRepoSetupComplete,
   expanded,
 }: UnconnectedGitHubConnectorProps) {
   // --- Collapsible State ---
@@ -516,9 +540,10 @@ function UnconnectedGitHubConnector({
           appId,
         );
       }
+
       setCreateRepoSuccess(true);
       setRepoCheckError(null);
-      refreshApp();
+      handleRepoSetupComplete();
     } catch (err: any) {
       setCreateRepoError(
         err.message ||
@@ -882,6 +907,16 @@ export function GitHubConnector({
 }: GitHubConnectorProps) {
   const { app, refreshApp } = useLoadApp(appId);
   const { settings, refreshSettings } = useSettings();
+  const [pendingAutoSync, setPendingAutoSync] = useState(false);
+
+  const handleRepoSetupComplete = useCallback(() => {
+    setPendingAutoSync(true);
+    refreshApp();
+  }, [refreshApp]);
+
+  const handleAutoSyncComplete = useCallback(() => {
+    setPendingAutoSync(false);
+  }, []);
 
   if (app?.githubOrg && app?.githubRepo && appId) {
     return (
@@ -889,6 +924,8 @@ export function GitHubConnector({
         appId={appId}
         app={app}
         refreshApp={refreshApp}
+        triggerAutoSync={pendingAutoSync}
+        onAutoSyncComplete={handleAutoSyncComplete}
       />
     );
   } else {
@@ -898,7 +935,7 @@ export function GitHubConnector({
         folderName={folderName}
         settings={settings}
         refreshSettings={refreshSettings}
-        refreshApp={refreshApp}
+        handleRepoSetupComplete={handleRepoSetupComplete}
         expanded={expanded}
       />
     );

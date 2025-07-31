@@ -4,6 +4,7 @@ import { Globe } from "lucide-react";
 import { IpcClient } from "@/ipc/ipc_client";
 import { useSettings } from "@/hooks/useSettings";
 import { useLoadApp } from "@/hooks/useLoadApp";
+import { useVercelDeployments } from "@/hooks/useVercelDeployments";
 import {
   Select,
   SelectContent,
@@ -14,7 +15,7 @@ import {
 import {} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { App, VercelDeployment } from "@/ipc/ipc_types";
+import { App } from "@/ipc/ipc_types";
 
 interface VercelConnectorProps {
   appId: number | null;
@@ -46,41 +47,19 @@ function ConnectedVercelConnector({
   app,
   refreshApp,
 }: ConnectedVercelConnectorProps) {
-  const [isLoadingDeployments, setIsLoadingDeployments] = useState(false);
-  const [deploymentsError, setDeploymentsError] = useState<string | null>(null);
-  const [deployments, setDeployments] = useState<VercelDeployment[]>([]);
-  const [isDisconnecting, setIsDisconnecting] = useState(false);
-  const [disconnectError, setDisconnectError] = useState<string | null>(null);
+  const {
+    deployments,
+    isLoading: isLoadingDeployments,
+    error: deploymentsError,
+    getDeployments: handleGetDeployments,
+    disconnectProject,
+    isDisconnecting,
+    disconnectError,
+  } = useVercelDeployments(appId);
 
   const handleDisconnectProject = async () => {
-    setIsDisconnecting(true);
-    setDisconnectError(null);
-    try {
-      await IpcClient.getInstance().disconnectVercelProject({ appId });
-      refreshApp();
-    } catch (err: any) {
-      setDisconnectError(err.message || "Failed to disconnect project.");
-    } finally {
-      setIsDisconnecting(false);
-    }
-  };
-
-  const handleGetDeployments = async () => {
-    setIsLoadingDeployments(true);
-    setDeploymentsError(null);
-
-    try {
-      const result = await IpcClient.getInstance().getVercelDeployments({
-        appId,
-      });
-      setDeployments(result);
-    } catch (err: any) {
-      setDeploymentsError(
-        err.message || "Failed to get deployments from Vercel.",
-      );
-    } finally {
-      setIsLoadingDeployments(false);
-    }
+    await disconnectProject();
+    refreshApp();
   };
 
   return (
@@ -154,7 +133,7 @@ function ConnectedVercelConnector({
               Getting Deployments...
             </>
           ) : (
-            "Get Deployments"
+            "Refresh Deployments"
           )}
         </Button>
         <Button
@@ -193,7 +172,7 @@ function ConnectedVercelConnector({
                       {deployment.readyState}
                     </span>
                     <span className="text-sm text-gray-600 dark:text-gray-300">
-                      {new Date(deployment.createdAt * 1000).toLocaleString()}
+                      {new Date(deployment.createdAt).toLocaleString()}
                     </span>
                   </div>
                   <a

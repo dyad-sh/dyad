@@ -15,6 +15,7 @@ import {
   CreateVercelProjectParams,
   IsVercelProjectAvailableParams,
   SaveVercelAccessTokenParams,
+  VercelDeployment,
   VercelProject,
 } from "../ipc_types";
 import { ConnectToExistingVercelProjectParams } from "../ipc_types";
@@ -400,16 +401,7 @@ async function handleConnectToExistingProject(
 async function handleGetVercelDeployments(
   event: IpcMainInvokeEvent,
   { appId }: GetVercelDeploymentsParams,
-): Promise<
-  {
-    uid: string;
-    url: string;
-    state: string;
-    createdAt: number;
-    target: string;
-    readyState: string;
-  }[]
-> {
+): Promise<VercelDeployment[]> {
   try {
     const settings = readSettings();
     const accessToken = settings.vercelAccessToken?.value;

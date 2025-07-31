@@ -44,13 +44,18 @@ const ALLOWED_EXTENSIONS = [
 ];
 
 // Directories to always exclude
-const EXCLUDED_DIRS = ["node_modules", ".git", "dist", "build"];
+// Normally these files are excluded by the gitignore, but sometimes
+// people don't have their gitignore setup correctly so we want to
+// be conservative and never include these directories.
+//
+// ex: https://github.com/dyad-sh/dyad/issues/727
+const EXCLUDED_DIRS = ["node_modules", ".git", "dist", "build", ".next"];
 
 // Files to always exclude
 const EXCLUDED_FILES = ["pnpm-lock.yaml", "package-lock.json"];
 
 // Files to always include, regardless of extension
-const ALWAYS_INCLUDE_FILES = ["package.json"];
+const ALWAYS_INCLUDE_FILES = ["package.json", ".gitignore"];
 
 // File patterns to omit (contents will be replaced with a placeholder)
 //

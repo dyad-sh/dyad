@@ -64,6 +64,7 @@ import { ChatErrorBox } from "./ChatErrorBox";
 import { selectedComponentPreviewAtom } from "@/atoms/previewAtoms";
 import { SelectedComponentDisplay } from "./SelectedComponentDisplay";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
+import { LexicalChatInput } from "./LexicalChatInput";
 
 const showTokenBarAtom = atom(false);
 
@@ -307,15 +308,13 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           <DragDropOverlay isDraggingOver={isDraggingOver} />
 
           <div className="flex items-start space-x-2 ">
-            <textarea
-              ref={textareaRef}
+            <LexicalChatInput
               value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyPress={handleKeyPress}
+              onChange={setInputValue}
+              onSubmit={handleSubmit}
               onPaste={handlePaste}
               placeholder="Ask Dyad to build..."
-              className="flex-1 p-2 focus:outline-none overflow-y-auto min-h-[40px] max-h-[200px]"
-              style={{ resize: "none" }}
+              disabled={isStreaming}
             />
 
             {isStreaming ? (

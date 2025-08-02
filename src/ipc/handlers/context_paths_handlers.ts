@@ -39,10 +39,10 @@ export function registerContextPathsHandlers() {
       const results: ContextPathResults = {
         contextPaths: [],
         smartContextAutoIncludes: [],
+        excludePaths: [],
       };
-      const { contextPaths, smartContextAutoIncludes } = validateChatContext(
-        app.chatContext,
-      );
+      const { contextPaths, smartContextAutoIncludes, excludePaths } =
+        validateChatContext(app.chatContext);
       for (const contextPath of contextPaths) {
         const { formattedOutput, files } = await extractCodebase({
           appPath,
@@ -72,6 +72,23 @@ export function registerContextPathsHandlers() {
 
         results.smartContextAutoIncludes.push({
           ...contextPath,
+          files: files.length,
+          tokens: totalTokens,
+        });
+      }
+
+      for (const excludePath of excludePaths || []) {
+        const { formattedOutput, files } = await extractCodebase({
+          appPath,
+          chatContext: {
+            contextPaths: [excludePath],
+            smartContextAutoIncludes: [],
+          },
+        });
+        const totalTokens = estimateTokens(formattedOutput);
+
+        results.excludePaths.push({
+          ...excludePath,
           files: files.length,
           tokens: totalTokens,
         });

@@ -16,29 +16,33 @@ import {
 } from "./ui/tooltip";
 import { useSettings } from "@/hooks/useSettings";
 import { useContextPaths } from "@/hooks/useContextPaths";
+import type { ContextPathResult } from "@/lib/schemas";
 
 export function ContextFilesPicker() {
   const { settings } = useSettings();
   const {
     contextPaths,
     smartContextAutoIncludes,
+    excludePaths,
     updateContextPaths,
     updateSmartContextAutoIncludes,
+    updateExcludePaths,
   } = useContextPaths();
   const [isOpen, setIsOpen] = useState(false);
   const [newPath, setNewPath] = useState("");
   const [newAutoIncludePath, setNewAutoIncludePath] = useState("");
+  const [newExcludePath, setNewExcludePath] = useState("");
 
   const addPath = () => {
     if (
       newPath.trim() === "" ||
-      contextPaths.find((p) => p.globPath === newPath)
+      contextPaths.find((p: ContextPathResult) => p.globPath === newPath)
     ) {
       setNewPath("");
       return;
     }
     const newPaths = [
-      ...contextPaths.map(({ globPath }) => ({ globPath })),
+      ...contextPaths.map(({ globPath }: ContextPathResult) => ({ globPath })),
       {
         globPath: newPath,
       },
@@ -49,21 +53,25 @@ export function ContextFilesPicker() {
 
   const removePath = (pathToRemove: string) => {
     const newPaths = contextPaths
-      .filter((p) => p.globPath !== pathToRemove)
-      .map(({ globPath }) => ({ globPath }));
+      .filter((p: ContextPathResult) => p.globPath !== pathToRemove)
+      .map(({ globPath }: ContextPathResult) => ({ globPath }));
     updateContextPaths(newPaths);
   };
 
   const addAutoIncludePath = () => {
     if (
       newAutoIncludePath.trim() === "" ||
-      smartContextAutoIncludes.find((p) => p.globPath === newAutoIncludePath)
+      smartContextAutoIncludes.find(
+        (p: ContextPathResult) => p.globPath === newAutoIncludePath,
+      )
     ) {
       setNewAutoIncludePath("");
       return;
     }
     const newPaths = [
-      ...smartContextAutoIncludes.map(({ globPath }) => ({ globPath })),
+      ...smartContextAutoIncludes.map(({ globPath }: ContextPathResult) => ({
+        globPath,
+      })),
       {
         globPath: newAutoIncludePath,
       },
@@ -74,9 +82,34 @@ export function ContextFilesPicker() {
 
   const removeAutoIncludePath = (pathToRemove: string) => {
     const newPaths = smartContextAutoIncludes
-      .filter((p) => p.globPath !== pathToRemove)
-      .map(({ globPath }) => ({ globPath }));
+      .filter((p: ContextPathResult) => p.globPath !== pathToRemove)
+      .map(({ globPath }: ContextPathResult) => ({ globPath }));
     updateSmartContextAutoIncludes(newPaths);
+  };
+
+  const addExcludePath = () => {
+    if (
+      newExcludePath.trim() === "" ||
+      excludePaths.find((p: ContextPathResult) => p.globPath === newExcludePath)
+    ) {
+      setNewExcludePath("");
+      return;
+    }
+    const newPaths = [
+      ...excludePaths.map(({ globPath }: ContextPathResult) => ({ globPath })),
+      {
+        globPath: newExcludePath,
+      },
+    ];
+    updateExcludePaths(newPaths);
+    setNewExcludePath("");
+  };
+
+  const removeExcludePath = (pathToRemove: string) => {
+    const newPaths = excludePaths
+      .filter((p: ContextPathResult) => p.globPath !== pathToRemove)
+      .map(({ globPath }: ContextPathResult) => ({ globPath }));
+    updateExcludePaths(newPaths);
   };
 
   const isSmartContextEnabled =
@@ -100,7 +133,10 @@ export function ContextFilesPicker() {
         <TooltipContent>Codebase Context</TooltipContent>
       </Tooltip>
 
-      <PopoverContent className="w-96" align="start">
+      <PopoverContent
+        className="w-96 max-h-[80vh] overflow-y-auto"
+        align="start"
+      >
         <div className="relative space-y-4">
           <div>
             <h3 className="font-medium">Codebase Context</h3>
@@ -153,7 +189,7 @@ export function ContextFilesPicker() {
           <TooltipProvider>
             {contextPaths.length > 0 ? (
               <div className="space-y-2">
-                {contextPaths.map((p) => (
+                {contextPaths.map((p: ContextPathResult) => (
                   <div
                     key={p.globPath}
                     className="flex items-center justify-between gap-2 rounded-md border p-2"
@@ -196,6 +232,91 @@ export function ContextFilesPicker() {
               </div>
             )}
           </TooltipProvider>
+
+          <div className="pt-2">
+            <div>
+              <h3 className="font-medium">Exclude Paths</h3>
+              <p className="text-sm text-muted-foreground">
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="flex items-center gap-1 cursor-help">
+                        These files will be excluded from the context.{" "}
+                        <InfoIcon className="ml-2 size-4" />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-[300px]">
+                      <p>
+                        Exclude paths take precedence - files that match both
+                        include and exclude patterns will be excluded.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </p>
+            </div>
+
+            <div className="flex w-full max-w-sm items-center space-x-2 mt-4">
+              <Input
+                data-testid="exclude-context-files-input"
+                type="text"
+                placeholder="node_modules/**/*"
+                value={newExcludePath}
+                onChange={(e) => setNewExcludePath(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    addExcludePath();
+                  }
+                }}
+              />
+              <Button
+                type="submit"
+                onClick={addExcludePath}
+                data-testid="exclude-context-files-add-button"
+              >
+                Add
+              </Button>
+            </div>
+
+            <TooltipProvider>
+              {excludePaths.length > 0 && (
+                <div className="space-y-2 mt-4">
+                  {excludePaths.map((p: ContextPathResult) => (
+                    <div
+                      key={p.globPath}
+                      className="flex items-center justify-between gap-2 rounded-md border p-2 border-red-200"
+                    >
+                      <div className="flex flex-1 flex-col overflow-hidden">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="truncate font-mono text-sm text-red-600">
+                              {p.globPath}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{p.globPath}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                        <span className="text-xs text-muted-foreground">
+                          {p.files} files, ~{p.tokens} tokens
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeExcludePath(p.globPath)}
+                          data-testid="exclude-context-files-remove-button"
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </TooltipProvider>
+          </div>
 
           {isSmartContextEnabled && (
             <div className="pt-2">
@@ -247,7 +368,7 @@ export function ContextFilesPicker() {
               <TooltipProvider>
                 {smartContextAutoIncludes.length > 0 && (
                   <div className="space-y-2 mt-4">
-                    {smartContextAutoIncludes.map((p) => (
+                    {smartContextAutoIncludes.map((p: ContextPathResult) => (
                       <div
                         key={p.globPath}
                         className="flex items-center justify-between gap-2 rounded-md border p-2"

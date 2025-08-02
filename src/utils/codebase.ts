@@ -61,13 +61,7 @@ const ALWAYS_INCLUDE_FILES = ["package.json", "vercel.json", ".gitignore"];
 //
 // Why are we not using path.join here?
 // Because we have already normalized the path to use /.
-const OMITTED_FILES = [
-  "src/components/ui",
-  "eslint.config",
-  "tsconfig.json",
-
-  ".env",
-];
+const OMITTED_FILES = ["src/components/ui", "eslint.config", "tsconfig.json"];
 
 // Maximum file size to include (in bytes) - 1MB
 const MAX_FILE_SIZE = 1000 * 1024;
@@ -337,6 +331,24 @@ function shouldReadFileContents({
   );
 }
 
+function shouldReadFileContentsForSmartContext({
+  filePath,
+}: {
+  filePath: string;
+}): boolean {
+  const ext = path.extname(filePath).toLowerCase();
+  const fileName = path.basename(filePath);
+
+  // Intentionally do NOT check for omitted files because
+  // there's a chance the AI will want to know these files
+  // and the cost for processing with smart context is relatively low
+
+  // Check if file should be included based on extension or filename
+  return (
+    ALLOWED_EXTENSIONS.includes(ext) || ALWAYS_INCLUDE_FILES.includes(fileName)
+  );
+}
+
 /**
  * Format a file for inclusion in the codebase extract
  */
@@ -521,7 +533,11 @@ export async function extractCodebase({
 
     // Determine file content based on whether we should read it
     let fileContent: string;
-    if (!shouldReadFileContents({ filePath: file, normalizedRelativePath })) {
+    if (
+      !shouldReadFileContentsForSmartContext({
+        filePath: file,
+      })
+    ) {
       fileContent = OMITTED_FILE_CONTENT;
     } else {
       const readContent = await readFileWithCache(file, virtualFileSystem);

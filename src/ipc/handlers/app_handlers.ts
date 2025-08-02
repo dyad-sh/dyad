@@ -47,6 +47,7 @@ import { safeSend } from "../utils/safe_sender";
 import { normalizePath } from "../../../shared/normalizePath";
 import { isServerFunction } from "@/supabase_admin/supabase_utils";
 import { getVercelTeamSlug } from "../utils/vercel_utils";
+import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 
 async function copyDir(
   source: string,
@@ -101,7 +102,7 @@ async function executeAppLocalNode({
   appId: number;
   event: Electron.IpcMainInvokeEvent;
 }): Promise<void> {
-  const process = spawn(
+  const spawnedProcess = spawn(
     "(pnpm install && pnpm run dev --port 32100) || (npm install --legacy-peer-deps && npm run dev -- --port 32100)",
     [],
     {
@@ -113,11 +114,11 @@ async function executeAppLocalNode({
   );
 
   // Check if process spawned correctly
-  if (!process.pid) {
+  if (!spawnedProcess.pid) {
     // Attempt to capture any immediate errors if possible
     let errorOutput = "";
-    process.stderr?.on("data", (data) => (errorOutput += data));
-    await new Promise((resolve) => process.on("error", resolve)); // Wait for error event
+    spawnedProcess.stderr?.on("data", (data) => (errorOutput += data));
+    await new Promise((resolve) => spawnedProcess.on("error", resolve)); // Wait for error event
     throw new Error(
       `Failed to spawn process for app ${appId}. Error: ${
         errorOutput || "Unknown spawn error"
@@ -127,35 +128,63 @@ async function executeAppLocalNode({
 
   // Increment the counter and store the process reference with its ID
   const currentProcessId = processCounter.increment();
-  runningApps.set(appId, { process, processId: currentProcessId });
+  runningApps.set(appId, {
+    process: spawnedProcess,
+    processId: currentProcessId,
+  });
 
   // Log output
-  process.stdout?.on("data", async (data) => {
+  spawnedProcess.stdout?.on("data", async (data) => {
     const message = util.stripVTControlCharacters(data.toString());
-    logger.debug(`App ${appId} (PID: ${process.pid}) stdout: ${message}`);
+    logger.debug(
+      `App ${appId} (PID: ${spawnedProcess.pid}) stdout: ${message}`,
+    );
 
-    safeSend(event.sender, "app:output", {
-      type: "stdout",
-      message,
-      appId,
-    });
-    const urlMatch = message.match(/(https?:\/\/localhost:\d+\/?)/);
-    if (urlMatch) {
-      proxyWorker = await startProxy(urlMatch[1], {
-        onStarted: (proxyUrl) => {
-          safeSend(event.sender, "app:output", {
-            type: "stdout",
-            message: `[dyad-proxy-server]started=[${proxyUrl}] original=[${urlMatch[1]}]`,
-            appId,
-          });
-        },
+    // Check if this is an interactive prompt requiring user input
+    const inputRequestPattern = /\s*›\s*\([yY]\/[nN]\)\s*$/;
+    const isInputRequest = inputRequestPattern.test(message);
+    if (message.includes("created or renamed from another")) {
+      spawnedProcess.stdin.write(`\r\n`);
+      logger.info(
+        `App ${appId} (PID: ${spawnedProcess.pid}) wrote enter to stdin to automatically respond to drizzle push input`,
+      );
+    }
+
+    if (isInputRequest) {
+      // Send special input-requested event for interactive prompts
+      safeSend(event.sender, "app:output", {
+        type: "input-requested",
+        message,
+        appId,
       });
+    } else {
+      // Normal stdout handling
+      safeSend(event.sender, "app:output", {
+        type: "stdout",
+        message,
+        appId,
+      });
+
+      const urlMatch = message.match(/(https?:\/\/localhost:\d+\/?)/);
+      if (urlMatch) {
+        proxyWorker = await startProxy(urlMatch[1], {
+          onStarted: (proxyUrl) => {
+            safeSend(event.sender, "app:output", {
+              type: "stdout",
+              message: `[dyad-proxy-server]started=[${proxyUrl}] original=[${urlMatch[1]}]`,
+              appId,
+            });
+          },
+        });
+      }
     }
   });
 
-  process.stderr?.on("data", (data) => {
+  spawnedProcess.stderr?.on("data", (data) => {
     const message = util.stripVTControlCharacters(data.toString());
-    logger.error(`App ${appId} (PID: ${process.pid}) stderr: ${message}`);
+    logger.error(
+      `App ${appId} (PID: ${spawnedProcess.pid}) stderr: ${message}`,
+    );
     safeSend(event.sender, "app:output", {
       type: "stderr",
       message,
@@ -164,19 +193,19 @@ async function executeAppLocalNode({
   });
 
   // Handle process exit/close
-  process.on("close", (code, signal) => {
+  spawnedProcess.on("close", (code, signal) => {
     logger.log(
-      `App ${appId} (PID: ${process.pid}) process closed with code ${code}, signal ${signal}.`,
+      `App ${appId} (PID: ${spawnedProcess.pid}) process closed with code ${code}, signal ${signal}.`,
     );
-    removeAppIfCurrentProcess(appId, process);
+    removeAppIfCurrentProcess(appId, spawnedProcess);
   });
 
   // Handle errors during process lifecycle (e.g., command not found)
-  process.on("error", (err) => {
+  spawnedProcess.on("error", (err) => {
     logger.error(
-      `Error in app ${appId} (PID: ${process.pid}) process: ${err.message}`,
+      `Error in app ${appId} (PID: ${spawnedProcess.pid}) process: ${err.message}`,
     );
-    removeAppIfCurrentProcess(appId, process);
+    removeAppIfCurrentProcess(appId, spawnedProcess);
     // Note: We don't throw here as the error is asynchronous. The caller got a success response already.
     // Consider adding ipcRenderer event emission to notify UI of the error.
   });
@@ -633,6 +662,23 @@ export function registerAppHandlers() {
         throw new Error("Invalid file path");
       }
 
+      if (app.neonProjectId && app.neonDevelopmentBranchId) {
+        try {
+          await storeDbTimestampAtCurrentVersion({
+            appId: app.id,
+          });
+        } catch (error) {
+          logger.error(
+            "Error storing Neon timestamp at current version:",
+            error,
+          );
+          throw new Error(
+            "Could not store Neon timestamp at current version; database versioning functionality is not working: " +
+              error,
+          );
+        }
+      }
+
       // Ensure directory exists
       const dirPath = path.dirname(fullPath);
       await fsPromises.mkdir(dirPath, { recursive: true });
@@ -968,4 +1014,30 @@ export function registerAppHandlers() {
       }
     });
   });
+
+  handle(
+    "respond-to-app-input",
+    async (_, { appId, response }: { appId: number; response: string }) => {
+      const appInfo = runningApps.get(appId);
+
+      if (!appInfo) {
+        throw new Error(`App ${appId} is not running`);
+      }
+
+      const { process } = appInfo;
+
+      if (!process.stdin) {
+        throw new Error(`App ${appId} process has no stdin available`);
+      }
+
+      try {
+        // Write the response to stdin with a newline
+        process.stdin.write(`${response}\n`);
+        logger.debug(`Sent response '${response}' to app ${appId} stdin`);
+      } catch (error: any) {
+        logger.error(`Error sending response to app ${appId}:`, error);
+        throw new Error(`Failed to send response to app: ${error.message}`);
+      }
+    },
+  );
 }

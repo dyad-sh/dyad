@@ -51,6 +51,12 @@ import type {
   VercelProject,
   UpdateChatParams,
   FileAttachment,
+  CreateNeonProjectParams,
+  NeonProject,
+  GetNeonProjectParams,
+  GetNeonProjectResponse,
+  RevertVersionResponse,
+  RevertVersionParams,
 } from "./ipc_types";
 import type { Template } from "../shared/templates";
 import type { AppChatContext, ProposalResult } from "@/lib/schemas";
@@ -412,6 +418,22 @@ export class IpcClient {
     }
   }
 
+  // Respond to an app input request (y/n prompts)
+  public async respondToAppInput(
+    appId: number,
+    response: string,
+  ): Promise<void> {
+    try {
+      await this.ipcRenderer.invoke("respond-to-app-input", {
+        appId,
+        response,
+      });
+    } catch (error) {
+      showError(error);
+      throw error;
+    }
+  }
+
   // Get allow-listed environment variables
   public async getEnvVars(): Promise<Record<string, string | undefined>> {
     try {
@@ -437,17 +459,10 @@ export class IpcClient {
   }
 
   // Revert to a specific version
-  public async revertVersion({
-    appId,
-    previousVersionId,
-  }: {
-    appId: number;
-    previousVersionId: string;
-  }): Promise<void> {
-    await this.ipcRenderer.invoke("revert-version", {
-      appId,
-      previousVersionId,
-    });
+  public async revertVersion(
+    params: RevertVersionParams,
+  ): Promise<RevertVersionResponse> {
+    return this.ipcRenderer.invoke("revert-version", params);
   }
 
   // Checkout a specific version without creating a revert commit
@@ -793,6 +808,34 @@ export class IpcClient {
   }
 
   // --- End Supabase Management ---
+
+  // --- Neon Management ---
+  public async fakeHandleNeonConnect(): Promise<void> {
+    await this.ipcRenderer.invoke("neon:fake-connect");
+  }
+
+  public async createNeonProject(
+    params: CreateNeonProjectParams,
+  ): Promise<NeonProject> {
+    return this.ipcRenderer.invoke("neon:create-project", params);
+  }
+
+  public async getNeonProject(
+    params: GetNeonProjectParams,
+  ): Promise<GetNeonProjectResponse> {
+    return this.ipcRenderer.invoke("neon:get-project", params);
+  }
+
+  // --- End Neon Management ---
+
+  // --- Portal Management ---
+  public async portalMigrateCreate(params: {
+    appId: number;
+  }): Promise<{ output: string }> {
+    return this.ipcRenderer.invoke("portal:migrate-create", params);
+  }
+
+  // --- End Portal Management ---
 
   public async getSystemDebugInfo(): Promise<SystemDebugInfo> {
     return this.ipcRenderer.invoke("get-system-debug-info");

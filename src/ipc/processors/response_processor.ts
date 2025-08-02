@@ -26,6 +26,8 @@ import {
   getDyadAddDependencyTags,
   getDyadExecuteSqlTags,
 } from "../utils/dyad_tag_parser";
+import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
+
 import { FileUploadsState } from "../utils/file_uploads_state";
 
 const readFile = fs.promises.readFile;
@@ -78,6 +80,23 @@ export async function processFullResponseActions(
   if (!chatWithApp || !chatWithApp.app) {
     logger.error(`No app found for chat ID: ${chatId}`);
     return {};
+  }
+
+  if (
+    chatWithApp.app.neonProjectId &&
+    chatWithApp.app.neonDevelopmentBranchId
+  ) {
+    try {
+      await storeDbTimestampAtCurrentVersion({
+        appId: chatWithApp.app.id,
+      });
+    } catch (error) {
+      logger.error("Error creating Neon branch at current version:", error);
+      throw new Error(
+        "Could not create Neon branch; database versioning functionality is not working: " +
+          error,
+      );
+    }
   }
 
   const settings: UserSettings = readSettings();

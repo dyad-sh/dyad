@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
 import { relations } from "drizzle-orm";
 
 export const apps = sqliteTable("apps", {
@@ -16,6 +16,9 @@ export const apps = sqliteTable("apps", {
   githubRepo: text("github_repo"),
   githubBranch: text("github_branch"),
   supabaseProjectId: text("supabase_project_id"),
+  neonProjectId: text("neon_project_id"),
+  neonDevelopmentBranchId: text("neon_development_branch_id"),
+  neonPreviewBranchId: text("neon_preview_branch_id"),
   vercelProjectId: text("vercel_project_id"),
   vercelProjectName: text("vercel_project_name"),
   vercelTeamId: text("vercel_team_id"),
@@ -54,6 +57,7 @@ export const messages = sqliteTable("messages", {
 // Define relations
 export const appsRelations = relations(apps, ({ many }) => ({
   chats: many(chats),
+  versions: many(versions),
 }));
 
 export const chatsRelations = relations(chats, ({ many, one }) => ({
@@ -124,3 +128,32 @@ export const languageModelsRelations = relations(
     }),
   }),
 );
+
+export const versions = sqliteTable(
+  "versions",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    appId: integer("app_id")
+      .notNull()
+      .references(() => apps.id, { onDelete: "cascade" }),
+    commitHash: text("commit_hash").notNull(),
+    neonDbTimestamp: text("neon_db_timestamp"),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [
+    // Unique constraint to prevent duplicate versions
+    unique("versions_app_commit_unique").on(table.appId, table.commitHash),
+  ],
+);
+
+export const versionsRelations = relations(versions, ({ one }) => ({
+  app: one(apps, {
+    fields: [versions.appId],
+    references: [apps.id],
+  }),
+}));

@@ -30,6 +30,8 @@ import { invalidateAppQuery } from "@/hooks/useLoadApp";
 import { useQueryClient } from "@tanstack/react-query";
 
 import type { FileAttachment } from "@/ipc/ipc_types";
+import { NEON_TEMPLATE_IDS } from "@/shared/templates";
+import { neonTemplateHook } from "@/client_logic/template_hook";
 
 // Adding an export for attachments
 export interface HomeSubmitOptions {
@@ -120,6 +122,15 @@ export default function HomePage() {
       const result = await IpcClient.getInstance().createApp({
         name: generateCuteAppName(),
       });
+      if (
+        settings?.selectedTemplateId &&
+        NEON_TEMPLATE_IDS.has(settings.selectedTemplateId)
+      ) {
+        await neonTemplateHook({
+          appId: result.app.id,
+          appName: result.app.name,
+        });
+      }
 
       // Stream the message with attachments
       streamMessage({

@@ -3,6 +3,7 @@ import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { GitHubConnector } from "@/components/GitHubConnector";
 import { VercelConnector } from "@/components/VercelConnector";
+import { PortalMigrate } from "@/components/PortalMigrate";
 import { IpcClient } from "@/ipc/ipc_client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -77,6 +78,9 @@ export const PublishPanel = () => {
             Publish App
           </h1>
         </div>
+
+        {/* Portal Section - Show only if app has neon project */}
+        {app.neonProjectId && <PortalMigrate appId={selectedAppId} />}
 
         {/* GitHub Section */}
         <Card>

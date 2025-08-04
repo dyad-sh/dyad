@@ -5,6 +5,8 @@ export interface Template {
   imageUrl: string;
   githubUrl?: string;
   isOfficial: boolean;
+  isExperimental?: boolean;
+  requiresNeon?: boolean;
 }
 
 // API Template interface from the external API
@@ -26,6 +28,9 @@ export const DEFAULT_TEMPLATE = {
   isOfficial: true,
 };
 
+const PORTAL_MINI_STORE_ID = "portal-mini-store";
+export const NEON_TEMPLATE_IDS = new Set<string>([PORTAL_MINI_STORE_ID]);
+
 export const localTemplatesData: Template[] = [
   DEFAULT_TEMPLATE,
   {
@@ -36,5 +41,16 @@ export const localTemplatesData: Template[] = [
       "https://github.com/user-attachments/assets/96258e4f-abce-4910-a62a-a9dff77965f2",
     githubUrl: "https://github.com/dyad-sh/nextjs-template",
     isOfficial: true,
+  },
+  {
+    id: PORTAL_MINI_STORE_ID,
+    title: "Portal: Mini Store Template",
+    description: "Uses Neon DB, Payload CMS, Next.js",
+    imageUrl:
+      "https://github.com/user-attachments/assets/ed86f322-40bf-4fd5-81dc-3b1d8a16e12b",
+    githubUrl: "https://github.com/dyad-sh/portal-mini-store-template",
+    isOfficial: true,
+    isExperimental: true,
+    requiresNeon: true,
   },
 ];

@@ -456,7 +456,10 @@ ${componentSnippet}
             (await getSupabaseContext({
               supabaseProjectId: updatedChat.app.supabaseProjectId,
             }));
-        } else {
+        } else if (
+          // Neon projects don't need Supabase.
+          !updatedChat.app?.neonProjectId
+        ) {
           systemPrompt += "\n\n" + SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT;
         }
         const isSummarizeIntent = req.prompt.startsWith(

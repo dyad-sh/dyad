@@ -413,7 +413,20 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
   // Display loading state
   if (loading) {
-    return <div className="p-4 dark:text-gray-300">Loading app preview...</div>;
+    return (
+      <div className="flex flex-col h-full relative">
+        <div className="absolute inset-0 flex flex-col items-center justify-center space-y-4 bg-gray-50 dark:bg-gray-950">
+          <div className="relative w-5 h-5 animate-spin">
+            <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-2 h-2 bg-primary rounded-full"></div>
+            <div className="absolute bottom-0 left-0 w-2 h-2 bg-primary rounded-full opacity-80"></div>
+            <div className="absolute bottom-0 right-0 w-2 h-2 bg-primary rounded-full opacity-60"></div>
+          </div>
+          <p className="text-gray-600 dark:text-gray-300">
+            Preparing app preview...
+          </p>
+        </div>
+      </div>
+    );
   }
 
   // Display message if no app is selected
@@ -565,7 +578,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           <div className="absolute inset-0 flex flex-col items-center justify-center space-y-4 bg-gray-50 dark:bg-gray-950">
             <Loader2 className="w-8 h-8 animate-spin text-gray-400 dark:text-gray-500" />
             <p className="text-gray-600 dark:text-gray-300">
-              Starting up your app...
+              Starting your app server...
             </p>
           </div>
         ) : (

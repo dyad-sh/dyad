@@ -3,10 +3,15 @@ import type { ProblemReport, Problem } from "../../shared/tsc_types";
 export type { ProblemReport, Problem };
 
 export interface AppOutput {
-  type: "stdout" | "stderr" | "info" | "client-error";
+  type: "stdout" | "stderr" | "info" | "client-error" | "input-requested";
   message: string;
   timestamp: number;
   appId: number;
+}
+
+export interface RespondToAppInputParams {
+  appId: number;
+  response: string;
 }
 
 export interface ListAppsResponse {
@@ -61,6 +66,7 @@ export interface Message {
   content: string;
   approvalState?: "approved" | "rejected" | null;
   commitHash?: string | null;
+  dbTimestamp?: string | null;
 }
 
 export interface Chat {
@@ -68,6 +74,7 @@ export interface Chat {
   title: string;
   messages: Message[];
   initialCommitHash?: string | null;
+  dbTimestamp?: string | null;
 }
 
 export interface App {
@@ -82,6 +89,9 @@ export interface App {
   githubBranch: string | null;
   supabaseProjectId: string | null;
   supabaseProjectName: string | null;
+  neonProjectId: string | null;
+  neonDevelopmentBranchId: string | null;
+  neonPreviewBranchId: string | null;
   vercelProjectId: string | null;
   vercelProjectName: string | null;
   vercelTeamSlug: string | null;
@@ -92,6 +102,7 @@ export interface Version {
   oid: string;
   message: string;
   timestamp: number;
+  dbTimestamp?: string | null;
 }
 
 export type BranchResult = { branch: string };
@@ -339,3 +350,45 @@ export interface FileAttachment {
   file: File;
   type: "upload-to-codebase" | "chat-context";
 }
+
+// --- Neon Types ---
+export interface CreateNeonProjectParams {
+  name: string;
+  appId: number;
+}
+
+export interface NeonProject {
+  id: string;
+  name: string;
+  connectionString: string;
+  branchId: string;
+}
+
+export interface NeonBranch {
+  type: "production" | "development" | "snapshot" | "preview";
+  branchId: string;
+  branchName: string;
+  lastUpdated: string; // ISO timestamp
+  parentBranchId?: string; // ID of the parent branch
+  parentBranchName?: string; // Name of the parent branch
+}
+
+export interface GetNeonProjectParams {
+  appId: number;
+}
+
+export interface GetNeonProjectResponse {
+  projectId: string;
+  projectName: string;
+  orgId: string;
+  branches: NeonBranch[];
+}
+
+export interface RevertVersionParams {
+  appId: number;
+  previousVersionId: string;
+}
+
+export type RevertVersionResponse =
+  | { successMessage: string }
+  | { warningMessage: string };

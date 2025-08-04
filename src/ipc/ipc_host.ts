@@ -10,6 +10,7 @@ import { registerNodeHandlers } from "./handlers/node_handlers";
 import { registerProposalHandlers } from "./handlers/proposal_handlers";
 import { registerDebugHandlers } from "./handlers/debug_handlers";
 import { registerSupabaseHandlers } from "./handlers/supabase_handlers";
+import { registerNeonHandlers } from "./handlers/neon_handlers";
 import { registerLocalModelHandlers } from "./handlers/local_model_handlers";
 import { registerTokenCountHandlers } from "./handlers/token_count_handlers";
 import { registerWindowHandlers } from "./handlers/window_handlers";
@@ -26,6 +27,7 @@ import { registerCapacitorHandlers } from "./handlers/capacitor_handlers";
 import { registerProblemsHandlers } from "./handlers/problems_handlers";
 import { registerAppEnvVarsHandlers } from "./handlers/app_env_vars_handlers";
 import { registerTemplateHandlers } from "./handlers/template_handlers";
+import { registerPortalHandlers } from "./handlers/portal_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -42,6 +44,7 @@ export function registerIpcHandlers() {
   registerProposalHandlers();
   registerDebugHandlers();
   registerSupabaseHandlers();
+  registerNeonHandlers();
   registerLocalModelHandlers();
   registerTokenCountHandlers();
   registerWindowHandlers();
@@ -57,4 +60,5 @@ export function registerIpcHandlers() {
   registerCapacitorHandlers();
   registerAppEnvVarsHandlers();
   registerTemplateHandlers();
+  registerPortalHandlers();
 }

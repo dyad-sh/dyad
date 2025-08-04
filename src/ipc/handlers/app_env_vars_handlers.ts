@@ -10,7 +10,11 @@ import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import { getDyadAppPath } from "../../paths/paths";
 import { GetAppEnvVarsParams, SetAppEnvVarsParams } from "../ipc_types";
-import { parseEnvFile, serializeEnvFile } from "../utils/app_env_var_utils";
+import {
+  ENV_FILE_NAME,
+  parseEnvFile,
+  serializeEnvFile,
+} from "../utils/app_env_var_utils";
 
 export function registerAppEnvVarsHandlers() {
   // Handler to get app environment variables
@@ -27,7 +31,7 @@ export function registerAppEnvVarsHandlers() {
         }
 
         const appPath = getDyadAppPath(app.path);
-        const envFilePath = path.join(appPath, ".env.local");
+        const envFilePath = path.join(appPath, ENV_FILE_NAME);
 
         // If .env.local doesn't exist, return empty array
         try {
@@ -63,7 +67,7 @@ export function registerAppEnvVarsHandlers() {
         }
 
         const appPath = getDyadAppPath(app.path);
-        const envFilePath = path.join(appPath, ".env.local");
+        const envFilePath = path.join(appPath, ENV_FILE_NAME);
 
         // Serialize environment variables to .env.local format
         const content = serializeEnvFile(envVars);

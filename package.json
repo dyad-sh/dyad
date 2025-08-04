@@ -90,6 +90,7 @@
     "@biomejs/biome": "^1.9.4",
     "@dyad-sh/supabase-management-js": "v1.0.0",
     "@monaco-editor/react": "^4.7.0-rc.0",
+    "@neondatabase/api-client": "^2.1.0",
     "@openrouter/ai-sdk-provider": "^0.4.5",
     "@radix-ui/react-accordion": "^1.2.4",
     "@radix-ui/react-alert-dialog": "^1.1.13",

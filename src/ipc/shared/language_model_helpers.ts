@@ -118,6 +118,13 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     },
   ],
   openrouter: [
+    {
+      name: "qwen/qwen3-coder",
+      displayName: "Qwen3 Coder",
+      description: "Qwen's best coding model",
+      maxOutputTokens: 32_000,
+      contextWindow: 262_000,
+    },
     // https://openrouter.ai/deepseek/deepseek-chat-v3-0324:free
     {
       name: "deepseek/deepseek-chat-v3-0324:free",

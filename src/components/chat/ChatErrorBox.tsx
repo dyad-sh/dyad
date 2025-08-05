@@ -101,11 +101,11 @@ function ChatErrorContainer({
     <div className="relative mt-2 bg-red-50 border border-red-200 rounded-md shadow-sm p-2 mx-4">
       <button
         onClick={onDismiss}
-        className="absolute top-1 left-1 p-1 hover:bg-red-100 rounded"
+        className="absolute top-2.5 left-2 p-1 hover:bg-red-100 rounded"
       >
         <X size={14} className="text-red-500" />
       </button>
-      <div className="px-6 py-1 text-sm">
+      <div className="pl-8 py-1 text-sm">
         <div className="text-red-700 text-wrap">
           {typeof children === "string" ? (
             <ReactMarkdown
@@ -149,11 +149,11 @@ function ChatInfoContainer({
     <div className="relative mt-2 bg-sky-50 border border-sky-200 rounded-md shadow-sm p-2 mx-4">
       <button
         onClick={onDismiss}
-        className="absolute top-1 left-1 p-1 hover:bg-sky-100 rounded"
+        className="absolute top-2.5 left-2 p-1 hover:bg-sky-100 rounded"
       >
         <X size={14} className="text-sky-600" />
       </button>
-      <div className="px-6 py-1 text-sm">
+      <div className="pl-8 py-1 text-sm">
         <div className="text-sky-800 text-wrap">{children}</div>
       </div>
     </div>

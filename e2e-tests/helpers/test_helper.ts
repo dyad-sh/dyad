@@ -47,6 +47,18 @@ export class ContextFilesPickerDialog {
       .first()
       .click();
   }
+
+  async addExcludeContextFile(path: string) {
+    await this.page.getByTestId("exclude-context-files-input").fill(path);
+    await this.page.getByTestId("exclude-context-files-add-button").click();
+  }
+
+  async removeExcludeContextFile() {
+    await this.page
+      .getByTestId("exclude-context-files-remove-button")
+      .first()
+      .click();
+  }
 }
 
 class ProModesDialog {

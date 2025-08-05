@@ -472,9 +472,10 @@ export async function extractCodebase({
   }
 
   // Collect files from contextPaths and smartContextAutoIncludes
-  const { contextPaths, smartContextAutoIncludes } = chatContext;
+  const { contextPaths, smartContextAutoIncludes, excludePaths } = chatContext;
   const includedFiles = new Set<string>();
   const autoIncludedFiles = new Set<string>();
+  const excludedFiles = new Set<string>();
 
   // Add files from contextPaths
   if (contextPaths && contextPaths.length > 0) {
@@ -509,6 +510,7 @@ export async function extractCodebase({
       const matches = await glob(pattern, {
         nodir: true,
         absolute: true,
+        ignore: "**/node_modules/**",
       });
       matches.forEach((file) => {
         const normalizedFile = path.normalize(file);
@@ -518,10 +520,34 @@ export async function extractCodebase({
     }
   }
 
+  // Add files from excludePaths
+  if (excludePaths && excludePaths.length > 0) {
+    for (const p of excludePaths) {
+      const pattern = createFullGlobPath({
+        appPath,
+        globPath: p.globPath,
+      });
+      const matches = await glob(pattern, {
+        nodir: true,
+        absolute: true,
+        ignore: "**/node_modules/**",
+      });
+      matches.forEach((file) => {
+        const normalizedFile = path.normalize(file);
+        excludedFiles.add(normalizedFile);
+      });
+    }
+  }
+
   // Only filter files if contextPaths are provided
   // If only smartContextAutoIncludes are provided, keep all files and just mark auto-includes as forced
   if (contextPaths && contextPaths.length > 0) {
     files = files.filter((file) => includedFiles.has(path.normalize(file)));
+  }
+
+  // Filter out excluded files (this takes precedence over include paths)
+  if (excludedFiles.size > 0) {
+    files = files.filter((file) => !excludedFiles.has(path.normalize(file)));
   }
 
   // Sort files by modification time (oldest first)
@@ -543,7 +569,9 @@ export async function extractCodebase({
       virtualFileSystem,
     });
 
-    const isForced = autoIncludedFiles.has(path.normalize(file));
+    const isForced =
+      autoIncludedFiles.has(path.normalize(file)) &&
+      !excludedFiles.has(path.normalize(file));
 
     // Determine file content based on whether we should read it
     let fileContent: string;

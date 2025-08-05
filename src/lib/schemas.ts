@@ -120,6 +120,7 @@ export type GlobPath = z.infer<typeof GlobPathSchema>;
 export const AppChatContextSchema = z.object({
   contextPaths: z.array(GlobPathSchema),
   smartContextAutoIncludes: z.array(GlobPathSchema),
+  excludePaths: z.array(GlobPathSchema).optional(),
 });
 export type AppChatContext = z.infer<typeof AppChatContextSchema>;
 
@@ -131,6 +132,7 @@ export type ContextPathResult = GlobPath & {
 export type ContextPathResults = {
   contextPaths: ContextPathResult[];
   smartContextAutoIncludes: ContextPathResult[];
+  excludePaths: ContextPathResult[];
 };
 
 export const ReleaseChannelSchema = z.enum(["stable", "beta"]);

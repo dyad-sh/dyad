@@ -8,6 +8,7 @@ export function validateChatContext(chatContext: unknown): AppChatContext {
     return {
       contextPaths: [],
       smartContextAutoIncludes: [],
+      excludePaths: [],
     };
   }
 
@@ -20,6 +21,7 @@ export function validateChatContext(chatContext: unknown): AppChatContext {
     return {
       contextPaths: [],
       smartContextAutoIncludes: [],
+      excludePaths: [],
     };
   }
 }

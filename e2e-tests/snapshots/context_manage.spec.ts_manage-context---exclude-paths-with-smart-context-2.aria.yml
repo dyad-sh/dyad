@@ -1,0 +1,37 @@
+- dialog:
+  - heading "Codebase Context" [level=3]
+  - paragraph:
+    - text: Select the files to use as context.
+    - img
+  - textbox "src/**/*.tsx"
+  - button "Add"
+  - text: /src\/\*\*\/\*\.ts 4 files, ~\d+ tokens/
+  - button:
+    - img
+  - text: /manual\/\*\* 3 files, ~\d+ tokens/
+  - button:
+    - img
+  - heading "Exclude Paths" [level=3]
+  - paragraph:
+    - text: These files will be excluded from the context.
+    - img
+  - textbox "node_modules/**/*"
+  - button "Add"
+  - text: /src\/components\/\*\* 2 files, ~\d+ tokens/
+  - button:
+    - img
+  - text: /exclude\/exclude\.ts 1 files, ~\d+ tokens/
+  - button:
+    - img
+  - heading "Smart Context Auto-includes" [level=3]
+  - paragraph:
+    - text: These files will always be included in the context.
+    - img
+  - textbox "src/**/*.config.ts"
+  - button "Add"
+  - text: /a\.ts 1 files, ~\d+ tokens/
+  - button:
+    - img
+  - text: /exclude\/\*\* 2 files, ~\d+ tokens/
+  - button:
+    - img

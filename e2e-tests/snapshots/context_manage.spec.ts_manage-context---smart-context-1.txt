@@ -43,7 +43,7 @@
         },
         {
           "path": "src/components/ui/helper.ts",
-          "content": "// File contents excluded from context",
+          "content": "// helper.ts\n",
           "force": false
         },
         {

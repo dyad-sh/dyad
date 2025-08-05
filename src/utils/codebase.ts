@@ -57,16 +57,20 @@ const EXCLUDED_FILES = ["pnpm-lock.yaml", "package-lock.json"];
 // Files to always include, regardless of extension
 const ALWAYS_INCLUDE_FILES = ["package.json", "vercel.json", ".gitignore"];
 
+// File patterns to always omit (contents will be replaced with a placeholder)
+// We don't want to send environment variables to the LLM because they
+// are sensitive and users should be configuring them via the UI.
+const ALWAYS_OMITTED_FILES = [".env", ".env.local"];
+
 // File patterns to omit (contents will be replaced with a placeholder)
 //
 // Why are we not using path.join here?
 // Because we have already normalized the path to use /.
 const OMITTED_FILES = [
+  ...ALWAYS_OMITTED_FILES,
   "src/components/ui",
   "eslint.config",
   "tsconfig.json",
-
-  ".env",
 ];
 
 // Maximum file size to include (in bytes) - 1MB
@@ -306,11 +310,6 @@ async function collectFiles(dir: string, baseDir: string): Promise<string[]> {
   return files;
 }
 
-// Skip large configuration files or generated code (just include the path)
-function isOmittedFile(relativePath: string): boolean {
-  return OMITTED_FILES.some((pattern) => relativePath.includes(pattern));
-}
-
 const OMITTED_FILE_CONTENT = "// File contents excluded from context";
 
 /**
@@ -327,7 +326,34 @@ function shouldReadFileContents({
   const fileName = path.basename(filePath);
 
   // OMITTED_FILES takes precedence - never read if omitted
-  if (isOmittedFile(normalizedRelativePath)) {
+  if (
+    OMITTED_FILES.some((pattern) => normalizedRelativePath.includes(pattern))
+  ) {
+    return false;
+  }
+
+  // Check if file should be included based on extension or filename
+  return (
+    ALLOWED_EXTENSIONS.includes(ext) || ALWAYS_INCLUDE_FILES.includes(fileName)
+  );
+}
+
+function shouldReadFileContentsForSmartContext({
+  filePath,
+  normalizedRelativePath,
+}: {
+  filePath: string;
+  normalizedRelativePath: string;
+}): boolean {
+  const ext = path.extname(filePath).toLowerCase();
+  const fileName = path.basename(filePath);
+
+  // ALWAYS__OMITTED_FILES takes precedence - never read if omitted
+  if (
+    ALWAYS_OMITTED_FILES.some((pattern) =>
+      normalizedRelativePath.includes(pattern),
+    )
+  ) {
     return false;
   }
 
@@ -521,7 +547,12 @@ export async function extractCodebase({
 
     // Determine file content based on whether we should read it
     let fileContent: string;
-    if (!shouldReadFileContents({ filePath: file, normalizedRelativePath })) {
+    if (
+      !shouldReadFileContentsForSmartContext({
+        filePath: file,
+        normalizedRelativePath,
+      })
+    ) {
       fileContent = OMITTED_FILE_CONTENT;
     } else {
       const readContent = await readFileWithCache(file, virtualFileSystem);

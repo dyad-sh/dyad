@@ -79,12 +79,12 @@
         },
         {
           "path": "src/components/ui/button.tsx",
-          "content": "// File contents excluded from context",
+          "content": "// button.tsx\n",
           "force": false
         },
         {
           "path": "src/components/ui/helper.ts",
-          "content": "// File contents excluded from context",
+          "content": "// helper.ts\n",
           "force": false
         },
         {

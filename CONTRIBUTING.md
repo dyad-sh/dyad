@@ -23,3 +23,39 @@ npm install
 ```sh
 npm start
 ```
+
+## Testing
+
+### Unit tests
+
+```sh
+npm test
+```
+
+### E2E tests
+
+Build the app for E2E testing:
+
+```sh
+npm run pre:e2e
+```
+
+> Note: you only need to re-build the app when changing the app code. You don't need to re-build the app if you're just updating the tests.
+
+Run the whole e2e test suite:
+
+```sh
+npm run e2e
+```
+
+Run a specific test file:
+
+```sh
+npm run e2e e2e-tests/context_manage.spec.ts
+```
+
+Update snapshots for a test:
+
+```sh
+npm run e2e e2e-tests/context_manage.spec.ts -- --update-snapshots
+```

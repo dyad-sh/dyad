@@ -395,6 +395,7 @@ ${componentSnippet}
           settings.selectedModel,
           settings,
           files,
+          appPath,
         );
 
         // Prepare message history for the AI
@@ -793,6 +794,7 @@ ${problemReport.problems
                   settings.selectedModel,
                   settings,
                   files,
+                  appPath,
                 );
 
                 const { fullStream } = await simpleStreamText({

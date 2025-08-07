@@ -16,6 +16,7 @@ import { UserSettings } from "@/lib/schemas";
 import { ProviderSettingsHeader } from "./ProviderSettingsHeader";
 import { ApiKeyConfiguration } from "./ApiKeyConfiguration";
 import { ModelsSection } from "./ModelsSection";
+import { ClaudeCodeConfiguration } from "./ClaudeCodeConfiguration";
 
 interface ProviderSettingsPageProps {
   provider: string;
@@ -137,6 +138,28 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
       });
     } catch (error: any) {
       showError(`Error toggling Dyad Pro: ${error}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // --- Claude Code Settings Handler ---
+  const handleClaudeCodeSettingsChange = async (timeout?: number) => {
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      await updateSettings({
+        providerSettings: {
+          ...settings?.providerSettings,
+          [provider]: {
+            ...settings?.providerSettings?.[provider],
+            timeout: timeout,
+          },
+        },
+      });
+    } catch (error: any) {
+      console.error("Error saving Claude Code settings:", error);
+      setSaveError(error.message || "Failed to save Claude Code settings.");
     } finally {
       setIsSaving(false);
     }
@@ -278,6 +301,16 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
               disabled={isSaving}
             />
           </div>
+        )}
+
+        {/* Conditionally render Claude Code Configuration */}
+        {provider === "claude-code" && (
+          <ClaudeCodeConfiguration
+            provider={provider}
+            settings={settings}
+            isSaving={isSaving}
+            onSettingsChange={handleClaudeCodeSettingsChange}
+          />
         )}
 
         {/* Conditionally render CustomModelsSection */}

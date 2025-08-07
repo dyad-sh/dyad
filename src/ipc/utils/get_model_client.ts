@@ -11,6 +11,7 @@ import log from "electron-log";
 import { getLanguageModelProviders } from "../shared/language_model_helpers";
 import { LanguageModelProvider } from "../ipc_types";
 import { createDyadEngine } from "./llm_engine_provider";
+import { createClaudeCodeModelAdapter } from "./claude_code_model_adapter";
 
 import { LM_STUDIO_BASE_URL } from "./lm_studio_utils";
 
@@ -47,6 +48,7 @@ export async function getModelClient(
   model: LargeLanguageModel,
   settings: UserSettings,
   files?: File[],
+  cwd?: string,
 ): Promise<{
   modelClient: ModelClient;
   isEngineEnabled?: boolean;
@@ -153,6 +155,7 @@ export async function getModelClient(
           },
           settings,
           files,
+          cwd,
         );
       }
     }
@@ -161,13 +164,14 @@ export async function getModelClient(
       "No API keys available for any model supported by the 'auto' provider.",
     );
   }
-  return getRegularModelClient(model, settings, providerConfig);
+  return getRegularModelClient(model, settings, providerConfig, cwd);
 }
 
 function getRegularModelClient(
   model: LargeLanguageModel,
   settings: UserSettings,
   providerConfig: LanguageModelProvider,
+  cwd?: string,
 ) {
   // Get API key for the specific provider
   const apiKey =
@@ -241,6 +245,19 @@ function getRegularModelClient(
       return {
         modelClient: {
           model: provider(model.name),
+        },
+        backupModelClients: [],
+      };
+    }
+    case "claude-code": {
+      // Claude Code uses the CLI wrapper
+      const timeoutSetting = settings.providerSettings?.["claude-code"]?.timeout;
+      const timeoutMs = timeoutSetting ? timeoutSetting * 1000 : 300000; // Convert seconds to ms, default 5 minutes
+      
+      const modelAdapter = createClaudeCodeModelAdapter(cwd, { timeout: timeoutMs });
+      return {
+        modelClient: {
+          model: modelAdapter,
         },
         backupModelClients: [],
       };

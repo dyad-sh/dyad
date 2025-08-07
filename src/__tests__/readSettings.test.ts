@@ -6,6 +6,19 @@ import { readSettings, getSettingsFilePath } from "@/main/settings";
 import { getUserDataPath } from "@/paths/paths";
 import { UserSettings } from "@/lib/schemas";
 
+// Mock electron-log to suppress logging during tests
+vi.mock("electron-log", () => ({
+  default: {
+    scope: vi.fn().mockReturnValue({
+      error: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      debug: vi.fn(),
+      log: vi.fn(),
+    }),
+  },
+}));
+
 // Mock dependencies
 vi.mock("node:fs");
 vi.mock("node:path");

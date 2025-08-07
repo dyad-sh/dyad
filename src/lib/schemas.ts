@@ -59,6 +59,8 @@ export type LargeLanguageModel = z.infer<typeof LargeLanguageModelSchema>;
  */
 export const ProviderSettingSchema = z.object({
   apiKey: SecretSchema.optional(),
+  // Claude Code specific settings
+  timeout: z.number().optional(), // Timeout in seconds
 });
 
 /**

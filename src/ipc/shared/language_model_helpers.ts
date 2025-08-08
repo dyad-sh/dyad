@@ -22,41 +22,29 @@ export interface ModelOption {
 
 export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
   openai: [
-    // https://platform.openai.com/docs/models/gpt-4.1
+    // https://platform.openai.com/docs/models/gpt-5
     {
-      name: "gpt-4.1",
-      displayName: "GPT 4.1",
+      name: "gpt-5",
+      displayName: "GPT 5",
       description: "OpenAI's flagship model",
-      maxOutputTokens: 32_768,
-      contextWindow: 1_047_576,
+      maxOutputTokens: 128_000,
+      contextWindow: 400_000,
     },
-    // https://platform.openai.com/docs/models/gpt-4.1-mini
+    // https://platform.openai.com/docs/models/gpt-5-mini
     {
-      name: "gpt-4.1-mini",
-      displayName: "GPT 4.1 Mini",
+      name: "gpt-5-mini",
+      displayName: "GPT 5 Mini",
       description: "OpenAI's lightweight, but intelligent model",
-      maxOutputTokens: 32_768,
-      contextWindow: 1_047_576,
+      maxOutputTokens: 128_000,
+      contextWindow: 400_000,
     },
-    // https://platform.openai.com/docs/models/o3-mini
+    // https://platform.openai.com/docs/models/gpt-5-nano
     {
-      name: "o3-mini",
-      displayName: "o3 mini",
-      description: "Reasoning model",
-      // See o4-mini comment below for why we set this to 32k
-      maxOutputTokens: 32_000,
-      contextWindow: 200_000,
-    },
-    // https://platform.openai.com/docs/models/o4-mini
-    {
-      name: "o4-mini",
-      displayName: "o4 mini",
-      description: "Reasoning model",
-      // Technically the max output tokens is 100k, *however* if the user has a lot of input tokens,
-      // then setting a high max output token will cause the request to fail because
-      // the max output tokens is *included* in the context window limit.
-      maxOutputTokens: 32_000,
-      contextWindow: 200_000,
+      name: "gpt-5-nano",
+      displayName: "GPT 5 Nano",
+      description: "Fastest, most cost-efficient version of GPT-5",
+      maxOutputTokens: 128_000,
+      contextWindow: 400_000,
     },
   ],
   // https://docs.anthropic.com/en/docs/about-claude/models/all-models#model-comparison-table

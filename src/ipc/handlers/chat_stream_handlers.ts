@@ -978,18 +978,31 @@ ${problemReport.problems
 
       // Return the chat ID for backwards compatibility
       return req.chatId;
-    } catch (error) {
+    } catch (error: any) {
+    const errorMessage = error.toString(); 
+
+    // looks for keywords like "quota" 
+    if (errorMessage.includes("Resource has been exhausted") || errorMessage.includes("check quota")) {
+      // user-friendly error message
+      logger.error("AI resource exhausted:", error);
+      safeSend(
+        event.sender,
+        "chat:response:error",
+        "AI Error: You may have run out of credits or hit your usage limit. Please check your account quota with the AI provider."
+      );
+    } else {
+      // use the original logic if different
       logger.error("Error calling LLM:", error);
       safeSend(
         event.sender,
         "chat:response:error",
         `Sorry, there was an error processing your request: ${error}`,
       );
-      // Clean up the abort controller
-      activeStreams.delete(req.chatId);
-      // Clean up file uploads state on error
-      FileUploadsState.getInstance().clear();
-      return "error";
+    }
+
+    activeStreams.delete(req.chatId);
+    FileUploadsState.getInstance().clear();
+    return "error";
     }
   });
 

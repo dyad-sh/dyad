@@ -183,6 +183,7 @@ export type LanguageModel =
       tag?: string;
       maxOutputTokens?: number;
       contextWindow?: number;
+      temperature?: number;
       type: "custom";
     }
   | {
@@ -192,6 +193,7 @@ export type LanguageModel =
       tag?: string;
       maxOutputTokens?: number;
       contextWindow?: number;
+      temperature?: number;
       type: "local" | "cloud";
     };
 

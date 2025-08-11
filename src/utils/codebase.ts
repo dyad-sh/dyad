@@ -41,6 +41,9 @@ const ALLOWED_EXTENSIONS = [
   ".java",
   ".gradle",
   ".swift",
+  // Edge cases
+  // https://github.com/dyad-sh/dyad/issues/880
+  ".py",
 ];
 
 // Directories to always exclude

@@ -2,7 +2,7 @@
   "name": "dyad",
   "productName": "dyad",
   "version": "0.16.0",
-  "description": "My Electron application description",
+  "description": "Free, local, open-source AI app builder",
   "main": ".vite/build/main.js",
   "repository": {
     "type": "git",

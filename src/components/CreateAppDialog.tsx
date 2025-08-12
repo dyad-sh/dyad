@@ -3,12 +3,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -27,7 +21,6 @@ import { useRouter } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 import { neonTemplateHook } from "@/client_logic/template_hook";
 import { showError } from "@/lib/toast";
-import { CreateAppParams } from "@/ipc/ipc_types";
 
 interface CreateAppDialogProps {
   open: boolean;
@@ -43,8 +36,6 @@ export function CreateAppDialog({
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
   const [appName, setAppName] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [installCommand, setInstallCommand] = useState("pnpm install");
-  const [startCommand, setStartCommand] = useState("pnpm dev");
   const { createApp } = useCreateApp();
   const { data: nameCheckResult } = useCheckName(appName);
   const router = useRouter();
@@ -61,12 +52,7 @@ export function CreateAppDialog({
 
     setIsSubmitting(true);
     try {
-      const params: CreateAppParams = { name: appName.trim() };
-      if (hasInstall && hasStart) {
-        params.installCommand = installCommand.trim();
-        params.startCommand = startCommand.trim();
-      }
-      const result = await createApp(params);
+      const result = await createApp({ name: appName.trim() });
       if (template && NEON_TEMPLATE_IDS.has(template.id)) {
         await neonTemplateHook({
           appId: result.app.id,
@@ -92,12 +78,7 @@ export function CreateAppDialog({
 
   const isNameValid = appName.trim().length > 0;
   const nameExists = nameCheckResult?.exists;
-  const hasInstall = installCommand.trim().length > 0;
-  const hasStart = startCommand.trim().length > 0;
-  const commandsValid = (hasInstall && hasStart) || (!hasInstall && !hasStart);
-  const commandsMismatch = hasInstall !== hasStart;
-  const canSubmit =
-    isNameValid && !nameExists && !isSubmitting && commandsValid;
+  const canSubmit = isNameValid && !nameExists && !isSubmitting;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -127,38 +108,6 @@ export function CreateAppDialog({
                 </p>
               )}
             </div>
-            <Accordion type="single" collapsible>
-              <AccordionItem value="advanced-options">
-                <AccordionTrigger className="text-sm hover:no-underline">
-                  Advanced options
-                </AccordionTrigger>
-                <AccordionContent className="space-y-4">
-                  <div className="grid gap-2">
-                    <Label className="text-sm ml-2 mb-2">Install command</Label>
-                    <Input
-                      value={installCommand}
-                      onChange={(e) => setInstallCommand(e.target.value)}
-                      placeholder="pnpm install"
-                      disabled={isSubmitting}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label className="text-sm ml-2 mb-2">Start command</Label>
-                    <Input
-                      value={startCommand}
-                      onChange={(e) => setStartCommand(e.target.value)}
-                      placeholder="pnpm dev"
-                      disabled={isSubmitting}
-                    />
-                  </div>
-                  {commandsMismatch && (
-                    <p className="text-sm text-red-500">
-                      Both commands are required when customizing.
-                    </p>
-                  )}
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
           </div>
 
           <DialogFooter>

@@ -1,53 +1,54 @@
-import { desc, eq } from "drizzle-orm";
-import { app, ipcMain } from "electron";
-import git from "isomorphic-git";
-import { spawn } from "node:child_process";
-import fs, { promises as fsPromises } from "node:fs";
-import path from "node:path";
+import { ipcMain, app } from "electron";
 import { db, getDatabasePath } from "../../db";
 import { apps, chats } from "../../db/schema";
-import { getDyadAppPath, getUserDataPath } from "../../paths/paths";
+import { desc, eq } from "drizzle-orm";
 import type {
   App,
-  CopyAppParams,
   CreateAppParams,
-  EditAppFileReturnType,
   RenameBranchParams,
+  CopyAppParams,
+  EditAppFileReturnType,
   RespondToAppInputParams,
 } from "../ipc_types";
+import fs from "node:fs";
+import path from "node:path";
+import { getDyadAppPath, getUserDataPath } from "../../paths/paths";
+import { spawn } from "node:child_process";
+import git from "isomorphic-git";
+import { promises as fsPromises } from "node:fs";
 
 // Import our utility modules
-import { readSettings } from "../../main/settings";
-import { getFilesRecursively } from "../utils/file_utils";
 import { withLock } from "../utils/lock_utils";
+import { getFilesRecursively } from "../utils/file_utils";
 import {
-  killProcess,
-  processCounter,
-  removeAppIfCurrentProcess,
   runningApps,
+  processCounter,
+  killProcess,
+  removeAppIfCurrentProcess,
 } from "../utils/process_manager";
 import { getEnvVar } from "../utils/read_env";
+import { readSettings } from "../../main/settings";
 
 import fixPath from "fix-path";
 
-import { isServerFunction } from "@/supabase_admin/supabase_utils";
-import log from "electron-log";
 import killPort from "kill-port";
 import util from "util";
-import { Worker } from "worker_threads";
-import { normalizePath } from "../../../shared/normalizePath";
+import log from "electron-log";
 import {
   deploySupabaseFunctions,
   getSupabaseProjectName,
 } from "../../supabase_admin/supabase_management_client";
-import { getLanguageModelProviders } from "../shared/language_model_helpers";
-import { gitCommit } from "../utils/git_utils";
-import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
-import { safeSend } from "../utils/safe_sender";
-import { startProxy } from "../utils/start_proxy_server";
-import { getVercelTeamSlug } from "../utils/vercel_utils";
-import { createFromTemplate } from "./createFromTemplate";
 import { createLoggedHandler } from "./safe_handle";
+import { getLanguageModelProviders } from "../shared/language_model_helpers";
+import { startProxy } from "../utils/start_proxy_server";
+import { Worker } from "worker_threads";
+import { createFromTemplate } from "./createFromTemplate";
+import { gitCommit } from "../utils/git_utils";
+import { safeSend } from "../utils/safe_sender";
+import { normalizePath } from "../../../shared/normalizePath";
+import { isServerFunction } from "@/supabase_admin/supabase_utils";
+import { getVercelTeamSlug } from "../utils/vercel_utils";
+import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 
 async function copyDir(
   source: string,

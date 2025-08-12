@@ -1,38 +1,38 @@
-import { Button } from "@/components/ui/button";
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { IpcClient } from "@/ipc/ipc_client";
-import { showError, showSuccess } from "@/lib/toast";
 import { useMutation } from "@tanstack/react-query";
-import { Folder, Info, Loader2, X } from "lucide-react";
-import { useState } from "react";
+import { showError, showSuccess } from "@/lib/toast";
+import { Folder, X, Loader2, Info } from "lucide-react";
+import { Input } from "@/components/ui/input";
 
-import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Label } from "@radix-ui/react-label";
+import { useNavigate } from "@tanstack/react-router";
+import { useStreamChat } from "@/hooks/useStreamChat";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useLoadApps } from "@/hooks/useLoadApps";
-import { useStreamChat } from "@/hooks/useStreamChat";
-import { Label } from "@radix-ui/react-label";
-import { useNavigate } from "@tanstack/react-router";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useSetAtom } from "jotai";
+import { useLoadApps } from "@/hooks/useLoadApps";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "./ui/accordion";
 
 interface ImportAppDialogProps {
   isOpen: boolean;

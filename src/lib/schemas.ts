@@ -169,6 +169,7 @@ export const UserSettingsSchema = z.object({
   enableNativeGit: z.boolean().optional(),
   enableAutoUpdate: z.boolean(),
   releaseChannel: ReleaseChannelSchema,
+  enableResponseEndNotification: z.boolean().optional(),
 
   ////////////////////////////////
   // E2E TESTING ONLY.

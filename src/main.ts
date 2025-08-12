@@ -185,6 +185,18 @@ app.on("open-url", (event, url) => {
   handleDeepLinkReturn(url);
 });
 
+// Handle IPC request to focus the window from notifications
+import { ipcMain } from "electron";
+ipcMain.on("focus-window", () => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore();
+    }
+    mainWindow.focus();
+    mainWindow.show();
+  }
+});
+
 function handleDeepLinkReturn(url: string) {
   // example url: "dyad://supabase-oauth-return?token=a&refreshToken=b"
   let parsed: URL;

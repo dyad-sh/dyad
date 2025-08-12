@@ -3,6 +3,7 @@
  */
 
 import { showSuccess } from "./toast";
+import { IpcClient } from "@/ipc/ipc_client";
 
 export interface NotificationOptions {
   visual?: boolean;
@@ -20,14 +21,108 @@ export function showResponseCompleted(options: NotificationOptions = {}) {
     message = "Response completed",
   } = options;
 
-  // Visual notification (toast)
-  if (visual) {
-    showSuccess(message);
-  }
+  // We need to get the settings first to check if native notifications are enabled
+  IpcClient.getInstance()
+    .getUserSettings()
+    .then((settings) => {
+      try {
+        // Always use native notifications when enabled, regardless of window focus
+        const useNativeNotification = settings?.enableResponseEndNotification;
 
-  // Audio notification
-  if (sound) {
-    playNotificationSound();
+        // Visual notification (always use native notification if enabled)
+        if (visual) {
+          if (useNativeNotification && typeof Notification !== "undefined") {
+            // Use native notification for better visibility when app is not in focus
+            showNativeNotification("Dyad", message);
+          } else {
+            // Fallback to toast only if native notifications are disabled
+            showSuccess(message);
+          }
+        }
+
+        // Audio notification
+        if (sound) {
+          playNotificationSound();
+        }
+      } catch (error) {
+        console.debug("Notification error:", error);
+        // Fallback to toast
+        if (visual) {
+          showSuccess(message);
+        }
+      }
+    })
+    .catch((error) => {
+      console.debug("Failed to get user settings:", error);
+      // Fallback to toast if we can't get the settings
+      if (visual) {
+        showSuccess(message);
+      }
+      if (sound) {
+        playNotificationSound();
+      }
+    });
+}
+
+/**
+ * Show a native desktop notification
+ * Uses the Notification API to display a system notification
+ * This is especially useful when the Dyad app window is not in focus
+ */
+function showNativeNotification(title: string, body: string) {
+  try {
+    // Check permission
+    if (Notification.permission === "granted") {
+      sendNotification();
+    } else if (Notification.permission !== "denied") {
+      Notification.requestPermission().then((permission) => {
+        if (permission === "granted") {
+          sendNotification();
+        } else {
+          // Permission denied, fallback to toast
+          showSuccess(body);
+        }
+      });
+    }
+
+    function sendNotification() {
+      // Create notification with app icon and appropriate options
+      const notification = new Notification(title, {
+        body,
+        icon: "/assets/logo.png", // Using app logo
+        silent: true, // Don't play the default sound as we handle sound separately
+        tag: "dyad-response", // Tag ensures we don't stack too many similar notifications
+        requireInteraction: false, // Auto-dismiss after OS's default timeout
+      });
+
+      // When notification is clicked, focus the Dyad window
+      notification.onclick = () => {
+        // Bring Dyad window to front when notification is clicked
+        if (window) {
+          window.focus();
+
+          // If we're in Electron and have access to its APIs
+          try {
+            // This is a more reliable way to focus an Electron window
+            // than just window.focus()
+            if (window.require) {
+              const electron = window.require("electron");
+              if (electron && electron.ipcRenderer) {
+                electron.ipcRenderer.send("focus-window");
+              }
+            }
+          } catch (e) {
+            console.debug("Could not access Electron IPC:", e);
+            // Standard browser focus fallback
+            window.focus();
+          }
+        }
+      };
+    }
+  } catch (error) {
+    console.debug("Native notification failed:", error);
+    // Fallback to toast if notifications are not supported
+    showSuccess(body);
   }
 }
 

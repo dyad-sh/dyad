@@ -1,32 +1,38 @@
-import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { IpcClient } from "@/ipc/ipc_client";
-import { useMutation } from "@tanstack/react-query";
-import { showError, showSuccess } from "@/lib/toast";
-import { Folder, X, Loader2, Info } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { IpcClient } from "@/ipc/ipc_client";
+import { showError, showSuccess } from "@/lib/toast";
+import { useMutation } from "@tanstack/react-query";
+import { Folder, Info, Loader2, X } from "lucide-react";
+import { useState } from "react";
 
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Label } from "@radix-ui/react-label";
-import { useNavigate } from "@tanstack/react-router";
-import { useStreamChat } from "@/hooks/useStreamChat";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import { useSetAtom } from "jotai";
 import { useLoadApps } from "@/hooks/useLoadApps";
+import { useStreamChat } from "@/hooks/useStreamChat";
+import { Label } from "@radix-ui/react-label";
+import { useNavigate } from "@tanstack/react-router";
+import { useSetAtom } from "jotai";
 
 interface ImportAppDialogProps {
   isOpen: boolean;
@@ -91,8 +97,8 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
       return IpcClient.getInstance().importApp({
         path: selectedPath,
         appName: customAppName,
-        installCommand: installCommand.trim(),
-        startCommand: startCommand.trim(),
+        installCommand: installCommand || undefined,
+        startCommand: startCommand || undefined,
       });
     },
     onSuccess: async (result) => {
@@ -146,8 +152,9 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
     }
   };
 
-  const hasInstall = installCommand.trim().length > 0;
-  const hasStart = startCommand.trim().length > 0;
+  const hasInstallCommand = installCommand.trim().length > 0;
+  const hasStartCommand = startCommand.trim().length > 0;
+  const commandsValid = hasInstallCommand === hasStartCommand;
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -230,24 +237,40 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                 </div>
               </div>
 
-              <div className="grid gap-2">
-                <Label className="text-sm ml-2 mb-2">Install command</Label>
-                <Input
-                  value={installCommand}
-                  onChange={(e) => setInstallCommand(e.target.value)}
-                  placeholder="pnpm install"
-                  disabled={importAppMutation.isPending}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label className="text-sm ml-2 mb-2">Start command</Label>
-                <Input
-                  value={startCommand}
-                  onChange={(e) => setStartCommand(e.target.value)}
-                  placeholder="pnpm dev"
-                  disabled={importAppMutation.isPending}
-                />
-              </div>
+              <Accordion type="single" collapsible>
+                <AccordionItem value="advanced-options">
+                  <AccordionTrigger className="text-sm hover:no-underline">
+                    Advanced options
+                  </AccordionTrigger>
+                  <AccordionContent className="space-y-4">
+                    <div className="grid gap-2">
+                      <Label className="text-sm ml-2 mb-2">
+                        Install command
+                      </Label>
+                      <Input
+                        value={installCommand}
+                        onChange={(e) => setInstallCommand(e.target.value)}
+                        placeholder="pnpm install"
+                        disabled={importAppMutation.isPending}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label className="text-sm ml-2 mb-2">Start command</Label>
+                      <Input
+                        value={startCommand}
+                        onChange={(e) => setStartCommand(e.target.value)}
+                        placeholder="pnpm dev"
+                        disabled={importAppMutation.isPending}
+                      />
+                    </div>
+                    {!commandsValid && (
+                      <p className="text-sm text-red-500">
+                        Both commands are required when customizing.
+                      </p>
+                    )}
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
 
               {hasAiRules === false && (
                 <Alert className="border-yellow-500/20 text-yellow-500 flex items-start gap-2">
@@ -295,8 +318,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
               !selectedPath ||
               importAppMutation.isPending ||
               nameExists ||
-              !hasInstall ||
-              !hasStart
+              !commandsValid
             }
             className="min-w-[80px]"
           >

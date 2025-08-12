@@ -1,54 +1,53 @@
-import { ipcMain, app } from "electron";
+import { desc, eq } from "drizzle-orm";
+import { app, ipcMain } from "electron";
+import git from "isomorphic-git";
+import { spawn } from "node:child_process";
+import fs, { promises as fsPromises } from "node:fs";
+import path from "node:path";
 import { db, getDatabasePath } from "../../db";
 import { apps, chats } from "../../db/schema";
-import { desc, eq } from "drizzle-orm";
+import { getDyadAppPath, getUserDataPath } from "../../paths/paths";
 import type {
   App,
-  CreateAppParams,
-  RenameBranchParams,
   CopyAppParams,
+  CreateAppParams,
   EditAppFileReturnType,
+  RenameBranchParams,
   RespondToAppInputParams,
 } from "../ipc_types";
-import fs from "node:fs";
-import path from "node:path";
-import { getDyadAppPath, getUserDataPath } from "../../paths/paths";
-import { spawn } from "node:child_process";
-import git from "isomorphic-git";
-import { promises as fsPromises } from "node:fs";
 
 // Import our utility modules
-import { withLock } from "../utils/lock_utils";
+import { readSettings } from "../../main/settings";
 import { getFilesRecursively } from "../utils/file_utils";
+import { withLock } from "../utils/lock_utils";
 import {
-  runningApps,
-  processCounter,
   killProcess,
+  processCounter,
   removeAppIfCurrentProcess,
+  runningApps,
 } from "../utils/process_manager";
 import { getEnvVar } from "../utils/read_env";
-import { readSettings } from "../../main/settings";
 
 import fixPath from "fix-path";
 
+import { isServerFunction } from "@/supabase_admin/supabase_utils";
+import log from "electron-log";
 import killPort from "kill-port";
 import util from "util";
-import log from "electron-log";
+import { Worker } from "worker_threads";
+import { normalizePath } from "../../../shared/normalizePath";
 import {
   deploySupabaseFunctions,
   getSupabaseProjectName,
 } from "../../supabase_admin/supabase_management_client";
-import { createLoggedHandler } from "./safe_handle";
 import { getLanguageModelProviders } from "../shared/language_model_helpers";
-import { startProxy } from "../utils/start_proxy_server";
-import { Worker } from "worker_threads";
-import { createFromTemplate } from "./createFromTemplate";
 import { gitCommit } from "../utils/git_utils";
-import { safeSend } from "../utils/safe_sender";
-import { normalizePath } from "../../../shared/normalizePath";
-import { isServerFunction } from "@/supabase_admin/supabase_utils";
-import { getVercelTeamSlug } from "../utils/vercel_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
+import { safeSend } from "../utils/safe_sender";
+import { startProxy } from "../utils/start_proxy_server";
+import { getVercelTeamSlug } from "../utils/vercel_utils";
+import { createFromTemplate } from "./createFromTemplate";
+import { createLoggedHandler } from "./safe_handle";
 
 async function copyDir(
   source: string,
@@ -124,10 +123,10 @@ async function executeAppLocalNode({
 }): Promise<void> {
   const defaultCommand =
     "(pnpm install && pnpm run dev --port 32100) || (npm install --legacy-peer-deps && npm run dev -- --port 32100)";
-  const command =
-    installCommand || startCommand
-      ? `${installCommand ?? ""}${installCommand && startCommand ? " && " : ""}${startCommand ?? ""}`
-      : defaultCommand;
+  const hasCustomCommands = !!installCommand?.trim() && !!startCommand?.trim();
+  const command = hasCustomCommands
+    ? `${installCommand!.trim()} && ${startCommand!.trim()}`
+    : defaultCommand;
   const spawnedProcess = spawn(command, [], {
     cwd: appPath,
     shell: true,

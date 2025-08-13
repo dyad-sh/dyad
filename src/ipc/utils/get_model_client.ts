@@ -1,4 +1,4 @@
-import { LanguageModelV1 } from "ai";
+import type { LanguageModel } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI as createGoogle } from "@ai-sdk/google";
 import { createAnthropic } from "@ai-sdk/anthropic";
@@ -33,7 +33,7 @@ const AUTO_MODELS = [
 ];
 
 export interface ModelClient {
-  model: LanguageModelV1;
+  model: LanguageModel;
   builtinProviderId?: string;
 }
 
@@ -114,7 +114,7 @@ export async function getModelClient(
                 files,
               }
             : undefined,
-        ),
+        ) as unknown as LanguageModel,
         builtinProviderId: model.provider,
       };
 
@@ -168,7 +168,11 @@ function getRegularModelClient(
   model: LargeLanguageModel,
   settings: UserSettings,
   providerConfig: LanguageModelProvider,
-) {
+): {
+  modelClient: ModelClient;
+  isEngineEnabled?: boolean;
+  backupModelClients?: ModelClient[];
+} {
   // Get API key for the specific provider
   const apiKey =
     settings.providerSettings?.[model.provider]?.apiKey?.value ||

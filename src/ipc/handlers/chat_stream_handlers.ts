@@ -1,13 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { ipcMain } from "electron";
-import {
-  CoreMessage,
-  TextPart,
-  ImagePart,
-  streamText,
-  ToolSet,
-  TextStreamPart,
-} from "ai";
+import { CoreMessage, TextPart, ImagePart, streamText } from "ai";
+import type { ToolSet } from "ai";
 import { db } from "../../db";
 import { chats, messages } from "../../db/schema";
 import { and, eq, isNull } from "drizzle-orm";
@@ -60,7 +54,7 @@ import { fileExists } from "../utils/file_utils";
 import { FileUploadsState } from "../utils/file_uploads_state";
 import { OpenAIResponsesProviderOptions } from "@ai-sdk/openai";
 
-type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
+type AsyncIterableStream<T = unknown> = AsyncIterable<T> & ReadableStream<T>;
 
 const logger = log.scope("chat_stream_handlers");
 
@@ -111,7 +105,7 @@ async function processStreamChunks({
   chatId,
   processResponseChunkUpdate,
 }: {
-  fullStream: AsyncIterableStream<TextStreamPart<ToolSet>>;
+  fullStream: AsyncIterableStream;
   fullResponse: string;
   abortController: AbortController;
   chatId: number;
@@ -122,21 +116,34 @@ async function processStreamChunks({
   let incrementalResponse = "";
   let inThinkingBlock = false;
 
-  for await (const part of fullStream) {
+  for await (const _part of fullStream as AsyncIterable<any>) {
+    const part: any = _part as any;
     let chunk = "";
-    if (part.type === "text-delta") {
+    const partType: string | undefined = part?.type;
+    if (
+      partType === "text-delta" ||
+      // v5 uses text-delta with `delta`; v4 had `textDelta`
+      part.textDelta !== undefined ||
+      part.delta !== undefined
+    ) {
       if (inThinkingBlock) {
         chunk = "</think>";
         inThinkingBlock = false;
       }
-      chunk += part.textDelta;
-    } else if (part.type === "reasoning") {
+      const delta = part.delta ?? part.textDelta ?? "";
+      chunk += delta;
+    } else if (
+      partType === "reasoning-delta" ||
+      // v4 used `reasoning` with `textDelta`
+      partType === "reasoning" ||
+      partType === "redacted-reasoning"
+    ) {
       if (!inThinkingBlock) {
         chunk = "<think>";
         inThinkingBlock = true;
       }
-
-      chunk += escapeDyadTags(part.textDelta);
+      const reasoningDelta = part.delta ?? part.textDelta ?? part.text ?? "";
+      chunk += escapeDyadTags(reasoningDelta);
     }
 
     if (!chunk) {
@@ -593,7 +600,7 @@ This conversation includes one or more image attachments. When the user uploads 
             logger.log("sending AI request");
           }
           return streamText({
-            maxTokens: await getMaxTokens(settings.selectedModel),
+            maxOutputTokens: await getMaxTokens(settings.selectedModel),
             temperature: await getTemperature(settings.selectedModel),
             maxRetries: 2,
             model: modelClient.model,
@@ -723,7 +730,8 @@ This conversation includes one or more image attachments. When the user uploads 
                   break;
                 }
                 if (part.type !== "text-delta") continue; // ignore reasoning for continuation
-                fullResponse += part.textDelta;
+                fullResponse +=
+                  (part as any).delta ?? (part as any).textDelta ?? "";
                 fullResponse = cleanFullResponse(fullResponse);
                 fullResponse = await processResponseChunkUpdate({
                   fullResponse,

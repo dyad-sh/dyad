@@ -4,7 +4,14 @@ import { eq, and } from "drizzle-orm";
 import fs from "node:fs";
 import git from "isomorphic-git";
 import { getDyadAppPath } from "../../paths/paths";
-import { neon } from "@neondatabase/serverless";
+// Importing dynamically to avoid bundling issue if package is not installed in some envs
+let neon: any;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  neon = require("@neondatabase/serverless").neon;
+} catch {
+  neon = undefined as any;
+}
 
 import log from "electron-log";
 import { getNeonClient } from "@/neon_admin/neon_management_client";
@@ -20,6 +27,11 @@ async function getLastUpdatedTimestampFromNeon({
   neonConnectionUri: string;
 }): Promise<string> {
   try {
+    if (!neon) {
+      throw new Error(
+        "@neondatabase/serverless is not installed. Cannot retrieve timestamp.",
+      );
+    }
     const sql = neon(neonConnectionUri);
 
     const [{ current_timestamp }] = await sql`

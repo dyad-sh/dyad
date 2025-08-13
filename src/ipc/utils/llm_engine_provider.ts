@@ -1,7 +1,4 @@
-import {
-  LanguageModelV1,
-  LanguageModelV1ObjectGenerationMode,
-} from "@ai-sdk/provider";
+import type { LanguageModelV2 } from "@ai-sdk/provider";
 import { OpenAICompatibleChatLanguageModel } from "@ai-sdk/openai-compatible";
 import {
   FetchFunction,
@@ -9,16 +6,16 @@ import {
   withoutTrailingSlash,
 } from "@ai-sdk/provider-utils";
 
-import { OpenAICompatibleChatSettings } from "@ai-sdk/openai-compatible";
+import type { OpenAICompatibleChatModelId } from "@ai-sdk/openai-compatible";
 import log from "electron-log";
 import { getExtraProviderOptions } from "./thinking_utils";
 import type { UserSettings } from "../../lib/schemas";
 
 const logger = log.scope("llm_engine_provider");
 
-export type ExampleChatModelId = string & {};
+export type ExampleChatModelId = OpenAICompatibleChatModelId;
 
-export interface ExampleChatSettings extends OpenAICompatibleChatSettings {
+export interface ExampleChatSettings {
   files?: { path: string; content: string }[];
 }
 export interface ExampleProviderSettings {
@@ -59,7 +56,7 @@ Creates a model for text generation.
   (
     modelId: ExampleChatModelId,
     settings?: ExampleChatSettings,
-  ): LanguageModelV1;
+  ): LanguageModelV2;
 
   /**
 Creates a chat model for text generation.
@@ -67,7 +64,7 @@ Creates a chat model for text generation.
   chatModel(
     modelId: ExampleChatModelId,
     settings?: ExampleChatSettings,
-  ): LanguageModelV1;
+  ): LanguageModelV2;
 }
 
 export function createDyadEngine(
@@ -118,8 +115,7 @@ export function createDyadEngine(
     // Create configuration with file handling
     const config = {
       ...getCommonModelConfig(),
-      defaultObjectGenerationMode:
-        "tool" as LanguageModelV1ObjectGenerationMode,
+      // default object generation mode is provider default in v5
       // Custom fetch implementation that adds files to the request
       fetch: (input: RequestInfo | URL, init?: RequestInit) => {
         // Use default fetch if no init or body
@@ -181,7 +177,7 @@ export function createDyadEngine(
       },
     };
 
-    return new OpenAICompatibleChatLanguageModel(modelId, restSettings, config);
+    return new OpenAICompatibleChatLanguageModel(modelId, config);
   };
 
   const provider = (

@@ -162,8 +162,8 @@ async function processStreamChunks({
 
 // Helper function to parse app mentions from prompt
 function parseAppMentions(prompt: string): string[] {
-  // Match @AppName patterns in the prompt
-  const mentionRegex = /@(\w+(?:\s+\w+)*)/g;
+  // Match @AppName patterns in the prompt (supports letters, digits, underscores, hyphens, and spaces)
+  const mentionRegex = /@([a-zA-Z0-9_-]+(?:\s+[a-zA-Z0-9_-]+)*)/g;
   const mentions: string[] = [];
   let match;
 
@@ -442,13 +442,13 @@ ${componentSnippet}
 
         // Parse app mentions from the prompt
         const mentionedAppNames = parseAppMentions(req.prompt);
+        console.log("******** mentionedAppNames", mentionedAppNames);
 
         // Extract codebase for current app
-        const { formattedOutput: currentAppCodebaseInfo, files } =
-          await extractCodebase({
-            appPath,
-            chatContext,
-          });
+        const { formattedOutput: codebaseInfo, files } = await extractCodebase({
+          appPath,
+          chatContext,
+        });
 
         // Extract codebases for mentioned apps
         const mentionedAppsCodebases = await extractMentionedAppsCodebases(
@@ -457,7 +457,8 @@ ${componentSnippet}
         );
 
         // Combine current app codebase with mentioned apps' codebases
-        let codebaseInfo = currentAppCodebaseInfo;
+        console.log("******** mentionedAppsCodebases", mentionedAppsCodebases);
+        let otherAppsCodebaseInfo = "";
         if (mentionedAppsCodebases.length > 0) {
           const mentionedAppsSection = mentionedAppsCodebases
             .map(
@@ -466,7 +467,7 @@ ${componentSnippet}
             )
             .join("");
 
-          codebaseInfo = currentAppCodebaseInfo + mentionedAppsSection;
+          otherAppsCodebaseInfo = mentionedAppsSection;
 
           logger.log(
             `Added ${mentionedAppsCodebases.length} mentioned app codebases`,
@@ -626,8 +627,18 @@ This conversation includes one or more image attachments. When the user uploads 
               },
             ] as const);
 
+        const otherCodebasePrefix = otherAppsCodebaseInfo
+          ? ([
+              {
+                role: "user",
+                content: createOtherAppsCodebasePrompt(otherAppsCodebaseInfo),
+              },
+            ] as const)
+          : [];
+
         let chatMessages: CoreMessage[] = [
           ...codebasePrefix,
+          ...otherCodebasePrefix,
           ...limitedMessageHistory.map((msg) => ({
             role: msg.role as "user" | "assistant" | "system",
             // Why remove thinking tags?
@@ -1317,4 +1328,17 @@ function escapeDyadTags(text: string): string {
 const CODEBASE_PROMPT_PREFIX = "This is my codebase.";
 function createCodebasePrompt(codebaseInfo: string): string {
   return `${CODEBASE_PROMPT_PREFIX} ${codebaseInfo}`;
+}
+
+function createOtherAppsCodebasePrompt(otherAppsCodebaseInfo: string): string {
+  return `
+# Referenced Apps
+The user has mentioned these other apps in their prompt. Their codebases have been included in the context for your reference. 
+
+When referring to these apps, you can understand their structure and code to provide better assistance.
+
+You can NOT edit the files in these other codebases.
+
+${otherAppsCodebaseInfo}
+`;
 }

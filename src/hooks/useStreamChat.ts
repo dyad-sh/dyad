@@ -12,7 +12,6 @@ import {
   isStreamingAtom,
 } from "@/atoms/chatAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
-import { useQuery } from "@tanstack/react-query";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import type { ChatResponseEnd } from "@/ipc/ipc_types";
 import { useChats } from "./useChats";
@@ -32,15 +31,6 @@ import { useSettings } from "./useSettings";
 
 export function getRandomNumberId() {
   return Math.floor(Math.random() * 1_000_000_000_000_000);
-}
-
-export function useUserSettings() {
-  return useQuery({
-    queryKey: ["userSettings"],
-    queryFn: async () => {
-      return await IpcClient.getInstance().getUserSettings();
-    },
-  });
 }
 
 export function useStreamChat({

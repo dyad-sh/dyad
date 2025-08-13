@@ -1,5 +1,10 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { $getRoot, $createParagraphNode, EditorState } from "lexical";
+import {
+  $getRoot,
+  $createParagraphNode,
+  $createTextNode,
+  EditorState,
+} from "lexical";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
@@ -125,6 +130,34 @@ function ClearEditorPlugin({
       onCleared();
     }
   }, [editor, shouldClear, onCleared]);
+
+  return null;
+}
+
+// Plugin to sync external value prop into the editor
+function ExternalValueSyncPlugin({ value }: { value: string }) {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => {
+    // Read current editor text and only update when it differs
+    const currentText = editor.getEditorState().read(() => {
+      const root = $getRoot();
+      return root.getTextContent();
+    });
+
+    if (currentText !== value) {
+      editor.update(() => {
+        const root = $getRoot();
+        root.clear();
+        const paragraph = $createParagraphNode();
+        if (value) {
+          paragraph.append($createTextNode(value));
+        }
+        root.append(paragraph);
+        paragraph.selectEnd();
+      });
+    }
+  }, [editor, value]);
 
   return null;
 }
@@ -275,6 +308,7 @@ export function LexicalChatInput({
         <OnChangePlugin onChange={handleEditorChange} />
         <HistoryPlugin />
         <EnterKeyPlugin onSubmit={handleSubmit} />
+        <ExternalValueSyncPlugin value={value} />
         <ClearEditorPlugin
           shouldClear={shouldClear}
           onCleared={handleCleared}

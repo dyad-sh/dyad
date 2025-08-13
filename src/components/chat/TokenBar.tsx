@@ -6,7 +6,13 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useCountTokens } from "@/hooks/useCountTokens";
-import { MessageSquare, Code, Bot, AlignLeft } from "lucide-react";
+import {
+  MessageSquare,
+  Code,
+  Bot,
+  AlignLeft,
+  ExternalLink,
+} from "lucide-react";
 import { chatInputValueAtom } from "@/atoms/chatAtoms";
 import { useAtom } from "jotai";
 import { useSettings } from "@/hooks/useSettings";
@@ -45,6 +51,7 @@ export function TokenBar({ chatId }: TokenBarProps) {
     totalTokens,
     messageHistoryTokens,
     codebaseTokens,
+    mentionedAppsTokens,
     systemPromptTokens,
     inputTokens,
     contextWindow,
@@ -55,6 +62,7 @@ export function TokenBar({ chatId }: TokenBarProps) {
   // Calculate widths for each token type
   const messageHistoryPercent = (messageHistoryTokens / contextWindow) * 100;
   const codebasePercent = (codebaseTokens / contextWindow) * 100;
+  const mentionedAppsPercent = (mentionedAppsTokens / contextWindow) * 100;
   const systemPromptPercent = (systemPromptTokens / contextWindow) * 100;
   const inputPercent = (inputTokens / contextWindow) * 100;
 
@@ -82,6 +90,11 @@ export function TokenBar({ chatId }: TokenBarProps) {
                   className="h-full bg-green-400"
                   style={{ width: `${codebasePercent}%` }}
                 />
+                {/* Mentioned apps tokens */}
+                <div
+                  className="h-full bg-orange-400"
+                  style={{ width: `${mentionedAppsPercent}%` }}
+                />
                 {/* System prompt tokens */}
                 <div
                   className="h-full bg-purple-400"
@@ -106,6 +119,10 @@ export function TokenBar({ chatId }: TokenBarProps) {
                 <Code size={12} className="text-green-500" />
                 <span>Codebase</span>
                 <span>{codebaseTokens.toLocaleString()}</span>
+
+                <ExternalLink size={12} className="text-orange-500" />
+                <span>Mentioned Apps</span>
+                <span>{mentionedAppsTokens.toLocaleString()}</span>
 
                 <Bot size={12} className="text-purple-500" />
                 <span>System Prompt</span>

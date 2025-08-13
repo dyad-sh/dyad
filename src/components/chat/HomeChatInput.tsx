@@ -1,6 +1,4 @@
 import { SendIcon, StopCircleIcon } from "lucide-react";
-import type React from "react";
-import { useEffect, useRef } from "react";
 
 import { useSettings } from "@/hooks/useSettings";
 import { homeChatInputValueAtom } from "@/atoms/chatAtoms"; // Use a different atom for home input
@@ -13,6 +11,7 @@ import { FileAttachmentDropdown } from "./FileAttachmentDropdown";
 import { usePostHog } from "posthog-js/react";
 import { HomeSubmitOptions } from "@/pages/home";
 import { ChatInputControls } from "../ChatInputControls";
+import { LexicalChatInput } from "./LexicalChatInput";
 export function HomeChatInput({
   onSubmit,
 }: {
@@ -20,7 +19,6 @@ export function HomeChatInput({
 }) {
   const posthog = usePostHog();
   const [inputValue, setInputValue] = useAtom(homeChatInputValueAtom);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { settings } = useSettings();
   const { isStreaming } = useStreamChat({
     hasChatId: false,
@@ -38,26 +36,6 @@ export function HomeChatInput({
     clearAttachments,
     handlePaste,
   } = useAttachments();
-
-  const adjustHeight = () => {
-    const textarea = textareaRef.current;
-    if (textarea) {
-      textarea.style.height = "0px";
-      const scrollHeight = textarea.scrollHeight;
-      textarea.style.height = `${scrollHeight + 4}px`;
-    }
-  };
-
-  useEffect(() => {
-    adjustHeight();
-  }, [inputValue]);
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleCustomSubmit();
-    }
-  };
 
   // Custom submit function that wraps the provided onSubmit
   const handleCustomSubmit = () => {
@@ -98,16 +76,13 @@ export function HomeChatInput({
           <DragDropOverlay isDraggingOver={isDraggingOver} />
 
           <div className="flex items-start space-x-2 ">
-            <textarea
-              ref={textareaRef}
+            <LexicalChatInput
               value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyPress={handleKeyPress}
+              onChange={setInputValue}
+              onSubmit={handleCustomSubmit}
               onPaste={handlePaste}
               placeholder="Ask Dyad to build..."
-              className="flex-1 p-2 focus:outline-none overflow-y-auto min-h-[40px] max-h-[200px]"
-              style={{ resize: "none" }}
-              disabled={isStreaming} // Should ideally reflect if *any* stream is happening
+              disabled={isStreaming}
             />
 
             {/* File attachment dropdown */}

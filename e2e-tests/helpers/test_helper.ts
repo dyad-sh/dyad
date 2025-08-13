@@ -645,7 +645,9 @@ export class PageObject {
   }
 
   getChatInput() {
-    return this.page.getByRole("textbox", { name: "Ask Dyad to build..." });
+    return this.page.locator(
+      '[data-lexical-editor="true"][aria-placeholder="Ask Dyad to build..."]',
+    );
   }
 
   clickNewChat({ index = 0 }: { index?: number } = {}) {
@@ -878,6 +880,7 @@ export class PageObject {
 
   async goToAppsTab() {
     await this.page.getByRole("link", { name: "Apps" }).click();
+    await expect(this.page.getByText("Build your dream app")).toBeVisible();
   }
 
   async goToChatTab() {

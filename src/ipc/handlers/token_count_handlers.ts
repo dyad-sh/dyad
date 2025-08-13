@@ -20,6 +20,8 @@ import { estimateTokens, getContextWindow } from "../utils/token_utils";
 import { createLoggedHandler } from "./safe_handle";
 import { validateChatContext } from "../utils/context_paths_utils";
 import { readSettings } from "@/main/settings";
+import { extractMentionedAppsCodebases } from "../utils/mention_apps";
+import { parseAppMentions } from "@/shared/parse_mention_apps";
 
 const logger = log.scope("token_count_handlers");
 
@@ -53,6 +55,10 @@ export function registerTokenCountHandlers() {
       const inputTokens = estimateTokens(req.input);
 
       const settings = readSettings();
+
+      // Parse app mentions from the input
+      const mentionedAppNames = parseAppMentions(req.input);
+
       // Count system prompt tokens
       let systemPrompt = constructSystemPrompt({
         aiRules: await readAiRules(getDyadAppPath(chat.app.path)),
@@ -92,17 +98,42 @@ export function registerTokenCountHandlers() {
         );
       }
 
+      // Extract codebases for mentioned apps
+      const mentionedAppsCodebases = await extractMentionedAppsCodebases(
+        mentionedAppNames,
+        chat.app?.id, // Exclude current app
+      );
+
+      // Calculate tokens for mentioned apps
+      let mentionedAppsTokens = 0;
+      if (mentionedAppsCodebases.length > 0) {
+        const mentionedAppsContent = mentionedAppsCodebases
+          .map(
+            ({ appName, codebaseInfo }) =>
+              `\n\n=== Referenced App: ${appName} ===\n${codebaseInfo}`,
+          )
+          .join("");
+
+        mentionedAppsTokens = estimateTokens(mentionedAppsContent);
+
+        logger.log(
+          `Extracted ${mentionedAppsCodebases.length} mentioned app codebases, tokens: ${mentionedAppsTokens}`,
+        );
+      }
+
       // Calculate total tokens
       const totalTokens =
         messageHistoryTokens +
         inputTokens +
         systemPromptTokens +
-        codebaseTokens;
+        codebaseTokens +
+        mentionedAppsTokens;
 
       return {
         totalTokens,
         messageHistoryTokens,
         codebaseTokens,
+        mentionedAppsTokens,
         inputTokens,
         systemPromptTokens,
         contextWindow: await getContextWindow(),

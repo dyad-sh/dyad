@@ -59,6 +59,8 @@ import {
 import { fileExists } from "../utils/file_utils";
 import { FileUploadsState } from "../utils/file_uploads_state";
 import { OpenAIResponsesProviderOptions } from "@ai-sdk/openai";
+import { extractMentionedAppsCodebases } from "../utils/mention_apps";
+import { parseAppMentions } from "@/shared/parse_mention_apps";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
@@ -380,10 +382,37 @@ ${componentSnippet}
             }
           : validateChatContext(updatedChat.app.chatContext);
 
+        // Parse app mentions from the prompt
+        const mentionedAppNames = parseAppMentions(req.prompt);
+
+        // Extract codebase for current app
         const { formattedOutput: codebaseInfo, files } = await extractCodebase({
           appPath,
           chatContext,
         });
+
+        // Extract codebases for mentioned apps
+        const mentionedAppsCodebases = await extractMentionedAppsCodebases(
+          mentionedAppNames,
+          updatedChat.app.id, // Exclude current app
+        );
+
+        // Combine current app codebase with mentioned apps' codebases
+        let otherAppsCodebaseInfo = "";
+        if (mentionedAppsCodebases.length > 0) {
+          const mentionedAppsSection = mentionedAppsCodebases
+            .map(
+              ({ appName, codebaseInfo }) =>
+                `\n\n=== Referenced App: ${appName} ===\n${codebaseInfo}`,
+            )
+            .join("");
+
+          otherAppsCodebaseInfo = mentionedAppsSection;
+
+          logger.log(
+            `Added ${mentionedAppsCodebases.length} mentioned app codebases`,
+          );
+        }
 
         logger.log(`Extracted codebase information from ${appPath}`);
         logger.log(
@@ -446,6 +475,15 @@ ${componentSnippet}
           aiRules: await readAiRules(getDyadAppPath(updatedChat.app.path)),
           chatMode: settings.selectedChatMode,
         });
+
+        // Add information about mentioned apps if any
+        if (otherAppsCodebaseInfo) {
+          const mentionedAppsList = mentionedAppsCodebases
+            .map(({ appName }) => appName)
+            .join(", ");
+
+          systemPrompt += `\n\n# Referenced Apps\nThe user has mentioned the following apps in their prompt: ${mentionedAppsList}. Their codebases have been included in the context for your reference. When referring to these apps, you can understand their structure and code to provide better assistance, however you should NOT edit the files in these referenced apps. The referenced apps are NOT part of the current app and are READ-ONLY.`;
+        }
         if (
           updatedChat.app?.supabaseProjectId &&
           settings.supabase?.accessToken?.value
@@ -529,8 +567,22 @@ This conversation includes one or more image attachments. When the user uploads 
               },
             ] as const);
 
+        const otherCodebasePrefix = otherAppsCodebaseInfo
+          ? ([
+              {
+                role: "user",
+                content: createOtherAppsCodebasePrompt(otherAppsCodebaseInfo),
+              },
+              {
+                role: "assistant",
+                content: "OK.",
+              },
+            ] as const)
+          : [];
+
         let chatMessages: CoreMessage[] = [
           ...codebasePrefix,
+          ...otherCodebasePrefix,
           ...limitedMessageHistory.map((msg) => ({
             role: msg.role as "user" | "assistant" | "system",
             // Why remove thinking tags?
@@ -1200,4 +1252,14 @@ function escapeDyadTags(text: string): string {
 const CODEBASE_PROMPT_PREFIX = "This is my codebase.";
 function createCodebasePrompt(codebaseInfo: string): string {
   return `${CODEBASE_PROMPT_PREFIX} ${codebaseInfo}`;
+}
+
+function createOtherAppsCodebasePrompt(otherAppsCodebaseInfo: string): string {
+  return `
+# Referenced Apps
+
+These are the other apps that I've mentioned in my prompt. These other apps' codebases are READ-ONLY.
+
+${otherAppsCodebaseInfo}
+`;
 }

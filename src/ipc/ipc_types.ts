@@ -47,8 +47,6 @@ export interface ChatProblemsEvent {
 
 export interface CreateAppParams {
   name: string;
-  installCommand?: string;
-  startCommand?: string;
 }
 
 export interface CreateAppResult {

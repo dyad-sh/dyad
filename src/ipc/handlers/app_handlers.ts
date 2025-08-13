@@ -272,8 +272,6 @@ export function registerAppHandlers() {
           name: params.name,
           // Use the name as the path for now
           path: appPath,
-          installCommand: params.installCommand ?? null,
-          startCommand: params.startCommand ?? null,
         })
         .returning();
 

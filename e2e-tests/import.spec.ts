@@ -49,7 +49,7 @@ testSkipIfWindows("import app with custom commands", async ({ po }) => {
   await po.setUp();
   await po.page.getByRole("button", { name: "Import App" }).click();
   await eph.stubDialog(po.electronApp, "showOpenDialog", {
-    filePaths: [],
+    filePaths: [path.join(__dirname, "fixtures", "import-app", "minimal")],
   });
   await po.page.getByRole("button", { name: "Select Folder" }).click();
   await po.page

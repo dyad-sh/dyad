@@ -1,12 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import {
-  $getRoot,
-  $getSelection,
-  $createParagraphNode,
-  $createTextNode,
-  EditorState,
-  LexicalEditor,
-} from "lexical";
+import { $getRoot, $createParagraphNode, EditorState } from "lexical";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
@@ -23,6 +16,9 @@ import {
 import { KEY_ENTER_COMMAND, COMMAND_PRIORITY_HIGH } from "lexical";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { forwardRef } from "react";
+import { useAtomValue } from "jotai";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { parseAppMentions } from "@/shared/parse_mention_apps";
 
 // Define the theme for mentions
 const beautifulMentionsTheme: BeautifulMentionsTheme = {
@@ -56,7 +52,7 @@ const CustomMenuItem = forwardRef<
 ));
 
 // Custom menu component
-function CustomMenu({ loading, ...props }: any) {
+function CustomMenu({ loading: _loading, ...props }: any) {
   return (
     <ul
       className="m-0 mb-1 min-w-[300px] w-auto max-h-48 overflow-y-auto bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50"
@@ -156,14 +152,40 @@ export function LexicalChatInput({
 }: LexicalChatInputProps) {
   const { apps } = useLoadApps();
   const [shouldClear, setShouldClear] = useState(false);
+  const selectedAppId = useAtomValue(selectedAppIdAtom);
 
   // Prepare mention items - convert apps to mention format
   const mentionItems = React.useMemo(() => {
-    const appMentions = apps?.map((app) => app.name) || [];
+    if (!apps) return { "@": [] };
+
+    // Get current app name
+    const currentApp = apps.find((app) => app.id === selectedAppId);
+    const currentAppName = currentApp?.name;
+
+    // Parse already mentioned apps from current input value
+    const alreadyMentioned = parseAppMentions(value);
+
+    // Filter out current app and already mentioned apps
+    const filteredApps = apps.filter((app) => {
+      // Exclude current app
+      if (app.name === currentAppName) return false;
+
+      // Exclude already mentioned apps (case-insensitive comparison)
+      if (
+        alreadyMentioned.some(
+          (mentioned) => mentioned.toLowerCase() === app.name.toLowerCase(),
+        )
+      )
+        return false;
+
+      return true;
+    });
+
+    const appMentions = filteredApps.map((app) => app.name);
     return {
       "@": appMentions,
     };
-  }, [apps]);
+  }, [apps, selectedAppId, value]);
 
   const initialConfig = {
     namespace: "ChatInput",
@@ -179,11 +201,33 @@ export function LexicalChatInput({
     (editorState: EditorState) => {
       editorState.read(() => {
         const root = $getRoot();
-        const textContent = root.getTextContent();
+        let textContent = root.getTextContent();
+
+        console.time("handleEditorChange");
+        // Transform @AppName mentions to @app:AppName format
+        // This regex matches @AppName where AppName is one of our actual app names
+
+        // Short-circuit if there's no "@" symbol in the text
+        if (textContent.includes("@")) {
+          const appNames = apps?.map((app) => app.name) || [];
+          for (const appName of appNames) {
+            // Escape special regex characters in app name
+            const escapedAppName = appName.replace(
+              /[.*+?^${}()|[\]\\]/g,
+              "\\$&",
+            );
+            const mentionRegex = new RegExp(
+              `@(${escapedAppName})(?![a-zA-Z0-9_-])`,
+              "g",
+            );
+            textContent = textContent.replace(mentionRegex, "@app:$1");
+          }
+        }
+        console.timeEnd("handleEditorChange");
         onChange(textContent);
       });
     },
-    [onChange],
+    [onChange, apps],
   );
 
   const handleSubmit = useCallback(() => {
@@ -225,6 +269,7 @@ export function LexicalChatInput({
           menuComponent={CustomMenu}
           menuItemComponent={CustomMenuItem}
           creatable={false}
+          insertOnBlur={false}
         />
         <OnChangePlugin onChange={handleEditorChange} />
         <HistoryPlugin />

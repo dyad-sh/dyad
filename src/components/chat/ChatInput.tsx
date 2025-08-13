@@ -18,7 +18,7 @@ import {
   SendHorizontalIcon,
 } from "lucide-react";
 import type React from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { useSettings } from "@/hooks/useSettings";
 import { IpcClient } from "@/ipc/ipc_client";
@@ -71,7 +71,6 @@ const showTokenBarAtom = atom(false);
 export function ChatInput({ chatId }: { chatId?: number }) {
   const posthog = usePostHog();
   const [inputValue, setInputValue] = useAtom(chatInputValueAtom);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { settings } = useSettings();
   const appId = useAtomValue(selectedAppIdAtom);
   const { refreshVersions } = useVersions(appId);
@@ -109,19 +108,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   } = useProposal(chatId);
   const { proposal, messageId } = proposalResult ?? {};
 
-  const adjustHeight = () => {
-    const textarea = textareaRef.current;
-    if (textarea) {
-      textarea.style.height = "0px";
-      const scrollHeight = textarea.scrollHeight;
-      textarea.style.height = `${scrollHeight + 4}px`;
-    }
-  };
-
-  useEffect(() => {
-    adjustHeight();
-  }, [inputValue]);
-
   useEffect(() => {
     if (error) {
       setShowError(true);
@@ -136,13 +122,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     const chat = await IpcClient.getInstance().getChat(chatId);
     setMessages(chat.messages);
   }, [chatId, setMessages]);
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit();
-    }
-  };
 
   const handleSubmit = async () => {
     if (

@@ -59,6 +59,8 @@ import {
 import { fileExists } from "../utils/file_utils";
 import { FileUploadsState } from "../utils/file_uploads_state";
 import { OpenAIResponsesProviderOptions } from "@ai-sdk/openai";
+import { extractMentionedAppsCodebases } from "../utils/mention_apps";
+import { parseAppMentions } from "@/shared/parse_mention_apps";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
@@ -158,66 +160,6 @@ async function processStreamChunks({
   }
 
   return { fullResponse, incrementalResponse };
-}
-
-// Helper function to parse app mentions from prompt
-function parseAppMentions(prompt: string): string[] {
-  // Match @AppName patterns in the prompt (supports letters, digits, underscores, hyphens, and spaces)
-  const mentionRegex = /@([a-zA-Z0-9_-]+(?:\s+[a-zA-Z0-9_-]+)*)/g;
-  const mentions: string[] = [];
-  let match;
-
-  while ((match = mentionRegex.exec(prompt)) !== null) {
-    mentions.push(match[1]);
-  }
-
-  return mentions;
-}
-
-// Helper function to extract codebases from mentioned apps
-async function extractMentionedAppsCodebases(
-  mentionedAppNames: string[],
-  excludeCurrentAppId?: number,
-): Promise<{ appName: string; codebaseInfo: string }[]> {
-  if (mentionedAppNames.length === 0) {
-    return [];
-  }
-
-  // Get all apps
-  const allApps = await db.query.apps.findMany();
-
-  const mentionedApps = allApps.filter(
-    (app) =>
-      mentionedAppNames.some(
-        (mentionName) => app.name.toLowerCase() === mentionName.toLowerCase(),
-      ) && app.id !== excludeCurrentAppId,
-  );
-
-  const results: { appName: string; codebaseInfo: string }[] = [];
-
-  for (const app of mentionedApps) {
-    try {
-      const appPath = getDyadAppPath(app.path);
-      const chatContext = validateChatContext(app.chatContext);
-
-      const { formattedOutput } = await extractCodebase({
-        appPath,
-        chatContext,
-      });
-
-      results.push({
-        appName: app.name,
-        codebaseInfo: formattedOutput,
-      });
-
-      logger.log(`Extracted codebase for mentioned app: ${app.name}`);
-    } catch (error) {
-      logger.error(`Error extracting codebase for app ${app.name}:`, error);
-      // Continue with other apps even if one fails
-    }
-  }
-
-  return results;
 }
 
 export function registerChatStreamHandlers() {
@@ -442,7 +384,6 @@ ${componentSnippet}
 
         // Parse app mentions from the prompt
         const mentionedAppNames = parseAppMentions(req.prompt);
-        console.log("******** mentionedAppNames", mentionedAppNames);
 
         // Extract codebase for current app
         const { formattedOutput: codebaseInfo, files } = await extractCodebase({
@@ -457,7 +398,6 @@ ${componentSnippet}
         );
 
         // Combine current app codebase with mentioned apps' codebases
-        console.log("******** mentionedAppsCodebases", mentionedAppsCodebases);
         let otherAppsCodebaseInfo = "";
         if (mentionedAppsCodebases.length > 0) {
           const mentionedAppsSection = mentionedAppsCodebases
@@ -542,7 +482,7 @@ ${componentSnippet}
             .map(({ appName }) => appName)
             .join(", ");
 
-          systemPrompt += `\n\n# Referenced Apps\nThe user has mentioned the following apps in their prompt: ${mentionedAppsList}. Their codebases have been included in the context for your reference. When referring to these apps, you can understand their structure and code to provide better assistance.`;
+          systemPrompt += `\n\n# Referenced Apps\nThe user has mentioned the following apps in their prompt: ${mentionedAppsList}. Their codebases have been included in the context for your reference. When referring to these apps, you can understand their structure and code to provide better assistance, however you should NOT edit the files in these referenced apps. The referenced apps are NOT part of the current app and are READ-ONLY.`;
         }
         if (
           updatedChat.app?.supabaseProjectId &&
@@ -895,32 +835,13 @@ ${problemReport.problems
                   writeTags,
                 });
 
-                const { formattedOutput: currentAppCodebaseInfo, files } =
+                const { formattedOutput: codebaseInfo, files } =
                   await extractCodebase({
                     appPath,
                     chatContext,
                     virtualFileSystem,
                   });
 
-                // Extract codebases for mentioned apps (reuse the same mentioned apps)
-                const mentionedAppsCodebases =
-                  await extractMentionedAppsCodebases(
-                    mentionedAppNames,
-                    updatedChat.app.id,
-                  );
-
-                // Combine current app codebase with mentioned apps' codebases
-                let codebaseInfo = currentAppCodebaseInfo;
-                if (mentionedAppsCodebases.length > 0) {
-                  const mentionedAppsSection = mentionedAppsCodebases
-                    .map(
-                      ({ appName, codebaseInfo }) =>
-                        `\n\n=== Referenced App: ${appName} ===\n${codebaseInfo}`,
-                    )
-                    .join("");
-
-                  codebaseInfo = currentAppCodebaseInfo + mentionedAppsSection;
-                }
                 const { modelClient } = await getModelClient(
                   settings.selectedModel,
                   settings,
@@ -1333,11 +1254,8 @@ function createCodebasePrompt(codebaseInfo: string): string {
 function createOtherAppsCodebasePrompt(otherAppsCodebaseInfo: string): string {
   return `
 # Referenced Apps
-The user has mentioned these other apps in their prompt. Their codebases have been included in the context for your reference. 
 
-When referring to these apps, you can understand their structure and code to provide better assistance.
-
-You can NOT edit the files in these other codebases.
+These are the other apps that I've mentioned in my prompt. These other apps' codebases are READ-ONLY.
 
 ${otherAppsCodebaseInfo}
 `;

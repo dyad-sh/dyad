@@ -152,6 +152,7 @@ export interface TokenCountResult {
   totalTokens: number;
   messageHistoryTokens: number;
   codebaseTokens: number;
+  mentionedAppsTokens: number;
   inputTokens: number;
   systemPromptTokens: number;
   contextWindow: number;

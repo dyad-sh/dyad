@@ -477,7 +477,7 @@ ${componentSnippet}
         });
 
         // Add information about mentioned apps if any
-        if (mentionedAppsCodebases.length > 0) {
+        if (otherAppsCodebaseInfo) {
           const mentionedAppsList = mentionedAppsCodebases
             .map(({ appName }) => appName)
             .join(", ");
@@ -572,6 +572,10 @@ This conversation includes one or more image attachments. When the user uploads 
               {
                 role: "user",
                 content: createOtherAppsCodebasePrompt(otherAppsCodebaseInfo),
+              },
+              {
+                role: "assistant",
+                content: "OK.",
               },
             ] as const)
           : [];
@@ -841,7 +845,6 @@ ${problemReport.problems
                     chatContext,
                     virtualFileSystem,
                   });
-
                 const { modelClient } = await getModelClient(
                   settings.selectedModel,
                   settings,

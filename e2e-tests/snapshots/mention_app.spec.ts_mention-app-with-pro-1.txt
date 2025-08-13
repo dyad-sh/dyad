@@ -452,5 +452,9 @@ export default defineConfig(() => ({
 
 
 ===
+role: assistant
+message: OK.
+
+===
 role: user
 message: [dump] @app:minimal-with-ai-rules hi

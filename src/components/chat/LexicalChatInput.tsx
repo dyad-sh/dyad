@@ -22,8 +22,8 @@ import { parseAppMentions } from "@/shared/parse_mention_apps";
 
 // Define the theme for mentions
 const beautifulMentionsTheme: BeautifulMentionsTheme = {
-  "@": "px-2 py-0.5 mx-0.5 bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200 rounded-md",
-  "@Focused": "outline-none ring-2 ring-indigo-500 dark:ring-indigo-400",
+  "@": "px-2 py-0.5 mx-0.5 bg-accent text-accent-foreground rounded-md",
+  "@Focused": "outline-none ring-2 ring-ring",
 };
 
 // Custom menu item component
@@ -34,17 +34,17 @@ const CustomMenuItem = forwardRef<
   <li
     className={`m-0 flex items-center px-3 py-2 cursor-pointer whitespace-nowrap ${
       selected
-        ? "bg-indigo-100 dark:bg-indigo-900 text-indigo-900 dark:text-indigo-100"
-        : "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700"
+        ? "bg-accent text-accent-foreground"
+        : "bg-popover text-popover-foreground hover:bg-accent/50"
     }`}
     {...props}
     ref={ref}
   >
     <div className="flex items-center space-x-2 min-w-0">
-      <span className="px-2 py-0.5 text-xs font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200 rounded-md flex-shrink-0">
+      <span className="px-2 py-0.5 text-xs font-medium bg-primary text-primary-foreground rounded-md flex-shrink-0">
         App
       </span>
-      <span className="font-medium truncate">
+      <span className="truncate text-sm">
         {typeof item === "string" ? item : item.value}
       </span>
     </div>
@@ -55,13 +55,13 @@ const CustomMenuItem = forwardRef<
 function CustomMenu({ loading: _loading, ...props }: any) {
   return (
     <ul
-      className="m-0 mb-1 min-w-[300px] w-auto max-h-48 overflow-y-auto bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50"
+      className="m-0 mb-1 min-w-[300px] w-auto max-h-64 overflow-y-auto bg-popover border border-border rounded-lg shadow-lg z-50"
       style={{
         position: "absolute",
         bottom: "100%",
         left: 0,
         right: 0,
-        transform: "translateY(-4px)", // Add a small gap between menu and input
+        transform: "translateY(-20px)", // Add a larger gap between menu and input (12px higher)
       }}
       data-mentions-menu="true"
       {...props}
@@ -255,7 +255,7 @@ export function LexicalChatInput({
               className="flex-1 p-2 focus:outline-none overflow-y-auto min-h-[40px] max-h-[200px] resize-none"
               aria-placeholder={placeholder}
               placeholder={
-                <div className="absolute top-2 left-2 text-gray-500 pointer-events-none select-none">
+                <div className="absolute top-2 left-2 text-muted-foreground pointer-events-none select-none">
                   {placeholder}
                 </div>
               }
@@ -270,6 +270,7 @@ export function LexicalChatInput({
           menuItemComponent={CustomMenuItem}
           creatable={false}
           insertOnBlur={false}
+          menuItemLimit={10}
         />
         <OnChangePlugin onChange={handleEditorChange} />
         <HistoryPlugin />

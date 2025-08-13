@@ -169,6 +169,7 @@ interface LexicalChatInputProps {
   onPaste?: (e: React.ClipboardEvent) => void;
   placeholder?: string;
   disabled?: boolean;
+  excludeCurrentApp: boolean;
 }
 
 function onError(error: Error) {
@@ -180,6 +181,7 @@ export function LexicalChatInput({
   onChange,
   onSubmit,
   onPaste,
+  excludeCurrentApp,
   placeholder = "Ask Dyad to build...",
   disabled = false,
 }: LexicalChatInputProps) {
@@ -201,7 +203,7 @@ export function LexicalChatInput({
     // Filter out current app and already mentioned apps
     const filteredApps = apps.filter((app) => {
       // Exclude current app
-      if (app.name === currentAppName) return false;
+      if (excludeCurrentApp && app.name === currentAppName) return false;
 
       // Exclude already mentioned apps (case-insensitive comparison)
       if (

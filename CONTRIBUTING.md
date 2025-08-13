@@ -18,6 +18,13 @@ Dyad is an Electron app.
 npm install
 ```
 
+**Apply migrations:**
+
+```sh
+npm run db:generate
+npm run db:push
+```
+
 **Run locally:**
 
 ```sh

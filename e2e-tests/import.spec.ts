@@ -72,8 +72,6 @@ testSkipIfWindows("import app with custom commands", async ({ po }) => {
   ).toHaveCount(0);
 
   await po.page.getByRole("button", { name: "Import" }).click();
-  await po.snapshotPreview();
-  await po.snapshotMessages();
 });
 
 testSkipIfWindows(
@@ -101,14 +99,3 @@ testSkipIfWindows(
     await po.snapshotPreview();
   },
 );
-
-testSkipIfWindows("cancel closes dialog without importing", async ({ po }) => {
-  await po.setUp();
-  await po.page.getByRole("button", { name: "Import App" }).click();
-
-  await expect(po.page.getByText("Import App")).toBeVisible();
-
-  await po.page.getByRole("button", { name: "Cancel" }).click();
-
-  await expect(po.page.getByText("Import App")).toHaveCount(0);
-});

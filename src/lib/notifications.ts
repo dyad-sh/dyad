@@ -3,65 +3,59 @@
  */
 
 import { showSuccess } from "./toast";
-import { IpcClient } from "@/ipc/ipc_client";
+import type { UserSettings } from "@/lib/schemas";
 
 export interface NotificationOptions {
   visual?: boolean;
   sound?: boolean;
   message?: string;
+  settings?: UserSettings;
 }
 
 /**
  * Show notification when chat response is completed
+ *
+ * IMPORTANT: This function must be called from a React component or hook that
+ * already has access to user settings via the useSettings() hook. Do not call
+ * IpcClient directly from this utility function.
+ *
+ * @param options Options including user settings from a React hook/component
  */
 export function showResponseCompleted(options: NotificationOptions = {}) {
   const {
     visual = true,
     sound = true,
     message = "Response completed",
+    settings,
   } = options;
 
-  // We need to get the settings first to check if native notifications are enabled
-  IpcClient.getInstance()
-    .getUserSettings()
-    .then((settings) => {
-      try {
-        // Always use native notifications when enabled, regardless of window focus
-        const useNativeNotification = settings?.enableResponseEndNotification;
+  try {
+    // Use settings passed from the component
+    const useNativeNotification = settings?.enableResponseEndNotification;
 
-        // Visual notification (always use native notification if enabled)
-        if (visual) {
-          if (useNativeNotification && typeof Notification !== "undefined") {
-            // Use native notification for better visibility when app is not in focus
-            showNativeNotification("Dyad", message);
-          } else {
-            // Fallback to toast only if native notifications are disabled
-            showSuccess(message);
-          }
-        }
-
-        // Audio notification
-        if (sound) {
-          playNotificationSound();
-        }
-      } catch (error) {
-        console.debug("Notification error:", error);
-        // Fallback to toast
-        if (visual) {
-          showSuccess(message);
-        }
-      }
-    })
-    .catch((error) => {
-      console.debug("Failed to get user settings:", error);
-      // Fallback to toast if we can't get the settings
-      if (visual) {
+    // Only show notifications (visual or sound) if the feature is enabled
+    if (useNativeNotification) {
+      // Visual notification
+      if (visual && typeof Notification !== "undefined") {
+        // Use native notification for better visibility when app is not in focus
+        showNativeNotification("Dyad", message);
+      } else if (visual) {
+        // Fallback to toast only if Notification API is not available
         showSuccess(message);
       }
+
+      // Audio notification
       if (sound) {
         playNotificationSound();
       }
-    });
+    }
+  } catch (error) {
+    console.debug("Notification error:", error);
+    // Fallback to toast
+    if (visual) {
+      showSuccess(message);
+    }
+  }
 }
 
 /**
@@ -79,10 +73,13 @@ function showNativeNotification(title: string, body: string) {
         if (permission === "granted") {
           sendNotification();
         } else {
-          // Permission denied, fallback to toast
+          // Permission denied or dismissed, fallback to toast
           showSuccess(body);
         }
       });
+    } else {
+      // Already denied, fallback to toast
+      showSuccess(body);
     }
 
     function sendNotification() {
@@ -98,31 +95,18 @@ function showNativeNotification(title: string, body: string) {
       // When notification is clicked, focus the Dyad window
       notification.onclick = () => {
         // Bring Dyad window to front when notification is clicked
+        // In Electron, the click handler should automatically focus the window
+        // without needing to send an explicit IPC message
         if (window) {
           window.focus();
-
-          // If we're in Electron and have access to its APIs
-          try {
-            // This is a more reliable way to focus an Electron window
-            // than just window.focus()
-            if (window.require) {
-              const electron = window.require("electron");
-              if (electron && electron.ipcRenderer) {
-                electron.ipcRenderer.send("focus-window");
-              }
-            }
-          } catch (e) {
-            console.debug("Could not access Electron IPC:", e);
-            // Standard browser focus fallback
-            window.focus();
-          }
         }
       };
     }
   } catch (error) {
     console.debug("Native notification failed:", error);
-    // Fallback to toast if notifications are not supported
-    showSuccess(body);
+    // Log error but don't fall back to toast
+    // This ensures we respect the user's notification preferences
+    // and don't show any notification if native notifications fail
   }
 }
 
@@ -171,23 +155,5 @@ function playNotificationSound() {
   } catch (error) {
     // Silently fail if audio is not available
     console.debug("Audio notification failed:", error);
-  }
-}
-
-/**
- * Alternative: Use system notification sound (simpler, more reliable)
- */
-export function playSystemNotification() {
-  try {
-    // Create a very short, high-pitched beep
-    const audio = new Audio(
-      "data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmMcBjiR1/LNeSsFJHfH8N2QQAoUXrTp66hVFApGn+DyvmMcBjiR1/LNeSsFJHfH8N2QQAoUXrTp66hVFApGn+DyvmMcBjmO0+LIeCEEJHjM8N1xIggSeN7aqXMEA1t09Sy0",
-    );
-    audio.volume = 0.1;
-    audio.play().catch(() => {
-      // Ignore errors - notification is optional
-    });
-  } catch (error) {
-    console.debug("System notification failed:", error);
   }
 }

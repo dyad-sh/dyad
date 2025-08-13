@@ -12,6 +12,7 @@ import {
   isStreamingAtom,
 } from "@/atoms/chatAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
+import { useQuery } from "@tanstack/react-query";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import type { ChatResponseEnd } from "@/ipc/ipc_types";
 import { useChats } from "./useChats";
@@ -31,6 +32,15 @@ import { useSettings } from "./useSettings";
 
 export function getRandomNumberId() {
   return Math.floor(Math.random() * 1_000_000_000_000_000);
+}
+
+export function useUserSettings() {
+  return useQuery({
+    queryKey: ["userSettings"],
+    queryFn: async () => {
+      return await IpcClient.getInstance().getUserSettings();
+    },
+  });
 }
 
 export function useStreamChat({
@@ -117,12 +127,16 @@ export function useStreamChat({
 
             refetchUserBudget();
 
-            // Show notification when response is completed
-            showResponseCompleted({
-              visual: true,
-              sound: true,
-              message: "Response completed",
-            });
+            // Show notification when response is completed, but only if the setting is enabled
+            // Passing settings from the React hook context to avoid direct IPC calls in utilities
+            if (settings?.enableResponseEndNotification) {
+              showResponseCompleted({
+                visual: true,
+                sound: true,
+                message: "Response completed",
+                settings,
+              });
+            }
 
             // Keep the same as below
             setIsStreaming(false);

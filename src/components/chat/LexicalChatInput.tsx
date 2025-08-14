@@ -151,7 +151,6 @@ function ExternalValueSyncPlugin({ value }: { value: string }) {
 
     // If the editor already reflects the same display text, do nothing to avoid loops
     if (currentText === displayText) return;
-    console.log("*****UPDATE");
     editor.update(() => {
       const root = $getRoot();
       root.clear();
@@ -274,7 +273,6 @@ export function LexicalChatInput({
         const root = $getRoot();
         let textContent = root.getTextContent();
 
-        console.time("handleEditorChange");
         // Transform @AppName mentions to @app:AppName format
         // This regex matches @AppName where AppName is one of our actual app names
 
@@ -294,7 +292,6 @@ export function LexicalChatInput({
             textContent = textContent.replace(mentionRegex, "@app:$1");
           }
         }
-        console.timeEnd("handleEditorChange");
         onChange(textContent);
       });
     },

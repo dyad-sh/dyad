@@ -130,9 +130,7 @@ jobs:
           find all-blob-reports/ -type f -exec ls -lh {} \; || echo "No files found"
 
       - name: Merge into HTML Report
-        run: PLAYWRIGHT_HTML_OUTPUT_DIR=playwright-report npx playwright merge-reports --reporter html ./all-blob-reports
-        # Alternative approach if the above doesn't work:
-        # run: npx playwright merge-reports --config playwright.config.ts --reporter html ./all-blob-reports
+        run: PLAYWRIGHT_HTML_OUTPUT_DIR=playwright-report npx playwright merge-reports --config=merge.config.ts ./all-blob-reports
 
       - name: Debug - List playwright-report contents
         run: |

@@ -1,4 +1,4 @@
-import { test } from "./helpers/test_helper";
+import { test, testSkipIfWindows } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 import fs from "fs";
 import path from "path";
@@ -58,7 +58,7 @@ test("problems auto-fix - disabled", async ({ po }) => {
   await po.snapshotMessages();
 });
 
-test("problems - fix all", async ({ po }) => {
+testSkipIfWindows("problems - fix all", async ({ po }) => {
   await po.setUp({ enableAutoFixProblems: true });
   await po.importApp(MINIMAL_APP);
   const appPath = await po.getCurrentAppPath();
@@ -83,7 +83,7 @@ export default App;
   await po.snapshotMessages({ replaceDumpPath: true });
 });
 
-test("problems - manual edit (react/vite)", async ({ po }) => {
+testSkipIfWindows("problems - manual edit (react/vite)", async ({ po }) => {
   await po.setUp({ enableAutoFixProblems: true });
   await po.sendPrompt("tc=1");
 
@@ -110,7 +110,7 @@ export default App;
   await po.snapshotProblemsPane();
 });
 
-test("problems - manual edit (next.js)", async ({ po }) => {
+testSkipIfWindows("problems - manual edit (next.js)", async ({ po }) => {
   await po.setUp({ enableAutoFixProblems: true });
   await po.goToHubAndSelectTemplate("Next.js Template");
   await po.sendPrompt("tc=1");

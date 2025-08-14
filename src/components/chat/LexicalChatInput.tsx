@@ -1,5 +1,10 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { $getRoot, $createParagraphNode, EditorState } from "lexical";
+import {
+  $getRoot,
+  $createParagraphNode,
+  $createTextNode,
+  EditorState,
+} from "lexical";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
@@ -10,6 +15,7 @@ import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import {
   BeautifulMentionsPlugin,
   BeautifulMentionNode,
+  $createBeautifulMentionNode,
   type BeautifulMentionsTheme,
   type BeautifulMentionsMenuItemProps,
 } from "lexical-beautiful-mentions";
@@ -18,7 +24,7 @@ import { useLoadApps } from "@/hooks/useLoadApps";
 import { forwardRef } from "react";
 import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import { parseAppMentions } from "@/shared/parse_mention_apps";
+import { MENTION_REGEX, parseAppMentions } from "@/shared/parse_mention_apps";
 
 // Define the theme for mentions
 const beautifulMentionsTheme: BeautifulMentionsTheme = {
@@ -129,6 +135,68 @@ function ClearEditorPlugin({
   return null;
 }
 
+// Plugin to sync external value prop into the editor
+function ExternalValueSyncPlugin({ value }: { value: string }) {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => {
+    // Derive the display text that should appear in the editor (@Name) from the
+    // internal value representation (@app:Name)
+    const displayText = (value || "").replace(MENTION_REGEX, "@$1");
+
+    const currentText = editor.getEditorState().read(() => {
+      const root = $getRoot();
+      return root.getTextContent();
+    });
+
+    // If the editor already reflects the same display text, do nothing to avoid loops
+    if (currentText === displayText) return;
+    editor.update(() => {
+      const root = $getRoot();
+      root.clear();
+
+      const paragraph = $createParagraphNode();
+
+      // Build nodes from the internal value, turning @app:Name into a mention node
+      const mentionRegex = /@app:([a-zA-Z0-9_-]+)/g;
+      let lastIndex = 0;
+      let match: RegExpExecArray | null;
+
+      while ((match = mentionRegex.exec(value)) !== null) {
+        const [full, name] = match;
+        const start = match.index;
+
+        // Append any text before the mention
+        if (start > lastIndex) {
+          const textBefore = value.slice(lastIndex, start);
+          if (textBefore) paragraph.append($createTextNode(textBefore));
+        }
+
+        // Append the actual mention node (@ trigger with value = Name)
+        paragraph.append($createBeautifulMentionNode("@", name));
+
+        lastIndex = start + full.length;
+      }
+
+      // Append any trailing text after the last mention
+      if (lastIndex < value.length) {
+        const trailing = value.slice(lastIndex);
+        if (trailing) paragraph.append($createTextNode(trailing));
+      }
+
+      // If there were no mentions at all, just append the raw value as text
+      if (value && paragraph.getTextContent() === "") {
+        paragraph.append($createTextNode(value));
+      }
+
+      root.append(paragraph);
+      paragraph.selectEnd();
+    });
+  }, [editor, value]);
+
+  return null;
+}
+
 interface LexicalChatInputProps {
   value: string;
   onChange: (value: string) => void;
@@ -136,6 +204,7 @@ interface LexicalChatInputProps {
   onPaste?: (e: React.ClipboardEvent) => void;
   placeholder?: string;
   disabled?: boolean;
+  excludeCurrentApp: boolean;
 }
 
 function onError(error: Error) {
@@ -147,6 +216,7 @@ export function LexicalChatInput({
   onChange,
   onSubmit,
   onPaste,
+  excludeCurrentApp,
   placeholder = "Ask Dyad to build...",
   disabled = false,
 }: LexicalChatInputProps) {
@@ -168,7 +238,7 @@ export function LexicalChatInput({
     // Filter out current app and already mentioned apps
     const filteredApps = apps.filter((app) => {
       // Exclude current app
-      if (app.name === currentAppName) return false;
+      if (excludeCurrentApp && app.name === currentAppName) return false;
 
       // Exclude already mentioned apps (case-insensitive comparison)
       if (
@@ -185,7 +255,7 @@ export function LexicalChatInput({
     return {
       "@": appMentions,
     };
-  }, [apps, selectedAppId, value]);
+  }, [apps, selectedAppId, value, excludeCurrentApp]);
 
   const initialConfig = {
     namespace: "ChatInput",
@@ -203,7 +273,6 @@ export function LexicalChatInput({
         const root = $getRoot();
         let textContent = root.getTextContent();
 
-        console.time("handleEditorChange");
         // Transform @AppName mentions to @app:AppName format
         // This regex matches @AppName where AppName is one of our actual app names
 
@@ -223,7 +292,6 @@ export function LexicalChatInput({
             textContent = textContent.replace(mentionRegex, "@app:$1");
           }
         }
-        console.timeEnd("handleEditorChange");
         onChange(textContent);
       });
     },
@@ -275,6 +343,7 @@ export function LexicalChatInput({
         <OnChangePlugin onChange={handleEditorChange} />
         <HistoryPlugin />
         <EnterKeyPlugin onSubmit={handleSubmit} />
+        <ExternalValueSyncPlugin value={value} />
         <ClearEditorPlugin
           shouldClear={shouldClear}
           onCleared={handleCleared}

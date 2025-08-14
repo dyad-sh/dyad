@@ -83,6 +83,7 @@ export function HomeChatInput({
               onPaste={handlePaste}
               placeholder="Ask Dyad to build..."
               disabled={isStreaming}
+              excludeCurrentApp={false}
             />
 
             {/* File attachment dropdown */}

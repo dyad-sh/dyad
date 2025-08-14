@@ -14,7 +14,7 @@ const config: PlaywrightTestConfig = {
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   // Why not use GitHub reporter? Because we're using matrix and it's discouraged:
   // https://playwright.dev/docs/test-reporters#github-actions-annotations
-  reporter: process.env.CI ? "blob" : [["html"], ["line"]],
+  reporter: process.env.CI ? [["blob"], ["html"]] : [["html"], ["line"]],
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* See https://playwright.dev/docs/trace-viewer */

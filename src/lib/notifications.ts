@@ -30,11 +30,8 @@ export function showResponseCompleted(options: NotificationOptions = {}) {
   } = options;
 
   try {
-    // Use settings passed from the component
-    const useNativeNotification = settings?.enableResponseEndNotification;
-
     // Only show notifications (visual or sound) if the feature is enabled
-    if (useNativeNotification) {
+    if (settings?.enableResponseEndNotification) {
       // Visual notification
       if (visual && typeof Notification !== "undefined") {
         // Use native notification for better visibility when app is not in focus

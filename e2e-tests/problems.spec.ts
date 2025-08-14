@@ -73,7 +73,7 @@ nonExistentFunction3();
 export default App;
 `,
   );
-  await po.runPnpmInstall();
+  await po.ensurePnpmInstall();
 
   await po.sendPrompt("tc=create-ts-errors");
   await po.selectPreviewMode("problems");
@@ -97,7 +97,7 @@ nonExistentFunction();
 export default App;
 `,
   );
-  await po.runPnpmInstall();
+  await po.ensurePnpmInstall();
   await po.clickTogglePreviewPanel();
 
   await po.selectPreviewMode("problems");
@@ -125,7 +125,7 @@ test("problems - manual edit (next.js)", async ({ po }) => {
   export default App;
   `,
   );
-  await po.runPnpmInstall();
+  await po.ensurePnpmInstall();
   await po.clickTogglePreviewPanel();
 
   await po.selectPreviewMode("problems");

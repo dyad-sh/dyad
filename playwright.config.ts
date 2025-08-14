@@ -1,4 +1,7 @@
 import { PlaywrightTestConfig } from "@playwright/test";
+import os from "os";
+
+const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
 
 const config: PlaywrightTestConfig = {
   testDir: "./e2e-tests",
@@ -14,7 +17,18 @@ const config: PlaywrightTestConfig = {
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   // Why not use GitHub reporter? Because we're using matrix and it's discouraged:
   // https://playwright.dev/docs/test-reporters#github-actions-annotations
-  reporter: process.env.CI ? [["blob"], ["html"]] : [["html"], ["line"]],
+  reporter: process.env.CI
+    ? [
+        [
+          "blob",
+          {
+            // Speculatively fix https://github.com/actions/download-artifact/issues/298#issuecomment-2016075998
+            // by using a timestamp in the filename
+            outputFile: `./blob-report/report-${os.platform()}-${timestamp}.zip`,
+          },
+        ],
+      ]
+    : [["html"], ["line"]],
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* See https://playwright.dev/docs/trace-viewer */

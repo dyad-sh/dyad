@@ -15,6 +15,7 @@ import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import {
   BeautifulMentionsPlugin,
   BeautifulMentionNode,
+  $createBeautifulMentionNode,
   type BeautifulMentionsTheme,
   type BeautifulMentionsMenuItemProps,
 } from "lexical-beautiful-mentions";
@@ -23,7 +24,7 @@ import { useLoadApps } from "@/hooks/useLoadApps";
 import { forwardRef } from "react";
 import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import { parseAppMentions } from "@/shared/parse_mention_apps";
+import { MENTION_REGEX, parseAppMentions } from "@/shared/parse_mention_apps";
 
 // Define the theme for mentions
 const beautifulMentionsTheme: BeautifulMentionsTheme = {
@@ -139,24 +140,59 @@ function ExternalValueSyncPlugin({ value }: { value: string }) {
   const [editor] = useLexicalComposerContext();
 
   useEffect(() => {
-    // Read current editor text and only update when it differs
+    // Derive the display text that should appear in the editor (@Name) from the
+    // internal value representation (@app:Name)
+    const displayText = (value || "").replace(MENTION_REGEX, "@$1");
+
     const currentText = editor.getEditorState().read(() => {
       const root = $getRoot();
       return root.getTextContent();
     });
 
-    if (currentText !== value) {
-      editor.update(() => {
-        const root = $getRoot();
-        root.clear();
-        const paragraph = $createParagraphNode();
-        if (value) {
-          paragraph.append($createTextNode(value));
+    // If the editor already reflects the same display text, do nothing to avoid loops
+    if (currentText === displayText) return;
+    console.log("*****UPDATE");
+    editor.update(() => {
+      const root = $getRoot();
+      root.clear();
+
+      const paragraph = $createParagraphNode();
+
+      // Build nodes from the internal value, turning @app:Name into a mention node
+      const mentionRegex = /@app:([a-zA-Z0-9_-]+)/g;
+      let lastIndex = 0;
+      let match: RegExpExecArray | null;
+
+      while ((match = mentionRegex.exec(value)) !== null) {
+        const [full, name] = match;
+        const start = match.index;
+
+        // Append any text before the mention
+        if (start > lastIndex) {
+          const textBefore = value.slice(lastIndex, start);
+          if (textBefore) paragraph.append($createTextNode(textBefore));
         }
-        root.append(paragraph);
-        paragraph.selectEnd();
-      });
-    }
+
+        // Append the actual mention node (@ trigger with value = Name)
+        paragraph.append($createBeautifulMentionNode("@", name));
+
+        lastIndex = start + full.length;
+      }
+
+      // Append any trailing text after the last mention
+      if (lastIndex < value.length) {
+        const trailing = value.slice(lastIndex);
+        if (trailing) paragraph.append($createTextNode(trailing));
+      }
+
+      // If there were no mentions at all, just append the raw value as text
+      if (value && paragraph.getTextContent() === "") {
+        paragraph.append($createTextNode(value));
+      }
+
+      root.append(paragraph);
+      paragraph.selectEnd();
+    });
   }, [editor, value]);
 
   return null;
@@ -220,7 +256,7 @@ export function LexicalChatInput({
     return {
       "@": appMentions,
     };
-  }, [apps, selectedAppId, value]);
+  }, [apps, selectedAppId, value, excludeCurrentApp]);
 
   const initialConfig = {
     namespace: "ChatInput",

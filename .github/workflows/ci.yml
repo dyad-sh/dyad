@@ -85,6 +85,8 @@ jobs:
       - name: Install Chromium browser for Playwright
         run: npx playwright install chromium --with-deps
       - name: Build
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
         run: npm run pre:e2e
       - name: Prep test server
         run: cd testing/fake-llm-server && npm install && npm run build && cd -

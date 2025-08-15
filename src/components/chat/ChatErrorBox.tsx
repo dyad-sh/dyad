@@ -18,22 +18,32 @@ export function ChatErrorBox({
         {error}
         <span className="ml-1">
           <ExternalLink href="https://dyad.sh/pro">
-            Access with Dyad Pro.
+            Access with Dyad Pro
           </ExternalLink>
-        </span>
+        </span>{" "}
+        or switch to another model.
       </ChatErrorContainer>
     );
   }
 
   // Important, this needs to come after the "free quota tier" check
   // because it also includes this URL in the error message
-  if (error.includes("https://ai.google.dev/gemini-api/docs/rate-limits")) {
+  if (
+    error.includes("Resource has been exhausted") ||
+    error.includes("https://ai.google.dev/gemini-api/docs/rate-limits")
+  ) {
     return (
       <ChatErrorContainer onDismiss={onDismiss}>
         {error}
         <span className="ml-1">
           <ExternalLink href="https://dyad.sh/pro">
-            Upgrade to Dyad Pro.
+            Upgrade to Dyad Pro
+          </ExternalLink>
+        </span>{" "}
+        or read the
+        <span className="ml-1">
+          <ExternalLink href="https://dyad.sh/docs/help/ai-rate-limit">
+            Rate limit troubleshooting guide.
           </ExternalLink>
         </span>
       </ChatErrorContainer>

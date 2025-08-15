@@ -74,7 +74,7 @@ async function verifyReleaseAssets() {
           // NuGet removes the dot: 0.14.0-beta.1 -> 0.14.0-beta1
           return version.replace("-beta.", "-beta");
         default:
-          // Windows installer and macOS zips keep original format
+          // Windows installer, macOS zips, and AppImage keep original format
           return version;
       }
     };
@@ -87,6 +87,7 @@ async function verifyReleaseAssets() {
       `dyad-darwin-arm64-${version}.zip`,
       `dyad-darwin-x64-${version}.zip`,
       `dyad_${normalizeVersionForPlatform(version, "deb")}_amd64.deb`,
+      `dyad-${version}-x64.AppImage`,
       "RELEASES",
     ];
 

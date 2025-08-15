@@ -21,6 +21,7 @@ import {
 } from "lexical-beautiful-mentions";
 import { KEY_ENTER_COMMAND, COMMAND_PRIORITY_HIGH } from "lexical";
 import { useLoadApps } from "@/hooks/useLoadApps";
+import { usePrompts } from "@/hooks/usePrompts";
 import { forwardRef } from "react";
 import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
@@ -36,26 +37,35 @@ const beautifulMentionsTheme: BeautifulMentionsTheme = {
 const CustomMenuItem = forwardRef<
   HTMLLIElement,
   BeautifulMentionsMenuItemProps
->(({ selected, item, ...props }, ref) => (
-  <li
-    className={`m-0 flex items-center px-3 py-2 cursor-pointer whitespace-nowrap ${
-      selected
-        ? "bg-accent text-accent-foreground"
-        : "bg-popover text-popover-foreground hover:bg-accent/50"
-    }`}
-    {...props}
-    ref={ref}
-  >
-    <div className="flex items-center space-x-2 min-w-0">
-      <span className="px-2 py-0.5 text-xs font-medium bg-primary text-primary-foreground rounded-md flex-shrink-0">
-        App
-      </span>
-      <span className="truncate text-sm">
-        {typeof item === "string" ? item : item.value}
-      </span>
-    </div>
-  </li>
-));
+>(({ selected, item, ...props }, ref) => {
+  const isPrompt = typeof item !== "string" && item.data?.type === "prompt";
+  const label = isPrompt ? "Prompt" : "App";
+  const value = typeof item === "string" ? item : (item as any)?.value;
+  return (
+    <li
+      className={`m-0 flex items-center px-3 py-2 cursor-pointer whitespace-nowrap ${
+        selected
+          ? "bg-accent text-accent-foreground"
+          : "bg-popover text-popover-foreground hover:bg-accent/50"
+      }`}
+      {...props}
+      ref={ref}
+    >
+      <div className="flex items-center space-x-2 min-w-0">
+        <span
+          className={`px-2 py-0.5 text-xs font-medium rounded-md flex-shrink-0 ${
+            isPrompt
+              ? "bg-purple-500 text-white"
+              : "bg-primary text-primary-foreground"
+          }`}
+        >
+          {label}
+        </span>
+        <span className="truncate text-sm">{value}</span>
+      </div>
+    </li>
+  );
+});
 
 // Custom menu component
 function CustomMenu({ loading: _loading, ...props }: any) {
@@ -136,13 +146,24 @@ function ClearEditorPlugin({
 }
 
 // Plugin to sync external value prop into the editor
-function ExternalValueSyncPlugin({ value }: { value: string }) {
+function ExternalValueSyncPlugin({
+  value,
+  promptsById,
+}: {
+  value: string;
+  promptsById: Record<number, string>;
+}) {
   const [editor] = useLexicalComposerContext();
 
   useEffect(() => {
     // Derive the display text that should appear in the editor (@Name) from the
     // internal value representation (@app:Name)
-    const displayText = (value || "").replace(MENTION_REGEX, "@$1");
+    let displayText = (value || "").replace(MENTION_REGEX, "@$1");
+    displayText = displayText.replace(/@prompt:(\d+)/g, (_m, idStr) => {
+      const id = Number(idStr);
+      const title = promptsById[id];
+      return title ? `@${title}` : _m;
+    });
 
     const currentText = editor.getEditorState().read(() => {
       const root = $getRoot();
@@ -157,34 +178,32 @@ function ExternalValueSyncPlugin({ value }: { value: string }) {
 
       const paragraph = $createParagraphNode();
 
-      // Build nodes from the internal value, turning @app:Name into a mention node
-      const mentionRegex = /@app:([a-zA-Z0-9_-]+)/g;
+      // Build nodes from internal value, turning @app:Name and @prompt:<id> into mention nodes
       let lastIndex = 0;
       let match: RegExpExecArray | null;
-
-      while ((match = mentionRegex.exec(value)) !== null) {
-        const [full, name] = match;
+      const combined = /@app:([a-zA-Z0-9_-]+)|@prompt:(\d+)/g;
+      while ((match = combined.exec(value)) !== null) {
         const start = match.index;
-
-        // Append any text before the mention
+        const full = match[0];
         if (start > lastIndex) {
           const textBefore = value.slice(lastIndex, start);
           if (textBefore) paragraph.append($createTextNode(textBefore));
         }
-
-        // Append the actual mention node (@ trigger with value = Name)
-        paragraph.append($createBeautifulMentionNode("@", name));
-
+        if (match[1]) {
+          const appName = match[1];
+          paragraph.append($createBeautifulMentionNode("@", appName));
+        } else if (match[2]) {
+          const id = Number(match[2]);
+          const title = promptsById[id] || `prompt:${id}`;
+          paragraph.append($createBeautifulMentionNode("@", title));
+        }
         lastIndex = start + full.length;
       }
-
-      // Append any trailing text after the last mention
       if (lastIndex < value.length) {
         const trailing = value.slice(lastIndex);
         if (trailing) paragraph.append($createTextNode(trailing));
       }
 
-      // If there were no mentions at all, just append the raw value as text
       if (value && paragraph.getTextContent() === "") {
         paragraph.append($createTextNode(value));
       }
@@ -192,7 +211,7 @@ function ExternalValueSyncPlugin({ value }: { value: string }) {
       root.append(paragraph);
       paragraph.selectEnd();
     });
-  }, [editor, value]);
+  }, [editor, value, promptsById]);
 
   return null;
 }
@@ -221,6 +240,7 @@ export function LexicalChatInput({
   disabled = false,
 }: LexicalChatInputProps) {
   const { apps } = useLoadApps();
+  const { prompts } = usePrompts();
   const [shouldClear, setShouldClear] = useState(false);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
 
@@ -252,10 +272,17 @@ export function LexicalChatInput({
     });
 
     const appMentions = filteredApps.map((app) => app.name);
+
+    const promptItems = (prompts || []).map((p) => ({
+      value: p.title,
+      type: "prompt",
+      id: p.id,
+    }));
+
     return {
-      "@": appMentions,
+      "@": [...appMentions, ...promptItems],
     };
-  }, [apps, selectedAppId, value, excludeCurrentApp]);
+  }, [apps, selectedAppId, value, excludeCurrentApp, prompts]);
 
   const initialConfig = {
     namespace: "ChatInput",
@@ -291,11 +318,18 @@ export function LexicalChatInput({
             );
             textContent = textContent.replace(mentionRegex, "@app:$1");
           }
+          // Convert @PromptTitle to @prompt:<id>
+          const map = new Map((prompts || []).map((p) => [p.title, p.id]));
+          for (const [title, id] of map.entries()) {
+            const escapedTitle = title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const regex = new RegExp(`@(${escapedTitle})(?![\\w-])`, "g");
+            textContent = textContent.replace(regex, `@prompt:${id}`);
+          }
         }
         onChange(textContent);
       });
     },
-    [onChange, apps],
+    [onChange, apps, prompts],
   );
 
   const handleSubmit = useCallback(() => {
@@ -343,7 +377,12 @@ export function LexicalChatInput({
         <OnChangePlugin onChange={handleEditorChange} />
         <HistoryPlugin />
         <EnterKeyPlugin onSubmit={handleSubmit} />
-        <ExternalValueSyncPlugin value={value} />
+        <ExternalValueSyncPlugin
+          value={value}
+          promptsById={Object.fromEntries(
+            (prompts || []).map((p) => [p.id, p.title]),
+          )}
+        />
         <ClearEditorPlugin
           shouldClear={shouldClear}
           onCleared={handleCleared}

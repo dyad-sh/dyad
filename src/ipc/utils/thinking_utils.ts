@@ -23,6 +23,11 @@ export function getExtraProviderOptions(
   if (!providerId) {
     return {};
   }
+  if (providerId === "openai") {
+    return {
+      reasoning_effort: "medium",
+    };
+  }
   if (PROVIDERS_THAT_SUPPORT_THINKING.includes(providerId)) {
     const budgetTokens = getThinkingBudgetTokens(settings?.thinkingBudget);
     return {

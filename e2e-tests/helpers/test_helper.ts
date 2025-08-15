@@ -251,58 +251,52 @@ export class PageObject {
     await this.goToAppsTab();
   }
 
-  async runPnpmInstall() {
+  async ensurePnpmInstall() {
     const appPath = await this.getCurrentAppPath();
     if (!appPath) {
       throw new Error("No app selected");
     }
 
-    const maxRetries = 3;
-    let lastError: any;
+    const maxDurationMs = 180_000; // 3 minutes
+    const retryIntervalMs = 15_000;
+    const startTime = Date.now();
+    let lastOutput = "";
 
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const checkCommand = `node -e 'const pkg=require("./package.json");const{execSync}=require("child_process");try{const prodResult=JSON.parse(execSync("pnpm list --json --depth=0",{encoding:"utf8"}));const devResult=JSON.parse(execSync("pnpm list --json --depth=0 --dev",{encoding:"utf8"}));const installed={...(prodResult[0]||{}).dependencies||{},...(devResult[0]||{}).devDependencies||{}};const expected=Object.keys({...pkg.dependencies||{},...pkg.devDependencies||{}});const missing=expected.filter(dep=>!installed[dep]);console.log(missing.length?"MISSING: "+missing.join(", "):"All dependencies installed")}catch(e){console.log("Error:",e.message)}'`;
+
+    while (Date.now() - startTime < maxDurationMs) {
       try {
-        console.log(
-          `Running 'pnpm install' in ${appPath} (attempt ${attempt}/${maxRetries})`,
-        );
-        execSync("pnpm install", {
+        console.log(`Checking installed dependencies in ${appPath}...`);
+        const stdout = execSync(checkCommand, {
           cwd: appPath,
           stdio: "pipe",
           encoding: "utf8",
         });
-        console.log(`'pnpm install' succeeded on attempt ${attempt}`);
-        return; // Success, exit the function
+        lastOutput = (stdout || "").toString().trim();
+        console.log(`Dependency check output: ${lastOutput}`);
+        if (lastOutput.includes("All dependencies installed")) {
+          return;
+        }
       } catch (error: any) {
-        lastError = error;
-        console.error(
-          `Attempt ${attempt}/${maxRetries} failed to run 'pnpm install' in ${appPath}`,
-        );
-        console.error(`Exit code: ${error.status}`);
-        console.error(`Command: ${error.cmd || "pnpm install"}`);
-
-        if (error.stdout) {
-          console.error(`STDOUT:\n${error.stdout}`);
-        }
-
-        if (error.stderr) {
-          console.error(`STDERR:\n${error.stderr}`);
-        }
-
-        // If this wasn't the last attempt, wait a bit before retrying
-        if (attempt < maxRetries) {
-          const delayMs = 1000 * attempt; // Exponential backoff: 1s, 2s
-          console.log(`Waiting ${delayMs}ms before retry...`);
-          await new Promise((resolve) => setTimeout(resolve, delayMs));
-        }
+        // Capture any error output to include in the final error if we time out
+        const stdOut = error?.stdout ? error.stdout.toString() : "";
+        const stdErr = error?.stderr ? error.stderr.toString() : "";
+        lastOutput = [stdOut, stdErr, error?.message]
+          .filter(Boolean)
+          .join("\n");
+        console.error("Dependency check command failed:", lastOutput);
       }
+
+      const elapsed = Date.now() - startTime;
+      const remaining = Math.max(0, maxDurationMs - elapsed);
+      const waitMs = Math.min(retryIntervalMs, remaining);
+      if (waitMs <= 0) break;
+      console.log(`Waiting ${waitMs}ms before retry...`);
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
     }
 
-    // All attempts failed, throw the last error with enhanced message
     throw new Error(
-      `pnpm install failed in ${appPath} after ${maxRetries} attempts. ` +
-        `Exit code: ${lastError.status}. ` +
-        `${lastError.stderr ? `Error: ${lastError.stderr}` : ""}` +
-        `${lastError.stdout ? ` Output: ${lastError.stdout}` : ""}`,
+      `Dependencies not fully installed in ${appPath} after 3 minutes. Last output: ${lastOutput}`,
     );
   }
 
@@ -645,7 +639,9 @@ export class PageObject {
   }
 
   getChatInput() {
-    return this.page.getByRole("textbox", { name: "Ask Dyad to build..." });
+    return this.page.locator(
+      '[data-lexical-editor="true"][aria-placeholder="Ask Dyad to build..."]',
+    );
   }
 
   clickNewChat({ index = 0 }: { index?: number } = {}) {
@@ -878,6 +874,7 @@ export class PageObject {
 
   async goToAppsTab() {
     await this.page.getByRole("link", { name: "Apps" }).click();
+    await expect(this.page.getByText("Build your dream app")).toBeVisible();
   }
 
   async goToChatTab() {

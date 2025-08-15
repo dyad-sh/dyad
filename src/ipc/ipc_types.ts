@@ -152,6 +152,7 @@ export interface TokenCountResult {
   totalTokens: number;
   messageHistoryTokens: number;
   codebaseTokens: number;
+  mentionedAppsTokens: number;
   inputTokens: number;
   systemPromptTokens: number;
   contextWindow: number;
@@ -183,6 +184,7 @@ export type LanguageModel =
       tag?: string;
       maxOutputTokens?: number;
       contextWindow?: number;
+      temperature?: number;
       type: "custom";
     }
   | {
@@ -192,6 +194,7 @@ export type LanguageModel =
       tag?: string;
       maxOutputTokens?: number;
       contextWindow?: number;
+      temperature?: number;
       type: "local" | "cloud";
     };
 

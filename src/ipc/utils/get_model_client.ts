@@ -183,7 +183,7 @@ function getRegularModelClient(
       const provider = createOpenAI({ apiKey });
       return {
         modelClient: {
-          model: provider(model.name),
+          model: provider.responses(model.name),
           builtinProviderId: providerId,
         },
         backupModelClients: [],

@@ -1,8 +1,8 @@
 {
   "name": "dyad",
   "productName": "dyad",
-  "version": "0.16.0",
-  "description": "My Electron application description",
+  "version": "0.17.0",
+  "description": "Free, local, open-source AI app builder",
   "main": ".vite/build/main.js",
   "repository": {
     "type": "git",
@@ -38,7 +38,8 @@
     "extract-codebase": "ts-node scripts/extract-codebase.ts",
     "prepare": "husky install",
     "pre:e2e": "cross-env E2E_TEST_BUILD=true npm run package",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "e2e:shard": "playwright test --shard"
   },
   "keywords": [],
   "author": {
@@ -85,12 +86,14 @@
   "dependencies": {
     "@ai-sdk/anthropic": "^1.2.8",
     "@ai-sdk/google": "^1.2.19",
-    "@ai-sdk/openai": "^1.3.7",
+    "@ai-sdk/openai": "^1.3.24",
     "@ai-sdk/openai-compatible": "^0.2.13",
     "@biomejs/biome": "^1.9.4",
     "@dyad-sh/supabase-management-js": "v1.0.0",
+    "@lexical/react": "^0.33.1",
     "@monaco-editor/react": "^4.7.0-rc.0",
     "@neondatabase/api-client": "^2.1.0",
+    "@neondatabase/serverless": "^1.0.1",
     "@openrouter/ai-sdk-provider": "^0.4.5",
     "@radix-ui/react-accordion": "^1.2.4",
     "@radix-ui/react-alert-dialog": "^1.1.13",
@@ -133,6 +136,8 @@
     "isomorphic-git": "^1.30.1",
     "jotai": "^2.12.2",
     "kill-port": "^2.0.1",
+    "lexical": "^0.33.1",
+    "lexical-beautiful-mentions": "^0.1.47",
     "lucide-react": "^0.487.0",
     "monaco-editor": "^0.52.2",
     "ollama-ai-provider": "^1.2.0",

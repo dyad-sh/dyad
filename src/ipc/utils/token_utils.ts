@@ -24,10 +24,16 @@ export async function getContextWindow() {
   return modelOption?.contextWindow || DEFAULT_CONTEXT_WINDOW;
 }
 
-// Most models support at least 8000 output tokens so we use it as a default value.
-const DEFAULT_MAX_TOKENS = 8_000;
-
-export async function getMaxTokens(model: LargeLanguageModel) {
+export async function getMaxTokens(
+  model: LargeLanguageModel,
+): Promise<number | undefined> {
   const modelOption = await findLanguageModel(model);
-  return modelOption?.maxOutputTokens || DEFAULT_MAX_TOKENS;
+  return modelOption?.maxOutputTokens ?? undefined;
+}
+
+export async function getTemperature(
+  model: LargeLanguageModel,
+): Promise<number> {
+  const modelOption = await findLanguageModel(model);
+  return modelOption?.temperature ?? 0;
 }

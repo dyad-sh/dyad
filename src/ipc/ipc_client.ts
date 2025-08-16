@@ -1069,4 +1069,73 @@ export class IpcClient {
   public async getTemplates(): Promise<Template[]> {
     return this.ipcRenderer.invoke("get-templates");
   }
+
+  public async runMultiAgent(
+    task: string,
+    appId: number,
+  ): Promise<{
+    success: boolean;
+    finalCode?: string;
+    conversationHistory?: any[];
+    error?: string;
+  }> {
+    return this.ipcRenderer.invoke("run-multi-agent", { task, appId });
+  }
+
+  public async fsReadFile(appId: number, filePath: string): Promise<string> {
+    const result = await this.ipcRenderer.invoke("fs:readFile", {
+      appId,
+      filePath,
+    });
+    if (result.success) {
+      return result.content;
+    } else {
+      throw new Error(result.error);
+    }
+  }
+
+  public async fsWriteFile(
+    appId: number,
+    filePath: string,
+    content: string,
+  ): Promise<void> {
+    const result = await this.ipcRenderer.invoke("fs:writeFile", {
+      appId,
+      filePath,
+      content,
+    });
+    if (!result.success) {
+      throw new Error(result.error);
+    }
+  }
+
+  public async startPythonService(): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    return this.ipcRenderer.invoke("python:start");
+  }
+
+  public async stopPythonService(): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    return this.ipcRenderer.invoke("python:stop");
+  }
+
+  public async trainAgent(): Promise<{
+    success: boolean;
+    data?: any;
+    error?: string;
+  }> {
+    return this.ipcRenderer.invoke("python:train");
+  }
+
+  public async getTrainingStatus(): Promise<{
+    success: boolean;
+    data?: any;
+    error?: string;
+  }> {
+    return this.ipcRenderer.invoke("python:status");
+  }
 }

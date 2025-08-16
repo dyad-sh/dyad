@@ -6,6 +6,7 @@ import { settingsRoute } from "./routes/settings";
 import { providerSettingsRoute } from "./routes/settings/providers/$provider";
 import { appDetailsRoute } from "./routes/app-details";
 import { hubRoute } from "./routes/hub";
+import { multiAgentRoute } from "./routes/multi_agent";
 
 const routeTree = rootRoute.addChildren([
   homeRoute,
@@ -13,6 +14,7 @@ const routeTree = rootRoute.addChildren([
   chatRoute,
   appDetailsRoute,
   settingsRoute.addChildren([providerSettingsRoute]),
+  multiAgentRoute,
 ]);
 
 // src/components/NotFoundRedirect.tsx

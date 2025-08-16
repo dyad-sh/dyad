@@ -140,6 +140,7 @@
     "lexical-beautiful-mentions": "^0.1.47",
     "lucide-react": "^0.487.0",
     "monaco-editor": "^0.52.2",
+    "node-fetch": "^2.7.0",
     "ollama-ai-provider": "^1.2.0",
     "openai": "^4.91.1",
     "posthog-js": "^1.236.3",

@@ -42,7 +42,7 @@ export function useParseRouter(appId: number | null) {
         ? "Home"
         : path
             .split("/")
-            .filter((segment) => segment)
+            .filter((segment) => segment && !segment.startsWith(":"))
             .pop()
             ?.replace(/[-_]/g, " ")
             .replace(/^\w/, (c) => c.toUpperCase()) || path;

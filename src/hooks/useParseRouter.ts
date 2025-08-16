@@ -144,7 +144,6 @@ export function useParseRouter(appId: number | null) {
         setRoutes([]);
       }
     };
-    debugger;
 
     if (isNextApp && app?.files) {
       setFromNextFiles(app.files);

@@ -59,6 +59,7 @@
     "@electron-forge/publisher-github": "^7.8.0",
     "@electron/fuses": "^1.8.0",
     "@playwright/test": "^1.52.0",
+    "@reforged/maker-appimage": "^5.0.0",
     "@testing-library/react": "^16.3.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/glob": "^8.1.0",

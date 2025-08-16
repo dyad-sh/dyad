@@ -19,6 +19,7 @@ import { useLoadApp } from "./useLoadApp";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useVersions } from "./useVersions";
 import { showExtraFilesToast } from "@/lib/toast";
+import { showResponseCompleted } from "@/lib/notifications";
 import { useProposal } from "./useProposal";
 import { useSearch } from "@tanstack/react-router";
 import { useRunApp } from "./useRunApp";
@@ -115,6 +116,17 @@ export function useStreamChat({
             refreshProposal(chatId);
 
             refetchUserBudget();
+
+            // Show notification when response is completed, but only if the setting is enabled
+            // Passing settings from the React hook context to avoid direct IPC calls in utilities
+            if (settings?.enableResponseEndNotification) {
+              showResponseCompleted({
+                visual: true,
+                sound: true,
+                message: "Response completed",
+                settings,
+              });
+            }
 
             // Keep the same as below
             setIsStreaming(false);

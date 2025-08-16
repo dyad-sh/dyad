@@ -69,7 +69,12 @@ export function registerImportHandlers() {
     "import-app",
     async (
       _,
-      { path: sourcePath, appName }: ImportAppParams,
+      {
+        path: sourcePath,
+        appName,
+        installCommand,
+        startCommand,
+      }: ImportAppParams,
     ): Promise<ImportAppResult> => {
       // Validate the source path exists
       try {
@@ -128,6 +133,8 @@ export function registerImportHandlers() {
           name: appName,
           // Use the name as the path for now
           path: appName,
+          installCommand: installCommand ?? null,
+          startCommand: startCommand ?? null,
         })
         .returning();
 

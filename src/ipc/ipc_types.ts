@@ -96,6 +96,8 @@ export interface App {
   vercelProjectName: string | null;
   vercelTeamSlug: string | null;
   vercelDeploymentUrl: string | null;
+  installCommand: string | null;
+  startCommand: string | null;
 }
 
 export interface Version {
@@ -226,6 +228,8 @@ export interface ApproveProposalResult {
 export interface ImportAppParams {
   path: string;
   appName: string;
+  installCommand?: string;
+  startCommand?: string;
 }
 
 export interface CopyAppParams {

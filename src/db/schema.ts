@@ -23,6 +23,8 @@ export const apps = sqliteTable("apps", {
   vercelProjectName: text("vercel_project_name"),
   vercelTeamId: text("vercel_team_id"),
   vercelDeploymentUrl: text("vercel_deployment_url"),
+  installCommand: text("install_command"),
+  startCommand: text("start_command"),
   chatContext: text("chat_context", { mode: "json" }),
 });
 

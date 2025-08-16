@@ -61,6 +61,8 @@ import { FileUploadsState } from "../utils/file_uploads_state";
 import { OpenAIResponsesProviderOptions } from "@ai-sdk/openai";
 import { extractMentionedAppsCodebases } from "../utils/mention_apps";
 import { parseAppMentions } from "@/shared/parse_mention_apps";
+import { prompts as promptsTable } from "../../db/schema";
+import { inArray } from "drizzle-orm";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
@@ -274,6 +276,28 @@ export function registerChatStreamHandlers() {
 
       // Add user message to database with attachment info
       let userPrompt = req.prompt + (attachmentInfo ? attachmentInfo : "");
+      // Inline referenced prompt contents for mentions like @prompt:<id>
+      try {
+        const matches = Array.from(userPrompt.matchAll(/@prompt:(\d+)/g));
+        if (matches.length > 0) {
+          const ids = Array.from(new Set(matches.map((m) => Number(m[1]))));
+          const referenced = await db
+            .select()
+            .from(promptsTable)
+            .where(inArray(promptsTable.id, ids));
+          if (referenced.length > 0) {
+            const appendix = referenced
+              .map(
+                (p) =>
+                  `\n\n<dyad-prompt id="${p.id}" title="${p.title}">\n${p.content}\n</dyad-prompt>`,
+              )
+              .join("");
+            userPrompt += appendix;
+          }
+        }
+      } catch (e) {
+        logger.error("Failed to inline referenced prompts:", e);
+      }
       if (req.selectedComponent) {
         let componentSnippet = "[component snippet not available]";
         try {

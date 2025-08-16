@@ -1069,4 +1069,50 @@ export class IpcClient {
   public async getTemplates(): Promise<Template[]> {
     return this.ipcRenderer.invoke("get-templates");
   }
+
+  // --- Prompts Library ---
+  public async listPrompts(): Promise<
+    {
+      id: number;
+      title: string;
+      description: string | null;
+      content: string;
+      tags: string[] | null;
+      createdAt: Date;
+      updatedAt: Date;
+    }[]
+  > {
+    return this.ipcRenderer.invoke("prompts:list");
+  }
+
+  public async createPrompt(params: {
+    title: string;
+    description?: string;
+    content: string;
+    tags?: string[];
+  }): Promise<{
+    id: number;
+    title: string;
+    description: string | null;
+    content: string;
+    tags: string[] | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }> {
+    return this.ipcRenderer.invoke("prompts:create", params);
+  }
+
+  public async updatePrompt(params: {
+    id: number;
+    title: string;
+    description?: string;
+    content: string;
+    tags?: string[];
+  }): Promise<void> {
+    await this.ipcRenderer.invoke("prompts:update", params);
+  }
+
+  public async deletePrompt(id: number): Promise<void> {
+    await this.ipcRenderer.invoke("prompts:delete", id);
+  }
 }

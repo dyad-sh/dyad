@@ -23,7 +23,7 @@ import {
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
 
-import { useLoadAppFile } from "@/hooks/useLoadAppFile";
+import { useParseRouter } from "@/hooks/useParseRouter";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -128,52 +128,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const [errorMessage, setErrorMessage] = useAtom(previewErrorMessageAtom);
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { streamMessage } = useStreamChat();
-  const [availableRoutes, setAvailableRoutes] = useState<
-    Array<{ path: string; label: string }>
-  >([]);
+  const { routes: availableRoutes } = useParseRouter(selectedAppId);
   const { restartApp } = useRunApp();
-  // Load router related files to extract routes
-  const { content: routerContent } = useLoadAppFile(
-    selectedAppId,
-    "src/App.tsx",
-  );
-
-  // Effect to parse routes from the router file
-  useEffect(() => {
-    if (routerContent) {
-      try {
-        const routes: Array<{ path: string; label: string }> = [];
-
-        // Extract route imports and paths using regex for React Router syntax
-        // Match <Route path="/path">
-        const routePathsRegex = /<Route\s+(?:[^>]*\s+)?path=["']([^"']+)["']/g;
-        let match;
-
-        // Find all route paths in the router content
-        while ((match = routePathsRegex.exec(routerContent)) !== null) {
-          const path = match[1];
-          // Create a readable label from the path
-          const label =
-            path === "/"
-              ? "Home"
-              : path
-                  .split("/")
-                  .filter((segment) => segment && !segment.startsWith(":"))
-                  .pop()
-                  ?.replace(/[-_]/g, " ")
-                  .replace(/^\w/, (c) => c.toUpperCase()) || path;
-
-          if (!routes.some((r) => r.path === path)) {
-            routes.push({ path, label });
-          }
-        }
-
-        setAvailableRoutes(routes);
-      } catch (e) {
-        console.error("Error parsing router file:", e);
-      }
-    }
-  }, [routerContent]);
 
   // Navigation state
   const [isComponentSelectorInitialized, setIsComponentSelectorInitialized] =
@@ -502,17 +458,17 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         </div>
 
         {/* Address Bar with Routes Dropdown - using shadcn/ui dropdown-menu */}
-        <div className="relative flex-grow">
+        <div className="relative flex-grow min-w-20">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <div className="flex items-center justify-between px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded text-sm text-gray-700 dark:text-gray-200 cursor-pointer w-full">
-                <span>
+              <div className="flex items-center justify-between px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded text-sm text-gray-700 dark:text-gray-200 cursor-pointer w-full min-w-0">
+                <span className="truncate flex-1 mr-2 min-w-0">
                   {navigationHistory[currentHistoryPosition]
                     ? new URL(navigationHistory[currentHistoryPosition])
                         .pathname
                     : "/"}
                 </span>
-                <ChevronDown size={14} />
+                <ChevronDown size={14} className="flex-shrink-0" />
               </div>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-full">

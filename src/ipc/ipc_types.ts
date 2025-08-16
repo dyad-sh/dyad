@@ -67,6 +67,7 @@ export interface Message {
   approvalState?: "approved" | "rejected" | null;
   commitHash?: string | null;
   dbTimestamp?: string | null;
+  createdAt?: Date | string;
 }
 
 export interface Chat {

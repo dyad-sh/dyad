@@ -1,8 +1,8 @@
 import fs from "fs";
-import { test } from "./helpers/test_helper";
+import { testSkipIfWindows } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
-test("delete app", async ({ po }) => {
+testSkipIfWindows("delete app", async ({ po }) => {
   await po.setUp();
   await po.sendPrompt("hi");
   const appName = await po.getCurrentAppName();

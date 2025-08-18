@@ -23,19 +23,21 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
   const { versions: liveVersions } = useVersions(appId);
   // Find the version that was active when this message was sent
   const messageVersion = useMemo(() => {
-    if (!liveVersions.length || !message.createdAt) return null;
-    const messageTimestamp = new Date(message.createdAt).getTime() / 1000; // Convert to Unix timestamp to compare with version timestamps
-    if (message.role === "user") {
-      const sortedVersions = [...liveVersions].sort(
-        (a, b) => b.timestamp - a.timestamp,
-      );
+    if (
+      message.role === "assistant" &&
+      message.commitHash &&
+      liveVersions.length
+    ) {
       return (
-        sortedVersions.find(
-          (version) => version.timestamp <= messageTimestamp,
+        liveVersions.find(
+          (version) =>
+            message.commitHash &&
+            version.oid.slice(0, 7) === message.commitHash.slice(0, 7),
         ) || null
       );
     }
-  }, [message.commitHash, message.role, message.createdAt, liveVersions]);
+    return null;
+  }, [message.commitHash, message.role, liveVersions]);
 
   // Format the message timestamp
   const formatTimestamp = (timestamp: string | Date) => {
@@ -138,8 +140,8 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
           )}
         </div>
         {/* Timestamp and commit info for user messages - only visible on hover */}
-        {message.role === "user" && message.createdAt && (
-          <div className="mt-1 flex items-center justify-end space-x-2 text-xs text-gray-500 dark:text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+        {message.role === "assistant" && message.createdAt && (
+          <div className="mt-1 flex items-center justify-start space-x-2 text-xs text-gray-500 dark:text-gray-400 ">
             <div className="flex items-center space-x-1">
               <Clock className="h-3 w-3" />
               <span>{formatTimestamp(message.createdAt)}</span>
@@ -147,13 +149,15 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
             {messageVersion && messageVersion.message && (
               <div className="flex items-center space-x-1">
                 <GitCommit className="h-3 w-3" />
-                <span className="max-w-28 truncate font-medium">
-                  {
-                    messageVersion.message
-                      .replace(/^\[dyad\]\s*/i, "")
-                      .split("\n")[0]
-                  }
-                </span>
+                {messageVersion && messageVersion.message && (
+                  <span className="max-w-70 truncate font-medium">
+                    {
+                      messageVersion.message
+                        .replace(/^\[dyad\]\s*/i, "")
+                        .split("\n")[0]
+                    }
+                  </span>
+                )}
               </div>
             )}
           </div>

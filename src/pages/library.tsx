@@ -12,7 +12,7 @@ export default function LibraryPage() {
 
   return (
     <div className="min-h-screen px-8 py-6">
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-3xl font-bold mr-4">Library: Prompts</h1>
           <CreatePromptDialog onCreatePrompt={createPrompt} />
@@ -25,7 +25,7 @@ export default function LibraryPage() {
             No prompts yet. Create one to get started.
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
             {prompts.map((p) => (
               <PromptCard
                 key={p.id}

@@ -33,6 +33,9 @@ export function usePrompts() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["prompts"] });
     },
+    meta: {
+      showErrorToast: true,
+    },
   });
 
   const updateMutation = useMutation({
@@ -48,6 +51,9 @@ export function usePrompts() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["prompts"] });
     },
+    meta: {
+      showErrorToast: true,
+    },
   });
 
   const deleteMutation = useMutation({
@@ -57,6 +63,9 @@ export function usePrompts() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["prompts"] });
+    },
+    meta: {
+      showErrorToast: true,
     },
   });
 

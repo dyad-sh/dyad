@@ -353,6 +353,26 @@ export interface UploadFileToCodebaseResult {
   filePath: string;
 }
 
+// --- Prompts ---
+export interface PromptDto {
+  id: number;
+  title: string;
+  description: string | null;
+  content: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CreatePromptParamsDto {
+  title: string;
+  description?: string;
+  content: string;
+}
+
+export interface UpdatePromptParamsDto extends CreatePromptParamsDto {
+  id: number;
+}
+
 export interface FileAttachment {
   file: File;
   type: "upload-to-codebase" | "chat-context";

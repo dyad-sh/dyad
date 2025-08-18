@@ -58,6 +58,9 @@ import type {
   RevertVersionResponse,
   RevertVersionParams,
   RespondToAppInputParams,
+  PromptDto,
+  CreatePromptParamsDto,
+  UpdatePromptParamsDto,
 } from "./ipc_types";
 import type { Template } from "../shared/templates";
 import type { AppChatContext, ProposalResult } from "@/lib/schemas";
@@ -1068,5 +1071,22 @@ export class IpcClient {
   // Template methods
   public async getTemplates(): Promise<Template[]> {
     return this.ipcRenderer.invoke("get-templates");
+  }
+
+  // --- Prompts Library ---
+  public async listPrompts(): Promise<PromptDto[]> {
+    return this.ipcRenderer.invoke("prompts:list");
+  }
+
+  public async createPrompt(params: CreatePromptParamsDto): Promise<PromptDto> {
+    return this.ipcRenderer.invoke("prompts:create", params);
+  }
+
+  public async updatePrompt(params: UpdatePromptParamsDto): Promise<void> {
+    await this.ipcRenderer.invoke("prompts:update", params);
+  }
+
+  public async deletePrompt(id: number): Promise<void> {
+    await this.ipcRenderer.invoke("prompts:delete", id);
   }
 }

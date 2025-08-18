@@ -83,17 +83,28 @@ async function executeApp({
   appId,
   event, // Keep event for local-node case
   isNeon,
+  installCommand,
+  startCommand,
 }: {
   appPath: string;
   appId: number;
   event: Electron.IpcMainInvokeEvent;
   isNeon: boolean;
+  installCommand?: string | null;
+  startCommand?: string | null;
 }): Promise<void> {
   if (proxyWorker) {
     proxyWorker.terminate();
     proxyWorker = null;
   }
-  await executeAppLocalNode({ appPath, appId, event, isNeon });
+  await executeAppLocalNode({
+    appPath,
+    appId,
+    event,
+    isNeon,
+    installCommand,
+    startCommand,
+  });
 }
 
 async function executeAppLocalNode({
@@ -101,22 +112,28 @@ async function executeAppLocalNode({
   appId,
   event,
   isNeon,
+  installCommand,
+  startCommand,
 }: {
   appPath: string;
   appId: number;
   event: Electron.IpcMainInvokeEvent;
   isNeon: boolean;
+  installCommand?: string | null;
+  startCommand?: string | null;
 }): Promise<void> {
-  const spawnedProcess = spawn(
-    "(pnpm install && pnpm run dev --port 32100) || (npm install --legacy-peer-deps && npm run dev -- --port 32100)",
-    [],
-    {
-      cwd: appPath,
-      shell: true,
-      stdio: "pipe", // Ensure stdio is piped so we can capture output/errors and detect close
-      detached: false, // Ensure child process is attached to the main process lifecycle unless explicitly backgrounded
-    },
-  );
+  const defaultCommand =
+    "(pnpm install && pnpm run dev --port 32100) || (npm install --legacy-peer-deps && npm run dev -- --port 32100)";
+  const hasCustomCommands = !!installCommand?.trim() && !!startCommand?.trim();
+  const command = hasCustomCommands
+    ? `${installCommand!.trim()} && ${startCommand!.trim()}`
+    : defaultCommand;
+  const spawnedProcess = spawn(command, [], {
+    cwd: appPath,
+    shell: true,
+    stdio: "pipe", // Ensure stdio is piped so we can capture output/errors and detect close
+    detached: false, // Ensure child process is attached to the main process lifecycle unless explicitly backgrounded
+  });
 
   // Check if process spawned correctly
   if (!spawnedProcess.pid) {
@@ -375,6 +392,8 @@ export function registerAppHandlers() {
           supabaseProjectId: null,
           githubOrg: null,
           githubRepo: null,
+          installCommand: originalApp.installCommand,
+          startCommand: originalApp.startCommand,
         })
         .returning();
 
@@ -511,6 +530,8 @@ export function registerAppHandlers() {
             appId,
             event,
             isNeon: !!app.neonProjectId,
+            installCommand: app.installCommand,
+            startCommand: app.startCommand,
           });
 
           return;
@@ -646,6 +667,8 @@ export function registerAppHandlers() {
             appId,
             event,
             isNeon: !!app.neonProjectId,
+            installCommand: app.installCommand,
+            startCommand: app.startCommand,
           }); // This will handle starting either mode
 
           return;

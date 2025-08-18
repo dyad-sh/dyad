@@ -727,6 +727,30 @@ export class PageObject {
     await this.page.getByRole("link", { name: "Settings" }).click();
   }
 
+  async goToLibraryTab() {
+    await this.page.getByRole("link", { name: "Library" }).click();
+  }
+
+  async createPrompt({
+    title,
+    description,
+    content,
+  }: {
+    title: string;
+    description?: string;
+    content: string;
+  }) {
+    await this.page.getByRole("button", { name: "New Prompt" }).click();
+    await this.page.getByRole("textbox", { name: "Title" }).fill(title);
+    if (description) {
+      await this.page
+        .getByRole("textbox", { name: "Description (optional)" })
+        .fill(description);
+    }
+    await this.page.getByRole("textbox", { name: "Content" }).fill(content);
+    await this.page.getByRole("button", { name: "Save" }).click();
+  }
+
   getTitleBarAppNameButton() {
     return this.page.getByTestId("title-bar-app-name-button");
   }

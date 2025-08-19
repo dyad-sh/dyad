@@ -420,3 +420,30 @@ export interface RevertVersionParams {
 export type RevertVersionResponse =
   | { successMessage: string }
   | { warningMessage: string };
+
+// --- Help Bot Types ---
+export interface StartHelpChatParams {
+  sessionId: string;
+  message: string;
+}
+
+export interface HelpChatResponseChunk {
+  sessionId: string;
+  delta: string;
+  type: "text";
+}
+
+export interface HelpChatResponseReasoning {
+  sessionId: string;
+  delta: string;
+  type: "reasoning";
+}
+
+export interface HelpChatResponseEnd {
+  sessionId: string;
+}
+
+export interface HelpChatResponseError {
+  sessionId: string;
+  error: string;
+}

@@ -8,10 +8,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { IpcClient } from "@/ipc/ipc_client";
 import { v4 as uuidv4 } from "uuid";
-import {
-  ThinkingBlock,
-  VanillaMarkdownParser,
-} from "@/components/ThinkingBlock";
+import { LoadingBlock, VanillaMarkdownParser } from "@/components/LoadingBlock";
 
 interface HelpBotDialogProps {
   isOpen: boolean;
@@ -184,24 +181,15 @@ export function HelpBotDialog({ isOpen, onClose }: HelpBotDialogProps) {
                       </div>
                     ) : (
                       <div className="text-left">
-                        {/* Show thinking block if there's reasoning content */}
-                        {(m.reasoning ||
-                          (streaming && i === messages.length - 1)) && (
-                          <ThinkingBlock
-                            content={m.reasoning || ""}
+                        {streaming && i === messages.length - 1 && (
+                          <LoadingBlock
                             isStreaming={streaming && i === messages.length - 1}
                           />
                         )}
 
-                        {/* Show regular response content */}
-                        {(m.content ||
-                          (streaming && i === messages.length - 1)) && (
+                        {m.content && (
                           <div className="inline-block rounded-lg px-3 py-2 bg-muted prose dark:prose-invert prose-headings:mb-2 prose-p:my-1 prose-pre:my-0 max-w-none">
-                            {m.content ? (
-                              <VanillaMarkdownParser content={m.content} />
-                            ) : (
-                              ""
-                            )}
+                            <VanillaMarkdownParser content={m.content} />
                           </div>
                         )}
                       </div>

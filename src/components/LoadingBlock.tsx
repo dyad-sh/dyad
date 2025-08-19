@@ -125,13 +125,12 @@ function ChatLoader() {
   );
 }
 
-interface ThinkingBlockProps {
-  content: string;
+interface LoadingBlockProps {
   isStreaming?: boolean;
 }
 
 // Instead of showing raw thinking content, render the chat loader while streaming.
-export function ThinkingBlock({ isStreaming = false }: ThinkingBlockProps) {
+export function LoadingBlock({ isStreaming = false }: LoadingBlockProps) {
   if (!isStreaming) return null;
   return <ChatLoader />;
 }

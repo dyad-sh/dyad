@@ -43,6 +43,7 @@ describe("Azure Language Model Configuration", () => {
     const expectedModels = [
       "gpt-4o",
       "gpt-4o-mini",
+      "gpt-4",
       "gpt-4-turbo",
       "gpt-35-turbo",
     ];

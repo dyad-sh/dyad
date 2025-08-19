@@ -46,6 +46,15 @@ function ChatLoader() {
     "Crafting the perfect response... 🎨",
     "Almost there... 🚀",
     "Just a moment... ⏳",
+    "Warming up the neural networks... 🧠",
+    "Connecting the dots... 🔗",
+    "Brewing some digital magic... ✨",
+    "Assembling words with care... 🔤",
+    "Fine-tuning the response... 🎯",
+    "Diving into deep thought... 🤿",
+    "Weaving ideas together... 🕸️",
+    "Sparking up the conversation... ⚡",
+    "Polishing the perfect reply... 💎",
   ];
 
   useEffect(() => {

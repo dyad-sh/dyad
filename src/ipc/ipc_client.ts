@@ -108,7 +108,6 @@ export class IpcClient {
     string,
     {
       onChunk: (delta: string) => void;
-      onReasoning: (delta: string) => void;
       onEnd: () => void;
       onError: (error: string) => void;
     }
@@ -207,21 +206,7 @@ export class IpcClient {
         if (callbacks) callbacks.onChunk(delta);
       }
     });
-    this.ipcRenderer.on("help:chat:response:reasoning", (data) => {
-      if (
-        data &&
-        typeof data === "object" &&
-        "sessionId" in data &&
-        "delta" in data
-      ) {
-        const { sessionId, delta } = data as {
-          sessionId: string;
-          delta: string;
-        };
-        const callbacks = this.helpStreams.get(sessionId);
-        if (callbacks) callbacks.onReasoning(delta);
-      }
-    });
+
     this.ipcRenderer.on("help:chat:response:end", (data) => {
       if (data && typeof data === "object" && "sessionId" in data) {
         const { sessionId } = data as { sessionId: string };
@@ -1162,7 +1147,6 @@ export class IpcClient {
     message: string,
     options: {
       onChunk: (delta: string) => void;
-      onReasoning: (delta: string) => void;
       onEnd: () => void;
       onError: (error: string) => void;
     },

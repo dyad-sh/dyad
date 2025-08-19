@@ -422,6 +422,11 @@ export type RevertVersionResponse =
   | { warningMessage: string };
 
 // --- Help Bot Types ---
+export interface StartHelpChatParams {
+  sessionId: string;
+  message: string;
+}
+
 export interface HelpChatResponseChunk {
   sessionId: string;
   delta: string;

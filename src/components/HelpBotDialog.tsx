@@ -12,7 +12,6 @@ import {
   ThinkingBlock,
   VanillaMarkdownParser,
 } from "@/components/ThinkingBlock";
-import ReactMarkdown from "react-markdown";
 
 interface HelpBotDialogProps {
   isOpen: boolean;
@@ -29,6 +28,7 @@ export function HelpBotDialog({ isOpen, onClose }: HelpBotDialogProps) {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [streaming, setStreaming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const assistantBufferRef = useRef("");
   const reasoningBufferRef = useRef("");
   const flushTimerRef = useRef<number | null>(null);
@@ -40,6 +40,7 @@ export function HelpBotDialog({ isOpen, onClose }: HelpBotDialogProps) {
     if (!isOpen) {
       setMessages([]);
       setInput("");
+      setError(null);
       assistantBufferRef.current = "";
       reasoningBufferRef.current = "";
       if (flushTimerRef.current) {
@@ -52,6 +53,7 @@ export function HelpBotDialog({ isOpen, onClose }: HelpBotDialogProps) {
   const handleSend = async () => {
     const trimmed = input.trim();
     if (!trimmed || streaming) return;
+    setError(null); // Clear any previous errors
     setMessages((prev) => [
       ...prev,
       { role: "user", content: trimmed },
@@ -66,10 +68,6 @@ export function HelpBotDialog({ isOpen, onClose }: HelpBotDialogProps) {
       onChunk: (delta) => {
         // Buffer assistant content; UI will flush on interval for smoothness
         assistantBufferRef.current += delta;
-      },
-      onReasoning: (delta) => {
-        // Buffer reasoning content; UI will flush on interval for smoothness
-        reasoningBufferRef.current += delta;
       },
       onEnd: () => {
         // Final flush then stop streaming
@@ -91,12 +89,25 @@ export function HelpBotDialog({ isOpen, onClose }: HelpBotDialogProps) {
           flushTimerRef.current = null;
         }
       },
-      onError: () => {
+      onError: (errorMessage: string) => {
+        setError(errorMessage);
         setStreaming(false);
         if (flushTimerRef.current) {
           window.clearInterval(flushTimerRef.current);
           flushTimerRef.current = null;
         }
+        // Remove the empty assistant message that was added optimistically
+        setMessages((prev) => {
+          const next = [...prev];
+          if (
+            next.length > 0 &&
+            next[next.length - 1].role === "assistant" &&
+            !next[next.length - 1].content
+          ) {
+            next.pop();
+          }
+          return next;
+        });
       },
     });
 
@@ -134,10 +145,32 @@ export function HelpBotDialog({ isOpen, onClose }: HelpBotDialogProps) {
           <DialogTitle>Dyad Help Bot</DialogTitle>
         </DialogHeader>
         <div className="flex flex-col gap-3 h-[480px]">
+          {error && (
+            <div className="bg-destructive/10 border border-destructive/20 rounded-md p-3">
+              <div className="flex items-start gap-2">
+                <div className="text-destructive text-sm font-medium">
+                  Error:
+                </div>
+                <div className="text-destructive text-sm flex-1">{error}</div>
+                <button
+                  onClick={() => setError(null)}
+                  className="text-destructive hover:text-destructive/80 text-xs"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
           <div className="flex-1 overflow-auto rounded-md border p-3 bg-(--background-lightest)">
             {messages.length === 0 ? (
-              <div className="text-sm text-muted-foreground">
-                Ask a question about using Dyad.
+              <div className="space-y-3">
+                <div className="text-sm text-muted-foreground">
+                  Ask a question about using Dyad.
+                </div>
+                <div className="text-xs text-muted-foreground/70 bg-muted/50 rounded-md p-3">
+                  This conversation may be logged and used to improve the
+                  product. Please do not put any sensitive information in here.
+                </div>
               </div>
             ) : (
               <div className="space-y-3">
@@ -166,8 +199,6 @@ export function HelpBotDialog({ isOpen, onClose }: HelpBotDialogProps) {
                           <div className="inline-block rounded-lg px-3 py-2 bg-muted prose dark:prose-invert prose-headings:mb-2 prose-p:my-1 prose-pre:my-0 max-w-none">
                             {m.content ? (
                               <VanillaMarkdownParser content={m.content} />
-                            ) : streaming ? (
-                              "..."
                             ) : (
                               ""
                             )}

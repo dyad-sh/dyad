@@ -31,21 +31,35 @@ export function HelpBotDialog({ isOpen, onClose }: HelpBotDialogProps) {
   const flushTimerRef = useRef<number | null>(null);
   const FLUSH_INTERVAL_MS = 100;
 
-  const sessionId = useMemo(() => uuidv4(), []);
+  const sessionId = useMemo(() => uuidv4(), [isOpen]);
 
   useEffect(() => {
     if (!isOpen) {
+      // Clean up when dialog closes
       setMessages([]);
       setInput("");
       setError(null);
       assistantBufferRef.current = "";
       reasoningBufferRef.current = "";
+
+      // Clear the flush timer
       if (flushTimerRef.current) {
         window.clearInterval(flushTimerRef.current);
         flushTimerRef.current = null;
       }
     }
   }, [isOpen]);
+
+  // Cleanup on component unmount
+  useEffect(() => {
+    return () => {
+      // Clear the flush timer on unmount
+      if (flushTimerRef.current) {
+        window.clearInterval(flushTimerRef.current);
+        flushTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const handleSend = async () => {
     const trimmed = input.trim();
@@ -89,10 +103,17 @@ export function HelpBotDialog({ isOpen, onClose }: HelpBotDialogProps) {
       onError: (errorMessage: string) => {
         setError(errorMessage);
         setStreaming(false);
+
+        // Clear the flush timer
         if (flushTimerRef.current) {
           window.clearInterval(flushTimerRef.current);
           flushTimerRef.current = null;
         }
+
+        // Clear the buffers
+        assistantBufferRef.current = "";
+        reasoningBufferRef.current = "";
+
         // Remove the empty assistant message that was added optimistically
         setMessages((prev) => {
           const next = [...prev];

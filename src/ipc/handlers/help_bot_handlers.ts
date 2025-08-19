@@ -28,6 +28,13 @@ export function registerHelpBotHandlers() {
           throw new Error("Missing sessionId or message");
         }
 
+        // Clear any existing active streams (only one session at a time)
+        for (const [existingSessionId, controller] of activeHelpStreams) {
+          controller.abort();
+          activeHelpStreams.delete(existingSessionId);
+          helpSessions.delete(existingSessionId);
+        }
+
         // Append user message to session history
         const history = helpSessions.get(sessionId) ?? [];
         const updatedHistory: HelpMessage[] = [

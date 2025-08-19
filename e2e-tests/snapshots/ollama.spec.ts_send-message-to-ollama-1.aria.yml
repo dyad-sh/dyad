@@ -1,4 +1,8 @@
 - paragraph: hi
-- paragraph: ollamachunkollamachunk
+- img
+- text: file1.txt
+- img
+- text: file1.txt
+- paragraph: More EOM
 - button "Retry":
   - img

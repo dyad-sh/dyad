@@ -94,51 +94,6 @@ app.get("/ollama/api/tags", (req, res) => {
   res.json(ollamaModels);
 });
 
-app.post("/ollama/chat", (req, res) => {
-  // Tell the client we're going to stream NDJSON
-  res.setHeader("Content-Type", "application/x-ndjson");
-  res.setHeader("Cache-Control", "no-cache");
-
-  // Chunk #1 – partial answer
-  const firstChunk = {
-    model: "llama3.2",
-    created_at: "2023-08-04T08:52:19.385406455-07:00",
-    message: {
-      role: "assistant",
-      content: "ollamachunk",
-      images: null,
-    },
-    done: false,
-  };
-
-  // Chunk #2 – final answer + metrics
-  const secondChunk = {
-    model: "llama3.2",
-    created_at: "2023-08-04T19:22:45.499127Z",
-    message: {
-      role: "assistant",
-      content: "",
-    },
-    done: true,
-    total_duration: 4883583458,
-    load_duration: 1334875,
-    prompt_eval_count: 26,
-    prompt_eval_duration: 342546000,
-    eval_count: 282,
-    eval_duration: 4535599000,
-  };
-
-  // Send the first object right away
-  res.write(JSON.stringify(firstChunk) + "\n");
-  res.write(JSON.stringify(firstChunk) + "\n");
-
-  // …and the second one a moment later to mimic streaming
-  setTimeout(() => {
-    res.write(JSON.stringify(secondChunk) + "\n");
-    res.end(); // Close the HTTP stream
-  }, 300); // 300 ms delay – tweak as you like
-});
-
 // LM Studio specific endpoints
 app.get("/lmstudio/api/v0/models", (req, res) => {
   const lmStudioModels = {
@@ -182,7 +137,7 @@ app.get("/lmstudio/api/v0/models", (req, res) => {
   res.json(lmStudioModels);
 });
 
-["lmstudio", "gateway", "engine"].forEach((provider) => {
+["lmstudio", "gateway", "engine", "ollama"].forEach((provider) => {
   app.post(
     `/${provider}/v1/chat/completions`,
     createChatCompletionHandler(provider),

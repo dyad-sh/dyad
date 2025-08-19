@@ -139,7 +139,7 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
             </div>
           )}
         </div>
-        {/* Timestamp and commit info for user messages - only visible on hover */}
+        {/* Timestamp and commit info for assistant messages - only visible on hover */}
         {message.role === "assistant" && message.createdAt && (
           <div className="mt-1 flex items-center justify-start space-x-2 text-xs text-gray-500 dark:text-gray-400 ">
             <div className="flex items-center space-x-1">

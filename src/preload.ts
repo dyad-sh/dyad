@@ -133,6 +133,7 @@ const validReceiveChannels = [
   "deep-link-received",
   // Help bot
   "help:chat:response:chunk",
+  "help:chat:response:reasoning",
   "help:chat:response:end",
   "help:chat:response:error",
 ] as const;

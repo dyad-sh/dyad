@@ -37,7 +37,7 @@ export function parseOllamaHost(host?: string): string {
   return `http://${host}:11434`;
 }
 
-const OLLAMA_API_URL = parseOllamaHost(process.env.OLLAMA_HOST);
+export const OLLAMA_API_URL = parseOllamaHost(process.env.OLLAMA_HOST);
 
 interface OllamaModel {
   name: string;

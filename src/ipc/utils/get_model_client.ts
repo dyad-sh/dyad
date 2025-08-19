@@ -12,6 +12,7 @@ import { createDyadEngine } from "./llm_engine_provider";
 
 import { LM_STUDIO_BASE_URL } from "./lm_studio_utils";
 import { LanguageModel } from "ai";
+import { createOllamaProvider } from "./ollama_provider";
 
 const dyadEngineUrl = process.env.DYAD_ENGINE_URL;
 const dyadGatewayUrl = process.env.DYAD_GATEWAY_URL;
@@ -222,17 +223,16 @@ function getRegularModelClient(
       };
     }
     case "ollama": {
-      throw new Error("Ollama is not supported");
-      // Ollama typically runs locally and doesn't require an API key in the same way
-      // const provider = createOllama({
-      //   baseURL: process.env.OLLAMA_HOST,
-      // });
-      // return {
-      //   modelClient: {
-      //     model: provider(model.name),
-      //   },
-      //   backupModelClients: [],
-      // };
+      // Use local Ollama API; allow override via env var used in tests
+      const baseURL = process.env.OLLAMA_HOST || "http://localhost:11434";
+      const provider = createOllamaProvider({ baseURL });
+      return {
+        modelClient: {
+          model: provider(model.name),
+          builtinProviderId: providerId,
+        },
+        backupModelClients: [],
+      };
     }
     case "lmstudio": {
       // LM Studio uses OpenAI compatible API

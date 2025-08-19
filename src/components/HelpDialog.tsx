@@ -22,6 +22,7 @@ import { useAtomValue } from "jotai";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { ChatLogsData } from "@/ipc/ipc_types";
 import { showError } from "@/lib/toast";
+import { HelpBotDialog } from "./HelpBotDialog";
 
 interface HelpDialogProps {
   isOpen: boolean;
@@ -35,6 +36,7 @@ export function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
   const [chatLogsData, setChatLogsData] = useState<ChatLogsData | null>(null);
   const [uploadComplete, setUploadComplete] = useState(false);
   const [sessionId, setSessionId] = useState("");
+  const [isHelpBotOpen, setIsHelpBotOpen] = useState(false);
   const selectedChatId = useAtomValue(selectedChatIdAtom);
 
   // Function to reset all dialog state
@@ -377,6 +379,20 @@ Session ID: ${sessionId}
             <Button
               variant="outline"
               onClick={() => {
+                setIsHelpBotOpen(true);
+              }}
+              className="w-full py-6 bg-(--background-lightest)"
+            >
+              <BookOpenIcon className="mr-2 h-5 w-5" /> Chat with Dyad help bot
+            </Button>
+            <p className="text-sm text-muted-foreground px-2">
+              Opens an in-app help chat assistant.
+            </p>
+          </div>
+          <div className="flex flex-col space-y-2">
+            <Button
+              variant="outline"
+              onClick={() => {
                 IpcClient.getInstance().openExternalUrl(
                   "https://www.dyad.sh/docs",
                 );
@@ -422,6 +438,10 @@ Session ID: ${sessionId}
           </div>
         </div>
       </DialogContent>
+      <HelpBotDialog
+        isOpen={isHelpBotOpen}
+        onClose={() => setIsHelpBotOpen(false)}
+      />
     </Dialog>
   );
 }

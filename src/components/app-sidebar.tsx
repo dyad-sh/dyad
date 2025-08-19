@@ -27,6 +27,7 @@ import {
 import { ChatList } from "./ChatList";
 import { AppList } from "./AppList";
 import { HelpDialog } from "./HelpDialog"; // Import the new dialog
+import { HelpBotDialog } from "./HelpBotDialog";
 import { SettingsList } from "./SettingsList";
 
 // Menu items.
@@ -72,6 +73,7 @@ export function AppSidebar() {
   const [hoverState, setHoverState] = useState<HoverState>("no-hover");
   const expandedByHover = useRef(false);
   const [isHelpDialogOpen, setIsHelpDialogOpen] = useState(false); // State for dialog
+  const [isHelpBotOpen, setIsHelpBotOpen] = useState(false);
   const [isDropdownOpen] = useAtom(dropdownOpenAtom);
 
   useEffect(() => {
@@ -161,6 +163,10 @@ export function AppSidebar() {
             <HelpDialog
               isOpen={isHelpDialogOpen}
               onClose={() => setIsHelpDialogOpen(false)}
+            />
+            <HelpBotDialog
+              isOpen={isHelpBotOpen}
+              onClose={() => setIsHelpBotOpen(false)}
             />
           </SidebarMenuItem>
         </SidebarMenu>

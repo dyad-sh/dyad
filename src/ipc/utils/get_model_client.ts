@@ -13,7 +13,7 @@ import { createDyadEngine } from "./llm_engine_provider";
 import { LM_STUDIO_BASE_URL } from "./lm_studio_utils";
 import { LanguageModel } from "ai";
 import { createOllamaProvider } from "./ollama_provider";
-import { OLLAMA_API_URL } from "../handlers/local_model_ollama_handler";
+import { getOllamaApiUrl } from "../handlers/local_model_ollama_handler";
 
 const dyadEngineUrl = process.env.DYAD_ENGINE_URL;
 const dyadGatewayUrl = process.env.DYAD_GATEWAY_URL;
@@ -224,7 +224,7 @@ function getRegularModelClient(
       };
     }
     case "ollama": {
-      const provider = createOllamaProvider({ baseURL: OLLAMA_API_URL });
+      const provider = createOllamaProvider({ baseURL: getOllamaApiUrl() });
       return {
         modelClient: {
           model: provider(model.name),

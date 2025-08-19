@@ -37,7 +37,9 @@ export function parseOllamaHost(host?: string): string {
   return `http://${host}:11434`;
 }
 
-const OLLAMA_API_URL = parseOllamaHost(process.env.OLLAMA_HOST);
+export function getOllamaApiUrl(): string {
+  return parseOllamaHost(process.env.OLLAMA_HOST);
+}
 
 interface OllamaModel {
   name: string;
@@ -55,7 +57,7 @@ interface OllamaModel {
 
 export async function fetchOllamaModels(): Promise<LocalModelListResponse> {
   try {
-    const response = await fetch(`${OLLAMA_API_URL}/api/tags`);
+    const response = await fetch(`${getOllamaApiUrl()}/api/tags`);
     if (!response.ok) {
       throw new Error(`Failed to fetch model: ${response.statusText}`);
     }

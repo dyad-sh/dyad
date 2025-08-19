@@ -1,9 +1,7 @@
-import { LanguageModelV1 } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI as createGoogle } from "@ai-sdk/google";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { createOllama } from "ollama-ai-provider";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LargeLanguageModel, UserSettings } from "../../lib/schemas";
 import { getEnvVar } from "./read_env";
@@ -13,6 +11,7 @@ import { LanguageModelProvider } from "../ipc_types";
 import { createDyadEngine } from "./llm_engine_provider";
 
 import { LM_STUDIO_BASE_URL } from "./lm_studio_utils";
+import { LanguageModel } from "ai";
 
 const dyadEngineUrl = process.env.DYAD_ENGINE_URL;
 const dyadGatewayUrl = process.env.DYAD_GATEWAY_URL;
@@ -33,7 +32,7 @@ const AUTO_MODELS = [
 ];
 
 export interface ModelClient {
-  model: LanguageModelV1;
+  model: LanguageModel;
   builtinProviderId?: string;
 }
 
@@ -168,7 +167,10 @@ function getRegularModelClient(
   model: LargeLanguageModel,
   settings: UserSettings,
   providerConfig: LanguageModelProvider,
-) {
+): {
+  modelClient: ModelClient;
+  backupModelClients: ModelClient[];
+} {
   // Get API key for the specific provider
   const apiKey =
     settings.providerSettings?.[model.provider]?.apiKey?.value ||
@@ -220,16 +222,17 @@ function getRegularModelClient(
       };
     }
     case "ollama": {
+      throw new Error("Ollama is not supported");
       // Ollama typically runs locally and doesn't require an API key in the same way
-      const provider = createOllama({
-        baseURL: process.env.OLLAMA_HOST,
-      });
-      return {
-        modelClient: {
-          model: provider(model.name),
-        },
-        backupModelClients: [],
-      };
+      // const provider = createOllama({
+      //   baseURL: process.env.OLLAMA_HOST,
+      // });
+      // return {
+      //   modelClient: {
+      //     model: provider(model.name),
+      //   },
+      //   backupModelClients: [],
+      // };
     }
     case "lmstudio": {
       // LM Studio uses OpenAI compatible API

@@ -34,6 +34,7 @@ const providers = [
   "openrouter",
   "ollama",
   "lmstudio",
+  "azure",
 ] as const;
 
 export const cloudProviders = providers.filter(
@@ -59,6 +60,7 @@ export type LargeLanguageModel = z.infer<typeof LargeLanguageModelSchema>;
  */
 export const ProviderSettingSchema = z.object({
   apiKey: SecretSchema.optional(),
+  endpoint: SecretSchema.optional(), // For Azure resource endpoint
 });
 
 /**

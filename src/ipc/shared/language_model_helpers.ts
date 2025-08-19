@@ -211,6 +211,48 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       temperature: 0,
     },
   ],
+  azure: [
+    {
+      name: "gpt-4o",
+      displayName: "GPT-4o",
+      description: "Azure OpenAI GPT-4o model",
+      maxOutputTokens: 16_000,
+      contextWindow: 128_000,
+      temperature: 0,
+    },
+    {
+      name: "gpt-4o-mini",
+      displayName: "GPT-4o Mini",
+      description: "Azure OpenAI GPT-4o mini model",
+      maxOutputTokens: 16_000,
+      contextWindow: 128_000,
+      temperature: 0,
+    },
+    {
+      name: "gpt-4",
+      displayName: "GPT-4",
+      description: "Azure OpenAI GPT-4 model",
+      maxOutputTokens: 8_000,
+      contextWindow: 128_000,
+      temperature: 0,
+    },
+    {
+      name: "gpt-4-turbo",
+      displayName: "GPT-4 Turbo",
+      description: "Azure OpenAI GPT-4 Turbo model",
+      maxOutputTokens: 16_000,
+      contextWindow: 128_000,
+      temperature: 0,
+    },
+    {
+      name: "gpt-35-turbo",
+      displayName: "GPT-3.5 Turbo",
+      description: "Azure OpenAI GPT-3.5 Turbo model",
+      maxOutputTokens: 4_000,
+      contextWindow: 16_000,
+      temperature: 0,
+    },
+  ],
 };
 
 export const PROVIDER_TO_ENV_VAR: Record<string, string> = {
@@ -218,6 +260,7 @@ export const PROVIDER_TO_ENV_VAR: Record<string, string> = {
   anthropic: "ANTHROPIC_API_KEY",
   google: "GEMINI_API_KEY",
   openrouter: "OPENROUTER_API_KEY",
+  azure: "AZURE_API_KEY",
 };
 
 export const CLOUD_PROVIDERS: Record<
@@ -257,6 +300,12 @@ export const CLOUD_PROVIDERS: Record<
     displayName: "Dyad",
     websiteUrl: "https://academy.dyad.sh/settings",
     gatewayPrefix: "dyad/",
+  },
+  azure: {
+    displayName: "Azure OpenAI",
+    hasFreeTier: false,
+    websiteUrl: "https://portal.azure.com/",
+    gatewayPrefix: "azure/",
   },
 };
 

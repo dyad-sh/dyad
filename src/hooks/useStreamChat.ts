@@ -121,10 +121,10 @@ export function useStreamChat({
             // Passing settings from the React hook context to avoid direct IPC calls in utilities
             if (settings?.enableResponseEndNotification) {
               showResponseCompleted({
-                visual: true,
-                sound: true,
-                message: "Response completed",
                 settings,
+                message: "Response completed ✅",
+                sound: true,
+                visual: true,
               });
             }
 

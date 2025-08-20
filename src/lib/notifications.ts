@@ -13,99 +13,70 @@ export interface NotificationOptions {
 }
 
 /**
- * Show notification when chat response is completed
- *
- * IMPORTANT: This function must be called from a React component or hook that
- * already has access to user settings via the useSettings() hook. Do not call
- * IpcClient directly from this utility function.
- *
- * @param options Options including user settings from a React hook/component
+ * Specialized notification for chat response completion
  */
-export function showResponseCompleted(options: NotificationOptions = {}) {
+export const showResponseCompleted = (options: NotificationOptions) => {
   const {
     visual = true,
     sound = true,
-    message = "Response completed",
+    message = "Response completed ✅",
     settings,
   } = options;
 
-  try {
-    // Only show notifications (visual or sound) if the feature is enabled
-    if (settings?.enableResponseEndNotification) {
-      // Visual notification
-      if (visual && typeof Notification !== "undefined") {
-        // Use native notification for better visibility when app is not in focus
-        showNativeNotification("Dyad", message);
-      } else if (visual) {
-        // Fallback to toast only if Notification API is not available
-        showSuccess(message);
-      }
-
-      // Audio notification
-      if (sound) {
-        playNotificationSound();
-      }
-    }
-  } catch (error) {
-    console.debug("Notification error:", error);
-    // Fallback to toast
-    if (visual) {
-      showSuccess(message);
-    }
+  // Respect user settings
+  if (!settings?.enableResponseEndNotification || !visual) {
+    return; // user disabled response end notifications
   }
-}
+
+  // Try native notification first, fallback to toast
+  const nativeShown = showNativeNotification("Dyad", message);
+
+  if (!nativeShown) {
+    // Fallback: Dyad toast notification
+    showSuccess(message);
+  }
+
+  // Play sound if enabled
+  if (sound) {
+    playNotificationSound();
+  }
+};
 
 /**
- * Show a native desktop notification
- * Uses the Notification API to display a system notification
- * This is especially useful when the Dyad app window is not in focus
+ * Show a native cross-platform notification (Electron renderer process only)
+ * Returns true if shown, false if fallback is needed
  */
-function showNativeNotification(title: string, body: string) {
+export const showNativeNotification = (
+  title: string,
+  body: string,
+): boolean => {
+  if (typeof window === "undefined" || !("Notification" in window)) {
+    console.warn("Native notifications are not supported in this environment.");
+    return false;
+  }
+
   try {
-    // Check permission
     if (Notification.permission === "granted") {
-      sendNotification();
+      new Notification(title, { body });
+      return true;
     } else if (Notification.permission !== "denied") {
+      // Ask for permission once
       Notification.requestPermission().then((permission) => {
         if (permission === "granted") {
-          sendNotification();
+          new Notification(title, { body });
         } else {
-          // Permission denied or dismissed, fallback to toast
-          showSuccess(body);
+          showSuccess(body); // fallback inside request callback
         }
       });
-    } else {
-      // Already denied, fallback to toast
-      showSuccess(body);
+      return true; // handled asynchronously
     }
-
-    function sendNotification() {
-      // Create notification with app icon and appropriate options
-      const notification = new Notification(title, {
-        body,
-        icon: "/assets/logo.png", // Using app logo
-        silent: true, // Don't play the default sound as we handle sound separately
-        tag: "dyad-response", // Tag ensures we don't stack too many similar notifications
-        requireInteraction: false, // Auto-dismiss after OS's default timeout
-      });
-
-      // When notification is clicked, focus the Dyad window
-      notification.onclick = () => {
-        // Bring Dyad window to front when notification is clicked
-        // In Electron, the click handler should automatically focus the window
-        // without needing to send an explicit IPC message
-        if (window) {
-          window.focus();
-        }
-      };
-    }
-  } catch (error) {
-    console.debug("Native notification failed:", error);
-    // Log error but don't fall back to toast
-    // This ensures we respect the user's notification preferences
-    // and don't show any notification if native notifications fail
+  } catch (err) {
+    console.error("Failed to show native notification:", err);
+    return false;
   }
-}
+
+  return false;
+};
 
 /**
  * Play a subtle notification sound

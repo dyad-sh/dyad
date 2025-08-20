@@ -6,6 +6,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { AzureConfiguration } from "./AzureConfiguration";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { UserSettings } from "@/lib/schemas";
@@ -48,95 +49,7 @@ export function ApiKeyConfiguration({
 }: ApiKeyConfigurationProps) {
   // Special handling for Azure OpenAI which requires environment variables
   if (provider === "azure") {
-    const azureApiKey = envVars["AZURE_API_KEY"];
-    const azureResourceName = envVars["AZURE_RESOURCE_NAME"];
-
-    const isAzureConfigured = !!(azureApiKey && azureResourceName);
-
-    return (
-      <div className="space-y-4">
-        <Alert variant={isAzureConfigured ? "default" : "destructive"}>
-          <Info className="h-4 w-4" />
-          <AlertTitle>Azure OpenAI Configuration</AlertTitle>
-          <AlertDescription>
-            Azure OpenAI requires both an API key and resource name to be
-            configured via environment variables.
-          </AlertDescription>
-        </Alert>
-
-        <Accordion
-          type="multiple"
-          className="w-full space-y-4"
-          defaultValue={["azure-config"]}
-        >
-          <AccordionItem
-            value="azure-config"
-            className="border rounded-lg px-4 bg-(--background-lightest)"
-          >
-            <AccordionTrigger className="text-lg font-medium hover:no-underline cursor-pointer">
-              Environment Variables Configuration
-            </AccordionTrigger>
-            <AccordionContent className="pt-4">
-              <div className="space-y-4">
-                <div>
-                  <h4 className="font-medium mb-2">
-                    Required Environment Variables:
-                  </h4>
-                  <div className="space-y-3 text-sm">
-                    <div className="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-800 rounded border">
-                      <code className="font-mono">AZURE_API_KEY</code>
-                      <span
-                        className={`px-2 py-1 rounded text-xs ${azureApiKey ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" : "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"}`}
-                      >
-                        {azureApiKey ? "Set" : "Not Set"}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-800 rounded border">
-                      <code className="font-mono">AZURE_RESOURCE_NAME</code>
-                      <span
-                        className={`px-2 py-1 rounded text-xs ${azureResourceName ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" : "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"}`}
-                      >
-                        {azureResourceName ? "Set" : "Not Set"}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-800">
-                  <h5 className="font-medium mb-2 text-blue-900 dark:text-blue-100">
-                    How to configure:
-                  </h5>
-                  <ol className="list-decimal list-inside space-y-1 text-sm text-blue-800 dark:text-blue-200">
-                    <li>Get your API key from the Azure portal</li>
-                    <li>
-                      Find your resource name (the name you gave your Azure
-                      OpenAI resource)
-                    </li>
-                    <li>
-                      Set these environment variables before starting Dyad
-                    </li>
-                    <li>
-                      Restart Dyad after setting the environment variables
-                    </li>
-                  </ol>
-                </div>
-
-                {isAzureConfigured && (
-                  <Alert>
-                    <KeyRound className="h-4 w-4" />
-                    <AlertTitle>Azure OpenAI Configured</AlertTitle>
-                    <AlertDescription>
-                      Both required environment variables are set. You can now
-                      use Azure OpenAI models.
-                    </AlertDescription>
-                  </Alert>
-                )}
-              </div>
-            </AccordionContent>
-          </AccordionItem>
-        </Accordion>
-      </div>
-    );
+    return <AzureConfiguration envVars={envVars} />;
   }
 
   const envApiKey = envVarName ? envVars[envVarName] : undefined;

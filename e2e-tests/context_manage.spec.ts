@@ -41,7 +41,7 @@ test("manage context - smart context", async ({ po }) => {
   // Disabling smart context will automatically disable
   // the auto-includes.
   const proModesDialog = await po.openProModesDialog();
-  await proModesDialog.toggleSmartContext();
+  await proModesDialog.setSmartContextMode("off");
   await proModesDialog.close();
 
   await po.sendPrompt("[dump]");

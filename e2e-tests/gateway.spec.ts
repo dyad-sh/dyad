@@ -7,7 +7,7 @@ testSkipIfWindows("claude 4 sonnet", async ({ po }) => {
     location: "home-chat-input-container",
   });
   await proModesDialog.toggleTurboEdits();
-  await proModesDialog.toggleSmartContext();
+  await proModesDialog.setSmartContextMode("off");
   await proModesDialog.close();
 
   await po.selectModel({ provider: "Anthropic", model: "Claude 4 Sonnet" });

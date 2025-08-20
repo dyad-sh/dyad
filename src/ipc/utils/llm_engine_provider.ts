@@ -44,6 +44,7 @@ or to provide a custom fetch implementation for e.g. testing.
   dyadOptions: {
     enableLazyEdits?: boolean;
     enableSmartFilesContext?: boolean;
+    smartContextMode?: "balanced";
   };
   settings: UserSettings;
 }
@@ -149,6 +150,7 @@ export function createDyadEngine(
               enable_lazy_edits: options.dyadOptions.enableLazyEdits,
               enable_smart_files_context:
                 options.dyadOptions.enableSmartFilesContext,
+              smart_context_mode: options.dyadOptions.smartContextMode,
             };
           }
 

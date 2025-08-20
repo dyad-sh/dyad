@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Sparkles, Info } from "lucide-react";
 import { useSettings } from "@/hooks/useSettings";
 import { IpcClient } from "@/ipc/ipc_client";
-import { hasDyadProKey } from "@/lib/schemas";
+import { hasDyadProKey, type UserSettings } from "@/lib/schemas";
 
 export function ProModeSelector() {
   const { settings, updateSettings } = useSettings();
@@ -25,10 +25,25 @@ export function ProModeSelector() {
     });
   };
 
-  const toggleSmartContext = () => {
-    updateSettings({
-      enableProSmartFilesContextMode: !settings?.enableProSmartFilesContextMode,
-    });
+  const handleSmartContextChange = (
+    newValue: "off" | "conservative" | "balanced",
+  ) => {
+    if (newValue === "off") {
+      updateSettings({
+        enableProSmartFilesContextMode: false,
+        proSmartContextOption: undefined,
+      });
+    } else if (newValue === "conservative") {
+      updateSettings({
+        enableProSmartFilesContextMode: true,
+        proSmartContextOption: undefined, // Conservative is the default when enabled but no option set
+      });
+    } else if (newValue === "balanced") {
+      updateSettings({
+        enableProSmartFilesContextMode: true,
+        proSmartContextOption: "balanced",
+      });
+    }
   };
 
   const toggleProEnabled = () => {
@@ -99,14 +114,10 @@ export function ProModeSelector() {
               settingEnabled={Boolean(settings?.enableProLazyEditsMode)}
               toggle={toggleLazyEdits}
             />
-            <SelectorRow
-              id="smart-context"
-              label="Smart Context"
-              description="Optimizes your AI's code context"
-              tooltip="Improve efficiency and save credits working on large codebases."
+            <SmartContextSelector
               isTogglable={proModeTogglable}
-              settingEnabled={Boolean(settings?.enableProSmartFilesContextMode)}
-              toggle={toggleSmartContext}
+              settings={settings}
+              onValueChange={handleSmartContextChange}
             />
           </div>
         </div>
@@ -165,6 +176,86 @@ function SelectorRow({
         onCheckedChange={toggle}
         disabled={!isTogglable}
       />
+    </div>
+  );
+}
+
+function SmartContextSelector({
+  isTogglable,
+  settings,
+  onValueChange,
+}: {
+  isTogglable: boolean;
+  settings: UserSettings | null;
+  onValueChange: (value: "off" | "conservative" | "balanced") => void;
+}) {
+  // Determine current value based on settings
+  const getCurrentValue = (): "off" | "conservative" | "balanced" => {
+    if (!settings?.enableProSmartFilesContextMode) {
+      return "off";
+    }
+    if (settings?.proSmartContextOption === "balanced") {
+      return "balanced";
+    }
+    // If enabled but no option set (undefined/falsey), it's conservative
+    return "conservative";
+  };
+
+  const currentValue = getCurrentValue();
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1.5">
+        <Label className={!isTogglable ? "text-muted-foreground/50" : ""}>
+          Smart Context
+        </Label>
+        <div className="flex items-center gap-1">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Info
+                className={`h-4 w-4 cursor-help ${!isTogglable ? "text-muted-foreground/50" : "text-muted-foreground"}`}
+              />
+            </TooltipTrigger>
+            <TooltipContent side="right" className="max-w-72">
+              Improve efficiency and save credits working on large codebases.
+            </TooltipContent>
+          </Tooltip>
+          <p
+            className={`text-xs ${!isTogglable ? "text-muted-foreground/50" : "text-muted-foreground"}`}
+          >
+            Optimizes your AI's code context
+          </p>
+        </div>
+      </div>
+      <div className="inline-flex rounded-md border border-input">
+        <Button
+          variant={currentValue === "off" ? "default" : "ghost"}
+          size="sm"
+          onClick={() => onValueChange("off")}
+          disabled={!isTogglable}
+          className="rounded-r-none border-r border-input h-8 px-3 text-xs flex-shrink-0"
+        >
+          Off
+        </Button>
+        <Button
+          variant={currentValue === "conservative" ? "default" : "ghost"}
+          size="sm"
+          onClick={() => onValueChange("conservative")}
+          disabled={!isTogglable}
+          className="rounded-none border-r border-input h-8 px-3 text-xs flex-shrink-0"
+        >
+          Conservative
+        </Button>
+        <Button
+          variant={currentValue === "balanced" ? "default" : "ghost"}
+          size="sm"
+          onClick={() => onValueChange("balanced")}
+          disabled={!isTogglable}
+          className="rounded-l-none h-8 px-3 text-xs flex-shrink-0"
+        >
+          Balanced
+        </Button>
+      </div>
     </div>
   );
 }

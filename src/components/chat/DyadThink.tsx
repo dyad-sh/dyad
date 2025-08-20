@@ -18,7 +18,7 @@ export const DyadThink: React.FC<DyadThinkProps> = ({ children, node }) => {
   const tokenSavingsMatch =
     typeof children === "string"
       ? children.match(
-          /^token-savings\?original-tokens=([0-9.]+)&smart-context-tokens=([0-9.]+)$/,
+          /^dyad-token-savings\?original-tokens=([0-9.]+)&smart-context-tokens=([0-9.]+)$/,
         )
       : null;
 

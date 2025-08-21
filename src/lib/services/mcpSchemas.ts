@@ -8,7 +8,7 @@ export type TransportType = z.infer<typeof TransportType>;
 export const StdioTransportConfig = z.object({
   type: z.literal('stdio'),
   command: z.string(),
-  args: z.array(z.string()).default([]),
+  args: z.array(z.string()).default(() => []),
   cwd: z.string().optional(),
   env: z.record(z.string()).optional(),
 });
@@ -93,4 +93,4 @@ export const TOOL_EXECUTION_APPROVAL = {
 
 export const TOOL_NO_EXECUTE_FUNCTION = 'Error: No execute function found on tool';
 export const TOOL_EXECUTION_DENIED = 'Error: User denied access to tool execution';
-export const TOOL_EXECUTION_ERROR = 'Error: An error occured while calling tool';
+export const TOOL_EXECUTION_ERROR = 'Error: An error occurred while calling tool';

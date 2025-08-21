@@ -260,7 +260,7 @@ export function registerMCPHandlers() {
         return { success: false, error: `Tool ${toolName} is not executable` };
       }
 
-      logger.info(`Executing MCP tool: ${toolName} with args:`, args);
+      logger.debug(`Executing MCP tool: ${toolName}`);
       const result = await tool.execute(args);
       
       return { success: true, result };
@@ -310,7 +310,7 @@ async function initializeServer(serverName: string, serverConfig: any): Promise<
         inputSchema: tool.inputSchema,
         execute: async (args: any) => {
           try {
-            logger.info(`Executing tool: ${toolName}`, args); // Use info for tool execution
+            logger.debug(`Executing tool: ${toolName}`); // Use debug to avoid logging sensitive args
             const result = await (client as any).callTool({ name: tool.name, args });
             return result;
           } catch (error) {

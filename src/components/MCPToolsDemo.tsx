@@ -87,7 +87,7 @@ export function MCPToolsDemo() {
         ) : (
           <ul>
             {tools.map((tool) => (
-              <li key={tool.name}>
+              <li key={`${tool.serverName}-${tool.name}`}>
                 <strong>{tool.name}</strong> ({tool.serverName})
                 <br />
                 <small>{tool.description}</small>

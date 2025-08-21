@@ -78,7 +78,7 @@ export function replaceMCPToolTags(fullResponse: string, results: Map<string, an
       const toolName = toolNameMatch[1];
       const result = results.get(toolName);
       
-      if (result) {
+      if (results.has(toolName)) {
         if (result.error) {
           return `**MCP Tool Error (${toolName}):** ${result.error}`;
         } else {

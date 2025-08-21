@@ -61,7 +61,7 @@ export function McpServerListItem({ serverName, serverData }: McpServerListItemP
             {isExpanded && (
               <div className="space-y-2 mt-2">
                 {serverData.tools.slice(0, 3).map((tool, index) => (
-                  <div key={index} className="p-2 border rounded-md bg-muted/50">
+                  <div key={tool.name} className="p-2 border rounded-md bg-muted/50">
                     <div className="flex items-start gap-2">
                       <Info className="h-4 w-4 mt-0.5 text-muted-foreground" />
                       <div className="flex-1 min-w-0">

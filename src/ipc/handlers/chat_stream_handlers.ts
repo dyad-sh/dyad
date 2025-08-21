@@ -1624,7 +1624,7 @@ async function processToolCallInMain(toolCall: any): Promise<any> {
     console.log(`Processed tool call annotation: ${toolName}`);
     return annotation;
   } catch (error) {
-    console.error(`Failed to process tool call ${errorMsg}:`, error);
+    console.error(`Failed to process tool call ${toolName}:`, error);
     throw error;
   }
 }

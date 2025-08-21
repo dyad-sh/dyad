@@ -11,9 +11,33 @@ export interface Logger {
 class ScopedLogger implements Logger {
   constructor(private scope: string) {}
 
+  private safeStringify(obj: any): string {
+    try {
+      return JSON.stringify(obj);
+    } catch (error) {
+      // Handle circular references by creating a safe copy
+      try {
+        const seen = new WeakSet();
+        const replacer = (key: string, value: any) => {
+          if (typeof value === 'object' && value !== null) {
+            if (seen.has(value)) {
+              return '[Circular Reference]';
+            }
+            seen.add(value);
+          }
+          return value;
+        };
+        return JSON.stringify(obj, replacer);
+      } catch (fallbackError) {
+        // If all else fails, return a basic representation
+        return `[Object: ${typeof obj}]`;
+      }
+    }
+  }
+
   private log(level: string, message: string, data?: any): void {
     const timestamp = new Date().toISOString();
-    const logData = data ? ` ${JSON.stringify(data)}` : '';
+    const logData = data ? ` ${this.safeStringify(data)}` : '';
     const logMessage = `[${timestamp}] [${this.scope}] ${message}${logData}`;
 
     switch (level) {

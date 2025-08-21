@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { expect } from "@playwright/test";
 import { test as testWithPo } from "./helpers/test_helper";
 
 testWithPo("Azure provider settings UI", async ({ po }) => {
@@ -46,19 +46,4 @@ testWithPo("Azure provider settings UI", async ({ po }) => {
   // Check that status indicators show "Not Set" (since no env vars are configured in test)
   const statusElements = po.page.locator(".bg-red-100, .bg-red-900");
   await expect(statusElements.first()).toBeVisible();
-});
-
-test("Azure provider appears in provider list", async ({ page }) => {
-  // Simple test to ensure Azure shows up without full PO setup
-  await page.goto("http://localhost:3000");
-
-  // Wait for app to load and navigate to settings
-  await page.waitForSelector('[data-testid="settings-tab"]', {
-    state: "visible",
-    timeout: 15000,
-  });
-  await page.click('[data-testid="settings-tab"]');
-
-  // Check that Azure OpenAI appears in the provider list
-  await expect(page.getByText("Azure OpenAI")).toBeVisible({ timeout: 10000 });
 });

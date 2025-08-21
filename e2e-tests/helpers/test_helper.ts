@@ -693,6 +693,23 @@ export class PageObject {
       .click();
   }
 
+  async selectTestAzureModel() {
+    await this.page.getByRole("button", { name: "Model: Auto" }).click();
+    await this.page.getByText("Azure OpenAI").click();
+    await this.page.getByText("GPT-5", { exact: true }).click();
+  }
+
+  async setUpAzure({ autoApprove = false }: { autoApprove?: boolean } = {}) {
+    await this.githubConnector.clearPushEvents();
+    await this.goToSettingsTab();
+    if (autoApprove) {
+      await this.toggleAutoApprove();
+    }
+    // Azure should already be configured via environment variables
+    // so we don't need additional setup steps like setUpDyadProvider
+    await this.goToAppsTab();
+  }
+
   async setUpTestProvider() {
     await this.page.getByText("Add custom providerConnect to").click();
     // Fill out provider dialog

@@ -238,8 +238,8 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     },
     {
       name: "gpt-5-chat",
-      displayName: "GPT-5 Chat (Preview)",
-      description: "Azure OpenAI GPT-5 Chat model (Preview)",
+      displayName: "GPT-5 Chat",
+      description: "Azure OpenAI GPT-5 Chat model",
       maxOutputTokens: 16_384,
       contextWindow: 128_000,
       temperature: 0,

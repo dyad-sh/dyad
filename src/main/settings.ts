@@ -6,6 +6,7 @@ import { safeStorage } from "electron";
 import { v4 as uuidv4 } from "uuid";
 import log from "electron-log";
 import { DEFAULT_TEMPLATE_ID } from "@/shared/templates";
+import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 
 const logger = log.scope("settings");
 
@@ -179,7 +180,7 @@ export function writeSettings(settings: Partial<UserSettings>): void {
 }
 
 export function encrypt(data: string): Secret {
-  if (safeStorage.isEncryptionAvailable()) {
+  if (safeStorage.isEncryptionAvailable() && !IS_TEST_BUILD) {
     return {
       value: safeStorage.encryptString(data).toString("base64"),
       encryptionType: "electron-safe-storage",

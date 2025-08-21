@@ -67,8 +67,12 @@ class ProModesDialog {
     public close: () => Promise<void>,
   ) {}
 
-  async toggleSmartContext() {
-    await this.page.getByRole("switch", { name: "Smart Context" }).click();
+  async setSmartContextMode(mode: "balanced" | "off" | "conservative") {
+    await this.page
+      .getByRole("button", {
+        name: mode.charAt(0).toUpperCase() + mode.slice(1),
+      })
+      .click();
   }
 
   async toggleTurboEdits() {

@@ -1,0 +1,6 @@
+- paragraph: "[dump] tc=turbo-edits"
+- paragraph: "[[dyad-dump-path=*]]"
+- img
+- text: less than a minute ago
+- button "Retry":
+  - img

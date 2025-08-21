@@ -85,6 +85,7 @@ export async function getModelClient(
                   ? false
                   : settings.enableProLazyEditsMode,
               enableSmartFilesContext: settings.enableProSmartFilesContextMode,
+              smartContextMode: settings.proSmartContextOption,
             },
             settings,
           })

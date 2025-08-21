@@ -122,6 +122,7 @@ function preprocessUnclosedTags(content: string): {
     "dyad-chat-summary",
     "dyad-edit",
     "dyad-codebase-context",
+    "mcp-tool",
     "think",
   ];
 
@@ -188,6 +189,7 @@ function parseCustomTags(content: string): ContentPiece[] {
     "dyad-chat-summary",
     "dyad-edit",
     "dyad-codebase-context",
+    "mcp-tool",
     "think",
   ];
 

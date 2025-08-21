@@ -64,6 +64,9 @@ import { parseAppMentions } from "@/shared/parse_mention_apps";
 import { prompts as promptsTable } from "../../db/schema";
 import { inArray } from "drizzle-orm";
 import { replacePromptReference } from "../utils/replacePromptReference";
+import { dynamicTool, jsonSchema } from "@ai-sdk/provider-utils";
+import { MCPService } from "../../lib/services/mcpService.js";
+import { getMCPToolTags, replaceMCPToolTags } from "../utils/mcp_tag_parser";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
@@ -142,6 +145,38 @@ async function processStreamChunks({
       }
 
       chunk += escapeDyadTags(part.text);
+    } else if (part.type === "tool-call") {
+      // Execute MCP tools immediately during streaming
+      try {
+        const toolName: string =
+          (part as any).toolName ??
+          (part as any)?.name ??
+          (part as any)?.function?.name ??
+          "unknown";
+        const args: unknown =
+          (part as any).args ??
+          (part as any)?.function?.arguments ??
+          {};
+        const providerRequestId = (part as any)?.providerRequestId;
+        const argKeys = args && typeof args === "object" ? Object.keys(args as any) : [];
+
+        logger.info("MCP tool-call received", { toolName, argKeys, providerRequestId });
+
+        const result = await executeMcpToolCall(toolName, args);
+
+        // Append result to assistant buffer in a delimited block
+        chunk = `\n[tool ${toolName} result]\n${result}\n[/tool]\n`;
+      } catch (error) {
+        const toolName: string = (part as any).toolName ?? "unknown";
+        const errMsg = error instanceof Error ? error.message : String(error);
+        logger.error("Failed to process MCP tool call", {
+          toolName,
+          error: errMsg,
+          stack: (error as any)?.stack,
+        });
+        // Append concise error to buffer without crashing stream
+        chunk = `\n[tool ${toolName} error]\n${errMsg}\n[/tool]\n`;
+      }
     }
 
     if (!chunk) {
@@ -157,16 +192,159 @@ async function processStreamChunks({
 
     // If the stream was aborted, exit early
     if (abortController.signal.aborted) {
-      logger.log(`Stream for chat ${chatId} was aborted`);
       break;
     }
+  }
+
+  // Process MCP tool tags after the stream is complete
+  const mcpToolCalls = getMCPToolTags(fullResponse);
+  if (mcpToolCalls.length > 0) {
+    logger.info(`Processing ${mcpToolCalls.length} MCP tool calls`);
+    
+    const mcpResults = new Map<string, any>();
+    
+    for (const toolCall of mcpToolCalls) {
+      try {
+        logger.info(`Executing MCP tool: ${toolCall.toolName} with args:`, toolCall.args);
+        
+        // Execute the MCP tool using the global MCP state
+        const mcpState = (global as any).mcpState;
+        if (mcpState && mcpState.tools[toolCall.toolName]) {
+          const tool = mcpState.tools[toolCall.toolName];
+          if (tool.execute) {
+            const result = await tool.execute(toolCall.args);
+            mcpResults.set(toolCall.toolName, result);
+            logger.info(`MCP tool ${toolCall.toolName} executed successfully`);
+          } else {
+            mcpResults.set(toolCall.toolName, { error: 'Tool is not executable' });
+            logger.error(`MCP tool ${toolCall.toolName} is not executable`);
+          }
+        } else {
+          mcpResults.set(toolCall.toolName, { error: `Tool ${toolCall.toolName} not found` });
+          logger.error(`MCP tool ${toolCall.toolName} not found`);
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        mcpResults.set(toolCall.toolName, { error: errorMessage });
+        logger.error(`Failed to execute MCP tool ${toolCall.toolName}:`, error);
+      }
+    }
+    
+    // Replace the MCP tool tags with results
+    fullResponse = replaceMCPToolTags(fullResponse, mcpResults);
   }
 
   return { fullResponse, incrementalResponse };
 }
 
+// Define max tool result size for stringify/truncation
+const MAX_TOOL_RESULT_CHARS = 10_000;
+
+function safeStringifyResult(val: any, limit = MAX_TOOL_RESULT_CHARS): string {
+  try {
+    const str = typeof val === "string" ? val : JSON.stringify(val, null, 2);
+    return str.length > limit ? str.slice(0, limit) + "\n... [truncated]" : str;
+  } catch {
+    const str = String(val);
+    return str.length > limit ? str.slice(0, limit) + "\n... [truncated]" : str;
+  }
+}
+
+async function withTimeout<T>(p: Promise<T>, ms: number, message: string): Promise<T> {
+  let t: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    t = setTimeout(() => reject(new Error(message)), ms);
+  });
+  try {
+    // Ensure p is a promise
+    const promise = Promise.resolve(p);
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (t) clearTimeout(t);
+  }
+}
+
+/**
+ * Attempt to canonicalize an MCP tool name against the global mcpState.tools map.
+ * Steps:
+ * 1) Direct match on key.
+ * 2) If rawName is "google-search" or "google_search", find a key ending with ".google_search" or ".google-search".
+ * 3) Try last-segment dash/underscore swap, preserving any server prefix.
+ * 4) Else undefined.
+ */
+function normalizeMcpToolName(rawName: string, mcpState: any): string | undefined {
+  if (!rawName || !mcpState?.tools) return undefined;
+  const tools = mcpState.tools as Record<string, any>;
+  if (tools[rawName]) return rawName;
+
+  const keys = Object.keys(tools);
+
+  // Google tool aliasing
+  if (rawName === "google-search" || rawName === "google_search") {
+    const found = keys.find(
+      (k) => k.endsWith(".google_search") || k.endsWith(".google-search"),
+    );
+    if (found) return found;
+  }
+
+  // Last-segment dash/underscore swap
+  const lastDot = rawName.lastIndexOf(".");
+  const prefix = lastDot >= 0 ? rawName.slice(0, lastDot + 1) : "";
+  const last = lastDot >= 0 ? rawName.slice(lastDot + 1) : rawName;
+
+  if (last.includes("-")) {
+    const candidate = prefix + last.replace(/-/g, "_");
+    if (tools[candidate]) return candidate;
+  } else if (last.includes("_")) {
+    const candidate = prefix + last.replace(/_/g, "-");
+    if (tools[candidate]) return candidate;
+  }
+
+  return undefined;
+}
+
+/**
+ * Execute an MCP tool-call against global mcpState.tools with a 30s timeout.
+ * Returns a stringified result (max ~10k chars) or a concise error note.
+ */
+async function executeMcpToolCall(toolName: string, args: unknown): Promise<string> {
+  const mcpState = (global as any).mcpState;
+  const canonicalName = normalizeMcpToolName(toolName, mcpState);
+  if (!canonicalName) {
+    logger.warn("MCP tool not found for name", { toolName });
+    return `MCP tool not found: ${toolName}`;
+  }
+
+  try {
+    logger.info("Executing MCP tool", { canonicalName });
+    const tool = mcpState?.tools?.[canonicalName];
+    if (!tool || typeof tool.execute !== "function") {
+      logger.warn("MCP tool is not executable", { canonicalName });
+      return `MCP tool not executable: ${canonicalName}`;
+    }
+    const res = await withTimeout(
+      Promise.resolve(tool.execute(args)),
+      30_000,
+      "MCP tool timeout: " + canonicalName,
+    );
+    const resultText = safeStringifyResult(res);
+    if (typeof res === "string") {
+      logger.info("MCP tool success", { canonicalName, length: res.length });
+    } else if (res && typeof res === "object") {
+      logger.info("MCP tool success", { canonicalName, keys: Object.keys(res as any).length });
+    } else {
+      logger.info("MCP tool success", { canonicalName, summary: typeof res });
+    }
+    return resultText;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error("MCP tool error", { canonicalName, error: msg, stack: (err as any)?.stack });
+    return `Error executing MCP tool (${canonicalName}): ${msg}`;
+  }
+}
+
 export function registerChatStreamHandlers() {
-  ipcMain.handle("chat:stream", async (event, req: ChatStreamParams) => {
+  ipcMain.handle("chat:stream", async (event: Electron.IpcMainInvokeEvent, req: ChatStreamParams) => {
     try {
       const fileUploadsState = FileUploadsState.getInstance();
       fileUploadsState.initialize({ chatId: req.chatId });
@@ -667,6 +845,145 @@ This conversation includes one or more image attachments. When the user uploads 
           } else {
             logger.log("sending AI request");
           }
+
+          // Get MCP tools from active clients and construct robust dynamic tools
+          let mcpTools: Record<string, any> = {};
+          try {
+            const mcpState = (global as any).mcpState;
+            if (mcpState && mcpState.clients) {
+              logger.info(`MCP state found with ${mcpState.clients.size} clients`);
+              for (const [serverName, client] of mcpState.clients.entries()) {
+                try {
+                  logger.info(`Processing MCP server: ${serverName}`);
+                  const listToolsResult = await (client as any).listTools();
+                  const tools: any[] = (listToolsResult?.tools ?? []) as any[];
+                  logger.info(`Server ${serverName} provides ${tools.length} tools`);
+                  for (const tool of tools) {
+                    const key = `${serverName}.${tool.name}`;
+                    logger.info(`Creating tool: ${key} with description: ${tool.description}`);
+                    logger.info(`Original MCP tool name: ${tool.name}`);
+                    
+                    const schemaObj = typeof tool.inputSchema === "object" && tool.inputSchema
+                      ? { ...tool.inputSchema, properties: tool.inputSchema.properties ?? {}, additionalProperties: false }
+                      : { type: "object", properties: {}, additionalProperties: true };
+                    
+                    logger.info(`Tool ${key} schema:`, JSON.stringify(schemaObj, null, 2));
+                    
+                    // Create the main tool with server prefix
+                    mcpTools[key] = dynamicTool({
+                      description: tool.description,
+                      inputSchema: jsonSchema(schemaObj),
+                      execute: async (args: unknown, options?: { abortSignal?: AbortSignal }) => {
+                        try {
+                          logger.info(`Executing MCP tool: ${key} with args:`, args);
+                          
+                          // Add timeout to prevent hanging
+                          const timeoutPromise = new Promise((_, reject) => {
+                            setTimeout(() => reject(new Error('Tool execution timed out after 30 seconds')), 30000);
+                          });
+                          
+                          const toolPromise = (client as any).callTool({ name: tool.name, args, options });
+                          const res = await Promise.race([toolPromise, timeoutPromise]);
+                          
+                          logger.info(`MCP tool ${key} completed successfully:`, res);
+                          return res;
+                        } catch (error) {
+                          logger.error(`MCP tool ${key} execution failed:`, error);
+                          throw new Error(`MCP tool execution failed: ${error instanceof Error ? error.message : String(error)}`);
+                        }
+                      }
+                    });
+                    
+                    // Also create an alias without server prefix for easier discovery
+                    if (tool.name === 'google_search' || tool.name === 'google-search') {
+                      const aliasKey = 'google-search';
+                      logger.info(`Creating alias tool: ${aliasKey} for ${key}`);
+                      mcpTools[aliasKey] = dynamicTool({
+                        description: `Alias for ${tool.description}`,
+                        inputSchema: jsonSchema(schemaObj),
+                        execute: async (args: unknown, options?: { abortSignal?: AbortSignal }) => {
+                          try {
+                            logger.info(`Executing alias MCP tool: ${aliasKey} with args:`, args);
+                            
+                            const timeoutPromise = new Promise((_, reject) => {
+                              setTimeout(() => reject(new Error('Tool execution timed out after 30 seconds')), 30000);
+                            });
+                            
+                            const toolPromise = (client as any).callTool({ name: tool.name, args, options });
+                            const res = await Promise.race([toolPromise, timeoutPromise]);
+                            
+                            logger.info(`Alias MCP tool ${aliasKey} completed successfully:`, res);
+                            return res;
+                          } catch (error) {
+                            logger.error(`Alias MCP tool ${aliasKey} execution failed:`, error);
+                            throw new Error(`MCP tool execution failed: ${error instanceof Error ? error.message : String(error)}`);
+                          }
+                        }
+                      });
+
+                      // Minimal alias hardening: also expose underscore variant
+                      const aliasKeyUnderscore = 'google_search';
+                      logger.info(`Creating alias tool: ${aliasKeyUnderscore} for ${key}`);
+                      mcpTools[aliasKeyUnderscore] = dynamicTool({
+                        description: `Alias for ${tool.description}`,
+                        inputSchema: jsonSchema(schemaObj),
+                        execute: async (args: unknown, options?: { abortSignal?: AbortSignal }) => {
+                          try {
+                            logger.info(`Executing alias MCP tool: ${aliasKeyUnderscore} with args:`, args);
+                            
+                            const timeoutPromise = new Promise((_, reject) => {
+                              setTimeout(() => reject(new Error('Tool execution timed out after 30 seconds')), 30000);
+                            });
+                            
+                            const toolPromise = (client as any).callTool({ name: tool.name, args, options });
+                            const res = await Promise.race([toolPromise, timeoutPromise]);
+                            
+                            logger.info(`Alias MCP tool ${aliasKeyUnderscore} completed successfully:`, res);
+                            return res;
+                          } catch (error) {
+                            logger.error(`Alias MCP tool ${aliasKeyUnderscore} execution failed:`, error);
+                            throw new Error(`MCP tool execution failed: ${error instanceof Error ? error.message : String(error)}`);
+                          }
+                        }
+                      });
+                    }
+                  }
+                } catch (e) {
+                  logger.warn(`Failed to load tools for server ${serverName}:`, e);
+                }
+              }
+            } else {
+              logger.warn("MCP state not found or no clients available");
+            }
+          } catch (error) {
+            logger.error("Failed to get MCP tools:", error);
+          }
+
+          logger.info(`Available MCP tools: ${Object.keys(mcpTools).join(', ')}`);
+          
+          // Debug: Show the actual tool objects being passed
+          for (const [toolName, tool] of Object.entries(mcpTools)) {
+            logger.info(`Tool ${toolName}:`, {
+              name: tool.name,
+              description: tool.description,
+              hasExecute: typeof tool.execute === 'function'
+            });
+          }
+
+          if (Object.keys(mcpTools).length > 0) {
+            logger.info(`MCP tools loaded successfully: ${Object.keys(mcpTools).length} tools available for chat`);
+            
+            // Add MCP tools information to system prompt
+            const mcpToolsList = Object.keys(mcpTools).map(toolName => {
+              const tool = mcpTools[toolName];
+              return `- ${toolName}: ${tool.description || 'No description available'}`;
+            }).join('\n');
+            
+            systemPrompt += `\n\n# Available MCP Tools\nThe following external tools are available for use:\n${mcpToolsList}\n\nYou can use these tools to enhance your capabilities. When a user asks for something that could benefit from these tools, use them appropriately.`;
+          } else {
+            logger.warn("No MCP tools available for chat. Check MCP configuration in settings.");
+          }
+
           return streamText({
             maxOutputTokens: await getMaxTokens(settings.selectedModel),
             temperature: await getTemperature(settings.selectedModel),
@@ -691,6 +1008,8 @@ This conversation includes one or more image attachments. When the user uploads 
             },
             system: systemPrompt,
             messages: chatMessages.filter((m) => m.content),
+            tools: Object.keys(mcpTools).length > 0 ? mcpTools : undefined,
+            // maxToolRoundtrips removed in AI SDK 4.0
             onError: (error: any) => {
               logger.error("Error streaming text:", error);
               let errorMessage = (error as any)?.error?.message;
@@ -1285,4 +1604,27 @@ These are the other apps that I've mentioned in my prompt. These other apps' cod
 
 ${otherAppsCodebaseInfo}
 `;
+}
+
+// Temporary function to process tool calls directly in main process
+// DEPRECATED: Annotation-only. Unused by streaming tool-call execution.
+async function processToolCallInMain(toolCall: any): Promise<any> {
+  try {
+    const { id: toolCallId, name: toolName } = toolCall.function;
+
+    // For now, return a simple annotation - we'll implement proper processing later
+    const annotation = {
+      type: 'toolCall',
+      toolCallId,
+      serverName: 'unknown',
+      toolName: toolName,
+      toolDescription: 'Tool call processed',
+    };
+
+    console.log(`Processed tool call annotation: ${toolName}`);
+    return annotation;
+  } catch (error) {
+    console.error(`Failed to process tool call ${errorMsg}:`, error);
+    throw error;
+  }
 }

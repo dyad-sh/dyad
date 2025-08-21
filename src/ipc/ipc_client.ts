@@ -119,11 +119,13 @@ export class IpcClient {
       onError: (error: string) => void;
     }
   >;
+  private mcpConsentHandlers: Map<string, (payload: any) => void>;
   private constructor() {
     this.ipcRenderer = (window as any).electron.ipcRenderer as IpcRenderer;
     this.chatStreams = new Map();
     this.appStreams = new Map();
     this.helpStreams = new Map();
+    this.mcpConsentHandlers = new Map();
     // Set up listeners for stream events
     this.ipcRenderer.on("chat:response:chunk", (data) => {
       if (
@@ -237,6 +239,12 @@ export class IpcClient {
         if (callbacks) callbacks.onError(error);
         this.helpStreams.delete(sessionId);
       }
+    });
+
+    // MCP tool consent request from main
+    this.ipcRenderer.on("mcp:tool-consent-request", (payload) => {
+      const handler = this.mcpConsentHandlers.get("consent");
+      if (handler) handler(payload);
     });
   }
 
@@ -812,6 +820,86 @@ export class IpcClient {
   public async getAppVersion(): Promise<string> {
     const result = await this.ipcRenderer.invoke("get-app-version");
     return result.version as string;
+  }
+
+  // --- MCP Client Methods ---
+  public async listMcpServers() {
+    return this.ipcRenderer.invoke("mcp:list-servers");
+  }
+
+  public async createMcpServer(params: {
+    name: string;
+    transport: string;
+    command?: string | null;
+    args?: string[] | null;
+    cwd?: string | null;
+    env?: Record<string, string> | null;
+    url?: string | null;
+    enabled?: boolean;
+  }) {
+    return this.ipcRenderer.invoke("mcp:create-server", params);
+  }
+
+  public async updateMcpServer(params: {
+    id: number;
+    name?: string;
+    transport?: string;
+    command?: string | null;
+    args?: string[] | null;
+    cwd?: string | null;
+    env?: Record<string, string> | null;
+    url?: string | null;
+    enabled?: boolean;
+  }) {
+    return this.ipcRenderer.invoke("mcp:update-server", params);
+  }
+
+  public async deleteMcpServer(id: number) {
+    return this.ipcRenderer.invoke("mcp:delete-server", id);
+  }
+
+  public async listMcpTools(serverId: number) {
+    return this.ipcRenderer.invoke("mcp:list-tools", serverId);
+  }
+
+  // Removed: upsertMcpTools and setMcpToolActive – tools are fetched dynamically at runtime
+
+  public async getMcpToolConsents() {
+    return this.ipcRenderer.invoke("mcp:get-tool-consents");
+  }
+
+  public async setMcpToolConsent(params: {
+    serverId: number;
+    toolName: string;
+    consent: "ask" | "always" | "denied";
+  }) {
+    return this.ipcRenderer.invoke("mcp:set-tool-consent", params);
+  }
+
+  public onMcpToolConsentRequest(
+    handler: (payload: {
+      requestId: string;
+      serverId: number;
+      serverName: string;
+      toolName: string;
+      toolDescription?: string | null;
+      inputPreview?: string | null;
+    }) => void,
+  ) {
+    this.mcpConsentHandlers.set("consent", handler as any);
+    return () => {
+      this.mcpConsentHandlers.delete("consent");
+    };
+  }
+
+  public respondToMcpConsentRequest(
+    requestId: string,
+    decision: "accept-once" | "accept-always" | "decline",
+  ) {
+    this.ipcRenderer.invoke("mcp:tool-consent-response", {
+      requestId,
+      decision,
+    });
   }
 
   // Get proposal details

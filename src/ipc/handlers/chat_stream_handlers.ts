@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import { ipcMain } from "electron";
+import { ipcMain, IpcMainInvokeEvent } from "electron";
 import {
   ModelMessage,
   TextPart,
@@ -7,7 +7,10 @@ import {
   streamText,
   ToolSet,
   TextStreamPart,
+  stepCountIs,
 } from "ai";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+
 import { db } from "../../db";
 import { chats, messages } from "../../db/schema";
 import { and, eq, isNull } from "drizzle-orm";
@@ -42,6 +45,9 @@ import { getMaxTokens, getTemperature } from "../utils/token_utils";
 import { MAX_CHAT_TURNS_IN_CONTEXT } from "@/constants/settings_constants";
 import { validateChatContext } from "../utils/context_paths_utils";
 import { GoogleGenerativeAIProviderOptions } from "@ai-sdk/google";
+import { mcpServers } from "../../db/schema";
+import { requireMcpToolConsent } from "../utils/mcp_consent";
+import { experimental_createMCPClient } from "ai";
 
 import { getExtraProviderOptions } from "../utils/thinking_utils";
 
@@ -129,11 +135,16 @@ async function processStreamChunks({
 
   for await (const part of fullStream) {
     let chunk = "";
+    if (
+      inThinkingBlock &&
+      !["reasoning-delta", "reasoning-end", "reasoning-start"].includes(
+        part.type,
+      )
+    ) {
+      chunk = "</think>";
+      inThinkingBlock = false;
+    }
     if (part.type === "text-delta") {
-      if (inThinkingBlock) {
-        chunk = "</think>";
-        inThinkingBlock = false;
-      }
       chunk += part.text;
     } else if (part.type === "reasoning-delta") {
       if (!inThinkingBlock) {
@@ -142,6 +153,16 @@ async function processStreamChunks({
       }
 
       chunk += escapeDyadTags(part.text);
+    } else if (part.type === "tool-call") {
+      const serverName = part.toolName.split("__")[0];
+      const toolName = part.toolName.split("__")[1];
+      const content = escapeDyadTags(JSON.stringify(part.input));
+      chunk = `<dyad-mcp-tool-call server-name="${serverName}" tool-name="${toolName}">${content}</dyad-mcp-tool-call>`;
+    } else if (part.type === "tool-result") {
+      const serverName = part.toolName.split("__")[0];
+      const toolName = part.toolName.split("__")[1];
+      const content = escapeDyadTags(part.output);
+      chunk = `<dyad-mcp-tool-result server-name="${serverName}" tool-name="${toolName}">${content}</dyad-mcp-tool-result>`;
     }
 
     if (!chunk) {
@@ -496,7 +517,10 @@ ${componentSnippet}
 
         let systemPrompt = constructSystemPrompt({
           aiRules: await readAiRules(getDyadAppPath(updatedChat.app.path)),
-          chatMode: settings.selectedChatMode,
+          chatMode:
+            settings.selectedChatMode === "agent"
+              ? "build"
+              : settings.selectedChatMode,
         });
 
         // Add information about mentioned apps if any
@@ -603,19 +627,21 @@ This conversation includes one or more image attachments. When the user uploads 
             ] as const)
           : [];
 
+        const limitedHistoryChatMessages = limitedMessageHistory.map((msg) => ({
+          role: msg.role as "user" | "assistant" | "system",
+          // Why remove thinking tags?
+          // Thinking tags are generally not critical for the context
+          // and eats up extra tokens.
+          content:
+            settings.selectedChatMode === "ask"
+              ? removeDyadTags(removeNonEssentialTags(msg.content))
+              : removeNonEssentialTags(msg.content),
+        }));
+
         let chatMessages: ModelMessage[] = [
           ...codebasePrefix,
           ...otherCodebasePrefix,
-          ...limitedMessageHistory.map((msg) => ({
-            role: msg.role as "user" | "assistant" | "system",
-            // Why remove thinking tags?
-            // Thinking tags are generally not critical for the context
-            // and eats up extra tokens.
-            content:
-              settings.selectedChatMode === "ask"
-                ? removeDyadTags(removeNonEssentialTags(msg.content))
-                : removeNonEssentialTags(msg.content),
-          })),
+          ...limitedHistoryChatMessages,
         ];
 
         // Check if the last message should include attachments
@@ -654,9 +680,13 @@ This conversation includes one or more image attachments. When the user uploads 
         const simpleStreamText = async ({
           chatMessages,
           modelClient,
+          tools,
+          systemPromptOverride = systemPrompt,
         }: {
           chatMessages: ModelMessage[];
           modelClient: ModelClient;
+          tools?: ToolSet;
+          systemPromptOverride?: string;
         }) => {
           const dyadRequestId = uuidv4();
           if (isEngineEnabled) {
@@ -708,6 +738,7 @@ This conversation includes one or more image attachments. When the user uploads 
               },
             } satisfies GoogleGenerativeAIProviderOptions;
           }
+
           return streamText({
             headers: isAnthropic
               ? {
@@ -718,8 +749,26 @@ This conversation includes one or more image attachments. When the user uploads 
             temperature: await getTemperature(settings.selectedModel),
             maxRetries: 2,
             model: modelClient.model,
-            providerOptions,
-            system: systemPrompt,
+            stopWhen: stepCountIs(3),
+            providerOptions: {
+              "dyad-engine": {
+                dyadRequestId,
+              },
+              "dyad-gateway": getExtraProviderOptions(
+                modelClient.builtinProviderId,
+                settings,
+              ),
+              google: {
+                thinkingConfig: {
+                  includeThoughts: true,
+                },
+              } satisfies GoogleGenerativeAIProviderOptions,
+              openai: {
+                reasoningSummary: "auto",
+              } satisfies OpenAIResponsesProviderOptions,
+            },
+            system: systemPromptOverride,
+            tools,
             messages: chatMessages.filter((m) => m.content),
             onError: (error: any) => {
               logger.error("Error streaming text:", error);
@@ -742,6 +791,22 @@ This conversation includes one or more image attachments. When the user uploads 
             abortSignal: abortController.signal,
           });
         };
+
+        // mcpToolSet = {
+        //   ...mcpToolSet,
+        //   ["dyad__generate_code"]: {
+        //     description: "Use this tool to generate code if necessary.",
+        //     inputSchema: {
+        //       type: "object",
+        //       properties: {
+        //         code: { type: "string" },
+        //       },
+        //     },
+        //     execute: async (args: any, execCtx: any) => {
+        //       return "Generated code";
+        //     },
+        //   },
+        // };
 
         const processResponseChunkUpdate = async ({
           fullResponse,
@@ -779,6 +844,39 @@ This conversation includes one or more image attachments. When the user uploads 
           });
           return fullResponse;
         };
+
+        if (settings.selectedChatMode === "agent") {
+          const tools = await getMcpTools(event);
+
+          const { fullStream } = await simpleStreamText({
+            chatMessages: limitedHistoryChatMessages,
+            modelClient,
+            tools,
+            systemPromptOverride: constructSystemPrompt({
+              aiRules: await readAiRules(getDyadAppPath(updatedChat.app.path)),
+              chatMode: "agent",
+            }),
+          });
+
+          const result = await processStreamChunks({
+            fullStream,
+            fullResponse,
+            abortController,
+            chatId: req.chatId,
+            processResponseChunkUpdate,
+          });
+          fullResponse = result.fullResponse;
+          chatMessages.push({
+            role: "assistant",
+            content: fullResponse,
+          });
+          chatMessages.push({
+            role: "user",
+            content: "OK thanks.",
+          });
+        }
+
+        console.log("FULL RESPONSE", fullResponse);
 
         // When calling streamText, the messages need to be properly formatted for mixed content
         const { fullStream } = await simpleStreamText({
@@ -1315,4 +1413,76 @@ These are the other apps that I've mentioned in my prompt. These other apps' cod
 
 ${otherAppsCodebaseInfo}
 `;
+}
+
+async function getMcpTools(event: IpcMainInvokeEvent): Promise<ToolSet> {
+  const mcpToolSet: ToolSet = {};
+  try {
+    const servers = await db
+      .select()
+      .from(mcpServers)
+      .where(eq(mcpServers.enabled, true as any));
+    for (const s of servers) {
+      let transport: any;
+      const transportKey = (s.transport || "stdio").toLowerCase();
+      if (transportKey === "stdio") {
+        const { Experimental_StdioMCPTransport } = await import("ai/mcp-stdio");
+        const args = s.args ? JSON.parse(s.args) : [];
+        const env = s.envJson ? JSON.parse(s.envJson) : undefined;
+        transport = new Experimental_StdioMCPTransport({
+          command: s.command as string,
+          args,
+          env,
+          cwd: (s.cwd || undefined) as string | undefined,
+        });
+      } else if (transportKey === "http") {
+        if (!s.url) continue;
+
+        transport = new StreamableHTTPClientTransport(
+          new URL(s.url as string),
+          {
+            requestInit: {
+              headers: {
+                Accept: "application/json",
+                "Content-Type": "application/json",
+              },
+            },
+          } as any,
+        );
+      }
+
+      const client = await experimental_createMCPClient({ transport });
+      const toolSet = await client.tools();
+      console.log("toolSet", toolSet);
+      for (const [name, tool] of Object.entries(toolSet)) {
+        const key = `${String(s.name || "").replace(/[^a-zA-Z0-9_-]/g, "_")}__${String(name).replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+        const original = tool;
+        mcpToolSet[key] = {
+          description: original?.description,
+          inputSchema: original?.inputSchema,
+          execute: async (args: any, execCtx: any) => {
+            const inputPreview =
+              typeof args === "string"
+                ? args
+                : JSON.stringify(args).slice(0, 500);
+            const ok = await requireMcpToolConsent(event, {
+              serverId: s.id,
+              serverName: s.name,
+              toolName: name,
+              toolDescription: original?.description,
+              inputPreview,
+            });
+            console.log("&**** CONSENT ok", ok);
+            if (!ok) throw new Error(`User declined running tool ${key}`);
+            const res = await original.execute?.(args, execCtx);
+            console.log("&**** RES res", res);
+            return typeof res === "string" ? res : JSON.stringify(res);
+          },
+        } as any;
+      }
+    }
+  } catch (e) {
+    logger.warn("Failed building MCP toolset", e);
+  }
+  return mcpToolSet;
 }

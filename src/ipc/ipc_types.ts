@@ -450,3 +450,31 @@ export interface HelpChatResponseError {
   sessionId: string;
   error: string;
 }
+
+// --- MCP Types ---
+export interface McpServer {
+  id: number;
+  name: string;
+  transport: string;
+  command?: string | null;
+  args?: string | null; // JSON string
+  cwd?: string | null;
+  envJson?: string | null; // JSON string
+  url?: string | null;
+  enabled: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface McpTool {
+  name: string;
+  description?: string | null;
+}
+
+export interface McpToolConsent {
+  id: number;
+  serverId: number;
+  toolName: string;
+  consent: "ask" | "always" | "denied";
+  updatedAt: number;
+}

@@ -44,6 +44,6 @@ testWithPo("Azure provider settings UI", async ({ po }) => {
   ).toBeVisible();
 
   // Check that status indicators show "Not Set" (since no env vars are configured in test)
-  const statusElements = po.page.locator(".bg-red-100, .bg-red-900");
+  const statusElements = po.page.locator(".bg-red-100, .bg-red-800\\/20");
   await expect(statusElements.first()).toBeVisible();
 });

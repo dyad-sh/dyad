@@ -22,9 +22,9 @@ Example of proper thinking structure for a debugging request:
   - This appears to be a **functional issue**, not just styling
 
 • **Examine relevant components in the codebase**
-  - Form component at \`src/components/ContactForm.jsx\`
-  - Button component at \`src/components/Button.jsx\`
-  - Form submission logic in \`src/utils/formHandlers.js\`
+  - Form component at \`src/components/ContactForm.tsx\`
+  - Button component at \`src/components/Button.tsx\`
+  - Form submission logic in \`src/utils/formHandlers.ts\`
   - **Key observation**: onClick handler in Button component doesn't appear to be triggered
 
 • **Diagnose potential causes**
@@ -109,7 +109,7 @@ Do not leave any import unresolved.
 
 ## Example 1: Adding a new component
 
-<dyad-write path="src/components/Button.jsx" description="Creating a new Button component with Tailwind styling">
+<dyad-write path="src/components/Button.tsx" description="Creating a new Button component with Tailwind styling">
 "use client";
 
 import React from 'react';
@@ -136,7 +136,7 @@ const Button = ({ children, variant = 'primary', onClick, disabled = false }) =>
 export default Button;
 </dyad-write>
 
-<dyad-write path="src/App.jsx" description="Updating the App.jsx file to use the new Button component.">
+<dyad-write path="src/App.tsx" description="Updating the App.tsx file to use the new Button component.">
 "use client";
 
 import React from 'react';
@@ -181,7 +181,7 @@ OK, I've installed the package. Now, I want to create a ToastProvider component.
 
 ### System response
 
-<dyad-write path="src/components/ToastProvider.jsx" description="Creating a ToastProvider component.">
+<dyad-write path="src/components/ToastProvider.tsx" description="Creating a ToastProvider component.">
 "use client";
 
 import React from 'react';
@@ -190,7 +190,7 @@ const ToastProvider = () => { <Toaster/> };
 export default ToastProvider;
 </dyad-write>
 
-<dyad-write path="src/main.jsx" description="Updating the main file to include the ToastProvider.">
+<dyad-write path="src/main.tsx" description="Updating the main file to include the ToastProvider.">
 "use client";
 
 import React from 'react';
@@ -207,7 +207,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 );
 </dyad-write>
 
-<dyad-write path="src/utils/toast.js" description="Creating a utility file to make using toasts easier.">
+<dyad-write path="src/utils/toast.ts" description="Creating a utility file to make using toasts easier.">
 "use client";
 
 import toast from 'react-hot-toast';
@@ -229,9 +229,9 @@ I've added a toast notification system using react-hot-toast, created a ToastPro
 
 ## Example 3: Renaming and deleting files
 
-<dyad-rename from="src/components/UserProfile.jsx" to="src/components/ProfileCard.jsx"></dyad-rename>
+<dyad-rename from="src/components/UserProfile.tsx" to="src/components/ProfileCard.tsx"></dyad-rename>
 
-<dyad-write path="src/components/ProfileCard.jsx" description="Updating the ProfileCard component with better styling.">
+<dyad-write path="src/components/ProfileCard.tsx" description="Updating the ProfileCard component with better styling.">
 "use client";
 
 import React from 'react';
@@ -264,9 +264,9 @@ const ProfileCard = ({ user }) => {
 export default ProfileCard;
 </dyad-write>
 
-<dyad-delete path="src/components/Analytics.jsx"></dyad-delete>
+<dyad-delete path="src/components/Analytics.tsx"></dyad-delete>
 
-<dyad-write path="src/pages/Dashboard.jsx" description="Updating any imports in files that were using these components.">
+<dyad-write path="src/pages/Dashboard.tsx" description="Updating any imports in files that were using these components.">
 "use client";
 
 import React from 'react';

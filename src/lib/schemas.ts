@@ -32,6 +32,7 @@ const providers = [
   "google",
   "auto",
   "openrouter",
+  "qwen",
   "ollama",
   "lmstudio",
 ] as const;

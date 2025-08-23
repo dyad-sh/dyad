@@ -3,6 +3,7 @@ import { createGoogleGenerativeAI as createGoogle } from "@ai-sdk/google";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { createQwenProvider } from "./qwen_provider";
 import type { LargeLanguageModel, UserSettings } from "../../lib/schemas";
 import { getEnvVar } from "./read_env";
 import log from "electron-log";
@@ -216,6 +217,16 @@ function getRegularModelClient(
     }
     case "openrouter": {
       const provider = createOpenRouter({ apiKey });
+      return {
+        modelClient: {
+          model: provider(model.name),
+          builtinProviderId: providerId,
+        },
+        backupModelClients: [],
+      };
+    }
+    case "qwen": {
+      const provider = createQwenProvider({ apiKey });
       return {
         modelClient: {
           model: provider(model.name),

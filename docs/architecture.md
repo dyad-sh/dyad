@@ -35,7 +35,7 @@ However, many AI editors _do_ heavily rely on tool calling and this is something
 
 ### Why isn't Dyad more agentic?
 
-Many other systems (e.g. Cursor) are much more agentic (autonomous and goal-directed) than Dyad. For example, they will call many tools and do things like create a plan, use command-line tools to search through the codebase, run linters and tests and automatically fix the code based on those output.
+Many other systems (e.g. Cursor) are much more agentic than Dyad. For example, they will call many tools and do things like create a plan, use command-line tools to search through the codebase, run linters and tests and automatically fix the code based on those output.
 
 Dyad, on the other hand, has a relatively simple agentic loop. We will fix TypeScript compiler errors if Auto-fix problems is enabled, but otherwise it's usually a single request to the AI.
 

@@ -16,6 +16,7 @@ import { isStreamingAtom } from "@/atoms/chatAtoms";
 import { CustomTagState } from "./stateTypes";
 import { DyadOutput } from "./DyadOutput";
 import { DyadProblemSummary } from "./DyadProblemSummary";
+import { DyadMcpTool } from "./DyadMcpTool";
 import { IpcClient } from "@/ipc/ipc_client";
 
 interface DyadMarkdownParserProps {
@@ -122,6 +123,7 @@ function preprocessUnclosedTags(content: string): {
     "dyad-chat-summary",
     "dyad-edit",
     "dyad-codebase-context",
+    "mcp-tool",
     "think",
   ];
 
@@ -188,6 +190,7 @@ function parseCustomTags(content: string): ContentPiece[] {
     "dyad-chat-summary",
     "dyad-edit",
     "dyad-codebase-context",
+    "mcp-tool",
     "think",
   ];
 
@@ -417,6 +420,21 @@ function renderCustomTag(
     case "dyad-chat-summary":
       // Don't render anything for dyad-chat-summary
       return null;
+
+    case "mcp-tool":
+      return (
+        <DyadMcpTool
+          node={{
+            properties: {
+              tool: attributes.tool || "",
+              args: attributes.args || "",
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadMcpTool>
+      );
 
     default:
       return null;

@@ -114,6 +114,14 @@ const validInvokeChannels = [
   "prompts:create",
   "prompts:update",
   "prompts:delete",
+  // MCP channels
+  "mcp:check-servers",
+  "mcp:get-server-tools",
+  "mcp:update-config",
+  "mcp:refresh",
+  "mcp:debug",
+  "mcp:get-tools-for-ai",
+  "mcp:execute-tool",
   // Test-only channels
   // These should ALWAYS be guarded with IS_TEST_BUILD in the main process.
   // We can't detect with IS_TEST_BUILD in the preload script because
@@ -135,6 +143,9 @@ const validReceiveChannels = [
   "help:chat:response:chunk",
   "help:chat:response:end",
   "help:chat:response:error",
+  // MCP channels
+  "mcp:server-status",
+  "mcp:tool-execution",
 ] as const;
 
 type ValidInvokeChannel = (typeof validInvokeChannels)[number];

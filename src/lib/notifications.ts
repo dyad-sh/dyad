@@ -1,0 +1,127 @@
+/**
+ * Notification utilities for Dyad chat responses
+ */
+
+import { showSuccess } from "./toast";
+import type { UserSettings } from "@/lib/schemas";
+
+export interface NotificationOptions {
+  visual?: boolean;
+  sound?: boolean;
+  message?: string;
+  settings?: UserSettings;
+}
+
+/**
+ * Specialized notification for chat response completion
+ */
+export const showResponseCompleted = (options: NotificationOptions) => {
+  const {
+    visual = true,
+    sound = true,
+    message = "Response completed ✅",
+    settings,
+  } = options;
+
+  // Respect user settings
+  if (!settings?.enableResponseEndNotification || !visual) {
+    return; // user disabled response end notifications
+  }
+
+  // Try native notification first, fallback to toast
+  const nativeShown = showNativeNotification("Dyad", message);
+
+  if (!nativeShown) {
+    // Fallback: Dyad toast notification
+    showSuccess(message);
+  }
+
+  // Play sound if enabled
+  if (sound) {
+    playNotificationSound();
+  }
+};
+
+/**
+ * Show a native cross-platform notification (Electron renderer process only)
+ * Returns true if shown, false if fallback is needed
+ */
+export const showNativeNotification = (
+  title: string,
+  body: string,
+): boolean => {
+  if (typeof window === "undefined" || !("Notification" in window)) {
+    console.warn("Native notifications are not supported in this environment.");
+    return false;
+  }
+
+  try {
+    if (Notification.permission === "granted") {
+      new Notification(title, { body });
+      return true;
+    } else if (Notification.permission !== "denied") {
+      // Ask for permission once
+      Notification.requestPermission().then((permission) => {
+        if (permission === "granted") {
+          new Notification(title, { body });
+        } else {
+          showSuccess(body); // fallback inside request callback
+        }
+      });
+      return true; // handled asynchronously
+    }
+  } catch (err) {
+    console.error("Failed to show native notification:", err);
+    return false;
+  }
+
+  return false;
+};
+
+/**
+ * Play a subtle notification sound
+ */
+function playNotificationSound() {
+  try {
+    // Using Web Audio API for a subtle notification sound
+    const AudioContextClass =
+      window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) {
+      console.debug("Web Audio API not available");
+      return;
+    }
+
+    const audioContext = new AudioContextClass();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    // Create a pleasant notification tone
+    oscillator.frequency.setValueAtTime(800, audioContext.currentTime); // Higher pitch, more pleasant
+    oscillator.type = "sine";
+
+    // Gentle fade in/out
+    gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+    gainNode.gain.linearRampToValueAtTime(
+      0.05,
+      audioContext.currentTime + 0.05,
+    );
+    gainNode.gain.exponentialRampToValueAtTime(
+      0.001,
+      audioContext.currentTime + 0.3,
+    );
+
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.3);
+
+    // Clean up
+    setTimeout(() => {
+      audioContext.close();
+    }, 500);
+  } catch (error) {
+    // Silently fail if audio is not available
+    console.debug("Audio notification failed:", error);
+  }
+}

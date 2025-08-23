@@ -267,6 +267,8 @@ export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
 }
 
 export function WorkflowSettings() {
+  const { settings, updateSettings } = useSettings();
+
   return (
     <div
       id="workflow-settings"
@@ -287,6 +289,27 @@ export function WorkflowSettings() {
         <AutoFixProblemsSwitch />
         <div className="text-sm text-gray-500 dark:text-gray-400">
           This will automatically fix TypeScript errors.
+        </div>
+      </div>
+
+      <div className="space-y-1 mt-4">
+        <div className="flex items-center space-x-2">
+          <Switch
+            id="enable-response-notification"
+            checked={!!settings?.enableResponseEndNotification}
+            onCheckedChange={(checked) => {
+              updateSettings({
+                enableResponseEndNotification: checked,
+              });
+            }}
+          />
+          <Label htmlFor="enable-response-notification">
+            Enable Native System Notifications
+          </Label>
+        </div>
+        <div className="text-sm text-gray-500 dark:text-gray-400">
+          Show a native system notification when chat responses are completed,
+          even when Dyad is not in focus.
         </div>
       </div>
     </div>

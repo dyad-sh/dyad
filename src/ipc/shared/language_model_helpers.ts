@@ -274,7 +274,7 @@ export const CLOUD_PROVIDERS: Record<
   },
   qwen: {
     displayName: "Qwen Code",
-    hasFreeTier: false,
+    hasFreeTier: true,
     websiteUrl: "https://chat.qwen.ai",
     gatewayPrefix: "qwen/",
   },

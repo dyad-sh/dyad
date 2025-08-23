@@ -23,6 +23,7 @@ import { AutoFixProblemsSwitch } from "@/components/AutoFixProblemsSwitch";
 import { AutoUpdateSwitch } from "@/components/AutoUpdateSwitch";
 import { ReleaseChannelSelector } from "@/components/ReleaseChannelSelector";
 import { NeonIntegration } from "@/components/NeonIntegration";
+import { ToolsMcpSettings } from "@/components/settings/ToolsMcpSettings";
 
 export default function SettingsPage() {
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
@@ -116,6 +117,17 @@ export default function SettingsPage() {
               <SupabaseIntegration />
               <NeonIntegration />
             </div>
+          </div>
+
+          {/* Tools (MCP) */}
+          <div
+            id="tools-mcp"
+            className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6"
+          >
+            <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+              Tools (MCP)
+            </h2>
+            <ToolsMcpSettings />
           </div>
 
           {/* Experiments Section */}

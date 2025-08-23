@@ -172,3 +172,58 @@ export const versionsRelations = relations(versions, ({ one }) => ({
     references: [apps.id],
   }),
 }));
+
+// --- MCP (Model Context Protocol) tables ---
+export const mcpServers = sqliteTable("mcp_servers", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  transport: text("transport").notNull(),
+  command: text("command"),
+  args: text("args"), // JSON array as string
+  cwd: text("cwd"),
+  envJson: text("env_json"), // JSON object as string
+  url: text("url"),
+  enabled: integer("enabled", { mode: "boolean" })
+    .notNull()
+    .default(sql`0`),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+export const mcpTools = sqliteTable("mcp_tools", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  serverId: integer("server_id")
+    .notNull()
+    .references(() => mcpServers.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  isActive: integer("is_active", { mode: "boolean" })
+    .notNull()
+    .default(sql`0`),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+export const mcpToolConsents = sqliteTable(
+  "mcp_tool_consents",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    serverId: integer("server_id")
+      .notNull()
+      .references(() => mcpServers.id, { onDelete: "cascade" }),
+    toolName: text("tool_name").notNull(),
+    consent: text("consent").notNull().default("ask"), // ask | always | denied
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [unique("uniq_mcp_consent").on(table.serverId, table.toolName)],
+);

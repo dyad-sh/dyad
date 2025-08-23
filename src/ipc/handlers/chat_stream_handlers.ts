@@ -8,6 +8,9 @@ import {
   ToolSet,
   TextStreamPart,
 } from "ai";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+
 import { db } from "../../db";
 import { chats, messages } from "../../db/schema";
 import { and, eq, isNull } from "drizzle-orm";
@@ -42,6 +45,9 @@ import { getMaxTokens, getTemperature } from "../utils/token_utils";
 import { MAX_CHAT_TURNS_IN_CONTEXT } from "@/constants/settings_constants";
 import { validateChatContext } from "../utils/context_paths_utils";
 import { GoogleGenerativeAIProviderOptions } from "@ai-sdk/google";
+import { mcpServers } from "../../db/schema";
+import { requireMcpToolConsent } from "../utils/mcp_consent";
+import { experimental_createMCPClient } from "ai";
 
 import { getExtraProviderOptions } from "../utils/thinking_utils";
 
@@ -667,6 +673,82 @@ This conversation includes one or more image attachments. When the user uploads 
           } else {
             logger.log("sending AI request");
           }
+          // Build ToolSet from active MCP servers using official SDK
+          let mcpToolSet: any = {};
+          try {
+            const servers = await db
+              .select()
+              .from(mcpServers)
+              .where(eq(mcpServers.enabled, true as any));
+            for (const s of servers) {
+              let transport: any;
+              const transportKey = (s.transport || "stdio").toLowerCase();
+              if (transportKey === "stdio") {
+                const { Experimental_StdioMCPTransport } = await import(
+                  "ai/mcp-stdio"
+                );
+                const args = s.args ? JSON.parse(s.args) : [];
+                const env = s.envJson ? JSON.parse(s.envJson) : undefined;
+                transport = new Experimental_StdioMCPTransport({
+                  command: s.command as string,
+                  args,
+                  env,
+                  cwd: (s.cwd || undefined) as string | undefined,
+                });
+              } else if (transportKey === "http") {
+                if (!s.url) continue;
+
+                transport = new StreamableHTTPClientTransport(
+                  new URL(s.url as string),
+                  {
+                    requestInit: {
+                      headers: {
+                        Accept: "application/json",
+                        "Content-Type": "application/json",
+                      },
+                    },
+                  } as any,
+                );
+              } else if (transportKey === "ws" || transportKey === "sse") {
+                if (!s.url) continue;
+
+                transport = new SSEClientTransport(new URL(s.url as string));
+              } else {
+                continue;
+              }
+
+              const client = await experimental_createMCPClient({ transport });
+              const toolSet = await client.tools();
+              for (const [name, tool] of Object.entries(toolSet)) {
+                const key = `${String(s.name || "").replace(/[^a-zA-Z0-9_-]/g, "_")}__${String(name).replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+                const original: any = tool;
+                mcpToolSet[key] = {
+                  description: original?.description,
+                  parameters: original?.parameters, // preserve schema to satisfy AI SDK
+                  execute: async (args: any, execCtx: any) => {
+                    const inputPreview =
+                      typeof args === "string"
+                        ? args
+                        : JSON.stringify(args).slice(0, 500);
+                    const ok = await requireMcpToolConsent(event, {
+                      serverId: s.id,
+                      serverName: s.name,
+                      toolName: name,
+                      toolDescription: original?.description,
+                      inputPreview,
+                    });
+                    if (!ok)
+                      throw new Error(`User declined running tool ${key}`);
+                    const res = await original.execute?.(args, execCtx);
+                    return typeof res === "string" ? res : JSON.stringify(res);
+                  },
+                } as any;
+              }
+            }
+          } catch (e) {
+            logger.warn("Failed building MCP toolset", e);
+          }
+
           return streamText({
             maxOutputTokens: await getMaxTokens(settings.selectedModel),
             temperature: await getTemperature(settings.selectedModel),
@@ -690,6 +772,10 @@ This conversation includes one or more image attachments. When the user uploads 
               } satisfies OpenAIResponsesProviderOptions,
             },
             system: systemPrompt,
+            tools:
+              Object.keys(mcpToolSet).length > 0
+                ? (mcpToolSet as any)
+                : undefined,
             messages: chatMessages.filter((m) => m.content),
             onError: (error: any) => {
               logger.error("Error streaming text:", error);

@@ -85,6 +85,13 @@
       "when": 1755545060076,
       "tag": "0011_light_zeigeist",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1755756666067,
+      "tag": "0012_aberrant_nextwave",
+      "breakpoints": true
     }
   ]
 }

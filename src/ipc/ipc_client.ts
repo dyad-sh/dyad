@@ -978,6 +978,10 @@ export class IpcClient {
     return this.ipcRenderer.invoke("get-system-platform");
   }
 
+  public async isQwenSetup(): Promise<boolean> {
+    return this.ipcRenderer.invoke("is-qwen-setup");
+  }
+
   public async doesReleaseNoteExist(
     params: DoesReleaseNoteExistParams,
   ): Promise<{ exists: boolean; url?: string }> {

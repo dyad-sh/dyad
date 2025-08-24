@@ -197,6 +197,24 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       temperature: 0,
     },
   ],
+  qwen: [
+    {
+      name: "qwen3-coder-plus",
+      displayName: "Qwen3 Coder Plus",
+      description: "Qwen's most capable coding model",
+      maxOutputTokens: 65_536,
+      contextWindow: 1_000_000,
+      temperature: 0,
+    },
+    {
+      name: "qwen3-coder-flash",
+      displayName: "Qwen3 Coder Flash",
+      description: "Qwen's fast and efficient coding model",
+      maxOutputTokens: 65_536,
+      contextWindow: 1_000_000,
+      temperature: 0,
+    },
+  ],
   auto: [
     {
       name: "auto",
@@ -218,6 +236,7 @@ export const PROVIDER_TO_ENV_VAR: Record<string, string> = {
   anthropic: "ANTHROPIC_API_KEY",
   google: "GEMINI_API_KEY",
   openrouter: "OPENROUTER_API_KEY",
+  qwen: "QWEN_API_KEY",
 };
 
 export const CLOUD_PROVIDERS: Record<
@@ -252,6 +271,12 @@ export const CLOUD_PROVIDERS: Record<
     hasFreeTier: true,
     websiteUrl: "https://openrouter.ai/settings/keys",
     gatewayPrefix: "openrouter/",
+  },
+  qwen: {
+    displayName: "Qwen Code",
+    hasFreeTier: true,
+    websiteUrl: "https://chat.qwen.ai",
+    gatewayPrefix: "qwen/",
   },
   auto: {
     displayName: "Dyad",

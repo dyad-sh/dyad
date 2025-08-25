@@ -1,5 +1,5 @@
-- paragraph: hi
-- paragraph: undefinedundefinedundefinedundefinedundefinedundefinedundefinedundefinedundefinedundefined
+- paragraph: tc=basic
+- paragraph: This is a simple basic response
 - img
 - text: less than a minute ago
 - button "Retry":

@@ -12,8 +12,8 @@ testSkipIfWindows("send message through Azure OpenAI", async ({ po }) => {
   // Select Azure model
   await po.selectTestAzureModel();
 
-  // Send a simple test prompt to verify Azure integration works
-  await po.sendPrompt("hi");
+  // Send a test prompt that returns a normal conversational response
+  await po.sendPrompt("tc=basic");
 
   // Verify we get a response (this means Azure integration is working)
   await po.snapshotMessages();

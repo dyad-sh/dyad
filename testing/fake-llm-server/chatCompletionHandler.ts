@@ -120,6 +120,9 @@ export default Index;
       `;
     }
     console.error("LASTMESSAGE", lastMessage);
+
+    let dumpPath = "";
+
     // Check if the last message is "[dump]" to write messages to file and return path
     if (
       lastMessage &&
@@ -130,7 +133,7 @@ export default Index;
           )
         : lastMessage.content.includes("[dump]"))
     ) {
-      messageContent = generateDump(req);
+      dumpPath = generateDump(req);
     }
 
     if (lastMessage && lastMessage.content === "[increment]") {
@@ -138,37 +141,46 @@ export default Index;
       messageContent = `counter=${globalCounter}`;
     }
 
-    // Check if the last message starts with "tc=" to load test case file
+    // Check if the last message contains "tc=" to load test case file
     if (
       lastMessage &&
       lastMessage.content &&
       typeof lastMessage.content === "string" &&
-      lastMessage.content.startsWith("tc=")
+      lastMessage.content.includes("tc=")
     ) {
-      const testCaseName = lastMessage.content.slice(3); // Remove "tc=" prefix
-      const testFilePath = path.join(
-        __dirname,
-        "..",
-        "..",
-        "..",
-        "e2e-tests",
-        "fixtures",
-        prefix,
-        `${testCaseName}.md`,
-      );
+      // Extract tc= part from the message (could be "[dump] tc=basic")
+      const tcMatch = lastMessage.content.match(/tc=([^\s]+)/);
+      if (tcMatch) {
+        const testCaseName = tcMatch[1];
+        const testFilePath = path.join(
+          __dirname,
+          "..",
+          "..",
+          "..",
+          "e2e-tests",
+          "fixtures",
+          prefix,
+          `${testCaseName}.md`,
+        );
 
-      try {
-        if (fs.existsSync(testFilePath)) {
-          messageContent = fs.readFileSync(testFilePath, "utf-8");
-          console.log(`* Loaded test case: ${testCaseName}`);
-        } else {
-          console.log(`* Test case file not found: ${testFilePath}`);
-          messageContent = `Error: Test case file not found: ${testCaseName}.md`;
+        try {
+          if (fs.existsSync(testFilePath)) {
+            messageContent = fs.readFileSync(testFilePath, "utf-8");
+            console.log(`* Loaded test case: ${testCaseName}`);
+          } else {
+            console.log(`* Test case file not found: ${testFilePath}`);
+            messageContent = `Error: Test case file not found: ${testCaseName}.md`;
+          }
+        } catch (error) {
+          console.error(`* Error reading test case file: ${error}`);
+          messageContent = `Error: Could not read test case file: ${testCaseName}.md`;
         }
-      } catch (error) {
-        console.error(`* Error reading test case file: ${error}`);
-        messageContent = `Error: Could not read test case file: ${testCaseName}.md`;
       }
+    }
+
+    // If we have a dump path, append it to the message content
+    if (dumpPath) {
+      messageContent += "\n\n" + dumpPath;
     }
 
     if (

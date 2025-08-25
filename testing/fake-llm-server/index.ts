@@ -137,12 +137,19 @@ app.get("/lmstudio/api/v0/models", (req, res) => {
   res.json(lmStudioModels);
 });
 
-["lmstudio", "gateway", "engine", "ollama"].forEach((provider) => {
+["lmstudio", "gateway", "engine", "ollama", "azure"].forEach((provider) => {
   app.post(
     `/${provider}/v1/chat/completions`,
     createChatCompletionHandler(provider),
   );
 });
+
+// Azure-specific endpoints (Azure client uses different URL patterns)
+app.post("/azure/chat/completions", createChatCompletionHandler("azure"));
+app.post(
+  "/azure/openai/deployments/:deploymentId/chat/completions",
+  createChatCompletionHandler("azure"),
+);
 
 // Default test provider handler:
 app.post("/v1/chat/completions", createChatCompletionHandler("."));

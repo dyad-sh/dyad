@@ -104,7 +104,7 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
             </div>
           ) : (
             <div
-              className="prose dark:prose-invert prose-headings:mb-2 prose-p:my-1 prose-pre:my-0 max-w-none"
+              className="prose dark:prose-invert prose-headings:mb-2 prose-p:my-1 prose-pre:my-0 max-w-none break-words"
               suppressHydrationWarning
             >
               {message.role === "assistant" ? (

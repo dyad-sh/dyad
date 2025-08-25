@@ -30,6 +30,8 @@ const ALLOWED_EXTENSIONS = [
   ".scss",
   ".sass",
   ".less",
+  // Oftentimes used as config (e.g. package.json, vercel.json) or data files (e.g. translations)
+  ".json",
   // GitHub Actions
   ".yml",
   ".yaml",
@@ -58,7 +60,7 @@ const EXCLUDED_DIRS = ["node_modules", ".git", "dist", "build", ".next"];
 const EXCLUDED_FILES = ["pnpm-lock.yaml", "package-lock.json"];
 
 // Files to always include, regardless of extension
-const ALWAYS_INCLUDE_FILES = ["package.json", "vercel.json", ".gitignore"];
+const ALWAYS_INCLUDE_FILES = [".gitignore"];
 
 // File patterns to always omit (contents will be replaced with a placeholder)
 // We don't want to send environment variables to the LLM because they

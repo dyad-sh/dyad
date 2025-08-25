@@ -71,11 +71,23 @@ const ALWAYS_OMITTED_FILES = [".env", ".env.local"];
 //
 // Why are we not using path.join here?
 // Because we have already normalized the path to use /.
+//
+// Note: these files are only omitted when NOT using smart context.
+//
+// Why do we omit these files when not using smart context?
+//
+// Because these files are typically low-signal and adding them
+// to the context can cause users to much more quickly hit their
+// free rate limits.
 const OMITTED_FILES = [
   ...ALWAYS_OMITTED_FILES,
   "src/components/ui",
   "eslint.config",
   "tsconfig.json",
+  "tsconfig.app.json",
+  "tsconfig.node.json",
+  "tsconfig.base.json",
+  "components.json",
 ];
 
 // Maximum file size to include (in bytes) - 1MB

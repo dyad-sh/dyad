@@ -178,7 +178,7 @@ export async function readFileWithCache(
     if (virtualFileSystem) {
       const virtualContent = await virtualFileSystem.readFile(filePath);
       if (virtualContent != null) {
-        return cleanContent({ content: virtualContent, filePath });
+        return virtualContent;
       }
     }
 
@@ -196,7 +196,7 @@ export async function readFileWithCache(
 
     // Read file and update cache
     const rawContent = await fsAsync.readFile(filePath, "utf-8");
-    const content = cleanContent({ content: rawContent, filePath });
+    const content = rawContent;
     fileContentCache.set(filePath, {
       content,
       mtime: currentMtime,
@@ -219,32 +219,6 @@ export async function readFileWithCache(
     logger.error(`Error reading file: ${filePath}`, error);
     return undefined;
   }
-}
-
-function cleanContent({
-  content,
-  filePath,
-}: {
-  content: string;
-  filePath: string;
-}): string {
-  // Why are we cleaning package.json?
-  // 1. It contains unnecessary information for LLM context
-  // 2. Fields like packageManager cause diffs in e2e test snapshots.
-  if (path.basename(filePath) === "package.json") {
-    try {
-      const { dependencies, devDependencies } = JSON.parse(content);
-      const cleanPackageJson = {
-        dependencies,
-        devDependencies,
-      };
-      return JSON.stringify(cleanPackageJson, null, 2);
-    } catch (error) {
-      logger.error(`Error cleaning package.json: ${filePath}`, error);
-      return content;
-    }
-  }
-  return content;
 }
 
 /**

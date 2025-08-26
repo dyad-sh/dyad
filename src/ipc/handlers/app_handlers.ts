@@ -23,8 +23,9 @@ import { getFilesRecursively } from "../utils/file_utils";
 import {
   runningApps,
   processCounter,
-  killProcess,
   removeAppIfCurrentProcess,
+  stopAppByInfo,
+  removeDockerVolumesForApp,
 } from "../utils/process_manager";
 import { getEnvVar } from "../utils/read_env";
 import { readSettings } from "../../main/settings";
@@ -97,14 +98,28 @@ async function executeApp({
     proxyWorker.terminate();
     proxyWorker = null;
   }
-  await executeAppLocalNode({
-    appPath,
-    appId,
-    event,
-    isNeon,
-    installCommand,
-    startCommand,
-  });
+  const settings = readSettings();
+  const runtimeMode = settings.runtimeMode2 ?? "host";
+
+  if (runtimeMode === "docker") {
+    await executeAppInDocker({
+      appPath,
+      appId,
+      event,
+      isNeon,
+      installCommand,
+      startCommand,
+    });
+  } else {
+    await executeAppLocalNode({
+      appPath,
+      appId,
+      event,
+      isNeon,
+      installCommand,
+      startCommand,
+    });
+  }
 }
 
 async function executeAppLocalNode({
@@ -153,6 +168,7 @@ async function executeAppLocalNode({
   runningApps.set(appId, {
     process: spawnedProcess,
     processId: currentProcessId,
+    isDocker: false,
   });
 
   // Log output
@@ -243,10 +259,16 @@ async function executeAppInDocker({
   appPath,
   appId,
   event,
+  isNeon,
+  installCommand,
+  startCommand,
 }: {
   appPath: string;
   appId: number;
   event: Electron.IpcMainInvokeEvent;
+  isNeon: boolean;
+  installCommand?: string | null;
+  startCommand?: string | null;
 }): Promise<void> {
   const containerName = `dyad-app-${appId}`;
 
@@ -265,7 +287,7 @@ async function executeAppInDocker({
         reject(new Error("Docker is not available"));
       });
     });
-  } catch (error) {
+  } catch {
     throw new Error(
       "Docker is required but not available. Please install Docker Desktop and ensure it's running.",
     );
@@ -287,7 +309,9 @@ async function executeAppInDocker({
       stopContainer.on("error", () => resolve()); // Container might not exist
     });
   } catch (error) {
-    // Ignore errors here - container might not exist
+    logger.info(
+      `Docker container ${containerName} not found. Ignoring error: ${error}`,
+    );
   }
 
   // Create a Dockerfile in the app directory if it doesn't exist
@@ -298,18 +322,8 @@ async function executeAppInDocker({
 # Set working directory
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
-COPY pnpm-lock.yaml* ./
-
 # Install pnpm
 RUN npm install -g pnpm
-
-# Install dependencies
-RUN pnpm install || (npm install --legacy-peer-deps)
-
-# Copy source code
-COPY . .
 
 # Expose port
 EXPOSE 32100
@@ -354,6 +368,15 @@ CMD ["sh", "-c", "pnpm run dev --port 32100 --host 0.0.0.0 || npm run dev -- --p
     });
   });
 
+  // Determine command to run inside container
+  const defaultCommand =
+    "(pnpm install && pnpm run dev --port 32100 --host 0.0.0.0) || (npm install --legacy-peer-deps && npm run dev -- --port 32100 --host 0.0.0.0)";
+  const hasCustomCommands = !!installCommand?.trim() && !!startCommand?.trim();
+  const effectiveCommand = hasCustomCommands
+    ? `${installCommand!.trim()} && ${startCommand!.trim()}`
+    : defaultCommand;
+
+  console.log("running docker container with command", effectiveCommand);
   // Run the Docker container
   const process = spawn(
     "docker",
@@ -366,9 +389,19 @@ CMD ["sh", "-c", "pnpm run dev --port 32100 --host 0.0.0.0 || npm run dev -- --p
       "32100:32100",
       "-v",
       `${appPath}:/app`,
+      // Container-only volumes for dependencies and pnpm store to avoid cross-OS conflicts
+      // "-v",
+      // `dyad-nm-${appId}:/app/node_modules`,
+      "-v",
+      `dyad-pnpm-${appId}:/app/.pnpm-store`,
+      "-e",
+      "PNPM_STORE_PATH=/app/.pnpm-store",
       "-w",
       "/app",
       `dyad-app-${appId}`,
+      "sh",
+      "-c",
+      effectiveCommand,
     ],
     {
       stdio: "pipe",
@@ -391,7 +424,12 @@ CMD ["sh", "-c", "pnpm run dev --port 32100 --host 0.0.0.0 || npm run dev -- --p
 
   // Increment the counter and store the process reference with its ID
   const currentProcessId = processCounter.increment();
-  runningApps.set(appId, { process, processId: currentProcessId });
+  runningApps.set(appId, {
+    process,
+    processId: currentProcessId,
+    isDocker: true,
+    containerName,
+  });
 
   // Log output
   process.stdout?.on("data", async (data) => {
@@ -400,22 +438,41 @@ CMD ["sh", "-c", "pnpm run dev --port 32100 --host 0.0.0.0 || npm run dev -- --p
       `App ${appId} (Container PID: ${process.pid}) stdout: ${message}`,
     );
 
-    safeSend(event.sender, "app:output", {
-      type: "stdout",
-      message,
-      appId,
-    });
-    const urlMatch = message.match(/(https?:\/\/localhost:\d+\/?)/);
-    if (urlMatch) {
-      proxyWorker = await startProxy(urlMatch[1], {
-        onStarted: (proxyUrl) => {
-          safeSend(event.sender, "app:output", {
-            type: "stdout",
-            message: `[dyad-proxy-server]started=[${proxyUrl}] original=[${urlMatch[1]}]`,
-            appId,
-          });
-        },
+    // Handle potential interactive prompts similarly to local-node
+    if (isNeon && message.includes("created or renamed from another")) {
+      process.stdin?.write(`\r\n`);
+      logger.info(
+        `App ${appId} (Container PID: ${process.pid}) wrote enter to stdin to automatically respond to drizzle push input`,
+      );
+    }
+
+    const inputRequestPattern = /\s*›\s*\([yY]\/[nN]\)\s*$/;
+    const isInputRequest = inputRequestPattern.test(message);
+    if (isInputRequest) {
+      safeSend(event.sender, "app:output", {
+        type: "input-requested",
+        message,
+        appId,
       });
+    } else {
+      safeSend(event.sender, "app:output", {
+        type: "stdout",
+        message,
+        appId,
+      });
+
+      const urlMatch = message.match(/(https?:\/\/localhost:\d+\/?)/);
+      if (urlMatch) {
+        proxyWorker = await startProxy(urlMatch[1], {
+          onStarted: (proxyUrl) => {
+            safeSend(event.sender, "app:output", {
+              type: "stdout",
+              message: `[dyad-proxy-server]started=[${proxyUrl}] original=[${urlMatch[1]}]`,
+              appId,
+            });
+          },
+        });
+      }
     }
   });
 
@@ -792,8 +849,7 @@ export function registerAppHandlers() {
         }
 
         try {
-          // Use the killProcess utility to stop the process
-          await killProcess(process);
+          await stopAppByInfo(appId, appInfo);
 
           // Now, safely remove the app from the map *after* confirming closure
           removeAppIfCurrentProcess(appId, process);
@@ -827,12 +883,11 @@ export function registerAppHandlers() {
           // First stop the app if it's running
           const appInfo = runningApps.get(appId);
           if (appInfo) {
-            const { process, processId } = appInfo;
+            const { processId } = appInfo;
             logger.log(
               `Stopping app ${appId} (processId ${processId}) before restart`,
             );
-
-            await killProcess(process);
+            await stopAppByInfo(appId, appInfo);
             runningApps.delete(appId);
           } else {
             logger.log(`App ${appId} not running. Proceeding to start.`);
@@ -854,6 +909,9 @@ export function registerAppHandlers() {
 
           // Remove node_modules if requested
           if (removeNodeModules) {
+            const settings = readSettings();
+            const runtimeMode = settings.runtimeMode2 ?? "host";
+
             const nodeModulesPath = path.join(appPath, "node_modules");
             logger.log(
               `Removing node_modules for app ${appId} at ${nodeModulesPath}`,
@@ -866,6 +924,24 @@ export function registerAppHandlers() {
               logger.log(`Successfully removed node_modules for app ${appId}`);
             } else {
               logger.log(`No node_modules directory found for app ${appId}`);
+            }
+
+            // If running in Docker mode, also remove container volumes so deps reinstall freshly
+            if (runtimeMode === "docker") {
+              logger.log(
+                `Docker mode detected for app ${appId}. Removing Docker volumes dyad-nm-${appId} and dyad-pnpm-${appId}...`,
+              );
+              try {
+                await removeDockerVolumesForApp(appId);
+                logger.log(
+                  `Removed Docker volumes for app ${appId} (dyad-nm-${appId}, dyad-pnpm-${appId}).`,
+                );
+              } catch (e) {
+                // Best-effort cleanup; log and continue
+                logger.warn(
+                  `Failed to remove Docker volumes for app ${appId}. Continuing: ${e}`,
+                );
+              }
             }
           }
 
@@ -997,8 +1073,7 @@ export function registerAppHandlers() {
           const appInfo = runningApps.get(appId)!;
           try {
             logger.log(`Stopping app ${appId} before deletion.`); // Adjusted log
-            await killProcess(appInfo.process);
-            runningApps.delete(appId);
+            await stopAppByInfo(appId, appInfo);
           } catch (error: any) {
             logger.error(`Error stopping app ${appId} before deletion:`, error); // Adjusted log
             // Continue with deletion even if stopping fails
@@ -1071,8 +1146,7 @@ export function registerAppHandlers() {
         if (runningApps.has(appId)) {
           const appInfo = runningApps.get(appId)!;
           try {
-            await killProcess(appInfo.process);
-            runningApps.delete(appId);
+            await stopAppByInfo(appId, appInfo);
           } catch (error: any) {
             logger.error(`Error stopping app ${appId} before renaming:`, error);
             throw new Error(
@@ -1168,8 +1242,7 @@ export function registerAppHandlers() {
     for (const appId of runningAppIds) {
       try {
         const appInfo = runningApps.get(appId)!;
-        await killProcess(appInfo.process);
-        runningApps.delete(appId);
+        await stopAppByInfo(appId, appInfo);
       } catch (error) {
         logger.error(`Error stopping app ${appId} during reset:`, error);
         // Continue with reset even if stopping fails

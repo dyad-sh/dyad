@@ -1,18 +1,27 @@
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useSettings } from "@/hooks/useSettings";
 import { showError } from "@/lib/toast";
+import { IpcClient } from "@/ipc/ipc_client";
 
 export function RuntimeModeSelector() {
   const { settings, updateSettings } = useSettings();
 
+  if (!settings) {
+    return null;
+  }
+
   const isDockerMode = settings?.runtimeMode2 === "docker";
 
-  const handleToggle = async (checked: boolean) => {
+  const handleRuntimeModeChange = async (value: "host" | "docker") => {
     try {
-      await updateSettings({
-        runtimeMode2: checked ? "docker" : "host",
-      });
+      await updateSettings({ runtimeMode2: value });
     } catch (error: any) {
       showError(`Failed to update runtime mode: ${error.message}`);
     }
@@ -20,31 +29,43 @@ export function RuntimeModeSelector() {
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <div className="space-y-0.5">
-          <Label className="text-sm font-medium">Runtime Mode</Label>
-          <div className="text-sm text-gray-500 dark:text-gray-400">
-            Choose whether to run apps on the host machine or in Docker
-            containers
-          </div>
-        </div>
+      <div className="space-y-1">
         <div className="flex items-center space-x-2">
-          <span
-            className={`text-sm ${!isDockerMode ? "font-medium" : "text-gray-500"}`}
+          <Label className="text-sm font-medium" htmlFor="runtime-mode">
+            Runtime Mode
+          </Label>
+          <Select
+            value={settings.runtimeMode2}
+            onValueChange={handleRuntimeModeChange}
           >
-            Host
-          </span>
-          <Switch checked={isDockerMode} onCheckedChange={handleToggle} />
-          <span
-            className={`text-sm ${isDockerMode ? "font-medium" : "text-gray-500"}`}
-          >
-            Docker
-          </span>
+            <SelectTrigger className="w-32" id="runtime-mode">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="host">Local (default)</SelectItem>
+              <SelectItem value="docker">Docker (experimental)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="text-sm text-gray-500 dark:text-gray-400">
+          Choose whether to run apps on the host machine or in Docker containers
         </div>
       </div>
       {isDockerMode && (
-        <div className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-2 rounded">
-          ⚠️ Docker mode requires Docker Desktop to be installed and running
+        <div className="text-sm text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-2 rounded">
+          ⚠️ Docker mode requires{" "}
+          <button
+            type="button"
+            className="underline font-medium cursor-pointer"
+            onClick={() =>
+              IpcClient.getInstance().openExternalUrl(
+                "https://www.docker.com/products/docker-desktop/",
+              )
+            }
+          >
+            Docker Desktop
+          </button>{" "}
+          to be installed and running
         </div>
       )}
     </div>

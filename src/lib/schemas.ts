@@ -173,6 +173,7 @@ export const UserSettingsSchema = z.object({
   enableNativeGit: z.boolean().optional(),
   enableAutoUpdate: z.boolean(),
   releaseChannel: ReleaseChannelSchema,
+  runtimeMode2: RuntimeMode2Schema.optional(),
 
   ////////////////////////////////
   // E2E TESTING ONLY.
@@ -185,7 +186,6 @@ export const UserSettingsSchema = z.object({
   enableProSaverMode: z.boolean().optional(),
   dyadProBudget: DyadProBudgetSchema.optional(),
   runtimeMode: RuntimeModeSchema.optional(),
-  runtimeMode2: RuntimeMode2Schema.optional(),
 });
 
 /**

@@ -46,7 +46,8 @@ You need to first add Supabase to your app and then we can add auth.
 ===
 role: user
 message: This is my codebase. <dyad-file path="manual/baz.json">
-// File contents excluded from context
+["even json is included"]
+
 </dyad-file>
 
 <dyad-file path="manual/file.ts">

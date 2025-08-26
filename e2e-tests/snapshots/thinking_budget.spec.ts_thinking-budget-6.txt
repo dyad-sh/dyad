@@ -57,7 +57,7 @@
         },
         {
           "path": "components.json",
-          "content": "// File contents excluded from context",
+          "content": "{\n  \"$schema\": \"https://ui.shadcn.com/schema.json\",\n  \"style\": \"default\",\n  \"rsc\": false,\n  \"tsx\": true,\n  \"tailwind\": {\n    \"config\": \"tailwind.config.ts\",\n    \"css\": \"src/index.css\",\n    \"baseColor\": \"slate\",\n    \"cssVariables\": true,\n    \"prefix\": \"\"\n  },\n  \"aliases\": {\n    \"components\": \"@/components\",\n    \"utils\": \"@/lib/utils\",\n    \"ui\": \"@/components/ui\",\n    \"lib\": \"@/lib\",\n    \"hooks\": \"@/hooks\"\n  }\n}\n",
           "force": false
         },
         {
@@ -412,17 +412,17 @@
         },
         {
           "path": "tsconfig.app.json",
-          "content": "// File contents excluded from context",
+          "content": "{\n  \"compilerOptions\": {\n    \"target\": \"ES2020\",\n    \"useDefineForClassFields\": true,\n    \"lib\": [\"ES2020\", \"DOM\", \"DOM.Iterable\"],\n    \"module\": \"ESNext\",\n    \"skipLibCheck\": true,\n\n    /* Bundler mode */\n    \"moduleResolution\": \"bundler\",\n    \"allowImportingTsExtensions\": true,\n    \"isolatedModules\": true,\n    \"moduleDetection\": \"force\",\n    \"noEmit\": true,\n    \"jsx\": \"react-jsx\",\n\n    /* Linting */\n    \"strict\": false,\n    \"noUnusedLocals\": false,\n    \"noUnusedParameters\": false,\n    \"noImplicitAny\": false,\n    \"noFallthroughCasesInSwitch\": false,\n\n    \"baseUrl\": \".\",\n    \"paths\": {\n      \"@/*\": [\"./src/*\"]\n    }\n  },\n  \"include\": [\"src\"]\n}\n",
           "force": false
         },
         {
           "path": "tsconfig.json",
-          "content": "// File contents excluded from context",
+          "content": "{\n  \"files\": [],\n  \"references\": [\n    { \"path\": \"./tsconfig.app.json\" },\n    { \"path\": \"./tsconfig.node.json\" }\n  ],\n  \"compilerOptions\": {\n    \"baseUrl\": \".\",\n    \"paths\": {\n      \"@/*\": [\"./src/*\"]\n    },\n    \"noImplicitAny\": false,\n    \"noUnusedParameters\": false,\n    \"skipLibCheck\": true,\n    \"allowJs\": true,\n    \"noUnusedLocals\": false,\n    \"strictNullChecks\": false\n  }\n}\n",
           "force": false
         },
         {
           "path": "tsconfig.node.json",
-          "content": "// File contents excluded from context",
+          "content": "{\n  \"compilerOptions\": {\n    \"target\": \"ES2022\",\n    \"lib\": [\"ES2023\"],\n    \"module\": \"ESNext\",\n    \"skipLibCheck\": true,\n\n    /* Bundler mode */\n    \"moduleResolution\": \"bundler\",\n    \"allowImportingTsExtensions\": true,\n    \"isolatedModules\": true,\n    \"moduleDetection\": \"force\",\n    \"noEmit\": true,\n\n    /* Linting */\n    \"strict\": true,\n    \"noUnusedLocals\": false,\n    \"noUnusedParameters\": false,\n    \"noFallthroughCasesInSwitch\": true\n  },\n  \"include\": [\"vite.config.ts\"]\n}\n",
           "force": false
         },
         {

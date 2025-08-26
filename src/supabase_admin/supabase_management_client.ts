@@ -187,6 +187,8 @@ export async function deploySupabaseFunctions({
     JSON.stringify({
       entrypoint_path: "index.ts",
       name: functionName,
+      // See: https://github.com/dyad-sh/dyad/issues/1010
+      verify_jwt: false,
     }),
   );
   formData.append("file", new Blob([content]), "index.ts");

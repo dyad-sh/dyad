@@ -51,10 +51,11 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
   const [isCollapsed, setIsCollapsed] = useState(true);
   const { isStreaming } = useStreamChat();
   if (!error) return null;
+  const isDockerError = error.includes("Cannot connect to the Docker");
 
   const getTruncatedError = () => {
     const firstLine = error.split("\n")[0];
-    const snippetLength = 200;
+    const snippetLength = 250;
     const snippet = error.substring(0, snippetLength);
     return firstLine.length < snippet.length
       ? firstLine
@@ -97,23 +98,27 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
             <Lightbulb size={16} className=" text-red-800 dark:text-red-300" />
           </div>
           <span className="text-sm text-red-700 dark:text-red-200">
-            <span className="font-medium">Tip: </span>Check if restarting the
-            app fixes the error.
+            <span className="font-medium">Tip: </span>
+            {isDockerError
+              ? "Make sure Docker Desktop is running and try restarting the app."
+              : "Check if restarting the app fixes the error."}
           </span>
         </div>
       </div>
 
       {/* AI Fix button at the bottom */}
-      <div className="mt-2 flex justify-end">
-        <button
-          disabled={isStreaming}
-          onClick={onAIFix}
-          className="cursor-pointer flex items-center space-x-1 px-2 py-0.5 bg-red-500 dark:bg-red-600 text-white rounded text-sm hover:bg-red-600 dark:hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Sparkles size={14} />
-          <span>Fix error with AI</span>
-        </button>
-      </div>
+      {!isDockerError && (
+        <div className="mt-2 flex justify-end">
+          <button
+            disabled={isStreaming}
+            onClick={onAIFix}
+            className="cursor-pointer flex items-center space-x-1 px-2 py-0.5 bg-red-500 dark:bg-red-600 text-white rounded text-sm hover:bg-red-600 dark:hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Sparkles size={14} />
+            <span>Fix error with AI</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,10 +1,12 @@
-import { ChildProcess } from "node:child_process";
+import { ChildProcess, spawn } from "node:child_process";
 import treeKill from "tree-kill";
 
 // Define a type for the value stored in runningApps
 export interface RunningAppInfo {
   process: ChildProcess;
   processId: number;
+  isDocker: boolean;
+  containerName?: string;
 }
 
 // Store running app processes
@@ -79,6 +81,49 @@ export function killProcess(process: ChildProcess): Promise<void> {
       console.warn(`Cannot tree-kill process: PID is undefined.`);
     }
   });
+}
+
+/**
+ * Gracefully stops a Docker container by name. Resolves even if the container doesn't exist.
+ */
+export function stopDockerContainer(containerName: string): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const stop = spawn("docker", ["stop", containerName], { stdio: "pipe" });
+    stop.on("close", () => resolve());
+    stop.on("error", () => resolve());
+  });
+}
+
+/**
+ * Removes Docker named volumes used for an app's dependencies.
+ * Best-effort: resolves even if volumes don't exist.
+ */
+export function removeDockerVolumesForApp(appId: number): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const pnpmVolume = `dyad-pnpm-${appId}`;
+
+    const rm = spawn("docker", ["volume", "rm", "-f", pnpmVolume], {
+      stdio: "pipe",
+    });
+    rm.on("close", () => resolve());
+    rm.on("error", () => resolve());
+  });
+}
+
+/**
+ * Stops an app based on its RunningAppInfo (container vs host) and removes it from the running map.
+ */
+export async function stopAppByInfo(
+  appId: number,
+  appInfo: RunningAppInfo,
+): Promise<void> {
+  if (appInfo.isDocker) {
+    const containerName = appInfo.containerName || `dyad-app-${appId}`;
+    await stopDockerContainer(containerName);
+  } else {
+    await killProcess(appInfo.process);
+  }
+  runningApps.delete(appId);
 }
 
 /**

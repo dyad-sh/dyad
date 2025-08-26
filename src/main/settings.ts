@@ -29,7 +29,6 @@ const DEFAULT_SETTINGS: UserSettings = {
   enableAutoUpdate: true,
   releaseChannel: "stable",
   selectedTemplateId: DEFAULT_TEMPLATE_ID,
-  runtimeMode2: "host",
 };
 
 const SETTINGS_FILE = "user-settings.json";

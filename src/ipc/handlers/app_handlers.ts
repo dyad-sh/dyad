@@ -879,7 +879,6 @@ export function registerAppHandlers() {
               `Stopping app ${appId} (processId ${processId}) before restart`,
             );
             await stopAppByInfo(appId, appInfo);
-            runningApps.delete(appId);
           } else {
             logger.log(`App ${appId} not running. Proceeding to start.`);
           }

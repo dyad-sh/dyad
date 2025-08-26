@@ -30,6 +30,8 @@ const ALLOWED_EXTENSIONS = [
   ".scss",
   ".sass",
   ".less",
+  // Oftentimes used as config (e.g. package.json, vercel.json) or data files (e.g. translations)
+  ".json",
   // GitHub Actions
   ".yml",
   ".yaml",
@@ -58,7 +60,7 @@ const EXCLUDED_DIRS = ["node_modules", ".git", "dist", "build", ".next"];
 const EXCLUDED_FILES = ["pnpm-lock.yaml", "package-lock.json"];
 
 // Files to always include, regardless of extension
-const ALWAYS_INCLUDE_FILES = ["package.json", "vercel.json", ".gitignore"];
+const ALWAYS_INCLUDE_FILES = [".gitignore"];
 
 // File patterns to always omit (contents will be replaced with a placeholder)
 // We don't want to send environment variables to the LLM because they
@@ -69,11 +71,23 @@ const ALWAYS_OMITTED_FILES = [".env", ".env.local"];
 //
 // Why are we not using path.join here?
 // Because we have already normalized the path to use /.
+//
+// Note: these files are only omitted when NOT using smart context.
+//
+// Why do we omit these files when not using smart context?
+//
+// Because these files are typically low-signal and adding them
+// to the context can cause users to much more quickly hit their
+// free rate limits.
 const OMITTED_FILES = [
   ...ALWAYS_OMITTED_FILES,
   "src/components/ui",
   "eslint.config",
   "tsconfig.json",
+  "tsconfig.app.json",
+  "tsconfig.node.json",
+  "tsconfig.base.json",
+  "components.json",
 ];
 
 // Maximum file size to include (in bytes) - 1MB

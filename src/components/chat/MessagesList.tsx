@@ -53,7 +53,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
           ))
         ) : (
           <div className="flex flex-col items-center justify-center h-full max-w-2xl mx-auto">
-            <div className="flex items-center justify-center h-full text-gray-500">
+            <div className="flex flex-1 items-center justify-center text-gray-500">
               No messages yet
             </div>
             {!isAnyProviderSetup() && <SetupBanner />}

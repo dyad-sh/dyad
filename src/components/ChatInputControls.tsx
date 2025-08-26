@@ -2,6 +2,7 @@ import { ContextFilesPicker } from "./ContextFilesPicker";
 import { ModelPicker } from "./ModelPicker";
 import { ProModeSelector } from "./ProModeSelector";
 import { ChatModeSelector } from "./ChatModeSelector";
+import { McpToolsPicker } from "@/components/McpToolsPicker";
 
 export function ChatInputControls({
   showContextFilesPicker = false,
@@ -22,6 +23,7 @@ export function ChatInputControls({
           <div className="w-0.5"></div>
         </>
       )}
+      <McpToolsPicker />
     </div>
   );
 }

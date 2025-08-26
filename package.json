@@ -120,6 +120,7 @@
     "@vercel/sdk": "^1.10.0",
     "@vitejs/plugin-react": "^4.3.4",
     "ai": "^5.0.15",
+    "@modelcontextprotocol/sdk": "^1.17.3",
     "better-sqlite3": "^11.9.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

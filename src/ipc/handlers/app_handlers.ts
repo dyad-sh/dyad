@@ -898,12 +898,12 @@ export function registerAppHandlers() {
             // If running in Docker mode, also remove container volumes so deps reinstall freshly
             if (runtimeMode === "docker") {
               logger.log(
-                `Docker mode detected for app ${appId}. Removing Docker volumes dyad-nm-${appId} and dyad-pnpm-${appId}...`,
+                `Docker mode detected for app ${appId}. Removing Docker volumes dyad-pnpm-${appId}...`,
               );
               try {
                 await removeDockerVolumesForApp(appId);
                 logger.log(
-                  `Removed Docker volumes for app ${appId} (dyad-nm-${appId}, dyad-pnpm-${appId}).`,
+                  `Removed Docker volumes for app ${appId} (dyad-pnpm-${appId}).`,
                 );
               } catch (e) {
                 // Best-effort cleanup; log and continue

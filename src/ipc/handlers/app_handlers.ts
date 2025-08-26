@@ -51,6 +51,8 @@ import { isServerFunction } from "@/supabase_admin/supabase_utils";
 import { getVercelTeamSlug } from "../utils/vercel_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 
+const DEFAULT_COMMAND =
+  "(pnpm install && pnpm run dev --port 32100) || (npm install --legacy-peer-deps && npm run dev -- --port 32100)";
 async function copyDir(
   source: string,
   destination: string,
@@ -137,12 +139,7 @@ async function executeAppLocalNode({
   installCommand?: string | null;
   startCommand?: string | null;
 }): Promise<void> {
-  const defaultCommand =
-    "(pnpm install && pnpm run dev --port 32100) || (npm install --legacy-peer-deps && npm run dev -- --port 32100)";
-  const hasCustomCommands = !!installCommand?.trim() && !!startCommand?.trim();
-  const command = hasCustomCommands
-    ? `${installCommand!.trim()} && ${startCommand!.trim()}`
-    : defaultCommand;
+  const command = getCommand({ installCommand, startCommand });
   const spawnedProcess = spawn(command, [], {
     cwd: appPath,
     shell: true,
@@ -359,15 +356,6 @@ RUN npm install -g pnpm
     });
   });
 
-  // Determine command to run inside container
-  const defaultCommand =
-    "(pnpm install && pnpm run dev --port 32100) || (npm install --legacy-peer-deps && npm run dev -- --port 32100)";
-  const hasCustomCommands = !!installCommand?.trim() && !!startCommand?.trim();
-  const effectiveCommand = hasCustomCommands
-    ? `${installCommand!.trim()} && ${startCommand!.trim()}`
-    : defaultCommand;
-
-  console.log("running docker container with command", effectiveCommand);
   // Run the Docker container
   const process = spawn(
     "docker",
@@ -380,9 +368,6 @@ RUN npm install -g pnpm
       "32100:32100",
       "-v",
       `${appPath}:/app`,
-      // Container-only volumes for dependencies and pnpm store to avoid cross-OS conflicts
-      // "-v",
-      // `dyad-nm-${appId}:/app/node_modules`,
       "-v",
       `dyad-pnpm-${appId}:/app/.pnpm-store`,
       "-e",
@@ -392,7 +377,7 @@ RUN npm install -g pnpm
       `dyad-app-${appId}`,
       "sh",
       "-c",
-      effectiveCommand,
+      getCommand({ installCommand, startCommand }),
     ],
     {
       stdio: "pipe",
@@ -504,6 +489,49 @@ async function killProcessOnPort(port: number): Promise<void> {
     await killPort(port, "tcp");
   } catch {
     // Ignore if nothing was running on that port
+  }
+}
+
+// Helper to stop any Docker containers publishing a given host port
+async function stopDockerContainersOnPort(port: number): Promise<void> {
+  try {
+    // List container IDs that publish the given port
+    const list = spawn("docker", ["ps", "--filter", `publish=${port}`, "-q"], {
+      stdio: "pipe",
+    });
+
+    let stdout = "";
+    list.stdout?.on("data", (data) => {
+      stdout += data.toString();
+    });
+
+    await new Promise<void>((resolve) => {
+      list.on("close", () => resolve());
+      list.on("error", () => resolve());
+    });
+
+    const containerIds = stdout
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    if (containerIds.length === 0) {
+      return;
+    }
+
+    // Stop each container best-effort
+    await Promise.all(
+      containerIds.map(
+        (id) =>
+          new Promise<void>((resolve) => {
+            const stop = spawn("docker", ["stop", id], { stdio: "pipe" });
+            stop.on("close", () => resolve());
+            stop.on("error", () => resolve());
+          }),
+      ),
+    );
+  } catch (e) {
+    logger.warn(`Failed stopping Docker containers on port ${port}: ${e}`);
   }
 }
 
@@ -782,8 +810,8 @@ export function registerAppHandlers() {
 
         const appPath = getDyadAppPath(app.path);
         try {
-          // Kill any orphaned process on port 32100 (in case previous run left it)
-          await killProcessOnPort(32100);
+          // There may have been a previous run that left a process on port 32100.
+          await cleanUpPort(32100);
           await executeApp({
             appPath,
             appId,
@@ -883,8 +911,8 @@ export function registerAppHandlers() {
             logger.log(`App ${appId} not running. Proceeding to start.`);
           }
 
-          // Kill any orphaned process on port 32100 (in case previous run left it)
-          await killProcessOnPort(32100);
+          // There may have been a previous run that left a process on port 32100.
+          await cleanUpPort(32100);
 
           // Now start the app again
           const app = await db.query.apps.findFirst({
@@ -1361,4 +1389,26 @@ export function registerAppHandlers() {
       }
     },
   );
+}
+
+function getCommand({
+  installCommand,
+  startCommand,
+}: {
+  installCommand?: string | null;
+  startCommand?: string | null;
+}) {
+  const hasCustomCommands = !!installCommand?.trim() && !!startCommand?.trim();
+  return hasCustomCommands
+    ? `${installCommand!.trim()} && ${startCommand!.trim()}`
+    : DEFAULT_COMMAND;
+}
+
+async function cleanUpPort(port: number) {
+  const settings = readSettings();
+  if (settings.runtimeMode2 === "docker") {
+    await stopDockerContainersOnPort(port);
+  } else {
+    await killProcessOnPort(port);
+  }
 }

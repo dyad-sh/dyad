@@ -13,7 +13,7 @@ import type {
 import fs from "node:fs";
 import path from "node:path";
 import { getDyadAppPath, getUserDataPath } from "../../paths/paths";
-import { spawn } from "node:child_process";
+import { ChildProcess, spawn } from "node:child_process";
 import git from "isomorphic-git";
 import { promises as fsPromises } from "node:fs";
 
@@ -168,6 +168,25 @@ async function executeAppLocalNode({
     isDocker: false,
   });
 
+  listenToProcess({
+    process: spawnedProcess,
+    appId,
+    isNeon,
+    event,
+  });
+}
+
+function listenToProcess({
+  process: spawnedProcess,
+  appId,
+  isNeon,
+  event,
+}: {
+  process: ChildProcess;
+  appId: number;
+  isNeon: boolean;
+  event: Electron.IpcMainInvokeEvent;
+}) {
   // Log output
   spawnedProcess.stdout?.on("data", async (data) => {
     const message = util.stripVTControlCharacters(data.toString());
@@ -182,7 +201,7 @@ async function executeAppLocalNode({
     // get this template and 2) it's safer to do this with Neon apps because
     // their databases have point in time restore built-in.
     if (isNeon && message.includes("created or renamed from another")) {
-      spawnedProcess.stdin.write(`\r\n`);
+      spawnedProcess.stdin?.write(`\r\n`);
       logger.info(
         `App ${appId} (PID: ${spawnedProcess.pid}) wrote enter to stdin to automatically respond to drizzle push input`,
       );
@@ -407,79 +426,11 @@ RUN npm install -g pnpm
     containerName,
   });
 
-  // Log output
-  process.stdout?.on("data", async (data) => {
-    const message = util.stripVTControlCharacters(data.toString());
-    logger.debug(
-      `App ${appId} (Container PID: ${process.pid}) stdout: ${message}`,
-    );
-
-    // Handle potential interactive prompts similarly to local-node
-    if (isNeon && message.includes("created or renamed from another")) {
-      process.stdin?.write(`\r\n`);
-      logger.info(
-        `App ${appId} (Container PID: ${process.pid}) wrote enter to stdin to automatically respond to drizzle push input`,
-      );
-    }
-
-    const inputRequestPattern = /\s*›\s*\([yY]\/[nN]\)\s*$/;
-    const isInputRequest = inputRequestPattern.test(message);
-    if (isInputRequest) {
-      safeSend(event.sender, "app:output", {
-        type: "input-requested",
-        message,
-        appId,
-      });
-    } else {
-      safeSend(event.sender, "app:output", {
-        type: "stdout",
-        message,
-        appId,
-      });
-
-      const urlMatch = message.match(/(https?:\/\/localhost:\d+\/?)/);
-      if (urlMatch) {
-        proxyWorker = await startProxy(urlMatch[1], {
-          onStarted: (proxyUrl) => {
-            safeSend(event.sender, "app:output", {
-              type: "stdout",
-              message: `[dyad-proxy-server]started=[${proxyUrl}] original=[${urlMatch[1]}]`,
-              appId,
-            });
-          },
-        });
-      }
-    }
-  });
-
-  process.stderr?.on("data", (data) => {
-    const message = util.stripVTControlCharacters(data.toString());
-    logger.error(
-      `App ${appId} (Container PID: ${process.pid}) stderr: ${message}`,
-    );
-    safeSend(event.sender, "app:output", {
-      type: "stderr",
-      message,
-      appId,
-    });
-  });
-
-  // Handle process exit/close
-  process.on("close", (code, signal) => {
-    logger.log(
-      `App ${appId} (Container PID: ${process.pid}) process closed with code ${code}, signal ${signal}.`,
-    );
-    removeAppIfCurrentProcess(appId, process);
-  });
-
-  // Handle errors during process lifecycle (e.g., command not found)
-  process.on("error", (err) => {
-    logger.error(
-      `Error in app ${appId} (Container PID: ${process.pid}) process: ${err.message}`,
-    );
-    removeAppIfCurrentProcess(appId, process);
-    // Note: We don't throw here as the error is asynchronous. The caller got a success response already.
-    // Consider adding ipcRenderer event emission to notify UI of the error.
+  listenToProcess({
+    process,
+    appId,
+    isNeon,
+    event,
   });
 }
 

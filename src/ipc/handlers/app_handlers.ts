@@ -317,19 +317,10 @@ async function executeAppInDocker({
   // Create a Dockerfile in the app directory if it doesn't exist
   const dockerfilePath = path.join(appPath, "Dockerfile.dyad");
   if (!fs.existsSync(dockerfilePath)) {
-    const dockerfileContent = `FROM node:18-alpine
-
-# Set working directory
-WORKDIR /app
+    const dockerfileContent = `FROM node:22-alpine
 
 # Install pnpm
 RUN npm install -g pnpm
-
-# Expose port
-EXPOSE 32100
-
-# Start the development server
-CMD ["sh", "-c", "pnpm run dev --port 32100 --host 0.0.0.0 || npm run dev -- --port 32100 --host 0.0.0.0"]
 `;
 
     try {
@@ -370,7 +361,7 @@ CMD ["sh", "-c", "pnpm run dev --port 32100 --host 0.0.0.0 || npm run dev -- --p
 
   // Determine command to run inside container
   const defaultCommand =
-    "(pnpm install && pnpm run dev --port 32100 --host 0.0.0.0) || (npm install --legacy-peer-deps && npm run dev -- --port 32100 --host 0.0.0.0)";
+    "(pnpm install && pnpm run dev --port 32100) || (npm install --legacy-peer-deps && npm run dev -- --port 32100)";
   const hasCustomCommands = !!installCommand?.trim() && !!startCommand?.trim();
   const effectiveCommand = hasCustomCommands
     ? `${installCommand!.trim()} && ${startCommand!.trim()}`

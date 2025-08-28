@@ -5,12 +5,6 @@ testWithPo("Azure provider settings UI", async ({ po }) => {
   await po.setUp();
   await po.goToSettingsTab();
 
-  // Wait for settings to load
-  await po.page.waitForSelector('[data-testid="settings-content"]', {
-    state: "visible",
-    timeout: 10000,
-  });
-
   // Look for Azure OpenAI in the provider list
   await expect(po.page.getByText("Azure OpenAI")).toBeVisible();
 

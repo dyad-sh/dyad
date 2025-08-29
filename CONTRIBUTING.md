@@ -33,6 +33,16 @@ npm run db:push
 npm start
 ```
 
+## Setup
+
+If you'd like to contribute a pull request, we highly recommend setting the pre-commit hooks which will run the formatter and linter before each git commit. This is a great way of catching issues early on without waiting to run the GitHub Actions for your pull requet.
+
+Simply run this once in your repo:
+
+```sh
+npm run init-precommit
+```
+
 ## Testing
 
 ### Unit tests

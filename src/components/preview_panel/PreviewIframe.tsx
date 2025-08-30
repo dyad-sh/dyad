@@ -151,7 +151,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const [isPicking, setIsPicking] = useState(false);
 
   //detect if the user is using Mac
-  //const isMac = process.platform === "darwin";
   const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
 
   // Deactivate component selector when selection is cleared
@@ -295,7 +294,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     if (iframeRef.current?.contentWindow) {
       const newIsPicking = !isPicking;
       setIsPicking(newIsPicking);
-      console.log("success");
       iframeRef.current.contentWindow.postMessage(
         {
           type: newIsPicking

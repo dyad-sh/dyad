@@ -106,6 +106,8 @@ const validInvokeChannels = [
   "restart-dyad",
   "get-templates",
   "portal:migrate-create",
+  // MCP
+  "mcp:test-server",
   // Help bot
   "help:chat:start",
   "help:chat:cancel",

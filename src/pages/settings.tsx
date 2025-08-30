@@ -24,6 +24,7 @@ import { AutoUpdateSwitch } from "@/components/AutoUpdateSwitch";
 import { ReleaseChannelSelector } from "@/components/ReleaseChannelSelector";
 import { NeonIntegration } from "@/components/NeonIntegration";
 import { RuntimeModeSelector } from "@/components/RuntimeModeSelector";
+import { MCPIntegration } from "@/components/MCPIntegration";
 
 export default function SettingsPage() {
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
@@ -116,6 +117,7 @@ export default function SettingsPage() {
               <VercelIntegration />
               <SupabaseIntegration />
               <NeonIntegration />
+              <MCPIntegration />
             </div>
           </div>
 

@@ -144,6 +144,25 @@ export type ReleaseChannel = z.infer<typeof ReleaseChannelSchema>;
 /**
  * Zod schema for user settings
  */
+export const McpTransportSchema = z.enum(["stdio", "http"]);
+export type McpTransport = z.infer<typeof McpTransportSchema>;
+
+export const McpServerSchema = z.object({
+  id: z.string(),
+  name: z.string().optional(),
+  transport: McpTransportSchema,
+  // stdio
+  command: z.string().optional(),
+  args: z.array(z.string()).optional(),
+  env: z.record(z.string()).optional(),
+  // http
+  url: z.string().optional(),
+  headers: z.record(z.string()).optional(),
+  // common
+  enabled: z.boolean().optional(),
+});
+export type McpServer = z.infer<typeof McpServerSchema>;
+
 export const UserSettingsSchema = z.object({
   selectedModel: LargeLanguageModelSchema,
   providerSettings: z.record(z.string(), ProviderSettingSchema),
@@ -174,6 +193,9 @@ export const UserSettingsSchema = z.object({
   enableAutoUpdate: z.boolean(),
   releaseChannel: ReleaseChannelSchema,
   runtimeMode2: RuntimeMode2Schema.optional(),
+
+  // MCP server configuration
+  mcpServers: z.array(McpServerSchema).optional(),
 
   ////////////////////////////////
   // E2E TESTING ONLY.

@@ -42,6 +42,12 @@ import { getMaxTokens, getTemperature } from "../utils/token_utils";
 import { MAX_CHAT_TURNS_IN_CONTEXT } from "@/constants/settings_constants";
 import { validateChatContext } from "../utils/context_paths_utils";
 import { GoogleGenerativeAIProviderOptions } from "@ai-sdk/google";
+import { z } from "zod";
+import { McpManager } from "../utils/mcp_manager";
+import {
+  jsonSchemaToZod,
+  summarizeJsonSchemaInputs,
+} from "../utils/jsonschema_to_zod";
 
 import { getExtraProviderOptions } from "../utils/thinking_utils";
 
@@ -126,22 +132,97 @@ async function processStreamChunks({
 }): Promise<{ fullResponse: string; incrementalResponse: string }> {
   let incrementalResponse = "";
   let inThinkingBlock = false;
+  const pendingToolCalls = new Map<
+    string,
+    { name?: string; serverId?: string; args?: any }
+  >();
+  // Deduplicate identical tool calls within a single stream (same server/tool/args)
+  const seenToolCallFingerprints = new Set<string>();
 
   for await (const part of fullStream) {
     let chunk = "";
-    if (part.type === "text-delta") {
-      if (inThinkingBlock) {
-        chunk = "</think>";
-        inThinkingBlock = false;
-      }
-      chunk += part.text;
-    } else if (part.type === "reasoning-delta") {
+    const pAny: any = part as any;
+    const typeStr: string | undefined = pAny?.type;
+      if (typeStr === "text-delta") {
+        if (inThinkingBlock) {
+          chunk = "</think>";
+          inThinkingBlock = false;
+        }
+        chunk += pAny.text;
+      } else if (typeStr === "reasoning-delta") {
       if (!inThinkingBlock) {
         chunk = "<think>";
         inThinkingBlock = true;
       }
 
-      chunk += escapeDyadTags(part.text);
+      chunk += escapeDyadTags((part as any).text);
+    } else if (
+      typeStr === "tool-call" ||
+      typeStr === "tool_call" ||
+      typeStr === "function-call"
+    ) {
+      // Record tool call so we can summarize on result
+      const p: any = part;
+      const id =
+        p.toolCallId || p.callId || p.id || Math.random().toString(36).slice(2);
+      let name: string | undefined = p.toolName || p.name;
+      // Try to decode server/tool from our naming convention
+      if (typeof name === "string" && name.startsWith("mcp__")) {
+        const seg = name.split("__");
+        if (seg.length >= 3) {
+          pendingToolCalls.set(id, {
+            name: seg.slice(2).join("__"),
+            serverId: seg[1],
+            args: p.args || p.input,
+          });
+        } else {
+          pendingToolCalls.set(id, { name, args: p.args || p.input });
+        }
+      } else {
+        pendingToolCalls.set(id, { name, args: p.args || p.input });
+      }
+      // Do not emit any visible chunk yet; we'll show on result
+      chunk = "";
+    } else if (
+      typeStr === "tool-result" ||
+      typeStr === "tool_result" ||
+      typeStr === "function-result" ||
+      typeStr === "tool_output"
+    ) {
+      const p: any = part;
+      const id = p.toolCallId || p.callId || p.id || "";
+      const call =
+        (id && pendingToolCalls.get(id)) ||
+        ({ name: p.toolName || p.name || p.functionName } as any);
+      const toolLabel = call.serverId
+        ? `${call.serverId}/${call.name ?? "tool"}`
+        : `${call.name ?? "tool"}`;
+      // Deduplicate repeated calls with identical args within the same stream
+      try {
+        const fp = `${call.serverId ?? ""}::${call.name ?? ""}::${JSON.stringify(call.args ?? null)}`;
+        if (seenToolCallFingerprints.has(fp)) {
+          // Skip rendering duplicate block
+          continue;
+        }
+        seenToolCallFingerprints.add(fp);
+      } catch {}
+      // Render a dedicated MCP call block with pretty JSON body
+      const result = p.result ?? p.output ?? p.data ?? p.response ?? p;
+      let body = "";
+      try {
+        body = JSON.stringify(result, null, 2);
+      } catch {
+        body = String(result);
+      }
+      if (body.length > 12000) {
+        body = body.slice(0, 12000) + "\n... (truncated)";
+      }
+      const [server, tool] = toolLabel.includes("/")
+        ? toolLabel.split(/\/(.+)/)
+        : ["", toolLabel];
+      const serverAttr = server ? ` server=\"${escapeXml(server)}\"` : "";
+      const toolAttr = tool ? ` tool=\"${escapeXml(tool)}\"` : "";
+      chunk += `<dyad-mcp-call${serverAttr}${toolAttr} state=\"finished\">\n${body}\n</dyad-mcp-call>`;
     }
 
     if (!chunk) {
@@ -376,6 +457,13 @@ ${componentSnippet}
       });
 
       let fullResponse = "";
+      // Track executed MCP results in case the SDK doesn't emit tool-result parts
+      const executedMcpResults: {
+        serverId: string;
+        toolName: string;
+        args: any;
+        result: any;
+      }[] = [];
 
       // Check if this is a test prompt
       const testResponse = getTestResponse(req.prompt);
@@ -498,6 +586,65 @@ ${componentSnippet}
           aiRules: await readAiRules(getDyadAppPath(updatedChat.app.path)),
           chatMode: settings.selectedChatMode,
         });
+
+        // Discover MCP tools and inject into the system prompt
+        const discoveredMcpTools = await McpManager.discoverAllTools(true);
+        if (discoveredMcpTools.length > 0) {
+          const grouped: Record<
+            string,
+            {
+              serverId: string;
+              tools: {
+                name: string;
+                description?: string;
+                inputSummary?: string;
+              }[];
+            }
+          > = {};
+          for (const t of discoveredMcpTools) {
+            if (!grouped[t.serverId])
+              grouped[t.serverId] = { serverId: t.serverId, tools: [] };
+            const inputSummary = summarizeJsonSchemaInputs(t.inputSchema);
+            grouped[t.serverId].tools.push({
+              name: t.name,
+              description: t.description,
+              inputSummary,
+            });
+          }
+          // Collect sanitized server meta for guidance (no secrets)
+          const serversInfo = McpManager.listServersInfo();
+          const serverMetaMap = new Map(serversInfo.map((s) => [s.id, s] as const));
+
+          const sections = Object.values(grouped)
+            .map((g) => {
+              const meta = serverMetaMap.get(g.serverId);
+              const metaLineParts: string[] = [];
+              if (meta?.transport === "http" && meta.urlHost) metaLineParts.push(`http://${meta.urlHost}`);
+              if (meta?.headerKeys && meta.headerKeys.length) metaLineParts.push(`headers: ${meta.headerKeys.join(", ")}`);
+              if (meta?.transport === "stdio" && meta.hasCommand) metaLineParts.push("local stdio");
+              const metaLine = metaLineParts.length ? ` (${metaLineParts.join("; ")})` : "";
+              const tlist = g.tools
+                .map(
+                  (t) =>
+                    `- ${t.name}${t.description ? `: ${t.description}` : ""}${t.inputSummary ? ` (${t.inputSummary})` : ""}`,
+                )
+                .join("\n");
+              return `Server ${g.serverId}${metaLine}:\n${tlist}`;
+            })
+            .join("\n\n");
+
+          const serverIds = Object.keys(grouped);
+          const userTextLower = req.prompt.toLowerCase();
+          const referencedServer = serverIds.find((id) =>
+            userTextLower.includes(id.toLowerCase()),
+          );
+
+          systemPrompt += `\n\n# Available MCP Tools\nYou can autonomously call any of these MCP tools (via function calling). Tool function names follow mcp__{serverId}__{toolName}.\n\nDecision policy:\n- Decide when to call a tool versus answering directly. Call a tool when it can materially improve accuracy, fetch fresh data, or automate a concrete action.\n- Choose the server/tool whose description best matches the user's request. If unsure between multiple, ask a brief clarifying question before calling.\n- If the user mentions a server (e.g., \"context7\", \"omnisearch\"), prefer that server.\n- Do not announce \"I will search/call a tool\"; either call it or ask for missing info.\n\nInput & auth policy:\n- Before calling, check the tool's required inputs from its schema (above). If any are missing (e.g., URL, id, date range), ask the user for them first.\n- If an HTTP server returns auth errors (401/403 or messages like \"invalid api key\"), explain the issue and ask the user for the necessary key/token or header. Tell them to add it in Settings → Integrations → MCP for the specific server id. Example header: Authorization: Bearer {{TOKEN}}. Do not expose any secrets yourself.\n\nResponse policy after MCP calls:\n- After a tool call, evaluate whether further action is needed. If so, use Dyad tags or additional MCP tools to continue the task (e.g., editing files). Otherwise, write a clear explanation in 2–5 sentences using the returned data and propose the next step or a targeted question. Include concrete details (titles, domains, ids, counts) when available.\n- The app shows tool results automatically, so avoid duplicating them verbatim.\n\n${sections}`;
+
+          if (referencedServer) {
+            systemPrompt += `\n\nServer focus: The user referenced server "${referencedServer}"—prefer tools from this server for this turn.`;
+          }
+        }
 
         // Add information about mentioned apps if any
         if (otherAppsCodebaseInfo) {
@@ -667,11 +814,57 @@ This conversation includes one or more image attachments. When the user uploads 
           } else {
             logger.log("sending AI request");
           }
+          // Build MCP tool definitions for function calling (hybrid approach)
+          const mcpTools = await McpManager.discoverAllTools(true);
+          const tools: Record<
+            string,
+            {
+              description?: string;
+              inputSchema: any;
+              execute: (args: any) => Promise<any>;
+            }
+          > = {};
+          for (const t of mcpTools) {
+            const toolName = `mcp__${t.serverId}__${t.name}`;
+            let inputSchema: any = z.any();
+            try {
+              if (t.inputSchema) {
+                inputSchema = jsonSchemaToZod(t.inputSchema);
+              }
+            } catch {
+              inputSchema = z.any();
+            }
+            const extraDesc = summarizeJsonSchemaInputs(t.inputSchema);
+            tools[toolName] = {
+              description:
+                (t.description || `MCP tool ${t.name} from ${t.serverId}`) +
+                (extraDesc ? ` | ${extraDesc}` : ""),
+              inputSchema,
+              execute: async (args: any) => {
+                const result = await McpManager.callTool(
+                  t.serverId,
+                  t.name,
+                  args,
+                );
+                try {
+                  executedMcpResults.push({
+                    serverId: t.serverId,
+                    toolName: t.name,
+                    args,
+                    result,
+                  });
+                } catch {}
+                return result;
+              },
+            };
+          }
+
           return streamText({
             maxOutputTokens: await getMaxTokens(settings.selectedModel),
             temperature: await getTemperature(settings.selectedModel),
             maxRetries: 2,
             model: modelClient.model,
+            tools,
             providerOptions: {
               "dyad-engine": {
                 dyadRequestId,
@@ -766,6 +959,103 @@ This conversation includes one or more image attachments. When the user uploads 
             processResponseChunkUpdate,
           });
           fullResponse = result.fullResponse;
+
+          // If the SDK didn't emit tool-result parts, synthesize blocks from captured execute() results
+          if (executedMcpResults.length > 0) {
+            for (const ex of executedMcpResults) {
+              const signature = `<dyad-mcp-call server=\"${escapeXml(ex.serverId)}\" tool=\"${escapeXml(ex.toolName)}\"`;
+              if (!fullResponse.includes(signature)) {
+                let body = "";
+                try {
+                  body = JSON.stringify(ex.result, null, 2);
+                } catch {
+                  body = String(ex.result);
+                }
+                if (body.length > 12000)
+                  body = body.slice(0, 12000) + "\n... (truncated)";
+                const synth = `<dyad-mcp-call server=\"${escapeXml(ex.serverId)}\" tool=\"${escapeXml(ex.toolName)}\" state=\"finished\">\n${body}\n</dyad-mcp-call>`;
+                fullResponse += synth;
+                fullResponse = cleanFullResponse(fullResponse);
+                fullResponse = await processResponseChunkUpdate({
+                  fullResponse,
+                });
+              }
+            }
+          }
+
+          // Fallback: if the model ended after an MCP tool-result without any trailing natural language,
+          // produce a short follow-up summary so the user isn't left with just the tool card.
+          if (
+            !abortController.signal.aborted &&
+            /<dyad-mcp-call[^>]*>/.test(fullResponse)
+          ) {
+            const lastCloseIndex = fullResponse.lastIndexOf("</dyad-mcp-call>");
+            const trailing =
+              lastCloseIndex >= 0
+                ? fullResponse.slice(lastCloseIndex + "</dyad-mcp-call>".length)
+                : "";
+            const trailingPlain = removeDyadTags(trailing).trim();
+            const needsFollowUp = trailingPlain.length === 0; // nothing after the last tool block
+
+            if (needsFollowUp) {
+              try {
+                // Gather tool bodies (limit size)
+                const bodies: string[] = [];
+                const regex =
+                  /<dyad-mcp-call[^>]*>([\s\S]*?)<\/dyad-mcp-call>/g;
+                let m: RegExpExecArray | null;
+                while ((m = regex.exec(fullResponse)) !== null) {
+                  const body = (m[1] || "").slice(0, 4000);
+                  bodies.push(body);
+                }
+                const toolsBlob = bodies.join("\n\n---\n\n");
+
+                const followUpSystem = [
+                  systemPrompt,
+                  `Using the provided MCP result(s), continue addressing the user's request. If follow-up actions such as editing files are needed, output the appropriate Dyad tags. Be specific and actionable: 2–5 sentences. If results include URLs or titles, reference a few. If the body indicates auth/permissions issues (401/403, invalid key, missing token), clearly ask the user for the needed key/token or link and instruct them to add it in Settings → Integrations → MCP for the correct server id. If results are empty, suggest a refined query or next step.`,
+                ].join("\n\n");
+                const followUpUser = `User asked: ${req.prompt}\n\nMCP result(s):\n\n${toolsBlob}`;
+
+                const { fullStream: followUpStream } = await streamText({
+                  maxOutputTokens: 256,
+                  temperature: 0.2,
+                  maxRetries: 1,
+                  model: modelClient.model,
+                  tools: {}, // do not allow additional tool calls in the follow-up
+                  providerOptions: {
+                    "dyad-gateway": getExtraProviderOptions(
+                      modelClient.builtinProviderId,
+                      settings,
+                    ),
+                    google: {
+                      thinkingConfig: { includeThoughts: false },
+                    } as GoogleGenerativeAIProviderOptions,
+                    openai: {
+                      reasoningSummary: "off",
+                    } as OpenAIResponsesProviderOptions,
+                  },
+                  system: followUpSystem,
+                  messages: [{ role: "user", content: followUpUser }],
+                  onError: (e) => {
+                    logger.warn("follow-up summary generation failed", e);
+                  },
+                  abortSignal: abortController.signal,
+                });
+
+                for await (const part of followUpStream) {
+                  if (abortController.signal.aborted) break;
+                  if (part.type !== "text-delta") continue;
+                  fullResponse += part.text;
+                  fullResponse = cleanFullResponse(fullResponse);
+                  fullResponse = await processResponseChunkUpdate({
+                    fullResponse,
+                  });
+                }
+              } catch (e) {
+                logger.warn("Failed to add follow-up after MCP call", e);
+              }
+            }
+          }
 
           if (
             !abortController.signal.aborted &&

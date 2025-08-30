@@ -26,7 +26,7 @@ export function ProModeSelector() {
   };
 
   const handleSmartContextChange = (
-    newValue: "off" | "conservative" | "balanced",
+    newValue: "off" | "conservative" | "balanced" | "efficient",
   ) => {
     if (newValue === "off") {
       updateSettings({
@@ -42,6 +42,11 @@ export function ProModeSelector() {
       updateSettings({
         enableProSmartFilesContextMode: true,
         proSmartContextOption: "balanced",
+      });
+    } else if (newValue === "efficient") {
+      updateSettings({
+        enableProSmartFilesContextMode: true,
+        proSmartContextOption: "efficient",
       });
     }
   };
@@ -187,15 +192,24 @@ function SmartContextSelector({
 }: {
   isTogglable: boolean;
   settings: UserSettings | null;
-  onValueChange: (value: "off" | "conservative" | "balanced") => void;
+  onValueChange: (
+    value: "off" | "conservative" | "balanced" | "efficient",
+  ) => void;
 }) {
   // Determine current value based on settings
-  const getCurrentValue = (): "off" | "conservative" | "balanced" => {
+  const getCurrentValue = ():
+    | "off"
+    | "conservative"
+    | "balanced"
+    | "efficient" => {
     if (!settings?.enableProSmartFilesContextMode) {
       return "off";
     }
     if (settings?.proSmartContextOption === "balanced") {
       return "balanced";
+    }
+    if (settings?.proSmartContextOption === "efficient") {
+      return "efficient";
     }
     // If enabled but no option set (undefined/falsey), it's conservative
     return "conservative";
@@ -251,9 +265,18 @@ function SmartContextSelector({
           size="sm"
           onClick={() => onValueChange("balanced")}
           disabled={!isTogglable}
-          className="rounded-l-none h-8 px-3 text-xs flex-shrink-0"
+          className="rounded-none border-r border-input h-8 px-3 text-xs flex-shrink-0"
         >
           Balanced
+        </Button>
+        <Button
+          variant={currentValue === "efficient" ? "default" : "ghost"}
+          size="sm"
+          onClick={() => onValueChange("efficient")}
+          disabled={!isTogglable}
+          className="rounded-l-none h-8 px-3 text-xs flex-shrink-0"
+        >
+          Efficient
         </Button>
       </div>
     </div>

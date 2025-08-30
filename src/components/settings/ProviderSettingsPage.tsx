@@ -69,7 +69,14 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
     userApiKey !== "Not Set";
   const hasEnvKey = !!(envVarName && envVars[envVarName]);
 
-  const isConfigured = isValidUserKey || hasEnvKey; // Configured if either is set
+  // Special handling for Azure OpenAI configuration
+  const isAzureConfigured =
+    provider === "azure"
+      ? !!(envVars["AZURE_API_KEY"] && envVars["AZURE_RESOURCE_NAME"])
+      : false;
+
+  const isConfigured =
+    provider === "azure" ? isAzureConfigured : isValidUserKey || hasEnvKey; // Configured if either is set
 
   // --- Save Handler ---
   const handleSaveKey = async () => {

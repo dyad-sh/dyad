@@ -6,6 +6,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { AzureConfiguration } from "./AzureConfiguration";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { UserSettings } from "@/lib/schemas";
@@ -46,6 +47,11 @@ export function ApiKeyConfiguration({
   onDeleteKey,
   isDyad,
 }: ApiKeyConfigurationProps) {
+  // Special handling for Azure OpenAI which requires environment variables
+  if (provider === "azure") {
+    return <AzureConfiguration envVars={envVars} />;
+  }
+
   const envApiKey = envVarName ? envVars[envVarName] : undefined;
   const userApiKey = settings?.providerSettings?.[provider]?.apiKey?.value;
 

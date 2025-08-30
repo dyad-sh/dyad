@@ -1,10 +1,10 @@
 import { useAtom } from "jotai";
 import { useEffect } from "react";
 import { chatsAtom, chatsLoadingAtom } from "@/atoms/chatAtoms";
-import { getAllChats } from "@/lib/chat";
+import { getAllChats, searchChats } from "@/lib/chat";
 import type { ChatSummary } from "@/lib/schemas";
 
-export function useChats(appId: number | null) {
+export function useChats(appId: number | null, query?: string) {
   const [chats, setChats] = useAtom(chatsAtom);
   const [loading, setLoading] = useAtom(chatsLoadingAtom);
 
@@ -12,7 +12,14 @@ export function useChats(appId: number | null) {
     const fetchChats = async () => {
       try {
         setLoading(true);
-        const chatList = await getAllChats(appId || undefined);
+        let chatList: ChatSummary[] = [];
+        if (appId && query) {
+          chatList = await searchChats(appId, query);
+        } else if (appId) {
+          chatList = await getAllChats(appId);
+        } else {
+          chatList = [];
+        }
         setChats(chatList);
       } catch (error) {
         console.error("Failed to load chats:", error);
@@ -22,12 +29,19 @@ export function useChats(appId: number | null) {
     };
 
     fetchChats();
-  }, [appId, setChats, setLoading]);
+  }, [appId, query, setChats, setLoading]);
 
   const refreshChats = async () => {
     try {
       setLoading(true);
-      const chatList = await getAllChats(appId || undefined);
+      let chatList: ChatSummary[] = [];
+      if (appId && query) {
+        chatList = await searchChats(appId, query);
+      } else if (appId) {
+        chatList = await getAllChats(appId);
+      } else {
+        chatList = [];
+      }
       setChats(chatList);
       return chatList;
     } catch (error) {

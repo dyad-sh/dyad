@@ -26,13 +26,15 @@ import {
 import { useChats } from "@/hooks/useChats";
 import { RenameChatDialog } from "@/components/chat/RenameChatDialog";
 import { DeleteChatDialog } from "@/components/chat/DeleteChatDialog";
+import { Input } from "./ui/input";
 
 export function ChatList({ show }: { show?: boolean }) {
   const navigate = useNavigate();
   const [selectedChatId, setSelectedChatId] = useAtom(selectedChatIdAtom);
   const [selectedAppId, setSelectedAppId] = useAtom(selectedAppIdAtom);
   const [, setIsDropdownOpen] = useAtom(dropdownOpenAtom);
-  const { chats, loading, refreshChats } = useChats(selectedAppId);
+  const [searchQuery, setSearchQuery] = useState<string | undefined>(undefined);
+  const { chats, loading, refreshChats } = useChats(selectedAppId, searchQuery);
   const routerState = useRouterState();
   const isChatRoute = routerState.location.pathname === "/chat";
 
@@ -155,6 +157,14 @@ export function ChatList({ show }: { show?: boolean }) {
         <SidebarGroupLabel>Recent Chats</SidebarGroupLabel>
         <SidebarGroupContent>
           <div className="flex flex-col space-y-4">
+            <Input
+              placeholder="Search chats..."
+              className="bg-white [placeholder:text-gray-500] ring-offset-0  border-none ring-transparent mb-4"
+              onChange={(e) => {
+                const value = e.target.value.trim();
+                setSearchQuery(value === "" ? undefined : value);
+              }}
+            />
             <Button
               onClick={handleNewChat}
               variant="outline"

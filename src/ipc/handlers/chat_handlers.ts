@@ -1,7 +1,7 @@
 import { ipcMain } from "electron";
 import { db } from "../../db";
 import { apps, chats, messages } from "../../db/schema";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, and, like, inArray } from "drizzle-orm";
 import type { ChatSummary } from "../../lib/schemas";
 import * as git from "isomorphic-git";
 import * as fs from "fs";
@@ -115,4 +115,49 @@ export function registerChatHandlers() {
   handle("delete-messages", async (_, chatId: number): Promise<void> => {
     await db.delete(messages).where(eq(messages.chatId, chatId));
   });
+
+  handle(
+    "chat:search",
+    async (_, appId: string, query: string): Promise<ChatSummary[]> => {
+      const appIdNum = Number(appId); // Convert to number
+
+      // Find chats by title
+      const chatTitleMatches = await db
+        .select()
+        .from(chats)
+        .where(and(eq(chats.appId, appIdNum), like(chats.title, `%${query}%`)));
+
+      // Find chats by message content
+      const messageMatches = await db
+        .select({ chatId: messages.chatId })
+        .from(messages)
+        .where(like(messages.content, `%${query}%`));
+
+      const chatIdsFromMessages = [
+        ...new Set(messageMatches.map((m) => m.chatId)),
+      ];
+
+      // Get chats for those IDs
+      let chatsFromMessages: any[] = [];
+      if (chatIdsFromMessages.length) {
+        chatsFromMessages = await db
+          .select()
+          .from(chats)
+          .where(
+            and(
+              eq(chats.appId, appIdNum),
+              inArray(chats.id, chatIdsFromMessages),
+            ),
+          );
+      }
+
+      // Merge and deduplicate
+      const allChats = [...chatTitleMatches, ...chatsFromMessages];
+      const uniqueChats = Array.from(
+        new Map(allChats.map((c) => [c.id, c])).values(),
+      );
+
+      return uniqueChats;
+    },
+  );
 }

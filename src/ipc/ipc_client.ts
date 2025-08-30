@@ -288,6 +288,20 @@ export class IpcClient {
     }
   }
 
+   // search for chats
+  public async searchChats(
+    appId: number,
+    query: string,
+  ): Promise<ChatSummary[]> {
+    try {
+      const data = await this.ipcRenderer.invoke("chat:search", appId, query);
+      return ChatSummariesSchema.parse(data);
+    } catch (error) {
+      showError(error);
+      throw error;
+    }
+  }
+
   // Get all apps
   public async listApps(): Promise<ListAppsResponse> {
     return this.ipcRenderer.invoke("list-apps");

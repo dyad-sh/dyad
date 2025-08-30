@@ -42,7 +42,8 @@ jobs:
           Issue number:
           ${{ github.event.issue.number }}
 
-          Lookup this issue and search through existing issues (excluding #${{ github.event.issue.number }}) in this repository to find any potential duplicates of this new issue.
+          Thoroughly lookup this issue and search through all existing issues (excluding #${{ github.event.issue.number }}) in this repository to find any potential duplicates of this new issue. Carefully consider all related issues and search using relevant keywords to ensure a comprehensive search.
+
           Consider:
           1. Similar titles or descriptions
           2. Same error messages or symptoms

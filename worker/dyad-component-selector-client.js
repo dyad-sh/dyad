@@ -146,6 +146,22 @@
     );
   }
 
+  function onKeyDown(e) {
+    // Forward all potential shortcuts to parent window
+    window.parent.postMessage(
+      {
+        type: "dyad-shortcut-triggered",
+        key: e.key.toLowerCase(),
+        eventModifiers: {
+          ctrl: e.ctrlKey,
+          shift: e.shiftKey,
+          meta: e.metaKey,
+        },
+      },
+      "*",
+    );
+  }
+
   /* ---------- activation / deactivation --------------------------------- */
   function activate() {
     if (state.type === "inactive") {
@@ -177,6 +193,9 @@
     if (e.data.type === "activate-dyad-component-selector") activate();
     if (e.data.type === "deactivate-dyad-component-selector") deactivate();
   });
+
+  // Always listen for keyboard shortcuts
+  window.addEventListener("keydown", onKeyDown, true);
 
   function initializeComponentSelector() {
     if (!document.body) {

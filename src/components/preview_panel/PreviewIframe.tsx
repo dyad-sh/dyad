@@ -40,6 +40,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useRunApp } from "@/hooks/useRunApp";
+import { useShortcut } from "@/hooks/useShortcut";
 
 interface ErrorBannerProps {
   error: string | undefined;
@@ -148,6 +149,10 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   );
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isPicking, setIsPicking] = useState(false);
+
+  //detect if the user is using Mac
+  //const isMac = process.platform === "darwin";
+  const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
 
   // Deactivate component selector when selection is cleared
   useEffect(() => {
@@ -290,6 +295,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     if (iframeRef.current?.contentWindow) {
       const newIsPicking = !isPicking;
       setIsPicking(newIsPicking);
+      console.log("success");
       iframeRef.current.contentWindow.postMessage(
         {
           type: newIsPicking
@@ -300,6 +306,13 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       );
     }
   };
+
+  // Activate component selector using a shortcut
+  useShortcut(
+    "c",
+    { shift: true, ctrl: !isMac, meta: isMac },
+    handleActivateComponentSelector,
+  );
 
   // Function to navigate back
   const handleNavigateBack = () => {

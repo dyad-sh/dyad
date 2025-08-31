@@ -673,7 +673,7 @@ export class PageObject {
 
   async selectModel({ provider, model }: { provider: string; model: string }) {
     await this.page.getByRole("button", { name: "Model: Auto" }).click();
-    await this.page.getByText(provider).click();
+    await this.page.getByText(provider, { exact: true }).click();
     await this.page.getByText(model, { exact: true }).click();
   }
 
@@ -699,6 +699,23 @@ export class PageObject {
       .getByText("lmstudio-model-1", { exact: true })
       .first()
       .click();
+  }
+
+  async selectTestAzureModel() {
+    await this.page.getByRole("button", { name: "Model: Auto" }).click();
+    await this.page.getByText("Azure OpenAI", { exact: true }).click();
+    await this.page.getByText("GPT-5", { exact: true }).click();
+  }
+
+  async setUpAzure({ autoApprove = false }: { autoApprove?: boolean } = {}) {
+    await this.githubConnector.clearPushEvents();
+    await this.goToSettingsTab();
+    if (autoApprove) {
+      await this.toggleAutoApprove();
+    }
+    // Azure should already be configured via environment variables
+    // so we don't need additional setup steps like setUpDyadProvider
+    await this.goToAppsTab();
   }
 
   async setUpTestProvider() {

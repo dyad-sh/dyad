@@ -211,6 +211,40 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       temperature: 0,
     },
   ],
+  azure: [
+    {
+      name: "gpt-5",
+      displayName: "GPT-5",
+      description: "Azure OpenAI GPT-5 model with reasoning capabilities",
+      maxOutputTokens: 128_000,
+      contextWindow: 400_000,
+      temperature: 0,
+    },
+    {
+      name: "gpt-5-mini",
+      displayName: "GPT-5 Mini",
+      description: "Azure OpenAI GPT-5 Mini model",
+      maxOutputTokens: 128_000,
+      contextWindow: 400_000,
+      temperature: 0,
+    },
+    {
+      name: "gpt-5-nano",
+      displayName: "GPT-5 Nano",
+      description: "Azure OpenAI GPT-5 Nano model",
+      maxOutputTokens: 128_000,
+      contextWindow: 400_000,
+      temperature: 0,
+    },
+    {
+      name: "gpt-5-chat",
+      displayName: "GPT-5 Chat",
+      description: "Azure OpenAI GPT-5 Chat model",
+      maxOutputTokens: 16_384,
+      contextWindow: 128_000,
+      temperature: 0,
+    },
+  ],
 };
 
 export const PROVIDER_TO_ENV_VAR: Record<string, string> = {
@@ -218,6 +252,7 @@ export const PROVIDER_TO_ENV_VAR: Record<string, string> = {
   anthropic: "ANTHROPIC_API_KEY",
   google: "GEMINI_API_KEY",
   openrouter: "OPENROUTER_API_KEY",
+  azure: "AZURE_API_KEY",
 };
 
 export const CLOUD_PROVIDERS: Record<
@@ -257,6 +292,12 @@ export const CLOUD_PROVIDERS: Record<
     displayName: "Dyad",
     websiteUrl: "https://academy.dyad.sh/settings",
     gatewayPrefix: "dyad/",
+  },
+  azure: {
+    displayName: "Azure OpenAI",
+    hasFreeTier: false,
+    websiteUrl: "https://portal.azure.com/",
+    gatewayPrefix: "",
   },
 };
 

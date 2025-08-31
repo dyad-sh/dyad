@@ -23,6 +23,10 @@ npm install
 **Apply migrations:**
 
 ```sh
+# Create the userData directory (required for database)
+mkdir -p userData
+
+# Generate and apply database migrations
 npm run db:generate
 npm run db:push
 ```

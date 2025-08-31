@@ -4,6 +4,8 @@ export function useShortcut(
   key: string,
   modifiers: { ctrl?: boolean; shift?: boolean; meta?: boolean },
   callback: () => void,
+  isComponentSelectorInitialized: boolean,
+  iframeRef?: React.RefObject<HTMLIFrameElement | null>,
 ): void {
   useEffect(() => {
     const isModifierActive = (
@@ -29,7 +31,13 @@ export function useShortcut(
         eventModifiers.meta || false,
       );
 
-      if (keyMatches && ctrlMatches && shiftMatches && metaMatches) {
+      if (
+        keyMatches &&
+        ctrlMatches &&
+        shiftMatches &&
+        metaMatches &&
+        isComponentSelectorInitialized
+      ) {
         callback();
         return true;
       }
@@ -49,8 +57,13 @@ export function useShortcut(
     };
 
     const handleMessageEvent = (event: MessageEvent) => {
+      // Only handle messages from our iframe
+      if (event.source !== iframeRef?.current?.contentWindow) {
+        return;
+      }
+
       if (event.data?.type === "dyad-shortcut-triggered") {
-        const { key: messageKey, eventModifiers } = event.data;
+        const { key: messageKey, eventModifiers = {} } = event.data;
         validateShortcut(messageKey, eventModifiers);
       }
     };

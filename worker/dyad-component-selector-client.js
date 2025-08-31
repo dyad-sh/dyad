@@ -147,19 +147,33 @@
   }
 
   function onKeyDown(e) {
-    // Forward all potential shortcuts to parent window
-    window.parent.postMessage(
-      {
-        type: "dyad-shortcut-triggered",
-        key: e.key.toLowerCase(),
-        eventModifiers: {
-          ctrl: e.ctrlKey,
-          shift: e.shiftKey,
-          meta: e.metaKey,
+    // Ignore keystrokes if the user is typing in an input field, textarea, or editable element
+    if (
+      e.target.tagName === "INPUT" ||
+      e.target.tagName === "TEXTAREA" ||
+      e.target.isContentEditable
+    ) {
+      return;
+    }
+
+    // Forward shortcuts to parent window
+    const key = e.key.toLowerCase();
+    const hasShift = e.shiftKey;
+    const hasCtrlOrMeta = e.ctrlKey || e.metaKey;
+    if (key && hasShift && hasCtrlOrMeta) {
+      window.parent.postMessage(
+        {
+          type: "dyad-shortcut-triggered",
+          key: key,
+          eventModifiers: {
+            ctrl: e.ctrlKey,
+            shift: e.shiftKey,
+            meta: e.metaKey,
+          },
         },
-      },
-      "*",
-    );
+        "*",
+      );
+    }
   }
 
   /* ---------- activation / deactivation --------------------------------- */

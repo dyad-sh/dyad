@@ -310,6 +310,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     "c",
     { shift: true, ctrl: !isMac, meta: isMac },
     handleActivateComponentSelector,
+    isComponentSelectorInitialized,
+    iframeRef,
   );
 
   // Function to navigate back

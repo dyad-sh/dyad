@@ -20,12 +20,22 @@ Dyad is an Electron app.
 npm install
 ```
 
+**Create the userData directory (required for database)**
+
+```sh
+# Unix/macOS/Linux:
+mkdir -p userData
+
+# Windows PowerShell (run only if folder doesn't exist):
+mkdir userData
+
+# Windows Command Prompt (run only if folder doesn't exist):
+md userData
+```
+
 **Apply migrations:**
 
 ```sh
-# Create the userData directory (required for database)
-mkdir -p userData
-
 # Generate and apply database migrations
 npm run db:generate
 npm run db:push

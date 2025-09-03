@@ -161,6 +161,7 @@
     const hasShift = e.shiftKey;
     const hasCtrlOrMeta = e.ctrlKey || e.metaKey;
     if (key && hasShift && hasCtrlOrMeta) {
+      e.preventDefault();
       window.parent.postMessage(
         {
           type: "dyad-shortcut-triggered",

@@ -75,5 +75,5 @@ export function useShortcut(
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("message", handleMessageEvent);
     };
-  }, [key, modifiers, callback]);
+  }, [key, modifiers, callback, isComponentSelectorInitialized, iframeRef]);
 }

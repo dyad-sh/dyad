@@ -173,6 +173,7 @@ export interface LanguageModelProvider {
   hasFreeTier?: boolean;
   websiteUrl?: string;
   gatewayPrefix?: string;
+  secondary?: boolean;
   envVarName?: string;
   apiBaseUrl?: string;
   type: "custom" | "local" | "cloud";

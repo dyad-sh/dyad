@@ -262,6 +262,7 @@ export const CLOUD_PROVIDERS: Record<
     hasFreeTier?: boolean;
     websiteUrl?: string;
     gatewayPrefix: string;
+    secondary?: boolean;
   }
 > = {
   openai: {
@@ -298,6 +299,7 @@ export const CLOUD_PROVIDERS: Record<
     hasFreeTier: false,
     websiteUrl: "https://portal.azure.com/",
     gatewayPrefix: "",
+    secondary: true,
   },
 };
 
@@ -359,6 +361,7 @@ export async function getLanguageModelProviders(): Promise<
           hasFreeTier: providerDetails.hasFreeTier,
           websiteUrl: providerDetails.websiteUrl,
           gatewayPrefix: providerDetails.gatewayPrefix,
+          secondary: providerDetails.secondary,
           envVarName: PROVIDER_TO_ENV_VAR[key] ?? undefined,
           type: "cloud",
           // apiBaseUrl is not directly in PROVIDERS

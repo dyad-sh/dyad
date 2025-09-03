@@ -123,6 +123,7 @@ function preprocessUnclosedTags(content: string): {
     "dyad-edit",
     "dyad-codebase-context",
     "think",
+    "dyad-command",
   ];
 
   let processedContent = content;
@@ -189,6 +190,7 @@ function parseCustomTags(content: string): ContentPiece[] {
     "dyad-edit",
     "dyad-codebase-context",
     "think",
+    "dyad-command",
   ];
 
   const tagPattern = new RegExp(
@@ -416,6 +418,10 @@ function renderCustomTag(
 
     case "dyad-chat-summary":
       // Don't render anything for dyad-chat-summary
+      return null;
+
+    case "dyad-command":
+      // Don't render anything for dyad-command
       return null;
 
     default:

@@ -544,6 +544,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           </div>
         ) : (
           <iframe
+            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-downloads"
             data-testid="preview-iframe-element"
             onLoad={() => {
               setErrorMessage(undefined);

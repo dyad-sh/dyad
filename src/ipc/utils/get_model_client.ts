@@ -1,6 +1,7 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI as createGoogle } from "@ai-sdk/google";
 import { createAnthropic } from "@ai-sdk/anthropic";
+import { azure } from "@ai-sdk/azure";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LargeLanguageModel, UserSettings } from "../../lib/schemas";
@@ -219,6 +220,54 @@ function getRegularModelClient(
       return {
         modelClient: {
           model: provider(model.name),
+          builtinProviderId: providerId,
+        },
+        backupModelClients: [],
+      };
+    }
+    case "azure": {
+      // Check if we're in e2e testing mode
+      const testAzureBaseUrl = getEnvVar("TEST_AZURE_BASE_URL");
+
+      if (testAzureBaseUrl) {
+        // Use fake server for e2e testing
+        logger.info(`Using test Azure base URL: ${testAzureBaseUrl}`);
+        const provider = createOpenAICompatible({
+          name: "azure-test",
+          baseURL: testAzureBaseUrl,
+          apiKey: "fake-api-key-for-testing",
+        });
+        return {
+          modelClient: {
+            model: provider(model.name),
+            builtinProviderId: providerId,
+          },
+          backupModelClients: [],
+        };
+      }
+
+      // Azure OpenAI requires both API key and resource name as env vars
+      // We use environment variables for Azure configuration
+      const resourceName = getEnvVar("AZURE_RESOURCE_NAME");
+      const azureApiKey = getEnvVar("AZURE_API_KEY");
+
+      if (!resourceName) {
+        throw new Error(
+          "Azure OpenAI resource name is required. Please set the AZURE_RESOURCE_NAME environment variable.",
+        );
+      }
+
+      if (!azureApiKey) {
+        throw new Error(
+          "Azure OpenAI API key is required. Please set the AZURE_API_KEY environment variable.",
+        );
+      }
+
+      // Use the default Azure provider with environment variables
+      // The azure provider automatically picks up AZURE_RESOURCE_NAME and AZURE_API_KEY
+      return {
+        modelClient: {
+          model: azure(model.name),
           builtinProviderId: providerId,
         },
         backupModelClients: [],

@@ -34,6 +34,7 @@ const providers = [
   "openrouter",
   "ollama",
   "lmstudio",
+  "azure",
 ] as const;
 
 export const cloudProviders = providers.filter(

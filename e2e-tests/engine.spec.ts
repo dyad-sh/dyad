@@ -26,11 +26,11 @@ testSkipIfWindows(
   },
 );
 
-testSkipIfWindows("send message to engine - openai gpt-4.1", async ({ po }) => {
+testSkipIfWindows("send message to engine - openai gpt-5", async ({ po }) => {
   await po.setUpDyadPro();
   // By default, it's using auto which points to Flash 2.5 and doesn't
   // use engine.
-  await po.selectModel({ provider: "OpenAI", model: "GPT 4.1" });
+  await po.selectModel({ provider: "OpenAI", model: "GPT 5" });
   await po.sendPrompt("[dump] tc=turbo-edits");
 
   await po.snapshotServerDump("request");

@@ -122,6 +122,23 @@ export function ModelPicker() {
   const isSmartAutoEnabled =
     settings.enableProSmartFilesContextMode && isDyadProEnabled(settings);
   const modelDisplayName = getModelDisplayName();
+  // Split providers into primary and secondary groups (excluding auto)
+  const providerEntries =
+    !loading && modelsByProviders
+      ? Object.entries(modelsByProviders).filter(
+          ([providerId]) => providerId !== "auto",
+        )
+      : [];
+  const primaryProviders = providerEntries.filter(([providerId, models]) => {
+    if (models.length === 0) return false;
+    const provider = providers?.find((p) => p.id === providerId);
+    return !(provider && provider.secondary);
+  });
+  const secondaryProviders = providerEntries.filter(([providerId, models]) => {
+    if (models.length === 0) return false;
+    const provider = providers?.find((p) => p.id === providerId);
+    return !!(provider && provider.secondary);
+  });
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -232,19 +249,28 @@ export function ModelPicker() {
               </>
             )}
 
-            {/* Group other providers into submenus */}
-            {Object.entries(modelsByProviders).map(([providerId, models]) => {
-              // Skip auto provider as it's already handled
-              if (providerId === "auto") return null;
-
+            {/* Primary providers as submenus */}
+            {primaryProviders.map(([providerId, models]) => {
               const provider = providers?.find((p) => p.id === providerId);
-              if (models.length === 0) return null;
-
               return (
                 <DropdownMenuSub key={providerId}>
                   <DropdownMenuSubTrigger className="w-full font-normal">
-                    <div className="flex flex-col items-start">
-                      <span>{provider?.name}</span>
+                    <div className="flex flex-col items-start w-full">
+                      <div className="flex items-center gap-2">
+                        <span>{provider?.name ?? providerId}</span>
+                        {provider?.type === "cloud" &&
+                          !provider?.secondary &&
+                          isDyadProEnabled(settings) && (
+                            <span className="text-[10px] bg-gradient-to-r from-indigo-600 via-indigo-500 to-indigo-600 bg-[length:200%_100%] animate-[shimmer_5s_ease-in-out_infinite] text-white px-1.5 py-0.5 rounded-full font-medium">
+                              Pro
+                            </span>
+                          )}
+                        {provider?.type === "custom" && (
+                          <span className="text-[10px] bg-amber-500/20 text-amber-700 px-1.5 py-0.5 rounded-full font-medium">
+                            Custom
+                          </span>
+                        )}
+                      </div>
                       <span className="text-xs text-muted-foreground">
                         {models.length} models
                       </span>
@@ -252,7 +278,7 @@ export function ModelPicker() {
                   </DropdownMenuSubTrigger>
                   <DropdownMenuSubContent className="w-56">
                     <DropdownMenuLabel>
-                      {provider?.name} Models
+                      {(provider?.name ?? providerId) + " Models"}
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
                     {models.map((model) => (
@@ -278,6 +304,11 @@ export function ModelPicker() {
                           >
                             <div className="flex justify-between items-start w-full">
                               <span>{model.displayName}</span>
+                              {model.dollarSigns && (
+                                <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">
+                                  {"$".repeat(model.dollarSigns)}
+                                </span>
+                              )}
                               {model.tag && (
                                 <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">
                                   {model.tag}
@@ -295,6 +326,92 @@ export function ModelPicker() {
                 </DropdownMenuSub>
               );
             })}
+
+            {/* Secondary providers grouped under Other AI providers */}
+            {secondaryProviders.length > 0 && (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="w-full font-normal">
+                  <div className="flex flex-col items-start">
+                    <span>Other AI providers</span>
+                    <span className="text-xs text-muted-foreground">
+                      {secondaryProviders.length} providers
+                    </span>
+                  </div>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-56">
+                  <DropdownMenuLabel>Other AI providers</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {secondaryProviders.map(([providerId, models]) => {
+                    const provider = providers?.find(
+                      (p) => p.id === providerId,
+                    );
+                    return (
+                      <DropdownMenuSub key={providerId}>
+                        <DropdownMenuSubTrigger className="w-full font-normal">
+                          <div className="flex flex-col items-start w-full">
+                            <div className="flex items-center gap-2">
+                              <span>{provider?.name ?? providerId}</span>
+                              {provider?.type === "custom" && (
+                                <span className="text-[10px] bg-amber-500/20 text-amber-700 px-1.5 py-0.5 rounded-full font-medium">
+                                  Custom
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-xs text-muted-foreground">
+                              {models.length} models
+                            </span>
+                          </div>
+                        </DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent className="w-56">
+                          <DropdownMenuLabel>
+                            {(provider?.name ?? providerId) + " Models"}
+                          </DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          {models.map((model) => (
+                            <Tooltip key={`${providerId}-${model.apiName}`}>
+                              <TooltipTrigger asChild>
+                                <DropdownMenuItem
+                                  className={
+                                    selectedModel.provider === providerId &&
+                                    selectedModel.name === model.apiName
+                                      ? "bg-secondary"
+                                      : ""
+                                  }
+                                  onClick={() => {
+                                    const customModelId =
+                                      model.type === "custom"
+                                        ? model.id
+                                        : undefined;
+                                    onModelSelect({
+                                      name: model.apiName,
+                                      provider: providerId,
+                                      customModelId,
+                                    });
+                                    setOpen(false);
+                                  }}
+                                >
+                                  <div className="flex justify-between items-start w-full">
+                                    <span>{model.displayName}</span>
+                                    {model.tag && (
+                                      <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">
+                                        {model.tag}
+                                      </span>
+                                    )}
+                                  </div>
+                                </DropdownMenuItem>
+                              </TooltipTrigger>
+                              <TooltipContent side="right">
+                                {model.description}
+                              </TooltipContent>
+                            </Tooltip>
+                          ))}
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
+                    );
+                  })}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )}
           </>
         )}
 

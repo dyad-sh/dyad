@@ -1,8 +1,7 @@
 {
   "body": {
-    "model": "gpt-4.1",
-    "max_tokens": 32768,
-    "temperature": 0,
+    "model": "gpt-5",
+    "temperature": 1,
     "messages": [
       {
         "role": "system",

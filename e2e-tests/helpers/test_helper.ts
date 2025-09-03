@@ -703,6 +703,7 @@ export class PageObject {
 
   async selectTestAzureModel() {
     await this.page.getByRole("button", { name: "Model: Auto" }).click();
+    await this.page.getByText("Other AI providers").click();
     await this.page.getByText("Azure OpenAI", { exact: true }).click();
     await this.page.getByText("GPT-5", { exact: true }).click();
   }

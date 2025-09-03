@@ -15,6 +15,7 @@ export interface ModelOption {
   name: string;
   displayName: string;
   description: string;
+  dollarSigns?: number;
   temperature?: number;
   tag?: string;
   maxOutputTokens?: number;
@@ -33,6 +34,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       contextWindow: 400_000,
       // Requires temperature to be default value (1)
       temperature: 1,
+      dollarSigns: 3,
     },
     // https://platform.openai.com/docs/models/gpt-5-mini
     {
@@ -44,6 +46,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       contextWindow: 400_000,
       // Requires temperature to be default value (1)
       temperature: 1,
+      dollarSigns: 2,
     },
     // https://platform.openai.com/docs/models/gpt-5-nano
     {
@@ -55,34 +58,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       contextWindow: 400_000,
       // Requires temperature to be default value (1)
       temperature: 1,
-    },
-    // https://platform.openai.com/docs/models/gpt-4.1
-    {
-      name: "gpt-4.1",
-      displayName: "GPT 4.1",
-      description: "OpenAI's flagship model",
-      maxOutputTokens: 32_768,
-      contextWindow: 1_047_576,
-      temperature: 0,
-    },
-    // https://platform.openai.com/docs/models/gpt-4.1-mini
-    {
-      name: "gpt-4.1-mini",
-      displayName: "GPT 4.1 Mini",
-      description: "OpenAI's lightweight, but intelligent model",
-      maxOutputTokens: 32_768,
-      contextWindow: 1_047_576,
-      temperature: 0,
-    },
-    // https://platform.openai.com/docs/models/o3-mini
-    {
-      name: "o3-mini",
-      displayName: "o3 mini",
-      description: "Reasoning model",
-      // See o4-mini comment below for why we set this to 32k
-      maxOutputTokens: 32_000,
-      contextWindow: 200_000,
-      temperature: 0,
+      dollarSigns: 1,
     },
     // https://platform.openai.com/docs/models/o4-mini
     {
@@ -95,6 +71,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       maxOutputTokens: 32_000,
       contextWindow: 200_000,
       temperature: 0,
+      dollarSigns: 2,
     },
   ],
   // https://docs.anthropic.com/en/docs/about-claude/models/all-models#model-comparison-table
@@ -107,6 +84,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       maxOutputTokens: 16_000,
       contextWindow: 200_000,
       temperature: 0,
+      dollarSigns: 4,
     },
     {
       name: "claude-3-7-sonnet-latest",
@@ -119,6 +97,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       maxOutputTokens: 16_000,
       contextWindow: 200_000,
       temperature: 0,
+      dollarSigns: 4,
     },
     {
       name: "claude-3-5-sonnet-20241022",
@@ -127,6 +106,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       maxOutputTokens: 8_000,
       contextWindow: 200_000,
       temperature: 0,
+      dollarSigns: 4,
     },
     {
       name: "claude-3-5-haiku-20241022",
@@ -135,6 +115,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       maxOutputTokens: 8_000,
       contextWindow: 200_000,
       temperature: 0,
+      dollarSigns: 2,
     },
   ],
   google: [
@@ -148,6 +129,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       // Gemini context window = input token + output token
       contextWindow: 1_048_576,
       temperature: 0,
+      dollarSigns: 3,
     },
     // https://ai.google.dev/gemini-api/docs/models#gemini-2.5-flash-preview
     {
@@ -159,6 +141,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       // Gemini context window = input token + output token
       contextWindow: 1_048_576,
       temperature: 0,
+      dollarSigns: 2,
     },
   ],
   openrouter: [
@@ -169,6 +152,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       maxOutputTokens: 32_000,
       contextWindow: 262_000,
       temperature: 0,
+      dollarSigns: 2,
     },
     // https://openrouter.ai/deepseek/deepseek-chat-v3-0324:free
     {
@@ -178,6 +162,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       maxOutputTokens: 32_000,
       contextWindow: 128_000,
       temperature: 0,
+      dollarSigns: 2,
     },
     // https://openrouter.ai/moonshotai/kimi-k2
     {
@@ -187,6 +172,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       maxOutputTokens: 32_000,
       contextWindow: 131_000,
       temperature: 0,
+      dollarSigns: 2,
     },
     {
       name: "deepseek/deepseek-r1-0528",
@@ -195,6 +181,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       maxOutputTokens: 32_000,
       contextWindow: 128_000,
       temperature: 0,
+      dollarSigns: 2,
     },
   ],
   auto: [

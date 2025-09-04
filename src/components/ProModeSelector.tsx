@@ -36,7 +36,7 @@ export function ProModeSelector() {
     } else if (newValue === "conservative") {
       updateSettings({
         enableProSmartFilesContextMode: true,
-        proSmartContextOption: undefined, // Conservative is the default when enabled but no option set
+        proSmartContextOption: "conservative",
       });
     } else if (newValue === "balanced") {
       updateSettings({
@@ -197,8 +197,12 @@ function SmartContextSelector({
     if (settings?.proSmartContextOption === "balanced") {
       return "balanced";
     }
-    // If enabled but no option set (undefined/falsey), it's conservative
-    return "conservative";
+    if (settings?.proSmartContextOption === "conservative") {
+      return "conservative";
+    }
+    // Keep in sync with getModelClient in get_model_client.ts
+    // If enabled but no option set (undefined/falsey), it's balanced
+    return "balanced";
   };
 
   const currentValue = getCurrentValue();

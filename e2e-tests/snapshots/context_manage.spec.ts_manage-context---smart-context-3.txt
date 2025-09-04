@@ -56,7 +56,8 @@
         }
       ],
       "enable_lazy_edits": true,
-      "enable_smart_files_context": false
+      "enable_smart_files_context": false,
+      "smart_context_mode": "balanced"
     }
   },
   "headers": {

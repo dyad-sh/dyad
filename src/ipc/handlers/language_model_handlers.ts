@@ -250,9 +250,9 @@ export function registerLanguageModelHandlers() {
       }
 
       // Use a transaction to ensure atomicity
-      await db.transaction(async (tx) => {
+      db.transaction((tx) => {
         // 1. Delete associated models
-        const deleteModelsResult = await tx
+        const deleteModelsResult = tx
           .delete(languageModelsSchema)
           .where(eq(languageModelsSchema.customProviderId, providerId))
           .run();
@@ -261,7 +261,7 @@ export function registerLanguageModelHandlers() {
         );
 
         // 2. Delete the provider
-        const deleteProviderResult = await tx
+        const deleteProviderResult = tx
           .delete(languageModelProvidersSchema)
           .where(eq(languageModelProvidersSchema.id, providerId))
           .run();

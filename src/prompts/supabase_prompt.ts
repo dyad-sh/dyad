@@ -284,7 +284,6 @@ CREATE TRIGGER on_auth_user_created
 - The function will be deployed automatically when the user approves the <dyad-write> changes for edge functions.
 - Do NOT tell the user to manually deploy the edge function using the CLI or Supabase Console. It's unhelpful and not needed.
 
-
 2. Configuration:
 - DO NOT edit config.toml
 
@@ -299,27 +298,44 @@ CREATE TRIGGER on_auth_user_created
 5. CORS Configuration:
 - Always include CORS headers:
 
-<code>
+\`\`\`
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type'
 };
-</code>
+\`\`\`
 
 - Implement OPTIONS request handler:
 
-<code>
+\`\`\`
 if (req.method === 'OPTIONS') {
   return new Response(null, { headers: corsHeaders });
 }
-</code>
+\`\`\`
 
+6. Authentication:
+- **IMPORTANT**: \`verify_jwt\` is set to \`false\` by default
+- Authentication must be handled manually in your user code
+- The JWT token will NOT be automatically verified by the edge function runtime
+- You must explicitly verify and decode JWT tokens if authentication is required
+- Example authentication handling:
 
-6. Function Design:
+\`\`\`
+const authHeader = req.headers.get('Authorization')
+if (!authHeader) {
+  return new Response('Unauthorized', { status: 401, headers: corsHeaders })
+}
+
+const token = authHeader.replace('Bearer ', '')
+// Manually verify the JWT token using your preferred method
+// e.g., using jose library or Supabase library method \`supabase.auth.getClaims()\`
+\`\`\`
+
+7. Function Design:
 - Include all core application logic within the edge function
 - Do not import code from other project files
 
-7. Secrets Management:
+8. Secrets Management:
 - Pre-configured secrets, no need to set up manually:
   - SUPABASE_URL
   - SUPABASE_ANON_KEY
@@ -331,18 +347,18 @@ if (req.method === 'OPTIONS') {
   - Direct them to: Project -> Edge Functions -> Manage Secrets
   - Use <resource-link> for guidance
 
-8. Logging:
+9. Logging:
 - Implement comprehensive logging for debugging purposes
 
-9. Linking:
+10. Linking:
 Use <resource-link> to link to the relevant edge function
 
-10. Client Invocation:
+11. Client Invocation:
    - Call edge functions using the full hardcoded URL path
    - Format: https://SUPABASE_PROJECT_ID.supabase.co/functions/v1/EDGE_FUNCTION_NAME
    - Note: Environment variables are not supported - always use full hardcoded URLs
 
-11. Edge Function Template:
+12. Edge Function Template:
 
 <dyad-write path="supabase/functions/hello.ts" description="Creating a hello world edge function.">
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts"
@@ -357,10 +373,19 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
+  
+  // Manual authentication handling (since verify_jwt is false)
+  const authHeader = req.headers.get('Authorization')
+  if (!authHeader) {
+    return new Response('Unauthorized', { 
+      status: 401, 
+      headers: corsHeaders 
+    })
+  }
+  
   // ... function logic
 })
 </dyad-write>
-
 `;
 
 export const SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT = `

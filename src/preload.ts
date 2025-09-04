@@ -106,6 +106,14 @@ const validInvokeChannels = [
   "restart-dyad",
   "get-templates",
   "portal:migrate-create",
+  // Help bot
+  "help:chat:start",
+  "help:chat:cancel",
+  // Prompts
+  "prompts:list",
+  "prompts:create",
+  "prompts:update",
+  "prompts:delete",
   // Test-only channels
   // These should ALWAYS be guarded with IS_TEST_BUILD in the main process.
   // We can't detect with IS_TEST_BUILD in the preload script because
@@ -123,6 +131,10 @@ const validReceiveChannels = [
   "github:flow-success",
   "github:flow-error",
   "deep-link-received",
+  // Help bot
+  "help:chat:response:chunk",
+  "help:chat:response:end",
+  "help:chat:response:error",
 ] as const;
 
 type ValidInvokeChannel = (typeof validInvokeChannels)[number];

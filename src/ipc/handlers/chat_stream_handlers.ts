@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { ipcMain } from "electron";
 import {
-  CoreMessage,
+  ModelMessage,
   TextPart,
   ImagePart,
   streamText,
@@ -38,7 +38,7 @@ import * as path from "path";
 import * as os from "os";
 import * as crypto from "crypto";
 import { readFile, writeFile, unlink } from "fs/promises";
-import { getMaxTokens } from "../utils/token_utils";
+import { getMaxTokens, getTemperature } from "../utils/token_utils";
 import { MAX_CHAT_TURNS_IN_CONTEXT } from "@/constants/settings_constants";
 import { validateChatContext } from "../utils/context_paths_utils";
 import { GoogleGenerativeAIProviderOptions } from "@ai-sdk/google";
@@ -58,6 +58,12 @@ import {
 } from "../utils/dyad_tag_parser";
 import { fileExists } from "../utils/file_utils";
 import { FileUploadsState } from "../utils/file_uploads_state";
+import { OpenAIResponsesProviderOptions } from "@ai-sdk/openai";
+import { extractMentionedAppsCodebases } from "../utils/mention_apps";
+import { parseAppMentions } from "@/shared/parse_mention_apps";
+import { prompts as promptsTable } from "../../db/schema";
+import { inArray } from "drizzle-orm";
+import { replacePromptReference } from "../utils/replacePromptReference";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
@@ -128,14 +134,14 @@ async function processStreamChunks({
         chunk = "</think>";
         inThinkingBlock = false;
       }
-      chunk += part.textDelta;
-    } else if (part.type === "reasoning") {
+      chunk += part.text;
+    } else if (part.type === "reasoning-delta") {
       if (!inThinkingBlock) {
         chunk = "<think>";
         inThinkingBlock = true;
       }
 
-      chunk += escapeDyadTags(part.textDelta);
+      chunk += escapeDyadTags(part.text);
     }
 
     if (!chunk) {
@@ -271,6 +277,26 @@ export function registerChatStreamHandlers() {
 
       // Add user message to database with attachment info
       let userPrompt = req.prompt + (attachmentInfo ? attachmentInfo : "");
+      // Inline referenced prompt contents for mentions like @prompt:<id>
+      try {
+        const matches = Array.from(userPrompt.matchAll(/@prompt:(\d+)/g));
+        if (matches.length > 0) {
+          const ids = Array.from(new Set(matches.map((m) => Number(m[1]))));
+          const referenced = await db
+            .select()
+            .from(promptsTable)
+            .where(inArray(promptsTable.id, ids));
+          if (referenced.length > 0) {
+            const promptsMap: Record<number, string> = {};
+            for (const p of referenced) {
+              promptsMap[p.id] = p.content;
+            }
+            userPrompt = replacePromptReference(userPrompt, promptsMap);
+          }
+        }
+      } catch (e) {
+        logger.error("Failed to inline referenced prompts:", e);
+      }
       if (req.selectedComponent) {
         let componentSnippet = "[component snippet not available]";
         try {
@@ -379,10 +405,37 @@ ${componentSnippet}
             }
           : validateChatContext(updatedChat.app.chatContext);
 
+        // Parse app mentions from the prompt
+        const mentionedAppNames = parseAppMentions(req.prompt);
+
+        // Extract codebase for current app
         const { formattedOutput: codebaseInfo, files } = await extractCodebase({
           appPath,
           chatContext,
         });
+
+        // Extract codebases for mentioned apps
+        const mentionedAppsCodebases = await extractMentionedAppsCodebases(
+          mentionedAppNames,
+          updatedChat.app.id, // Exclude current app
+        );
+
+        // Combine current app codebase with mentioned apps' codebases
+        let otherAppsCodebaseInfo = "";
+        if (mentionedAppsCodebases.length > 0) {
+          const mentionedAppsSection = mentionedAppsCodebases
+            .map(
+              ({ appName, codebaseInfo }) =>
+                `\n\n=== Referenced App: ${appName} ===\n${codebaseInfo}`,
+            )
+            .join("");
+
+          otherAppsCodebaseInfo = mentionedAppsSection;
+
+          logger.log(
+            `Added ${mentionedAppsCodebases.length} mentioned app codebases`,
+          );
+        }
 
         logger.log(`Extracted codebase information from ${appPath}`);
         logger.log(
@@ -445,6 +498,15 @@ ${componentSnippet}
           aiRules: await readAiRules(getDyadAppPath(updatedChat.app.path)),
           chatMode: settings.selectedChatMode,
         });
+
+        // Add information about mentioned apps if any
+        if (otherAppsCodebaseInfo) {
+          const mentionedAppsList = mentionedAppsCodebases
+            .map(({ appName }) => appName)
+            .join(", ");
+
+          systemPrompt += `\n\n# Referenced Apps\nThe user has mentioned the following apps in their prompt: ${mentionedAppsList}. Their codebases have been included in the context for your reference. When referring to these apps, you can understand their structure and code to provide better assistance, however you should NOT edit the files in these referenced apps. The referenced apps are NOT part of the current app and are READ-ONLY.`;
+        }
         if (
           updatedChat.app?.supabaseProjectId &&
           settings.supabase?.accessToken?.value
@@ -528,8 +590,22 @@ This conversation includes one or more image attachments. When the user uploads 
               },
             ] as const);
 
-        let chatMessages: CoreMessage[] = [
+        const otherCodebasePrefix = otherAppsCodebaseInfo
+          ? ([
+              {
+                role: "user",
+                content: createOtherAppsCodebasePrompt(otherAppsCodebaseInfo),
+              },
+              {
+                role: "assistant",
+                content: "OK.",
+              },
+            ] as const)
+          : [];
+
+        let chatMessages: ModelMessage[] = [
           ...codebasePrefix,
+          ...otherCodebasePrefix,
           ...limitedMessageHistory.map((msg) => ({
             role: msg.role as "user" | "assistant" | "system",
             // Why remove thinking tags?
@@ -571,7 +647,7 @@ This conversation includes one or more image attachments. When the user uploads 
               content:
                 "Summarize the following chat: " +
                 formatMessagesForSummary(previousChat?.messages ?? []),
-            } satisfies CoreMessage,
+            } satisfies ModelMessage,
           ];
         }
 
@@ -579,7 +655,7 @@ This conversation includes one or more image attachments. When the user uploads 
           chatMessages,
           modelClient,
         }: {
-          chatMessages: CoreMessage[];
+          chatMessages: ModelMessage[];
           modelClient: ModelClient;
         }) => {
           const dyadRequestId = uuidv4();
@@ -592,8 +668,8 @@ This conversation includes one or more image attachments. When the user uploads 
             logger.log("sending AI request");
           }
           return streamText({
-            maxTokens: await getMaxTokens(settings.selectedModel),
-            temperature: 0,
+            maxOutputTokens: await getMaxTokens(settings.selectedModel),
+            temperature: await getTemperature(settings.selectedModel),
             maxRetries: 2,
             model: modelClient.model,
             providerOptions: {
@@ -609,6 +685,9 @@ This conversation includes one or more image attachments. When the user uploads 
                   includeThoughts: true,
                 },
               } satisfies GoogleGenerativeAIProviderOptions,
+              openai: {
+                reasoningSummary: "auto",
+              } satisfies OpenAIResponsesProviderOptions,
             },
             system: systemPrompt,
             messages: chatMessages.filter((m) => m.content),
@@ -719,7 +798,7 @@ This conversation includes one or more image attachments. When the user uploads 
                   break;
                 }
                 if (part.type !== "text-delta") continue; // ignore reasoning for continuation
-                fullResponse += part.textDelta;
+                fullResponse += part.text;
                 fullResponse = cleanFullResponse(fullResponse);
                 fullResponse = await processResponseChunkUpdate({
                   fullResponse,
@@ -746,7 +825,7 @@ This conversation includes one or more image attachments. When the user uploads 
 
               let autoFixAttempts = 0;
               const originalFullResponse = fullResponse;
-              const previousAttempts: CoreMessage[] = [];
+              const previousAttempts: ModelMessage[] = [];
               while (
                 problemReport.problems.length > 0 &&
                 autoFixAttempts < 2 &&
@@ -1082,9 +1161,9 @@ async function replaceTextAttachmentWithContent(
 
 // Helper function to convert traditional message to one with proper image attachments
 async function prepareMessageWithAttachments(
-  message: CoreMessage,
+  message: ModelMessage,
   attachmentPaths: string[],
-): Promise<CoreMessage> {
+): Promise<ModelMessage> {
   let textContent = message.content;
   // Get the original text content
   if (typeof textContent !== "string") {
@@ -1196,4 +1275,14 @@ function escapeDyadTags(text: string): string {
 const CODEBASE_PROMPT_PREFIX = "This is my codebase.";
 function createCodebasePrompt(codebaseInfo: string): string {
   return `${CODEBASE_PROMPT_PREFIX} ${codebaseInfo}`;
+}
+
+function createOtherAppsCodebasePrompt(otherAppsCodebaseInfo: string): string {
+  return `
+# Referenced Apps
+
+These are the other apps that I've mentioned in my prompt. These other apps' codebases are READ-ONLY.
+
+${otherAppsCodebaseInfo}
+`;
 }

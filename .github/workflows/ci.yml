@@ -24,12 +24,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os:
-          [
-            { name: "windows-arm", image: "windows-11-arm" },
+        os: [
+            # npm install is very slow
+            # { name: "windows-arm", image: "windows-11-arm" },
             { name: "windows", image: "windows-latest" },
             { name: "macos", image: "macos-latest" },
           ]
+        shard: [1, 2, 3, 4]
+        shardTotal: [4]
     runs-on: ${{ matrix.os.image }}
     steps:
       - name: Checkout code
@@ -44,15 +46,18 @@ jobs:
         run: npm ci --no-audit --no-fund --progress=false
       - name: Presubmit check (e.g. lint, format)
         # do not run this on Windows (it fails and not necessary)
-        if: contains(matrix.os.name, 'macos')
+        # Only run on shard 1 to avoid redundant execution
+        if: contains(matrix.os.name, 'macos') && matrix.shard == 1
         run: npm run presubmit
       - name: Type-checking
         # do not run this on windows (it's redunant)
-        if: contains(matrix.os.name, 'macos')
+        # Only run on shard 1 to avoid redundant execution
+        if: contains(matrix.os.name, 'macos') && matrix.shard == 1
         run: npm run ts
       - name: Unit tests
         # do not run this on windows (it's redunant)
-        if: contains(matrix.os.name, 'macos')
+        # Only run on shard 1 to avoid redundant execution
+        if: contains(matrix.os.name, 'macos') && matrix.shard == 1
         run: npm run test
       - name: Setup pnpm
         uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
@@ -80,22 +85,65 @@ jobs:
       - name: Install Chromium browser for Playwright
         run: npx playwright install chromium --with-deps
       - name: Build
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
         run: npm run pre:e2e
       - name: Prep test server
         run: cd testing/fake-llm-server && npm install && npm run build && cd -
-      - name: E2E tests
+      - name: E2E tests (Shard ${{ matrix.shard }}/4)
         # You can add debug logging to make it easier to see what's failing
         # by adding "DEBUG=pw:browser" in front.
-        run: DEBUG=pw:browser npm run e2e
-      - uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
-        if: failure()
+        # Use blob reporter for sharding and merge capabilities
+        run: DEBUG=pw:browser npx playwright test --shard=${{ matrix.shard }}/${{ matrix.shardTotal }}
+      - name: Upload shard results
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: ${{ !cancelled() }}
         with:
-          name: playwright-report-${{ matrix.os.name }}
-          path: playwright-report/
-          retention-days: 3
-      - uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
-        if: failure()
+          name: blob-report-${{ matrix.os.name }}-shard-${{ matrix.shard }}
+          path: blob-report
+          retention-days: 1
+
+  merge-reports:
+    # Merge reports after playwright-tests, even if some shards have failed
+    if: ${{ !cancelled() }}
+    needs: [test]
+
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          name: test-results-${{ matrix.os.name }}
-          path: test-results/
+          node-version: lts/*
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund --progress=false
+
+      - name: Download blob reports from GitHub Actions Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-blob-reports
+          pattern: blob-report-*
+          merge-multiple: true
+
+      - name: Debug - List downloaded blob reports
+        run: |
+          echo "Contents of all-blob-reports directory:"
+          ls -la all-blob-reports/
+          echo "File sizes and details:"
+          find all-blob-reports/ -type f -exec ls -lh {} \; || echo "No files found"
+
+      - name: Merge into HTML Report
+        run: PLAYWRIGHT_HTML_OUTPUT_DIR=playwright-report npx playwright merge-reports --config=merge.config.ts ./all-blob-reports
+
+      - name: Debug - List playwright-report contents
+        run: |
+          echo "Contents of playwright-report directory:"
+          ls -la playwright-report/ || echo "playwright-report directory does not exist"
+          echo "Current directory contents:"
+          ls -la
+
+      - name: Upload HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: html-report--attempt-${{ github.run_attempt }}
+          path: playwright-report
           retention-days: 3

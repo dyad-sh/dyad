@@ -5,7 +5,12 @@ import {
 } from "./DyadMarkdownParser";
 import { motion } from "framer-motion";
 import { useStreamChat } from "@/hooks/useStreamChat";
-import { CheckCircle, XCircle } from "lucide-react";
+import { CheckCircle, XCircle, Clock, GitCommit } from "lucide-react";
+import { formatDistanceToNow, format } from "date-fns";
+import { useVersions } from "@/hooks/useVersions";
+import { useAtomValue } from "jotai";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { useMemo } from "react";
 
 interface ChatMessageProps {
   message: Message;
@@ -14,13 +19,46 @@ interface ChatMessageProps {
 
 const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
   const { isStreaming } = useStreamChat();
+  const appId = useAtomValue(selectedAppIdAtom);
+  const { versions: liveVersions } = useVersions(appId);
+  // Find the version that was active when this message was sent
+  const messageVersion = useMemo(() => {
+    if (
+      message.role === "assistant" &&
+      message.commitHash &&
+      liveVersions.length
+    ) {
+      return (
+        liveVersions.find(
+          (version) =>
+            message.commitHash &&
+            version.oid.slice(0, 7) === message.commitHash.slice(0, 7),
+        ) || null
+      );
+    }
+    return null;
+  }, [message.commitHash, message.role, liveVersions]);
+
+  // Format the message timestamp
+  const formatTimestamp = (timestamp: string | Date) => {
+    const now = new Date();
+    const messageTime = new Date(timestamp);
+    const diffInHours =
+      (now.getTime() - messageTime.getTime()) / (1000 * 60 * 60);
+    if (diffInHours < 24) {
+      return formatDistanceToNow(messageTime, { addSuffix: true });
+    } else {
+      return format(messageTime, "MMM d, yyyy 'at' h:mm a");
+    }
+  };
+
   return (
     <div
       className={`flex ${
         message.role === "assistant" ? "justify-start" : "justify-end"
       }`}
     >
-      <div className={`mt-2 w-full max-w-3xl mx-auto`}>
+      <div className={`mt-2 w-full max-w-3xl mx-auto group`}>
         <div
           className={`rounded-lg p-2 ${
             message.role === "assistant" ? "" : "ml-24 bg-(--sidebar-accent)"
@@ -66,7 +104,7 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
             </div>
           ) : (
             <div
-              className="prose dark:prose-invert prose-headings:mb-2 prose-p:my-1 prose-pre:my-0 max-w-none"
+              className="prose dark:prose-invert prose-headings:mb-2 prose-p:my-1 prose-pre:my-0 max-w-none break-words"
               suppressHydrationWarning
             >
               {message.role === "assistant" ? (
@@ -101,6 +139,29 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
             </div>
           )}
         </div>
+        {/* Timestamp and commit info for assistant messages - only visible on hover */}
+        {message.role === "assistant" && message.createdAt && (
+          <div className="mt-1 flex items-center justify-start space-x-2 text-xs text-gray-500 dark:text-gray-400 ">
+            <div className="flex items-center space-x-1">
+              <Clock className="h-3 w-3" />
+              <span>{formatTimestamp(message.createdAt)}</span>
+            </div>
+            {messageVersion && messageVersion.message && (
+              <div className="flex items-center space-x-1">
+                <GitCommit className="h-3 w-3" />
+                {messageVersion && messageVersion.message && (
+                  <span className="max-w-70 truncate font-medium">
+                    {
+                      messageVersion.message
+                        .replace(/^\[dyad\]\s*/i, "")
+                        .split("\n")[0]
+                    }
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,0 +1,190 @@
+===
+role: system
+message: 
+${BUILD_SYSTEM_PREFIX}
+
+# Tech Stack
+
+- You are building a React application.
+- Use TypeScript.
+- Use React Router. KEEP the routes in src/App.tsx
+- Always put source code in the src folder.
+- Put pages into src/pages/
+- Put components into src/components/
+- The main page (default page) is src/pages/Index.tsx
+- UPDATE the main page to include the new components. OTHERWISE, the user can NOT see any components!
+- ALWAYS try to use the shadcn/ui library.
+- Tailwind CSS: always use Tailwind CSS for styling components. Utilize Tailwind classes extensively for layout, spacing, colors, and other design aspects.
+
+Available packages and libraries:
+
+- The lucide-react package is installed for icons.
+- You ALREADY have ALL the shadcn/ui components and their dependencies installed. So you don't need to install them again.
+- You have ALL the necessary Radix UI components installed.
+- Use prebuilt components from the shadcn/ui library after importing them. Note that these files shouldn't be edited, so make new components if you need to change them.
+
+
+${BUILD_SYSTEM_POSTFIX}
+
+# Referenced Apps
+The user has mentioned the following apps in their prompt: minimal-with-ai-rules. Their codebases have been included in the context for your reference. When referring to these apps, you can understand their structure and code to provide better assistance, however you should NOT edit the files in these referenced apps. The referenced apps are NOT part of the current app and are READ-ONLY.
+
+
+If the user wants to use supabase or do something that requires auth, database or server-side functions (e.g. loading API keys, secrets),
+tell them that they need to add supabase to their app.
+
+The following response will show a button that allows the user to add supabase to their app.
+
+<dyad-add-integration provider="supabase"></dyad-add-integration>
+
+# Examples
+
+## Example 1: User wants to use Supabase
+
+### User prompt
+
+I want to use supabase in my app.
+
+### Assistant response
+
+You need to first add Supabase to your app.
+
+<dyad-add-integration provider="supabase"></dyad-add-integration>
+
+## Example 2: User wants to add auth to their app
+
+### User prompt
+
+I want to add auth to my app.
+
+### Assistant response
+
+You need to first add Supabase to your app and then we can add auth.
+
+<dyad-add-integration provider="supabase"></dyad-add-integration>
+
+
+===
+role: user
+message: 
+# Referenced Apps
+
+These are the other apps that I've mentioned in my prompt. These other apps' codebases are READ-ONLY.
+
+
+
+=== Referenced App: minimal-with-ai-rules ===
+<dyad-file path=".gitignore">
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+</dyad-file>
+
+<dyad-file path="AI_RULES.md">
+[[beginning of AI_RULES.md]]
+There's already AI rules...
+[[end of AI_RULES.md]]
+
+</dyad-file>
+
+<dyad-file path="index.html">
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>dyad-generated-app</title>
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
+</dyad-file>
+
+<dyad-file path="src/App.tsx">
+const App = () => <div>Minimal imported app</div>;
+
+export default App;
+
+</dyad-file>
+
+<dyad-file path="src/main.tsx">
+import { createRoot } from "react-dom/client";
+import App from "./App.tsx";
+
+createRoot(document.getElementById("root")!).render(<App />);
+
+</dyad-file>
+
+<dyad-file path="src/vite-env.d.ts">
+/// <reference types="vite/client" />
+
+</dyad-file>
+
+<dyad-file path="tsconfig.app.json">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="tsconfig.json">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="tsconfig.node.json">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="vite.config.ts">
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react-swc";
+import path from "path";
+
+export default defineConfig(() => ({
+  server: {
+    host: "::",
+    port: 8080,
+  },
+  plugins: [react()],
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+    },
+  },
+}));
+
+</dyad-file>
+
+
+
+
+===
+role: assistant
+message: OK.
+
+===
+role: user
+message: [dump] @app:minimal-with-ai-rules hi

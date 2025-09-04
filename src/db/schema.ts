@@ -2,6 +2,19 @@ import { sql } from "drizzle-orm";
 import { integer, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
 import { relations } from "drizzle-orm";
 
+export const prompts = sqliteTable("prompts", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  title: text("title").notNull(),
+  description: text("description"),
+  content: text("content").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
 export const apps = sqliteTable("apps", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
@@ -23,6 +36,8 @@ export const apps = sqliteTable("apps", {
   vercelProjectName: text("vercel_project_name"),
   vercelTeamId: text("vercel_team_id"),
   vercelDeploymentUrl: text("vercel_deployment_url"),
+  installCommand: text("install_command"),
+  startCommand: text("start_command"),
   chatContext: text("chat_context", { mode: "json" }),
 });
 

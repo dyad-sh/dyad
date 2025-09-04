@@ -1,9 +1,8 @@
-import { LanguageModelV1 } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI as createGoogle } from "@ai-sdk/google";
 import { createAnthropic } from "@ai-sdk/anthropic";
+import { azure } from "@ai-sdk/azure";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { createOllama } from "ollama-ai-provider";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LargeLanguageModel, UserSettings } from "../../lib/schemas";
 import { getEnvVar } from "./read_env";
@@ -13,6 +12,9 @@ import { LanguageModelProvider } from "../ipc_types";
 import { createDyadEngine } from "./llm_engine_provider";
 
 import { LM_STUDIO_BASE_URL } from "./lm_studio_utils";
+import { LanguageModel } from "ai";
+import { createOllamaProvider } from "./ollama_provider";
+import { getOllamaApiUrl } from "../handlers/local_model_ollama_handler";
 
 const dyadEngineUrl = process.env.DYAD_ENGINE_URL;
 const dyadGatewayUrl = process.env.DYAD_GATEWAY_URL;
@@ -33,7 +35,7 @@ const AUTO_MODELS = [
 ];
 
 export interface ModelClient {
-  model: LanguageModelV1;
+  model: LanguageModel;
   builtinProviderId?: string;
 }
 
@@ -83,6 +85,7 @@ export async function getModelClient(
                   ? false
                   : settings.enableProLazyEditsMode,
               enableSmartFilesContext: settings.enableProSmartFilesContextMode,
+              smartContextMode: settings.proSmartContextOption,
             },
             settings,
           })
@@ -168,7 +171,10 @@ function getRegularModelClient(
   model: LargeLanguageModel,
   settings: UserSettings,
   providerConfig: LanguageModelProvider,
-) {
+): {
+  modelClient: ModelClient;
+  backupModelClients: ModelClient[];
+} {
   // Get API key for the specific provider
   const apiKey =
     settings.providerSettings?.[model.provider]?.apiKey?.value ||
@@ -183,7 +189,7 @@ function getRegularModelClient(
       const provider = createOpenAI({ apiKey });
       return {
         modelClient: {
-          model: provider(model.name),
+          model: provider.responses(model.name),
           builtinProviderId: providerId,
         },
         backupModelClients: [],
@@ -219,14 +225,60 @@ function getRegularModelClient(
         backupModelClients: [],
       };
     }
+    case "azure": {
+      // Check if we're in e2e testing mode
+      const testAzureBaseUrl = getEnvVar("TEST_AZURE_BASE_URL");
+
+      if (testAzureBaseUrl) {
+        // Use fake server for e2e testing
+        logger.info(`Using test Azure base URL: ${testAzureBaseUrl}`);
+        const provider = createOpenAICompatible({
+          name: "azure-test",
+          baseURL: testAzureBaseUrl,
+          apiKey: "fake-api-key-for-testing",
+        });
+        return {
+          modelClient: {
+            model: provider(model.name),
+            builtinProviderId: providerId,
+          },
+          backupModelClients: [],
+        };
+      }
+
+      // Azure OpenAI requires both API key and resource name as env vars
+      // We use environment variables for Azure configuration
+      const resourceName = getEnvVar("AZURE_RESOURCE_NAME");
+      const azureApiKey = getEnvVar("AZURE_API_KEY");
+
+      if (!resourceName) {
+        throw new Error(
+          "Azure OpenAI resource name is required. Please set the AZURE_RESOURCE_NAME environment variable.",
+        );
+      }
+
+      if (!azureApiKey) {
+        throw new Error(
+          "Azure OpenAI API key is required. Please set the AZURE_API_KEY environment variable.",
+        );
+      }
+
+      // Use the default Azure provider with environment variables
+      // The azure provider automatically picks up AZURE_RESOURCE_NAME and AZURE_API_KEY
+      return {
+        modelClient: {
+          model: azure(model.name),
+          builtinProviderId: providerId,
+        },
+        backupModelClients: [],
+      };
+    }
     case "ollama": {
-      // Ollama typically runs locally and doesn't require an API key in the same way
-      const provider = createOllama({
-        baseURL: process.env.OLLAMA_HOST,
-      });
+      const provider = createOllamaProvider({ baseURL: getOllamaApiUrl() });
       return {
         modelClient: {
           model: provider(model.name),
+          builtinProviderId: providerId,
         },
         backupModelClients: [],
       };

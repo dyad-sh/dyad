@@ -2,9 +2,14 @@
 name: Bug report
 about: Create a report to help us improve
 title: ""
-labels: ""
+labels: "bug"
 assignees: ""
 ---
+
+<!--
+⚠️ IMPORTANT: All sections marked as required must be completed in English.
+Issues that do not meet these requirements will be closed and may need to be resubmitted.
+-->
 
 **Describe the bug**
 A clear and concise description of what the bug is.

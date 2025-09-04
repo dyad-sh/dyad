@@ -1,0 +1,1159 @@
+===
+role: system
+message: 
+${BUILD_SYSTEM_PREFIX}
+
+# Tech Stack
+
+- You are building a React application.
+- Use TypeScript.
+- Use React Router. KEEP the routes in src/App.tsx
+- Always put source code in the src folder.
+- Put pages into src/pages/
+- Put components into src/components/
+- The main page (default page) is src/pages/Index.tsx
+- UPDATE the main page to include the new components. OTHERWISE, the user can NOT see any components!
+- ALWAYS try to use the shadcn/ui library.
+- Tailwind CSS: always use Tailwind CSS for styling components. Utilize Tailwind classes extensively for layout, spacing, colors, and other design aspects.
+
+Available packages and libraries:
+
+- The lucide-react package is installed for icons.
+- You ALREADY have ALL the shadcn/ui components and their dependencies installed. So you don't need to install them again.
+- You have ALL the necessary Radix UI components installed.
+- Use prebuilt components from the shadcn/ui library after importing them. Note that these files shouldn't be edited, so make new components if you need to change them.
+
+
+${BUILD_SYSTEM_POSTFIX}
+
+# Referenced Apps
+The user has mentioned the following apps in their prompt: minimal-with-ai-rules. Their codebases have been included in the context for your reference. When referring to these apps, you can understand their structure and code to provide better assistance, however you should NOT edit the files in these referenced apps. The referenced apps are NOT part of the current app and are READ-ONLY.
+
+
+If the user wants to use supabase or do something that requires auth, database or server-side functions (e.g. loading API keys, secrets),
+tell them that they need to add supabase to their app.
+
+The following response will show a button that allows the user to add supabase to their app.
+
+<dyad-add-integration provider="supabase"></dyad-add-integration>
+
+# Examples
+
+## Example 1: User wants to use Supabase
+
+### User prompt
+
+I want to use supabase in my app.
+
+### Assistant response
+
+You need to first add Supabase to your app.
+
+<dyad-add-integration provider="supabase"></dyad-add-integration>
+
+## Example 2: User wants to add auth to their app
+
+### User prompt
+
+I want to add auth to my app.
+
+### Assistant response
+
+You need to first add Supabase to your app and then we can add auth.
+
+<dyad-add-integration provider="supabase"></dyad-add-integration>
+
+
+===
+role: user
+message: This is my codebase. <dyad-file path=".gitignore">
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+</dyad-file>
+
+<dyad-file path="AI_RULES.md">
+# Tech Stack
+
+- You are building a React application.
+- Use TypeScript.
+- Use React Router. KEEP the routes in src/App.tsx
+- Always put source code in the src folder.
+- Put pages into src/pages/
+- Put components into src/components/
+- The main page (default page) is src/pages/Index.tsx
+- UPDATE the main page to include the new components. OTHERWISE, the user can NOT see any components!
+- ALWAYS try to use the shadcn/ui library.
+- Tailwind CSS: always use Tailwind CSS for styling components. Utilize Tailwind classes extensively for layout, spacing, colors, and other design aspects.
+
+Available packages and libraries:
+
+- The lucide-react package is installed for icons.
+- You ALREADY have ALL the shadcn/ui components and their dependencies installed. So you don't need to install them again.
+- You have ALL the necessary Radix UI components installed.
+- Use prebuilt components from the shadcn/ui library after importing them. Note that these files shouldn't be edited, so make new components if you need to change them.
+
+</dyad-file>
+
+<dyad-file path="components.json">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="eslint.config.js">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="index.html">
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>dyad-generated-app</title>
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
+</dyad-file>
+
+<dyad-file path="postcss.config.js">
+export default {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+};
+
+</dyad-file>
+
+<dyad-file path="public/favicon.ico">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="public/placeholder.svg">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="public/robots.txt">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="README.md">
+# Welcome to your Dyad app
+
+</dyad-file>
+
+<dyad-file path="src/App.css">
+#root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+}
+
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+.logo:hover {
+  filter: drop-shadow(0 0 2em #646cffaa);
+}
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafbaa);
+}
+
+@keyframes logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  a:nth-of-type(2) .logo {
+    animation: logo-spin infinite 20s linear;
+  }
+}
+
+.card {
+  padding: 2em;
+}
+
+.read-the-docs {
+  color: #888;
+}
+
+</dyad-file>
+
+<dyad-file path="src/App.tsx">
+import { Toaster } from "@/components/ui/toaster";
+import { Toaster as Sonner } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import Index from "./pages/Index";
+import NotFound from "./pages/NotFound";
+
+const queryClient = new QueryClient();
+
+const App = () => (
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
+      <Toaster />
+      <Sonner />
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Index />} />
+          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </BrowserRouter>
+    </TooltipProvider>
+  </QueryClientProvider>
+);
+
+export default App;
+
+</dyad-file>
+
+<dyad-file path="src/components/made-with-dyad.tsx">
+export const MadeWithDyad = () => {
+  return (
+    <div className="p-4 text-center">
+      <a
+        href="https://www.dyad.sh/"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+      >
+        Made with Dyad
+      </a>
+    </div>
+  );
+};
+
+</dyad-file>
+
+<dyad-file path="src/components/ui/accordion.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/alert-dialog.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/alert.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/aspect-ratio.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/avatar.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/badge.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/breadcrumb.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/button.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/calendar.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/card.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/carousel.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/chart.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/checkbox.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/collapsible.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/command.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/context-menu.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/dialog.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/drawer.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/dropdown-menu.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/form.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/hover-card.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/input-otp.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/input.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/label.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/menubar.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/navigation-menu.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/pagination.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/popover.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/progress.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/radio-group.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/resizable.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/scroll-area.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/select.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/separator.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/sheet.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/sidebar.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/skeleton.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/slider.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/sonner.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/switch.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/table.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/tabs.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/textarea.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/toast.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/toaster.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/toggle-group.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/toggle.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/tooltip.tsx">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/components/ui/use-toast.ts">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="src/globals.css">
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 0 0% 98%;
+
+    --sidebar-foreground: 240 5.3% 26.1%;
+
+    --sidebar-primary: 240 5.9% 10%;
+
+    --sidebar-primary-foreground: 0 0% 98%;
+
+    --sidebar-accent: 240 4.8% 95.9%;
+
+    --sidebar-accent-foreground: 240 5.9% 10%;
+
+    --sidebar-border: 220 13% 91%;
+
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+</dyad-file>
+
+<dyad-file path="src/hooks/use-mobile.tsx">
+import * as React from "react";
+
+const MOBILE_BREAKPOINT = 768;
+
+export function useIsMobile() {
+  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(
+    undefined,
+  );
+
+  React.useEffect(() => {
+    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
+    const onChange = () => {
+      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+    };
+    mql.addEventListener("change", onChange);
+    setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+
+  return !!isMobile;
+}
+
+</dyad-file>
+
+<dyad-file path="src/hooks/use-toast.ts">
+import * as React from "react";
+
+import type { ToastActionElement, ToastProps } from "@/components/ui/toast";
+
+const TOAST_LIMIT = 1;
+const TOAST_REMOVE_DELAY = 1000000;
+
+type ToasterToast = ToastProps & {
+  id: string;
+  title?: React.ReactNode;
+  description?: React.ReactNode;
+  action?: ToastActionElement;
+};
+
+const _actionTypes = {
+  ADD_TOAST: "ADD_TOAST",
+  UPDATE_TOAST: "UPDATE_TOAST",
+  DISMISS_TOAST: "DISMISS_TOAST",
+  REMOVE_TOAST: "REMOVE_TOAST",
+} as const;
+
+let count = 0;
+
+function genId() {
+  count = (count + 1) % Number.MAX_SAFE_INTEGER;
+  return count.toString();
+}
+
+type ActionType = typeof _actionTypes;
+
+type Action =
+  | {
+      type: ActionType["ADD_TOAST"];
+      toast: ToasterToast;
+    }
+  | {
+      type: ActionType["UPDATE_TOAST"];
+      toast: Partial<ToasterToast>;
+    }
+  | {
+      type: ActionType["DISMISS_TOAST"];
+      toastId?: ToasterToast["id"];
+    }
+  | {
+      type: ActionType["REMOVE_TOAST"];
+      toastId?: ToasterToast["id"];
+    };
+
+interface State {
+  toasts: ToasterToast[];
+}
+
+const toastTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+
+const addToRemoveQueue = (toastId: string) => {
+  if (toastTimeouts.has(toastId)) {
+    return;
+  }
+
+  const timeout = setTimeout(() => {
+    toastTimeouts.delete(toastId);
+    dispatch({
+      type: "REMOVE_TOAST",
+      toastId: toastId,
+    });
+  }, TOAST_REMOVE_DELAY);
+
+  toastTimeouts.set(toastId, timeout);
+};
+
+export const reducer = (state: State, action: Action): State => {
+  switch (action.type) {
+    case "ADD_TOAST":
+      return {
+        ...state,
+        toasts: [action.toast, ...state.toasts].slice(0, TOAST_LIMIT),
+      };
+
+    case "UPDATE_TOAST":
+      return {
+        ...state,
+        toasts: state.toasts.map((t) =>
+          t.id === action.toast.id ? { ...t, ...action.toast } : t,
+        ),
+      };
+
+    case "DISMISS_TOAST": {
+      const { toastId } = action;
+
+      // ! Side effects ! - This could be extracted into a dismissToast() action,
+      // but I'll keep it here for simplicity
+      if (toastId) {
+        addToRemoveQueue(toastId);
+      } else {
+        state.toasts.forEach((toast) => {
+          addToRemoveQueue(toast.id);
+        });
+      }
+
+      return {
+        ...state,
+        toasts: state.toasts.map((t) =>
+          t.id === toastId || toastId === undefined
+            ? {
+                ...t,
+                open: false,
+              }
+            : t,
+        ),
+      };
+    }
+    case "REMOVE_TOAST":
+      if (action.toastId === undefined) {
+        return {
+          ...state,
+          toasts: [],
+        };
+      }
+      return {
+        ...state,
+        toasts: state.toasts.filter((t) => t.id !== action.toastId),
+      };
+  }
+};
+
+const listeners: Array<(state: State) => void> = [];
+
+let memoryState: State = { toasts: [] };
+
+function dispatch(action: Action) {
+  memoryState = reducer(memoryState, action);
+  listeners.forEach((listener) => {
+    listener(memoryState);
+  });
+}
+
+type Toast = Omit<ToasterToast, "id">;
+
+function toast({ ...props }: Toast) {
+  const id = genId();
+
+  const update = (props: ToasterToast) =>
+    dispatch({
+      type: "UPDATE_TOAST",
+      toast: { ...props, id },
+    });
+  const dismiss = () => dispatch({ type: "DISMISS_TOAST", toastId: id });
+
+  dispatch({
+    type: "ADD_TOAST",
+    toast: {
+      ...props,
+      id,
+      open: true,
+      onOpenChange: (open) => {
+        if (!open) dismiss();
+      },
+    },
+  });
+
+  return {
+    id: id,
+    dismiss,
+    update,
+  };
+}
+
+function useToast() {
+  const [state, setState] = React.useState<State>(memoryState);
+
+  React.useEffect(() => {
+    listeners.push(setState);
+    return () => {
+      const index = listeners.indexOf(setState);
+      if (index > -1) {
+        listeners.splice(index, 1);
+      }
+    };
+  }, [state]);
+
+  return {
+    ...state,
+    toast,
+    dismiss: (toastId?: string) => dispatch({ type: "DISMISS_TOAST", toastId }),
+  };
+}
+
+export { useToast, toast };
+
+</dyad-file>
+
+<dyad-file path="src/lib/utils.ts">
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
+</dyad-file>
+
+<dyad-file path="src/main.tsx">
+import { createRoot } from "react-dom/client";
+import App from "./App.tsx";
+import "./globals.css";
+
+createRoot(document.getElementById("root")!).render(<App />);
+
+</dyad-file>
+
+<dyad-file path="src/pages/Index.tsx">
+// Update this page (the content is just a fallback if you fail to update the page)
+
+import { MadeWithDyad } from "@/components/made-with-dyad";
+
+const Index = () => {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-100">
+      <div className="text-center">
+        <h1 className="text-4xl font-bold mb-4">Welcome to Your Blank App</h1>
+        <p className="text-xl text-gray-600">
+          Start building your amazing project here!
+        </p>
+      </div>
+      <MadeWithDyad />
+    </div>
+  );
+};
+
+export default Index;
+
+</dyad-file>
+
+<dyad-file path="src/pages/NotFound.tsx">
+import { useLocation } from "react-router-dom";
+import { useEffect } from "react";
+
+const NotFound = () => {
+  const location = useLocation();
+
+  useEffect(() => {
+    console.error(
+      "404 Error: User attempted to access non-existent route:",
+      location.pathname,
+    );
+  }, [location.pathname]);
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-100">
+      <div className="text-center">
+        <h1 className="text-4xl font-bold mb-4">404</h1>
+        <p className="text-xl text-gray-600 mb-4">Oops! Page not found</p>
+        <a href="/" className="text-blue-500 hover:text-blue-700 underline">
+          Return to Home
+        </a>
+      </div>
+    </div>
+  );
+};
+
+export default NotFound;
+
+</dyad-file>
+
+<dyad-file path="src/utils/toast.ts">
+import { toast } from "sonner";
+
+export const showSuccess = (message: string) => {
+  toast.success(message);
+};
+
+export const showError = (message: string) => {
+  toast.error(message);
+};
+
+export const showLoading = (message: string) => {
+  return toast.loading(message);
+};
+
+export const dismissToast = (toastId: string) => {
+  toast.dismiss(toastId);
+};
+
+</dyad-file>
+
+<dyad-file path="src/vite-env.d.ts">
+/// <reference types="vite/client" />
+
+</dyad-file>
+
+<dyad-file path="tailwind.config.ts">
+import type { Config } from "tailwindcss";
+
+export default {
+  darkMode: ["class"],
+  content: [
+    "./pages/**/*.{ts,tsx}",
+    "./components/**/*.{ts,tsx}",
+    "./app/**/*.{ts,tsx}",
+    "./src/**/*.{ts,tsx}",
+  ],
+  prefix: "",
+  theme: {
+    container: {
+      center: true,
+      padding: "2rem",
+      screens: {
+        "2xl": "1400px",
+      },
+    },
+    extend: {
+      colors: {
+        border: "hsl(var(--border))",
+        input: "hsl(var(--input))",
+        ring: "hsl(var(--ring))",
+        background: "hsl(var(--background))",
+        foreground: "hsl(var(--foreground))",
+        primary: {
+          DEFAULT: "hsl(var(--primary))",
+          foreground: "hsl(var(--primary-foreground))",
+        },
+        secondary: {
+          DEFAULT: "hsl(var(--secondary))",
+          foreground: "hsl(var(--secondary-foreground))",
+        },
+        destructive: {
+          DEFAULT: "hsl(var(--destructive))",
+          foreground: "hsl(var(--destructive-foreground))",
+        },
+        muted: {
+          DEFAULT: "hsl(var(--muted))",
+          foreground: "hsl(var(--muted-foreground))",
+        },
+        accent: {
+          DEFAULT: "hsl(var(--accent))",
+          foreground: "hsl(var(--accent-foreground))",
+        },
+        popover: {
+          DEFAULT: "hsl(var(--popover))",
+          foreground: "hsl(var(--popover-foreground))",
+        },
+        card: {
+          DEFAULT: "hsl(var(--card))",
+          foreground: "hsl(var(--card-foreground))",
+        },
+        sidebar: {
+          DEFAULT: "hsl(var(--sidebar-background))",
+          foreground: "hsl(var(--sidebar-foreground))",
+          primary: "hsl(var(--sidebar-primary))",
+          "primary-foreground": "hsl(var(--sidebar-primary-foreground))",
+          accent: "hsl(var(--sidebar-accent))",
+          "accent-foreground": "hsl(var(--sidebar-accent-foreground))",
+          border: "hsl(var(--sidebar-border))",
+          ring: "hsl(var(--sidebar-ring))",
+        },
+      },
+      borderRadius: {
+        lg: "var(--radius)",
+        md: "calc(var(--radius) - 2px)",
+        sm: "calc(var(--radius) - 4px)",
+      },
+      keyframes: {
+        "accordion-down": {
+          from: {
+            height: "0",
+          },
+          to: {
+            height: "var(--radix-accordion-content-height)",
+          },
+        },
+        "accordion-up": {
+          from: {
+            height: "var(--radix-accordion-content-height)",
+          },
+          to: {
+            height: "0",
+          },
+        },
+      },
+      animation: {
+        "accordion-down": "accordion-down 0.2s ease-out",
+        "accordion-up": "accordion-up 0.2s ease-out",
+      },
+    },
+  },
+  plugins: [require("tailwindcss-animate")],
+} satisfies Config;
+
+</dyad-file>
+
+<dyad-file path="tsconfig.app.json">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="tsconfig.json">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="tsconfig.node.json">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="vercel.json">
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
+
+</dyad-file>
+
+<dyad-file path="vite.config.ts">
+import { defineConfig } from "vite";
+import dyadComponentTagger from "@dyad-sh/react-vite-component-tagger";
+import react from "@vitejs/plugin-react-swc";
+import path from "path";
+
+export default defineConfig(() => ({
+  server: {
+    host: "::",
+    port: 8080,
+  },
+  plugins: [dyadComponentTagger(), react()],
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+    },
+  },
+}));
+
+</dyad-file>
+
+
+
+===
+role: assistant
+message: OK, got it. I'm ready to help
+
+===
+role: user
+message: 
+# Referenced Apps
+
+These are the other apps that I've mentioned in my prompt. These other apps' codebases are READ-ONLY.
+
+
+
+=== Referenced App: minimal-with-ai-rules ===
+<dyad-file path=".gitignore">
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+</dyad-file>
+
+<dyad-file path="AI_RULES.md">
+[[beginning of AI_RULES.md]]
+There's already AI rules...
+[[end of AI_RULES.md]]
+
+</dyad-file>
+
+<dyad-file path="index.html">
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>dyad-generated-app</title>
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
+</dyad-file>
+
+<dyad-file path="src/App.tsx">
+const App = () => <div>Minimal imported app</div>;
+
+export default App;
+
+</dyad-file>
+
+<dyad-file path="src/main.tsx">
+import { createRoot } from "react-dom/client";
+import App from "./App.tsx";
+
+createRoot(document.getElementById("root")!).render(<App />);
+
+</dyad-file>
+
+<dyad-file path="src/vite-env.d.ts">
+/// <reference types="vite/client" />
+
+</dyad-file>
+
+<dyad-file path="tsconfig.app.json">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="tsconfig.json">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="tsconfig.node.json">
+// File contents excluded from context
+</dyad-file>
+
+<dyad-file path="vite.config.ts">
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react-swc";
+import path from "path";
+
+export default defineConfig(() => ({
+  server: {
+    host: "::",
+    port: 8080,
+  },
+  plugins: [react()],
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+    },
+  },
+}));
+
+</dyad-file>
+
+
+
+
+===
+role: assistant
+message: OK.
+
+===
+role: user
+message: [dump] @app:minimal-with-ai-rules hi

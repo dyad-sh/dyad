@@ -48,7 +48,7 @@
         },
         {
           "path": "manual/baz.json",
-          "content": "// File contents excluded from context",
+          "content": "[\"even json is included\"]\n",
           "force": true
         },
         {

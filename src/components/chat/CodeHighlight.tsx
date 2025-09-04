@@ -1,9 +1,16 @@
-import React, { useEffect, useRef, memo, type ReactNode } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  memo,
+  type ReactNode,
+} from "react";
 import { isInlineCode, useShikiHighlighter } from "react-shiki";
 import github from "@shikijs/themes/github-light-default";
 import githubDark from "@shikijs/themes/github-dark-default";
 import type { Element as HastElement } from "hast";
 import { useTheme } from "../../contexts/ThemeContext";
+import { Copy, Check } from "lucide-react";
 
 interface CodeHighlightProps {
   className?: string | undefined;
@@ -16,6 +23,13 @@ export const CodeHighlight = memo(
     const code = String(children).trim();
     const language = className?.match(/language-(\w+)/)?.[1];
     const isInline = node ? isInlineCode(node) : false;
+    //handle copying code to clipboard with transition effect
+    const [copied, setCopied] = useState(false);
+    const handleCopy = () => {
+      navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000); // revert after 2s
+    };
 
     const { isDarkMode } = useTheme();
 
@@ -44,15 +58,24 @@ export const CodeHighlight = memo(
     return !isInline ? (
       <div
         className="shiki not-prose relative [&_pre]:overflow-auto 
-      [&_pre]:rounded-lg [&_pre]:px-6 [&_pre]:py-5"
+      [&_pre]:rounded-lg [&_pre]:px-6 [&_pre]:py-7"
       >
         {language ? (
-          <span
-            className="absolute right-3 top-2 text-xs tracking-tighter
-          text-muted-foreground/85"
-          >
-            {language}
-          </span>
+          <div className="absolute top-2 left-2 right-2 text-xs flex justify-between">
+            <span className="tracking-tighter text-muted-foreground/85">
+              {language}
+            </span>
+            {code && (
+              <button
+                className="mr-2 flex items-center text-xs cursor-pointer"
+                onClick={handleCopy}
+                type="button"
+              >
+                {copied ? <Check size={14} /> : <Copy size={14} />}
+                <span className="ml-1">{copied ? "Copied" : "Copy"}</span>
+              </button>
+            )}
+          </div>
         ) : null}
         {displayedCode}
       </div>

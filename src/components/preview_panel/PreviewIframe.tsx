@@ -23,7 +23,7 @@ import {
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
 
-import { useLoadAppFile } from "@/hooks/useLoadAppFile";
+import { useParseRouter } from "@/hooks/useParseRouter";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -51,10 +51,11 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
   const [isCollapsed, setIsCollapsed] = useState(true);
   const { isStreaming } = useStreamChat();
   if (!error) return null;
+  const isDockerError = error.includes("Cannot connect to the Docker");
 
   const getTruncatedError = () => {
     const firstLine = error.split("\n")[0];
-    const snippetLength = 200;
+    const snippetLength = 250;
     const snippet = error.substring(0, snippetLength);
     return firstLine.length < snippet.length
       ? firstLine
@@ -97,23 +98,27 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
             <Lightbulb size={16} className=" text-red-800 dark:text-red-300" />
           </div>
           <span className="text-sm text-red-700 dark:text-red-200">
-            <span className="font-medium">Tip: </span>Check if restarting the
-            app fixes the error.
+            <span className="font-medium">Tip: </span>
+            {isDockerError
+              ? "Make sure Docker Desktop is running and try restarting the app."
+              : "Check if restarting the app fixes the error."}
           </span>
         </div>
       </div>
 
       {/* AI Fix button at the bottom */}
-      <div className="mt-2 flex justify-end">
-        <button
-          disabled={isStreaming}
-          onClick={onAIFix}
-          className="cursor-pointer flex items-center space-x-1 px-2 py-0.5 bg-red-500 dark:bg-red-600 text-white rounded text-sm hover:bg-red-600 dark:hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Sparkles size={14} />
-          <span>Fix error with AI</span>
-        </button>
-      </div>
+      {!isDockerError && (
+        <div className="mt-2 flex justify-end">
+          <button
+            disabled={isStreaming}
+            onClick={onAIFix}
+            className="cursor-pointer flex items-center space-x-1 px-2 py-0.5 bg-red-500 dark:bg-red-600 text-white rounded text-sm hover:bg-red-600 dark:hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Sparkles size={14} />
+            <span>Fix error with AI</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 };
@@ -128,52 +133,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const [errorMessage, setErrorMessage] = useAtom(previewErrorMessageAtom);
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { streamMessage } = useStreamChat();
-  const [availableRoutes, setAvailableRoutes] = useState<
-    Array<{ path: string; label: string }>
-  >([]);
+  const { routes: availableRoutes } = useParseRouter(selectedAppId);
   const { restartApp } = useRunApp();
-  // Load router related files to extract routes
-  const { content: routerContent } = useLoadAppFile(
-    selectedAppId,
-    "src/App.tsx",
-  );
-
-  // Effect to parse routes from the router file
-  useEffect(() => {
-    if (routerContent) {
-      try {
-        const routes: Array<{ path: string; label: string }> = [];
-
-        // Extract route imports and paths using regex for React Router syntax
-        // Match <Route path="/path">
-        const routePathsRegex = /<Route\s+(?:[^>]*\s+)?path=["']([^"']+)["']/g;
-        let match;
-
-        // Find all route paths in the router content
-        while ((match = routePathsRegex.exec(routerContent)) !== null) {
-          const path = match[1];
-          // Create a readable label from the path
-          const label =
-            path === "/"
-              ? "Home"
-              : path
-                  .split("/")
-                  .filter((segment) => segment && !segment.startsWith(":"))
-                  .pop()
-                  ?.replace(/[-_]/g, " ")
-                  .replace(/^\w/, (c) => c.toUpperCase()) || path;
-
-          if (!routes.some((r) => r.path === path)) {
-            routes.push({ path, label });
-          }
-        }
-
-        setAvailableRoutes(routes);
-      } catch (e) {
-        console.error("Error parsing router file:", e);
-      }
-    }
-  }, [routerContent]);
 
   // Navigation state
   const [isComponentSelectorInitialized, setIsComponentSelectorInitialized] =
@@ -502,17 +463,17 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         </div>
 
         {/* Address Bar with Routes Dropdown - using shadcn/ui dropdown-menu */}
-        <div className="relative flex-grow">
+        <div className="relative flex-grow min-w-20">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <div className="flex items-center justify-between px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded text-sm text-gray-700 dark:text-gray-200 cursor-pointer w-full">
-                <span>
+              <div className="flex items-center justify-between px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded text-sm text-gray-700 dark:text-gray-200 cursor-pointer w-full min-w-0">
+                <span className="truncate flex-1 mr-2 min-w-0">
                   {navigationHistory[currentHistoryPosition]
                     ? new URL(navigationHistory[currentHistoryPosition])
                         .pathname
                     : "/"}
                 </span>
-                <ChevronDown size={14} />
+                <ChevronDown size={14} className="flex-shrink-0" />
               </div>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-full">
@@ -583,6 +544,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           </div>
         ) : (
           <iframe
+            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-downloads"
             data-testid="preview-iframe-element"
             onLoad={() => {
               setErrorMessage(undefined);

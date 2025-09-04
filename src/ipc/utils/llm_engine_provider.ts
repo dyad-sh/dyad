@@ -1,7 +1,4 @@
-import {
-  LanguageModelV1,
-  LanguageModelV1ObjectGenerationMode,
-} from "@ai-sdk/provider";
+import { LanguageModel } from "ai";
 import { OpenAICompatibleChatLanguageModel } from "@ai-sdk/openai-compatible";
 import {
   FetchFunction,
@@ -9,7 +6,6 @@ import {
   withoutTrailingSlash,
 } from "@ai-sdk/provider-utils";
 
-import { OpenAICompatibleChatSettings } from "@ai-sdk/openai-compatible";
 import log from "electron-log";
 import { getExtraProviderOptions } from "./thinking_utils";
 import type { UserSettings } from "../../lib/schemas";
@@ -18,7 +14,7 @@ const logger = log.scope("llm_engine_provider");
 
 export type ExampleChatModelId = string & {};
 
-export interface ExampleChatSettings extends OpenAICompatibleChatSettings {
+export interface ExampleChatSettings {
   files?: { path: string; content: string }[];
 }
 export interface ExampleProviderSettings {
@@ -48,6 +44,7 @@ or to provide a custom fetch implementation for e.g. testing.
   dyadOptions: {
     enableLazyEdits?: boolean;
     enableSmartFilesContext?: boolean;
+    smartContextMode?: "balanced";
   };
   settings: UserSettings;
 }
@@ -56,10 +53,7 @@ export interface DyadEngineProvider {
   /**
 Creates a model for text generation.
 */
-  (
-    modelId: ExampleChatModelId,
-    settings?: ExampleChatSettings,
-  ): LanguageModelV1;
+  (modelId: ExampleChatModelId, settings?: ExampleChatSettings): LanguageModel;
 
   /**
 Creates a chat model for text generation.
@@ -67,7 +61,7 @@ Creates a chat model for text generation.
   chatModel(
     modelId: ExampleChatModelId,
     settings?: ExampleChatSettings,
-  ): LanguageModelV1;
+  ): LanguageModel;
 }
 
 export function createDyadEngine(
@@ -113,13 +107,13 @@ export function createDyadEngine(
     settings: ExampleChatSettings = {},
   ) => {
     // Extract files from settings to process them appropriately
-    const { files, ...restSettings } = settings;
+    const { files } = settings;
 
     // Create configuration with file handling
     const config = {
       ...getCommonModelConfig(),
-      defaultObjectGenerationMode:
-        "tool" as LanguageModelV1ObjectGenerationMode,
+      // defaultObjectGenerationMode:
+      //   "tool" as LanguageModelV1ObjectGenerationMode,
       // Custom fetch implementation that adds files to the request
       fetch: (input: RequestInfo | URL, init?: RequestInit) => {
         // Use default fetch if no init or body
@@ -156,6 +150,7 @@ export function createDyadEngine(
               enable_lazy_edits: options.dyadOptions.enableLazyEdits,
               enable_smart_files_context:
                 options.dyadOptions.enableSmartFilesContext,
+              smart_context_mode: options.dyadOptions.smartContextMode,
             };
           }
 
@@ -181,7 +176,7 @@ export function createDyadEngine(
       },
     };
 
-    return new OpenAICompatibleChatLanguageModel(modelId, restSettings, config);
+    return new OpenAICompatibleChatLanguageModel(modelId, config);
   };
 
   const provider = (

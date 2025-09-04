@@ -58,7 +58,12 @@ export function registerImportHandlers() {
     "import-app",
     async (
       _,
-      { path: sourcePath, appName }: ImportAppParams,
+      {
+        path: sourcePath,
+        appName,
+        installCommand,
+        startCommand,
+      }: ImportAppParams,
     ): Promise<ImportAppResult> => {
       // Validate the source path exists
       try {
@@ -115,8 +120,9 @@ export function registerImportHandlers() {
         .insert(apps)
         .values({
           name: appName,
-          // Store the actual imported path
           path: destPath,
+          installCommand: installCommand ?? null,
+          startCommand: startCommand ?? null,
         })
         .returning();
 

@@ -2,6 +2,9 @@
   const OVERLAY_ID = "__dyad_overlay__";
   let overlay, label;
 
+  //detect if the user is using Mac
+  const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+
   // The possible states are:
   // { type: 'inactive' }
   // { type: 'inspecting', element: ?HTMLElement }
@@ -159,18 +162,12 @@
     // Forward shortcuts to parent window
     const key = e.key.toLowerCase();
     const hasShift = e.shiftKey;
-    const hasCtrlOrMeta = e.ctrlKey || e.metaKey;
-    if (key && hasShift && hasCtrlOrMeta) {
+    const hasCtrlOrMeta = isMac ? e.metaKey : e.ctrlKey;
+    if (key === "c" && hasShift && hasCtrlOrMeta) {
       e.preventDefault();
       window.parent.postMessage(
         {
-          type: "dyad-shortcut-triggered",
-          key: key,
-          eventModifiers: {
-            ctrl: e.ctrlKey,
-            shift: e.shiftKey,
-            meta: e.metaKey,
-          },
+          type: "dyad-select-component-shortcut",
         },
         "*",
       );

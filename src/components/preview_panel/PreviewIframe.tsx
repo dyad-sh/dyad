@@ -446,7 +446,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                     ? "Deactivate component selector"
                     : "Select component"}
                 </p>
-                <p>{isMac ? "Meta + Shift + C" : "Ctrl + Shift + C"}</p>
+                <p>{isMac ? "⌘ + ⇧ + C" : "Ctrl + ⇧ + C"}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>

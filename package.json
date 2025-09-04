@@ -84,6 +84,7 @@
     "vitest": "^3.1.1"
   },
   "dependencies": {
+    "@ai-sdk/amazon-bedrock": "^3.0.15",
     "@ai-sdk/anthropic": "^2.0.4",
     "@ai-sdk/azure": "^2.0.17",
     "@ai-sdk/google": "^2.0.6",

@@ -245,6 +245,32 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       temperature: 0,
     },
   ],
+  bedrock: [
+    {
+      name: "us.anthropic.claude-sonnet-4-20250514-v1:0",
+      displayName: "Claude 4 Sonnet",
+      description: "Excellent coder",
+      maxOutputTokens: 16_000,
+      contextWindow: 200_000,
+      temperature: 0,
+    },
+    {
+      name: "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+      displayName: "Claude 3.7 Sonnet",
+      description: "Excellent coder",
+      maxOutputTokens: 16_000,
+      contextWindow: 200_000,
+      temperature: 0,
+    },
+    {
+      name: "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+      displayName: "Claude 3.5 Sonnet",
+      description: "Good coder, excellent at following instructions",
+      maxOutputTokens: 8_000,
+      contextWindow: 200_000,
+      temperature: 0,
+    },
+  ],
 };
 
 export const PROVIDER_TO_ENV_VAR: Record<string, string> = {
@@ -253,6 +279,7 @@ export const PROVIDER_TO_ENV_VAR: Record<string, string> = {
   google: "GEMINI_API_KEY",
   openrouter: "OPENROUTER_API_KEY",
   azure: "AZURE_API_KEY",
+  bedrock: "AWS_BEARER_TOKEN_BEDROCK",
 };
 
 export const CLOUD_PROVIDERS: Record<
@@ -298,6 +325,12 @@ export const CLOUD_PROVIDERS: Record<
     hasFreeTier: false,
     websiteUrl: "https://portal.azure.com/",
     gatewayPrefix: "",
+  },
+  bedrock: {
+    displayName: "AWS Bedrock",
+    hasFreeTier: false,
+    websiteUrl: "https://console.aws.amazon.com/bedrock/",
+    gatewayPrefix: "bedrock/",
   },
 };
 

@@ -133,7 +133,9 @@ const createWindow = () => {
   // Create the browser window.
   mainWindow = new BrowserWindow({
     width: process.env.NODE_ENV === "development" ? 1280 : 960,
+    minWidth: 800,
     height: 700,
+    minHeight: 500,
     titleBarStyle: "hidden",
     titleBarOverlay: false,
     trafficLightPosition: {

@@ -99,7 +99,10 @@ export const DyadEdit: React.FC<DyadEditProps> = ({
         </div>
       )}
       {isContentVisible && (
-        <div className="text-xs">
+        <div
+          className="text-xs cursor-text"
+          onClick={(e) => e.stopPropagation()}
+        >
           <CodeHighlight className="language-typescript">
             {children}
           </CodeHighlight>

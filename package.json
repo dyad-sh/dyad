@@ -71,7 +71,7 @@
     "@vitest/ui": "^3.1.1",
     "cross-env": "^7.0.3",
     "drizzle-kit": "^0.30.6",
-    "electron": "35.1.4",
+    "electron": "^35.7.5",
     "eslint": "^8.57.1",
     "eslint-plugin-import": "^2.31.0",
     "happy-dom": "^17.4.4",
@@ -85,6 +85,7 @@
     "vitest": "^3.1.1"
   },
   "dependencies": {
+    "@ai-sdk/amazon-bedrock": "^3.0.15",
     "@ai-sdk/anthropic": "^2.0.4",
     "@ai-sdk/azure": "^2.0.17",
     "@ai-sdk/google": "^2.0.6",

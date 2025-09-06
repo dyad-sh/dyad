@@ -467,13 +467,8 @@ export interface McpServer {
 }
 
 export interface McpTool {
-  id: number;
-  serverId: number;
   name: string;
   description?: string | null;
-  isActive: boolean;
-  createdAt: number;
-  updatedAt: number;
 }
 
 export interface McpToolConsent {

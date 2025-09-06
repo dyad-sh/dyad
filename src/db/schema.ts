@@ -194,24 +194,6 @@ export const mcpServers = sqliteTable("mcp_servers", {
     .default(sql`(unixepoch())`),
 });
 
-export const mcpTools = sqliteTable("mcp_tools", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  serverId: integer("server_id")
-    .notNull()
-    .references(() => mcpServers.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  description: text("description"),
-  isActive: integer("is_active", { mode: "boolean" })
-    .notNull()
-    .default(sql`0`),
-  createdAt: integer("created_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-  updatedAt: integer("updated_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-});
-
 export const mcpToolConsents = sqliteTable(
   "mcp_tool_consents",
   {

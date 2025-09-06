@@ -37,28 +37,13 @@ export function McpToolsPicker() {
     })();
   }, []);
 
-  const activeCount = useMemo(
-    () =>
-      Object.values(toolsByServer)
-        .flat()
-        .filter((t: any) => t.isActive).length,
+  // Active count no longer applicable; show total available tools instead
+  const toolCount = useMemo(
+    () => Object.values(toolsByServer).flat().length,
     [toolsByServer],
   );
 
-  const toggleTool = async (
-    serverId: number,
-    toolName: string,
-    isActive: boolean,
-  ) => {
-    const ipc = IpcClient.getInstance();
-    await ipc.setMcpToolActive({ serverId, toolName, isActive: !isActive });
-    setToolsByServer((prev) => ({
-      ...prev,
-      [serverId]: (prev[serverId] || []).map((t: any) =>
-        t.name === toolName ? { ...t, isActive: !isActive } : t,
-      ),
-    }));
-  };
+  // Removed activation toggling – consent governs execution time behavior
 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
@@ -73,8 +58,8 @@ export function McpToolsPicker() {
                 data-testid="mcp-tools-button"
               >
                 <Wrench className="size-4" />
-                {activeCount > 0 && (
-                  <span className="ml-1 text-xs">{activeCount}</span>
+                {toolCount > 0 && (
+                  <span className="ml-1 text-xs">{toolCount}</span>
                 )}
               </Button>
             </PopoverTrigger>
@@ -113,7 +98,7 @@ export function McpToolsPicker() {
                   <div className="mt-2 space-y-1">
                     {(toolsByServer[s.id] || []).map((t) => (
                       <div
-                        key={t.id}
+                        key={t.name}
                         className="flex items-center justify-between gap-2 rounded border p-2"
                       >
                         <div className="min-w-0">
@@ -126,16 +111,8 @@ export function McpToolsPicker() {
                             </div>
                           )}
                         </div>
-                        <div>
-                          <Button
-                            size="sm"
-                            variant={t.isActive ? "secondary" : "outline"}
-                            onClick={() =>
-                              toggleTool(s.id, t.name, !!t.isActive)
-                            }
-                          >
-                            {t.isActive ? "Active" : "Activate"}
-                          </Button>
+                        <div className="text-xs text-muted-foreground">
+                          Consent required at runtime
                         </div>
                       </div>
                     ))}

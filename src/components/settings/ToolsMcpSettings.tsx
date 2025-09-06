@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-type Transport = "stdio" | "http" | "ws";
+type Transport = "stdio" | "http";
 
 export function ToolsMcpSettings() {
   const ipc = IpcClient.getInstance();
@@ -69,14 +69,7 @@ export function ToolsMcpSettings() {
     await load();
   };
 
-  const setToolActive = async (
-    serverId: number,
-    toolName: string,
-    isActive: boolean,
-  ) => {
-    await ipc.setMcpToolActive({ serverId, toolName, isActive: !isActive });
-    await load();
-  };
+  // Removed activation toggling – tools are used dynamically with consent checks
 
   const setToolConsent = async (
     serverId: number,
@@ -108,7 +101,6 @@ export function ToolsMcpSettings() {
             >
               <option value="stdio">stdio</option>
               <option value="http">http</option>
-              <option value="ws">ws</option>
             </select>
           </div>
           {transport === "stdio" && (
@@ -131,7 +123,7 @@ export function ToolsMcpSettings() {
               </div>
             </>
           )}
-          {(transport === "http" || transport === "ws") && (
+          {transport === "http" && (
             <div className="col-span-2">
               <Label>URL</Label>
               <Input
@@ -183,7 +175,7 @@ export function ToolsMcpSettings() {
             <div className="mt-3 space-y-2">
               {(toolsByServer[s.id] || []).map((t) => (
                 <div
-                  key={t.id}
+                  key={t.name}
                   className="flex items-center justify-between border rounded p-2"
                 >
                   <div className="min-w-0">
@@ -210,13 +202,6 @@ export function ToolsMcpSettings() {
                         <SelectItem value="denied">Deny</SelectItem>
                       </SelectContent>
                     </Select>
-                    <Button
-                      size="sm"
-                      variant={t.isActive ? "secondary" : "outline"}
-                      onClick={() => setToolActive(s.id, t.name, !!t.isActive)}
-                    >
-                      {t.isActive ? "Active" : "Activate"}
-                    </Button>
                   </div>
                 </div>
               ))}

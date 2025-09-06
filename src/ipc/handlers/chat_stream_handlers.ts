@@ -7,6 +7,8 @@ import {
   streamText,
   ToolSet,
   TextStreamPart,
+  stepCountIs,
+  tool,
 } from "ai";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
@@ -135,11 +137,16 @@ async function processStreamChunks({
 
   for await (const part of fullStream) {
     let chunk = "";
+    if (
+      inThinkingBlock &&
+      !["reasoning-delta", "reasoning-end", "reasoning-start"].includes(
+        part.type,
+      )
+    ) {
+      chunk = "</think>";
+      inThinkingBlock = false;
+    }
     if (part.type === "text-delta") {
-      if (inThinkingBlock) {
-        chunk = "</think>";
-        inThinkingBlock = false;
-      }
       chunk += part.text;
     } else if (part.type === "reasoning-delta") {
       if (!inThinkingBlock) {
@@ -148,6 +155,16 @@ async function processStreamChunks({
       }
 
       chunk += escapeDyadTags(part.text);
+    } else if (part.type === "tool-call") {
+      const serverName = part.toolName.split("__")[0];
+      const toolName = part.toolName.split("__")[1];
+      const content = escapeDyadTags(JSON.stringify(part.input));
+      chunk = `<dyad-mcp-tool-call server-name="${serverName}" tool-name="${toolName}">${content}</dyad-mcp-tool-call>`;
+    } else if (part.type === "tool-result") {
+      const serverName = part.toolName.split("__")[0];
+      const toolName = part.toolName.split("__")[1];
+      const content = escapeDyadTags(part.output);
+      chunk = `<dyad-mcp-tool-result server-name="${serverName}" tool-name="${toolName}">${content}</dyad-mcp-tool-result>`;
     }
 
     if (!chunk) {
@@ -609,19 +626,21 @@ This conversation includes one or more image attachments. When the user uploads 
             ] as const)
           : [];
 
+        const limitedHistoryChatMessages = limitedMessageHistory.map((msg) => ({
+          role: msg.role as "user" | "assistant" | "system",
+          // Why remove thinking tags?
+          // Thinking tags are generally not critical for the context
+          // and eats up extra tokens.
+          content:
+            settings.selectedChatMode === "ask"
+              ? removeDyadTags(removeNonEssentialTags(msg.content))
+              : removeNonEssentialTags(msg.content),
+        }));
+
         let chatMessages: ModelMessage[] = [
           ...codebasePrefix,
           ...otherCodebasePrefix,
-          ...limitedMessageHistory.map((msg) => ({
-            role: msg.role as "user" | "assistant" | "system",
-            // Why remove thinking tags?
-            // Thinking tags are generally not critical for the context
-            // and eats up extra tokens.
-            content:
-              settings.selectedChatMode === "ask"
-                ? removeDyadTags(removeNonEssentialTags(msg.content))
-                : removeNonEssentialTags(msg.content),
-          })),
+          ...limitedHistoryChatMessages,
         ];
 
         // Check if the last message should include attachments
@@ -657,6 +676,79 @@ This conversation includes one or more image attachments. When the user uploads 
           ];
         }
 
+        // Build ToolSet from active MCP servers using official SDK
+        let mcpToolSet: any = {};
+        try {
+          const servers = await db
+            .select()
+            .from(mcpServers)
+            .where(eq(mcpServers.enabled, true as any));
+          for (const s of servers) {
+            let transport: any;
+            const transportKey = (s.transport || "stdio").toLowerCase();
+            if (transportKey === "stdio") {
+              const { Experimental_StdioMCPTransport } = await import(
+                "ai/mcp-stdio"
+              );
+              const args = s.args ? JSON.parse(s.args) : [];
+              const env = s.envJson ? JSON.parse(s.envJson) : undefined;
+              transport = new Experimental_StdioMCPTransport({
+                command: s.command as string,
+                args,
+                env,
+                cwd: (s.cwd || undefined) as string | undefined,
+              });
+            } else if (transportKey === "http") {
+              if (!s.url) continue;
+
+              transport = new StreamableHTTPClientTransport(
+                new URL(s.url as string),
+                {
+                  requestInit: {
+                    headers: {
+                      Accept: "application/json",
+                      "Content-Type": "application/json",
+                    },
+                  },
+                } as any,
+              );
+            }
+
+            const client = await experimental_createMCPClient({ transport });
+            const toolSet = await client.tools();
+            console.log("toolSet", toolSet);
+            for (const [name, tool] of Object.entries(toolSet)) {
+              const key = `${String(s.name || "").replace(/[^a-zA-Z0-9_-]/g, "_")}__${String(name).replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+              const original = tool;
+              mcpToolSet[key] = {
+                description: original?.description,
+                inputSchema: original?.inputSchema,
+                execute: async (args: any, execCtx: any) => {
+                  const inputPreview =
+                    typeof args === "string"
+                      ? args
+                      : JSON.stringify(args).slice(0, 500);
+                  const ok = await requireMcpToolConsent(event, {
+                    serverId: s.id,
+                    serverName: s.name,
+                    toolName: name,
+                    toolDescription: original?.description,
+                    inputPreview,
+                  });
+                  console.log("&**** CONSENT ok", ok);
+                  if (!ok) throw new Error(`User declined running tool ${key}`);
+                  const res = await original.execute?.(args, execCtx);
+                  console.log("&**** RES res", res);
+                  return typeof res === "string" ? res : JSON.stringify(res);
+                },
+              } as any;
+            }
+          }
+        } catch (e) {
+          logger.warn("Failed building MCP toolset", e);
+        }
+        const hasMcpTools = Object.keys(mcpToolSet).length > 0;
+
         const simpleStreamText = async ({
           chatMessages,
           modelClient,
@@ -673,87 +765,15 @@ This conversation includes one or more image attachments. When the user uploads 
           } else {
             logger.log("sending AI request");
           }
-          // Build ToolSet from active MCP servers using official SDK
-          let mcpToolSet: any = {};
-          try {
-            const servers = await db
-              .select()
-              .from(mcpServers)
-              .where(eq(mcpServers.enabled, true as any));
-            for (const s of servers) {
-              let transport: any;
-              const transportKey = (s.transport || "stdio").toLowerCase();
-              if (transportKey === "stdio") {
-                const { Experimental_StdioMCPTransport } = await import(
-                  "ai/mcp-stdio"
-                );
-                const args = s.args ? JSON.parse(s.args) : [];
-                const env = s.envJson ? JSON.parse(s.envJson) : undefined;
-                transport = new Experimental_StdioMCPTransport({
-                  command: s.command as string,
-                  args,
-                  env,
-                  cwd: (s.cwd || undefined) as string | undefined,
-                });
-              } else if (transportKey === "http") {
-                if (!s.url) continue;
 
-                transport = new StreamableHTTPClientTransport(
-                  new URL(s.url as string),
-                  {
-                    requestInit: {
-                      headers: {
-                        Accept: "application/json",
-                        "Content-Type": "application/json",
-                      },
-                    },
-                  } as any,
-                );
-              } else if (transportKey === "ws" || transportKey === "sse") {
-                if (!s.url) continue;
-
-                transport = new SSEClientTransport(new URL(s.url as string));
-              } else {
-                continue;
-              }
-
-              const client = await experimental_createMCPClient({ transport });
-              const toolSet = await client.tools();
-              for (const [name, tool] of Object.entries(toolSet)) {
-                const key = `${String(s.name || "").replace(/[^a-zA-Z0-9_-]/g, "_")}__${String(name).replace(/[^a-zA-Z0-9_-]/g, "_")}`;
-                const original: any = tool;
-                mcpToolSet[key] = {
-                  description: original?.description,
-                  parameters: original?.parameters, // preserve schema to satisfy AI SDK
-                  execute: async (args: any, execCtx: any) => {
-                    const inputPreview =
-                      typeof args === "string"
-                        ? args
-                        : JSON.stringify(args).slice(0, 500);
-                    const ok = await requireMcpToolConsent(event, {
-                      serverId: s.id,
-                      serverName: s.name,
-                      toolName: name,
-                      toolDescription: original?.description,
-                      inputPreview,
-                    });
-                    if (!ok)
-                      throw new Error(`User declined running tool ${key}`);
-                    const res = await original.execute?.(args, execCtx);
-                    return typeof res === "string" ? res : JSON.stringify(res);
-                  },
-                } as any;
-              }
-            }
-          } catch (e) {
-            logger.warn("Failed building MCP toolset", e);
-          }
+          console.log("mcpToolSet", mcpToolSet);
 
           return streamText({
             maxOutputTokens: await getMaxTokens(settings.selectedModel),
             temperature: await getTemperature(settings.selectedModel),
             maxRetries: 2,
             model: modelClient.model,
+            stopWhen: stepCountIs(3),
             providerOptions: {
               "dyad-engine": {
                 dyadRequestId,
@@ -772,11 +792,10 @@ This conversation includes one or more image attachments. When the user uploads 
               } satisfies OpenAIResponsesProviderOptions,
             },
             system: systemPrompt,
-            tools:
-              Object.keys(mcpToolSet).length > 0
-                ? (mcpToolSet as any)
-                : undefined,
-            messages: chatMessages.filter((m) => m.content),
+            tools: hasMcpTools ? mcpToolSet : undefined,
+            messages: Object.keys(mcpToolSet).length
+              ? limitedHistoryChatMessages
+              : chatMessages.filter((m) => m.content),
             onError: (error: any) => {
               logger.error("Error streaming text:", error);
               let errorMessage = (error as any)?.error?.message;
@@ -797,6 +816,52 @@ This conversation includes one or more image attachments. When the user uploads 
             },
             abortSignal: abortController.signal,
           });
+        };
+
+        const generateCodeTool = tool({
+          description:
+            "Generate code based on the current conversation context using an optimized code generation system prompt",
+          parameters: {
+            // No parameters needed - uses current messages
+          },
+          execute: async ({ messages }) => {
+            try {
+              const result = await streamText({
+                model: modelClient.model, // or your preferred model
+                // system: CODE_GENERATION_SYSTEM_PROMPT,
+                messages: messages,
+                temperature: 0.1, // Lower temperature for more consistent code generation
+                // maxTokens: 2000, // Adjust based on your needs
+              });
+
+              return {
+                result: result.toAIStream(),
+                success: true,
+              };
+            } catch (error) {
+              console.error("Code generation failed:", error);
+              return {
+                error: "Failed to generate code. Please try again.",
+                success: false,
+              };
+            }
+          },
+        });
+
+        mcpToolSet = {
+          ...mcpToolSet,
+          ["dyad__generate_code"]: {
+            description: "Generate code",
+            inputSchema: {
+              type: "object",
+              properties: {
+                code: { type: "string" },
+              },
+            },
+            execute: async (args: any, execCtx: any) => {
+              return "Generated code";
+            },
+          },
         };
 
         const processResponseChunkUpdate = async ({

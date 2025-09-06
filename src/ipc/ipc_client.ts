@@ -830,20 +830,7 @@ export class IpcClient {
     return this.ipcRenderer.invoke("mcp:list-tools", serverId);
   }
 
-  public async upsertMcpTools(params: {
-    serverId: number;
-    tools: { name: string; description?: string }[];
-  }) {
-    return this.ipcRenderer.invoke("mcp:upsert-tools", params);
-  }
-
-  public async setMcpToolActive(params: {
-    serverId: number;
-    toolName: string;
-    isActive: boolean;
-  }) {
-    return this.ipcRenderer.invoke("mcp:set-tool-active", params);
-  }
+  // Removed: upsertMcpTools and setMcpToolActive – tools are fetched dynamically at runtime
 
   public async getMcpToolConsents() {
     return this.ipcRenderer.invoke("mcp:get-tool-consents");
@@ -877,7 +864,8 @@ export class IpcClient {
     requestId: string,
     decision: "accept-once" | "accept-always" | "decline",
   ) {
-    this.ipcRenderer.send(`mcp:tool-consent-response:${requestId}`, {
+    this.ipcRenderer.invoke("mcp:tool-consent-response", {
+      requestId,
       decision,
     });
   }

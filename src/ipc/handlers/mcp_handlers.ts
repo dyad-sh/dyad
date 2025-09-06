@@ -1,7 +1,7 @@
 import { ipcMain, IpcMainInvokeEvent } from "electron";
 import log from "electron-log";
 import { db } from "../../db";
-import { mcpServers, mcpTools, mcpToolConsents } from "../../db/schema";
+import { mcpServers, mcpToolConsents } from "../../db/schema";
 import { eq, and } from "drizzle-orm";
 import { createLoggedHandler } from "./safe_handle";
 
@@ -113,122 +113,27 @@ export function registerMcpHandlers() {
     },
   );
 
-  // Tools listing and activation
+  // Tools listing (dynamic)
   handle(
     "mcp:list-tools",
     async (_event: IpcMainInvokeEvent, serverId: number) => {
-      // Try to refresh tool list from server if stdio
       try {
         const client = await mcpManager.getClient(serverId);
         const remoteTools = await client.listTools();
-        if (remoteTools?.length) {
-          await Promise.all(
-            remoteTools.map(async (rt) => {
-              const exists = await db
-                .select()
-                .from(mcpTools)
-                .where(
-                  and(
-                    eq(mcpTools.serverId, serverId),
-                    eq(mcpTools.name, rt.name),
-                  ),
-                );
-              if (exists.length === 0) {
-                await db.insert(mcpTools).values({
-                  serverId,
-                  name: rt.name,
-                  description: rt.description ?? null,
-                  isActive: false,
-                });
-              } else if (exists[0].description !== (rt.description ?? null)) {
-                await db
-                  .update(mcpTools)
-                  .set({ description: rt.description ?? null })
-                  .where(
-                    and(
-                      eq(mcpTools.serverId, serverId),
-                      eq(mcpTools.name, rt.name),
-                    ),
-                  );
-              }
-            }),
-          );
-        }
+        return (remoteTools || []).map((rt: any) => ({
+          name: rt.name,
+          description: rt.description ?? null,
+        }));
       } catch (e) {
         logger.error("Failed to list tools", e);
+        return [];
       }
-      return await db
-        .select()
-        .from(mcpTools)
-        .where(eq(mcpTools.serverId, serverId));
     },
   );
 
-  handle(
-    "mcp:upsert-tools",
-    async (
-      _event: IpcMainInvokeEvent,
-      params: {
-        serverId: number;
-        tools: { name: string; description?: string }[];
-      },
-    ) => {
-      const existing = await db
-        .select()
-        .from(mcpTools)
-        .where(eq(mcpTools.serverId, params.serverId));
-      const existingByName = new Map(existing.map((t) => [t.name, t]));
-      const results: any[] = [];
-      for (const t of params.tools) {
-        const found = existingByName.get(t.name);
-        if (found) {
-          const updated = await db
-            .update(mcpTools)
-            .set({ description: t.description ?? found.description })
-            .where(
-              and(
-                eq(mcpTools.serverId, params.serverId),
-                eq(mcpTools.name, t.name),
-              ),
-            )
-            .returning();
-          results.push(updated[0]);
-        } else {
-          const inserted = await db
-            .insert(mcpTools)
-            .values({
-              serverId: params.serverId,
-              name: t.name,
-              description: t.description ?? null,
-              isActive: false,
-            })
-            .returning();
-          results.push(inserted[0]);
-        }
-      }
-      return results;
-    },
-  );
+  // Removed: upsert-tools (tools are fetched dynamically)
 
-  handle(
-    "mcp:set-tool-active",
-    async (
-      _event: IpcMainInvokeEvent,
-      params: { serverId: number; toolName: string; isActive: boolean },
-    ) => {
-      const result = await db
-        .update(mcpTools)
-        .set({ isActive: params.isActive })
-        .where(
-          and(
-            eq(mcpTools.serverId, params.serverId),
-            eq(mcpTools.name, params.toolName),
-          ),
-        )
-        .returning();
-      return result[0];
-    },
-  );
+  // Removed: set-tool-active (no activation; consent controls usage)
 
   // Consents
   handle("mcp:get-tool-consents", async () => {
@@ -282,9 +187,9 @@ export function registerMcpHandlers() {
 
   // Tool consent request/response handshake
   // Receive consent response from renderer
-  ipcMain.on(
-    /mcp:tool-consent-response:(.*)/ as unknown as any,
-    (_event, data: { requestId: string; decision: ConsentDecision }) => {
+  handle(
+    "mcp:tool-consent-response",
+    async (_event, data: { requestId: string; decision: ConsentDecision }) => {
       resolveConsent(data.requestId, data.decision);
     },
   );

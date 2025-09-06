@@ -112,10 +112,10 @@ const validInvokeChannels = [
   "mcp:update-server",
   "mcp:delete-server",
   "mcp:list-tools",
-  "mcp:upsert-tools",
-  "mcp:set-tool-active",
   "mcp:get-tool-consents",
   "mcp:set-tool-consent",
+  // MCP consent response from renderer to main
+  "mcp:tool-consent-response",
   // Help bot
   "help:chat:start",
   "help:chat:cancel",

@@ -2,6 +2,9 @@
   const OVERLAY_ID = "__dyad_overlay__";
   let overlay, label;
 
+  //detect if the user is using Mac
+  const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+
   // The possible states are:
   // { type: 'inactive' }
   // { type: 'inspecting', element: ?HTMLElement }
@@ -146,6 +149,31 @@
     );
   }
 
+  function onKeyDown(e) {
+    // Ignore keystrokes if the user is typing in an input field, textarea, or editable element
+    if (
+      e.target.tagName === "INPUT" ||
+      e.target.tagName === "TEXTAREA" ||
+      e.target.isContentEditable
+    ) {
+      return;
+    }
+
+    // Forward shortcuts to parent window
+    const key = e.key.toLowerCase();
+    const hasShift = e.shiftKey;
+    const hasCtrlOrMeta = isMac ? e.metaKey : e.ctrlKey;
+    if (key === "c" && hasShift && hasCtrlOrMeta) {
+      e.preventDefault();
+      window.parent.postMessage(
+        {
+          type: "dyad-select-component-shortcut",
+        },
+        "*",
+      );
+    }
+  }
+
   /* ---------- activation / deactivation --------------------------------- */
   function activate() {
     if (state.type === "inactive") {
@@ -177,6 +205,9 @@
     if (e.data.type === "activate-dyad-component-selector") activate();
     if (e.data.type === "deactivate-dyad-component-selector") deactivate();
   });
+
+  // Always listen for keyboard shortcuts
+  window.addEventListener("keydown", onKeyDown, true);
 
   function initializeComponentSelector() {
     if (!document.body) {

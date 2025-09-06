@@ -58,3 +58,12 @@ export function safeJoin(basePath: string, ...paths: string[]): string {
 
   return joinedPath;
 }
+
+/**
+ * Convert any Windows backslashes to POSIX-style forward slashes.
+ * This is helpful for tests that assert normalized paths across platforms
+ * and is safe on Windows because Node accepts forward slashes.
+ */
+export function toPosixPath(p: string): string {
+  return p.replace(/\\/g, "/");
+}

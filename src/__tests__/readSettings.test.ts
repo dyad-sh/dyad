@@ -398,8 +398,9 @@ describe("readSettings", () => {
 });
 
 function scrubSettings(result: UserSettings) {
+  const { telemetryUserId: _tuid, mcpServers: _mcp, ...rest } = result as any;
   return {
-    ...result,
+    ...rest,
     telemetryUserId: "[scrubbed]",
-  };
+  } as UserSettings as any;
 }

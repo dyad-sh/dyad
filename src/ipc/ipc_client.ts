@@ -1000,6 +1000,12 @@ export class IpcClient {
     return this.ipcRenderer.invoke("get-language-models-by-providers");
   }
 
+  // --- MCP ---
+  public async testMcpServer(id: string): Promise<{ ok: boolean; tools?: { serverId: string; name: string; description?: string }[]; error?: string }>{
+    return this.ipcRenderer.invoke("mcp:test-server", { id });
+  }
+  // --- End MCP ---
+
   public async createCustomLanguageModelProvider({
     id,
     name,

@@ -7,6 +7,7 @@ import { CreateCustomModelDialog } from "@/components/CreateCustomModelDialog";
 import { EditCustomModelDialog } from "@/components/EditCustomModelDialog";
 import { useLanguageModelsForProvider } from "@/hooks/useLanguageModelsForProvider"; // Use the hook directly here
 import { useDeleteCustomModel } from "@/hooks/useDeleteCustomModel"; // Import the new hook
+import { useSettings } from "@/hooks/useSettings";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -49,6 +50,8 @@ export function ModelsSection({ providerId }: ModelsSectionProps) {
       console.error("Failed to delete model:", error);
     },
   });
+
+  const { settings } = useSettings();
 
   const handleDeleteClick = (modelApiName: string) => {
     setModelToDelete(modelApiName);
@@ -187,6 +190,8 @@ export function ModelsSection({ providerId }: ModelsSectionProps) {
                   </span>
                 )}
               </div>
+
+              {/* Vertex-specific thinking toggle removed per review */}
             </div>
           ))}
         </div>

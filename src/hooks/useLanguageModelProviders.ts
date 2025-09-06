@@ -20,6 +20,17 @@ export function useLanguageModelProviders() {
     if (queryResult.isLoading) {
       return false;
     }
+    // Vertex uses service account credentials instead of an API key
+    if (provider === "vertex") {
+      if (
+        providerSettings?.serviceAccountKey?.value &&
+        providerSettings?.projectId &&
+        providerSettings?.location
+      ) {
+        return true;
+      }
+      return false;
+    }
     if (providerSettings?.apiKey?.value) {
       return true;
     }

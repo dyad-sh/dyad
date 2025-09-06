@@ -58,3 +58,10 @@ export function safeJoin(basePath: string, ...paths: string[]): string {
 
   return joinedPath;
 }
+
+/**
+ * Normalize a path string to use forward slashes. Helpful for tests or when
+ * you need consistent path strings across platforms. Node's fs APIs accept
+ * forward slashes on Windows, so this is safe to use for file operations.
+ */
+// Note: use existing helpers like shared/normalizePath if needed in callers.

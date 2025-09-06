@@ -85,6 +85,27 @@
       "when": 1755545060076,
       "tag": "0011_light_zeigeist",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1755756666067,
+      "tag": "0012_aberrant_nextwave",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1755800000000,
+      "tag": "0013_drop_mcp_tools",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1757024584137,
+      "tag": "0014_foamy_tusk",
+      "breakpoints": true
     }
   ]
 }

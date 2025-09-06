@@ -38,8 +38,12 @@ interface Output {
   error: unknown;
 }
 
-function getFunctionNameFromPath(input: string): string {
-  return path.basename(path.extname(input) ? path.dirname(input) : input);
+export function getFunctionNameFromPath(input: string): string {
+  if (!path.extname(input)) {
+    return path.basename(input);
+  }
+  const base = path.basename(input, path.extname(input));
+  return base === "index" ? path.basename(path.dirname(input)) : base;
 }
 
 async function readFileFromFunctionPath(input: string): Promise<string> {

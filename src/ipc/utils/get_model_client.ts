@@ -1,6 +1,7 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI as createGoogle } from "@ai-sdk/google";
 import { createAnthropic } from "@ai-sdk/anthropic";
+import { createXai } from "@ai-sdk/xai";
 import { azure } from "@ai-sdk/azure";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
@@ -198,6 +199,16 @@ function getRegularModelClient(
     }
     case "anthropic": {
       const provider = createAnthropic({ apiKey });
+      return {
+        modelClient: {
+          model: provider(model.name),
+          builtinProviderId: providerId,
+        },
+        backupModelClients: [],
+      };
+    }
+    case "xai": {
+      const provider = createXai({ apiKey });
       return {
         modelClient: {
           model: provider(model.name),

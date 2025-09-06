@@ -35,6 +35,7 @@ const providers = [
   "ollama",
   "lmstudio",
   "azure",
+  "xai",
 ] as const;
 
 export const cloudProviders = providers.filter(

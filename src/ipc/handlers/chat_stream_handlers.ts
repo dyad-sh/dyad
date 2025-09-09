@@ -667,28 +667,53 @@ This conversation includes one or more image attachments. When the user uploads 
           } else {
             logger.log("sending AI request");
           }
+          // Build provider options with correct Google/Vertex thinking config gating
+          const providerOptions: Record<string, any> = {
+            "dyad-engine": {
+              dyadRequestId,
+            },
+            "dyad-gateway": getExtraProviderOptions(
+              modelClient.builtinProviderId,
+              settings,
+            ),
+            openai: {
+              reasoningSummary: "auto",
+            } satisfies OpenAIResponsesProviderOptions,
+          };
+
+          // Conditionally include Google thinking config only for supported models
+          const selectedModelName = settings.selectedModel.name || "";
+          const providerId = modelClient.builtinProviderId;
+          const isVertex = providerId === "vertex";
+          const isGoogle = providerId === "google";
+          const isPartnerModel = selectedModelName.includes("/");
+          const isGeminiModel = selectedModelName.startsWith("gemini");
+          const isFlashLite = selectedModelName.includes("flash-lite");
+
+          // Keep Google provider behavior unchanged: always include includeThoughts
+          if (isGoogle) {
+            providerOptions.google = {
+              thinkingConfig: {
+                includeThoughts: true,
+              },
+            } satisfies GoogleGenerativeAIProviderOptions;
+          }
+
+          // Vertex-specific fix: only enable thinking on supported Gemini models
+          if (isVertex && isGeminiModel && !isFlashLite && !isPartnerModel) {
+            providerOptions.google = {
+              thinkingConfig: {
+                includeThoughts: true,
+              },
+            } satisfies GoogleGenerativeAIProviderOptions;
+          }
+
           return streamText({
             maxOutputTokens: await getMaxTokens(settings.selectedModel),
             temperature: await getTemperature(settings.selectedModel),
             maxRetries: 2,
             model: modelClient.model,
-            providerOptions: {
-              "dyad-engine": {
-                dyadRequestId,
-              },
-              "dyad-gateway": getExtraProviderOptions(
-                modelClient.builtinProviderId,
-                settings,
-              ),
-              google: {
-                thinkingConfig: {
-                  includeThoughts: true,
-                },
-              } satisfies GoogleGenerativeAIProviderOptions,
-              openai: {
-                reasoningSummary: "auto",
-              } satisfies OpenAIResponsesProviderOptions,
-            },
+            providerOptions,
             system: systemPrompt,
             messages: chatMessages.filter((m) => m.content),
             onError: (error: any) => {

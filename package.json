@@ -1,7 +1,7 @@
 {
   "name": "dyad",
   "productName": "dyad",
-  "version": "0.20.0-beta.1",
+  "version": "0.20.0",
   "description": "Free, local, open-source AI app builder",
   "main": ".vite/build/main.js",
   "repository": {
@@ -85,9 +85,11 @@
     "vitest": "^3.1.1"
   },
   "dependencies": {
+    "@ai-sdk/amazon-bedrock": "^3.0.15",
     "@ai-sdk/anthropic": "^2.0.4",
     "@ai-sdk/azure": "^2.0.17",
     "@ai-sdk/google": "^2.0.6",
+    "@ai-sdk/google-vertex": "3.0.16",
     "@ai-sdk/openai": "2.0.15",
     "@ai-sdk/openai-compatible": "^1.0.8",
     "@ai-sdk/provider-utils": "^3.0.3",

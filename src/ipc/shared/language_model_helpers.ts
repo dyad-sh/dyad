@@ -8,6 +8,7 @@ import { eq } from "drizzle-orm";
 
 export const PROVIDERS_THAT_SUPPORT_THINKING: (keyof typeof MODEL_OPTIONS)[] = [
   "google",
+  "vertex",
   "auto",
 ];
 
@@ -144,6 +145,26 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       dollarSigns: 2,
     },
   ],
+  vertex: [
+    // Vertex Gemini 2.5 Pro
+    {
+      name: "gemini-2.5-pro",
+      displayName: "Gemini 2.5 Pro",
+      description: "Vertex Gemini 2.5 Pro",
+      maxOutputTokens: 65_536 - 1,
+      contextWindow: 1_048_576,
+      temperature: 0,
+    },
+    // Vertex Gemini 2.5 Flash
+    {
+      name: "gemini-2.5-flash",
+      displayName: "Gemini 2.5 Flash",
+      description: "Vertex Gemini 2.5 Flash",
+      maxOutputTokens: 65_536 - 1,
+      contextWindow: 1_048_576,
+      temperature: 0,
+    },
+  ],
   openrouter: [
     {
       name: "qwen/qwen3-coder",
@@ -260,6 +281,32 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       contextWindow: 131_072,
       temperature: 0,
       dollarSigns: 4,
+    }.
+  ],
+  bedrock: [
+    {
+      name: "us.anthropic.claude-sonnet-4-20250514-v1:0",
+      displayName: "Claude 4 Sonnet",
+      description: "Excellent coder",
+      maxOutputTokens: 16_000,
+      contextWindow: 200_000,
+      temperature: 0,
+    },
+    {
+      name: "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+      displayName: "Claude 3.7 Sonnet",
+      description: "Excellent coder",
+      maxOutputTokens: 16_000,
+      contextWindow: 200_000,
+      temperature: 0,
+    },
+    {
+      name: "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+      displayName: "Claude 3.5 Sonnet",
+      description: "Good coder, excellent at following instructions",
+      maxOutputTokens: 8_000,
+      contextWindow: 200_000,
+      temperature: 0,
     },
   ],
 };
@@ -271,6 +318,7 @@ export const PROVIDER_TO_ENV_VAR: Record<string, string> = {
   openrouter: "OPENROUTER_API_KEY",
   azure: "AZURE_API_KEY",
   xai: "XAI_API_KEY",
+  bedrock: "AWS_BEARER_TOKEN_BEDROCK",
 };
 
 export const CLOUD_PROVIDERS: Record<
@@ -301,6 +349,14 @@ export const CLOUD_PROVIDERS: Record<
     websiteUrl: "https://aistudio.google.com/app/apikey",
     gatewayPrefix: "gemini/",
   },
+  vertex: {
+    displayName: "Google Vertex AI",
+    hasFreeTier: false,
+    websiteUrl: "https://console.cloud.google.com/vertex-ai",
+    // Use the same gateway prefix as Google Gemini for Dyad Pro compatibility.
+    gatewayPrefix: "gemini/",
+    secondary: true,
+  },
   openrouter: {
     displayName: "OpenRouter",
     hasFreeTier: true,
@@ -325,6 +381,12 @@ export const CLOUD_PROVIDERS: Record<
     websiteUrl: "https://console.x.ai/",
     gatewayPrefix: "xai/",
     secondary: true,
+  },
+  bedrock: {
+    displayName: "AWS Bedrock",
+    hasFreeTier: false,
+    websiteUrl: "https://console.aws.amazon.com/bedrock/",
+    gatewayPrefix: "bedrock/",
   },
 };
 

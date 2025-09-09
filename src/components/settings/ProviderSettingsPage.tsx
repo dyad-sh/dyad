@@ -75,8 +75,20 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
       ? !!(envVars["AZURE_API_KEY"] && envVars["AZURE_RESOURCE_NAME"])
       : false;
 
+  // Special handling for Vertex configuration status
+  const vertexSettings = settings?.providerSettings?.vertex as any;
+  const isVertexConfigured = Boolean(
+    vertexSettings?.projectId &&
+      vertexSettings?.location &&
+      vertexSettings?.serviceAccountKey?.value,
+  );
+
   const isConfigured =
-    provider === "azure" ? isAzureConfigured : isValidUserKey || hasEnvKey; // Configured if either is set
+    provider === "azure"
+      ? isAzureConfigured
+      : provider === "vertex"
+        ? isVertexConfigured
+        : isValidUserKey || hasEnvKey; // Configured if either is set
 
   // --- Save Handler ---
   const handleSaveKey = async () => {

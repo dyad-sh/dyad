@@ -46,6 +46,8 @@ const ALLOWED_EXTENSIONS = [
   // Edge cases
   // https://github.com/dyad-sh/dyad/issues/880
   ".py",
+  // https://github.com/dyad-sh/dyad/issues/1221
+  ".php",
 ];
 
 // Directories to always exclude

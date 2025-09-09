@@ -62,11 +62,16 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
     setOriginalCode(newCode);
   }, [children]);
 
+  const [isDarkMode, setIsDarkMode] = useState(false);
   // Determine if dark mode based on theme
-  const isDarkMode =
-    theme === "dark" ||
-    (theme === "system" &&
-      window.matchMedia("(prefers-color-scheme: dark)").matches);
+  useEffect(() => {
+    // Safe access to window APIs
+    const isDark =
+      theme === "dark" ||
+      (theme === "system" &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches);
+    setIsDarkMode(isDark);
+  }, [theme]);
   const editorTheme = isDarkMode ? "dyad-dark" : "dyad-light";
 
   // Determine language based on file extension
@@ -111,7 +116,7 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
     if (!chatId) {
       return;
     }
-    const prompt = `Edit <dyad-edit path="${path}">${code}</dyad-edit>`;
+    const prompt = `Edit ${path}:\n\n\`\`\`${getLanguage(path)}\n${code}\n\`\`\``;
     streamMessage({ prompt, chatId });
     setIsEditing(false);
     setOriginalCode(code); // Update original code to current code
@@ -167,7 +172,7 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
               {isEditing ? (
                 <>
                   <button
-                    onClick={handleCancel}
+                    onClick={(e) => { e.stopPropagation(); handleCancel(); }}
                     className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 px-2 py-1 rounded cursor-pointer"
                   >
                     <X size={14} />
@@ -175,7 +180,7 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
                   </button>
 
                   <button
-                    onClick={handleSave}
+                    onClick={(e) => { e.stopPropagation(); handleSave(); }}
                     className="flex items-center gap-1 text-xs bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded cursor-pointer"
                   >
                     <Save size={14} />

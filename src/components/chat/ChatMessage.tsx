@@ -119,7 +119,7 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
                   )}
                 </>
               ) : (
-                <DyadMarkdownParser content={message.content} />
+                <VanillaMarkdownParser content={message.content} />
               )}
             </div>
           )}

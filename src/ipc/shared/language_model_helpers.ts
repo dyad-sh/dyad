@@ -281,7 +281,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       contextWindow: 131_072,
       temperature: 0,
       dollarSigns: 4,
-    }.
+    },
   ],
   bedrock: [
     {

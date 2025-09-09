@@ -7,6 +7,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { AzureConfiguration } from "./AzureConfiguration";
+import { VertexConfiguration } from "./VertexConfiguration";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { UserSettings } from "@/lib/schemas";
@@ -50,6 +51,10 @@ export function ApiKeyConfiguration({
   // Special handling for Azure OpenAI which requires environment variables
   if (provider === "azure") {
     return <AzureConfiguration envVars={envVars} />;
+  }
+  // Special handling for Google Vertex AI which uses service account credentials
+  if (provider === "vertex") {
+    return <VertexConfiguration />;
   }
 
   const envApiKey = envVarName ? envVars[envVarName] : undefined;

@@ -1,8 +1,7 @@
 {
   "body": {
-    "model": "gemini/gemini-2.5-pro",
-    "max_tokens": 65535,
-    "temperature": 0,
+    "model": "gpt-5",
+    "temperature": 1,
     "messages": [
       {
         "role": "system",
@@ -14,11 +13,7 @@
       }
     ],
     "stream": true,
-    "thinking": {
-      "type": "enabled",
-      "include_thoughts": true,
-      "budget_tokens": 4000
-    },
+    "reasoning_effort": "medium",
     "dyad_options": {
       "files": [
         {

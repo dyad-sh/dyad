@@ -44,7 +44,7 @@ or to provide a custom fetch implementation for e.g. testing.
   dyadOptions: {
     enableLazyEdits?: boolean;
     enableSmartFilesContext?: boolean;
-    smartContextMode?: "balanced";
+    smartContextMode?: "balanced" | "conservative";
   };
   settings: UserSettings;
 }

@@ -1,11 +1,16 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI as createGoogle } from "@ai-sdk/google";
 import { createAnthropic } from "@ai-sdk/anthropic";
+import { createVertex as createGoogleVertex } from "@ai-sdk/google-vertex";
 import { azure } from "@ai-sdk/azure";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
-import type { LargeLanguageModel, UserSettings } from "../../lib/schemas";
+import type {
+  LargeLanguageModel,
+  UserSettings,
+  VertexProviderSetting,
+} from "../../lib/schemas";
 import { getEnvVar } from "./read_env";
 import log from "electron-log";
 import { getLanguageModelProviders } from "../shared/language_model_helpers";
@@ -86,7 +91,8 @@ export async function getModelClient(
                   ? false
                   : settings.enableProLazyEditsMode,
               enableSmartFilesContext: settings.enableProSmartFilesContextMode,
-              smartContextMode: settings.proSmartContextOption,
+              // Keep in sync with getCurrentValue in ProModeSelector.tsx
+              smartContextMode: settings.proSmartContextOption ?? "balanced",
             },
             settings,
           })
@@ -211,6 +217,45 @@ function getRegularModelClient(
       return {
         modelClient: {
           model: provider(model.name),
+          builtinProviderId: providerId,
+        },
+        backupModelClients: [],
+      };
+    }
+    case "vertex": {
+      // Vertex uses Google service account credentials with project/location
+      const vertexSettings = settings.providerSettings?.[
+        model.provider
+      ] as VertexProviderSetting;
+      const project = vertexSettings?.projectId;
+      const location = vertexSettings?.location;
+      const serviceAccountKey = vertexSettings?.serviceAccountKey?.value;
+
+      // Use a baseURL that does NOT pin to publishers/google so that
+      // full publisher model IDs (e.g. publishers/deepseek-ai/models/...) work.
+      const regionHost = `${location === "global" ? "" : `${location}-`}aiplatform.googleapis.com`;
+      const baseURL = `https://${regionHost}/v1/projects/${project}/locations/${location}`;
+      const provider = createGoogleVertex({
+        project,
+        location,
+        baseURL,
+        googleAuthOptions: serviceAccountKey
+          ? {
+              // Expecting the user to paste the full JSON of the service account key
+              credentials: JSON.parse(serviceAccountKey),
+            }
+          : undefined,
+      });
+      return {
+        modelClient: {
+          // For built-in Google models on Vertex, the path must include
+          // publishers/google/models/<model>. For partner MaaS models the
+          // full publisher path is already included.
+          model: provider(
+            model.name.includes("/")
+              ? model.name
+              : `publishers/google/models/${model.name}`,
+          ),
           builtinProviderId: providerId,
         },
         backupModelClients: [],

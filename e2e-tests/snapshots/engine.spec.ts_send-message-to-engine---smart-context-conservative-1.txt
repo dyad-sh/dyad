@@ -1,7 +1,7 @@
 {
   "body": {
-    "model": "gpt-4.1",
-    "max_tokens": 32768,
+    "model": "gemini/gemini-2.5-pro",
+    "max_tokens": 65535,
     "temperature": 0,
     "messages": [
       {
@@ -14,7 +14,11 @@
       }
     ],
     "stream": true,
-    "reasoning_effort": "medium",
+    "thinking": {
+      "type": "enabled",
+      "include_thoughts": true,
+      "budget_tokens": 4000
+    },
     "dyad_options": {
       "files": [
         {
@@ -409,7 +413,8 @@
         }
       ],
       "enable_lazy_edits": true,
-      "enable_smart_files_context": true
+      "enable_smart_files_context": true,
+      "smart_context_mode": "conservative"
     }
   },
   "headers": {

@@ -173,6 +173,7 @@ export interface LanguageModelProvider {
   hasFreeTier?: boolean;
   websiteUrl?: string;
   gatewayPrefix?: string;
+  secondary?: boolean;
   envVarName?: string;
   apiBaseUrl?: string;
   type: "custom" | "local" | "cloud";
@@ -188,6 +189,7 @@ export type LanguageModel =
       maxOutputTokens?: number;
       contextWindow?: number;
       temperature?: number;
+      dollarSigns?: number;
       type: "custom";
     }
   | {
@@ -198,6 +200,7 @@ export type LanguageModel =
       maxOutputTokens?: number;
       contextWindow?: number;
       temperature?: number;
+      dollarSigns?: number;
       type: "local" | "cloud";
     };
 

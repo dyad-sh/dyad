@@ -40,6 +40,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useRunApp } from "@/hooks/useRunApp";
+import { useShortcut } from "@/hooks/useShortcut";
 
 interface ErrorBannerProps {
   error: string | undefined;
@@ -148,6 +149,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   );
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isPicking, setIsPicking] = useState(false);
+
+  //detect if the user is using Mac
+  const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
 
   // Deactivate component selector when selection is cleared
   useEffect(() => {
@@ -301,6 +305,15 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     }
   };
 
+  // Activate component selector using a shortcut
+  useShortcut(
+    "c",
+    { shift: true, ctrl: !isMac, meta: isMac },
+    handleActivateComponentSelector,
+    isComponentSelectorInitialized,
+    iframeRef,
+  );
+
   // Function to navigate back
   const handleNavigateBack = () => {
     if (canGoBack && iframeRef.current?.contentWindow) {
@@ -433,6 +446,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                     ? "Deactivate component selector"
                     : "Select component"}
                 </p>
+                <p>{isMac ? "⌘ + ⇧ + C" : "Ctrl + ⇧ + C"}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -544,6 +558,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           </div>
         ) : (
           <iframe
+            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-downloads"
             data-testid="preview-iframe-element"
             onLoad={() => {
               setErrorMessage(undefined);

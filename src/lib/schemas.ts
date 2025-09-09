@@ -36,6 +36,7 @@ const providers = [
   "ollama",
   "lmstudio",
   "azure",
+  "bedrock",
 ] as const;
 
 export const cloudProviders = providers.filter(

@@ -5,6 +5,7 @@ import { createVertex as createGoogleVertex } from "@ai-sdk/google-vertex";
 import { azure } from "@ai-sdk/azure";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
 import type {
   LargeLanguageModel,
   UserSettings,
@@ -338,6 +339,21 @@ function getRegularModelClient(
       return {
         modelClient: {
           model: provider(model.name),
+        },
+        backupModelClients: [],
+      };
+    }
+    case "bedrock": {
+      // AWS Bedrock supports API key authentication using AWS_BEARER_TOKEN_BEDROCK
+      // See: https://sdk.vercel.ai/providers/ai-sdk-providers/amazon-bedrock#api-key-authentication
+      const provider = createAmazonBedrock({
+        apiKey: apiKey,
+        region: getEnvVar("AWS_REGION") || "us-east-1",
+      });
+      return {
+        modelClient: {
+          model: provider(model.name),
+          builtinProviderId: providerId,
         },
         backupModelClients: [],
       };

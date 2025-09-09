@@ -250,7 +250,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       maxOutputTokens: 32_000,
       contextWindow: 256_000,
       temperature: 0,
-      dollarSigns: 3,
+      dollarSigns: 4,
     },
     {
       name: "grok-3",
@@ -259,7 +259,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       maxOutputTokens: 32_000,
       contextWindow: 131_072,
       temperature: 0,
-      dollarSigns: 3,
+      dollarSigns: 4,
     },
   ],
 };
@@ -323,7 +323,8 @@ export const CLOUD_PROVIDERS: Record<
     displayName: "xAI",
     hasFreeTier: false,
     websiteUrl: "https://console.x.ai/",
-    gatewayPrefix: "",
+    gatewayPrefix: "xai/",
+    secondary: true,
   },
 };
 

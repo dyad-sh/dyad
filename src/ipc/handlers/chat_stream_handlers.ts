@@ -686,6 +686,7 @@ This conversation includes one or more image attachments. When the user uploads 
           const providerId = modelClient.builtinProviderId;
           const isVertex = providerId === "vertex";
           const isGoogle = providerId === "google";
+          const isAnthropic = providerId === "anthropic";
           const isPartnerModel = selectedModelName.includes("/");
           const isGeminiModel = selectedModelName.startsWith("gemini");
           const isFlashLite = selectedModelName.includes("flash-lite");
@@ -707,8 +708,12 @@ This conversation includes one or more image attachments. When the user uploads 
               },
             } satisfies GoogleGenerativeAIProviderOptions;
           }
-
           return streamText({
+            headers: isAnthropic
+              ? {
+                  "anthropic-beta": "context-1m-2025-08-07",
+                }
+              : undefined,
             maxOutputTokens: await getMaxTokens(settings.selectedModel),
             temperature: await getTemperature(settings.selectedModel),
             maxRetries: 2,

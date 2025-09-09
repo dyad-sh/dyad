@@ -80,12 +80,12 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     {
       name: "claude-sonnet-4-20250514",
       displayName: "Claude 4 Sonnet",
-      description: "Excellent coder",
+      description: "Excellent coder (note: >200k tokens is very expensive!)",
       // See comment below for Claude 3.7 Sonnet for why we set this to 16k
       maxOutputTokens: 16_000,
-      contextWindow: 200_000,
+      contextWindow: 1_000_000,
       temperature: 0,
-      dollarSigns: 4,
+      dollarSigns: 5,
     },
     {
       name: "claude-3-7-sonnet-latest",
@@ -287,9 +287,9 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     {
       name: "us.anthropic.claude-sonnet-4-20250514-v1:0",
       displayName: "Claude 4 Sonnet",
-      description: "Excellent coder",
+      description: "Excellent coder (note: >200k tokens is very expensive!)",
       maxOutputTokens: 16_000,
-      contextWindow: 200_000,
+      contextWindow: 1_000_000,
       temperature: 0,
     },
     {
@@ -387,6 +387,7 @@ export const CLOUD_PROVIDERS: Record<
     hasFreeTier: false,
     websiteUrl: "https://console.aws.amazon.com/bedrock/",
     gatewayPrefix: "bedrock/",
+    secondary: true,
   },
 };
 

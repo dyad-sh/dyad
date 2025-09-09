@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 
 import { formatDistanceToNow } from "date-fns";
-import { PlusCircle, MoreVertical, Trash2, Edit3 } from "lucide-react";
+import { PlusCircle, MoreVertical, Trash2, Edit3, Search } from "lucide-react";
 import { useAtom } from "jotai";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
@@ -27,11 +27,14 @@ import { useChats } from "@/hooks/useChats";
 import { RenameChatDialog } from "@/components/chat/RenameChatDialog";
 import { DeleteChatDialog } from "@/components/chat/DeleteChatDialog";
 
+import { ChatSearchDialog } from "./ChatSearchDialog";
+
 export function ChatList({ show }: { show?: boolean }) {
   const navigate = useNavigate();
   const [selectedChatId, setSelectedChatId] = useAtom(selectedChatIdAtom);
   const [selectedAppId, setSelectedAppId] = useAtom(selectedAppIdAtom);
   const [, setIsDropdownOpen] = useAtom(dropdownOpenAtom);
+
   const { chats, loading, refreshChats } = useChats(selectedAppId);
   const routerState = useRouterState();
   const isChatRoute = routerState.location.pathname === "/chat";
@@ -45,6 +48,9 @@ export function ChatList({ show }: { show?: boolean }) {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [deleteChatId, setDeleteChatId] = useState<number | null>(null);
   const [deleteChatTitle, setDeleteChatTitle] = useState("");
+
+  // search dialog state
+  const [isSearchDialogOpen, setIsSearchDialogOpen] = useState(false);
 
   // Update selectedChatId when route changes
   useEffect(() => {
@@ -70,6 +76,7 @@ export function ChatList({ show }: { show?: boolean }) {
   }) => {
     setSelectedChatId(chatId);
     setSelectedAppId(appId);
+    setIsSearchDialogOpen(false);
     navigate({
       to: "/chat",
       search: { id: chatId },
@@ -151,7 +158,10 @@ export function ChatList({ show }: { show?: boolean }) {
 
   return (
     <>
-      <SidebarGroup className="overflow-y-auto h-[calc(100vh-112px)]">
+      <SidebarGroup
+        className="overflow-y-auto h-[calc(100vh-112px)]"
+        data-testid="chat-list-container"
+      >
         <SidebarGroupLabel>Recent Chats</SidebarGroupLabel>
         <SidebarGroupContent>
           <div className="flex flex-col space-y-4">
@@ -162,6 +172,15 @@ export function ChatList({ show }: { show?: boolean }) {
             >
               <PlusCircle size={16} />
               <span>New Chat</span>
+            </Button>
+            <Button
+              onClick={() => setIsSearchDialogOpen(!isSearchDialogOpen)}
+              variant="outline"
+              className="flex items-center justify-start gap-2 mx-2 py-3"
+              data-testid="search-chats-button"
+            >
+              <Search size={16} />
+              <span>Search chats</span>
             </Button>
 
             {loading ? (
@@ -272,6 +291,15 @@ export function ChatList({ show }: { show?: boolean }) {
         onOpenChange={setIsDeleteDialogOpen}
         onConfirmDelete={handleConfirmDelete}
         chatTitle={deleteChatTitle}
+      />
+
+      {/* Chat Search Dialog */}
+      <ChatSearchDialog
+        open={isSearchDialogOpen}
+        onOpenChange={setIsSearchDialogOpen}
+        onSelectChat={handleChatClick}
+        appId={selectedAppId}
+        allChats={chats}
       />
     </>
   );

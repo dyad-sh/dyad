@@ -23,6 +23,7 @@ const validInvokeChannels = [
   "copy-app",
   "get-chat",
   "get-chats",
+  "search-chats",
   "get-chat-logs",
   "list-apps",
   "get-app",

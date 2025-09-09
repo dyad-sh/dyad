@@ -112,14 +112,18 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
 
   // Extract filename from path
   const fileName = path ? path.split("/").pop() : "";
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!chatId) {
       return;
     }
     const prompt = `Edit ${path}:\n\n\`\`\`${getLanguage(path)}\n${code}\n\`\`\``;
-    streamMessage({ prompt, chatId });
-    setIsEditing(false);
-    setOriginalCode(code); // Update original code to current code
+    try {
+      await streamMessage({ prompt, chatId });
+      setIsEditing(false);
+      setOriginalCode(code); // Update original code to current code
+    } catch (error) {
+      // Handle error appropriately
+    }
   };
 
   const handleCancel = () => {
@@ -132,7 +136,6 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
     setIsEditing(true);
     setIsContentVisible(true);
   };
-  const editorPath = `inmemory://${fileName || "untitled"}-${Math.random().toString(36).slice(2)}`;
 
   return (
     <div

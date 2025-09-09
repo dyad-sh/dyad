@@ -253,6 +253,36 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       temperature: 0,
     },
   ],
+  xai: [
+    // https://docs.x.ai/docs/models
+    {
+      name: "grok-code-fast-1",
+      displayName: "Grok Code Fast",
+      description: "Fast coding model",
+      maxOutputTokens: 32_000,
+      contextWindow: 256_000,
+      temperature: 0,
+      dollarSigns: 1,
+    },
+    {
+      name: "grok-4",
+      displayName: "Grok 4",
+      description: "Most capable coding model",
+      maxOutputTokens: 32_000,
+      contextWindow: 256_000,
+      temperature: 0,
+      dollarSigns: 4,
+    },
+    {
+      name: "grok-3",
+      displayName: "Grok 3",
+      description: "Powerful coding model",
+      maxOutputTokens: 32_000,
+      contextWindow: 131_072,
+      temperature: 0,
+      dollarSigns: 4,
+    }.
+  ],
   bedrock: [
     {
       name: "us.anthropic.claude-sonnet-4-20250514-v1:0",
@@ -287,6 +317,7 @@ export const PROVIDER_TO_ENV_VAR: Record<string, string> = {
   google: "GEMINI_API_KEY",
   openrouter: "OPENROUTER_API_KEY",
   azure: "AZURE_API_KEY",
+  xai: "XAI_API_KEY",
   bedrock: "AWS_BEARER_TOKEN_BEDROCK",
 };
 
@@ -342,6 +373,13 @@ export const CLOUD_PROVIDERS: Record<
     hasFreeTier: false,
     websiteUrl: "https://portal.azure.com/",
     gatewayPrefix: "",
+    secondary: true,
+  },
+  xai: {
+    displayName: "xAI",
+    hasFreeTier: false,
+    websiteUrl: "https://console.x.ai/",
+    gatewayPrefix: "xai/",
     secondary: true,
   },
   bedrock: {

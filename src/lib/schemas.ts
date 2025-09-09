@@ -36,6 +36,7 @@ const providers = [
   "ollama",
   "lmstudio",
   "azure",
+  "xai",
   "bedrock",
 ] as const;
 

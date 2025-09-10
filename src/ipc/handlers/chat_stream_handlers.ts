@@ -682,11 +682,13 @@ This conversation includes one or more image attachments. When the user uploads 
           modelClient,
           tools,
           systemPromptOverride = systemPrompt,
+          dyadDisableFiles = false,
         }: {
           chatMessages: ModelMessage[];
           modelClient: ModelClient;
           tools?: ToolSet;
           systemPromptOverride?: string;
+          dyadDisableFiles?: boolean;
         }) => {
           const dyadRequestId = uuidv4();
           if (isEngineEnabled) {
@@ -753,6 +755,7 @@ This conversation includes one or more image attachments. When the user uploads 
             providerOptions: {
               "dyad-engine": {
                 dyadRequestId,
+                dyadDisableFiles,
               },
               "dyad-gateway": getExtraProviderOptions(
                 modelClient.builtinProviderId,
@@ -791,22 +794,6 @@ This conversation includes one or more image attachments. When the user uploads 
             abortSignal: abortController.signal,
           });
         };
-
-        // mcpToolSet = {
-        //   ...mcpToolSet,
-        //   ["dyad__generate_code"]: {
-        //     description: "Use this tool to generate code if necessary.",
-        //     inputSchema: {
-        //       type: "object",
-        //       properties: {
-        //         code: { type: "string" },
-        //       },
-        //     },
-        //     execute: async (args: any, execCtx: any) => {
-        //       return "Generated code";
-        //     },
-        //   },
-        // };
 
         const processResponseChunkUpdate = async ({
           fullResponse,
@@ -856,6 +843,7 @@ This conversation includes one or more image attachments. When the user uploads 
               aiRules: await readAiRules(getDyadAppPath(updatedChat.app.path)),
               chatMode: "agent",
             }),
+            dyadDisableFiles: true,
           });
 
           const result = await processStreamChunks({

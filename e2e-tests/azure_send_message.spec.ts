@@ -1,11 +1,16 @@
-import { testSkipIfWindows } from "./helpers/test_helper";
+import { testWithConfigSkipIfWindows } from "./helpers/test_helper";
 
 // Set environment variables before the test runs to enable Azure testing
-process.env.TEST_AZURE_BASE_URL = "http://localhost:3500/azure";
-process.env.AZURE_API_KEY = "fake-azure-key-for-testing";
-process.env.AZURE_RESOURCE_NAME = "fake-resource-for-testing";
 
-testSkipIfWindows("send message through Azure OpenAI", async ({ po }) => {
+const testAzure = testWithConfigSkipIfWindows({
+  preLaunchHook: async () => {
+    process.env.TEST_AZURE_BASE_URL = "http://localhost:3500/azure";
+    process.env.AZURE_API_KEY = "fake-azure-key-for-testing";
+    process.env.AZURE_RESOURCE_NAME = "fake-resource-for-testing";
+  },
+});
+
+testAzure("send message through Azure OpenAI", async ({ po }) => {
   // Set up Azure without test provider
   await po.setUpAzure();
 

@@ -2,6 +2,7 @@ import type {
   LanguageModelProvider,
   LanguageModel,
   CreateCustomLanguageModelProviderParams,
+  EditCustomLanguageModelProviderParams,
   CreateCustomLanguageModelParams,
 } from "@/ipc/ipc_types";
 import { createLoggedHandler } from "./safe_handle";
@@ -127,6 +128,108 @@ export function registerLanguageModelHandlers() {
         max_output_tokens: maxOutputTokens || null,
         context_window: contextWindow || null,
       });
+    },
+  );
+  handle(
+    "edit-custom-language-model-provider",
+    async (
+      event: IpcMainInvokeEvent,
+      params: EditCustomLanguageModelProviderParams,
+    ): Promise<LanguageModelProvider> => {
+      const { currentId, id, name, apiBaseUrl, envVarName } = params;
+      // Validation
+      if (!currentId) {
+        throw new Error("Previous Provider ID is required for editing");
+      }
+      if (!id) {
+        throw new Error("Provider ID is required");
+      }
+      if (!name) {
+        throw new Error("Provider name is required");
+      }
+      if (!apiBaseUrl) {
+        throw new Error("API base URL is required");
+      }
+
+      // Check if the provider being edited exists
+      const existingProvider = db
+        .select()
+        .from(languageModelProvidersSchema)
+        .where(
+          eq(
+            languageModelProvidersSchema.id,
+            CUSTOM_PROVIDER_PREFIX + currentId,
+          ),
+        )
+        .get();
+
+      if (!existingProvider) {
+        throw new Error(`Provider with ID "${currentId}" not found`);
+      }
+
+      // If the ID is changing, check if the new ID already exists
+      if (currentId !== id) {
+        const providerWithNewId = db
+          .select()
+          .from(languageModelProvidersSchema)
+          .where(
+            eq(languageModelProvidersSchema.id, CUSTOM_PROVIDER_PREFIX + id),
+          )
+          .get();
+
+        if (providerWithNewId) {
+          throw new Error(`A provider with ID "${id}" already exists`);
+        }
+      }
+
+      // Use transaction to ensure atomicity when updating provider and potentially its models
+      const result = db.transaction((tx) => {
+        // Update the provider
+        const updateResult = tx
+          .update(languageModelProvidersSchema)
+          .set({
+            id: CUSTOM_PROVIDER_PREFIX + id,
+            name,
+            api_base_url: apiBaseUrl,
+            env_var_name: envVarName || null,
+          })
+          .where(
+            eq(
+              languageModelProvidersSchema.id,
+              CUSTOM_PROVIDER_PREFIX + currentId,
+            ),
+          )
+          .run();
+
+        if (updateResult.changes === 0) {
+          throw new Error(`Failed to update provider with ID "${currentId}"`);
+        }
+
+        // If the ID changed, update all associated models to reference the new provider ID
+        if (currentId !== id) {
+          const updateModelsResult = tx
+            .update(languageModelsSchema)
+            .set({
+              customProviderId: id,
+            })
+            .where(eq(languageModelsSchema.customProviderId, currentId))
+            .run();
+
+          logger.info(
+            `Updated ${updateModelsResult.changes} model(s) to reference new provider ID "${id}"`,
+          );
+        }
+
+        return {
+          id,
+          name,
+          apiBaseUrl,
+          envVarName,
+          type: "custom" as const,
+        };
+      });
+      logger.info(`Successfully updated provider`);
+      return result;
     },
   );
 

@@ -210,6 +210,13 @@ export interface CreateCustomLanguageModelProviderParams {
   apiBaseUrl: string;
   envVarName?: string;
 }
+export interface EditCustomLanguageModelProviderParams {
+  currentId: string;
+  id: string;
+  name: string;
+  apiBaseUrl: string;
+  envVarName?: string;
+}
 
 export interface CreateCustomLanguageModelParams {
   apiName: string;

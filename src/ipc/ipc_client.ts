@@ -26,6 +26,7 @@ import type {
   LanguageModelProvider,
   LanguageModel,
   CreateCustomLanguageModelProviderParams,
+  EditCustomLanguageModelProviderParams,
   CreateCustomLanguageModelParams,
   DoesReleaseNoteExistParams,
   ApproveProposalResult,
@@ -1026,6 +1027,21 @@ export class IpcClient {
     envVarName,
   }: CreateCustomLanguageModelProviderParams): Promise<LanguageModelProvider> {
     return this.ipcRenderer.invoke("create-custom-language-model-provider", {
+      id,
+      name,
+      apiBaseUrl,
+      envVarName,
+    });
+  }
+  public async editCustomLanguageModelProvider({
+    currentId,
+    id,
+    name,
+    apiBaseUrl,
+    envVarName,
+  }: EditCustomLanguageModelProviderParams): Promise<LanguageModelProvider> {
+    return this.ipcRenderer.invoke("edit-custom-language-model-provider", {
+      currentId,
       id,
       name,
       apiBaseUrl,

@@ -1152,6 +1152,17 @@ export function testWithConfig(config: ElectronConfig) {
   });
 }
 
+export function testWithConfigSkipIfWindows(config: ElectronConfig) {
+  if (os.platform() === "win32") {
+    return test.skip;
+  }
+  return test.extend({
+    electronConfig: async ({}, use) => {
+      await use(config);
+    },
+  });
+}
+
 // Wrapper that skips tests on Windows platform
 export const testSkipIfWindows = os.platform() === "win32" ? test.skip : test;
 

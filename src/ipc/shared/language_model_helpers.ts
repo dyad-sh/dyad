@@ -167,6 +167,34 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
   ],
   openrouter: [
     {
+      name: "qwen/qwen3-coder:free",
+      displayName: "Qwen3 Coder (free)",
+      description: "Use for free (data may be used for training)",
+      maxOutputTokens: 32_000,
+      contextWindow: 262_000,
+      temperature: 0,
+      dollarSigns: 0,
+    },
+    // https://openrouter.ai/deepseek/deepseek-chat-v3-0324:free
+    {
+      name: "deepseek/deepseek-chat-v3.1:free",
+      displayName: "DeepSeek v3.1 (free)",
+      description: "Use for free (data may be used for training)",
+      maxOutputTokens: 32_000,
+      contextWindow: 128_000,
+      temperature: 0,
+      dollarSigns: 0,
+    },
+    {
+      name: "deepseek/deepseek-chat-v3-0324:free",
+      displayName: "DeepSeek v3 (free)",
+      description: "Use for free (data may be used for training)",
+      maxOutputTokens: 32_000,
+      contextWindow: 128_000,
+      temperature: 0,
+      dollarSigns: 0,
+    },
+    {
       name: "qwen/qwen3-coder",
       displayName: "Qwen3 Coder",
       description: "Qwen's best coding model",
@@ -175,11 +203,10 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       temperature: 0,
       dollarSigns: 2,
     },
-    // https://openrouter.ai/deepseek/deepseek-chat-v3-0324:free
     {
-      name: "deepseek/deepseek-chat-v3-0324:free",
-      displayName: "DeepSeek v3 (free)",
-      description: "Use for free (data may be used for training)",
+      name: "deepseek/deepseek-chat-v3.1",
+      displayName: "DeepSeek v3.1",
+      description: "Strong cost-effective model with optional thinking",
       maxOutputTokens: 32_000,
       contextWindow: 128_000,
       temperature: 0,
@@ -187,20 +214,11 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     },
     // https://openrouter.ai/moonshotai/kimi-k2
     {
-      name: "moonshotai/kimi-k2",
+      name: "moonshotai/kimi-k2-0905",
       displayName: "Kimi K2",
-      description: "Powerful cost-effective model",
+      description: "Powerful cost-effective model (updated to 0905)",
       maxOutputTokens: 32_000,
-      contextWindow: 131_000,
-      temperature: 0,
-      dollarSigns: 2,
-    },
-    {
-      name: "deepseek/deepseek-r1-0528",
-      displayName: "DeepSeek R1",
-      description: "Good reasoning model with excellent price for performance",
-      maxOutputTokens: 32_000,
-      contextWindow: 128_000,
+      contextWindow: 256_000,
       temperature: 0,
       dollarSigns: 2,
     },
@@ -216,6 +234,18 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       // and smart auto.
       maxOutputTokens: 32_000,
       contextWindow: 1_000_000,
+      temperature: 0,
+    },
+    {
+      name: "free",
+      displayName: "Free (OpenRouter)",
+      description: "Selects from one of the free OpenRouter models",
+      tag: "Free",
+      // These are below Gemini 2.5 Pro & Flash limits
+      // which are the ones defaulted to for both regular auto
+      // and smart auto.
+      maxOutputTokens: 32_000,
+      contextWindow: 128_000,
       temperature: 0,
     },
   ],
@@ -310,6 +340,10 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     },
   ],
 };
+
+export const FREE_OPENROUTER_MODEL_NAMES = MODEL_OPTIONS.openrouter
+  .filter((model) => model.name.endsWith(":free"))
+  .map((model) => model.name);
 
 export const PROVIDER_TO_ENV_VAR: Record<string, string> = {
   openai: "OPENAI_API_KEY",

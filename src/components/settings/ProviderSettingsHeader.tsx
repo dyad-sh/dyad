@@ -98,8 +98,8 @@ export function ProviderSettingsHeader({
       {providerWebsiteUrl && !isLoading && (
         <Button
           onClick={handleGetApiKeyClick}
-          className="mb-4 bg-(--background-lightest) cursor-pointer py-5"
-          variant="outline"
+          className="mb-4 cursor-pointer py-5 w-full"
+          // variant="primary"
         >
           {isConfigured ? (
             <SettingsIcon className="mr-2 h-4 w-4" />

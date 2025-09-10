@@ -1,4 +1,3 @@
-import { LanguageModel } from "ai";
 import { OpenAICompatibleChatLanguageModel } from "@ai-sdk/openai-compatible";
 import {
   FetchFunction,
@@ -9,6 +8,7 @@ import {
 import log from "electron-log";
 import { getExtraProviderOptions } from "./thinking_utils";
 import type { UserSettings } from "../../lib/schemas";
+import { LanguageModelV2 } from "@ai-sdk/provider";
 
 const logger = log.scope("llm_engine_provider");
 
@@ -53,7 +53,10 @@ export interface DyadEngineProvider {
   /**
 Creates a model for text generation.
 */
-  (modelId: ExampleChatModelId, settings?: ExampleChatSettings): LanguageModel;
+  (
+    modelId: ExampleChatModelId,
+    settings?: ExampleChatSettings,
+  ): LanguageModelV2;
 
   /**
 Creates a chat model for text generation.
@@ -61,7 +64,7 @@ Creates a chat model for text generation.
   chatModel(
     modelId: ExampleChatModelId,
     settings?: ExampleChatSettings,
-  ): LanguageModel;
+  ): LanguageModelV2;
 }
 
 export function createDyadEngine(

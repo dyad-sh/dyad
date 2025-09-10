@@ -4,6 +4,7 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createXai } from "@ai-sdk/xai";
 import { createVertex as createGoogleVertex } from "@ai-sdk/google-vertex";
 import { azure } from "@ai-sdk/azure";
+import { LanguageModelV2 } from "@ai-sdk/provider";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
@@ -14,14 +15,17 @@ import type {
 } from "../../lib/schemas";
 import { getEnvVar } from "./read_env";
 import log from "electron-log";
-import { getLanguageModelProviders } from "../shared/language_model_helpers";
+import {
+  FREE_OPENROUTER_MODEL_NAMES,
+  getLanguageModelProviders,
+} from "../shared/language_model_helpers";
 import { LanguageModelProvider } from "../ipc_types";
 import { createDyadEngine } from "./llm_engine_provider";
 
 import { LM_STUDIO_BASE_URL } from "./lm_studio_utils";
-import { LanguageModel } from "ai";
 import { createOllamaProvider } from "./ollama_provider";
 import { getOllamaApiUrl } from "../handlers/local_model_ollama_handler";
+import { createFallback } from "./fallback_ai_model";
 
 const dyadEngineUrl = process.env.DYAD_ENGINE_URL;
 const dyadGatewayUrl = process.env.DYAD_GATEWAY_URL;
@@ -30,6 +34,10 @@ const AUTO_MODELS = [
   {
     provider: "google",
     name: "gemini-2.5-flash",
+  },
+  {
+    provider: "openrouter",
+    name: "qwen/qwen3-coder:free",
   },
   {
     provider: "anthropic",
@@ -42,7 +50,7 @@ const AUTO_MODELS = [
 ];
 
 export interface ModelClient {
-  model: LanguageModel;
+  model: LanguageModelV2;
   builtinProviderId?: string;
 }
 
@@ -142,6 +150,30 @@ export async function getModelClient(
   }
   // Handle 'auto' provider by trying each model in AUTO_MODELS until one works
   if (model.provider === "auto") {
+    if (model.name === "free") {
+      const openRouterProvider = allProviders.find(
+        (p) => p.id === "openrouter",
+      );
+      if (!openRouterProvider) {
+        throw new Error("OpenRouter provider not found");
+      }
+      return {
+        modelClient: {
+          model: createFallback({
+            models: FREE_OPENROUTER_MODEL_NAMES.map(
+              (name: string) =>
+                getRegularModelClient(
+                  { provider: "openrouter", name },
+                  settings,
+                  openRouterProvider,
+                ).modelClient.model,
+            ),
+          }),
+          builtinProviderId: "openrouter",
+        },
+        isEngineEnabled: false,
+      };
+    }
     for (const autoModel of AUTO_MODELS) {
       const providerInfo = allProviders.find(
         (p) => p.id === autoModel.provider,

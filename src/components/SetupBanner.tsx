@@ -133,9 +133,7 @@ export function SetupBanner() {
 
   return (
     <>
-      <p className="text-xl text-zinc-700 dark:text-zinc-300 p-4">
-        Follow these steps and you'll be ready to start building with Dyad...
-      </p>
+      <p className="text-xl text-zinc-700 dark:text-zinc-300 p-4">Setup Dyad</p>
       <div className={bannerClasses}>
         <Accordion
           type="multiple"
@@ -367,3 +365,36 @@ function NodeInstallButton({
       const _exhaustiveCheck: never = nodeInstallStep;
   }
 }
+
+export const OpenRouterSetupBanner = ({
+  className,
+}: {
+  className?: string;
+}) => {
+  const posthog = usePostHog();
+  const navigate = useNavigate();
+  return (
+    <SetupProviderCard
+      className={cn("mt-2", className)}
+      variant="openrouter"
+      onClick={() => {
+        posthog.capture("setup-flow:ai-provider-setup:openrouter:click");
+        navigate({
+          to: providerSettingsRoute.id,
+          params: { provider: "openrouter" },
+        });
+      }}
+      tabIndex={0}
+      leadingIcon={
+        <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+      }
+      title="Setup OpenRouter API Key"
+      subtitle={
+        <>
+          <GiftIcon className="w-3 h-3" />
+          Free models available
+        </>
+      }
+    />
+  );
+};

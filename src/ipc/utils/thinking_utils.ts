@@ -1,4 +1,4 @@
-import { PROVIDERS_THAT_SUPPORT_THINKING } from "../shared/language_model_helpers";
+import { PROVIDERS_THAT_SUPPORT_THINKING } from "../shared/language_model_constants";
 import type { UserSettings } from "../../lib/schemas";
 
 function getThinkingBudgetTokens(

@@ -1035,7 +1035,7 @@ export class IpcClient {
   }
   public async editCustomLanguageModelProvider(
     params: EditCustomLanguageModelProviderParams,
-  ): Promise<void> {
+  ): Promise<LanguageModelProvider> {
     return this.ipcRenderer.invoke(
       "edit-custom-language-model-provider",
       params,

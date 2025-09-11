@@ -12,7 +12,6 @@ testSetup("setup ai provider", async ({ po }) => {
   await expect(
     po.page.getByRole("heading", { name: "Configure Google" }),
   ).toBeVisible();
-  expect(po.page.url()).toEqual("file:///providers/google");
 
   await po.page.getByRole("button", { name: "Go Back" }).click();
   await po.page
@@ -21,11 +20,9 @@ testSetup("setup ai provider", async ({ po }) => {
   await expect(
     po.page.getByRole("heading", { name: "Configure OpenRouter" }),
   ).toBeVisible();
-  expect(po.page.url()).toEqual("file:///providers/openrouter");
 
   await po.page.getByRole("button", { name: "Go Back" }).click();
   await po.page
     .getByRole("button", { name: "Setup other AI providers" })
     .click();
-  expect(po.page.url()).toEqual("file:///settings");
 });

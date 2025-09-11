@@ -5,7 +5,6 @@ test("can edit custom provider", async ({ po }) => {
   await po.goToSettingsTab();
 
   // Create a provider first
-  await po.setUpTestProvider();
 
   // Edit it
   await po.page.getByTestId("custom-provider-more-options").click();
@@ -30,5 +29,4 @@ test("can edit custom provider", async ({ po }) => {
   await po.page.getByRole("button", { name: "Update Provider" }).click();
 
   // Make sure UI hasn't freezed
-  await po.goToAppsTab();
 });

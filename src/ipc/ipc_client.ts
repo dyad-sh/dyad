@@ -1033,20 +1033,13 @@ export class IpcClient {
       envVarName,
     });
   }
-  public async editCustomLanguageModelProvider({
-    currentId,
-    id,
-    name,
-    apiBaseUrl,
-    envVarName,
-  }: EditCustomLanguageModelProviderParams): Promise<LanguageModelProvider> {
-    return this.ipcRenderer.invoke("edit-custom-language-model-provider", {
-      currentId,
-      id,
-      name,
-      apiBaseUrl,
-      envVarName,
-    });
+  public async editCustomLanguageModelProvider(
+    params: EditCustomLanguageModelProviderParams,
+  ): Promise<void> {
+    return this.ipcRenderer.invoke(
+      "edit-custom-language-model-provider",
+      params,
+    );
   }
 
   public async createCustomLanguageModel(

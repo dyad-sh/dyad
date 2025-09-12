@@ -182,17 +182,14 @@ export default function HomePage() {
 
   // Main Home Page Content
   return (
-    <div className="flex flex-col items-center justify-center m-auto p-8">
-      <div className="w-full max-w-2xl m-auto">
-        <SetupBanner />
-      </div>
+    <div className="flex flex-col items-center justify-center max-w-3xl m-auto p-8">
+      <SetupBanner />
 
       <div className="w-full">
         <ImportAppButton />
-        <div className="max-w-3xl m-auto">
-          <HomeChatInput onSubmit={handleSubmit} />
-        </div>
-        <div className="flex flex-col gap-4 mt-2 max-w-4xl">
+        <HomeChatInput onSubmit={handleSubmit} />
+
+        <div className="flex flex-col gap-4 mt-2">
           <div className="flex flex-wrap gap-4 justify-center">
             {randomPrompts.map((item, index) => (
               <button

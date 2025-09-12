@@ -1032,6 +1032,14 @@ export class IpcClient {
       envVarName,
     });
   }
+  public async editCustomLanguageModelProvider(
+    params: CreateCustomLanguageModelProviderParams,
+  ): Promise<LanguageModelProvider> {
+    return this.ipcRenderer.invoke(
+      "edit-custom-language-model-provider",
+      params,
+    );
+  }
 
   public async createCustomLanguageModel(
     params: CreateCustomLanguageModelParams,

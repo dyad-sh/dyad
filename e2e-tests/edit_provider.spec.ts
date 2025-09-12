@@ -10,12 +10,6 @@ test("can edit custom provider", async ({ po }) => {
   await po.page.getByTestId("custom-provider-more-options").click();
   await po.page.getByRole("button", { name: "Edit Provider" }).click();
 
-  // Update all the main fields
-  await po.page.getByRole("textbox", { name: "Provider ID" }).clear();
-  await po.page
-    .getByRole("textbox", { name: "Provider ID" })
-    .fill("updated-testing-id");
-
   await po.page.getByRole("textbox", { name: "Display Name" }).clear();
   await po.page
     .getByRole("textbox", { name: "Display Name" })

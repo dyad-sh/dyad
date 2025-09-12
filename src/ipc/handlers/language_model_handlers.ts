@@ -158,21 +158,6 @@ export function registerLanguageModelHandlers() {
         throw new Error(`Provider with ID "${id}" not found`);
       }
 
-      // If the ID is changing, check if the new ID already exists
-      if (id !== id) {
-        const providerWithNewId = db
-          .select()
-          .from(languageModelProvidersSchema)
-          .where(
-            eq(languageModelProvidersSchema.id, CUSTOM_PROVIDER_PREFIX + id),
-          )
-          .get();
-
-        if (providerWithNewId) {
-          throw new Error(`A provider with ID "${id}" already exists`);
-        }
-      }
-
       // Use transaction to ensure atomicity when updating provider and potentially its models
       const result = db.transaction((tx) => {
         // Update the provider

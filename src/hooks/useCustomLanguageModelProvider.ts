@@ -110,6 +110,9 @@ export function useCustomLanguageModelProvider() {
     isCreating: createProviderMutation.isPending,
     isEditing: editProviderMutation.isPending,
     isDeleting: deleteProviderMutation.isPending,
-    error: createProviderMutation.error || deleteProviderMutation.error,
+    error:
+      createProviderMutation.error ||
+      editProviderMutation.error ||
+      deleteProviderMutation.error,
   };
 }

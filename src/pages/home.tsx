@@ -182,7 +182,7 @@ export default function HomePage() {
 
   // Main Home Page Content
   return (
-    <div className="flex flex-col items-center justify-center max-w-3xl m-auto p-8">
+    <div className="flex flex-col items-center justify-center max-w-3xl w-full m-auto p-8">
       <SetupBanner />
 
       <div className="w-full">

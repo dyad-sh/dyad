@@ -65,8 +65,7 @@ export function CreateCustomProviderDialog({
           ? editingProvider.id.replace("custom::", "")
           : editingProvider.id || "";
         await editProvider({
-          currentId: cleanId,
-          id: id.trim(),
+          id: cleanId,
           name: name.trim(),
           apiBaseUrl: apiBaseUrl.trim(),
           envVarName: envVarName.trim() || undefined,
@@ -127,7 +126,7 @@ export function CreateCustomProviderDialog({
               onChange={(e) => setId(e.target.value)}
               placeholder="E.g., my-provider"
               required
-              disabled={isLoading}
+              disabled={isLoading || isEditMode}
             />
             <p className="text-xs text-muted-foreground">
               A unique identifier for this provider (no spaces).

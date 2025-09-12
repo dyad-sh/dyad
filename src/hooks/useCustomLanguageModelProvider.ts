@@ -2,7 +2,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { IpcClient } from "@/ipc/ipc_client";
 import type {
   CreateCustomLanguageModelProviderParams,
-  EditCustomLanguageModelProviderParams,
   LanguageModelProvider,
 } from "@/ipc/ipc_types";
 import { showError } from "@/lib/toast";
@@ -43,11 +42,8 @@ export function useCustomLanguageModelProvider() {
 
   const editProviderMutation = useMutation({
     mutationFn: async (
-      params: EditCustomLanguageModelProviderParams,
+      params: CreateCustomLanguageModelProviderParams,
     ): Promise<LanguageModelProvider> => {
-      if (!params.currentId.trim()) {
-        throw new Error("Original Provider ID is required");
-      }
       if (!params.id.trim()) {
         throw new Error("Provider ID is required");
       }
@@ -59,7 +55,6 @@ export function useCustomLanguageModelProvider() {
       }
 
       return ipcClient.editCustomLanguageModelProvider({
-        currentId: params.currentId.trim(),
         id: params.id.trim(),
         name: params.name.trim(),
         apiBaseUrl: params.apiBaseUrl.trim(),
@@ -99,7 +94,7 @@ export function useCustomLanguageModelProvider() {
   };
 
   const editProvider = async (
-    params: EditCustomLanguageModelProviderParams,
+    params: CreateCustomLanguageModelProviderParams,
   ): Promise<LanguageModelProvider> => {
     return editProviderMutation.mutateAsync(params);
   };

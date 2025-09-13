@@ -30,8 +30,11 @@ export function AzureConfiguration() {
 
     try {
       // Validate that both fields have values
-      if (azureApiKey && resourceName) {
-        JSON.parse("{}"); // Simple validation placeholder
+      if (azureApiKey) {
+        JSON.parse(azureApiKey);
+      }
+      if (resourceName) {
+        JSON.parse(resourceName);
       }
     } catch (e: any) {
       setError("Invalid configuration: " + e.message);
@@ -45,7 +48,9 @@ export function AzureConfiguration() {
           ...settings?.providerSettings,
           azure: {
             ...existing,
-            azureApiKey: azureApiKey.trim() ? { value: azureApiKey.trim() } : undefined,
+            azureApiKey: azureApiKey.trim()
+              ? { value: azureApiKey.trim() }
+              : undefined,
             resourceName: resourceName.trim() || undefined,
           },
         },

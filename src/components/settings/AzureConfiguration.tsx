@@ -11,7 +11,7 @@ export function AzureConfiguration() {
   const existing =
     (settings?.providerSettings?.azure as AzureProviderSetting) ?? {};
 
-  const [azureApiKey, setAzureApiKey] = useState(existing.apiKey || "");
+  const [azureApiKey, setAzureApiKey] = useState(existing.apiKey?.value || "");
   const [resourceName, setResourceName] = useState(existing.resourceName || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);

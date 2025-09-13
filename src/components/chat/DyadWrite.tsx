@@ -1,6 +1,6 @@
 import type React from "react";
 import type { ReactNode } from "react";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   ChevronsDownUp,
   ChevronsUpDown,
@@ -8,16 +8,13 @@ import {
   Loader,
   CircleX,
   Edit,
-  Save,
   X,
 } from "lucide-react";
 import { CodeHighlight } from "./CodeHighlight";
 import { CustomTagState } from "./stateTypes";
-import Editor from "@monaco-editor/react";
-import { useStreamChat } from "@/hooks/useStreamChat";
-import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { FileEditor } from "../preview_panel/FileEditor";
 import { useAtomValue } from "jotai";
-import { useTheme } from "@/contexts/ThemeContext";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
 
 interface DyadWriteProps {
   children?: ReactNode;
@@ -33,109 +30,27 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
   description: descriptionProp,
 }) => {
   const [isContentVisible, setIsContentVisible] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const [code, setCode] = useState(
-    children
-      ? Array.isArray(children)
-        ? children.join("")
-        : String(children)
-      : "",
-  );
-  const [originalCode, setOriginalCode] = useState(
-    children
-      ? Array.isArray(children)
-        ? children.join("")
-        : String(children)
-      : "",
-  );
-  const { streamMessage } = useStreamChat();
-  const chatId = useAtomValue(selectedChatIdAtom);
-  const { theme } = useTheme();
-
-  useEffect(() => {
-    const newCode = children
-      ? Array.isArray(children)
-        ? children.join("")
-        : String(children)
-      : "";
-    setCode(newCode);
-    setOriginalCode(newCode);
-  }, [children]);
-
-  const [isDarkMode, setIsDarkMode] = useState(false);
-  // Determine if dark mode based on theme
-  useEffect(() => {
-    // Safe access to window APIs
-    const isDark =
-      theme === "dark" ||
-      (theme === "system" &&
-        window.matchMedia("(prefers-color-scheme: dark)").matches);
-    setIsDarkMode(isDark);
-  }, [theme]);
-  const editorTheme = isDarkMode ? "dyad-dark" : "dyad-light";
-
-  // Determine language based on file extension
-  const getLanguage = (filePath: string) => {
-    const extension = filePath.split(".").pop()?.toLowerCase() || "";
-    const languageMap: Record<string, string> = {
-      js: "javascript",
-      jsx: "javascript",
-      ts: "typescript",
-      tsx: "typescript",
-      html: "html",
-      css: "css",
-      json: "json",
-      md: "markdown",
-      py: "python",
-      java: "java",
-      c: "c",
-      cpp: "cpp",
-      cs: "csharp",
-      go: "go",
-      rs: "rust",
-      rb: "ruby",
-      php: "php",
-      swift: "swift",
-      kt: "kotlin",
-      // Add more as needed
-    };
-
-    return languageMap[extension] || "plaintext";
-  };
 
   // Use props directly if provided, otherwise extract from node
   const path = pathProp || node?.properties?.path || "";
   const description = descriptionProp || node?.properties?.description || "";
   const state = node?.properties?.state as CustomTagState;
-  const inProgress = state === "pending";
-  const aborted = state === "aborted";
 
-  // Extract filename from path
-  const fileName = path ? path.split("/").pop() : "";
-  const handleSave = async () => {
-    if (!chatId) {
-      return;
-    }
-    const prompt = `Edit ${path}:\n\n\`\`\`${getLanguage(path)}\n${code}\n\`\`\``;
-    try {
-      await streamMessage({ prompt, chatId });
-      setIsEditing(false);
-      setOriginalCode(code); // Update original code to current code
-    } catch (error) {
-      // Handle error appropriately
-    }
-  };
+  const aborted = state === "aborted";
+  const appId = useAtomValue(selectedAppIdAtom);
+  const [isEditing, setIsEditing] = useState(false);
+  const inProgress = state === "pending";
 
   const handleCancel = () => {
-    setCode(originalCode); // Revert to original code
     setIsEditing(false);
   };
 
   const handleEdit = () => {
-    setOriginalCode(code); // Save current state as original before editing
     setIsEditing(true);
     setIsContentVisible(true);
   };
+  // Extract filename from path
+  const fileName = path ? path.split("/").pop() : "";
 
   return (
     <div
@@ -175,19 +90,14 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
               {isEditing ? (
                 <>
                   <button
-                    onClick={(e) => { e.stopPropagation(); handleCancel(); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleCancel();
+                    }}
                     className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 px-2 py-1 rounded cursor-pointer"
                   >
                     <X size={14} />
                     Cancel
-                  </button>
-
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleSave(); }}
-                    className="flex items-center gap-1 text-xs bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded cursor-pointer"
-                  >
-                    <Save size={14} />
-                    Save
                   </button>
                 </>
               ) : (
@@ -234,22 +144,9 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
           onClick={(e) => e.stopPropagation()}
         >
           {isEditing ? (
-            <Editor
-              height="300px"
-              defaultLanguage={getLanguage(path)}
-              value={code}
-              theme={editorTheme}
-              onChange={(value) => setCode(value || "")}
-              options={{
-                minimap: { enabled: true },
-                scrollBeyondLastLine: false,
-                wordWrap: "on",
-                automaticLayout: true,
-                fontFamily: "monospace",
-                fontSize: 13,
-                lineNumbers: "on",
-              }}
-            />
+            <div className="h-96 min-h-96 border border-gray-200 dark:border-gray-700 rounded overflow-hidden">
+              <FileEditor appId={appId ?? null} filePath={path} />
+            </div>
           ) : (
             <CodeHighlight className="language-typescript">
               {children}

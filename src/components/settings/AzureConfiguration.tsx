@@ -28,17 +28,17 @@ export function AzureConfiguration() {
 
     try {
       // Validate that both fields have values
-      if (azureApiKey) {
-        // Validate that the API key is a non-empty string
-        if (typeof azureApiKey !== "string" || azureApiKey.trim() === "") {
-          throw new Error("API key cannot be empty");
-        }
+      // First check that both required fields are present
+      if (!azureApiKey || !resourceName) {
+        throw new Error("Both API key and resource name are required");
       }
-      if (resourceName) {
-        // Validate that the resource name is a non-empty string
-        if (typeof resourceName !== "string" || resourceName.trim() === "") {
-          throw new Error("Resource name cannot be empty");
-        }
+      // Validate that the API key is a non-empty string
+      if (typeof azureApiKey !== "string" || azureApiKey.trim() === "") {
+        throw new Error("API key cannot be empty");
+      }
+      // Validate that the resource name is a non-empty string
+      if (typeof resourceName !== "string" || resourceName.trim() === "") {
+        throw new Error("Resource name cannot be empty");
       }
     } catch (e: any) {
       setError("Invalid configuration: " + e.message);

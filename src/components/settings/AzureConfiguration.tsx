@@ -71,8 +71,7 @@ export function AzureConfiguration() {
   };
 
   const isConfigured = Boolean(
-    (azureApiKey.trim() && resourceName.trim()) ||
-      (existing.azureApiKey?.value?.trim() && existing.resourceName?.trim()),
+    azureApiKey.trim() && resourceName.trim()
   );
 
   return (

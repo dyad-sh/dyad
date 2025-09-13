@@ -36,11 +36,11 @@ export function useLanguageModelProviders() {
       }
       return false;
     }
-    // Azure uses UI-only configuration with azureApiKey and resourceName
+    // Azure uses UI-only configuration with apiKey and resourceName
     if (provider === "azure") {
       const azureSettings = providerSettings as AzureProviderSetting;
       if (
-        azureSettings?.azureApiKey?.value?.trim() &&
+        azureSettings?.apiKey?.value?.trim() &&
         azureSettings?.resourceName?.trim()
       ) {
         return true;

@@ -11,16 +11,14 @@ export function AzureConfiguration() {
   const existing =
     (settings?.providerSettings?.azure as AzureProviderSetting) ?? {};
 
-  const [azureApiKey, setAzureApiKey] = useState(
-    existing.azureApiKey?.value || "",
-  );
+  const [azureApiKey, setAzureApiKey] = useState(existing.apiKey || "");
   const [resourceName, setResourceName] = useState(existing.resourceName || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    setAzureApiKey(existing.azureApiKey?.value || "");
+    setAzureApiKey(existing.apiKey?.value || "");
     setResourceName(existing.resourceName || "");
   }, [settings?.providerSettings?.azure]);
 
@@ -32,14 +30,14 @@ export function AzureConfiguration() {
       // Validate that both fields have values
       if (azureApiKey) {
         // Validate that the API key is a non-empty string
-        if (typeof azureApiKey !== 'string' || azureApiKey.trim() === '') {
-          throw new Error('API key cannot be empty');
+        if (typeof azureApiKey !== "string" || azureApiKey.trim() === "") {
+          throw new Error("API key cannot be empty");
         }
       }
       if (resourceName) {
         // Validate that the resource name is a non-empty string
-        if (typeof resourceName !== 'string' || resourceName.trim() === '') {
-          throw new Error('Resource name cannot be empty');
+        if (typeof resourceName !== "string" || resourceName.trim() === "") {
+          throw new Error("Resource name cannot be empty");
         }
       }
     } catch (e: any) {
@@ -54,7 +52,7 @@ export function AzureConfiguration() {
           ...settings?.providerSettings,
           azure: {
             ...existing,
-            azureApiKey: azureApiKey.trim()
+            apiKey: azureApiKey.trim()
               ? { value: azureApiKey.trim() }
               : undefined,
             resourceName: resourceName.trim() || undefined,
@@ -70,9 +68,7 @@ export function AzureConfiguration() {
     }
   };
 
-  const isConfigured = Boolean(
-    azureApiKey.trim() && resourceName.trim()
-  );
+  const isConfigured = Boolean(azureApiKey.trim() && resourceName.trim());
 
   return (
     <div className="space-y-4">

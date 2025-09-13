@@ -340,7 +340,7 @@ function getRegularModelClient(
       ] as AzureProviderSetting;
 
       const resourceName = azureSettings?.resourceName;
-      const azureApiKey = azureSettings?.azureApiKey?.value;
+      const azureApiKey = azureSettings?.apiKey;
 
       if (!resourceName) {
         throw new Error(

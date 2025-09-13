@@ -73,7 +73,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   const azureSettings = settings?.providerSettings?.azure as any;
   const isAzureConfigured =
     provider === "azure"
-      ? !!(azureSettings?.azureApiKey?.value && azureSettings?.resourceName)
+      ? !!(azureSettings?.apiKey?.value && azureSettings?.resourceName)
       : false;
 
   // Special handling for Vertex configuration status (settings-only)

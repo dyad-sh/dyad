@@ -95,15 +95,13 @@ export const VertexProviderSettingSchema = z.object({
 export const AzureProviderSettingSchema = z.object({
   // We make this undefined so that it makes existing callsites easier.
   apiKey: z.undefined(),
-  azureApiKey: SecretSchema.optional(),
   resourceName: z.string().optional(),
 });
 
 export const ProviderSettingSchema = z.union([
-  // Must use more specific type first!
-  // Zod uses the first type that matches.
-  AzureProviderSettingSchema,
   VertexProviderSettingSchema,
+  AzureProviderSettingSchema,
+  // Regular providers are the fallback
   RegularProviderSettingSchema,
 ]);
 

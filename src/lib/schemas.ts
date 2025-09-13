@@ -92,9 +92,17 @@ export const VertexProviderSettingSchema = z.object({
   serviceAccountKey: SecretSchema.optional(),
 });
 
+export const AzureProviderSettingSchema = z.object({
+  // We make this undefined so that it makes existing callsites easier.
+  apiKey: z.undefined(),
+  azureApiKey: SecretSchema.optional(),
+  resourceName: z.string().optional(),
+});
+
 export const ProviderSettingSchema = z.union([
   // Must use more specific type first!
   // Zod uses the first type that matches.
+  AzureProviderSettingSchema,
   VertexProviderSettingSchema,
   RegularProviderSettingSchema,
 ]);
@@ -107,6 +115,7 @@ export type RegularProviderSetting = z.infer<
   typeof RegularProviderSettingSchema
 >;
 export type VertexProviderSetting = z.infer<typeof VertexProviderSettingSchema>;
+export type AzureProviderSetting = z.infer<typeof AzureProviderSettingSchema>;
 
 export const RuntimeModeSchema = z.enum(["web-sandbox", "local-node", "unset"]);
 export type RuntimeMode = z.infer<typeof RuntimeModeSchema>;

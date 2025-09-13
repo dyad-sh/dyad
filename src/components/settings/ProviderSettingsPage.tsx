@@ -69,13 +69,14 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
     userApiKey !== "Not Set";
   const hasEnvKey = !!(envVarName && envVars[envVarName]);
 
-  // Special handling for Azure OpenAI configuration
+  // Special handling for Azure OpenAI configuration (settings-only)
+  const azureSettings = settings?.providerSettings?.azure as any;
   const isAzureConfigured =
     provider === "azure"
-      ? !!(envVars["AZURE_API_KEY"] && envVars["AZURE_RESOURCE_NAME"])
+      ? !!(azureSettings?.azureApiKey?.value && azureSettings?.resourceName)
       : false;
 
-  // Special handling for Vertex configuration status
+  // Special handling for Vertex configuration status (settings-only)
   const vertexSettings = settings?.providerSettings?.vertex as any;
   const isVertexConfigured = Boolean(
     vertexSettings?.projectId &&
@@ -88,7 +89,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
       ? isAzureConfigured
       : provider === "vertex"
         ? isVertexConfigured
-        : isValidUserKey || hasEnvKey; // Configured if either is set
+        : isValidUserKey || hasEnvKey; // Standard providers: configured if either is set
 
   // --- Save Handler ---
   const handleSaveKey = async () => {

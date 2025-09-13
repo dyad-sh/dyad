@@ -2,7 +2,11 @@ import { useQuery } from "@tanstack/react-query";
 import { IpcClient } from "@/ipc/ipc_client";
 import type { LanguageModelProvider } from "@/ipc/ipc_types";
 import { useSettings } from "./useSettings";
-import { cloudProviders, VertexProviderSetting } from "@/lib/schemas";
+import {
+  cloudProviders,
+  VertexProviderSetting,
+  AzureProviderSetting,
+} from "@/lib/schemas";
 
 export function useLanguageModelProviders() {
   const ipcClient = IpcClient.getInstance();
@@ -27,6 +31,17 @@ export function useLanguageModelProviders() {
         vertexSettings?.serviceAccountKey?.value &&
         vertexSettings?.projectId &&
         vertexSettings?.location
+      ) {
+        return true;
+      }
+      return false;
+    }
+    // Azure uses UI-only configuration with azureApiKey and resourceName
+    if (provider === "azure") {
+      const azureSettings = providerSettings as AzureProviderSetting;
+      if (
+        azureSettings?.azureApiKey?.value?.trim() &&
+        azureSettings?.resourceName?.trim()
       ) {
         return true;
       }

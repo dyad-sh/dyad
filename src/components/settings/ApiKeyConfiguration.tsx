@@ -48,9 +48,9 @@ export function ApiKeyConfiguration({
   onDeleteKey,
   isDyad,
 }: ApiKeyConfigurationProps) {
-  // Special handling for Azure OpenAI which requires environment variables
+  // Special handling for Azure OpenAI which uses UI-only configuration
   if (provider === "azure") {
-    return <AzureConfiguration envVars={envVars} />;
+    return <AzureConfiguration />;
   }
   // Special handling for Google Vertex AI which uses service account credentials
   if (provider === "vertex") {

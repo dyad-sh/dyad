@@ -46,7 +46,7 @@ export function AzureConfiguration() {
           azure: {
             ...existing,
             azureApiKey: azureApiKey.trim() ? { value: azureApiKey.trim() } : undefined,
-            resourceName: resourceName || undefined,
+            resourceName: resourceName.trim() || undefined,
           },
         },
       };

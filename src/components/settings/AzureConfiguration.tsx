@@ -31,10 +31,16 @@ export function AzureConfiguration() {
     try {
       // Validate that both fields have values
       if (azureApiKey) {
-        JSON.parse(azureApiKey);
+        // Validate that the API key is a non-empty string
+        if (typeof azureApiKey !== 'string' || azureApiKey.trim() === '') {
+          throw new Error('API key cannot be empty');
+        }
       }
       if (resourceName) {
-        JSON.parse(resourceName);
+        // Validate that the resource name is a non-empty string
+        if (typeof resourceName !== 'string' || resourceName.trim() === '') {
+          throw new Error('Resource name cannot be empty');
+        }
       }
     } catch (e: any) {
       setError("Invalid configuration: " + e.message);

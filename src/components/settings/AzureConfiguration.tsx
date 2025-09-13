@@ -45,7 +45,7 @@ export function AzureConfiguration() {
           ...settings?.providerSettings,
           azure: {
             ...existing,
-            azureApiKey: azureApiKey ? { value: azureApiKey } : undefined,
+            azureApiKey: azureApiKey.trim() ? { value: azureApiKey.trim() } : undefined,
             resourceName: resourceName || undefined,
           },
         },

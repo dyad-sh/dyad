@@ -40,8 +40,8 @@ export function useLanguageModelProviders() {
     if (provider === "azure") {
       const azureSettings = providerSettings as AzureProviderSetting;
       if (
-        azureSettings?.apiKey?.value?.trim() &&
-        azureSettings?.resourceName?.trim()
+        (azureSettings?.apiKey?.value || '').trim() &&
+        (azureSettings?.resourceName || '').trim()
       ) {
         return true;
       }

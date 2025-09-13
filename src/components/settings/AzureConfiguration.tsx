@@ -63,6 +63,7 @@ export function AzureConfiguration() {
       setSaved(true);
     } catch (e: any) {
       setError(e?.message || "Failed to save Azure settings");
+      setSaved(false); // Reset saved state when error occurs
     } finally {
       setSaving(false);
     }

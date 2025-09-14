@@ -33,6 +33,7 @@ export function ChatModeSelector() {
         return "Build";
     }
   };
+  const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
 
   return (
     <Select value={selectedMode} onValueChange={handleModeChange}>
@@ -51,7 +52,14 @@ export function ChatModeSelector() {
             <SelectValue>{getModeDisplayName(selectedMode)}</SelectValue>
           </MiniSelectTrigger>
         </TooltipTrigger>
-        <TooltipContent>Open mode menu</TooltipContent>
+        <TooltipContent>
+          <div className="flex flex-col">
+            <span>Open mode menu</span>
+            <span className="text-xs text-muted-foreground">
+              {isMac ? "⌘ + ⇧ + A" : "Ctrl + ⇧ + A"} to toggle
+            </span>
+          </div>
+        </TooltipContent>
       </Tooltip>
       <SelectContent align="start" onCloseAutoFocus={(e) => e.preventDefault()}>
         <SelectItem value="build">

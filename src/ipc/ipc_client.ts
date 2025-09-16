@@ -118,6 +118,7 @@ export class IpcClient {
     }
   >;
   private constructor() {
+    console.log("ipcRenderer ", (window as any).electron.ipcRenderer as IpcRenderer)
     this.ipcRenderer = (window as any).electron.ipcRenderer as IpcRenderer;
     this.chatStreams = new Map();
     this.appStreams = new Map();

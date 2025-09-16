@@ -6,12 +6,16 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Info, KeyRound } from "lucide-react";
+import { Input } from "../ui/input";
+import { useState } from "react";
 
 interface AzureConfigurationProps {
   envVars: Record<string, string | undefined>;
 }
 
 export function AzureConfiguration({ envVars }: AzureConfigurationProps) {
+  const [azureKey,setAzureKey] = useState<string | undefined>("")
+  const [resourceName,setResource] = useState<string | undefined>("")
   const azureApiKey = envVars["AZURE_API_KEY"];
   const azureResourceName = envVars["AZURE_RESOURCE_NAME"];
 
@@ -63,9 +67,7 @@ export function AzureConfiguration({ envVars }: AzureConfigurationProps) {
                 </h4>
                 <div className="space-y-3 text-sm">
                   <div className="flex justify-between items-center p-3 bg-muted rounded border">
-                    <code className="font-mono text-foreground">
-                      AZURE_API_KEY
-                    </code>
+                    <Input onChange={(e)=>setAzureKey(e.target.value)} value={azureKey} className="font-mono text-foreground mr-2" placeholder="AZURE_API_KEY" />
                     <span
                       className={`px-2 py-1 rounded text-xs font-medium ${azureApiKey ? "bg-green-100 text-green-800 dark:bg-green-800/20 dark:text-green-400" : "bg-red-100 text-red-800 dark:bg-red-800/20 dark:text-red-400"}`}
                     >
@@ -73,9 +75,7 @@ export function AzureConfiguration({ envVars }: AzureConfigurationProps) {
                     </span>
                   </div>
                   <div className="flex justify-between items-center p-3 bg-muted rounded border">
-                    <code className="font-mono text-foreground">
-                      AZURE_RESOURCE_NAME
-                    </code>
+                    <Input onChange={(e)=>setResource(e.target.value)} value={resourceName} className="font-mono text-foreground mr-2" placeholder="AZURE_RESOURCE_NAME" />
                     <span
                       className={`px-2 py-1 rounded text-xs font-medium ${azureResourceName ? "bg-green-100 text-green-800 dark:bg-green-800/20 dark:text-green-400" : "bg-red-100 text-red-800 dark:bg-red-800/20 dark:text-red-400"}`}
                     >

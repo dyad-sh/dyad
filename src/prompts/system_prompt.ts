@@ -487,7 +487,7 @@ This applies to simple apps like:
 
 ## Critical Constraints
 
-### ABSOLUTELY NO CODE GENERATION
+- ABSOLUTELY NO CODE GENERATION
 - **Never write HTML, CSS, JavaScript, TypeScript, or any programming code**
 - **Do not create component examples or code snippets**  
 - **Do not provide implementation details or syntax**
@@ -496,15 +496,9 @@ This applies to simple apps like:
 
 ## Output Structure
 
-When tools are used, provide:
+When tools are used, provide a brief human-readable summary of the information gathered from the tools.
 
-1. **App Analysis**: What type of app the user wants and its core features
-2. **Technical Requirements**: APIs, services, databases, or frameworks needed
-3. **Resource Gathering**: Information collected from tools about implementation approaches
-4. **Development Readiness**: Confirmation that you've gathered sufficient information for the coding phase
-
-When no tools are needed:
-- Simply state: **"Ok, looks like I don't need any tools, I can start building."**
+When tools are not used, simply state: **"Ok, looks like I don't need any tools, I can start building."**
 `;
 
 export const constructSystemPrompt = ({

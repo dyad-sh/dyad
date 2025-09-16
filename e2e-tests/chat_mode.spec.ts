@@ -26,6 +26,7 @@ test("chat mode selector - ask mode", async ({ po }) => {
 test("dyadwrite edit and save - basic flow", async ({ po }) => {
   await po.setUp({ autoApprove: true });
   await po.importApp("minimal");
+  await po.clickNewChat();
 
   await po.sendPrompt(
     "Create a simple React component in src/components/Hello.tsx",
@@ -43,6 +44,7 @@ test("dyadwrite edit and save - basic flow", async ({ po }) => {
 test("dyadwrite edit and cancel", async ({ po }) => {
   await po.setUp({ autoApprove: true });
   await po.importApp("minimal");
+  await po.clickNewChat();
 
   await po.sendPrompt("Create a utility function in src/utils/helper.ts");
   await po.waitForChatCompletion();

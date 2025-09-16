@@ -1,4 +1,4 @@
-- paragraph: /Generate an AI_RULES\.md file for this app\. Describe the tech stack in 5-\d+ bullet points and describe clear rules about what libraries to use for what\./
+- paragraph: Create a utility function in src/utils/helper.ts
 - img
 - text: file1.txt
 - button "Edit":
@@ -7,20 +7,6 @@
 - text: file1.txt typescript
 - button "Copy":
   - img
-- paragraph: More EOM
-- img
-- text: Approved
-- img
-- text: less than a minute ago
-- img
-- text: wrote 1 file(s)
-- paragraph: Create a utility function in src/utils/helper.ts
-- img
-- text: file1.txt
-- button "Edit":
-  - img
-- img
-- text: file1.txt
 - paragraph: More EOM
 - img
 - text: Approved

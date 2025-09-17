@@ -13,6 +13,7 @@ import {
 import { useSettings } from "@/hooks/useSettings";
 import type { ChatMode } from "@/lib/schemas";
 import { cn } from "@/lib/utils";
+import { detectIsMac } from "@/hooks/useChatModeToggle";
 
 export function ChatModeSelector() {
   const { settings, updateSettings } = useSettings();
@@ -33,7 +34,7 @@ export function ChatModeSelector() {
         return "Build";
     }
   };
-  const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+  const isMac = detectIsMac();
 
   return (
     <Select value={selectedMode} onValueChange={handleModeChange}>
@@ -56,7 +57,7 @@ export function ChatModeSelector() {
           <div className="flex flex-col">
             <span>Open mode menu</span>
             <span className="text-xs text-muted-foreground">
-              {isMac ? "⌘ + ⇧ + A" : "Ctrl + ⇧ + A"} to toggle
+              {isMac ? "⌘ + ." : "Ctrl + ."} to toggle
             </span>
           </div>
         </TooltipContent>

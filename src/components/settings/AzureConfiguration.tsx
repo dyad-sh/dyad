@@ -18,10 +18,10 @@ interface AzureConfigurationProps {
 }
 
 export function AzureConfiguration({ envVars,onConfigSave,isSaving }: AzureConfigurationProps) {
-  const [azureKey,setAzureKey] = useState<string | undefined>("")
-  const [resourceName,setResource] = useState<string | undefined>("")
   const azureApiKey = envVars["AZURE_API_KEY"];
   const azureResourceName = envVars["AZURE_RESOURCE_NAME"];
+  const [azureKey,setAzureKey] = useState<string | undefined>(azureApiKey || "")
+  const [resourceName,setResource] = useState<string | undefined>(azureResourceName || "")
 
   const displayedAzureKey =  azureKey || azureApiKey;
   const displayedAzureResourceName = resourceName || azureResourceName;

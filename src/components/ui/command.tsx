@@ -43,6 +43,7 @@ function CommandDialog({
   className?: string;
   showCloseButton?: boolean;
   filter?: (value: string, search: string, keywords?: string[]) => number;
+  "data-testid"?: string;
 }) {
   return (
     <Dialog {...props}>
@@ -53,6 +54,7 @@ function CommandDialog({
       <DialogContent
         className={cn("overflow-hidden p-0", className)}
         showCloseButton={showCloseButton}
+        data-testid={props["data-testid"]}
       >
         <Command
           filter={filter}

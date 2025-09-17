@@ -44,6 +44,20 @@ export type ChatSearchResult = z.infer<typeof ChatSearchResultSchema>;
 
 export const ChatSearchResultsSchema = z.array(ChatSearchResultSchema);
 
+// Zod schema for app search result objects returned by the search-app IPC
+export const AppSearchResultSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  createdAt: z.date(),
+  matchedChatTitle: z.string().nullable(),
+  matchedChatMessage: z.string().nullable(),
+});
+
+// Type derived from AppSearchResultSchema
+export type AppSearchResult = z.infer<typeof AppSearchResultSchema>;
+
+export const AppSearchResultsSchema = z.array(AppSearchResultSchema);
+
 const providers = [
   "openai",
   "anthropic",

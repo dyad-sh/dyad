@@ -10,7 +10,7 @@ import type { LanguageModelProvider } from "@/ipc/ipc_types";
 
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useCustomLanguageModelProvider } from "@/hooks/useCustomLanguageModelProvider";
-import { GiftIcon, PlusIcon, MoreVertical, Trash2 } from "lucide-react";
+import { GiftIcon, PlusIcon, MoreVertical, Trash2, Edit } from "lucide-react";
 import { Skeleton } from "./ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { AlertTriangle } from "lucide-react";
@@ -38,6 +38,8 @@ import { CreateCustomProviderDialog } from "./CreateCustomProviderDialog";
 export function ProviderSettingsGrid() {
   const navigate = useNavigate();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingProvider, setEditingProvider] =
+    useState<LanguageModelProvider | null>(null);
   const [providerToDelete, setProviderToDelete] = useState<string | null>(null);
 
   const {
@@ -63,6 +65,11 @@ export function ProviderSettingsGrid() {
       setProviderToDelete(null);
       refetch();
     }
+  };
+
+  const handleEditProvider = (provider: LanguageModelProvider) => {
+    setEditingProvider(provider);
+    setIsDialogOpen(true);
   };
 
   if (isLoading) {
@@ -116,7 +123,7 @@ export function ProviderSettingsGrid() {
                   className="p-4 cursor-pointer"
                   onClick={() => handleProviderClick(provider.id)}
                 >
-                  <CardTitle className="text-lg font-medium flex items-center justify-between">
+                  <CardTitle className="text-lg font-medium flex items-center justify-between mr-5">
                     {provider.name}
                     {isProviderSetup(provider.id) ? (
                       <span className="ml-3 text-sm font-medium text-green-500 bg-green-50 dark:bg-green-900/30 border border-green-500/50 dark:border-green-500/50 px-2 py-1 rounded-full">
@@ -140,7 +147,7 @@ export function ProviderSettingsGrid() {
 
                 {isCustom && (
                   <div
-                    className="absolute top-2 right-2"
+                    className="absolute top-2 right-0"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <Popover>
@@ -155,6 +162,15 @@ export function ProviderSettingsGrid() {
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent align="end" className="w-48 p-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="w-full justify-start mb-1"
+                          onClick={() => handleEditProvider(provider)}
+                        >
+                          <Edit className="h-4 w-4 mr-2" />
+                          Edit Provider
+                        </Button>
                         <Button
                           variant="ghost"
                           size="sm"
@@ -191,11 +207,16 @@ export function ProviderSettingsGrid() {
 
       <CreateCustomProviderDialog
         isOpen={isDialogOpen}
-        onClose={() => setIsDialogOpen(false)}
+        onClose={() => {
+          setIsDialogOpen(false);
+          setEditingProvider(null);
+        }}
         onSuccess={() => {
           setIsDialogOpen(false);
           refetch();
+          setEditingProvider(null);
         }}
+        editingProvider={editingProvider}
       />
 
       <AlertDialog

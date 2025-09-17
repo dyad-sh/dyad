@@ -11,6 +11,7 @@ const validInvokeChannels = [
   "get-language-model-providers",
   "delete-custom-language-model-provider",
   "create-custom-language-model-provider",
+  "edit-custom-language-model-provider",
   "delete-custom-language-model",
   "delete-custom-model",
   "chat:add-dep",

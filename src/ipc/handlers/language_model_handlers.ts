@@ -129,6 +129,67 @@ export function registerLanguageModelHandlers() {
       });
     },
   );
+  handle(
+    "edit-custom-language-model-provider",
+    async (
+      event: IpcMainInvokeEvent,
+      params: CreateCustomLanguageModelProviderParams,
+    ): Promise<LanguageModelProvider> => {
+      const { id, name, apiBaseUrl, envVarName } = params;
+
+      if (!id) {
+        throw new Error("Provider ID is required");
+      }
+      if (!name) {
+        throw new Error("Provider name is required");
+      }
+      if (!apiBaseUrl) {
+        throw new Error("API base URL is required");
+      }
+
+      // Check if the provider being edited exists
+      const existingProvider = db
+        .select()
+        .from(languageModelProvidersSchema)
+        .where(eq(languageModelProvidersSchema.id, CUSTOM_PROVIDER_PREFIX + id))
+        .get();
+
+      if (!existingProvider) {
+        throw new Error(`Provider with ID "${id}" not found`);
+      }
+
+      // Use transaction to ensure atomicity when updating provider and potentially its models
+      const result = db.transaction((tx) => {
+        // Update the provider
+        const updateResult = tx
+          .update(languageModelProvidersSchema)
+          .set({
+            id: CUSTOM_PROVIDER_PREFIX + id,
+            name,
+            api_base_url: apiBaseUrl,
+            env_var_name: envVarName || null,
+          })
+          .where(
+            eq(languageModelProvidersSchema.id, CUSTOM_PROVIDER_PREFIX + id),
+          )
+          .run();
+
+        if (updateResult.changes === 0) {
+          throw new Error(`Failed to update provider with ID "${id}"`);
+        }
+
+        return {
+          id,
+          name,
+          apiBaseUrl,
+          envVarName,
+          type: "custom" as const,
+        };
+      });
+      logger.info(`Successfully updated provider`);
+      return result;
+    },
+  );
 
   handle(
     "delete-custom-language-model",

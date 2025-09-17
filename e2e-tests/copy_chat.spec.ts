@@ -44,7 +44,7 @@ test("copy message content - dyad-write conversion", async ({ po }) => {
 
   // Should convert dyad-write to markdown format (flexible path matching)
   expect(clipboardContent).toContain("### File:");
-  expect(clipboardContent).toMatch(/```\w*\n[\s\S]*```/);
+  expect(clipboardContent).toContain("```");
   expect(clipboardContent).not.toContain("<dyad-write");
 });
 

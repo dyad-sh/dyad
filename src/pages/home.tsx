@@ -32,6 +32,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { FileAttachment } from "@/ipc/ipc_types";
 import { NEON_TEMPLATE_IDS } from "@/shared/templates";
 import { neonTemplateHook } from "@/client_logic/template_hook";
+import { ProBanner } from "@/components/ProBanner";
 
 // Adding an export for attachments
 export interface HomeSubmitOptions {
@@ -96,7 +97,7 @@ export default function HomePage() {
   // Function to get random prompts
   const getRandomPrompts = useCallback(() => {
     const shuffled = [...INSPIRATION_PROMPTS].sort(() => 0.5 - Math.random());
-    return shuffled.slice(0, 5);
+    return shuffled.slice(0, 3);
   }, []);
 
   // Initialize random prompts
@@ -181,14 +182,14 @@ export default function HomePage() {
 
   // Main Home Page Content
   return (
-    <div className="flex flex-col items-center justify-center max-w-3xl m-auto p-8">
+    <div className="flex flex-col items-center justify-center max-w-3xl w-full m-auto p-8">
       <SetupBanner />
 
       <div className="w-full">
         <ImportAppButton />
         <HomeChatInput onSubmit={handleSubmit} />
 
-        <div className="flex flex-col gap-4 mt-4">
+        <div className="flex flex-col gap-4 mt-2">
           <div className="flex flex-wrap gap-4 justify-center">
             {randomPrompts.map((item, index) => (
               <button
@@ -242,6 +243,7 @@ export default function HomePage() {
             </span>
           </button>
         </div>
+        <ProBanner />
       </div>
       <PrivacyBanner />
 

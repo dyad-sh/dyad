@@ -36,6 +36,7 @@ const validInvokeChannels = [
   "stop-app",
   "restart-app",
   "respond-to-app-input",
+  "search-app",
   "list-versions",
   "revert-version",
   "checkout-version",

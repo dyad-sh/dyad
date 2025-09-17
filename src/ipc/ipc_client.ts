@@ -5,6 +5,7 @@ import {
   type UserSettings,
   type ContextPathResults,
   ChatSearchResultsSchema,
+  AppSearchResultsSchema,
 } from "../lib/schemas";
 import type {
   AppOutput,
@@ -66,6 +67,7 @@ import type {
 import type { Template } from "../shared/templates";
 import type {
   AppChatContext,
+  AppSearchResult,
   ChatSearchResult,
   ProposalResult,
 } from "@/lib/schemas";
@@ -310,6 +312,17 @@ export class IpcClient {
   // Get all apps
   public async listApps(): Promise<ListAppsResponse> {
     return this.ipcRenderer.invoke("list-apps");
+  }
+
+  // Search apps by name
+  public async searchApps(searchQuery: string): Promise<AppSearchResult[]> {
+    try {
+      const data = await this.ipcRenderer.invoke("search-app", searchQuery);
+      return AppSearchResultsSchema.parse(data);
+    } catch (error) {
+      showError(error);
+      throw error;
+    }
   }
 
   public async readAppFile(appId: number, filePath: string): Promise<string> {

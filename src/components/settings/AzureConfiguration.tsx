@@ -92,7 +92,7 @@ export function AzureConfiguration({ envVars,onConfigSave,isSaving }: AzureConfi
                     </span>
                   </div>
                   <div className="w-full flex justify-center pb-3 ">
-                  <Button disabled={isSaving}>{`${isSaving ? "Saving keys..." : "Saving"}`}</Button>
+                  <Button disabled={isSaving}>{`${isSaving ? "Saving..." : "Save keys"}`}</Button>
                   </div>
                 </form>
               </div>

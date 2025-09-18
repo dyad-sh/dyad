@@ -84,7 +84,7 @@ export function AzureConfiguration({ envVars,onConfigSave,isSaving }: AzureConfi
                     </span>
                   </div>
                   <div className="flex justify-between items-center p-3 rounded ">
-                    <Input onChange={(e)=>setResource(e.target.value)} value={resourceName} type="text" className="font-mono text-foreground mr-2"   placeholder={azureResourceName ? " Azure Resource name already set" : "Enter Azure Resource name"} />
+                    <Input onChange={(e)=>setResource(e.target.value)} value={resourceName} type="text" className="font-mono text-foreground mr-2"   placeholder={azureResourceName ? "Azure Resource name already set" : "Enter Azure Resource name"} />
                     <span
                       className={`px-2 py-1 rounded text-xs font-medium ${azureResourceName ? "bg-green-100 text-green-800 dark:bg-green-800/20 dark:text-green-400" : "bg-red-100 text-red-800 dark:bg-red-800/20 dark:text-red-400"}`}
                     >

@@ -313,7 +313,7 @@ export function ModelPicker() {
                       </span>
                     </div>
                   </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent className="w-56">
+                  <DropdownMenuSubContent className="w-56 max-h-100 overflow-y-auto">
                     <DropdownMenuLabel>
                       {providerDisplayName + " Models"}
                     </DropdownMenuLabel>
@@ -485,7 +485,7 @@ export function ModelPicker() {
                   )}
                 </div>
               </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent className="w-56">
+              <DropdownMenuSubContent className="w-56 max-h-100 overflow-y-auto">
                 <DropdownMenuLabel>Ollama Models</DropdownMenuLabel>
                 <DropdownMenuSeparator />
 
@@ -566,7 +566,7 @@ export function ModelPicker() {
                   )}
                 </div>
               </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent className="w-56">
+              <DropdownMenuSubContent className="w-56 max-h-100 overflow-y-auto">
                 <DropdownMenuLabel>LM Studio Models</DropdownMenuLabel>
                 <DropdownMenuSeparator />
 

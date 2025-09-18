@@ -11,7 +11,6 @@ import { VertexConfiguration } from "./VertexConfiguration";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { UserSettings } from "@/lib/schemas";
-import { disabled } from "happy-dom/lib/PropertySymbol.js";
 
 // Helper function to mask ENV API keys (move or duplicate if needed elsewhere)
 const maskEnvApiKey = (key: string | undefined): string => {

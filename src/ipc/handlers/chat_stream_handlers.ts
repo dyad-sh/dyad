@@ -1441,7 +1441,6 @@ async function getMcpTools(event: IpcMainInvokeEvent): Promise<ToolSet> {
 
       const client = await experimental_createMCPClient({ transport });
       const toolSet = await client.tools();
-      console.log("toolSet", toolSet);
       for (const [name, tool] of Object.entries(toolSet)) {
         const key = `${String(s.name || "").replace(/[^a-zA-Z0-9_-]/g, "_")}__${String(name).replace(/[^a-zA-Z0-9_-]/g, "_")}`;
         const original = tool;
@@ -1460,10 +1459,10 @@ async function getMcpTools(event: IpcMainInvokeEvent): Promise<ToolSet> {
               toolDescription: original?.description,
               inputPreview,
             });
-            console.log("&**** CONSENT ok", ok);
+
             if (!ok) throw new Error(`User declined running tool ${key}`);
             const res = await original.execute?.(args, execCtx);
-            console.log("&**** RES res", res);
+
             return typeof res === "string" ? res : JSON.stringify(res);
           },
         } as any;

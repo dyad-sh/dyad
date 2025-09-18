@@ -2,6 +2,7 @@ import { db } from "../../db";
 import { mcpServers } from "../../db/schema";
 import { McpStdioClient } from "./mcp_stdio_client";
 import { experimental_createMCPClient } from "ai";
+import { eq } from "drizzle-orm";
 
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
@@ -9,7 +10,6 @@ type Client =
   | McpStdioClient
   | {
       listTools: () => Promise<any[]>;
-      callTool: (name: string, args: any) => Promise<any>;
       dispose?: () => void;
     };
 
@@ -25,18 +25,17 @@ class McpManager {
   async getClient(serverId: number): Promise<Client> {
     const existing = this.clients.get(serverId);
     if (existing) return existing;
-    const server = (await db
+    const server = await db
       .select()
       .from(mcpServers)
-      .where(
-        (mcpServers.id as any).eq?.(serverId) ?? (mcpServers.id as any),
-      )) as any[];
+      .where(eq(mcpServers.id, serverId));
     const s = server.find((x) => x.id === serverId);
     if (!s) throw new Error(`MCP server not found: ${serverId}`);
     let client: Client;
     if (s.transport === "stdio") {
       const args = s.args ? JSON.parse(s.args) : [];
       const env = s.envJson ? JSON.parse(s.envJson) : undefined;
+      if (!s.command) throw new Error("MCP server command is required");
       const stdio = new McpStdioClient(
         s.command,
         args,
@@ -57,7 +56,7 @@ class McpManager {
         },
         callTool: async (name: string, args: any) => {
           const toolSet = await httpClient.tools();
-          const fn = (toolSet as any)[name];
+          const fn = toolSet[name].execute;
           if (!fn) throw new Error(`Tool not found: ${name}`);
           return await fn(args);
         },
@@ -77,7 +76,7 @@ class McpManager {
   dispose(serverId: number) {
     const c = this.clients.get(serverId);
     if (c) {
-      (c as any).dispose?.();
+      c.dispose?.();
       this.clients.delete(serverId);
     }
   }

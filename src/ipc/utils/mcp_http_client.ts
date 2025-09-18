@@ -66,14 +66,4 @@ export class McpHttpClient {
     if (res.error) throw new Error(res.error.message);
     return (res.result?.tools as McpToolDescriptor[]) || [];
   }
-
-  async callTool(toolName: string, args: any): Promise<any> {
-    await this.ensureInitialized();
-    const res = await this.request<any>("tools/call", {
-      name: toolName,
-      arguments: args,
-    });
-    if (res.error) throw new Error(res.error.message);
-    return res.result;
-  }
 }

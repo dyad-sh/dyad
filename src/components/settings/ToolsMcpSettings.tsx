@@ -1,5 +1,4 @@
-import React, { useEffect, useState } from "react";
-import { IpcClient } from "@/ipc/ipc_client";
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,14 +10,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useMcpSettings } from "@/hooks/useMcpSettings";
 
 type Transport = "stdio" | "http";
 
 export function ToolsMcpSettings() {
-  const ipc = IpcClient.getInstance();
-  const [servers, setServers] = useState<any[]>([]);
-  const [toolsByServer, setToolsByServer] = useState<Record<number, any[]>>({});
-  const [consents, setConsents] = useState<Record<string, any>>({});
+  const {
+    servers,
+    toolsByServer,
+    consents,
+    createServer,
+    updateServer,
+    deleteServer,
+    setToolConsent,
+  } = useMcpSettings();
   const [name, setName] = useState("");
   const [transport, setTransport] = useState<Transport>("stdio");
   const [command, setCommand] = useState("");
@@ -26,29 +31,8 @@ export function ToolsMcpSettings() {
   const [url, setUrl] = useState("");
   const [enabled, setEnabled] = useState(true);
 
-  const load = async () => {
-    const list = await ipc.listMcpServers();
-    setServers(list || []);
-    const toolsEntries = await Promise.all(
-      (list || []).map(
-        async (s: any) => [s.id, await ipc.listMcpTools(s.id)] as const,
-      ),
-    );
-    setToolsByServer(Object.fromEntries(toolsEntries));
-    const consentsList = await ipc.getMcpToolConsents();
-    const consentMap: Record<string, any> = {};
-    for (const c of consentsList || []) {
-      consentMap[`${c.serverId}:${c.toolName}`] = c.consent;
-    }
-    setConsents(consentMap);
-  };
-
-  useEffect(() => {
-    load();
-  }, []);
-
   const onCreate = async () => {
-    await ipc.createMcpServer({
+    await createServer({
       name,
       transport,
       command: command || null,
@@ -61,24 +45,13 @@ export function ToolsMcpSettings() {
     setArgs("");
     setUrl("");
     setEnabled(true);
-    await load();
   };
 
   const toggleEnabled = async (id: number, current: boolean) => {
-    await ipc.updateMcpServer({ id, enabled: !current });
-    await load();
+    await updateServer({ id, enabled: !current });
   };
 
   // Removed activation toggling – tools are used dynamically with consent checks
-
-  const setToolConsent = async (
-    serverId: number,
-    toolName: string,
-    consent: "ask" | "always" | "denied",
-  ) => {
-    await ipc.setMcpToolConsent({ serverId, toolName, consent });
-    setConsents((prev) => ({ ...prev, [`${serverId}:${toolName}`]: consent }));
-  };
 
   return (
     <div className="space-y-6">
@@ -164,8 +137,7 @@ export function ToolsMcpSettings() {
                 <Button
                   variant="outline"
                   onClick={async () => {
-                    await ipc.deleteMcpServer(s.id);
-                    await load();
+                    await deleteServer(s.id);
                   }}
                 >
                   Delete
@@ -189,9 +161,13 @@ export function ToolsMcpSettings() {
                   <div className="flex items-center gap-2">
                     <Select
                       value={consents[`${s.id}:${t.name}`] || "ask"}
-                      onValueChange={(v) =>
-                        setToolConsent(s.id, t.name, v as any)
-                      }
+                      onValueChange={async (v) => {
+                        await setToolConsent({
+                          serverId: s.id,
+                          toolName: t.name,
+                          consent: v as any,
+                        });
+                      }}
                     >
                       <SelectTrigger className="w-[140px] h-8">
                         <SelectValue />

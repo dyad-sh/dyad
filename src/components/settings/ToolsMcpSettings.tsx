@@ -305,11 +305,26 @@ export function ToolsMcpSettings() {
   }, [consentsMap]);
 
   const onCreate = async () => {
+    const parsedArgs = (() => {
+      const trimmed = args.trim();
+      if (!trimmed) return null;
+      if (trimmed.startsWith("[")) {
+        try {
+          const arr = JSON.parse(trimmed);
+          return Array.isArray(arr) && arr.every((x) => typeof x === "string")
+            ? (arr as string[])
+            : null;
+        } catch {
+          // fall through
+        }
+      }
+      return trimmed.split(" ").filter(Boolean);
+    })();
     await createServer({
       name,
       transport,
       command: command || null,
-      args: args.trim() ? args.split(" ").filter(Boolean) : null,
+      args: parsedArgs,
       url: url || null,
       enabled,
     });

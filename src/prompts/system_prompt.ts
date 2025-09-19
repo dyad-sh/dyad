@@ -499,6 +499,8 @@ This applies to simple apps like:
 When tools are used, provide a brief human-readable summary of the information gathered from the tools.
 
 When tools are not used, simply state: **"Ok, looks like I don't need any tools, I can start building."**
+
+[[AI_RULES]]
 `;
 
 export const constructSystemPrompt = ({
@@ -508,15 +510,20 @@ export const constructSystemPrompt = ({
   aiRules: string | undefined;
   chatMode?: "build" | "ask" | "agent";
 }) => {
-  if (chatMode === "ask") {
-    return ASK_MODE_SYSTEM_PROMPT;
-  }
+  const systemPrompt = getSystemPromptForChatMode(chatMode);
+  return systemPrompt.replace("[[AI_RULES]]", aiRules ?? DEFAULT_AI_RULES);
+};
+
+export const getSystemPromptForChatMode = (
+  chatMode: "build" | "ask" | "agent",
+) => {
   if (chatMode === "agent") {
     return AGENT_MODE_SYSTEM_PROMPT;
   }
-  const systemPrompt = BUILD_SYSTEM_PROMPT;
-
-  return systemPrompt.replace("[[AI_RULES]]", aiRules ?? DEFAULT_AI_RULES);
+  if (chatMode === "ask") {
+    return ASK_MODE_SYSTEM_PROMPT;
+  }
+  return BUILD_SYSTEM_PROMPT;
 };
 
 export const readAiRules = async (dyadAppPath: string) => {

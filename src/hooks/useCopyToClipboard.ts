@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-
+import { getLanguage } from "@/utils/get_language";
 export const useCopyToClipboard = () => {
   const [copied, setCopied] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -71,7 +71,7 @@ export const useCopyToClipboard = () => {
       case "dyad-write": {
         const writePath = attributes.path || "file";
         const writeDesc = attributes.description || "";
-        const language = detectLanguage(writePath);
+        const language = getLanguage(writePath);
 
         let writeResult = `### File: ${writePath}\n\n`;
         if (writeDesc && writeDesc !== writePath) {
@@ -84,7 +84,7 @@ export const useCopyToClipboard = () => {
       case "dyad-edit": {
         const editPath = attributes.path || "file";
         const editDesc = attributes.description || "";
-        const editLang = detectLanguage(editPath);
+        const editLang = getLanguage(editPath);
 
         let editResult = `### Edit: ${editPath}\n\n`;
         if (editDesc && editDesc !== editPath) {
@@ -289,45 +289,5 @@ export const useCopyToClipboard = () => {
     return { processedContent };
   };
 
-  // Detect programming language from file extension
-  const detectLanguage = (filename: string): string => {
-    const ext = filename.split(".").pop()?.toLowerCase();
-    const languageMap: Record<string, string> = {
-      js: "javascript",
-      jsx: "jsx",
-      ts: "typescript",
-      tsx: "tsx",
-      py: "python",
-      java: "java",
-      cpp: "cpp",
-      c: "c",
-      cs: "csharp",
-      php: "php",
-      rb: "ruby",
-      go: "go",
-      rs: "rust",
-      kt: "kotlin",
-      swift: "swift",
-      dart: "dart",
-      vue: "vue",
-      svelte: "svelte",
-      html: "html",
-      css: "css",
-      scss: "scss",
-      sass: "sass",
-      less: "less",
-      json: "json",
-      xml: "xml",
-      yaml: "yaml",
-      yml: "yaml",
-      md: "markdown",
-      sql: "sql",
-      sh: "bash",
-      bash: "bash",
-      zsh: "zsh",
-      fish: "fish",
-    };
-    return ext ? languageMap[ext] || ext : "";
-  };
   return { copyMessageContent, copied };
 };

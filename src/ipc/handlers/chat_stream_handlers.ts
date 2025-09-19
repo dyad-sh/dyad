@@ -9,7 +9,6 @@ import {
   TextStreamPart,
   stepCountIs,
 } from "ai";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
 import { db } from "../../db";
 import { chats, messages } from "../../db/schema";
@@ -47,7 +46,6 @@ import { validateChatContext } from "../utils/context_paths_utils";
 import { GoogleGenerativeAIProviderOptions } from "@ai-sdk/google";
 import { mcpServers } from "../../db/schema";
 import { requireMcpToolConsent } from "../utils/mcp_consent";
-import { experimental_createMCPClient } from "ai";
 
 import { getExtraProviderOptions } from "../utils/thinking_utils";
 
@@ -70,6 +68,7 @@ import { parseAppMentions } from "@/shared/parse_mention_apps";
 import { prompts as promptsTable } from "../../db/schema";
 import { inArray } from "drizzle-orm";
 import { replacePromptReference } from "../utils/replacePromptReference";
+import { mcpManager } from "../utils/mcp_manager";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
@@ -157,12 +156,12 @@ async function processStreamChunks({
       const serverName = part.toolName.split("__")[0];
       const toolName = part.toolName.split("__")[1];
       const content = escapeDyadTags(JSON.stringify(part.input));
-      chunk = `<dyad-mcp-tool-call server-name="${serverName}" tool-name="${toolName}">${content}</dyad-mcp-tool-call>`;
+      chunk = `<dyad-mcp-tool-call server="${serverName}" tool="${toolName}">${content}</dyad-mcp-tool-call>`;
     } else if (part.type === "tool-result") {
       const serverName = part.toolName.split("__")[0];
       const toolName = part.toolName.split("__")[1];
       const content = escapeDyadTags(part.output);
-      chunk = `<dyad-mcp-tool-result server-name="${serverName}" tool-name="${toolName}">${content}</dyad-mcp-tool-result>`;
+      chunk = `<dyad-mcp-tool-result server="${serverName}" tool="${toolName}">${content}</dyad-mcp-tool-result>`;
     }
 
     if (!chunk) {
@@ -1411,35 +1410,7 @@ async function getMcpTools(event: IpcMainInvokeEvent): Promise<ToolSet> {
       .from(mcpServers)
       .where(eq(mcpServers.enabled, true as any));
     for (const s of servers) {
-      let transport: any;
-      const transportKey = (s.transport || "stdio").toLowerCase();
-      if (transportKey === "stdio") {
-        const { Experimental_StdioMCPTransport } = await import("ai/mcp-stdio");
-        const args = s.args ? JSON.parse(s.args) : [];
-        const env = s.envJson ? JSON.parse(s.envJson) : undefined;
-        transport = new Experimental_StdioMCPTransport({
-          command: s.command as string,
-          args,
-          env,
-          cwd: (s.cwd || undefined) as string | undefined,
-        });
-      } else if (transportKey === "http") {
-        if (!s.url) continue;
-
-        transport = new StreamableHTTPClientTransport(
-          new URL(s.url as string),
-          {
-            requestInit: {
-              headers: {
-                Accept: "application/json",
-                "Content-Type": "application/json",
-              },
-            },
-          } as any,
-        );
-      }
-
-      const client = await experimental_createMCPClient({ transport });
+      const client = await mcpManager.getClient(s.id);
       const toolSet = await client.tools();
       for (const [name, tool] of Object.entries(toolSet)) {
         const key = `${String(s.name || "").replace(/[^a-zA-Z0-9_-]/g, "_")}__${String(name).replace(/[^a-zA-Z0-9_-]/g, "_")}`;

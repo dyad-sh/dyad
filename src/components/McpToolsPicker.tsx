@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 
 import {
@@ -14,28 +14,18 @@ import {
 } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { Wrench } from "lucide-react";
-import { IpcClient } from "@/ipc/ipc_client";
+import { useMcp } from "@/hooks/useMcp";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export function McpToolsPicker() {
   const [isOpen, setIsOpen] = useState(false);
-  const [servers, setServers] = useState<any[]>([]);
-  const [toolsByServer, setToolsByServer] = useState<Record<number, any[]>>({});
-
-  useEffect(() => {
-    const ipc = IpcClient.getInstance();
-    (async () => {
-      try {
-        const list = await ipc.listMcpServers();
-        setServers(list || []);
-        const toolsEntries = await Promise.all(
-          (list || []).map(
-            async (s: any) => [s.id, await ipc.listMcpTools(s.id)] as const,
-          ),
-        );
-        setToolsByServer(Object.fromEntries(toolsEntries));
-      } catch {}
-    })();
-  }, []);
+  const { servers, toolsByServer, consentsMap, setToolConsent } = useMcp();
 
   // Removed activation toggling – consent governs execution time behavior
 
@@ -59,7 +49,7 @@ export function McpToolsPicker() {
         </Tooltip>
       </TooltipProvider>
       <PopoverContent
-        className="w-96 max-h-[80vh] overflow-y-auto"
+        className="w-120 max-h-[80vh] overflow-y-auto"
         align="start"
       >
         <div className="space-y-4">
@@ -102,9 +92,25 @@ export function McpToolsPicker() {
                             </div>
                           )}
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                          Consent required at runtime
-                        </div>
+                        <Select
+                          value={
+                            consentsMap[`${s.id}:${t.name}`] ||
+                            t.consent ||
+                            "ask"
+                          }
+                          onValueChange={(v) =>
+                            setToolConsent(s.id, t.name, v as any)
+                          }
+                        >
+                          <SelectTrigger className="w-[140px] h-8">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="ask">Ask</SelectItem>
+                            <SelectItem value="always">Always allow</SelectItem>
+                            <SelectItem value="denied">Deny</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                     ))}
                     {(toolsByServer[s.id] || []).length === 0 && (

@@ -1,17 +1,10 @@
 import { db } from "../../db";
 import { mcpServers } from "../../db/schema";
-import { McpStdioClient } from "./mcp_stdio_client";
-import { experimental_createMCPClient } from "ai";
+import { experimental_createMCPClient, experimental_MCPClient } from "ai";
 import { eq } from "drizzle-orm";
 
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-
-type Client =
-  | McpStdioClient
-  | {
-      listTools: () => Promise<any[]>;
-      dispose?: () => void;
-    };
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
 class McpManager {
   private static _instance: McpManager;
@@ -20,9 +13,9 @@ class McpManager {
     return this._instance;
   }
 
-  private clients = new Map<number, Client>();
+  private clients = new Map<number, experimental_MCPClient>();
 
-  async getClient(serverId: number): Promise<Client> {
+  async getClient(serverId: number): Promise<experimental_MCPClient> {
     const existing = this.clients.get(serverId);
     if (existing) return existing;
     const server = await db
@@ -31,44 +24,26 @@ class McpManager {
       .where(eq(mcpServers.id, serverId));
     const s = server.find((x) => x.id === serverId);
     if (!s) throw new Error(`MCP server not found: ${serverId}`);
-    let client: Client;
+    let transport: StdioClientTransport | StreamableHTTPClientTransport;
     if (s.transport === "stdio") {
       const args = s.args ? JSON.parse(s.args) : [];
       const env = s.envJson ? JSON.parse(s.envJson) : undefined;
       if (!s.command) throw new Error("MCP server command is required");
-      const stdio = new McpStdioClient(
-        s.command,
+      transport = new StdioClientTransport({
+        command: s.command,
         args,
-        s.cwd || undefined,
         env,
-      );
-      await stdio.start();
-      client = stdio;
+        cwd: s.cwd || undefined,
+      });
     } else if (s.transport === "http") {
       if (!s.url) throw new Error("HTTP MCP requires url");
-      const httpClient = await experimental_createMCPClient({
-        transport: new StreamableHTTPClientTransport(new URL(s.url as string)),
-      });
-      client = {
-        listTools: async () => {
-          const toolSet = await httpClient.tools();
-          return Object.keys(toolSet).map((name) => ({ name }));
-        },
-        callTool: async (name: string, args: any) => {
-          const toolSet = await httpClient.tools();
-          const fn = toolSet[name].execute;
-          if (!fn) throw new Error(`Tool not found: ${name}`);
-          return await fn(args);
-        },
-        dispose: async () => {
-          try {
-            await (httpClient as any).close?.();
-          } catch {}
-        },
-      } as Client;
+      transport = new StreamableHTTPClientTransport(new URL(s.url as string));
     } else {
       throw new Error(`Unsupported MCP transport: ${s.transport}`);
     }
+    const client = await experimental_createMCPClient({
+      transport,
+    });
     this.clients.set(serverId, client);
     return client;
   }
@@ -76,7 +51,7 @@ class McpManager {
   dispose(serverId: number) {
     const c = this.clients.get(serverId);
     if (c) {
-      c.dispose?.();
+      c.close();
       this.clients.delete(serverId);
     }
   }

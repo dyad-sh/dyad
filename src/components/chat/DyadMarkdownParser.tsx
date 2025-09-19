@@ -223,8 +223,7 @@ function parseCustomTags(content: string): ContentPiece[] {
 
     // Parse attributes
     const attributes: Record<string, string> = {};
-    // Support hyphenated attribute names like server-name, tool-name
-    const attrPattern = /([A-Za-z0-9_-]+)="([^"]*)"/g;
+    const attrPattern = /(\w+)="([^"]*)"/g;
     let attrMatch;
     while ((attrMatch = attrPattern.exec(attributesStr)) !== null) {
       attributes[attrMatch[1]] = attrMatch[2];
@@ -411,8 +410,8 @@ function renderCustomTag(
         <DyadMcpToolCall
           node={{
             properties: {
-              serverName: attributes["server-name"] || attributes.server || "",
-              toolName: attributes["tool-name"] || attributes.tool || "",
+              serverName: attributes.server || "",
+              toolName: attributes.tool || "",
             },
           }}
         >
@@ -425,8 +424,8 @@ function renderCustomTag(
         <DyadMcpToolResult
           node={{
             properties: {
-              serverName: attributes["server-name"] || attributes.server || "",
-              toolName: attributes["tool-name"] || attributes.tool || "",
+              serverName: attributes.server || "",
+              toolName: attributes.tool || "",
             },
           }}
         >

@@ -27,6 +27,69 @@ export function McpConsentToast({
     toast.dismiss(toastId);
   };
 
+  // Collapsible tool description state
+  const [isExpanded, setIsExpanded] = React.useState(false);
+  const [collapsedMaxHeight, setCollapsedMaxHeight] = React.useState<number>(0);
+  const [hasOverflow, setHasOverflow] = React.useState(false);
+  const descRef = React.useRef<HTMLParagraphElement | null>(null);
+
+  // Collapsible input preview state
+  const [isInputExpanded, setIsInputExpanded] = React.useState(false);
+  const [inputCollapsedMaxHeight, setInputCollapsedMaxHeight] =
+    React.useState<number>(0);
+  const [inputHasOverflow, setInputHasOverflow] = React.useState(false);
+  const inputRef = React.useRef<HTMLPreElement | null>(null);
+
+  React.useEffect(() => {
+    if (!toolDescription) {
+      setHasOverflow(false);
+      return;
+    }
+
+    const element = descRef.current;
+    if (!element) return;
+
+    const compute = () => {
+      const computedStyle = window.getComputedStyle(element);
+      const lineHeight = parseFloat(computedStyle.lineHeight || "20");
+      const maxLines = 4; // show first few lines by default
+      const maxHeightPx = Math.max(0, Math.round(lineHeight * maxLines));
+      setCollapsedMaxHeight(maxHeightPx);
+      // Overflow if full height exceeds our collapsed height
+      setHasOverflow(element.scrollHeight > maxHeightPx + 1);
+    };
+
+    // Compute initially and on resize
+    compute();
+    const onResize = () => compute();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [toolDescription]);
+
+  React.useEffect(() => {
+    if (!inputPreview) {
+      setInputHasOverflow(false);
+      return;
+    }
+
+    const element = inputRef.current;
+    if (!element) return;
+
+    const compute = () => {
+      const computedStyle = window.getComputedStyle(element);
+      const lineHeight = parseFloat(computedStyle.lineHeight || "16");
+      const maxLines = 6; // show first few lines by default
+      const maxHeightPx = Math.max(0, Math.round(lineHeight * maxLines));
+      setInputCollapsedMaxHeight(maxHeightPx);
+      setInputHasOverflow(element.scrollHeight > maxHeightPx + 1);
+    };
+
+    compute();
+    const onResize = () => compute();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [inputPreview]);
+
   return (
     <div className="relative bg-amber-50/95 dark:bg-slate-800/95 backdrop-blur-sm border border-amber-200 dark:border-slate-600 rounded-xl shadow-lg min-w-[420px] max-w-[560px] overflow-hidden">
       <div className="p-5">
@@ -56,12 +119,52 @@ export function McpConsentToast({
                 your consent.
               </p>
               {toolDescription && (
-                <p className="text-muted-foreground">{toolDescription}</p>
+                <div>
+                  <p
+                    ref={descRef}
+                    className="text-muted-foreground whitespace-pre-wrap"
+                    style={{
+                      maxHeight: isExpanded ? "40vh" : collapsedMaxHeight,
+                      overflow: isExpanded ? "auto" : "hidden",
+                    }}
+                  >
+                    {toolDescription}
+                  </p>
+                  {hasOverflow && (
+                    <button
+                      type="button"
+                      className="mt-1 text-xs font-medium text-amber-700 hover:underline dark:text-amber-300"
+                      onClick={() => setIsExpanded((v) => !v)}
+                    >
+                      {isExpanded ? "Show less" : "Show more"}
+                    </button>
+                  )}
+                </div>
               )}
               {inputPreview && (
-                <pre className="bg-amber-100/60 dark:bg-slate-700/60 p-2 rounded text-xs whitespace-pre-wrap max-h-40 overflow-auto">
-                  {inputPreview}
-                </pre>
+                <div>
+                  <pre
+                    ref={inputRef}
+                    className="bg-amber-100/60 dark:bg-slate-700/60 p-2 rounded text-xs whitespace-pre-wrap"
+                    style={{
+                      maxHeight: isInputExpanded
+                        ? "40vh"
+                        : inputCollapsedMaxHeight,
+                      overflow: isInputExpanded ? "auto" : "hidden",
+                    }}
+                  >
+                    {inputPreview}
+                  </pre>
+                  {inputHasOverflow && (
+                    <button
+                      type="button"
+                      className="mt-1 text-xs font-medium text-amber-700 hover:underline dark:text-amber-300"
+                      onClick={() => setIsInputExpanded((v) => !v)}
+                    >
+                      {isInputExpanded ? "Show less" : "Show more"}
+                    </button>
+                  )}
+                </div>
               )}
             </div>
             <div className="flex items-center gap-3 mt-4">

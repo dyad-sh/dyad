@@ -466,15 +466,18 @@ export interface McpServer {
   updatedAt: number;
 }
 
+export type McpToolConsentType = "ask" | "always" | "denied";
+
 export interface McpTool {
   name: string;
   description?: string | null;
+  consent: McpToolConsentType;
 }
 
 export interface McpToolConsent {
   id: number;
   serverId: number;
   toolName: string;
-  consent: "ask" | "always" | "denied";
+  consent: McpToolConsentType;
   updatedAt: number;
 }

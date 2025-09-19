@@ -6,7 +6,9 @@ import { eq, and } from "drizzle-orm";
 import { createLoggedHandler } from "./safe_handle";
 
 import { resolveConsent } from "../utils/mcp_consent";
+import { getStoredConsent } from "../utils/mcp_consent";
 import { mcpManager } from "../utils/mcp_manager";
+import { McpTool } from "../ipc_types";
 
 const logger = log.scope("mcp_handlers");
 const handle = createLoggedHandler(logger);
@@ -107,14 +109,23 @@ export function registerMcpHandlers() {
   // Tools listing (dynamic)
   handle(
     "mcp:list-tools",
-    async (_event: IpcMainInvokeEvent, serverId: number) => {
+    async (
+      _event: IpcMainInvokeEvent,
+      serverId: number,
+    ): Promise<McpTool[]> => {
       try {
+        console.log("mcp:list-tools*****", serverId);
         const client = await mcpManager.getClient(serverId);
-        const remoteTools = await client.listTools();
-        return (remoteTools || []).map((rt: any) => ({
-          name: rt.name,
-          description: rt.description ?? null,
-        }));
+        const remoteTools = await client.tools();
+        console.log("mcp:list-tools*****remoteTools", remoteTools);
+        const tools = await Promise.all(
+          Object.entries(remoteTools).map(async ([name, tool]) => ({
+            name,
+            description: tool.description ?? null,
+            consent: await getStoredConsent(serverId, name),
+          })),
+        );
+        return tools;
       } catch (e) {
         logger.error("Failed to list tools", e);
         return [];

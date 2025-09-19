@@ -1410,7 +1410,7 @@ async function getMcpTools(event: IpcMainInvokeEvent): Promise<ToolSet> {
       const client = await mcpManager.getClient(s.id);
       const toolSet = await client.tools();
       for (const [name, tool] of Object.entries(toolSet)) {
-        const key = `${String(s.name || "").replace(/[^a-zA-Z0-9_-]/g, "_")}__${String(name).replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+        const key = `${String(s.name || "").replace(/[^a-zA-Z0-9_-]/g, "-")}__${String(name).replace(/[^a-zA-Z0-9_-]/g, "-")}`;
         const original = tool;
         mcpToolSet[key] = {
           description: original?.description,
@@ -1435,7 +1435,7 @@ async function getMcpTools(event: IpcMainInvokeEvent): Promise<ToolSet> {
 
             return typeof res === "string" ? res : JSON.stringify(res);
           },
-        } as any;
+        };
       }
     }
   } catch (e) {

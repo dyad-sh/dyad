@@ -86,10 +86,8 @@ export function registerMcpHandlers() {
       serverId: number,
     ): Promise<McpTool[]> => {
       try {
-        console.log("mcp:list-tools*****", serverId);
         const client = await mcpManager.getClient(serverId);
         const remoteTools = await client.tools();
-        console.log("mcp:list-tools*****remoteTools", remoteTools);
         const tools = await Promise.all(
           Object.entries(remoteTools).map(async ([name, tool]) => ({
             name,

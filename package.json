@@ -61,6 +61,7 @@
     "@playwright/test": "^1.52.0",
     "@testing-library/react": "^16.3.0",
     "@types/better-sqlite3": "^7.6.13",
+    "@types/fs-extra": "^11.0.4",
     "@types/glob": "^8.1.0",
     "@types/kill-port": "^2.0.3",
     "@types/node": "^22.14.0",
@@ -97,6 +98,7 @@
     "@biomejs/biome": "^1.9.4",
     "@dyad-sh/supabase-management-js": "v1.0.0",
     "@lexical/react": "^0.33.1",
+    "@modelcontextprotocol/sdk": "^1.17.5",
     "@monaco-editor/react": "^4.7.0-rc.0",
     "@neondatabase/api-client": "^2.1.0",
     "@neondatabase/serverless": "^1.0.1",
@@ -170,5 +172,10 @@
   "lint-staged": {
     "**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx,vue,astro,svelte}": "oxlint",
     "*.{js,css,md,ts,tsx,jsx,json}": "prettier --write"
+  },
+  "overrides": {
+    "@vercel/sdk": {
+      "@modelcontextprotocol/sdk": "$@modelcontextprotocol/sdk"
+    }
   }
 }

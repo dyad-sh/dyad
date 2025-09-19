@@ -180,9 +180,46 @@ export default Index;
       messageContent = `[[STRING_IS_FINISHED]]";</dyad-write>\nFinished writing file.`;
       messageContent += "\n\n" + generateDump(req);
     }
+    const isToolCall = !!(
+      lastMessage &&
+      lastMessage.content &&
+      lastMessage.content.includes("[call_tool=calculator_add]")
+    );
+    let message = {
+      role: "assistant",
+      content: messageContent,
+    } as any;
 
     // Non-streaming response
     if (!stream) {
+      if (isToolCall) {
+        const toolCallId = `call_${Date.now()}`;
+        return res.json({
+          id: `chatcmpl-${Date.now()}`,
+          object: "chat.completion",
+          created: Math.floor(Date.now() / 1000),
+          model: "fake-model",
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: "assistant",
+                tool_calls: [
+                  {
+                    id: toolCallId,
+                    type: "function",
+                    function: {
+                      name: "calculator_add",
+                      arguments: JSON.stringify({ a: 1, b: 2 }),
+                    },
+                  },
+                ],
+              },
+              finish_reason: "tool_calls",
+            },
+          ],
+        });
+      }
       return res.json({
         id: `chatcmpl-${Date.now()}`,
         object: "chat.completion",
@@ -191,10 +228,7 @@ export default Index;
         choices: [
           {
             index: 0,
-            message: {
-              role: "assistant",
-              content: messageContent,
-            },
+            message,
             finish_reason: "stop",
           },
         ],
@@ -206,9 +240,73 @@ export default Index;
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
 
+    // Tool call streaming (OpenAI-style)
+    if (isToolCall) {
+      const now = Date.now();
+      const mkChunk = (delta: any, finish: null | string = null) => {
+        const chunk = {
+          id: `chatcmpl-${now}`,
+          object: "chat.completion.chunk",
+          created: Math.floor(now / 1000),
+          model: "fake-model",
+          choices: [
+            {
+              index: 0,
+              delta,
+              finish_reason: finish,
+            },
+          ],
+        };
+        return `data: ${JSON.stringify(chunk)}\n\n`;
+      };
+
+      // 1) Send role
+      res.write(mkChunk({ role: "assistant" }));
+
+      // 2) Send tool_calls init with id + name + empty args
+      const toolCallId = `call_${now}`;
+      res.write(
+        mkChunk({
+          tool_calls: [
+            {
+              index: 0,
+              id: toolCallId,
+              type: "function",
+              function: {
+                name: "testing-mcp-server__calculator_add",
+                arguments: "",
+              },
+            },
+          ],
+        }),
+      );
+
+      // 3) Stream arguments gradually
+      const args = JSON.stringify({ a: 1, b: 2 });
+      let i = 0;
+      const argBatchSize = 6;
+      const argInterval = setInterval(() => {
+        if (i < args.length) {
+          const part = args.slice(i, i + argBatchSize);
+          i += argBatchSize;
+          res.write(
+            mkChunk({
+              tool_calls: [{ index: 0, function: { arguments: part } }],
+            }),
+          );
+        } else {
+          // 4) Finalize with finish_reason tool_calls and [DONE]
+          res.write(mkChunk({}, "tool_calls"));
+          res.write("data: [DONE]\n\n");
+          clearInterval(argInterval);
+          res.end();
+        }
+      }, 10);
+      return;
+    }
+
     // Split the message into characters to simulate streaming
-    const message = messageContent;
-    const messageChars = message.split("");
+    const messageChars = messageContent.split("");
 
     // Stream each character with a delay
     let index = 0;

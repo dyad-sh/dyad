@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "2afc0a23-aa16-4c81-8a5d-67ea66547700",
+  "id": "8c77d7f5-9f88-4186-8aff-8385e060e59f",
   "prevId": "6ac2fe61-675b-4e3f-baf7-0f7d5f76bb2c",
   "tables": {
     "apps": {
@@ -392,13 +392,6 @@
         },
         "args": {
           "name": "args",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "cwd": {
-          "name": "cwd",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

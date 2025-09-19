@@ -4,7 +4,6 @@ CREATE TABLE `mcp_servers` (
 	`transport` text NOT NULL,
 	`command` text,
 	`args` text,
-	`cwd` text,
 	`env_json` text,
 	`url` text,
 	`enabled` integer DEFAULT 0 NOT NULL,

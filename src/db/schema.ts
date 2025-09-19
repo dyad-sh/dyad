@@ -166,6 +166,113 @@ export const languageModelsRelations = relations(
   }),
 );
 
+export const agent_workflows = sqliteTable(
+  "agent_workflows",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    chatId: integer("chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    status: text("status").notNull(),
+    planVersion: integer("plan_version").notNull().default(0),
+    currentTodoId: text("current_todo_id"),
+    autoAdvance: integer("auto_advance", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    analysis: text("analysis", { mode: "json" }),
+    dyadTagContext: text("dyad_tag_context", { mode: "json" }),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [
+    unique("agent_workflows_chat_unique").on(table.chatId),
+  ],
+);
+
+export const agent_todos = sqliteTable(
+  "agent_todos",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    workflowId: integer("workflow_id")
+      .notNull()
+      .references(() => agent_workflows.id, { onDelete: "cascade" }),
+    todoId: text("todo_id").notNull(),
+    title: text("title").notNull(),
+    description: text("description"),
+    owner: text("owner"),
+    inputs: text("inputs", { mode: "json" }),
+    outputs: text("outputs", { mode: "json" }),
+    completionCriteria: text("completion_criteria"),
+    status: text("status").notNull(),
+    dyadTagRefs: text("dyad_tag_refs", { mode: "json" }),
+    orderIndex: integer("order_index").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [
+    unique("agent_todos_workflow_todo_unique").on(table.workflowId, table.todoId),
+  ],
+);
+
+export const agent_execution_logs = sqliteTable(
+  "agent_execution_logs",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    workflowId: integer("workflow_id")
+      .notNull()
+      .references(() => agent_workflows.id, { onDelete: "cascade" }),
+    todoId: integer("todo_id")
+      .references(() => agent_todos.id, { onDelete: "cascade" }),
+    todoKey: text("todo_key"),
+    logType: text("log_type").notNull(),
+    content: text("content").notNull(),
+    dyadTagRefs: text("dyad_tag_refs", { mode: "json" }),
+    metadata: text("metadata", { mode: "json" }),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+);
+
+export const agentWorkflowsRelations = relations(agent_workflows, ({ many, one }) => ({
+  chat: one(chats, {
+    fields: [agent_workflows.chatId],
+    references: [chats.id],
+  }),
+  todos: many(agent_todos),
+  logs: many(agent_execution_logs),
+}));
+
+export const agentTodosRelations = relations(agent_todos, ({ many, one }) => ({
+  workflow: one(agent_workflows, {
+    fields: [agent_todos.workflowId],
+    references: [agent_workflows.id],
+  }),
+  logs: many(agent_execution_logs),
+}));
+
+export const agentExecutionLogsRelations = relations(
+  agent_execution_logs,
+  ({ one }) => ({
+    workflow: one(agent_workflows, {
+      fields: [agent_execution_logs.workflowId],
+      references: [agent_workflows.id],
+    }),
+    todo: one(agent_todos, {
+      fields: [agent_execution_logs.todoId],
+      references: [agent_todos.id],
+    }),
+  }),
+);
+
 export const versionsRelations = relations(versions, ({ one }) => ({
   app: one(apps, {
     fields: [versions.appId],

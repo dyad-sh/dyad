@@ -29,6 +29,17 @@ const TEST_RESPONSES: Record<string, string> = {
   <dyad-add-dependency packages="react-router-dom react-query"></dyad-add-dependency>
   
   EOM`,
+  "agent-plan": `Preparing a detailed plan.
+
+<dyad-agent-analysis>{"goals":["Ship tests"],"constraints":["No deps"],"acceptanceCriteria":["Pass"],"risks":["Time"],"clarifications":[],"dyadTagRefs":["user:1"]}</dyad-agent-analysis>
+<dyad-agent-plan>{"todos":[{"todoId":"TD-01","title":"Do the thing","status":"pending","dyadTagRefs":["user:1"]}],"dyadTagRefs":["user:1"],"dyadTagContext":["user:1"]}</dyad-agent-plan>
+<dyad-agent-status state="plan_ready"></dyad-agent-status>
+<dyad-agent-log todoId="TD-01" type="analysis" dyadTagRefs="user:1">Outlined initial steps.</dyad-agent-log>
+<dyad-agent-todo-update todoId="TD-01" status="ready"></dyad-agent-todo-update>
+<dyad-agent-focus todoId="TD-01"></dyad-agent-focus>
+<dyad-agent-auto enabled="true"></dyad-agent-auto>
+
+EOM`,
   write: `Hello world
   <dyad-write path="src/hello.ts" content="Hello world">
   console.log("Hello world");

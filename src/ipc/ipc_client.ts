@@ -7,6 +7,7 @@ import {
   ChatSearchResultsSchema,
   AppSearchResultsSchema,
 } from "../lib/schemas";
+import type { AgentWorkflow } from "@/agents/dayd/types";
 import type {
   AppOutput,
   Chat,
@@ -460,6 +461,21 @@ export class IpcClient {
 
   public async deleteMessages(chatId: number): Promise<void> {
     await this.ipcRenderer.invoke("delete-messages", chatId);
+  }
+
+  public async getAgentWorkflow(chatId: number): Promise<AgentWorkflow> {
+    return this.ipcRenderer.invoke("agent:get-workflow", { chatId });
+  }
+
+  public async refreshAgentWorkflow(chatId: number): Promise<AgentWorkflow> {
+    return this.ipcRenderer.invoke("agent:refresh-workflow", { chatId });
+  }
+
+  public async setAgentAutoAdvance(
+    chatId: number,
+    enabled: boolean,
+  ): Promise<AgentWorkflow> {
+    return this.ipcRenderer.invoke("agent:set-auto-advance", { chatId, enabled });
   }
 
   // Open an external URL using the default browser

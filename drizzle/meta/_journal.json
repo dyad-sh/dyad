@@ -85,6 +85,13 @@
       "when": 1755545060076,
       "tag": "0011_light_zeigeist",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1758140475581,
+      "tag": "0012_dayd_multi_agent_mode",
+      "breakpoints": true
     }
   ]
 }

@@ -16,11 +16,15 @@ import {
   ChevronsDownUp,
   ChartColumnIncreasing,
   SendHorizontalIcon,
+  PlayCircle,
+  FastForward,
+  RefreshCcw,
 } from "lucide-react";
 import type React from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useSettings } from "@/hooks/useSettings";
+import { useAgentWorkflow } from "@/hooks/useAgentWorkflow";
 import { IpcClient } from "@/ipc/ipc_client";
 import {
   chatInputValueAtom,
@@ -31,6 +35,7 @@ import { atom, useAtom, useSetAtom, useAtomValue } from "jotai";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { useProposal } from "@/hooks/useProposal";
 import {
   ActionProposal,
@@ -39,6 +44,7 @@ import {
   FileChange,
   SqlQuery,
 } from "@/lib/schemas";
+
 import type { Message } from "@/ipc/ipc_types";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import { useRunApp } from "@/hooks/useRunApp";
@@ -66,15 +72,51 @@ import { SelectedComponentDisplay } from "./SelectedComponentDisplay";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
 import { LexicalChatInput } from "./LexicalChatInput";
 
+
+const AGENT_STATUS_LABELS: Record<string, string> = {
+  idle: "Idle",
+  analysis: "Analyzing",
+  plan_ready: "Plan ready",
+  executing: "Executing",
+  awaiting_user: "Awaiting review",
+  reviewing: "Reviewing",
+  revising: "Revising",
+  completed: "Completed",
+  error: "Needs attention",
+};
+
 const showTokenBarAtom = atom(false);
 
 export function ChatInput({ chatId }: { chatId?: number }) {
   const posthog = usePostHog();
   const [inputValue, setInputValue] = useAtom(chatInputValueAtom);
   const { settings } = useSettings();
+  const isAgentMode = settings?.selectedChatMode === "agent";
+  const {
+    workflow: agentWorkflow,
+    refresh: refreshAgentWorkflow,
+    setAutoAdvance: updateAgentAutoAdvance,
+    isLoading: isAgentWorkflowLoading,
+  } = useAgentWorkflow(chatId);
+  const [agentCommandBusy, setAgentCommandBusy] = useState(false);
+  const [isAutoAdvanceUpdating, setIsAutoAdvanceUpdating] = useState(false);
+  const hasPendingTodos = useMemo(() => {
+    return (
+      agentWorkflow?.todos?.some((todo) => todo.status !== "completed") ?? false
+    );
+  }, [agentWorkflow]);
+  const activeTodo = useMemo(() => {
+    if (!agentWorkflow?.todos) return null;
+    return agentWorkflow.todos.find(
+      (todo) => todo.todoId === agentWorkflow.currentTodoId,
+    ) ?? null;
+  }, [agentWorkflow]);
+  const statusLabel = agentWorkflow
+    ? AGENT_STATUS_LABELS[agentWorkflow.status] ?? agentWorkflow.status
+    : "Awaiting plan";
   const appId = useAtomValue(selectedAppIdAtom);
   const { refreshVersions } = useVersions(appId);
-  const { streamMessage, isStreaming, setIsStreaming, error, setError } =
+  const { streamMessage, isStreaming, setIsStreaming, cancelStream, error, setError } =
     useStreamChat();
   const [showError, setShowError] = useState(true);
   const [isApproving, setIsApproving] = useState(false); // State for approving
@@ -123,6 +165,64 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     setMessages(chat.messages);
   }, [chatId, setMessages]);
 
+  const sendAgentCommand = useCallback(
+    async (command: string) => {
+      if (!chatId || isStreaming) {
+        return;
+      }
+      setAgentCommandBusy(true);
+      clearAttachments();
+      setSelectedComponent(null);
+      const promise = streamMessage({
+        prompt: command,
+        chatId,
+        attachments: [],
+        redo: false,
+        selectedComponent: null,
+      });
+      promise.catch((err) => {
+        console.error("Agent command failed", err);
+        setError(err instanceof Error ? err.message : String(err));
+        setAgentCommandBusy(false);
+      });
+      void promise;
+      if (chatId) {
+        void refreshAgentWorkflow(chatId);
+      }
+    },
+    [
+      chatId,
+      isStreaming,
+      streamMessage,
+      clearAttachments,
+      setSelectedComponent,
+      refreshAgentWorkflow,
+      setError,
+    ],
+  );
+
+  useEffect(() => {
+    if (!isStreaming) {
+      setAgentCommandBusy(false);
+    }
+  }, [isStreaming]);
+
+  const handleAgentAutoToggle = useCallback(
+    async (enabled: boolean) => {
+      if (!agentWorkflow) return;
+      setIsAutoAdvanceUpdating(true);
+      try {
+        await updateAgentAutoAdvance(enabled);
+        if (chatId) {
+          void refreshAgentWorkflow(chatId);
+        }
+      } finally {
+        setIsAutoAdvanceUpdating(false);
+      }
+    },
+    [agentWorkflow, chatId, refreshAgentWorkflow, updateAgentAutoAdvance],
+  );
+
   const handleSubmit = async () => {
     if (
       (!inputValue.trim() && attachments.length === 0) ||
@@ -150,9 +250,10 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
   const handleCancel = () => {
     if (chatId) {
-      IpcClient.getInstance().cancelChatStream(chatId);
+      cancelStream(chatId);
+    } else {
+      cancelStream();
     }
-    setIsStreaming(false);
   };
 
   const dismissError = () => {
@@ -276,6 +377,87 @@ export function ChatInput({ chatId }: { chatId?: number }) {
             )}
 
           <SelectedComponentDisplay />
+
+          {isAgentMode && agentWorkflow && (
+            <div
+              data-testid="agent-command-bar"
+              className="flex flex-col gap-2 border-b border-border bg-background px-3 py-2 text-xs"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void sendAgentCommand("start")}
+                  disabled={
+                    !chatId ||
+                    isStreaming ||
+                    agentCommandBusy ||
+                    !hasPendingTodos
+                  }
+                >
+                  {(agentCommandBusy || isStreaming) ? (
+                    <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                  ) : (
+                    <PlayCircle className="mr-1 h-3 w-3" />
+                  )} Start
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void sendAgentCommand("continue")}
+                  disabled={
+                    !chatId ||
+                    isStreaming ||
+                    agentCommandBusy ||
+                    !hasPendingTodos
+                  }
+                >
+                  {(agentCommandBusy || isStreaming) ? (
+                    <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                  ) : (
+                    <FastForward className="mr-1 h-3 w-3" />
+                  )} Continue
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void sendAgentCommand("change plan")}
+                  disabled={!chatId || isStreaming}
+                >
+                  {isStreaming ? (
+                    <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                  ) : (
+                    <RefreshCcw className="mr-1 h-3 w-3" />
+                  )} Change plan
+                </Button>
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium uppercase">Active</span>
+                  <span className="font-semibold text-foreground max-w-[280px] truncate">
+                    {activeTodo ? `${activeTodo.todoId} - ${activeTodo.title}` : "None"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium uppercase">Full Access</span>
+                  <Switch
+                    checked={agentWorkflow?.autoAdvance ?? false}
+                    onCheckedChange={handleAgentAutoToggle}
+                    disabled={
+                      isAgentWorkflowLoading ||
+                      isAutoAdvanceUpdating ||
+                      !agentWorkflow
+                    }
+                    aria-label="Toggle auto-continue"
+                  />
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                <span className="font-medium uppercase">Status</span>
+                <span className="font-semibold text-foreground">{statusLabel}</span>
+              </div>
+            </div>
+          )}
 
           {/* Use the AttachmentsList component */}
           <AttachmentsList

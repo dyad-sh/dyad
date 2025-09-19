@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ProblemReport, Problem } from "../../shared/tsc_types";
+import type { AgentWorkflowStatus } from "@/agents/dayd/types";
 export type { ProblemReport, Problem };
 
 export interface AppOutput {
@@ -37,6 +38,14 @@ export interface ChatResponseEnd {
   updatedFiles: boolean;
   extraFiles?: string[];
   extraFilesError?: string;
+  agent?: {
+    workflowId: number;
+    command?: string;
+    autoAdvance?: boolean;
+    shouldAutoContinue?: boolean;
+    status?: AgentWorkflowStatus;
+    currentTodoId?: string | null;
+  };
 }
 
 export interface ChatProblemsEvent {

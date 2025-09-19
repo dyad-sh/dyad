@@ -64,6 +64,14 @@ import { parseAppMentions } from "@/shared/parse_mention_apps";
 import { prompts as promptsTable } from "../../db/schema";
 import { inArray } from "drizzle-orm";
 import { replacePromptReference } from "../utils/replacePromptReference";
+import {
+  prepareAgentStream,
+  processAgentStreamResult,
+} from "./agent_chat_controller";
+import type {
+  AgentStreamPreparation,
+  AgentStreamResult,
+} from "./agent_chat_controller";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
@@ -376,6 +384,8 @@ ${componentSnippet}
       });
 
       let fullResponse = "";
+      let agentPreparation: AgentStreamPreparation | null = null;
+      let agentResult: AgentStreamResult | null = null;
 
       // Check if this is a test prompt
       const testResponse = getTestResponse(req.prompt);
@@ -392,6 +402,14 @@ ${componentSnippet}
       } else {
         // Normal AI processing for non-test prompts
         const settings = readSettings();
+
+        if (settings.selectedChatMode === "agent") {
+          try {
+            agentPreparation = await prepareAgentStream(req);
+          } catch (agentError) {
+            logger.error("Failed to prepare agent stream", agentError);
+          }
+        }
 
         const appPath = getDyadAppPath(updatedChat.app.path);
         const chatContext = req.selectedComponent
@@ -603,9 +621,20 @@ This conversation includes one or more image attachments. When the user uploads 
             ] as const)
           : [];
 
+        const agentContextMessages =
+          agentPreparation && settings.selectedChatMode === "agent"
+            ? [
+                {
+                  role: "system" as const,
+                  content: agentPreparation.contextMessage,
+                },
+              ]
+            : [];
+
         let chatMessages: ModelMessage[] = [
           ...codebasePrefix,
           ...otherCodebasePrefix,
+          ...agentContextMessages,
           ...limitedMessageHistory.map((msg) => ({
             role: msg.role as "user" | "assistant" | "system",
             // Why remove thinking tags?
@@ -1013,7 +1042,38 @@ ${problemReport.problems
           .update(messages)
           .set({ content: fullResponse })
           .where(eq(messages.id, placeholderAssistantMessage.id));
+        if (agentPreparation) {
+          try {
+            agentResult = await processAgentStreamResult(
+              agentPreparation.workflowId,
+              fullResponse,
+            );
+          } catch (agentError) {
+            logger.error("Failed to process agent response", agentError);
+          }
+        }
+
         const settings = readSettings();
+        const agentEndPayload = agentResult?.workflow
+          ? {
+              workflowId: agentResult.workflow.id,
+              command: agentPreparation?.command.kind,
+              autoAdvance: agentResult.workflow.autoAdvance,
+              shouldAutoContinue: agentResult.shouldAutoContinue,
+              status: agentResult.workflow.status,
+              currentTodoId: agentResult.workflow.currentTodoId ?? null,
+            }
+          : agentPreparation
+            ? {
+                workflowId: agentPreparation.workflowId,
+                command: agentPreparation.command.kind,
+                autoAdvance: agentPreparation.workflow.autoAdvance,
+                shouldAutoContinue: false,
+                status: agentPreparation.workflow.status,
+                currentTodoId: agentPreparation.workflow.currentTodoId ?? null,
+              }
+            : undefined;
+
         if (
           settings.autoApproveChanges &&
           settings.selectedChatMode !== "ask"
@@ -1055,11 +1115,13 @@ ${problemReport.problems
             updatedFiles: status.updatedFiles ?? false,
             extraFiles: status.extraFiles,
             extraFilesError: status.extraFilesError,
+            agent: agentEndPayload,
           } satisfies ChatResponseEnd);
         } else {
           safeSend(event.sender, "chat:response:end", {
             chatId: req.chatId,
             updatedFiles: false,
+            agent: agentEndPayload,
           } satisfies ChatResponseEnd);
         }
       }

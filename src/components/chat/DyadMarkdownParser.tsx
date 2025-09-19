@@ -17,6 +17,15 @@ import { CustomTagState } from "./stateTypes";
 import { DyadOutput } from "./DyadOutput";
 import { DyadProblemSummary } from "./DyadProblemSummary";
 import { IpcClient } from "@/ipc/ipc_client";
+import {
+  DyadAgentAnalysis,
+  DyadAgentPlan,
+  DyadAgentLog,
+  DyadAgentTodoUpdate,
+  DyadAgentStatus,
+  DyadAgentFocus,
+  DyadAgentAuto,
+} from "./DyadAgentTags";
 
 interface DyadMarkdownParserProps {
   content: string;
@@ -124,6 +133,13 @@ function preprocessUnclosedTags(content: string): {
     "dyad-codebase-context",
     "think",
     "dyad-command",
+    "dyad-agent-analysis",
+    "dyad-agent-plan",
+    "dyad-agent-log",
+    "dyad-agent-todo-update",
+    "dyad-agent-status",
+    "dyad-agent-focus",
+    "dyad-agent-auto",
   ];
 
   let processedContent = content;
@@ -175,6 +191,8 @@ function preprocessUnclosedTags(content: string): {
  * Parse the content to extract custom tags and markdown sections into a unified array
  */
 function parseCustomTags(content: string): ContentPiece[] {
+  // Remove any stray closing dyad/agent tags that may leak into markdown
+  content = content.replace(/<\\\/dyad-[^>]+>/g, '').replace(/<\\\/dyad-agent-[^>]+>/g, '');
   const { processedContent, inProgressTags } = preprocessUnclosedTags(content);
 
   const customTagNames = [
@@ -191,6 +209,13 @@ function parseCustomTags(content: string): ContentPiece[] {
     "dyad-codebase-context",
     "think",
     "dyad-command",
+    "dyad-agent-analysis",
+    "dyad-agent-plan",
+    "dyad-agent-log",
+    "dyad-agent-todo-update",
+    "dyad-agent-status",
+    "dyad-agent-focus",
+    "dyad-agent-auto",
   ];
 
   const tagPattern = new RegExp(
@@ -424,7 +449,25 @@ function renderCustomTag(
       // Don't render anything for dyad-command
       return null;
 
+    case "dyad-agent-analysis":
+      return <DyadAgentAnalysis content={content} />;
+    case "dyad-agent-plan":
+      return <DyadAgentPlan content={content} inProgress={inProgress} />;
+    case "dyad-agent-log":
+      return <DyadAgentLog content={content} attributes={attributes} />;
+    case "dyad-agent-todo-update":
+      return <DyadAgentTodoUpdate content={content} attributes={attributes} />;
+    case "dyad-agent-status":
+      return <DyadAgentStatus attributes={attributes} />;
+    case "dyad-agent-focus":
+      return <DyadAgentFocus attributes={attributes} />;
+    case "dyad-agent-auto":
+      return <DyadAgentAuto attributes={attributes} />;
+
     default:
       return null;
   }
 }
+
+
+

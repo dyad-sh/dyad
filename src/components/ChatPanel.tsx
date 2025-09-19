@@ -8,6 +8,8 @@ import { MessagesList } from "./chat/MessagesList";
 import { ChatInput } from "./chat/ChatInput";
 import { VersionPane } from "./chat/VersionPane";
 import { ChatError } from "./chat/ChatError";
+import { AgentPlanPanel } from "./chat/AgentPlanPanel";
+import { useSettings } from "@/hooks/useSettings";
 
 interface ChatPanelProps {
   chatId?: number;
@@ -21,6 +23,8 @@ export function ChatPanel({
   onTogglePreview,
 }: ChatPanelProps) {
   const [messages, setMessages] = useAtom(chatMessagesAtom);
+  const { settings } = useSettings();
+  const isAgentMode = settings?.selectedChatMode === "agent";
   const [isVersionPaneOpen, setIsVersionPaneOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const streamCount = useAtomValue(chatStreamCountAtom);
@@ -125,6 +129,7 @@ export function ChatPanel({
       <div className="flex flex-1 overflow-hidden">
         {!isVersionPaneOpen && (
           <div className="flex-1 flex flex-col min-w-0">
+            {isAgentMode && <AgentPlanPanel chatId={chatId} />}
             <MessagesList
               messages={messages}
               messagesEndRef={messagesEndRef}

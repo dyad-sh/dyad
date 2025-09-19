@@ -1,6 +1,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import log from "electron-log";
+import { AGENT_SYSTEM_PROMPT } from "./agent_system_prompt";
 
 const logger = log.scope("system_prompt");
 
@@ -455,10 +456,14 @@ export const constructSystemPrompt = ({
   chatMode = "build",
 }: {
   aiRules: string | undefined;
-  chatMode?: "build" | "ask";
+  chatMode?: "build" | "ask" | "agent";
 }) => {
   const systemPrompt =
-    chatMode === "ask" ? ASK_MODE_SYSTEM_PROMPT : BUILD_SYSTEM_PROMPT;
+    chatMode === "ask"
+      ? ASK_MODE_SYSTEM_PROMPT
+      : chatMode === "agent"
+        ? AGENT_SYSTEM_PROMPT
+        : BUILD_SYSTEM_PROMPT;
 
   return systemPrompt.replace("[[AI_RULES]]", aiRules ?? DEFAULT_AI_RULES);
 };

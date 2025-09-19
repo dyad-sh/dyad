@@ -29,6 +29,8 @@ export function ChatModeSelector() {
         return "Build";
       case "ask":
         return "Ask";
+      case "agent":
+        return "Agent";
       default:
         return "Build";
     }
@@ -67,6 +69,14 @@ export function ChatModeSelector() {
             <span className="font-medium">Ask</span>
             <span className="text-xs text-muted-foreground">
               Ask questions about the app
+            </span>
+          </div>
+        </SelectItem>
+        <SelectItem value="agent">
+          <div className="flex flex-col items-start">
+            <span className="font-medium">Agent</span>
+            <span className="text-xs text-muted-foreground">
+              Plan-first multi-agent workflow
             </span>
           </div>
         </SelectItem>

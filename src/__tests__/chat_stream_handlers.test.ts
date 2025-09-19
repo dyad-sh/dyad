@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import path from "node:path";
 
 import {
   getDyadWriteTags,
@@ -16,6 +17,8 @@ import fs from "node:fs";
 import git from "isomorphic-git";
 import { db } from "../db";
 import { cleanFullResponse } from "@/ipc/utils/cleanFullResponse";
+
+const joinAppPath = (...segments: string[]) => path.join("/mock/user/data/path/mock-app-path", ...segments);
 
 // Mock fs with default export
 vi.mock("node:fs", async () => {
@@ -696,11 +699,11 @@ describe("processFullResponse", () => {
     });
 
     expect(fs.mkdirSync).toHaveBeenCalledWith(
-      "/mock/user/data/path/mock-app-path/src",
+      joinAppPath("src"),
       { recursive: true },
     );
     expect(fs.writeFileSync).toHaveBeenCalledWith(
-      "/mock/user/data/path/mock-app-path/src/file1.js",
+      joinAppPath("src", "file1.js"),
       "console.log('Hello');",
     );
     expect(git.add).toHaveBeenCalledWith(
@@ -753,32 +756,32 @@ describe("processFullResponse", () => {
 
     // Check that directories were created for each file path
     expect(fs.mkdirSync).toHaveBeenCalledWith(
-      "/mock/user/data/path/mock-app-path/src",
+      joinAppPath("src"),
       { recursive: true },
     );
     expect(fs.mkdirSync).toHaveBeenCalledWith(
-      "/mock/user/data/path/mock-app-path/src/utils",
+      joinAppPath("src", "utils"),
       { recursive: true },
     );
     expect(fs.mkdirSync).toHaveBeenCalledWith(
-      "/mock/user/data/path/mock-app-path/src/components",
+      joinAppPath("src", "components"),
       { recursive: true },
     );
 
     // Using toHaveBeenNthCalledWith to check each specific call
     expect(fs.writeFileSync).toHaveBeenNthCalledWith(
       1,
-      "/mock/user/data/path/mock-app-path/src/file1.js",
+      joinAppPath("src", "file1.js"),
       "console.log('First file');",
     );
     expect(fs.writeFileSync).toHaveBeenNthCalledWith(
       2,
-      "/mock/user/data/path/mock-app-path/src/utils/file2.js",
+      joinAppPath("src", "utils", "file2.js"),
       "export const add = (a, b) => a + b;",
     );
     expect(fs.writeFileSync).toHaveBeenNthCalledWith(
       3,
-      "/mock/user/data/path/mock-app-path/src/components/Button.tsx",
+      joinAppPath("src", "components", "Button.tsx"),
       "import React from 'react';\n    export const Button = ({ children }) => <button>{children}</button>;",
     );
 
@@ -818,12 +821,12 @@ describe("processFullResponse", () => {
     });
 
     expect(fs.mkdirSync).toHaveBeenCalledWith(
-      "/mock/user/data/path/mock-app-path/src/components",
+      joinAppPath("src", "components"),
       { recursive: true },
     );
     expect(fs.renameSync).toHaveBeenCalledWith(
-      "/mock/user/data/path/mock-app-path/src/components/OldComponent.jsx",
-      "/mock/user/data/path/mock-app-path/src/components/NewComponent.jsx",
+      joinAppPath("src", "components", "OldComponent.jsx"),
+      joinAppPath("src", "components", "NewComponent.jsx"),
     );
     expect(git.add).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -873,7 +876,7 @@ describe("processFullResponse", () => {
     });
 
     expect(fs.unlinkSync).toHaveBeenCalledWith(
-      "/mock/user/data/path/mock-app-path/src/components/Unused.jsx",
+      joinAppPath("src", "components", "Unused.jsx"),
     );
     expect(git.remove).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -926,19 +929,19 @@ describe("processFullResponse", () => {
 
     // Check write operation happened
     expect(fs.writeFileSync).toHaveBeenCalledWith(
-      "/mock/user/data/path/mock-app-path/src/components/NewComponent.jsx",
+      joinAppPath("src", "components", "NewComponent.jsx"),
       "import React from 'react'; export default () => <div>New</div>;",
     );
 
     // Check rename operation happened
     expect(fs.renameSync).toHaveBeenCalledWith(
-      "/mock/user/data/path/mock-app-path/src/components/OldComponent.jsx",
-      "/mock/user/data/path/mock-app-path/src/components/RenamedComponent.jsx",
+      joinAppPath("src", "components", "OldComponent.jsx"),
+      joinAppPath("src", "components", "RenamedComponent.jsx"),
     );
 
     // Check delete operation happened
     expect(fs.unlinkSync).toHaveBeenCalledWith(
-      "/mock/user/data/path/mock-app-path/src/components/Unused.jsx",
+      joinAppPath("src", "components", "Unused.jsx"),
     );
 
     // Check git operations
@@ -1206,3 +1209,4 @@ Some text after the unclosed tag`;
     expect(result).toBe(false);
   });
 });
+

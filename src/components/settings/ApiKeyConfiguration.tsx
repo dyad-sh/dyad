@@ -11,6 +11,7 @@ import { VertexConfiguration } from "./VertexConfiguration";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { UserSettings } from "@/lib/schemas";
+import { disabled } from "happy-dom/lib/PropertySymbol.js";
 
 // Helper function to mask ENV API keys (move or duplicate if needed elsewhere)
 const maskEnvApiKey = (key: string | undefined): string => {
@@ -50,7 +51,7 @@ export function ApiKeyConfiguration({
 }: ApiKeyConfigurationProps) {
   // Special handling for Azure OpenAI which requires environment variables
   if (provider === "azure") {
-    return <AzureConfiguration envVars={envVars} />;
+    return <AzureConfiguration envVars={envVars} onConfigSave={onSaveKey} isSaving={isSaving} />;
   }
   // Special handling for Google Vertex AI which uses service account credentials
   if (provider === "vertex") {

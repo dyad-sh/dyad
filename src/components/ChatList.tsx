@@ -28,6 +28,7 @@ import { RenameChatDialog } from "@/components/chat/RenameChatDialog";
 import { DeleteChatDialog } from "@/components/chat/DeleteChatDialog";
 
 import { ChatSearchDialog } from "./ChatSearchDialog";
+import { Tooltip } from "./chat/ChatTitleTooltip";
 
 export function ChatList({ show }: { show?: boolean }) {
   const navigate = useNavigate();
@@ -192,9 +193,9 @@ export function ChatList({ show }: { show?: boolean }) {
                 No chats found
               </div>
             ) : (
-              <SidebarMenu className="space-y-1">
+              <SidebarMenu className="space-y-1  ">
                 {chats.map((chat) => (
-                  <SidebarMenuItem key={chat.id} className="mb-1">
+                  <SidebarMenuItem key={chat.id} className="mb-1 ">
                     <div className="flex w-[175px] items-center">
                       <Button
                         variant="ghost"
@@ -204,16 +205,21 @@ export function ChatList({ show }: { show?: boolean }) {
                             appId: chat.appId,
                           })
                         }
-                        className={`justify-start w-full text-left py-3 pr-1 hover:bg-sidebar-accent/80 ${
+                        className={`  justify-start w-full text-left py-3 pr-1 hover:bg-sidebar-accent/80 ${
                           selectedChatId === chat.id
                             ? "bg-sidebar-accent text-sidebar-accent-foreground"
                             : ""
                         }`}
                       >
                         <div className="flex flex-col w-full">
-                          <span className="truncate">
-                            {chat.title || "New Chat"}
-                          </span>
+                          <Tooltip
+                          content={chat.title || "New Chat"}
+                          disabled={!(chat.title && chat.title.length > 20)}
+                          >
+                            <span className="truncate block">
+                              {chat.title || "New Chat"}
+                            </span>
+                          </Tooltip>
                           <span className="text-xs text-gray-500">
                             {formatDistanceToNow(new Date(chat.createdAt), {
                               addSuffix: true,

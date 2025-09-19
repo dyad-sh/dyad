@@ -33,7 +33,6 @@ class McpManager {
         command: s.command,
         args,
         env,
-        cwd: s.cwd || undefined,
       });
     } else if (s.transport === "http") {
       if (!s.url) throw new Error("HTTP MCP requires url");

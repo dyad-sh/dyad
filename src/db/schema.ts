@@ -180,7 +180,6 @@ export const mcpServers = sqliteTable("mcp_servers", {
   transport: text("transport").notNull(),
   command: text("command"),
   args: text("args"), // JSON array as string
-  cwd: text("cwd"),
   envJson: text("env_json"), // JSON object as string
   url: text("url"),
   enabled: integer("enabled", { mode: "boolean" })

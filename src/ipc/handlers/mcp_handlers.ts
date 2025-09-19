@@ -36,7 +36,7 @@ export function registerMcpHandlers() {
         enabled?: boolean;
       },
     ) => {
-      const { name, transport, command, args, cwd, env, url, enabled } = params;
+      const { name, transport, command, args, env, url, enabled } = params;
       const result = await db
         .insert(mcpServers)
         .values({
@@ -44,7 +44,6 @@ export function registerMcpHandlers() {
           transport,
           command: command || null,
           args: args ? JSON.stringify(args) : null,
-          cwd: cwd || null,
           envJson: env ? JSON.stringify(env) : null,
           url: url || null,
           enabled: !!enabled,

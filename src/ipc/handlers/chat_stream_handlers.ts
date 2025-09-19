@@ -108,6 +108,23 @@ function escapeXml(unsafe: string): string {
     .replace(/"/g, "&quot;");
 }
 
+// Safely parse an MCP tool key that combines server and tool names.
+// We split on the LAST occurrence of "__" to avoid ambiguity if either
+// side contains "__" as part of its sanitized name.
+function parseMcpToolKey(toolKey: string): {
+  serverName: string;
+  toolName: string;
+} {
+  const separator = "__";
+  const lastIndex = toolKey.lastIndexOf(separator);
+  if (lastIndex === -1) {
+    return { serverName: "", toolName: toolKey };
+  }
+  const serverName = toolKey.slice(0, lastIndex);
+  const toolName = toolKey.slice(lastIndex + separator.length);
+  return { serverName, toolName };
+}
+
 // Ensure the temp directory exists
 if (!fs.existsSync(TEMP_DIR)) {
   fs.mkdirSync(TEMP_DIR, { recursive: true });
@@ -153,13 +170,11 @@ async function processStreamChunks({
 
       chunk += escapeDyadTags(part.text);
     } else if (part.type === "tool-call") {
-      const serverName = part.toolName.split("__")[0];
-      const toolName = part.toolName.split("__")[1];
+      const { serverName, toolName } = parseMcpToolKey(part.toolName);
       const content = escapeDyadTags(JSON.stringify(part.input));
       chunk = `<dyad-mcp-tool-call server="${serverName}" tool="${toolName}">\n${content}\n</dyad-mcp-tool-call>\n`;
     } else if (part.type === "tool-result") {
-      const serverName = part.toolName.split("__")[0];
-      const toolName = part.toolName.split("__")[1];
+      const { serverName, toolName } = parseMcpToolKey(part.toolName);
       const content = escapeDyadTags(part.output);
       chunk = `<dyad-mcp-tool-result server="${serverName}" tool="${toolName}">\n${content}\n</dyad-mcp-tool-result>\n`;
     }
@@ -859,7 +874,7 @@ This conversation includes one or more image attachments. When the user uploads 
           });
           chatMessages.push({
             role: "user",
-            content: "OK thanks.",
+            content: "OK.",
           });
         }
 

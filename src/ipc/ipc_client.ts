@@ -63,6 +63,8 @@ import type {
   PromptDto,
   CreatePromptParamsDto,
   UpdatePromptParamsDto,
+  McpServerUpdate,
+  CreateMcpServer,
 } from "./ipc_types";
 import type { Template } from "../shared/templates";
 import type {
@@ -827,30 +829,11 @@ export class IpcClient {
     return this.ipcRenderer.invoke("mcp:list-servers");
   }
 
-  public async createMcpServer(params: {
-    name: string;
-    transport: string;
-    command?: string | null;
-    args?: string[] | null;
-    cwd?: string | null;
-    env?: Record<string, string> | null;
-    url?: string | null;
-    enabled?: boolean;
-  }) {
+  public async createMcpServer(params: CreateMcpServer) {
     return this.ipcRenderer.invoke("mcp:create-server", params);
   }
 
-  public async updateMcpServer(params: {
-    id: number;
-    name?: string;
-    transport?: string;
-    command?: string | null;
-    args?: string[] | null;
-    cwd?: string | null;
-    env?: Record<string, string> | null;
-    url?: string | null;
-    enabled?: boolean;
-  }) {
+  public async updateMcpServer(params: McpServerUpdate) {
     return this.ipcRenderer.invoke("mcp:update-server", params);
   }
 

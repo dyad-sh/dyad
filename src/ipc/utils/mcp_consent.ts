@@ -102,7 +102,6 @@ export async function requireMcpToolConsent(
     return true;
   }
   if (response === "decline") {
-    await setStoredConsent(params.serverId, params.toolName, "denied");
     return false;
   }
   return response === "accept-once";

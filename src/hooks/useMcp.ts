@@ -1,7 +1,13 @@
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { IpcClient } from "@/ipc/ipc_client";
-import type { McpServer, McpTool, McpToolConsent } from "@/ipc/ipc_types";
+import type {
+  McpServer,
+  McpServerUpdate,
+  McpTool,
+  McpToolConsent,
+  CreateMcpServer,
+} from "@/ipc/ipc_types";
 
 export type Transport = "stdio" | "http";
 
@@ -13,7 +19,6 @@ export function useMcp() {
     queryFn: async () => {
       const ipc = IpcClient.getInstance();
       const list = await ipc.listMcpServers();
-      console.log("serversQuery", list);
       return (list || []) as McpServer[];
     },
     meta: { showErrorToast: true },
@@ -23,17 +28,15 @@ export function useMcp() {
     () => (serversQuery.data || []).map((s) => s.id).sort((a, b) => a - b),
     [serversQuery.data],
   );
-  console.log("serverIds", serverIds);
+
   const toolsByServerQuery = useQuery<Record<number, McpTool[]>, Error>({
     queryKey: ["mcp", "tools-by-server", serverIds],
     enabled: serverIds.length > 0,
     queryFn: async () => {
-      console.log("toolsByServerQuery", serverIds);
       const ipc = IpcClient.getInstance();
       const entries = await Promise.all(
         serverIds.map(async (id) => [id, await ipc.listMcpTools(id)] as const),
       );
-      console.log("toolsByServerQuery", entries);
       return Object.fromEntries(entries) as Record<number, McpTool[]>;
     },
     meta: { showErrorToast: true },
@@ -58,16 +61,7 @@ export function useMcp() {
   }, [consentsQuery.data]);
 
   const createServerMutation = useMutation({
-    mutationFn: async (params: {
-      name: string;
-      transport: Transport;
-      command?: string | null;
-      args?: string[] | null;
-      url?: string | null;
-      enabled?: boolean;
-      cwd?: string | null;
-      env?: Record<string, string> | null;
-    }) => {
+    mutationFn: async (params: CreateMcpServer) => {
       const ipc = IpcClient.getInstance();
       return ipc.createMcpServer(params);
     },
@@ -81,17 +75,7 @@ export function useMcp() {
   });
 
   const updateServerMutation = useMutation({
-    mutationFn: async (params: {
-      id: number;
-      name?: string;
-      transport?: Transport;
-      command?: string | null;
-      args?: string[] | null;
-      cwd?: string | null;
-      env?: Record<string, string> | null;
-      url?: string | null;
-      enabled?: boolean;
-    }) => {
+    mutationFn: async (params: McpServerUpdate) => {
       const ipc = IpcClient.getInstance();
       return ipc.updateMcpServer(params);
     },
@@ -133,31 +117,14 @@ export function useMcp() {
     meta: { showErrorToast: true },
   });
 
-  const createServer = async (params: {
-    name: string;
-    transport: Transport;
-    command?: string | null;
-    args?: string[] | null;
-    url?: string | null;
-    enabled?: boolean;
-    cwd?: string | null;
-    env?: Record<string, string> | null;
-  }) => createServerMutation.mutateAsync(params);
+  const createServer = async (params: CreateMcpServer) =>
+    createServerMutation.mutateAsync(params);
 
   const toggleEnabled = async (id: number, currentEnabled: boolean) =>
     updateServerMutation.mutateAsync({ id, enabled: !currentEnabled });
 
-  const updateServer = async (params: {
-    id: number;
-    name?: string;
-    transport?: Transport;
-    command?: string | null;
-    args?: string[] | null;
-    cwd?: string | null;
-    env?: Record<string, string> | null;
-    url?: string | null;
-    enabled?: boolean;
-  }) => updateServerMutation.mutateAsync(params);
+  const updateServer = async (params: McpServerUpdate) =>
+    updateServerMutation.mutateAsync(params);
 
   const deleteServer = async (id: number) =>
     deleteServerMutation.mutateAsync(id);

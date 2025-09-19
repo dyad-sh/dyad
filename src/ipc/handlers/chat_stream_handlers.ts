@@ -717,6 +717,7 @@ This conversation includes one or more image attachments. When the user uploads 
           const providerOptions: Record<string, any> = {
             "dyad-engine": {
               dyadRequestId,
+              dyadDisableFiles,
             },
             "dyad-gateway": getExtraProviderOptions(
               modelClient.builtinProviderId,
@@ -766,24 +767,7 @@ This conversation includes one or more image attachments. When the user uploads 
             maxRetries: 2,
             model: modelClient.model,
             stopWhen: stepCountIs(3),
-            providerOptions: {
-              "dyad-engine": {
-                dyadRequestId,
-                dyadDisableFiles,
-              },
-              "dyad-gateway": getExtraProviderOptions(
-                modelClient.builtinProviderId,
-                settings,
-              ),
-              google: {
-                thinkingConfig: {
-                  includeThoughts: true,
-                },
-              } satisfies GoogleGenerativeAIProviderOptions,
-              openai: {
-                reasoningSummary: "auto",
-              } satisfies OpenAIResponsesProviderOptions,
-            },
+            providerOptions,
             system: systemPromptOverride,
             tools,
             messages: chatMessages.filter((m) => m.content),
@@ -877,8 +861,6 @@ This conversation includes one or more image attachments. When the user uploads 
             content: "OK.",
           });
         }
-
-        console.log("FULL RESPONSE", fullResponse);
 
         // When calling streamText, the messages need to be properly formatted for mixed content
         const { fullStream } = await simpleStreamText({

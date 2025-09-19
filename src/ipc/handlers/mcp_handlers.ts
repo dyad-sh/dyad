@@ -8,7 +8,7 @@ import { createLoggedHandler } from "./safe_handle";
 import { resolveConsent } from "../utils/mcp_consent";
 import { getStoredConsent } from "../utils/mcp_consent";
 import { mcpManager } from "../utils/mcp_manager";
-import { McpTool } from "../ipc_types";
+import { CreateMcpServer, McpServerUpdate, McpTool } from "../ipc_types";
 
 const logger = log.scope("mcp_handlers");
 const handle = createLoggedHandler(logger);
@@ -23,20 +23,8 @@ export function registerMcpHandlers() {
 
   handle(
     "mcp:create-server",
-    async (
-      _event: IpcMainInvokeEvent,
-      params: {
-        name: string;
-        transport: string;
-        command?: string | null;
-        args?: string[] | null;
-        cwd?: string | null;
-        env?: Record<string, string> | null;
-        url?: string | null;
-        enabled?: boolean;
-      },
-    ) => {
-      const { name, transport, command, args, env, url, enabled } = params;
+    async (_event: IpcMainInvokeEvent, params: CreateMcpServer) => {
+      const { name, transport, command, args, envJson, url, enabled } = params;
       const result = await db
         .insert(mcpServers)
         .values({
@@ -44,7 +32,7 @@ export function registerMcpHandlers() {
           transport,
           command: command || null,
           args: args ? JSON.stringify(args) : null,
-          envJson: env ? JSON.stringify(env) : null,
+          envJson: envJson ? JSON.stringify(envJson) : null,
           url: url || null,
           enabled: !!enabled,
         })
@@ -55,20 +43,7 @@ export function registerMcpHandlers() {
 
   handle(
     "mcp:update-server",
-    async (
-      _event: IpcMainInvokeEvent,
-      params: {
-        id: number;
-        name?: string;
-        transport?: string;
-        command?: string | null;
-        args?: string[] | null;
-        cwd?: string | null;
-        env?: Record<string, string> | null;
-        url?: string | null;
-        enabled?: boolean;
-      },
-    ) => {
+    async (_event: IpcMainInvokeEvent, params: McpServerUpdate) => {
       const update: any = {};
       if (params.name !== undefined) update.name = params.name;
       if (params.transport !== undefined) update.transport = params.transport;
@@ -76,8 +51,8 @@ export function registerMcpHandlers() {
       if (params.args !== undefined)
         update.args = params.args ? JSON.stringify(params.args) : null;
       if (params.cwd !== undefined) update.cwd = params.cwd;
-      if (params.env !== undefined)
-        update.envJson = params.env ? JSON.stringify(params.env) : null;
+      if (params.envJson !== undefined)
+        update.envJson = params.envJson ? JSON.stringify(params.envJson) : null;
       if (params.url !== undefined) update.url = params.url;
       if (params.enabled !== undefined) update.enabled = !!params.enabled;
 

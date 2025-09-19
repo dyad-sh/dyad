@@ -304,7 +304,7 @@ export function ToolsMcpSettings() {
       name,
       transport,
       command: command || null,
-      args: args ? args.split(" ") : null,
+      args: args || null,
       url: url || null,
       enabled,
     });
@@ -427,7 +427,7 @@ export function ToolsMcpSettings() {
                   onSave={async (pairs) => {
                     await updateServer({
                       id: s.id,
-                      env: arrayToEnvObject(pairs),
+                      envJson: JSON.stringify(arrayToEnvObject(pairs)),
                     });
                   }}
                 />

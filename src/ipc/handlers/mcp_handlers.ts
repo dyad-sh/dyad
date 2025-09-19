@@ -31,8 +31,8 @@ export function registerMcpHandlers() {
           name,
           transport,
           command: command || null,
-          args: args ? JSON.stringify(args) : null,
-          envJson: envJson ? JSON.stringify(envJson) : null,
+          args: args || null,
+          envJson: envJson || null,
           url: url || null,
           enabled: !!enabled,
         })
@@ -48,11 +48,9 @@ export function registerMcpHandlers() {
       if (params.name !== undefined) update.name = params.name;
       if (params.transport !== undefined) update.transport = params.transport;
       if (params.command !== undefined) update.command = params.command;
-      if (params.args !== undefined)
-        update.args = params.args ? JSON.stringify(params.args) : null;
+      if (params.args !== undefined) update.args = params.args || null;
       if (params.cwd !== undefined) update.cwd = params.cwd;
-      if (params.envJson !== undefined)
-        update.envJson = params.envJson ? JSON.stringify(params.envJson) : null;
+      if (params.envJson !== undefined) update.envJson = params.envJson || null;
       if (params.url !== undefined) update.url = params.url;
       if (params.enabled !== undefined) update.enabled = !!params.enabled;
 

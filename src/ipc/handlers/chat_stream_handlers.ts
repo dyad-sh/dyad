@@ -1419,7 +1419,9 @@ async function getMcpTools(event: IpcMainInvokeEvent): Promise<ToolSet> {
             const inputPreview =
               typeof args === "string"
                 ? args
-                : JSON.stringify(args).slice(0, 500);
+                : Array.isArray(args)
+                  ? args.join(" ")
+                  : JSON.stringify(args).slice(0, 500);
             const ok = await requireMcpToolConsent(event, {
               serverId: s.id,
               serverName: s.name,

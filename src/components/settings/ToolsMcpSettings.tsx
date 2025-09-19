@@ -16,10 +16,15 @@ import { Edit2, Plus, Save, Trash2, X } from "lucide-react";
 
 type KeyValue = { key: string; value: string };
 
-function parseEnvJsonToArray(envJson?: string | null): KeyValue[] {
+function parseEnvJsonToArray(
+  envJson?: Record<string, string> | string | null,
+): KeyValue[] {
   if (!envJson) return [];
   try {
-    const obj = JSON.parse(envJson) as Record<string, string>;
+    const obj =
+      typeof envJson === "string"
+        ? (JSON.parse(envJson) as unknown as Record<string, string>)
+        : (envJson as Record<string, string>);
     return Object.entries(obj).map(([key, value]) => ({
       key,
       value: String(value ?? ""),
@@ -46,7 +51,7 @@ function EnvVarsEditor({
   isSaving,
 }: {
   serverId: number;
-  envJson?: string | null;
+  envJson?: Record<string, string> | null;
   disabled?: boolean;
   onSave: (envVars: KeyValue[]) => Promise<void>;
   isSaving: boolean;
@@ -291,7 +296,7 @@ export function ToolsMcpSettings() {
   const [name, setName] = useState("");
   const [transport, setTransport] = useState<Transport>("stdio");
   const [command, setCommand] = useState("");
-  const [args, setArgs] = useState("");
+  const [args, setArgs] = useState<string>("");
   const [url, setUrl] = useState("");
   const [enabled, setEnabled] = useState(true);
 
@@ -304,7 +309,7 @@ export function ToolsMcpSettings() {
       name,
       transport,
       command: command || null,
-      args: args || null,
+      args: args.trim() ? args.split(" ").filter(Boolean) : null,
       url: url || null,
       enabled,
     });
@@ -401,7 +406,9 @@ export function ToolsMcpSettings() {
                   {s.transport}
                   {s.url ? ` · ${s.url}` : ""}
                   {s.command ? ` · ${s.command}` : ""}
-                  {s.args ? ` · ${s.args}` : ""}
+                  {Array.isArray(s.args) && s.args.length
+                    ? ` · ${s.args.join(" ")}`
+                    : ""}
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -427,7 +434,7 @@ export function ToolsMcpSettings() {
                   onSave={async (pairs) => {
                     await updateServer({
                       id: s.id,
-                      envJson: JSON.stringify(arrayToEnvObject(pairs)),
+                      envJson: arrayToEnvObject(pairs),
                     });
                   }}
                 />

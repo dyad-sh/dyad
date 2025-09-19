@@ -26,8 +26,8 @@ class McpManager {
     if (!s) throw new Error(`MCP server not found: ${serverId}`);
     let transport: StdioClientTransport | StreamableHTTPClientTransport;
     if (s.transport === "stdio") {
-      const args = s.args ? JSON.parse(s.args) : [];
-      const env = s.envJson ? JSON.parse(s.envJson) : undefined;
+      const args = s.args ?? [];
+      const env = s.envJson ?? undefined;
       if (!s.command) throw new Error("MCP server command is required");
       transport = new StdioClientTransport({
         command: s.command,

@@ -457,9 +457,9 @@ export interface McpServer {
   name: string;
   transport: string;
   command?: string | null;
-  args?: string | null; // JSON string
+  args?: string[] | null;
   cwd?: string | null;
-  envJson?: string | null; // JSON string
+  envJson?: Record<string, string> | null;
   url?: string | null;
   enabled: boolean;
   createdAt: number;

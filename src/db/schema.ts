@@ -179,8 +179,12 @@ export const mcpServers = sqliteTable("mcp_servers", {
   name: text("name").notNull(),
   transport: text("transport").notNull(),
   command: text("command"),
-  args: text("args"), // JSON array as string
-  envJson: text("env_json"), // JSON object as string
+  // Store typed JSON for args and environment variables
+  args: text("args", { mode: "json" }).$type<string[] | null>(),
+  envJson: text("env_json", { mode: "json" }).$type<Record<
+    string,
+    string
+  > | null>(),
   url: text("url"),
   enabled: integer("enabled", { mode: "boolean" })
     .notNull()

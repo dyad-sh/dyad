@@ -156,12 +156,12 @@ async function processStreamChunks({
       const serverName = part.toolName.split("__")[0];
       const toolName = part.toolName.split("__")[1];
       const content = escapeDyadTags(JSON.stringify(part.input));
-      chunk = `<dyad-mcp-tool-call server="${serverName}" tool="${toolName}">${content}</dyad-mcp-tool-call>`;
+      chunk = `<dyad-mcp-tool-call server="${serverName}" tool="${toolName}">\n${content}\n</dyad-mcp-tool-call>\n`;
     } else if (part.type === "tool-result") {
       const serverName = part.toolName.split("__")[0];
       const toolName = part.toolName.split("__")[1];
       const content = escapeDyadTags(part.output);
-      chunk = `<dyad-mcp-tool-result server="${serverName}" tool="${toolName}">${content}</dyad-mcp-tool-result>`;
+      chunk = `<dyad-mcp-tool-result server="${serverName}" tool="${toolName}">\n${content}\n</dyad-mcp-tool-result>\n`;
     }
 
     if (!chunk) {

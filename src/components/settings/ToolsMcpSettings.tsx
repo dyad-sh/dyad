@@ -364,7 +364,7 @@ export function ToolsMcpSettings() {
                 <Input
                   value={args}
                   onChange={(e) => setArgs(e.target.value)}
-                  placeholder="path/to/server.js --flag"
+                  placeholder="path/to/mcp-server.js --flag"
                 />
               </div>
             </>

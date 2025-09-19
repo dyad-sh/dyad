@@ -47,9 +47,6 @@ const config: PlaywrightTestConfig = {
       command: `cd testing/fake-llm-server && npm run build && npm start`,
       url: "http://localhost:3500/health",
     },
-    {
-      command: `cd testing && node run-fake-stdio-mcp-server.sh`,
-    },
   ],
 };
 

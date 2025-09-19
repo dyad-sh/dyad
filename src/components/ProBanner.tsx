@@ -13,14 +13,15 @@ import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 export function ProBanner() {
   const { settings } = useSettings();
   const { userBudget } = useUserBudgetInfo();
-  if (settings?.enableDyadPro || userBudget) {
-    return null;
-  }
 
   const [selectedBanner] = useState<"ai" | "smart" | "turbo">(() => {
     const options = ["ai", "smart", "turbo"] as const;
     return options[Math.floor(Math.random() * options.length)];
   });
+
+  if (settings?.enableDyadPro || userBudget) {
+    return null;
+  }
 
   return (
     <div className="mt-6 max-w-2xl mx-auto">

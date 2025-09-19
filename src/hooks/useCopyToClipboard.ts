@@ -1,5 +1,21 @@
 import { useState, useRef, useEffect } from "react";
 import { getLanguage } from "@/utils/get_language";
+
+const CUSTOM_TAG_NAMES = [
+  "dyad-write",
+  "dyad-rename",
+  "dyad-delete",
+  "dyad-add-dependency",
+  "dyad-execute-sql",
+  "dyad-add-integration",
+  "dyad-output",
+  "dyad-problem-report",
+  "dyad-chat-summary",
+  "dyad-edit",
+  "dyad-codebase-context",
+  "think",
+  "dyad-command",
+];
 export const useCopyToClipboard = () => {
   const [copied, setCopied] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -181,24 +197,8 @@ export const useCopyToClipboard = () => {
   const parseCustomTags = (content: string) => {
     const { processedContent } = preprocessUnclosedTags(content);
 
-    const customTagNames = [
-      "dyad-write",
-      "dyad-rename",
-      "dyad-delete",
-      "dyad-add-dependency",
-      "dyad-execute-sql",
-      "dyad-add-integration",
-      "dyad-output",
-      "dyad-problem-report",
-      "dyad-chat-summary",
-      "dyad-edit",
-      "dyad-codebase-context",
-      "think",
-      "dyad-command",
-    ];
-
     const tagPattern = new RegExp(
-      `<(${customTagNames.join("|")})\\s*([^>]*)>(.*?)<\\/\\1>`,
+      `<(${CUSTOM_TAG_NAMES.join("|")})\\s*([^>]*)>(.*?)<\\/\\1>`,
       "gs",
     );
 
@@ -253,25 +253,9 @@ export const useCopyToClipboard = () => {
 
   // Simplified version of preprocessUnclosedTags
   const preprocessUnclosedTags = (content: string) => {
-    const customTagNames = [
-      "dyad-write",
-      "dyad-rename",
-      "dyad-delete",
-      "dyad-add-dependency",
-      "dyad-execute-sql",
-      "dyad-add-integration",
-      "dyad-output",
-      "dyad-problem-report",
-      "dyad-chat-summary",
-      "dyad-edit",
-      "dyad-codebase-context",
-      "think",
-      "dyad-command",
-    ];
-
     let processedContent = content;
 
-    for (const tagName of customTagNames) {
+    for (const tagName of CUSTOM_TAG_NAMES) {
       const openTagPattern = new RegExp(`<${tagName}(?:\\s[^>]*)?>`, "g");
       const closeTagPattern = new RegExp(`</${tagName}>`, "g");
 

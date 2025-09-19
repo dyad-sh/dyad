@@ -144,7 +144,16 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
           )}
           {(message.role === "assistant" && message.content && !isStreaming) ||
           message.approvalState ? (
-            <div className="mt-2 flex items-center justify-between text-xs">
+            <div
+              className={`mt-2 flex items-center ${
+                message.role === "assistant" &&
+                message.content &&
+                !isStreaming &&
+                message.approvalState
+                  ? "justify-between"
+                  : ""
+              } text-xs`}
+            >
               {message.role === "assistant" &&
                 message.content &&
                 !isStreaming && (

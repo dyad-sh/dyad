@@ -499,8 +499,6 @@ This applies to simple apps like:
 When tools are used, provide a brief human-readable summary of the information gathered from the tools.
 
 When tools are not used, simply state: **"Ok, looks like I don't need any tools, I can start building."**
-
-[[AI_RULES]]
 `;
 
 export const constructSystemPrompt = ({

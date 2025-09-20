@@ -1,0 +1,24 @@
+- paragraph: Create a simple React component in src/components/Hello.tsx
+- img
+- text: file1.txt
+- button "Cancel":
+  - img
+- img
+- text: file1.txt file1.txt
+- button [disabled]:
+  - img
+- img
+- code:
+  - textbox "Editor content"
+  - list
+- paragraph: More EOM
+- img
+- text: Approved
+- img
+- text: less than a minute ago
+- img
+- text: wrote 1 file(s)
+- button "Undo":
+  - img
+- button "Retry":
+  - img

@@ -96,6 +96,7 @@ export type LargeLanguageModel = z.infer<typeof LargeLanguageModelSchema>;
  */
 export const RegularProviderSettingSchema = z.object({
   apiKey: SecretSchema.optional(),
+  resourceName: z.string().optional(),
 });
 
 export const VertexProviderSettingSchema = z.object({
@@ -120,6 +121,9 @@ export type ProviderSetting = z.infer<typeof ProviderSettingSchema>;
 export type RegularProviderSetting = z.infer<
   typeof RegularProviderSettingSchema
 >;
+export type AzureProviderSetting = RegularProviderSetting & {
+  resourceName?: string;
+};
 export type VertexProviderSetting = z.infer<typeof VertexProviderSettingSchema>;
 
 export const RuntimeModeSchema = z.enum(["web-sandbox", "local-node", "unset"]);

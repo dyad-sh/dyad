@@ -101,3 +101,4 @@ out/
 sqlite.db
 userData/
 .env.local
+.idea/

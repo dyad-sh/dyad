@@ -330,7 +330,7 @@ export class PageObject {
     await this.page.getByRole("button", { name: "Import" }).click();
   }
 
-  async selectChatMode(mode: "build" | "ask") {
+  async selectChatMode(mode: "build" | "ask" | "agent") {
     await this.page.getByTestId("chat-mode-selector").click();
     await this.page.getByRole("option", { name: mode }).click();
   }
@@ -685,11 +685,16 @@ export class PageObject {
     await this.page.getByRole("button", { name: "Back" }).click();
   }
 
-  async sendPrompt(prompt: string) {
+  async sendPrompt(
+    prompt: string,
+    { skipWaitForCompletion = false }: { skipWaitForCompletion?: boolean } = {},
+  ) {
     await this.getChatInput().click();
     await this.getChatInput().fill(prompt);
     await this.page.getByRole("button", { name: "Send message" }).click();
-    await this.waitForChatCompletion();
+    if (!skipWaitForCompletion) {
+      await this.waitForChatCompletion();
+    }
   }
 
   async selectModel({ provider, model }: { provider: string; model: string }) {

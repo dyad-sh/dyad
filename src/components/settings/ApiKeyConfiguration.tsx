@@ -50,7 +50,7 @@ export function ApiKeyConfiguration({
 }: ApiKeyConfigurationProps) {
   // Special handling for Azure OpenAI which requires environment variables
   if (provider === "azure") {
-    return <AzureConfiguration envVars={envVars} />;
+    return <AzureConfiguration envVars={envVars} onConfigSave={onSaveKey} isSaving={isSaving} />;
   }
   // Special handling for Google Vertex AI which uses service account credentials
   if (provider === "vertex") {

@@ -1,0 +1,20 @@
+- paragraph: Create a utility function in src/utils/helper.ts
+- img
+- text: file1.txt
+- button "Edit":
+  - img
+- img
+- text: file1.txt typescript
+- button "Copy":
+  - img
+- paragraph: More EOM
+- img
+- text: Approved
+- img
+- text: less than a minute ago
+- img
+- text: wrote 1 file(s)
+- button "Undo":
+  - img
+- button "Retry":
+  - img

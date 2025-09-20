@@ -11,7 +11,8 @@ import {
   QueryClientProvider,
   MutationCache,
 } from "@tanstack/react-query";
-import { showError } from "./lib/toast";
+import { showError, showMcpConsentToast } from "./lib/toast";
+import { IpcClient } from "./ipc/ipc_client";
 
 // @ts-ignore
 console.log("Running in mode:", import.meta.env.MODE);
@@ -107,6 +108,20 @@ function App() {
     return () => {
       unsubscribe();
     };
+  }, []);
+
+  useEffect(() => {
+    const ipc = IpcClient.getInstance();
+    const unsubscribe = ipc.onMcpToolConsentRequest((payload) => {
+      showMcpConsentToast({
+        serverName: payload.serverName,
+        toolName: payload.toolName,
+        toolDescription: payload.toolDescription,
+        inputPreview: payload.inputPreview,
+        onDecision: (d) => ipc.respondToMcpConsentRequest(payload.requestId, d),
+      });
+    });
+    return () => unsubscribe();
   }, []);
 
   return <RouterProvider router={router} />;

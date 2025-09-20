@@ -9,7 +9,7 @@ import {
   TextStreamPart,
 } from "ai";
 import { db } from "../../db";
-import { chats, messages } from "../../db/schema";
+import { apps, chats, messages } from "../../db/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import {
   constructSystemPrompt,
@@ -1000,7 +1000,24 @@ ${problemReport.problems
         const chatTitle = fullResponse.match(
           /<dyad-chat-summary>(.*?)<\/dyad-chat-summary>/,
         );
+        console.log("response", fullResponse);
+        console.log("chatTile", chatTitle);
         if (chatTitle) {
+          // Only update the app name if the app has exactly one chat and that chat's title is null
+          const appChats = await db.query.chats.findMany({
+            where: eq(chats.appId, updatedChat.app.id),
+          });
+          if (
+            appChats.length === 1 &&
+            appChats[0].id === updatedChat.id &&
+            appChats[0].title == null
+          ) {
+            await db
+              .update(apps)
+              .set({ name: chatTitle[1] })
+              .where(eq(apps.id, updatedChat.app.id));
+          }
+
           await db
             .update(chats)
             .set({ title: chatTitle[1] })

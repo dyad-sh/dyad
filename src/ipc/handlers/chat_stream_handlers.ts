@@ -69,6 +69,7 @@ import { prompts as promptsTable } from "../../db/schema";
 import { inArray } from "drizzle-orm";
 import { replacePromptReference } from "../utils/replacePromptReference";
 import { mcpManager } from "../utils/mcp_manager";
+import { renameApp } from "../utils/rename_app";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
@@ -1083,6 +1084,17 @@ ${problemReport.problems
           /<dyad-chat-summary>(.*?)<\/dyad-chat-summary>/,
         );
         if (chatTitle) {
+          const appChats = await db.query.chats.findMany({
+            where: eq(chats.appId, updatedChat.app.id),
+          });
+          if (
+            appChats.length === 1 &&
+            appChats[0].id === updatedChat.id &&
+            appChats[0].title == null
+          ) {
+            renameApp(updatedChat.app.id, chatTitle[1], chatTitle[1], logger);
+          }
+
           await db
             .update(chats)
             .set({ title: chatTitle[1] })

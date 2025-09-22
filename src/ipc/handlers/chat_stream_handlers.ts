@@ -8,6 +8,7 @@ import {
   ToolSet,
   TextStreamPart,
   stepCountIs,
+  hasToolCall,
 } from "ai";
 
 import { db } from "../../db";
@@ -69,6 +70,7 @@ import { prompts as promptsTable } from "../../db/schema";
 import { inArray } from "drizzle-orm";
 import { replacePromptReference } from "../utils/replacePromptReference";
 import { mcpManager } from "../utils/mcp_manager";
+import z from "zod";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
@@ -766,7 +768,7 @@ This conversation includes one or more image attachments. When the user uploads 
             temperature: await getTemperature(settings.selectedModel),
             maxRetries: 2,
             model: modelClient.model,
-            stopWhen: stepCountIs(3),
+            stopWhen: [stepCountIs(3), hasToolCall("edit-code")],
             providerOptions,
             system: systemPromptOverride,
             tools,
@@ -836,7 +838,15 @@ This conversation includes one or more image attachments. When the user uploads 
           const { fullStream } = await simpleStreamText({
             chatMessages: limitedHistoryChatMessages,
             modelClient,
-            tools,
+            tools: {
+              ...tools,
+              "generate-code": {
+                description:
+                  "ALWAYS use this tool whenever generating or editing code for the codebase.",
+                inputSchema: z.object({}),
+                execute: async () => "",
+              },
+            },
             systemPromptOverride: constructSystemPrompt({
               aiRules: await readAiRules(getDyadAppPath(updatedChat.app.path)),
               chatMode: "agent",

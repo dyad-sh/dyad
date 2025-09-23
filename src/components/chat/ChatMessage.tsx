@@ -12,6 +12,8 @@ import {
   GitCommit,
   Copy,
   Check,
+  CircleStop,
+  Volume2,
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 import { useVersions } from "@/hooks/useVersions";
@@ -19,6 +21,8 @@ import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useMemo } from "react";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
+import { useTextToSpeech } from "@/hooks/useTextToSpeech";
+
 import {
   Tooltip,
   TooltipContent,
@@ -39,6 +43,15 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
   const { copyMessageContent, copied } = useCopyToClipboard();
   const handleCopyFormatted = async () => {
     await copyMessageContent(message.content);
+  };
+  //handle tts
+  const { toggle, isPlaying, stop, isSupported } = useTextToSpeech();
+  const handleTextToSpeech = () => {
+    if (!isPlaying && message.content) {
+      toggle(message.content);
+    } else if (isPlaying) {
+      stop(); // Stop if already playing
+    }
   };
   // Find the version that was active when this message was sent
   const messageVersion = useMemo(() => {
@@ -157,27 +170,56 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
               {message.role === "assistant" &&
                 message.content &&
                 !isStreaming && (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          data-testid="copy-message-button"
-                          onClick={handleCopyFormatted}
-                          className="flex items-center space-x-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
-                        >
-                          {copied ? (
-                            <Check className="h-4 w-4 text-green-500" />
-                          ) : (
-                            <Copy className="h-4 w-4" />
-                          )}
-                          <span className="hidden sm:inline"></span>
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        {copied ? "Copied!" : "Copy"}
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                  <div className="flex items-center gap-2">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            data-testid="copy-message-button"
+                            onClick={handleCopyFormatted}
+                            className="flex items-center space-x-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
+                          >
+                            {copied ? (
+                              <Check className="h-4 w-4 text-green-500" />
+                            ) : (
+                              <Copy className="h-4 w-4" />
+                            )}
+                            <span className="hidden sm:inline"></span>
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          {copied ? "Copied!" : "Copy"}
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+
+                    {isSupported && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              data-testid="tts-button"
+                              onClick={handleTextToSpeech}
+                              className="flex items-center space-x-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
+                            >
+                              {isPlaying ? (
+                                <>
+                                  <CircleStop className="h-4 w-4 text-green-500" />
+                                  <span className="sm:inline">Stop</span>
+                                </>
+                              ) : (
+                                <Volume2 className="h-4 w-4" />
+                              )}
+                              <span className="hidden sm:inline"></span>
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {isPlaying ? "Stop!" : "Read Aloud"}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                  </div>
                 )}
               {message.approvalState && (
                 <div className="flex items-center space-x-1">

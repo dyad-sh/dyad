@@ -11,7 +11,10 @@ export const useTextToSpeech = () => {
   // Load available voices
   useEffect(() => {
     const loadVoices = () => {
-      const availableVoices = speechSynthesis.getVoices();
+      const availableVoices =
+        typeof window !== "undefined" && "speechSynthesis" in window
+          ? window.speechSynthesis.getVoices()
+          : [];
       setVoices(availableVoices);
 
       // Set default voice (prefer English voices)
@@ -134,7 +137,7 @@ export const useTextToSpeech = () => {
 
     utterance.rate = options?.rate || 1;
     utterance.pitch = options?.pitch || 1;
-    utterance.volume = options?.volume || 1;
+    utterance.volume = options?.volume ?? 1;
 
     // Event handlers
     utterance.onstart = () => {
@@ -182,7 +185,6 @@ export const useTextToSpeech = () => {
     text?: string,
     options?: { rate?: number; pitch?: number; volume?: number },
   ) => {
-    speechSynthesis.cancel();
     if (isPlaying) {
       if (isPaused) {
         resume();
@@ -197,7 +199,8 @@ export const useTextToSpeech = () => {
   };
 
   // Check if TTS is supported
-  const isSupported = "speechSynthesis" in window;
+  const isSupported =
+    typeof window !== "undefined" && "speechSynthesis" in window;
   return {
     speak,
     pause,

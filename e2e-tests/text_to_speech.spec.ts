@@ -3,7 +3,6 @@ import { expect } from "@playwright/test";
 
 test("text to speech - basic functionality", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.importApp("minimal");
 
   // Mock speechSynthesis API
   await po.page.addInitScript(() => {
@@ -34,6 +33,7 @@ test("text to speech - basic functionality", async ({ po }) => {
       speak: (utterance: MockSpeechSynthesisUtterance) => {
         isPlaying = true;
         setTimeout(() => utterance.onstart?.(), 10);
+        setTimeout(() => utterance.onend?.(), 100);
       },
       cancel: () => {
         isPlaying = false;
@@ -45,6 +45,7 @@ test("text to speech - basic functionality", async ({ po }) => {
     };
   });
 
+  await po.importApp("minimal");
   await po.sendPrompt("Say hello");
 
   const ttsButton = po.page.getByTestId("tts-button").first();

@@ -205,7 +205,7 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
                               {isPlaying ? (
                                 <>
                                   <CircleStop className="h-4 w-4 text-green-500" />
-                                  <span className="sm:inline">Stop</span>
+                                  <span>Stop</span>
                                 </>
                               ) : (
                                 <Volume2 className="h-4 w-4" />

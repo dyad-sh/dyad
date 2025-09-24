@@ -1,30 +1,36 @@
 # Etapa 1: build
-FROM node:20-alpine AS build
+FROM node:20-bullseye AS build
+# (usei bullseye em vez de alpine porque o better-sqlite3 é chatinho no alpine)
 
 WORKDIR /app
 
-# Copiar apenas arquivos de dependências primeiro
+# Instalar dependências de build
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copiar arquivos de dependências
 COPY package.json yarn.lock* package-lock.json* pnpm-lock.yaml* ./
 
 # Instalar dependências
 RUN yarn install --frozen-lockfile || npm install
 
-# Copiar restante do código
+# Copiar resto do projeto
 COPY . .
 
-# Gerar build (se o projeto precisar)
+# Build do app (se tiver)
 RUN yarn build || echo "sem etapa de build"
 
 # Etapa 2: imagem final
-FROM node:20-alpine
+FROM node:20-bullseye
 
 WORKDIR /app
 
-# Copiar arquivos da etapa de build
+# Copiar app pronto
 COPY --from=build /app ./
 
-# Expor a porta padrão do Dyad (ajuste se for diferente)
 EXPOSE 3000
 
-# Comando de inicialização
 CMD ["yarn", "start"]

@@ -140,10 +140,9 @@ export const useTextToSpeech = () => {
     utterance.volume = options?.volume ?? 1;
 
     // Event handlers
-    utterance.onstart = () => {
-      setIsPlaying(true);
-      setIsPaused(false);
-    };
+
+    setIsPlaying(true);
+    setIsPaused(false);
 
     utterance.onend = () => {
       setIsPlaying(false);

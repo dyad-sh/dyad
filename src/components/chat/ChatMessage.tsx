@@ -210,7 +210,6 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
                               ) : (
                                 <Volume2 className="h-4 w-4" />
                               )}
-                              <span className="hidden sm:inline"></span>
                             </button>
                           </TooltipTrigger>
                           <TooltipContent>

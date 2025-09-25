@@ -120,6 +120,9 @@ export type ProviderSetting = z.infer<typeof ProviderSettingSchema>;
 export type RegularProviderSetting = z.infer<
   typeof RegularProviderSettingSchema
 >;
+export type AzureProviderSetting = RegularProviderSetting & {
+  resourceName?: string;
+};
 export type VertexProviderSetting = z.infer<typeof VertexProviderSettingSchema>;
 
 export const RuntimeModeSchema = z.enum(["web-sandbox", "local-node", "unset"]);

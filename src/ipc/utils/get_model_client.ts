@@ -3,7 +3,7 @@ import { createGoogleGenerativeAI as createGoogle } from "@ai-sdk/google";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createXai } from "@ai-sdk/xai";
 import { createVertex as createGoogleVertex } from "@ai-sdk/google-vertex";
-import { azure } from "@ai-sdk/azure";
+import { createAzure } from "@ai-sdk/azure";
 import { LanguageModelV2 } from "@ai-sdk/provider";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
@@ -12,6 +12,7 @@ import type {
   LargeLanguageModel,
   UserSettings,
   VertexProviderSetting,
+  AzureProviderSetting,
 } from "../../lib/schemas";
 import { getEnvVar } from "./read_env";
 import log from "electron-log";
@@ -335,28 +336,41 @@ function getRegularModelClient(
         };
       }
 
-      // Azure OpenAI requires both API key and resource name as env vars
-      // We use environment variables for Azure configuration
-      const resourceName = getEnvVar("AZURE_RESOURCE_NAME");
-      const azureApiKey = getEnvVar("AZURE_API_KEY");
+      const azureSettings = settings.providerSettings?.azure as
+        | AzureProviderSetting
+        | undefined;
+      const azureApiKeyFromSettings = (
+        azureSettings?.apiKey?.value ?? ""
+      ).trim();
+      const azureResourceNameFromSettings = (
+        azureSettings?.resourceName ?? ""
+      ).trim();
+      const envResourceName = (getEnvVar("AZURE_RESOURCE_NAME") ?? "").trim();
+      const envAzureApiKey = (getEnvVar("AZURE_API_KEY") ?? "").trim();
+
+      const resourceName = azureResourceNameFromSettings || envResourceName;
+      const azureApiKey = azureApiKeyFromSettings || envAzureApiKey;
 
       if (!resourceName) {
         throw new Error(
-          "Azure OpenAI resource name is required. Please set the AZURE_RESOURCE_NAME environment variable.",
+          "Azure OpenAI resource name is required. Provide it in Settings or set the AZURE_RESOURCE_NAME environment variable.",
         );
       }
 
       if (!azureApiKey) {
         throw new Error(
-          "Azure OpenAI API key is required. Please set the AZURE_API_KEY environment variable.",
+          "Azure OpenAI API key is required. Provide it in Settings or set the AZURE_API_KEY environment variable.",
         );
       }
 
-      // Use the default Azure provider with environment variables
-      // The azure provider automatically picks up AZURE_RESOURCE_NAME and AZURE_API_KEY
+      const provider = createAzure({
+        resourceName,
+        apiKey: azureApiKey,
+      });
+
       return {
         modelClient: {
-          model: azure(model.name),
+          model: provider(model.name),
           builtinProviderId: providerId,
         },
         backupModelClients: [],

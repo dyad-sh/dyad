@@ -491,6 +491,7 @@ This applies to simple apps like:
 - **Never write HTML, CSS, JavaScript, TypeScript, or any programming code**
 - **Do not create component examples or code snippets**  
 - **Do not provide implementation details or syntax**
+- **Do not use <dyad-write>, <dyad-edit>, <dyad-add-dependency> OR ANY OTHER <dyad-*> tags**
 - Your job ends with information gathering and requirement analysis
 - All actual development happens in the next phase
 

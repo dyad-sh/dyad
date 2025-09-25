@@ -5,12 +5,26 @@ import {
 } from "./DyadMarkdownParser";
 import { motion } from "framer-motion";
 import { useStreamChat } from "@/hooks/useStreamChat";
-import { CheckCircle, XCircle, Clock, GitCommit } from "lucide-react";
+import {
+  CheckCircle,
+  XCircle,
+  Clock,
+  GitCommit,
+  Copy,
+  Check,
+} from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 import { useVersions } from "@/hooks/useVersions";
 import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useMemo } from "react";
+import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../ui/tooltip";
 
 interface ChatMessageProps {
   message: Message;
@@ -21,6 +35,11 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
   const { isStreaming } = useStreamChat();
   const appId = useAtomValue(selectedAppIdAtom);
   const { versions: liveVersions } = useVersions(appId);
+  //handle copy chat
+  const { copyMessageContent, copied } = useCopyToClipboard();
+  const handleCopyFormatted = async () => {
+    await copyMessageContent(message.content);
+  };
   // Find the version that was active when this message was sent
   const messageVersion = useMemo(() => {
     if (
@@ -123,21 +142,60 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
               )}
             </div>
           )}
-          {message.approvalState && (
-            <div className="mt-2 flex items-center justify-end space-x-1 text-xs">
-              {message.approvalState === "approved" ? (
-                <>
-                  <CheckCircle className="h-4 w-4 text-green-500" />
-                  <span>Approved</span>
-                </>
-              ) : message.approvalState === "rejected" ? (
-                <>
-                  <XCircle className="h-4 w-4 text-red-500" />
-                  <span>Rejected</span>
-                </>
-              ) : null}
+          {(message.role === "assistant" && message.content && !isStreaming) ||
+          message.approvalState ? (
+            <div
+              className={`mt-2 flex items-center ${
+                message.role === "assistant" &&
+                message.content &&
+                !isStreaming &&
+                message.approvalState
+                  ? "justify-between"
+                  : ""
+              } text-xs`}
+            >
+              {message.role === "assistant" &&
+                message.content &&
+                !isStreaming && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          data-testid="copy-message-button"
+                          onClick={handleCopyFormatted}
+                          className="flex items-center space-x-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
+                        >
+                          {copied ? (
+                            <Check className="h-4 w-4 text-green-500" />
+                          ) : (
+                            <Copy className="h-4 w-4" />
+                          )}
+                          <span className="hidden sm:inline"></span>
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {copied ? "Copied!" : "Copy"}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+              {message.approvalState && (
+                <div className="flex items-center space-x-1">
+                  {message.approvalState === "approved" ? (
+                    <>
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      <span>Approved</span>
+                    </>
+                  ) : message.approvalState === "rejected" ? (
+                    <>
+                      <XCircle className="h-4 w-4 text-red-500" />
+                      <span>Rejected</span>
+                    </>
+                  ) : null}
+                </div>
+              )}
             </div>
-          )}
+          ) : null}
         </div>
         {/* Timestamp and commit info for assistant messages - only visible on hover */}
         {message.role === "assistant" && message.createdAt && (

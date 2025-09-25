@@ -13,12 +13,16 @@ interface ChatPanelProps {
   chatId?: number;
   isPreviewOpen: boolean;
   onTogglePreview: () => void;
+  onSwitchChatSide: () => void;
+  isChatOnLeft: boolean;
 }
 
 export function ChatPanel({
   chatId,
   isPreviewOpen,
   onTogglePreview,
+  onSwitchChatSide,
+  isChatOnLeft,
 }: ChatPanelProps) {
   const [messages, setMessages] = useAtom(chatMessagesAtom);
   const [isVersionPaneOpen, setIsVersionPaneOpen] = useState(false);
@@ -121,6 +125,8 @@ export function ChatPanel({
         isPreviewOpen={isPreviewOpen}
         onTogglePreview={onTogglePreview}
         onVersionClick={() => setIsVersionPaneOpen(!isVersionPaneOpen)}
+        onSwitchChatSide={onSwitchChatSide}
+        isChatOnLeft={isChatOnLeft}
       />
       <div className="flex flex-1 overflow-hidden">
         {!isVersionPaneOpen && (

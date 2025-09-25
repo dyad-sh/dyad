@@ -12,6 +12,7 @@ import { usePostHog } from "posthog-js/react";
 import { HomeSubmitOptions } from "@/pages/home";
 import { ChatInputControls } from "../ChatInputControls";
 import { LexicalChatInput } from "./LexicalChatInput";
+import { useChatModeToggle } from "@/hooks/useChatModeToggle";
 export function HomeChatInput({
   onSubmit,
 }: {
@@ -54,6 +55,7 @@ export function HomeChatInput({
   if (!settings) {
     return null; // Or loading state
   }
+  useChatModeToggle();
 
   return (
     <>

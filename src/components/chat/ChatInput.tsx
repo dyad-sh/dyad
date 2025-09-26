@@ -79,7 +79,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const [showError, setShowError] = useState(true);
   const [isApproving, setIsApproving] = useState(false); // State for approving
   const [isRejecting, setIsRejecting] = useState(false); // State for rejecting
-  const [isChangesPending, setIsChangesPending] = useState(false);
   const [messages, setMessages] = useAtom<Message[]>(chatMessagesAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const [showTokenBar, setShowTokenBar] = useAtom(showTokenBarAtom);
@@ -109,20 +108,19 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   } = useProposal(chatId);
   const { proposal, messageId } = proposalResult ?? {};
 
+  const lastMessage = messages.at(-1);
+  const disableSendButton =
+    lastMessage?.role === "assistant" &&
+    !lastMessage.approvalState &&
+    !!proposal &&
+    proposal.type === "code-proposal" &&
+    messageId === lastMessage.id;
+
   useEffect(() => {
     if (error) {
       setShowError(true);
     }
   }, [error]);
-
-  useEffect(() => {
-    const lastMessage = messages.at(-1);
-    if (lastMessage?.role === "assistant" && !lastMessage?.approvalState) {
-      setIsChangesPending(true);
-    } else {
-      setIsChangesPending(false);
-    }
-  }, [messages]);
 
   const fetchChatMessages = useCallback(async () => {
     if (!chatId) {
@@ -318,7 +316,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                 onClick={handleSubmit}
                 disabled={
                   (!inputValue.trim() && attachments.length === 0) ||
-                  !!isChangesPending
+                  disableSendButton
                 }
                 className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
                 title="Send message"

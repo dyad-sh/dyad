@@ -24,6 +24,7 @@ export function HomeChatInput({
   const { isStreaming } = useStreamChat({
     hasChatId: false,
   }); // eslint-disable-line @typescript-eslint/no-unused-vars
+  useChatModeToggle();
 
   // Use the attachments hook
   const {
@@ -55,7 +56,6 @@ export function HomeChatInput({
   if (!settings) {
     return null; // Or loading state
   }
-  useChatModeToggle();
 
   return (
     <>

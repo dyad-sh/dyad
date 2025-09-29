@@ -138,6 +138,17 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       temperature: 0,
       dollarSigns: 2,
     },
+    // https://ai.google.dev/gemini-api/docs/models#gemini-2.5-flash-lite
+    {
+      name: "gemini-2.5-flash-lite",
+      displayName: "Gemini 2.5 Flash-Lite",
+      description:
+        "Google's Gemini 2.5 Flash-lite model (most cost-efficient + free tier available)",
+      maxOutputTokens: 65_536 - 1,
+      contextWindow: 1_048_576,
+      temperature: 0,
+      dollarSigns: 1,
+    },
   ],
   vertex: [
     // Vertex Gemini 2.5 Pro
@@ -154,6 +165,15 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       name: "gemini-2.5-flash",
       displayName: "Gemini 2.5 Flash",
       description: "Vertex Gemini 2.5 Flash",
+      maxOutputTokens: 65_536 - 1,
+      contextWindow: 1_048_576,
+      temperature: 0,
+    },
+    // Vertex Gemini 2.5 Flash-Lite
+    {
+      name: "gemini-2.5-flash-lite",
+      displayName: "Gemini 2.5 Flash-Lite",
+      description: "Vertex Gemini 2.5 Flash-Lite (cost-efficient)",
       maxOutputTokens: 65_536 - 1,
       contextWindow: 1_048_576,
       temperature: 0,

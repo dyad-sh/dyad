@@ -72,6 +72,15 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
   // https://docs.anthropic.com/en/docs/about-claude/models/all-models#model-comparison-table
   anthropic: [
     {
+      name: "claude-sonnet-4-5-20250929",
+      displayName: "Claude Sonnet 4.5",
+      description: "Best coding model in the world, strongest for agents",
+      maxOutputTokens: 64_000,
+      contextWindow: 200_000,
+      temperature: 0,
+      dollarSigns: 4,
+    },
+    {
       name: "claude-sonnet-4-20250514",
       displayName: "Claude 4 Sonnet",
       description: "Excellent coder (note: >200k tokens is very expensive!)",
@@ -316,6 +325,14 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     },
   ],
   bedrock: [
+    {
+      name: "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+      displayName: "Claude Sonnet 4.5",
+      description: "Best coding model in the world, strongest for agents",
+      maxOutputTokens: 64_000,
+      contextWindow: 2000_000,
+      temperature: 0,
+    },
     {
       name: "us.anthropic.claude-sonnet-4-20250514-v1:0",
       displayName: "Claude 4 Sonnet",

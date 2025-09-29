@@ -961,6 +961,12 @@ export class IpcClient {
     return this.ipcRenderer.invoke("supabase:list-projects");
   }
 
+  public async listSupabaseBranches(params: {
+    projectId: string;
+  }): Promise<any[]> {
+    return this.ipcRenderer.invoke("supabase:list-branches", params);
+  }
+
   public async setSupabaseAppProject(
     project: string,
     app: number,
@@ -975,6 +981,13 @@ export class IpcClient {
     await this.ipcRenderer.invoke("supabase:unset-app-project", {
       app,
     });
+  }
+
+  public async setSupabaseAppBranch(params: {
+    app: number;
+    branchId: string | null;
+  }): Promise<void> {
+    await this.ipcRenderer.invoke("supabase:set-app-branch", params);
   }
 
   public async fakeHandleSupabaseConnect(params: {

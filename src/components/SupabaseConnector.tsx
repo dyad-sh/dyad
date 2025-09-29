@@ -56,8 +56,11 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     loading,
     error,
     loadProjects,
+    branches,
+    loadBranches,
     setAppProject,
     unsetAppProject,
+    setAppBranch,
   } = useSupabase();
   const currentProjectId = app?.supabaseProjectId;
 
@@ -73,10 +76,17 @@ export function SupabaseConnector({ appId }: { appId: number }) {
       await setAppProject(projectId, appId);
       toast.success("Project connected to app successfully");
       await refreshApp();
+      await loadBranches(projectId);
     } catch (error) {
       toast.error("Failed to connect project to app: " + error);
     }
   };
+
+  useEffect(() => {
+    if (currentProjectId) {
+      loadBranches(currentProjectId);
+    }
+  }, [currentProjectId, loadBranches]);
 
   const handleUnsetProject = async () => {
     try {
@@ -122,9 +132,42 @@ export function SupabaseConnector({ appId }: { appId: number }) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button variant="destructive" onClick={handleUnsetProject}>
-              Disconnect Project
-            </Button>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="branch-select">Database Branch</Label>
+                <Select
+                  value={app.supabaseBranchId || ""}
+                  onValueChange={async (branchId) => {
+                    try {
+                      await setAppBranch(branchId || null, appId);
+                      toast.success("Branch selected");
+                      await refreshApp();
+                    } catch (error) {
+                      toast.error("Failed to set branch: " + error);
+                    }
+                  }}
+                  disabled={loading}
+                >
+                  <SelectTrigger id="branch-select">
+                    <SelectValue placeholder="Select a branch" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {branches.map((branch: any) => (
+                      <SelectItem
+                        key={branch.id || branch.branch_id}
+                        value={(branch.id || branch.branch_id) as string}
+                      >
+                        {branch.name || branch.branch_name || branch.id}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Button variant="destructive" onClick={handleUnsetProject}>
+                Disconnect Project
+              </Button>
+            </div>
           </CardContent>
         </Card>
       );

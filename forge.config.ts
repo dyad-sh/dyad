@@ -60,12 +60,12 @@ const config: ForgeConfig = {
     ],
     icon: "./assets/icon/logo",
 
-    osxSign: isEndToEndTestBuild
+    osxSign: isEndToEndTestBuild || !process.env.APPLE_TEAM_ID
       ? undefined
       : {
           identity: process.env.APPLE_TEAM_ID,
         },
-    osxNotarize: isEndToEndTestBuild
+    osxNotarize: isEndToEndTestBuild || !process.env.APPLE_ID || !process.env.APPLE_PASSWORD || !process.env.APPLE_TEAM_ID
       ? undefined
       : {
           appleId: process.env.APPLE_ID!,

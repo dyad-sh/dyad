@@ -58,7 +58,7 @@ export function ChatModeSelector() {
         <TooltipContent>
           <div className="flex flex-col">
             <span>Open mode menu</span>
-            <span className="text-xs text-muted-foreground">
+            <span className="text-xs text-gray-200 dark:text-gray-500">
               {isMac ? "⌘ + ." : "Ctrl + ."} to toggle
             </span>
           </div>

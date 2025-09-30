@@ -43,6 +43,7 @@ test("mcp - call calculator", async ({ po }) => {
   // Make sure the tool call doesn't execute until consent is given
   await po.snapshotMessages();
   await alwaysAllowButton.click();
+  await po.page.getByRole("button", { name: "Approve" }).click();
 
   await po.sendPrompt("[dump]");
   await po.snapshotServerDump("all-messages");

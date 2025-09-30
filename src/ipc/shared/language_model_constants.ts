@@ -19,6 +19,18 @@ export interface ModelOption {
 
 export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
   openai: [
+    // https://platform.openai.com/docs/models/gpt-5-codex
+    {
+      name: "gpt-5-codex",
+      displayName: "GPT 5 Codex",
+      description: "OpenAI's flagship model optimized for coding",
+      // Technically it's 128k but OpenAI errors if you set max_tokens instead of max_completion_tokens
+      maxOutputTokens: undefined,
+      contextWindow: 400_000,
+      // Requires temperature to be default value (1)
+      temperature: 1,
+      dollarSigns: 3,
+    },
     // https://platform.openai.com/docs/models/gpt-5
     {
       name: "gpt-5",
@@ -72,11 +84,22 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
   // https://docs.anthropic.com/en/docs/about-claude/models/all-models#model-comparison-table
   anthropic: [
     {
+      name: "claude-sonnet-4-5-20250929",
+      displayName: "Claude 4.5 Sonnet",
+      description:
+        "Anthropic's best model for coding (note: >200k tokens is very expensive!)",
+      // Set to 32k since context window is 1M tokens
+      maxOutputTokens: 32_000,
+      contextWindow: 1_000_000,
+      temperature: 0,
+      dollarSigns: 5,
+    },
+    {
       name: "claude-sonnet-4-20250514",
       displayName: "Claude 4 Sonnet",
       description: "Excellent coder (note: >200k tokens is very expensive!)",
-      // See comment below for Claude 3.7 Sonnet for why we set this to 16k
-      maxOutputTokens: 16_000,
+      // Set to 32k since context window is 1M tokens
+      maxOutputTokens: 32_000,
       contextWindow: 1_000_000,
       temperature: 0,
       dollarSigns: 5,
@@ -252,6 +275,14 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     },
   ],
   azure: [
+    {
+      name: "gpt-5-codex",
+      displayName: "GPT-5",
+      description: "Azure OpenAI GPT-5 Codex model",
+      maxOutputTokens: 128_000,
+      contextWindow: 400_000,
+      temperature: 0,
+    },
     {
       name: "gpt-5",
       displayName: "GPT-5",

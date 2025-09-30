@@ -13,6 +13,7 @@ export interface ModelOption {
   dollarSigns?: number;
   temperature?: number;
   tag?: string;
+  tagColor?: string;
   maxOutputTokens?: number;
   contextWindow?: number;
 }
@@ -249,6 +250,18 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       maxOutputTokens: 32_000,
       contextWindow: 256_000,
       temperature: 0,
+      tag: "Fast",
+      tagColor: "bg-rose-800 text-white",
+    },
+    {
+      name: "value",
+      displayName: "Super Value (Pro)",
+      description: "Uses the most cost-effective models available",
+      maxOutputTokens: 32_000,
+      contextWindow: 256_000,
+      temperature: 0,
+      tag: "Budget",
+      tagColor: "bg-emerald-700 text-white",
     },
   ],
   azure: [

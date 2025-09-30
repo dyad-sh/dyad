@@ -348,10 +348,19 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
   ],
   bedrock: [
     {
+      name: "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+      displayName: "Claude 4.5 Sonnet",
+      description:
+        "Anthropic's best model for coding (note: >200k tokens is very expensive!)",
+      maxOutputTokens: 32_000,
+      contextWindow: 1_000_000,
+      temperature: 0,
+    },
+    {
       name: "us.anthropic.claude-sonnet-4-20250514-v1:0",
       displayName: "Claude 4 Sonnet",
       description: "Excellent coder (note: >200k tokens is very expensive!)",
-      maxOutputTokens: 16_000,
+      maxOutputTokens: 32_000,
       contextWindow: 1_000_000,
       temperature: 0,
     },

@@ -330,7 +330,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       displayName: "Claude Sonnet 4.5",
       description: "Best coding model in the world, strongest for agents",
       maxOutputTokens: 64_000,
-      contextWindow: 2000_000,
+      contextWindow: 200_000,
       temperature: 0,
     },
     {

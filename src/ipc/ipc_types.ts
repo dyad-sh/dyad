@@ -99,6 +99,7 @@ export interface App {
   vercelDeploymentUrl: string | null;
   installCommand: string | null;
   startCommand: string | null;
+  isFavorite: boolean;
 }
 
 export interface Version {

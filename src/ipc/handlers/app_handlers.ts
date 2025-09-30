@@ -1076,6 +1076,53 @@ export function registerAppHandlers() {
   );
 
   ipcMain.handle(
+    "add-to-favorite",
+    async (
+      _,
+      { appId }: { appId: number },
+    ): Promise<{ isFavorite: boolean }> => {
+      return withLock(appId, async () => {
+        try {
+          // Fetch the current isFavorite value
+          const result = await db
+            .select({ isFavorite: apps.isFavorite })
+            .from(apps)
+            .where(eq(apps.id, appId))
+            .limit(1);
+
+          if (result.length === 0) {
+            throw new Error(`App with ID ${appId} not found.`);
+          }
+
+          const currentIsFavorite = result[0].isFavorite;
+
+          // Toggle the isFavorite value
+          const updated = await db
+            .update(apps)
+            .set({ isFavorite: !currentIsFavorite })
+            .where(eq(apps.id, appId))
+            .returning({ isFavorite: apps.isFavorite });
+
+          if (updated.length === 0) {
+            throw new Error(
+              `Failed to update favorite status for app ID ${appId}.`,
+            );
+          }
+
+          // Return the updated isFavorite value
+          return { isFavorite: updated[0].isFavorite };
+        } catch (error: any) {
+          logger.error(
+            `Error in add-to-favorite handler for app ID ${appId}:`,
+            error,
+          );
+          throw new Error(`Failed to toggle favorite status: ${error.message}`);
+        }
+      });
+    },
+  );
+
+  ipcMain.handle(
     "rename-app",
     async (
       _,

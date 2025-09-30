@@ -279,41 +279,46 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       name: "gpt-5-codex",
       displayName: "GPT-5 Codex",
       description: "Azure OpenAI GPT-5 Codex model",
-      maxOutputTokens: 128_000,
+      // See OpenAI comment above
+      // maxOutputTokens: 128_000,
       contextWindow: 400_000,
-      temperature: 0,
+      temperature: 1,
     },
     {
       name: "gpt-5",
       displayName: "GPT-5",
       description: "Azure OpenAI GPT-5 model with reasoning capabilities",
-      maxOutputTokens: 128_000,
+      // See OpenAI comment above
+      // maxOutputTokens: 128_000,
       contextWindow: 400_000,
-      temperature: 0,
+      temperature: 1,
     },
     {
       name: "gpt-5-mini",
       displayName: "GPT-5 Mini",
       description: "Azure OpenAI GPT-5 Mini model",
-      maxOutputTokens: 128_000,
+      // See OpenAI comment above
+      // maxOutputTokens: 128_000,
       contextWindow: 400_000,
-      temperature: 0,
+      temperature: 1,
     },
     {
       name: "gpt-5-nano",
       displayName: "GPT-5 Nano",
       description: "Azure OpenAI GPT-5 Nano model",
-      maxOutputTokens: 128_000,
+      // See OpenAI comment above
+      // maxOutputTokens: 128_000,
       contextWindow: 400_000,
-      temperature: 0,
+      temperature: 1,
     },
     {
       name: "gpt-5-chat",
       displayName: "GPT-5 Chat",
       description: "Azure OpenAI GPT-5 Chat model",
-      maxOutputTokens: 16_384,
+      // See OpenAI comment above
+      // maxOutputTokens: 16_384,
       contextWindow: 128_000,
-      temperature: 0,
+      temperature: 1,
     },
   ],
   xai: [

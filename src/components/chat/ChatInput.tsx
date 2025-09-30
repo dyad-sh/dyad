@@ -65,6 +65,7 @@ import { selectedComponentPreviewAtom } from "@/atoms/previewAtoms";
 import { SelectedComponentDisplay } from "./SelectedComponentDisplay";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
 import { LexicalChatInput } from "./LexicalChatInput";
+import { useChatModeToggle } from "@/hooks/useChatModeToggle";
 
 const showTokenBarAtom = atom(false);
 
@@ -107,6 +108,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     refreshProposal,
   } = useProposal(chatId);
   const { proposal, messageId } = proposalResult ?? {};
+  useChatModeToggle();
 
   const lastMessage = messages.at(-1);
   const disableSendButton =

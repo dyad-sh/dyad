@@ -277,7 +277,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
   azure: [
     {
       name: "gpt-5-codex",
-      displayName: "GPT-5",
+      displayName: "GPT-5 Codex",
       description: "Azure OpenAI GPT-5 Codex model",
       maxOutputTokens: 128_000,
       contextWindow: 400_000,

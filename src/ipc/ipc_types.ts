@@ -186,6 +186,7 @@ export type LanguageModel =
       displayName: string;
       description: string;
       tag?: string;
+      tagColor?: string;
       maxOutputTokens?: number;
       contextWindow?: number;
       temperature?: number;
@@ -197,6 +198,7 @@ export type LanguageModel =
       displayName: string;
       description: string;
       tag?: string;
+      tagColor?: string;
       maxOutputTokens?: number;
       contextWindow?: number;
       temperature?: number;

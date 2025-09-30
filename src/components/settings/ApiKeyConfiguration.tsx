@@ -32,6 +32,7 @@ interface ApiKeyConfigurationProps {
   onSaveKey: () => Promise<void>;
   onDeleteKey: () => Promise<void>;
   isDyad: boolean;
+  updateSettings: (settings: Partial<UserSettings>) => Promise<UserSettings>;
 }
 
 export function ApiKeyConfiguration({
@@ -47,10 +48,17 @@ export function ApiKeyConfiguration({
   onSaveKey,
   onDeleteKey,
   isDyad,
+  updateSettings,
 }: ApiKeyConfigurationProps) {
   // Special handling for Azure OpenAI which requires environment variables
   if (provider === "azure") {
-    return <AzureConfiguration envVars={envVars} />;
+    return (
+      <AzureConfiguration
+        settings={settings}
+        envVars={envVars}
+        updateSettings={updateSettings}
+      />
+    );
   }
   // Special handling for Google Vertex AI which uses service account credentials
   if (provider === "vertex") {

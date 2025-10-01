@@ -115,6 +115,7 @@ export function AppList({ show }: { show?: boolean }) {
                 <SidebarGroupLabel>Favorite apps</SidebarGroupLabel>
                 {favoriteApps.map((app) => (
                   <AppItem
+                    key={app.id}
                     app={app}
                     handleAppClick={handleAppClick}
                     selectedAppId={selectedAppId}
@@ -125,6 +126,7 @@ export function AppList({ show }: { show?: boolean }) {
                 <SidebarGroupLabel>Other apps</SidebarGroupLabel>
                 {nonFavoriteApps.map((app) => (
                   <AppItem
+                    key={app.id}
                     app={app}
                     handleAppClick={handleAppClick}
                     selectedAppId={selectedAppId}

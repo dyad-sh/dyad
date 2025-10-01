@@ -20,7 +20,7 @@ export function AppItem({
   isFavoriteLoading,
 }: AppItemProps) {
   return (
-    <SidebarMenuItem key={app.id} className="mb-1 relative ">
+    <SidebarMenuItem className="mb-1 relative ">
       <div className="flex w-[200px] items-center">
         <Button
           variant="ghost"
@@ -46,11 +46,20 @@ export function AppItem({
           size="sm"
           onClick={(e) => handleToggleFavorite(app.id, e)}
           disabled={isFavoriteLoading}
-          className="absolute top-1 right-1 p-1 mx-1 h-6 w-6 hover:text-[#6c55dc] z-10"
+          className="absolute top-1 right-1 p-1 mx-1 h-6 w-6 z-10"
           key={app.id}
           data-testid="favorite-button"
         >
-          <Star size={12} className={app.isFavorite ? "fill-current" : ""} />
+          <Star
+            size={12}
+            className={
+              app.isFavorite
+                ? "fill-[#6c55dc] text-[#6c55dc]"
+                : selectedAppId === app.id
+                  ? "hover:fill-black hover:text-black"
+                  : "hover:fill-[#6c55dc] hover:stroke-[#6c55dc] hover:text-[#6c55dc]"
+            }
+          />
         </Button>
       </div>
     </SidebarMenuItem>

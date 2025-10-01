@@ -54,7 +54,6 @@ test.describe("Favorite App Tests", () => {
       .locator("xpath=..")
       .locator('[data-testid="favorite-button"]');
     await favoriteButton.click();
-    await po.page.waitForTimeout(2000); // Wait for UI update and mutation to complete
 
     // Check that the star is filled (favorited)
     const star = favoriteButton.locator("svg");
@@ -66,7 +65,6 @@ test.describe("Favorite App Tests", () => {
       .locator('[data-testid="favorite-button"]');
     await expect(unfavoriteButton).toBeVisible();
     await unfavoriteButton.click();
-    await po.page.waitForTimeout(2000); // Wait for UI update and mutation to complete
 
     // Check that the star is not filled (unfavorited)
     await expect(star).not.toHaveClass(/fill-current/);

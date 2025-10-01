@@ -17,5 +17,5 @@ test("mention app (with pro)", async ({ po }) => {
   await po.goToAppsTab();
   await po.sendPrompt("[dump] @app:minimal-with-ai-rules hi");
 
-  await po.snapshotServerDump("all-messages");
+  await po.snapshotServerDump("request");
 });

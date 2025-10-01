@@ -1,6 +1,6 @@
 import { db } from "../../db";
 import { getDyadAppPath } from "../../paths/paths";
-import { extractCodebase } from "../../utils/codebase";
+import { CodebaseFile, extractCodebase } from "../../utils/codebase";
 import { validateChatContext } from "../utils/context_paths_utils";
 import log from "electron-log";
 
@@ -10,7 +10,7 @@ const logger = log.scope("mention_apps");
 export async function extractMentionedAppsCodebases(
   mentionedAppNames: string[],
   excludeCurrentAppId?: number,
-): Promise<{ appName: string; codebaseInfo: string }[]> {
+): Promise<{ appName: string; codebaseInfo: string; files: CodebaseFile[] }[]> {
   if (mentionedAppNames.length === 0) {
     return [];
   }
@@ -25,14 +25,18 @@ export async function extractMentionedAppsCodebases(
       ) && app.id !== excludeCurrentAppId,
   );
 
-  const results: { appName: string; codebaseInfo: string }[] = [];
+  const results: {
+    appName: string;
+    codebaseInfo: string;
+    files: CodebaseFile[];
+  }[] = [];
 
   for (const app of mentionedApps) {
     try {
       const appPath = getDyadAppPath(app.path);
       const chatContext = validateChatContext(app.chatContext);
 
-      const { formattedOutput } = await extractCodebase({
+      const { formattedOutput, files } = await extractCodebase({
         appPath,
         chatContext,
       });
@@ -40,6 +44,7 @@ export async function extractMentionedAppsCodebases(
       results.push({
         appName: app.name,
         codebaseInfo: formattedOutput,
+        files,
       });
 
       logger.log(`Extracted codebase for mentioned app: ${app.name}`);

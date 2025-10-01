@@ -29,7 +29,7 @@ test.describe("Favorite App Tests", () => {
 
     // Check that the star is filled (favorited)
     const star = favoriteButton.locator("svg");
-    await expect(star).toHaveClass(/fill-current/);
+    await expect(star).toHaveClass(/fill-\[#6c55dc\]/);
   });
 
   test("Remove app from favorite", async ({ po }) => {
@@ -57,7 +57,7 @@ test.describe("Favorite App Tests", () => {
 
     // Check that the star is filled (favorited)
     const star = favoriteButton.locator("svg");
-    await expect(star).toHaveClass(/fill-current/);
+    await expect(star).toHaveClass(/fill-\[#6c55dc\]/);
 
     // Now, remove from favorite
     const unfavoriteButton = appItem
@@ -67,6 +67,6 @@ test.describe("Favorite App Tests", () => {
     await unfavoriteButton.click();
 
     // Check that the star is not filled (unfavorited)
-    await expect(star).not.toHaveClass(/fill-current/);
+    await expect(star).not.toHaveClass(/fill-\[#6c55dc\]/);
   });
 });

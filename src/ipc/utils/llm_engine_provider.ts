@@ -142,6 +142,10 @@ export function createDyadEngine(
           if ("dyadDisableFiles" in parsedBody) {
             delete parsedBody.dyadDisableFiles;
           }
+          const dyadMentionedApps = parsedBody.dyadMentionedApps;
+          if ("dyadMentionedApps" in parsedBody) {
+            delete parsedBody.dyadMentionedApps;
+          }
 
           // Track and modify requestId with attempt number
           let modifiedRequestId = requestId;
@@ -161,6 +165,9 @@ export function createDyadEngine(
               smart_context_mode: options.dyadOptions.smartContextMode,
               enable_web_search: options.dyadOptions.enableWebSearch,
             };
+            if (dyadMentionedApps?.length) {
+              parsedBody.dyad_options.mentioned_apps = dyadMentionedApps;
+            }
           }
 
           // Return modified request with files included and requestId in headers

@@ -630,18 +630,21 @@ This conversation includes one or more image attachments. When the user uploads 
               },
             ] as const);
 
-        const otherCodebasePrefix = otherAppsCodebaseInfo
-          ? ([
-              {
-                role: "user",
-                content: createOtherAppsCodebasePrompt(otherAppsCodebaseInfo),
-              },
-              {
-                role: "assistant",
-                content: "OK.",
-              },
-            ] as const)
-          : [];
+        // If engine is enabled, we will send the other apps codebase info to the engine
+        // and process it with smart context.
+        const otherCodebasePrefix =
+          otherAppsCodebaseInfo && !isEngineEnabled
+            ? ([
+                {
+                  role: "user",
+                  content: createOtherAppsCodebasePrompt(otherAppsCodebaseInfo),
+                },
+                {
+                  role: "assistant",
+                  content: "OK.",
+                },
+              ] as const)
+            : [];
 
         const limitedHistoryChatMessages = limitedMessageHistory.map((msg) => ({
           role: msg.role as "user" | "assistant" | "system",
@@ -720,6 +723,12 @@ This conversation includes one or more image attachments. When the user uploads 
             "dyad-engine": {
               dyadRequestId,
               dyadDisableFiles,
+              dyadMentionedApps: mentionedAppsCodebases.map(
+                ({ files, appName }) => ({
+                  appName,
+                  files,
+                }),
+              ),
             },
             "dyad-gateway": getExtraProviderOptions(
               modelClient.builtinProviderId,

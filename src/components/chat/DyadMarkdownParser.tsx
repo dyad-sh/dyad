@@ -22,6 +22,8 @@ import { DyadMcpToolResult } from "./DyadMcpToolResult";
 import { DyadWebSearchResult } from "./DyadWebSearchResult";
 import { DyadWebSearch } from "./DyadWebSearch";
 import { DyadRead } from "./DyadRead";
+import { mapActionToButton } from "./ChatInput";
+import { SuggestedAction } from "@/lib/schemas";
 
 interface DyadMarkdownParserProps {
   content: string;
@@ -498,8 +500,30 @@ function renderCustomTag(
       return null;
 
     case "dyad-command":
-      // Don't render anything for dyad-command
-      return null;
+      try {
+        let action;
+        if (attributes.id || attributes.action) {
+          action = {
+            id: attributes.id || attributes.action,
+            path: attributes.path,
+          } as SuggestedAction;
+        } else if (Object.keys(attributes).length > 0) {
+          const firstKey = Object.keys(attributes)[0];
+          action = {
+            id: attributes[firstKey],
+            ...attributes,
+          } as SuggestedAction;
+        } else {
+          return null;
+        }
+        return (
+          <div className="my-2 flex items-center space-x-2">
+            {mapActionToButton(action)}
+          </div>
+        );
+      } catch {
+        return null;
+      }
 
     default:
       return null;

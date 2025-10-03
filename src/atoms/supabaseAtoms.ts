@@ -2,6 +2,7 @@ import { atom } from "jotai";
 
 // Define atom for storing the list of Supabase projects
 export const supabaseProjectsAtom = atom<any[]>([]);
+export const supabaseBranchesAtom = atom<any[]>([]);
 
 // Define atom for tracking loading state
 export const supabaseLoadingAtom = atom<boolean>(false);

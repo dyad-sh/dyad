@@ -89,6 +89,7 @@ export interface App {
   githubRepo: string | null;
   githubBranch: string | null;
   supabaseProjectId: string | null;
+  supabaseBranchId?: string | null;
   supabaseProjectName: string | null;
   neonProjectId: string | null;
   neonDevelopmentBranchId: string | null;

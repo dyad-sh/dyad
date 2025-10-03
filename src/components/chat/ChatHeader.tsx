@@ -4,6 +4,8 @@ import {
   PlusCircle,
   GitBranch,
   Info,
+  ArrowRightFromLine,
+  ArrowLeftFromLine,
 } from "lucide-react";
 import { PanelRightClose } from "lucide-react";
 import { useAtom, useAtomValue } from "jotai";
@@ -34,6 +36,8 @@ interface ChatHeaderProps {
   isPreviewOpen: boolean;
   onTogglePreview: () => void;
   onVersionClick: () => void;
+  onSwitchChatSide: () => void;
+  isChatOnLeft: boolean;
 }
 
 export function ChatHeader({
@@ -41,6 +45,8 @@ export function ChatHeader({
   isPreviewOpen,
   onTogglePreview,
   onVersionClick,
+  onSwitchChatSide,
+  isChatOnLeft,
 }: ChatHeaderProps) {
   const appId = useAtomValue(selectedAppIdAtom);
   const { versions, loading: versionsLoading } = useVersions(appId);
@@ -200,18 +206,29 @@ export function ChatHeader({
               : `Version ${versions.length}${versionPostfix}`}
           </Button>
         </div>
-
-        <button
-          data-testid="toggle-preview-panel-button"
-          onClick={onTogglePreview}
-          className="cursor-pointer p-2 hover:bg-(--background-lightest) rounded-md"
-        >
-          {isPreviewOpen ? (
-            <PanelRightClose size={20} />
-          ) : (
-            <PanelRightOpen size={20} />
-          )}
-        </button>
+        <div>
+          <button
+            data-testid="toggle-preview-panel-button"
+            onClick={onTogglePreview}
+            className="cursor-pointer p-2 hover:bg-(--background-lightest) rounded-md"
+          >
+            {isPreviewOpen ? (
+              <PanelRightClose size={20} />
+            ) : (
+              <PanelRightOpen size={20} />
+            )}
+          </button>
+          <button
+            onClick={onSwitchChatSide}
+            className="cursor-pointer p-2 hover:bg-(--background-lightest) rounded-md m-1"
+          >
+            {isChatOnLeft ? (
+              <ArrowRightFromLine size={20} />
+            ) : (
+              <ArrowLeftFromLine size={20} />
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );

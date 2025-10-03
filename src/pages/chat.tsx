@@ -22,6 +22,7 @@ export default function ChatPage() {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
   const { chats, loading } = useChats(selectedAppId);
+  const [isChatOnLeft, setIsChatOnLeft] = useState(true);
 
   useEffect(() => {
     if (!chatId && chats.length && !loading) {
@@ -43,28 +44,40 @@ export default function ChatPage() {
 
   return (
     <PanelGroup autoSaveId="persistence" direction="horizontal">
-      <Panel id="chat-panel" minSize={30}>
-        <div className="h-full w-full">
-          <ChatPanel
-            chatId={chatId}
-            isPreviewOpen={isPreviewOpen}
-            onTogglePreview={() => {
-              setIsPreviewOpen(!isPreviewOpen);
-              if (isPreviewOpen) {
-                ref.current?.collapse();
-              } else {
-                ref.current?.expand();
-              }
-            }}
-          />
-        </div>
-      </Panel>
+      <div className="flex w-full h-full">
+        <Panel
+          id="chat-panel"
+          minSize={30}
+          className={cn(isChatOnLeft ? "order-1" : "order-3", "flex-1 h-full")}
+        >
+          <div className="h-full w-full">
+            <ChatPanel
+              chatId={chatId}
+              isPreviewOpen={isPreviewOpen}
+              onTogglePreview={() => {
+                setIsPreviewOpen(!isPreviewOpen);
+                if (isPreviewOpen) {
+                  ref.current?.collapse();
+                } else {
+                  ref.current?.expand();
+                }
+              }}
+              onSwitchChatSide={() => {
+                setIsChatOnLeft(!isChatOnLeft);
+              }}
+              isChatOnLeft={isChatOnLeft}
+            />
+          </div>
+        </Panel>
 
-      <>
         <PanelResizeHandle
           onDragging={(e) => setIsResizing(e)}
-          className="w-1 bg-gray-200 hover:bg-gray-300 dark:bg-gray-800 dark:hover:bg-gray-700 transition-colors cursor-col-resize"
+          className={cn(
+            "w-1 bg-gray-200 hover:bg-gray-300 dark:bg-gray-800 dark:hover:bg-gray-700 transition-colors cursor-col-resize",
+            isChatOnLeft ? "order-2" : "order-2",
+          )}
         />
+
         <Panel
           collapsible
           ref={ref}
@@ -72,11 +85,13 @@ export default function ChatPage() {
           minSize={20}
           className={cn(
             !isResizing && "transition-all duration-100 ease-in-out",
+            isChatOnLeft ? "order-3" : "order-1",
+            "flex-1 h-full",
           )}
         >
           <PreviewPanel />
         </Panel>
-      </>
+      </div>
     </PanelGroup>
   );
 }

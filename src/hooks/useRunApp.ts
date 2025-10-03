@@ -104,7 +104,12 @@ export function useRunApp() {
       } catch (error) {
         console.error(`Error running app ${appId}:`, error);
         setPreviewErrorMessage(
-          error instanceof Error ? error.message : error?.toString(),
+          error instanceof Error
+            ? { message: error.message, source: "dyad-app" }
+            : {
+                message: error?.toString() || "Unknown error",
+                source: "dyad-app",
+              },
         );
       } finally {
         setLoading(false);
@@ -127,7 +132,12 @@ export function useRunApp() {
     } catch (error) {
       console.error(`Error stopping app ${appId}:`, error);
       setPreviewErrorMessage(
-        error instanceof Error ? error.message : error?.toString(),
+        error instanceof Error
+          ? { message: error.message, source: "dyad-app" }
+          : {
+              message: error?.toString() || "Unknown error",
+              source: "dyad-app",
+            },
       );
     } finally {
       setLoading(false);
@@ -186,7 +196,12 @@ export function useRunApp() {
       } catch (error) {
         console.error(`Error restarting app ${appId}:`, error);
         setPreviewErrorMessage(
-          error instanceof Error ? error.message : error?.toString(),
+          error instanceof Error
+            ? { message: error.message, source: "dyad-app" }
+            : {
+                message: error?.toString() || "Unknown error",
+                source: "dyad-app",
+              },
         );
       } finally {
         setPreviewPanelKey((prevKey) => prevKey + 1);

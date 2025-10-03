@@ -143,3 +143,35 @@ test("create and sync to existing repo - custom branch", async ({ po }) => {
     operation: "create",
   });
 });
+
+test("create repo with spaces in name - should sanitize blank spaces to dashes", async ({
+  po,
+}) => {
+  await po.setUp();
+  await po.sendPrompt("tc=basic");
+
+  await po.getTitleBarAppNameButton().click();
+  await po.githubConnector.connect();
+
+  await expect(po.githubConnector.getCreateNewRepoModeButton()).toHaveClass(
+    /bg-primary/,
+  );
+
+  await po.githubConnector.fillCreateRepoName("test repo with spaces");
+
+  await po.page.waitForSelector("text=Repository name is available!", {
+    timeout: 5000,
+  });
+
+  await po.githubConnector.clickCreateRepoButton();
+
+  await po.githubConnector.clickSyncToGithubButton();
+
+  await po.githubConnector.snapshotConnectedRepo();
+
+  await po.githubConnector.verifyPushEvent({
+    repo: "test-repo-with-spaces",
+    branch: "main",
+    operation: "create",
+  });
+});

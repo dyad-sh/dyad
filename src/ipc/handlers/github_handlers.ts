@@ -401,8 +401,9 @@ async function handleIsRepoAvailable(
       })
         .then((r) => r.json())
         .then((u) => u.login));
-    // Check if repo exists
-    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}`;
+    // Check if repo exists (sanitize to match GitHub normalization)
+    const sanitizedRepo = sanitizeGitHubRepoName(repo);
+    const url = `${GITHUB_API_BASE}/repos/${owner}/${sanitizedRepo}`;
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
@@ -417,6 +418,10 @@ async function handleIsRepoAvailable(
   } catch (err: any) {
     return { available: false, error: err.message || "Unknown error" };
   }
+}
+
+function sanitizeGitHubRepoName(name: string): string {
+  return name.replace(/\s+/g, "-");
 }
 
 // --- GitHub Create Repo Handler ---
@@ -435,6 +440,9 @@ async function handleCreateRepo(
   if (!accessToken) {
     throw new Error("Not authenticated with GitHub.");
   }
+
+  // Sanitize repository name to match GitHub naming convention
+  const sanitizedRepoName = sanitizeGitHubRepoName(repo);
   // If org is empty, create for the authenticated user
   let owner = org;
   if (!owner) {
@@ -456,7 +464,7 @@ async function handleCreateRepo(
       Accept: "application/vnd.github+json",
     },
     body: JSON.stringify({
-      name: repo,
+      name: sanitizedRepoName,
       private: true,
     }),
   });
@@ -501,7 +509,12 @@ async function handleCreateRepo(
     throw new Error(errorMessage);
   }
   // Store org, repo, and branch in the app's DB row (apps table)
-  await updateAppGithubRepo({ appId, org: owner, repo, branch });
+  await updateAppGithubRepo({
+    appId,
+    org: owner,
+    repo: sanitizedRepoName,
+    branch,
+  });
 }
 
 // --- GitHub Connect to Existing Repo Handler ---
@@ -522,9 +535,12 @@ async function handleConnectToExistingRepo(
       throw new Error("Not authenticated with GitHub.");
     }
 
+    // Sanitize the repository name to match GitHub's naming convention
+    const sanitizedRepoName = sanitizeGitHubRepoName(repo);
+
     // Verify the repository exists and user has access
     const repoResponse = await fetch(
-      `${GITHUB_API_BASE}/repos/${owner}/${repo}`,
+      `${GITHUB_API_BASE}/repos/${owner}/${sanitizedRepoName}`,
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -540,8 +556,13 @@ async function handleConnectToExistingRepo(
       );
     }
 
-    // Store org, repo, and branch in the app's DB row
-    await updateAppGithubRepo({ appId, org: owner, repo, branch });
+    // Store org, repo (sanitized), and branch in the app's DB row
+    await updateAppGithubRepo({
+      appId,
+      org: owner,
+      repo: sanitizedRepoName,
+      branch,
+    });
   } catch (err: any) {
     logger.error("[GitHub Handler] Failed to connect to existing repo:", err);
     throw new Error(err.message || "Failed to connect to existing repository.");

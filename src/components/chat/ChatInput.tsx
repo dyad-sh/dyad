@@ -556,7 +556,7 @@ function KeepGoingButton() {
   );
 }
 
-function mapActionToButton(action: SuggestedAction) {
+export function mapActionToButton(action: SuggestedAction) {
   switch (action.id) {
     case "summarize-in-new-chat":
       return <SummarizeInNewChatButton />;

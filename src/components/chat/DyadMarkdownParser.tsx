@@ -502,25 +502,14 @@ function renderCustomTag(
     case "dyad-command":
       try {
         let action;
-        if (attributes.id || attributes.action) {
+        if (attributes.type) {
           action = {
-            id: attributes.id || attributes.action,
-            path: attributes.path,
-          } as SuggestedAction;
-        } else if (Object.keys(attributes).length > 0) {
-          const firstKey = Object.keys(attributes)[0];
-          action = {
-            id: attributes[firstKey],
-            ...attributes,
+            id: attributes.type,
           } as SuggestedAction;
         } else {
           return null;
         }
-        return (
-          <div className="my-2 flex items-center space-x-2">
-            {mapActionToButton(action)}
-          </div>
-        );
+        return <>{mapActionToButton(action)}</>;
       } catch {
         return null;
       }

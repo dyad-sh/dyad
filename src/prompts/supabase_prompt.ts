@@ -57,17 +57,24 @@ Below code snippets are provided for reference:
 Login state management:
 
 useEffect(() => {
-  const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-    if (event === 'USER_UPDATED' || event === 'SIGNED_IN') {
-      const { error } = await supabase.auth.getSession();
-      // Other code here
+  const { data } = supabase.auth.onAuthStateChange((event, session) => {
+    if (event === 'INITIAL_SESSION') {
+      // handle initial session
+    } else if (event === 'SIGNED_IN') {
+      // handle sign in event
+    } else if (event === 'SIGNED_OUT') {
+      // handle sign out event
+    } else if (event === 'PASSWORD_RECOVERY') {
+      // handle password recovery event
+    } else if (event === 'TOKEN_REFRESHED') {
+      // handle token refreshed event
+    } else if (event === 'USER_UPDATED') {
+      // handle user updated event
     }
-    if (event === 'SIGNED_OUT') {
-      // Other code here
-    }
-  });
+  })
 
-  return () => subscription.unsubscribe();
+  // call unsubscribe to remove the callback
+  return () => data.subscription.unsubscribe();
 }, []);
 
 

@@ -142,7 +142,7 @@ async function executeAppLocalNode({
 }): Promise<void> {
   const command = getCommand({ installCommand, startCommand });
   const spawnedProcess = spawn(command, [], {
-    cwd: "/definitely-not-areal-path",
+    cwd: appPath,
     shell: true,
     stdio: "pipe", // Ensure stdio is piped so we can capture output/errors and detect close
     detached: false, // Ensure child process is attached to the main process lifecycle unless explicitly backgrounded

@@ -500,19 +500,13 @@ function renderCustomTag(
       return null;
 
     case "dyad-command":
-      try {
-        let action;
-        if (attributes.type) {
-          action = {
-            id: attributes.type,
-          } as SuggestedAction;
-        } else {
-          return null;
-        }
+      if (attributes.type) {
+        const action = {
+          id: attributes.type,
+        } as SuggestedAction;
         return <>{mapActionToButton(action)}</>;
-      } catch {
-        return null;
       }
+      return null;
 
     default:
       return null;

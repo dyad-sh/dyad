@@ -142,7 +142,7 @@ async function executeAppLocalNode({
 }): Promise<void> {
   const command = getCommand({ installCommand, startCommand });
   const spawnedProcess = spawn(command, [], {
-    cwd: appPath,
+    cwd: "/definitely-not-areal-path",
     shell: true,
     stdio: "pipe", // Ensure stdio is piped so we can capture output/errors and detect close
     detached: false, // Ensure child process is attached to the main process lifecycle unless explicitly backgrounded
@@ -152,12 +152,43 @@ async function executeAppLocalNode({
   if (!spawnedProcess.pid) {
     // Attempt to capture any immediate errors if possible
     let errorOutput = "";
-    spawnedProcess.stderr?.on("data", (data) => (errorOutput += data));
-    await new Promise((resolve) => spawnedProcess.on("error", resolve)); // Wait for error event
-    throw new Error(
-      `Failed to spawn process for app ${appId}. Error: ${
-        errorOutput || "Unknown spawn error"
+    let spawnErr: any | null = null;
+    spawnedProcess.stderr?.on(
+      "data",
+      (data) => (errorOutput += data.toString()),
+    );
+    await new Promise<void>((resolve) => {
+      spawnedProcess.once("error", (err) => {
+        spawnErr = err;
+        resolve();
+      });
+    }); // Wait for error event
+
+    const details = [
+      spawnErr?.message ? `message=${spawnErr.message}` : null,
+      spawnErr?.code ? `code=${spawnErr.code}` : null,
+      spawnErr?.errno ? `errno=${spawnErr.errno}` : null,
+      spawnErr?.syscall ? `syscall=${spawnErr.syscall}` : null,
+      spawnErr?.path ? `path=${spawnErr.path}` : null,
+      spawnErr?.spawnargs
+        ? `spawnargs=${JSON.stringify(spawnErr.spawnargs)}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(", ");
+
+    logger.error(
+      `Failed to spawn process for app ${appId}. Command="${command}", CWD="${appPath}", ${details}\nSTDERR:\n${
+        errorOutput || "(empty)"
       }`,
+    );
+
+    throw new Error(
+      `Failed to spawn process for app ${appId}.
+Error output:
+${errorOutput || "(empty)"}
+Details: ${details || "n/a"}
+`,
     );
   }
 
@@ -409,12 +440,39 @@ RUN npm install -g pnpm
   if (!process.pid) {
     // Attempt to capture any immediate errors if possible
     let errorOutput = "";
-    process.stderr?.on("data", (data) => (errorOutput += data));
-    await new Promise((resolve) => process.on("error", resolve)); // Wait for error event
-    throw new Error(
-      `Failed to spawn Docker container for app ${appId}. Error: ${
-        errorOutput || "Unknown spawn error"
+    let spawnErr: any = null;
+    process.stderr?.on("data", (data) => (errorOutput += data.toString()));
+    await new Promise<void>((resolve) => {
+      process.once("error", (err) => {
+        spawnErr = err;
+        resolve();
+      });
+    }); // Wait for error event
+
+    const details = [
+      spawnErr?.message ? `message=${spawnErr.message}` : null,
+      spawnErr?.code ? `code=${spawnErr.code}` : null,
+      spawnErr?.errno ? `errno=${spawnErr.errno}` : null,
+      spawnErr?.syscall ? `syscall=${spawnErr.syscall}` : null,
+      spawnErr?.path ? `path=${spawnErr.path}` : null,
+      spawnErr?.spawnargs
+        ? `spawnargs=${JSON.stringify(spawnErr.spawnargs)}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(", ");
+
+    logger.error(
+      `Failed to spawn Docker container for app ${appId}. ${details}\nSTDERR:\n${
+        errorOutput || "(empty)"
       }`,
+    );
+
+    throw new Error(
+      `Failed to spawn Docker container for app ${appId}.
+Details: ${details || "n/a"}
+STDERR:
+${errorOutput || "(empty)"}`,
     );
   }
 

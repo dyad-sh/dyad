@@ -1,5 +1,4 @@
 import { useNavigate } from "@tanstack/react-router";
-import { formatDistanceToNow } from "date-fns";
 import { PlusCircle, Search } from "lucide-react";
 import { useAtom, useSetAtom } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
@@ -8,19 +7,21 @@ import {
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarMenu,
-  SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useMemo, useState } from "react";
 import { AppSearchDialog } from "./AppSearchDialog";
-
+import { useAddAppToFavorite } from "@/hooks/useAddAppToFavorite";
+import { AppItem } from "./appItem";
 export function AppList({ show }: { show?: boolean }) {
   const navigate = useNavigate();
   const [selectedAppId, setSelectedAppId] = useAtom(selectedAppIdAtom);
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const { apps, loading, error } = useLoadApps();
+  const { toggleFavorite, isLoading: isFavoriteLoading } =
+    useAddAppToFavorite();
   // search dialog state
   const [isSearchDialogOpen, setIsSearchDialogOpen] = useState(false);
 
@@ -35,6 +36,17 @@ export function AppList({ show }: { show?: boolean }) {
       })),
     [apps],
   );
+
+  const favoriteApps = useMemo(
+    () => apps.filter((app) => app.isFavorite),
+    [apps],
+  );
+
+  const nonFavoriteApps = useMemo(
+    () => apps.filter((app) => !app.isFavorite),
+    [apps],
+  );
+
   if (!show) {
     return null;
   }
@@ -52,6 +64,11 @@ export function AppList({ show }: { show?: boolean }) {
   const handleNewApp = () => {
     navigate({ to: "/" });
     // We'll eventually need a create app workflow
+  };
+
+  const handleToggleFavorite = (appId: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    toggleFavorite(appId);
   };
 
   return (
@@ -95,28 +112,27 @@ export function AppList({ show }: { show?: boolean }) {
               </div>
             ) : (
               <SidebarMenu className="space-y-1" data-testid="app-list">
-                {apps.map((app) => (
-                  <SidebarMenuItem key={app.id} className="mb-1">
-                    <Button
-                      variant="ghost"
-                      onClick={() => handleAppClick(app.id)}
-                      className={`justify-start w-full text-left py-3 hover:bg-sidebar-accent/80 ${
-                        selectedAppId === app.id
-                          ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                          : ""
-                      }`}
-                      data-testid={`app-list-item-${app.name}`}
-                    >
-                      <div className="flex flex-col w-full">
-                        <span className="truncate">{app.name}</span>
-                        <span className="text-xs text-gray-500">
-                          {formatDistanceToNow(new Date(app.createdAt), {
-                            addSuffix: true,
-                          })}
-                        </span>
-                      </div>
-                    </Button>
-                  </SidebarMenuItem>
+                <SidebarGroupLabel>Favorite apps</SidebarGroupLabel>
+                {favoriteApps.map((app) => (
+                  <AppItem
+                    key={app.id}
+                    app={app}
+                    handleAppClick={handleAppClick}
+                    selectedAppId={selectedAppId}
+                    handleToggleFavorite={handleToggleFavorite}
+                    isFavoriteLoading={isFavoriteLoading}
+                  />
+                ))}
+                <SidebarGroupLabel>Other apps</SidebarGroupLabel>
+                {nonFavoriteApps.map((app) => (
+                  <AppItem
+                    key={app.id}
+                    app={app}
+                    handleAppClick={handleAppClick}
+                    selectedAppId={selectedAppId}
+                    handleToggleFavorite={handleToggleFavorite}
+                    isFavoriteLoading={isFavoriteLoading}
+                  />
                 ))}
               </SidebarMenu>
             )}

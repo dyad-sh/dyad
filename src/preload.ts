@@ -127,12 +127,13 @@ const validInvokeChannels = [
   "prompts:create",
   "prompts:update",
   "prompts:delete",
+  // adding app to favorite
+  "add-to-favorite",
   // Test-only channels
   // These should ALWAYS be guarded with IS_TEST_BUILD in the main process.
   // We can't detect with IS_TEST_BUILD in the preload script because
   // it's a separate process from the main process.
   "supabase:fake-connect-and-set-project",
-  "add-to-favorite",
 ];
 
 // Add valid receive channels

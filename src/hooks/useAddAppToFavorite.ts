@@ -7,53 +7,20 @@ import { appsListAtom } from "@/atoms/appAtoms";
 export function useAddAppToFavorite() {
   const [_, setApps] = useAtom(appsListAtom);
 
-  const mutation = useMutation<
-    boolean,
-    Error,
-    number,
-    { previousIsFavorite: boolean } | undefined
-  >({
+  const mutation = useMutation<boolean, Error, number>({
     mutationFn: async (appId: number): Promise<boolean> => {
       const result = await IpcClient.getInstance().addAppToFavorite(appId);
       return result.isFavorite;
     },
-    onMutate: async (appId: number) => {
-      // Optimistically update the UI immediately
-      let previousIsFavorite: boolean | undefined;
-      setApps((currentApps) => {
-        const app = currentApps.find((a) => a.id === appId);
-        if (!app) return currentApps;
-        previousIsFavorite = app.isFavorite;
-        return currentApps.map((a) =>
-          a.id === appId ? { ...a, isFavorite: !a.isFavorite } : a,
-        );
-      });
-      if (previousIsFavorite === undefined) return;
-      return { previousIsFavorite };
-    },
     onSuccess: (newIsFavorite, appId) => {
-      // Ensure the state matches the backend response
       setApps((currentApps) =>
         currentApps.map((app) =>
           app.id === appId ? { ...app, isFavorite: newIsFavorite } : app,
         ),
       );
-
       showSuccess("App favorite status updated");
     },
-    onError: (error, appId, context) => {
-      // Revert the optimistic update on error
-      if (context) {
-        setApps((currentApps) =>
-          currentApps.map((app) =>
-            app.id === appId
-              ? { ...app, isFavorite: context.previousIsFavorite }
-              : app,
-          ),
-        );
-      }
-
-      console.error("Failed to toggle app favorite:", error);
+    onError: (error) => {
       showError(error.message || "Failed to update favorite status");
     },
   });

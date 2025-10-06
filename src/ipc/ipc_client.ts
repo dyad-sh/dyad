@@ -274,6 +274,20 @@ export class IpcClient {
     return this.ipcRenderer.invoke("get-app", appId);
   }
 
+  public async addAppToFavorite(
+    appId: number,
+  ): Promise<{ isFavorite: boolean }> {
+    try {
+      const result = await this.ipcRenderer.invoke("add-to-favorite", {
+        appId,
+      });
+      return result;
+    } catch (error) {
+      showError(error);
+      throw error;
+    }
+  }
+
   public async getAppEnvVars(
     params: GetAppEnvVarsParams,
   ): Promise<{ key: string; value: string }[]> {

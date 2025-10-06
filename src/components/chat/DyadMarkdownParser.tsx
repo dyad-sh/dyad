@@ -22,6 +22,8 @@ import { DyadMcpToolResult } from "./DyadMcpToolResult";
 import { DyadWebSearchResult } from "./DyadWebSearchResult";
 import { DyadWebSearch } from "./DyadWebSearch";
 import { DyadRead } from "./DyadRead";
+import { mapActionToButton } from "./ChatInput";
+import { SuggestedAction } from "@/lib/schemas";
 
 interface DyadMarkdownParserProps {
   content: string;
@@ -498,7 +500,12 @@ function renderCustomTag(
       return null;
 
     case "dyad-command":
-      // Don't render anything for dyad-command
+      if (attributes.type) {
+        const action = {
+          id: attributes.type,
+        } as SuggestedAction;
+        return <>{mapActionToButton(action)}</>;
+      }
       return null;
 
     default:

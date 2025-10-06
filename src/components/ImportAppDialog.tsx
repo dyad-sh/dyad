@@ -38,7 +38,8 @@ interface ImportAppDialogProps {
   isOpen: boolean;
   onClose: () => void;
 }
-
+export const AI_RULES_PROMPT =
+  "Generate an AI_RULES.md file for this app. Describe the tech stack in 5-10 bullet points and describe clear rules about what libraries to use for what.";
 export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [hasAiRules, setHasAiRules] = useState<boolean | null>(null);
@@ -112,8 +113,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
       navigate({ to: "/chat", search: { id: result.chatId } });
       if (!hasAiRules) {
         streamMessage({
-          prompt:
-            "Generate an AI_RULES.md file for this app. Describe the tech stack in 5-10 bullet points and describe clear rules about what libraries to use for what.",
+          prompt: AI_RULES_PROMPT,
           chatId: result.chatId,
         });
       }

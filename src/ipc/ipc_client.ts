@@ -1277,6 +1277,13 @@ export class IpcClient {
   public async deletePrompt(id: number): Promise<void> {
     await this.ipcRenderer.invoke("prompts:delete", id);
   }
+  public async cloneRepoFromUrl(params: {
+    url: string;
+    installCommand?: string;
+    startCommand?: string;
+  }): Promise<{ success: boolean; app?: App; error?: string }> {
+    return this.ipcRenderer.invoke("github:clone-repo-from-url", params);
+  }
 
   // --- Help bot ---
   public startHelpChat(

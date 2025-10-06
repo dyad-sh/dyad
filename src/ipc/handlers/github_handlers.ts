@@ -1,7 +1,7 @@
 import { ipcMain, BrowserWindow, IpcMainInvokeEvent } from "electron";
 import fetch from "node-fetch"; // Use node-fetch for making HTTP requests in main process
 import { writeSettings, readSettings } from "../../main/settings";
-import git from "isomorphic-git";
+import git, { clone } from "isomorphic-git";
 import http from "isomorphic-git/http/node";
 import * as schema from "../../db/schema";
 import fs from "node:fs";
@@ -627,6 +627,109 @@ async function handleDisconnectGithubRepo(
     })
     .where(eq(apps.id, appId));
 }
+// --- GitHub Clone Repo from URL Handler ---
+async function handleCloneRepoFromUrl(
+  event: IpcMainInvokeEvent,
+  {
+    url,
+    installCommand,
+    startCommand,
+  }: {
+    url: string;
+    installCommand?: string;
+    startCommand?: string;
+  },
+): Promise<{
+  success: boolean;
+  app?: typeof schema.apps.$inferSelect;
+  error?: string;
+}> {
+  try {
+    const settings = readSettings();
+    const accessToken = settings.githubAccessToken?.value;
+    const urlPattern = /github\.com[:/]([^/]+)\/([^/.]+)(\.git)?$/;
+    const match = url.match(urlPattern);
+    if (!match) {
+      return {
+        success: false,
+        error:
+          "Invalid GitHub URL. Expected format: https://github.com/owner/repo.git",
+      };
+    }
+    const [, owner, repoName] = match;
+    if (accessToken) {
+      const repoResponse = await fetch(
+        `${GITHUB_API_BASE}/repos/${owner}/${repoName}`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: "application/vnd.github+json",
+          },
+        },
+      );
+      if (!repoResponse.ok) {
+        return {
+          success: false,
+          error: "Repository not found or you do not have access to it.",
+        };
+      }
+    }
+    const existingApp = await db.query.apps.findFirst({
+      where: eq(apps.name, repoName),
+    });
+    if (existingApp) {
+      return {
+        success: false,
+        error: `An app named "${repoName}" already exists.`,
+      };
+    }
+    // Create app entry with custom commands if provided
+    const [newApp] = await db
+      .insert(schema.apps)
+      .values({
+        name: repoName,
+        path: repoName,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        githubOrg: owner,
+        githubRepo: repoName,
+        githubBranch: "main",
+        installCommand: installCommand || null,
+        startCommand: startCommand || null,
+      })
+      .returning();
+    const appPath = getDyadAppPath(newApp.path);
+    if (!fs.existsSync(appPath)) {
+      fs.mkdirSync(appPath, { recursive: true });
+    }
+    const cloneUrl = accessToken
+      ? IS_TEST_BUILD
+        ? `${GITHUB_GIT_BASE}/${owner}/${repoName}.git`
+        : `https://${accessToken}:x-oauth-basic@github.com/${owner}/${repoName}.git`
+      : url;
+    await clone({
+      fs,
+      http,
+      dir: appPath,
+      url: cloneUrl,
+      onAuth: accessToken
+        ? () => ({
+            username: accessToken,
+            password: "x-oauth-basic",
+          })
+        : undefined,
+      singleBranch: false,
+    });
+    logger.log(`Successfully cloned repo ${owner}/${repoName} to ${appPath}`);
+    return {
+      success: true,
+      app: newApp,
+    };
+  } catch (err) {
+    logger.error("[GitHub Handler] Failed to clone repo:", err);
+    return { success: false, error: "Failed to clone repo." };
+  }
+}
 
 // --- Registration ---
 export function registerGithubHandlers() {
@@ -649,6 +752,9 @@ export function registerGithubHandlers() {
   ipcMain.handle("github:push", handlePushToGithub);
   ipcMain.handle("github:disconnect", (event, args: { appId: number }) =>
     handleDisconnectGithubRepo(event, args),
+  );
+  ipcMain.handle("github:clone-repo-from-url", (event, args: { url: string }) =>
+    handleCloneRepoFromUrl(event, args),
   );
 }
 

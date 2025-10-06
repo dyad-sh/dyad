@@ -557,7 +557,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           onAIFix={() => {
             if (selectedChatId) {
               streamMessage({
-                prompt: `Fix error: ${errorMessage}`,
+                prompt: `Fix error: ${errorMessage?.message}`,
                 chatId: selectedChatId,
               });
             }

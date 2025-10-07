@@ -777,7 +777,7 @@ This conversation includes one or more image attachments. When the user uploads 
             temperature: await getTemperature(settings.selectedModel),
             maxRetries: 2,
             model: modelClient.model,
-            stopWhen: [stepCountIs(3), hasToolCall("edit-code")],
+            stopWhen: [stepCountIs(20), hasToolCall("edit-code")],
             providerOptions,
             system: systemPromptOverride,
             tools,

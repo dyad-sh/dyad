@@ -41,9 +41,10 @@ import {
 } from "@/components/ui/tooltip";
 import { useRunApp } from "@/hooks/useRunApp";
 import { useShortcut } from "@/hooks/useShortcut";
+import { cn } from "@/lib/utils";
 
 interface ErrorBannerProps {
-  error: string | undefined;
+  error: { message: string; source: "preview-app" | "dyad-app" } | undefined;
   onDismiss: () => void;
   onAIFix: () => void;
 }
@@ -52,12 +53,12 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
   const [isCollapsed, setIsCollapsed] = useState(true);
   const { isStreaming } = useStreamChat();
   if (!error) return null;
-  const isDockerError = error.includes("Cannot connect to the Docker");
+  const isDockerError = error.message.includes("Cannot connect to the Docker");
 
   const getTruncatedError = () => {
-    const firstLine = error.split("\n")[0];
+    const firstLine = error.message.split("\n")[0];
     const snippetLength = 250;
-    const snippet = error.substring(0, snippetLength);
+    const snippet = error.message.substring(0, snippetLength);
     return firstLine.length < snippet.length
       ? firstLine
       : snippet + (snippet.length === snippetLength ? "..." : "");
@@ -76,8 +77,20 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
         <X size={14} className="text-red-500 dark:text-red-400" />
       </button>
 
+      {/* Add a little chip that says "Internal error" if source is "dyad-app" */}
+      {error.source === "dyad-app" && (
+        <div className="absolute top-1 right-1 p-1 bg-red-100 dark:bg-red-900 rounded-md text-xs font-medium text-red-700 dark:text-red-300">
+          Internal Dyad error
+        </div>
+      )}
+
       {/* Error message in the middle */}
-      <div className="px-6 py-1 text-sm">
+      <div
+        className={cn(
+          "px-6 py-1 text-sm",
+          error.source === "dyad-app" && "pt-6",
+        )}
+      >
         <div
           className="text-red-700 dark:text-red-300 text-wrap font-mono whitespace-pre-wrap break-words text-xs cursor-pointer flex gap-1 items-start"
           onClick={() => setIsCollapsed(!isCollapsed)}
@@ -88,7 +101,7 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
               isCollapsed ? "" : "rotate-90"
             }`}
           />
-          {isCollapsed ? getTruncatedError() : error}
+          {isCollapsed ? getTruncatedError() : error.message}
         </div>
       </div>
 
@@ -102,13 +115,15 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
             <span className="font-medium">Tip: </span>
             {isDockerError
               ? "Make sure Docker Desktop is running and try restarting the app."
-              : "Check if restarting the app fixes the error."}
+              : error.source === "dyad-app"
+                ? "Try restarting the Dyad app or restarting your computer to see if that fixes the error."
+                : "Check if restarting the app fixes the error."}
           </span>
         </div>
       </div>
 
       {/* AI Fix button at the bottom */}
-      {!isDockerError && (
+      {!isDockerError && error.source === "preview-app" && (
         <div className="mt-2 flex justify-end">
           <button
             disabled={isStreaming}
@@ -217,7 +232,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           payload?.message || payload?.reason
         }\nStack trace: ${stack}`;
         console.error("Iframe error:", errorMessage);
-        setErrorMessage(errorMessage);
+        setErrorMessage({ message: errorMessage, source: "preview-app" });
         setAppOutput((prev) => [
           ...prev,
           {
@@ -230,7 +245,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       } else if (type === "build-error-report") {
         console.debug(`Build error report: ${payload}`);
         const errorMessage = `${payload?.message} from file ${payload?.file}.\n\nSource code:\n${payload?.frame}`;
-        setErrorMessage(errorMessage);
+        setErrorMessage({ message: errorMessage, source: "preview-app" });
         setAppOutput((prev) => [
           ...prev,
           {
@@ -542,7 +557,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           onAIFix={() => {
             if (selectedChatId) {
               streamMessage({
-                prompt: `Fix error: ${errorMessage}`,
+                prompt: `Fix error: ${errorMessage?.message}`,
                 chatId: selectedChatId,
               });
             }

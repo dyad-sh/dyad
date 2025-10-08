@@ -21,7 +21,7 @@ export function AppItem({
 }: AppItemProps) {
   return (
     <SidebarMenuItem className="mb-1 relative ">
-      <div className="flex w-[200px] items-center">
+      <div className="flex w-[190px] items-center">
         <Button
           variant="ghost"
           onClick={() => handleAppClick(app.id)}

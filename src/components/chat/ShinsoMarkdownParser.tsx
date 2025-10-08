@@ -1,31 +1,31 @@
 import React, { useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 
-import { DyadWrite } from "./DyadWrite";
-import { DyadRename } from "./DyadRename";
-import { DyadDelete } from "./DyadDelete";
-import { DyadAddDependency } from "./DyadAddDependency";
-import { DyadExecuteSql } from "./DyadExecuteSql";
-import { DyadAddIntegration } from "./DyadAddIntegration";
-import { DyadEdit } from "./DyadEdit";
+import { ShinsoWrite } from "./ShinsoWrite";
+import { ShinsoRename } from "./ShinsoRename";
+import { ShinsoDelete } from "./ShinsoDelete";
+import { ShinsoAddDependency } from "./ShinsoAddDependency";
+import { ShinsoExecuteSql } from "./ShinsoExecuteSql";
+import { ShinsoAddIntegration } from "./ShinsoAddIntegration";
+import { ShinsoEdit } from "./ShinsoEdit";
 import { DyadSearchReplace } from "./DyadSearchReplace";
-import { DyadCodebaseContext } from "./DyadCodebaseContext";
-import { DyadThink } from "./DyadThink";
+import { ShinsoCodebaseContext } from "./ShinsoCodebaseContext";
+import { ShinsoThink } from "./ShinsoThink";
 import { CodeHighlight } from "./CodeHighlight";
 import { useAtomValue } from "jotai";
 import { isStreamingByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { CustomTagState } from "./stateTypes";
-import { DyadOutput } from "./DyadOutput";
-import { DyadProblemSummary } from "./DyadProblemSummary";
+import { ShinsoOutput } from "./ShinsoOutput";
+import { ShinsoProblemSummary } from "./ShinsoProblemSummary";
 import { IpcClient } from "@/ipc/ipc_client";
-import { DyadMcpToolCall } from "./DyadMcpToolCall";
-import { DyadMcpToolResult } from "./DyadMcpToolResult";
-import { DyadWebSearchResult } from "./DyadWebSearchResult";
-import { DyadWebSearch } from "./DyadWebSearch";
+import { ShinsoMcpToolCall } from "./ShinsoMcpToolCall";
+import { ShinsoMcpToolResult } from "./ShinsoMcpToolResult";
+import { ShinsoWebSearchResult } from "./ShinsoWebSearchResult";
+import { ShinsoWebSearch } from "./ShinsoWebSearch";
 import { DyadWebCrawl } from "./DyadWebCrawl";
 import { DyadCodeSearchResult } from "./DyadCodeSearchResult";
 import { DyadCodeSearch } from "./DyadCodeSearch";
-import { DyadRead } from "./DyadRead";
+import { ShinsoRead } from "./ShinsoRead";
 import { DyadListFiles } from "./DyadListFiles";
 import { DyadDatabaseSchema } from "./DyadDatabaseSchema";
 import { mapActionToButton } from "./ChatInput";
@@ -59,7 +59,7 @@ const DYAD_CUSTOM_TAGS = [
   "dyad-database-schema",
 ];
 
-interface DyadMarkdownParserProps {
+interface ShinsoMarkdownParserProps {
   content: string;
 }
 
@@ -110,7 +110,7 @@ export const VanillaMarkdownParser = ({ content }: { content: string }) => {
 /**
  * Custom component to parse markdown content with Dyad-specific tags
  */
-export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
+export const ShinsoMarkdownParser: React.FC<ShinsoMarkdownParserProps> = ({
   content,
 }) => {
   const chatId = useAtomValue(selectedChatIdAtom);
@@ -327,7 +327,7 @@ function renderCustomTag(
   switch (tag) {
     case "dyad-read":
       return (
-        <DyadRead
+        <ShinsoRead
           node={{
             properties: {
               path: attributes.path || "",
@@ -335,11 +335,11 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadRead>
+        </ShinsoRead>
       );
     case "dyad-web-search":
       return (
-        <DyadWebSearch
+        <ShinsoWebSearch
           node={{
             properties: {
               query: attributes.query || "",
@@ -348,7 +348,7 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadWebSearch>
+        </ShinsoWebSearch>
       );
     case "dyad-web-crawl":
       return (
@@ -382,7 +382,7 @@ function renderCustomTag(
       );
     case "dyad-web-search-result":
       return (
-        <DyadWebSearchResult
+        <ShinsoWebSearchResult
           node={{
             properties: {
               state: getState({ isStreaming, inProgress }),
@@ -390,11 +390,11 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadWebSearchResult>
+        </ShinsoWebSearchResult>
       );
     case "think":
       return (
-        <DyadThink
+        <ShinsoThink
           node={{
             properties: {
               state: getState({ isStreaming, inProgress }),
@@ -402,11 +402,11 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadThink>
+        </ShinsoThink>
       );
     case "dyad-write":
       return (
-        <DyadWrite
+        <ShinsoWrite
           node={{
             properties: {
               path: attributes.path || "",
@@ -416,12 +416,12 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadWrite>
+        </ShinsoWrite>
       );
 
     case "dyad-rename":
       return (
-        <DyadRename
+        <ShinsoRename
           node={{
             properties: {
               from: attributes.from || "",
@@ -430,12 +430,12 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadRename>
+        </ShinsoRename>
       );
 
     case "dyad-delete":
       return (
-        <DyadDelete
+        <ShinsoDelete
           node={{
             properties: {
               path: attributes.path || "",
@@ -443,12 +443,12 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadDelete>
+        </ShinsoDelete>
       );
 
     case "dyad-add-dependency":
       return (
-        <DyadAddDependency
+        <ShinsoAddDependency
           node={{
             properties: {
               packages: attributes.packages || "",
@@ -456,12 +456,12 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadAddDependency>
+        </ShinsoAddDependency>
       );
 
     case "dyad-execute-sql":
       return (
-        <DyadExecuteSql
+        <ShinsoExecuteSql
           node={{
             properties: {
               state: getState({ isStreaming, inProgress }),
@@ -470,12 +470,12 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadExecuteSql>
+        </ShinsoExecuteSql>
       );
 
     case "dyad-add-integration":
       return (
-        <DyadAddIntegration
+        <ShinsoAddIntegration
           node={{
             properties: {
               provider: attributes.provider || "",
@@ -483,12 +483,12 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadAddIntegration>
+        </ShinsoAddIntegration>
       );
 
     case "dyad-edit":
       return (
-        <DyadEdit
+        <ShinsoEdit
           node={{
             properties: {
               path: attributes.path || "",
@@ -498,7 +498,7 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadEdit>
+        </ShinsoEdit>
       );
 
     case "dyad-search-replace":
@@ -518,7 +518,7 @@ function renderCustomTag(
 
     case "dyad-codebase-context":
       return (
-        <DyadCodebaseContext
+        <ShinsoCodebaseContext
           node={{
             properties: {
               files: attributes.files || "",
@@ -527,12 +527,12 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadCodebaseContext>
+        </ShinsoCodebaseContext>
       );
 
     case "dyad-mcp-tool-call":
       return (
-        <DyadMcpToolCall
+        <ShinsoMcpToolCall
           node={{
             properties: {
               serverName: attributes.server || "",
@@ -541,12 +541,12 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadMcpToolCall>
+        </ShinsoMcpToolCall>
       );
 
     case "dyad-mcp-tool-result":
       return (
-        <DyadMcpToolResult
+        <ShinsoMcpToolResult
           node={{
             properties: {
               serverName: attributes.server || "",
@@ -555,24 +555,24 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadMcpToolResult>
+        </ShinsoMcpToolResult>
       );
 
     case "dyad-output":
       return (
-        <DyadOutput
+        <ShinsoOutput
           type={attributes.type as "warning" | "error"}
           message={attributes.message}
         >
           {content}
-        </DyadOutput>
+        </ShinsoOutput>
       );
 
     case "dyad-problem-report":
       return (
-        <DyadProblemSummary summary={attributes.summary}>
+        <ShinsoProblemSummary summary={attributes.summary}>
           {content}
-        </DyadProblemSummary>
+        </ShinsoProblemSummary>
       );
 
     case "dyad-chat-summary":

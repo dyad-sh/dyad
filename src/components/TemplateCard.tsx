@@ -68,8 +68,8 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
       <div
         onClick={handleCardClick}
         className={`
-          bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden 
-          transform transition-all duration-300 ease-in-out 
+          bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden
+          transform transition-all duration-300 ease-in-out
           cursor-pointer group relative
           ${
             isSelected
@@ -78,20 +78,39 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
           }
         `}
       >
-        <div className="relative">
-          <img
-            src={template.imageUrl}
-            alt={template.title}
-            className={`w-full h-52 object-cover transition-opacity duration-300 group-hover:opacity-80 ${
-              isSelected ? "opacity-75" : ""
+        {template.isContractTranslation ? (
+          // Contract translation card with icon header
+          <div
+            className={`relative bg-gradient-to-br from-indigo-500 to-purple-600 h-52 flex items-center justify-center transition-opacity duration-300 ${
+              isSelected ? "opacity-75" : "group-hover:opacity-90"
             }`}
-          />
-          {isSelected && (
-            <span className="absolute top-3 right-3 bg-blue-600 text-white text-xs font-bold px-3 py-1.5 rounded-md shadow-lg">
-              Selected
-            </span>
-          )}
-        </div>
+          >
+            <div className="text-8xl opacity-90 group-hover:opacity-100 transition-opacity duration-300">
+              {template.contractIcon}
+            </div>
+            {isSelected && (
+              <span className="absolute top-3 right-3 bg-blue-600 text-white text-xs font-bold px-3 py-1.5 rounded-md shadow-lg">
+                Selected
+              </span>
+            )}
+          </div>
+        ) : (
+          // Regular template card with image
+          <div className="relative">
+            <img
+              src={template.imageUrl}
+              alt={template.title}
+              className={`w-full h-52 object-cover transition-opacity duration-300 group-hover:opacity-80 ${
+                isSelected ? "opacity-75" : ""
+              }`}
+            />
+            {isSelected && (
+              <span className="absolute top-3 right-3 bg-blue-600 text-white text-xs font-bold px-3 py-1.5 rounded-md shadow-lg">
+                Selected
+              </span>
+            )}
+          </div>
+        )}
         <div className="p-4">
           <div className="flex justify-between items-center mb-1.5">
             <h2
@@ -103,7 +122,17 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
             >
               {template.title}
             </h2>
-            {template.isOfficial && !template.isExperimental && (
+            {template.isContractTranslation ? (
+              <span
+                className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                  isSelected
+                    ? "bg-blue-100 text-blue-700 dark:bg-blue-600 dark:text-blue-100"
+                    : "bg-purple-100 text-purple-800 dark:bg-purple-700 dark:text-purple-200"
+                }`}
+              >
+                Contract
+              </span>
+            ) : template.isOfficial && !template.isExperimental ? (
               <span
                 className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
                   isSelected
@@ -113,12 +142,11 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
               >
                 Official
               </span>
-            )}
-            {template.isExperimental && (
+            ) : template.isExperimental ? (
               <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-700 dark:text-yellow-200">
                 Experimental
               </span>
-            )}
+            ) : null}
           </div>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-3 h-10 overflow-y-auto">
             {template.description}

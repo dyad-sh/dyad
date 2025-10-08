@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "071199d7-dfb5-4681-85b7-228f1de3123a",
+  "id": "05c9447b-a34e-4465-a1e0-d23d0603f64c",
   "prevId": "c0a49147-ac92-4046-afe8-42f20df9314b",
   "tables": {
     "apps": {
@@ -156,6 +156,14 @@
           "notNull": true,
           "autoincrement": false,
           "default": "0"
+        },
+        "is_contract_project": {
+          "name": "is_contract_project",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "default": false
         }
       },
       "indexes": {},

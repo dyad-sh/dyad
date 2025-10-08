@@ -99,7 +99,7 @@ export function FileAttachmentDropdown({
         onChange={(e) => handleFileChange(e, "chat-context")}
         className="hidden"
         multiple
-        accept=".jpg,.jpeg,.png,.gif,.webp,.txt,.md,.js,.ts,.html,.css,.json,.csv"
+        accept=".jpg,.jpeg,.png,.gif,.webp,.txt,.md,.js,.ts,.html,.css,.json,.csv,.sol"
       />
       <input
         type="file"
@@ -108,7 +108,7 @@ export function FileAttachmentDropdown({
         onChange={(e) => handleFileChange(e, "upload-to-codebase")}
         className="hidden"
         multiple
-        accept=".jpg,.jpeg,.png,.gif,.webp,.txt,.md,.js,.ts,.html,.css,.json,.csv"
+        accept=".jpg,.jpeg,.png,.gif,.webp,.txt,.md,.js,.ts,.html,.css,.json,.csv,.sol"
       />
     </>
   );

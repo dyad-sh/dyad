@@ -3,12 +3,12 @@ import { useState, type ReactNode } from "react";
 import { ChevronDown, ChevronUp, Globe, Loader } from "lucide-react";
 import { CustomTagState } from "./stateTypes";
 
-interface DyadWebSearchProps {
+interface ShinsoWebSearchProps {
   children?: ReactNode;
   node?: any;
 }
 
-export const DyadWebSearch: React.FC<DyadWebSearchProps> = ({
+export const ShinsoWebSearch: React.FC<ShinsoWebSearchProps> = ({
   children,
   node,
 }) => {

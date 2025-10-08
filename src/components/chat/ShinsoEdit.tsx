@@ -4,26 +4,21 @@ import { useState } from "react";
 import {
   ChevronsDownUp,
   ChevronsUpDown,
-  Pencil,
   Loader,
   CircleX,
-  Edit,
-  X,
+  Rabbit,
 } from "lucide-react";
 import { CodeHighlight } from "./CodeHighlight";
 import { CustomTagState } from "./stateTypes";
-import { FileEditor } from "../preview_panel/FileEditor";
-import { useAtomValue } from "jotai";
-import { selectedAppIdAtom } from "@/atoms/appAtoms";
 
-interface DyadWriteProps {
+interface ShinsoEditProps {
   children?: ReactNode;
   node?: any;
   path?: string;
   description?: string;
 }
 
-export const DyadWrite: React.FC<DyadWriteProps> = ({
+export const ShinsoEdit: React.FC<ShinsoEditProps> = ({
   children,
   node,
   path: pathProp,
@@ -35,20 +30,9 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
   const path = pathProp || node?.properties?.path || "";
   const description = descriptionProp || node?.properties?.description || "";
   const state = node?.properties?.state as CustomTagState;
-
-  const aborted = state === "aborted";
-  const appId = useAtomValue(selectedAppIdAtom);
-  const [isEditing, setIsEditing] = useState(false);
   const inProgress = state === "pending";
+  const aborted = state === "aborted";
 
-  const handleCancel = () => {
-    setIsEditing(false);
-  };
-
-  const handleEdit = () => {
-    setIsEditing(true);
-    setIsContentVisible(true);
-  };
   // Extract filename from path
   const fileName = path ? path.split("/").pop() : "";
 
@@ -65,7 +49,12 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Pencil size={16} />
+          <div className="flex items-center">
+            <Rabbit size={16} />
+            <span className="bg-blue-500 text-white text-xs px-1.5 py-0.5 rounded ml-1 font-medium">
+              Turbo Edit
+            </span>
+          </div>
           {fileName && (
             <span className="text-gray-700 dark:text-gray-300 font-medium text-sm">
               {fileName}
@@ -74,7 +63,7 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
           {inProgress && (
             <div className="flex items-center text-amber-600 text-xs">
               <Loader size={14} className="mr-1 animate-spin" />
-              <span>Writing...</span>
+              <span>Editing...</span>
             </div>
           )}
           {aborted && (
@@ -85,35 +74,6 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
           )}
         </div>
         <div className="flex items-center">
-          {!inProgress && (
-            <>
-              {isEditing ? (
-                <>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleCancel();
-                    }}
-                    className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 px-2 py-1 rounded cursor-pointer"
-                  >
-                    <X size={14} />
-                    Cancel
-                  </button>
-                </>
-              ) : (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleEdit();
-                  }}
-                  className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 px-2 py-1 rounded cursor-pointer"
-                >
-                  <Edit size={14} />
-                  Edit
-                </button>
-              )}
-            </>
-          )}
           {isContentVisible ? (
             <ChevronsDownUp
               size={20}
@@ -143,15 +103,9 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
           className="text-xs cursor-text"
           onClick={(e) => e.stopPropagation()}
         >
-          {isEditing ? (
-            <div className="h-96 min-h-96 border border-gray-200 dark:border-gray-700 rounded overflow-hidden">
-              <FileEditor appId={appId ?? null} filePath={path} />
-            </div>
-          ) : (
-            <CodeHighlight className="language-typescript">
-              {children}
-            </CodeHighlight>
-          )}
+          <CodeHighlight className="language-typescript">
+            {children}
+          </CodeHighlight>
         </div>
       )}
     </div>

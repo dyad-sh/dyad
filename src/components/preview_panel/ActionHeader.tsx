@@ -12,6 +12,7 @@ import {
   Wrench,
   Globe,
   Shield,
+  FileCode2,
 } from "lucide-react";
 import { ChatActivityButton } from "@/components/chat/ChatActivity";
 import { motion } from "framer-motion";
@@ -38,6 +39,7 @@ import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 export type PreviewMode =
   | "preview"
   | "code"
+  | "contract"
   | "problems"
   | "configure"
   | "publish"
@@ -50,6 +52,7 @@ export const ActionHeader = () => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const previewRef = useRef<HTMLButtonElement>(null);
   const codeRef = useRef<HTMLButtonElement>(null);
+  const contractRef = useRef<HTMLButtonElement>(null);
   const problemsRef = useRef<HTMLButtonElement>(null);
   const configureRef = useRef<HTMLButtonElement>(null);
   const publishRef = useRef<HTMLButtonElement>(null);
@@ -129,6 +132,9 @@ export const ActionHeader = () => {
           break;
         case "code":
           targetRef = codeRef;
+          break;
+        case "contract":
+          targetRef = contractRef;
           break;
         case "problems":
           targetRef = problemsRef;
@@ -248,6 +254,13 @@ export const ActionHeader = () => {
             <Code size={iconSize} />,
             "Code",
             "code-mode-button",
+          )}
+          {renderButton(
+            "contract",
+            contractRef,
+            <FileCode2 size={14} />,
+            "Contract",
+            "contract-mode-button",
           )}
           {renderButton(
             "configure",

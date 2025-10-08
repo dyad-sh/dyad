@@ -7,6 +7,7 @@ import {
 } from "../../atoms/appAtoms";
 
 import { CodeView } from "./CodeView";
+import { ContractView } from "./ContractView";
 import { PreviewIframe } from "./PreviewIframe";
 import { Problems } from "./Problems";
 import { ConfigurePanel } from "./ConfigurePanel";
@@ -141,6 +142,8 @@ export function PreviewPanel() {
                 <PreviewIframe key={key} loading={loading} />
               ) : previewMode === "code" ? (
                 <CodeView loading={loading} app={app} />
+              ) : previewMode === "contract" ? (
+                <ContractView loading={loading} app={app} />
               ) : previewMode === "configure" ? (
                 <ConfigurePanel />
               ) : previewMode === "publish" ? (

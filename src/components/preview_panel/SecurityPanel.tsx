@@ -29,7 +29,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { SecurityFinding, SecurityReviewResult } from "@/ipc/ipc_types";
 import { useState, useEffect } from "react";
-import { VanillaMarkdownParser } from "@/components/chat/DyadMarkdownParser";
+import { VanillaMarkdownParser } from "@/components/chat/ShinsoMarkdownParser";
 import { showSuccess, showWarning } from "@/lib/toast";
 import { useLoadAppFile } from "@/hooks/useLoadAppFile";
 import { useQueryClient } from "@tanstack/react-query";

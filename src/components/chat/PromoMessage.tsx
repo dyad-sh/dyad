@@ -66,7 +66,7 @@ export const SMART_CONTEXT_PROMO_MESSAGE: MessageConfig = {
     { type: "text", content: "Save up to 5x on AI costs with " },
     {
       type: "link",
-      content: "Dyad Pro's Smart Context",
+      content: "Shinsō Pro's Smart Context",
       url: "https://dyad.sh/pro#ai",
     },
   ],
@@ -90,7 +90,7 @@ export const REDDIT_TIP: MessageConfig = {
     },
     {
       type: "link",
-      content: "Dyad subreddit",
+      content: "Shinsō subreddit",
       url: "https://www.reddit.com/r/dyadbuilders/",
     },
   ],

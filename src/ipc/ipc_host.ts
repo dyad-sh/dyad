@@ -34,6 +34,7 @@ import { registerMcpHandlers } from "./handlers/mcp_handlers";
 import { registerSecurityHandlers } from "./handlers/security_handlers";
 import { registerVisualEditingHandlers } from "../pro/main/ipc/handlers/visual_editing_handlers";
 import { registerAgentToolHandlers } from "../pro/main/ipc/handlers/local_agent/agent_tool_handlers";
+import { registerSuiHandlers } from "./handlers/sui_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -73,4 +74,5 @@ export function registerIpcHandlers() {
   registerSecurityHandlers();
   registerVisualEditingHandlers();
   registerAgentToolHandlers();
+  registerSuiHandlers();
 }

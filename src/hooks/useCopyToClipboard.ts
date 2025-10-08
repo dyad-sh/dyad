@@ -29,7 +29,7 @@ export const useCopyToClipboard = () => {
 
   const copyMessageContent = async (messageContent: string) => {
     try {
-      // Use the same parsing logic as DyadMarkdownParser but convert to clean text
+      // Use the same parsing logic as ShinsoMarkdownParser but convert to clean text
       const formattedContent = convertDyadContentToMarkdown(messageContent);
 
       // Copy to clipboard
@@ -50,11 +50,11 @@ export const useCopyToClipboard = () => {
     }
   };
 
-  // Convert Dyad content to clean markdown using the same parsing logic as DyadMarkdownParser
+  // Convert Dyad content to clean markdown using the same parsing logic as ShinsoMarkdownParser
   const convertDyadContentToMarkdown = (content: string): string => {
     if (!content) return "";
 
-    // Use the same parsing functions from DyadMarkdownParser
+    // Use the same parsing functions from ShinsoMarkdownParser
     const contentPieces = parseCustomTags(content);
 
     let result = "";
@@ -76,7 +76,7 @@ export const useCopyToClipboard = () => {
       .trim();
   };
 
-  // Convert individual custom tags to markdown (reuse the same logic from DyadMarkdownParser)
+  // Convert individual custom tags to markdown (reuse the same logic from ShinsoMarkdownParser)
   const convertCustomTagToMarkdown = (tagInfo: any): string => {
     const { tag, attributes, content } = tagInfo;
 
@@ -193,7 +193,7 @@ export const useCopyToClipboard = () => {
     }
   };
 
-  // Reuse the same parsing functions from DyadMarkdownParser but simplified
+  // Reuse the same parsing functions from ShinsoMarkdownParser but simplified
   const parseCustomTags = (content: string) => {
     const { processedContent } = preprocessUnclosedTags(content);
 

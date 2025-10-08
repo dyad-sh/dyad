@@ -7,6 +7,9 @@ export interface Template {
   isOfficial: boolean;
   isExperimental?: boolean;
   requiresNeon?: boolean;
+  isContractTranslation?: boolean;
+  contractSourceUrl?: string;
+  contractIcon?: string;
 }
 
 // API Template interface from the external API
@@ -52,5 +55,39 @@ export const localTemplatesData: Template[] = [
     isOfficial: true,
     isExperimental: true,
     requiresNeon: true,
+  },
+];
+
+// Smart Contract Translation Templates
+export const contractTranslationTemplates: Template[] = [
+  {
+    id: "erc20",
+    title: "ERC20 Token",
+    description: "Translate Solidity ERC20 token contracts to Sui Move",
+    imageUrl: "",
+    isOfficial: true,
+    isContractTranslation: true,
+    contractSourceUrl: "https://gist.githubusercontent.com/shanefontaine/1577a1328fdcd3c859711f176a6a5be0/raw/erc20.sol",
+    contractIcon: "💰",
+  },
+  {
+    id: "erc721",
+    title: "ERC721 NFT",
+    description: "Translate Solidity ERC721 NFT contracts to Sui Move",
+    imageUrl: "",
+    isOfficial: true,
+    isContractTranslation: true,
+    contractSourceUrl: "https://raw.githubusercontent.com/OpenZeppelin/openzeppelin-contracts/v5.4.0/contracts/token/ERC721/ERC721.sol",
+    contractIcon: "🖼️",
+  },
+  {
+    id: "erc1155",
+    title: "ERC1155 Multi-Token",
+    description: "Translate Solidity ERC1155 contracts to Sui Move",
+    imageUrl: "",
+    isOfficial: true,
+    isContractTranslation: true,
+    contractSourceUrl: "https://raw.githubusercontent.com/OpenZeppelin/openzeppelin-contracts/v5.4.0/contracts/token/ERC1155/ERC1155.sol",
+    contractIcon: "🎨",
   },
 ];

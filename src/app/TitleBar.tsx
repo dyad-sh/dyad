@@ -1,16 +1,16 @@
 import { useAtom } from "jotai";
-import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { selectedAppIdAtom, homeModeAtom } from "@/atoms/appAtoms";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useRouter, useLocation } from "@tanstack/react-router";
 import { useSettings } from "@/hooks/useSettings";
 import { Button } from "@/components/ui/button";
 // @ts-ignore
-import logo from "../../assets/logo.svg";
+import logo from "../../assets/shinso-logo.png";
 import { providerSettingsRoute } from "@/routes/settings/providers/$provider";
 import { cn } from "@/lib/utils";
 import { useDeepLink } from "@/contexts/DeepLinkContext";
 import { useEffect, useState } from "react";
-import { DyadProSuccessDialog } from "@/components/DyadProSuccessDialog";
+import { ShinsoProSuccessDialog } from "@/components/ShinsoProSuccessDialog";
 import { useTheme } from "@/contexts/ThemeContext";
 import { IpcClient } from "@/ipc/ipc_client";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
@@ -45,7 +45,7 @@ export const TitleBar = () => {
     checkPlatform();
   }, []);
 
-  const showDyadProSuccessDialog = () => {
+  const showShinsoProSuccessDialog = () => {
     setIsSuccessDialogOpen(true);
   };
 
@@ -54,7 +54,7 @@ export const TitleBar = () => {
     const handleDeepLink = async () => {
       if (lastDeepLink?.type === "dyad-pro-return") {
         await refreshSettings();
-        showDyadProSuccessDialog();
+        showShinsoProSuccessDialog();
         clearLastDeepLink();
       }
     };
@@ -76,12 +76,22 @@ export const TitleBar = () => {
   const isDyadPro = !!settings?.providerSettings?.auto?.apiKey?.value;
   const isDyadProEnabled = Boolean(settings?.enableDyadPro);
 
+  const [homeMode, setHomeMode] = useAtom(homeModeAtom);
+
+  const handleModeChange = (newMode: "generate" | "translate") => {
+    setHomeMode(newMode);
+    // Navigate to home page when mode is changed
+    if (location.pathname !== "/") {
+      navigate({ to: "/" });
+    }
+  };
+
   return (
     <>
       <div className="@container z-11 w-full h-11 bg-(--sidebar) absolute top-0 left-0 app-region-drag flex items-center">
         <div className={`${showWindowControls ? "pl-2" : "pl-18"}`}></div>
 
-        <img src={logo} alt="Dyad Logo" className="w-6 h-6 mr-0.5" />
+        <img src={logo} alt="Shinsō Logo" className="w-6 h-6 mr-0.5" />
         <Button
           data-testid="title-bar-app-name-button"
           variant="outline"
@@ -95,6 +105,43 @@ export const TitleBar = () => {
         </Button>
         {isDyadPro && <DyadProButton isDyadProEnabled={isDyadProEnabled} />}
 
+        {/* Spacer for centering */}
+        <div className="flex-1"></div>
+
+        {/* Mode Toggle - Always visible */}
+        <div className="absolute left-1/2 transform -translate-x-1/2 inline-flex items-center rounded-full p-0.5 bg-gray-100 dark:bg-black border border-gray-200 dark:border-[#2a2035] no-app-region-drag z-50" style={{ pointerEvents: 'auto' }}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleModeChange("generate");
+            }}
+            className={`px-3 py-1 rounded-full text-xs font-medium transition-all duration-200 ${
+              homeMode === "generate"
+                ? "bg-primary text-white shadow-sm shadow-primary/20"
+                : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+            }`}
+            style={{ cursor: 'pointer', pointerEvents: 'auto' }}
+          >
+            ✨ Generate
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleModeChange("translate");
+            }}
+            className={`px-3 py-1 rounded-full text-xs font-medium transition-all duration-200 ${
+              homeMode === "translate"
+                ? "bg-primary text-white shadow-sm shadow-primary/20"
+                : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+            }`}
+            style={{ cursor: 'pointer', pointerEvents: 'auto' }}
+          >
+            🔄 Translate
+          </button>
+        </div>
+
         {/* Preview Header */}
         {location.pathname === "/chat" && (
           <div className="flex-1 flex justify-end">
@@ -105,7 +152,7 @@ export const TitleBar = () => {
         {showWindowControls && <WindowsControls />}
       </div>
 
-      <DyadProSuccessDialog
+      <ShinsoProSuccessDialog
         isOpen={isSuccessDialogOpen}
         onClose={() => setIsSuccessDialogOpen(false)}
       />

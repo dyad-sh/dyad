@@ -1,13 +1,13 @@
 import React, { useMemo, useState } from "react";
-import { CheckCircle, ChevronsUpDown, ChevronsDownUp } from "lucide-react";
+import { Wrench, ChevronsUpDown, ChevronsDownUp } from "lucide-react";
 import { CodeHighlight } from "./CodeHighlight";
 
-interface DyadMcpToolResultProps {
+interface ShinsoMcpToolCallProps {
   node?: any;
   children?: React.ReactNode;
 }
 
-export const DyadMcpToolResult: React.FC<DyadMcpToolResultProps> = ({
+export const ShinsoMcpToolCall: React.FC<ShinsoMcpToolCallProps> = ({
   node,
   children,
 }) => {
@@ -23,7 +23,7 @@ export const DyadMcpToolResult: React.FC<DyadMcpToolResultProps> = ({
       const parsed = JSON.parse(raw);
       return JSON.stringify(parsed, null, 2);
     } catch (e) {
-      console.error("Error parsing JSON for dyad-mcp-tool-result", e);
+      console.error("Error parsing JSON for dyad-mcp-tool-call", e);
       return raw;
     }
   }, [expanded, raw]);
@@ -35,11 +35,11 @@ export const DyadMcpToolResult: React.FC<DyadMcpToolResultProps> = ({
     >
       {/* Top-left label badge */}
       <div
-        className="absolute top-3 left-2 flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold text-emerald-600 bg-white dark:bg-zinc-900"
+        className="absolute top-3 left-2 flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold text-blue-600 bg-white dark:bg-zinc-900"
         style={{ zIndex: 1 }}
       >
-        <CheckCircle size={16} className="text-emerald-600" />
-        <span>Tool Result</span>
+        <Wrench size={16} className="text-blue-600" />
+        <span>Tool Call</span>
       </div>
 
       {/* Right chevron */}
@@ -50,7 +50,7 @@ export const DyadMcpToolResult: React.FC<DyadMcpToolResultProps> = ({
       {/* Header content */}
       <div className="flex items-start gap-2 pl-24 pr-8 py-1">
         {serverName ? (
-          <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-zinc-800 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-zinc-700">
+          <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 dark:bg-zinc-800 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-zinc-700">
             {serverName}
           </span>
         ) : null}

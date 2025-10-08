@@ -7,13 +7,13 @@ import { IpcClient } from "../../ipc/ipc_client";
 import { Package, ChevronsUpDown, ChevronsDownUp } from "lucide-react";
 import { CodeHighlight } from "./CodeHighlight";
 
-interface DyadAddDependencyProps {
+interface ShinsoAddDependencyProps {
   children?: ReactNode;
   node?: any;
   packages?: string;
 }
 
-export const DyadAddDependency: React.FC<DyadAddDependencyProps> = ({
+export const ShinsoAddDependency: React.FC<ShinsoAddDependencyProps> = ({
   children,
   node,
 }) => {

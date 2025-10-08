@@ -249,7 +249,7 @@ function listenToProcess({
     // This is a hacky heuristic to pick up when drizzle is asking for user
     // to select from one of a few choices. We automatically pick the first
     // option because it's usually a good default choice. We guard this with
-    // isNeon because: 1) only Neon apps (for the official Dyad templates) should
+    // isNeon because: 1) only Neon apps (for the official Shinsō templates) should
     // get this template and 2) it's safer to do this with Neon apps because
     // their databases have point in time restore built-in.
     if (isNeon && message.includes("created or renamed from another")) {
@@ -283,7 +283,7 @@ function listenToProcess({
           onStarted: (proxyUrl) => {
             safeSend(event.sender, "app:output", {
               type: "stdout",
-              message: `[dyad-proxy-server]started=[${proxyUrl}] original=[${urlMatch[1]}]`,
+              message: `[shinso-proxy-server]started=[${proxyUrl}] original=[${urlMatch[1]}]`,
               appId,
             });
           },
@@ -338,7 +338,7 @@ async function executeAppInDocker({
   installCommand?: string | null;
   startCommand?: string | null;
 }): Promise<void> {
-  const containerName = `dyad-app-${appId}`;
+  const containerName = `shinso-app-${appId}`;
 
   // First, check if Docker is available
   try {
@@ -383,7 +383,7 @@ async function executeAppInDocker({
   }
 
   // Create a Dockerfile in the app directory if it doesn't exist
-  const dockerfilePath = path.join(appPath, "Dockerfile.dyad");
+  const dockerfilePath = path.join(appPath, "Dockerfile.shinso");
   if (!fs.existsSync(dockerfilePath)) {
     const dockerfileContent = `FROM node:22-alpine
 
@@ -402,7 +402,7 @@ RUN npm install -g pnpm
   // Build the Docker image
   const buildProcess = spawn(
     "docker",
-    ["build", "-f", "Dockerfile.dyad", "-t", `dyad-app-${appId}`, "."],
+    ["build", "-f", "Dockerfile.shinso", "-t", `shinso-app-${appId}`, "."],
     {
       cwd: appPath,
       stdio: "pipe",
@@ -441,12 +441,12 @@ RUN npm install -g pnpm
       "-v",
       `${appPath}:/app`,
       "-v",
-      `dyad-pnpm-${appId}:/app/.pnpm-store`,
+      `shinso-pnpm-${appId}:/app/.pnpm-store`,
       "-e",
       "PNPM_STORE_PATH=/app/.pnpm-store",
       "-w",
       "/app",
-      `dyad-app-${appId}`,
+      `shinso-app-${appId}`,
       "sh",
       "-c",
       getCommand({ appId, installCommand, startCommand }),
@@ -567,7 +567,7 @@ async function stopDockerContainersOnPort(port: number): Promise<void> {
 }
 
 export function registerAppHandlers() {
-  handle("restart-dyad", async () => {
+  handle("restart-shinso", async () => {
     app.relaunch();
     app.quit();
   });
@@ -590,6 +590,7 @@ export function registerAppHandlers() {
           name: params.name,
           // Use the name as the path for now
           path: appPath,
+          isContractProject: params.isContractProject || false,
         })
         .returning();
 
@@ -601,9 +602,29 @@ export function registerAppHandlers() {
         })
         .returning();
 
-      await createFromTemplate({
-        fullAppPath,
-      });
+      // Only create from template for non-contract projects
+      if (!params.isContractProject) {
+        await createFromTemplate({
+          fullAppPath,
+        });
+      } else {
+        // For contract projects, create a minimal structure
+        await fsPromises.mkdir(fullAppPath, { recursive: true });
+        await fsPromises.mkdir(path.join(fullAppPath, "src"), { recursive: true });
+
+        // Create a basic package.json for contract projects
+        const packageJson = {
+          name: params.name,
+          version: "0.1.0",
+          private: true,
+          type: "module",
+        };
+        await fsPromises.writeFile(
+          path.join(fullAppPath, "package.json"),
+          JSON.stringify(packageJson, null, 2),
+          "utf-8"
+        );
+      }
 
       // Initialize git repo and create first commit
 
@@ -615,7 +636,7 @@ export function registerAppHandlers() {
       // Create initial commit
       const commitHash = await gitCommit({
         path: fullAppPath,
-        message: "Init Dyad app",
+        message: "Init Shinsō app",
       });
 
       // Update chat with initial commit hash
@@ -687,7 +708,7 @@ export function registerAppHandlers() {
         // Create initial commit
         await gitCommit({
           path: newAppPath,
-          message: "Init Dyad app",
+          message: "Init Shinsō app",
         });
       }
 
@@ -984,12 +1005,12 @@ export function registerAppHandlers() {
             // If running in Docker mode, also remove container volumes so deps reinstall freshly
             if (runtimeMode === "docker") {
               logger.log(
-                `Docker mode detected for app ${appId}. Removing Docker volumes dyad-pnpm-${appId}...`,
+                `Docker mode detected for app ${appId}. Removing Docker volumes shinso-pnpm-${appId}...`,
               );
               try {
                 await removeDockerVolumesForApp(appId);
                 logger.log(
-                  `Removed Docker volumes for app ${appId} (dyad-pnpm-${appId}).`,
+                  `Removed Docker volumes for app ${appId} (shinso-pnpm-${appId}).`,
                 );
               } catch (e) {
                 // Best-effort cleanup; log and continue

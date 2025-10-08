@@ -1,8 +1,8 @@
 {
-  "name": "dyad",
-  "productName": "dyad",
-  "version": "0.33.0-beta.1",
-  "description": "Free, local, open-source AI app builder",
+  "name": "Shinso",
+  "productName": "Shinsō",
+  "version": "0.28.0-beta.1",
+  "description": "Shinsō is an MVP version of Shinso Translate and Generate.",
   "main": ".vite/build/main.js",
   "repository": {
     "type": "git",

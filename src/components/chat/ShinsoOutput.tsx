@@ -10,13 +10,13 @@ import { useAtomValue } from "jotai";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { CopyErrorMessage } from "@/components/CopyErrorMessage";
-interface DyadOutputProps {
+interface ShinsoOutputProps {
   type: "error" | "warning";
   message?: string;
   children?: React.ReactNode;
 }
 
-export const DyadOutput: React.FC<DyadOutputProps> = ({
+export const ShinsoOutput: React.FC<ShinsoOutputProps> = ({
   type,
   message,
   children,

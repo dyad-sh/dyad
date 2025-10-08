@@ -7,7 +7,7 @@ export const selectedAppIdAtom = atom<number | null>(null);
 export const appsListAtom = atom<App[]>([]);
 export const versionsListAtom = atom<Version[]>([]);
 export const previewModeAtom = atom<
-  "preview" | "code" | "problems" | "configure" | "publish" | "security"
+  "preview" | "code" | "problems" | "configure" | "publish" | "contract" | "security"
 >("preview");
 export const selectedVersionIdAtom = atom<string | null>(null);
 
@@ -40,3 +40,5 @@ export const previewPanelKeyAtom = atom<number>(0);
 export const previewErrorMessageAtom = atom<
   { message: string; source: "preview-app" | "dyad-app" } | undefined
 >(undefined);
+// Atom for home page mode (generate vs translate)
+export const homeModeAtom = atom<"generate" | "translate">("generate");

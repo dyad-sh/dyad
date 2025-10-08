@@ -67,11 +67,11 @@ import { generateProblemReport } from "../processors/tsc";
 import { createProblemFixPrompt } from "@/shared/problem_prompt";
 import { AsyncVirtualFileSystem } from "../../../shared/VirtualFilesystem";
 import {
-  getDyadAddDependencyTags,
-  getDyadWriteTags,
-  getDyadDeleteTags,
-  getDyadRenameTags,
-} from "../utils/dyad_tag_parser";
+  getShinsoAddDependencyTags,
+  getShinsoWriteTags,
+  getShinsoDeleteTags,
+  getShinsoRenameTags,
+} from "../utils/shinso_tag_parser";
 import { fileExists } from "../utils/file_utils";
 import { FileUploadsState } from "../utils/file_uploads_state";
 import { extractMentionedAppsCodebases } from "../utils/mention_apps";
@@ -1173,11 +1173,11 @@ ${formattedSearchReplaceIssues}`,
           if (
             !abortController.signal.aborted &&
             settings.selectedChatMode !== "ask" &&
-            hasUnclosedDyadWrite(fullResponse)
+            hasUnclosedShinsoWrite(fullResponse)
           ) {
             let continuationAttempts = 0;
             while (
-              hasUnclosedDyadWrite(fullResponse) &&
+              hasUnclosedShinsoWrite(fullResponse) &&
               continuationAttempts < 2 &&
               !abortController.signal.aborted
             ) {
@@ -1210,7 +1210,7 @@ ${formattedSearchReplaceIssues}`,
               }
             }
           }
-          const addDependencies = getDyadAddDependencyTags(fullResponse);
+          const addDependencies = getShinsoAddDependencyTags(fullResponse);
           if (
             !abortController.signal.aborted &&
             // If there are dependencies, we don't want to auto-fix problems
@@ -1257,9 +1257,9 @@ ${problemReport.problems
                     readFile: (fileName: string) => readFileWithCache(fileName),
                   },
                 );
-                const writeTags = getDyadWriteTags(fullResponse);
-                const renameTags = getDyadRenameTags(fullResponse);
-                const deletePaths = getDyadDeleteTags(fullResponse);
+                const writeTags = getShinsoWriteTags(fullResponse);
+                const renameTags = getShinsoRenameTags(fullResponse);
+                const deletePaths = getShinsoDeleteTags(fullResponse);
                 virtualFileSystem.applyResponseChanges({
                   deletePaths,
                   renameTags,
@@ -1649,7 +1649,7 @@ export function removeDyadTags(text: string): string {
   return text.replace(dyadRegex, "").trim();
 }
 
-export function hasUnclosedDyadWrite(text: string): boolean {
+export function hasUnclosedShinsoWrite(text: string): boolean {
   // Find the last opening dyad-write tag
   const openRegex = /<dyad-write[^>]*>/g;
   let lastOpenIndex = -1;

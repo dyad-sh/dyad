@@ -30,13 +30,13 @@ import {
 import { readSettings } from "@/main/settings";
 import { writeMigrationFile } from "../utils/file_utils";
 import {
-  getDyadWriteTags,
-  getDyadRenameTags,
-  getDyadDeleteTags,
-  getDyadAddDependencyTags,
-  getDyadExecuteSqlTags,
+  getShinsoWriteTags,
+  getShinsoRenameTags,
+  getShinsoDeleteTags,
+  getShinsoAddDependencyTags,
+  getShinsoExecuteSqlTags,
   getDyadSearchReplaceTags,
-} from "../utils/dyad_tag_parser";
+} from "../utils/shinso_tag_parser";
 import { applySearchReplace } from "../../pro/main/ipc/processors/search_replace_processor";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 
@@ -157,12 +157,12 @@ export async function processFullResponseActions(
 
   try {
     // Extract all tags
-    const dyadWriteTags = getDyadWriteTags(fullResponse);
-    const dyadRenameTags = getDyadRenameTags(fullResponse);
-    const dyadDeletePaths = getDyadDeleteTags(fullResponse);
-    const dyadAddDependencyPackages = getDyadAddDependencyTags(fullResponse);
+    const dyadWriteTags = getShinsoWriteTags(fullResponse);
+    const dyadRenameTags = getShinsoRenameTags(fullResponse);
+    const dyadDeletePaths = getShinsoDeleteTags(fullResponse);
+    const dyadAddDependencyPackages = getShinsoAddDependencyTags(fullResponse);
     const dyadExecuteSqlQueries = chatWithApp.app.supabaseProjectId
-      ? getDyadExecuteSqlTags(fullResponse)
+      ? getShinsoExecuteSqlTags(fullResponse)
       : [];
 
     const message = await db.query.messages.findFirst({
@@ -544,7 +544,7 @@ export async function processFullResponseActions(
       if (dyadExecuteSqlQueries.length > 0)
         changes.push(`executed ${dyadExecuteSqlQueries.length} SQL queries`);
 
-      let message = chatSummary
+      const message = chatSummary
         ? `[dyad] ${chatSummary} - ${changes.join(", ")}`
         : `[dyad] ${changes.join(", ")}`;
       // Use chat summary, if provided, or default for commit message

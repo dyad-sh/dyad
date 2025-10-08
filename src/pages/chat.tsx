@@ -12,7 +12,8 @@ import { cn } from "@/lib/utils";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import { useChats } from "@/hooks/useChats";
-import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { selectedAppIdAtom, previewModeAtom } from "@/atoms/appAtoms";
+import { useLoadApp } from "@/hooks/useLoadApp";
 
 export default function ChatPage() {
   let { id: chatId } = useSearch({ from: "/chat" });
@@ -22,6 +23,8 @@ export default function ChatPage() {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
   const { chats, loading } = useChats(selectedAppId);
+  const { app } = useLoadApp(selectedAppId);
+  const setPreviewMode = useSetAtom(previewModeAtom);
 
   useEffect(() => {
     if (!chatId && chats.length && !loading) {
@@ -39,6 +42,13 @@ export default function ChatPage() {
       ref.current?.collapse();
     }
   }, [isPreviewOpen]);
+
+  // Auto-switch to contract view for contract projects
+  useEffect(() => {
+    if (app?.isContractProject) {
+      setPreviewMode("contract");
+    }
+  }, [app?.isContractProject, setPreviewMode]);
   const ref = useRef<ImperativePanelHandle>(null);
 
   return (

@@ -6,10 +6,10 @@ import log from "electron-log";
 import { WorkerInput, WorkerOutput } from "../../../shared/tsc_types";
 
 import {
-  getDyadDeleteTags,
-  getDyadRenameTags,
-  getDyadWriteTags,
-} from "../utils/dyad_tag_parser";
+  getShinsoDeleteTags,
+  getShinsoRenameTags,
+  getShinsoWriteTags,
+} from "../utils/shinso_tag_parser";
 import { getTypeScriptCachePath } from "@/paths/paths";
 
 const logger = log.scope("tsc");
@@ -58,9 +58,9 @@ export async function generateProblemReport({
       }
     });
 
-    const writeTags = getDyadWriteTags(fullResponse);
-    const renameTags = getDyadRenameTags(fullResponse);
-    const deletePaths = getDyadDeleteTags(fullResponse);
+    const writeTags = getShinsoWriteTags(fullResponse);
+    const renameTags = getShinsoRenameTags(fullResponse);
+    const deletePaths = getShinsoDeleteTags(fullResponse);
     const virtualChanges = {
       deletePaths,
       renameTags,

@@ -11,15 +11,15 @@ import path from "node:path"; // Import path for basename
 // Import tag parsers
 import { processFullResponseActions } from "../processors/response_processor";
 import {
-  getDyadWriteTags,
-  getDyadRenameTags,
-  getDyadDeleteTags,
-  getDyadExecuteSqlTags,
-  getDyadAddDependencyTags,
-  getDyadChatSummaryTag,
+  getShinsoWriteTags,
+  getShinsoRenameTags,
+  getShinsoDeleteTags,
+  getShinsoExecuteSqlTags,
+  getShinsoAddDependencyTags,
+  getShinsoChatSummaryTag,
   getDyadCommandTags,
   getDyadSearchReplaceTags,
-} from "../utils/dyad_tag_parser";
+} from "../utils/shinso_tag_parser";
 import log from "electron-log";
 import { isServerFunction } from "../../supabase_admin/supabase_utils";
 import {
@@ -151,15 +151,15 @@ const getProposalHandler = async (
         );
         const messageContent = latestAssistantMessage.content;
 
-        const proposalTitle = getDyadChatSummaryTag(messageContent);
+        const proposalTitle = getShinsoChatSummaryTag(messageContent);
 
-        const proposalWriteFiles = getDyadWriteTags(messageContent);
+        const proposalWriteFiles = getShinsoWriteTags(messageContent);
+        const proposalRenameFiles = getShinsoRenameTags(messageContent);
+        const proposalDeleteFiles = getShinsoDeleteTags(messageContent);
+        const proposalExecuteSqlQueries = getShinsoExecuteSqlTags(messageContent);
+        const packagesAdded = getShinsoAddDependencyTags(messageContent);
         const proposalSearchReplaceFiles =
           getDyadSearchReplaceTags(messageContent);
-        const proposalRenameFiles = getDyadRenameTags(messageContent);
-        const proposalDeleteFiles = getDyadDeleteTags(messageContent);
-        const proposalExecuteSqlQueries = getDyadExecuteSqlTags(messageContent);
-        const packagesAdded = getDyadAddDependencyTags(messageContent);
 
         const filesChanged = [
           ...proposalWriteFiles
@@ -226,7 +226,7 @@ const getProposalHandler = async (
       }
       const actions: ActionProposal["actions"] = [];
       if (latestAssistantMessage?.content) {
-        const writeTags = getDyadWriteTags(latestAssistantMessage.content);
+        const writeTags = getShinsoWriteTags(latestAssistantMessage.content);
         const refactorTarget = writeTags.reduce(
           (largest, tag) => {
             const lineCount = tag.content.split("\n").length;
@@ -364,7 +364,7 @@ const approveProposalHandler = async (
   }
 
   // 2. Process the actions defined in the message content
-  const chatSummary = getDyadChatSummaryTag(messageToApprove.content);
+  const chatSummary = getShinsoChatSummaryTag(messageToApprove.content);
   const processResult = await processFullResponseActions(
     messageToApprove.content,
     chatId,

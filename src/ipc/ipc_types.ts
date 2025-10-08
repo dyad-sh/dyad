@@ -60,6 +60,7 @@ export interface ChatProblemsEvent {
 
 export interface CreateAppParams {
   name: string;
+  isContractProject?: boolean;
 }
 
 export interface CreateAppResult {

@@ -4,37 +4,29 @@ import { useState } from "react";
 import {
   ChevronsDownUp,
   ChevronsUpDown,
+  Database,
   Loader,
   CircleX,
-  Rabbit,
 } from "lucide-react";
 import { CodeHighlight } from "./CodeHighlight";
 import { CustomTagState } from "./stateTypes";
 
-interface DyadEditProps {
+interface ShinsoExecuteSqlProps {
   children?: ReactNode;
   node?: any;
-  path?: string;
   description?: string;
 }
 
-export const DyadEdit: React.FC<DyadEditProps> = ({
+export const ShinsoExecuteSql: React.FC<ShinsoExecuteSqlProps> = ({
   children,
   node,
-  path: pathProp,
-  description: descriptionProp,
+  description,
 }) => {
   const [isContentVisible, setIsContentVisible] = useState(false);
-
-  // Use props directly if provided, otherwise extract from node
-  const path = pathProp || node?.properties?.path || "";
-  const description = descriptionProp || node?.properties?.description || "";
   const state = node?.properties?.state as CustomTagState;
   const inProgress = state === "pending";
   const aborted = state === "aborted";
-
-  // Extract filename from path
-  const fileName = path ? path.split("/").pop() : "";
+  const queryDescription = description || node?.properties?.description;
 
   return (
     <div
@@ -49,21 +41,17 @@ export const DyadEdit: React.FC<DyadEditProps> = ({
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="flex items-center">
-            <Rabbit size={16} />
-            <span className="bg-blue-500 text-white text-xs px-1.5 py-0.5 rounded ml-1 font-medium">
-              Turbo Edit
+          <Database size={16} />
+          <span className="text-gray-700 dark:text-gray-300 font-medium text-sm">
+            <span className="font-bold mr-2 outline-2 outline-gray-200 dark:outline-gray-700 bg-gray-100 dark:bg-gray-800 rounded-md px-1">
+              SQL
             </span>
-          </div>
-          {fileName && (
-            <span className="text-gray-700 dark:text-gray-300 font-medium text-sm">
-              {fileName}
-            </span>
-          )}
+            {queryDescription}
+          </span>
           {inProgress && (
             <div className="flex items-center text-amber-600 text-xs">
               <Loader size={14} className="mr-1 animate-spin" />
-              <span>Editing...</span>
+              <span>Executing...</span>
             </div>
           )}
           {aborted && (
@@ -87,25 +75,9 @@ export const DyadEdit: React.FC<DyadEditProps> = ({
           )}
         </div>
       </div>
-      {path && (
-        <div className="text-xs text-gray-500 dark:text-gray-400 font-medium mb-1">
-          {path}
-        </div>
-      )}
-      {description && (
-        <div className="text-sm text-gray-600 dark:text-gray-300">
-          <span className="font-medium">Summary: </span>
-          {description}
-        </div>
-      )}
       {isContentVisible && (
-        <div
-          className="text-xs cursor-text"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <CodeHighlight className="language-typescript">
-            {children}
-          </CodeHighlight>
+        <div className="text-xs">
+          <CodeHighlight className="language-sql">{children}</CodeHighlight>
         </div>
       )}
     </div>

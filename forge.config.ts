@@ -95,8 +95,8 @@ const config: ForgeConfig = {
   packagerConfig: {
     protocols: [
       {
-        name: "Dyad",
-        schemes: ["dyad"],
+        name: "Shinsō",
+        schemes: ["shinso"],
       },
     ],
     icon: "./assets/icon/logo",
@@ -150,7 +150,7 @@ const config: ForgeConfig = {
     new MakerRpm({}),
     new MakerDeb({
       options: {
-        mimeType: ["x-scheme-handler/dyad"],
+        mimeType: ["x-scheme-handler/shinso"],
       },
     }),
   ],
@@ -159,8 +159,8 @@ const config: ForgeConfig = {
       name: "@electron-forge/publisher-github",
       config: {
         repository: {
-          owner: "dyad-sh",
-          name: "dyad",
+          owner: "shinso-sh",
+          name: "shinso",
         },
         draft: true,
         force: true,

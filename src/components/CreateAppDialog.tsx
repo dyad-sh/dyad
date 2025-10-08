@@ -52,21 +52,69 @@ export function CreateAppDialog({
 
     setIsSubmitting(true);
     try {
-      const result = await createApp({ name: appName.trim() });
+      const result = await createApp({
+        name: appName.trim(),
+        isContractProject: template?.isContractTranslation,
+      });
+
       if (template && NEON_TEMPLATE_IDS.has(template.id)) {
         await neonTemplateHook({
           appId: result.app.id,
           appName: result.app.name,
         });
       }
+
       setSelectedAppId(result.app.id);
+
       // Navigate to the new app's first chat
       router.navigate({
         to: "/chat",
         search: { id: result.chatId },
       });
+
       setAppName("");
       onOpenChange(false);
+
+      // If it's a contract translation, fetch the Solidity code and send translation request
+      // Do this AFTER navigation so the user sees the chat page
+      if (template?.isContractTranslation && template.contractSourceUrl) {
+        try {
+          console.log("Fetching contract from:", template.contractSourceUrl);
+          const response = await fetch(template.contractSourceUrl);
+
+          if (!response.ok) {
+            throw new Error(`Failed to fetch contract: ${response.status} ${response.statusText}`);
+          }
+
+          const solidityCode = await response.text();
+          console.log("Fetched Solidity code, length:", solidityCode.length);
+
+          const translationPrompt = `Please translate this Solidity ${template.title} contract to Sui Move:
+
+\`\`\`solidity
+${solidityCode}
+\`\`\`
+
+Please create a complete Move package with:
+1. Move.toml manifest in the contract directory (src/${template.id}/)
+2. The translated Move module in sources/ subdirectory
+3. Preserve all functionality while adapting to Sui's object model`;
+
+          console.log("Sending translation prompt to chat:", result.chatId);
+
+          // Send the translation message to the chat
+          const { IpcClient } = await import("@/ipc/ipc_client");
+          await IpcClient.getInstance().startChatStream({
+            chatId: result.chatId,
+            message: translationPrompt,
+          });
+
+          console.log("Translation stream started successfully");
+        } catch (error) {
+          console.error("Failed to fetch or send Solidity contract:", error);
+          showError(`Failed to initiate contract translation: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
     } catch (error) {
       showError(error as any);
       // Error is already handled by createApp hook or shown above

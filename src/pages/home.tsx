@@ -1,7 +1,7 @@
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useAtom, useSetAtom } from "jotai";
 import { homeChatInputValueAtom } from "../atoms/chatAtoms";
-import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { selectedAppIdAtom, homeModeAtom } from "@/atoms/appAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
 import { generateCuteAppName } from "@/lib/utils";
 import { useLoadApps } from "@/hooks/useLoadApps";
@@ -31,13 +31,18 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ForceCloseDialog } from "@/components/ForceCloseDialog";
 
 import type { FileAttachment } from "@/ipc/ipc_types";
-import { NEON_TEMPLATE_IDS } from "@/shared/templates";
+import { NEON_TEMPLATE_IDS, contractTranslationTemplates } from "@/shared/templates";
 import { neonTemplateHook } from "@/client_logic/template_hook";
 import { ProBanner } from "@/components/ProBanner";
+import { CodeTranslationCard } from "@/components/CodeTranslationCard";
+import { SMART_CONTRACT_TRANSLATION_PROMPT } from "@/prompts/smart_contract_prompt";
+import { CreateAppDialog } from "@/components/CreateAppDialog";
 
 // Adding an export for attachments
 export interface HomeSubmitOptions {
   attachments?: FileAttachment[];
+  customName?: string;
+  isContractProject?: boolean;
 }
 
 export default function HomePage() {
@@ -69,6 +74,9 @@ export default function HomePage() {
     return () => unsubscribe();
   }, []);
 
+  const [mode] = useAtom(homeModeAtom);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | undefined>();
   useEffect(() => {
     const updateLastVersionLaunched = async () => {
       if (
@@ -132,6 +140,39 @@ export default function HomePage() {
     }
   }, [appId, navigate]);
 
+  const handleTranslate = async (code: string, attachments: any[], projectName: string) => {
+    // Create a specialized prompt for smart contract translation
+    const translationPrompt = `${SMART_CONTRACT_TRANSLATION_PROMPT}
+
+---
+
+## Contract to Translate:
+
+${code}
+
+---
+
+Please translate this Solidity contract to Sui Move following the guidelines above. Provide a complete, working Move module with inline comments explaining key decisions.`;
+
+    // Extract contract name from code if no project name provided
+    const extractedName = code.match(/contract\s+(\w+)/)?.[1]?.toLowerCase();
+    const finalName = projectName.trim() || (extractedName ? `${extractedName}-move` : 'translated-move');
+
+    console.log('handleTranslate - projectName:', projectName);
+    console.log('handleTranslate - extractedName:', extractedName);
+    console.log('handleTranslate - finalName:', finalName);
+
+    // Set input value and submit directly
+    setInputValue(translationPrompt);
+
+    // Submit immediately with the translation prompt
+    await handleSubmit({
+      attachments,
+      customName: finalName,
+      isContractProject: true
+    });
+  };
+
   const handleSubmit = async (options?: HomeSubmitOptions) => {
     const attachments = options?.attachments || [];
 
@@ -140,8 +181,16 @@ export default function HomePage() {
     try {
       setIsLoading(true);
       // Create the chat and navigate
+      // Use custom name if provided, otherwise generate cute name
+      const appName = options?.customName || generateCuteAppName();
+
+      console.log('handleSubmit - options:', options);
+      console.log('handleSubmit - appName:', appName);
+      console.log('handleSubmit - isContractProject:', options?.isContractProject);
+
       const result = await IpcClient.getInstance().createApp({
-        name: generateCuteAppName(),
+        name: appName,
+        isContractProject: options?.isContractProject,
       });
       if (
         settings?.selectedTemplateId &&
@@ -210,18 +259,82 @@ export default function HomePage() {
       />
       <SetupBanner />
 
-      <div className="w-full">
-        <ImportAppButton />
-        <HomeChatInput onSubmit={handleSubmit} />
+      <div className="w-full space-y-6">
+        {mode === "translate" ? (
+          /* Code Translation Section */
+          <>
+            <CodeTranslationCard onTranslate={handleTranslate} />
 
-        <div className="flex flex-col gap-4 mt-2">
-          <div className="flex flex-wrap gap-4 justify-center">
-            {randomPrompts.map((item, index) => (
+            {/* ERC Template Quick Access */}
+            <div className="mt-8">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 text-center">
+                Or start with a standard ERC contract
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {contractTranslationTemplates.map((template) => (
+                  <button
+                    key={template.id}
+                    onClick={() => {
+                      setSelectedTemplateId(template.id);
+                      setIsCreateDialogOpen(true);
+                    }}
+                    className="flex flex-col items-center gap-3 p-6 rounded-xl border border-gray-200
+                               bg-gradient-to-br from-white to-gray-50
+                               transition-all duration-200
+                               hover:shadow-lg hover:border-primary/50 hover:scale-[1.02]
+                               active:scale-[0.98]
+                               dark:from-gray-800 dark:to-gray-900 dark:border-gray-700
+                               dark:hover:border-primary/50"
+                  >
+                    <div className="text-4xl">{template.contractIcon}</div>
+                    <div className="text-center">
+                      <div className="font-semibold text-gray-900 dark:text-white mb-1">
+                        {template.title}
+                      </div>
+                      <div className="text-sm text-gray-600 dark:text-gray-400">
+                        {template.description}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* App Generation Section */}
+            <ImportAppButton />
+            <HomeChatInput onSubmit={handleSubmit} />
+
+            <div className="flex flex-col gap-4 mt-2">
+              <div className="flex flex-wrap gap-4 justify-center">
+                {randomPrompts.map((item, index) => (
+                  <button
+                    type="button"
+                    key={index}
+                    onClick={() => setInputValue(`Build me a ${item.label}`)}
+                    className="flex items-center gap-3 px-4 py-2 rounded-xl border border-gray-200
+                               bg-white/50 backdrop-blur-sm
+                               transition-all duration-200
+                               hover:bg-white hover:shadow-md hover:border-gray-300
+                               active:scale-[0.98]
+                               dark:bg-gray-800/50 dark:border-gray-700
+                               dark:hover:bg-gray-800 dark:hover:border-gray-600"
+                  >
+                    <span className="text-gray-700 dark:text-gray-300">
+                      {item.icon}
+                    </span>
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {item.label}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
               <button
                 type="button"
-                key={index}
-                onClick={() => setInputValue(`Build me a ${item.label}`)}
-                className="flex items-center gap-3 px-4 py-2 rounded-xl border border-gray-200
+                onClick={() => setRandomPrompts(getRandomPrompts())}
+                className="self-center flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-200
                            bg-white/50 backdrop-blur-sm
                            transition-all duration-200
                            hover:bg-white hover:shadow-md hover:border-gray-300
@@ -229,46 +342,27 @@ export default function HomePage() {
                            dark:bg-gray-800/50 dark:border-gray-700
                            dark:hover:bg-gray-800 dark:hover:border-gray-600"
               >
-                <span className="text-gray-700 dark:text-gray-300">
-                  {item.icon}
-                </span>
+                <svg
+                  className="w-5 h-5 text-gray-700 dark:text-gray-300"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {item.label}
+                  More ideas
                 </span>
               </button>
-            ))}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setRandomPrompts(getRandomPrompts())}
-            className="self-center flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-200
-                       bg-white/50 backdrop-blur-sm
-                       transition-all duration-200
-                       hover:bg-white hover:shadow-md hover:border-gray-300
-                       active:scale-[0.98]
-                       dark:bg-gray-800/50 dark:border-gray-700
-                       dark:hover:bg-gray-800 dark:hover:border-gray-600"
-          >
-            <svg
-              className="w-5 h-5 text-gray-700 dark:text-gray-300"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-              />
-            </svg>
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              More ideas
-            </span>
-          </button>
-        </div>
-        <ProBanner />
+            </div>
+            <ProBanner />
+          </>
+        )}
       </div>
       <PrivacyBanner />
 
@@ -304,6 +398,13 @@ export default function HomePage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* ERC Template Creation Dialog */}
+      <CreateAppDialog
+        open={isCreateDialogOpen}
+        onOpenChange={setIsCreateDialogOpen}
+        template={contractTranslationTemplates.find((t) => t.id === selectedTemplateId)}
+      />
     </div>
   );
 }

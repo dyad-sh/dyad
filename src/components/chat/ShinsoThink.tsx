@@ -1,20 +1,26 @@
-import React, { useEffect, useState } from "react";
-import { ChevronDown, ChevronUp, Globe, Loader } from "lucide-react";
-import { VanillaMarkdownParser } from "./DyadMarkdownParser";
+import React, { useState, useEffect } from "react";
+import { Brain, ChevronDown, ChevronUp, Loader } from "lucide-react";
+import { VanillaMarkdownParser } from "./ShinsoMarkdownParser";
 import { CustomTagState } from "./stateTypes";
+import { ShinsoTokenSavings } from "./ShinsoTokenSavings";
 
-interface DyadWebSearchResultProps {
+interface ShinsoThinkProps {
   node?: any;
   children?: React.ReactNode;
 }
 
-export const DyadWebSearchResult: React.FC<DyadWebSearchResultProps> = ({
-  children,
-  node,
-}) => {
+export const ShinsoThink: React.FC<ShinsoThinkProps> = ({ children, node }) => {
   const state = node?.properties?.state as CustomTagState;
   const inProgress = state === "pending";
   const [isExpanded, setIsExpanded] = useState(inProgress);
+
+  // Check if content matches token savings format
+  const tokenSavingsMatch =
+    typeof children === "string"
+      ? children.match(
+          /^dyad-token-savings\?original-tokens=([0-9.]+)&smart-context-tokens=([0-9.]+)$/,
+        )
+      : null;
 
   // Collapse when transitioning from in-progress to not-in-progress
   useEffect(() => {
@@ -23,10 +29,22 @@ export const DyadWebSearchResult: React.FC<DyadWebSearchResultProps> = ({
     }
   }, [inProgress]);
 
+  // If it's token savings format, render DyadTokenSavings component
+  if (tokenSavingsMatch) {
+    const originalTokens = parseFloat(tokenSavingsMatch[1]);
+    const smartContextTokens = parseFloat(tokenSavingsMatch[2]);
+    return (
+      <ShinsoTokenSavings
+        originalTokens={originalTokens}
+        smartContextTokens={smartContextTokens}
+      />
+    );
+  }
+
   return (
     <div
       className={`relative bg-(--background-lightest) dark:bg-zinc-900 hover:bg-(--background-lighter) rounded-lg px-4 py-2 border my-2 cursor-pointer ${
-        inProgress ? "border-blue-500" : "border-border"
+        inProgress ? "border-purple-500" : "border-border"
       }`}
       onClick={() => setIsExpanded(!isExpanded)}
       role="button"
@@ -41,13 +59,13 @@ export const DyadWebSearchResult: React.FC<DyadWebSearchResultProps> = ({
     >
       {/* Top-left label badge */}
       <div
-        className="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold text-blue-600 bg-white dark:bg-zinc-900"
+        className="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold text-purple-500 bg-white dark:bg-zinc-900"
         style={{ zIndex: 1 }}
       >
-        <Globe size={16} className="text-blue-600" />
-        <span>Web Search Result</span>
+        <Brain size={16} className="text-purple-500" />
+        <span>Thinking</span>
         {inProgress && (
-          <Loader size={14} className="ml-1 text-blue-600 animate-spin" />
+          <Loader size={14} className="ml-1 text-purple-500 animate-spin" />
         )}
       </div>
 
@@ -62,7 +80,7 @@ export const DyadWebSearchResult: React.FC<DyadWebSearchResultProps> = ({
         style={{
           maxHeight: isExpanded ? "none" : "0px",
           opacity: isExpanded ? 1 : 0,
-          marginBottom: isExpanded ? "0" : "-6px",
+          marginBottom: isExpanded ? "0" : "-6px", // Compensate for padding
         }}
       >
         <div className="px-0 text-sm text-gray-600 dark:text-gray-300">

@@ -2,13 +2,13 @@ import type React from "react";
 import type { ReactNode } from "react";
 import { FileText } from "lucide-react";
 
-interface DyadReadProps {
+interface ShinsoReadProps {
   children?: ReactNode;
   node?: any;
   path?: string;
 }
 
-export const DyadRead: React.FC<DyadReadProps> = ({
+export const ShinsoRead: React.FC<ShinsoReadProps> = ({
   children,
   node,
   path: pathProp,

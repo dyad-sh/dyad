@@ -83,7 +83,7 @@ async function cloneRepo(repoUrl: string): Promise<string> {
       const response = await fetch(apiUrl, {
         method: "GET",
         headers: {
-          "User-Agent": "Dyad", // GitHub API requires this
+          "User-Agent": "Shinsō", // GitHub API requires a User-Agent
           Accept: "application/vnd.github.v3+json",
         },
       });

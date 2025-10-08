@@ -36,8 +36,8 @@ let rememberedOrigin = null; // e.g. "http://localhost:5173"
 /* ---------- optional resources for HTML injection ---------------------- */
 
 let stacktraceJsContent = null;
-let dyadShimContent = null;
-let dyadComponentSelectorClientContent = null;
+let shinsoShimContent = null;
+let shinsoComponentSelectorClientContent = null;
 let dyadScreenshotClientContent = null;
 let htmlToImageContent = null;
 let dyadVisualEditorClientContent = null;
@@ -80,30 +80,30 @@ try {
 }
 
 try {
-  const dyadShimPath = path.join(__dirname, "dyad-shim.js");
-  dyadShimContent = fs.readFileSync(dyadShimPath, "utf-8");
-  parentPort?.postMessage("[proxy-worker] dyad-shim.js loaded.");
+  const shinsoShimPath = path.join(__dirname, "shinso-shim.js");
+  shinsoShimContent = fs.readFileSync(shinsoShimPath, "utf-8");
+  parentPort?.postMessage("[proxy-worker] shinso-shim.js loaded.");
 } catch (error) {
   parentPort?.postMessage(
-    `[proxy-worker] Failed to read dyad-shim.js: ${error.message}`,
+    `[proxy-worker] Failed to read shinso-shim.js: ${error.message}`,
   );
 }
 
 try {
-  const dyadComponentSelectorClientPath = path.join(
+  const shinsoComponentSelectorClientPath = path.join(
     __dirname,
-    "dyad-component-selector-client.js",
+    "shinso-component-selector-client.js",
   );
-  dyadComponentSelectorClientContent = fs.readFileSync(
-    dyadComponentSelectorClientPath,
+  shinsoComponentSelectorClientContent = fs.readFileSync(
+    shinsoComponentSelectorClientPath,
     "utf-8",
   );
   parentPort?.postMessage(
-    "[proxy-worker] dyad-component-selector-client.js loaded.",
+    "[proxy-worker] shinso-component-selector-client.js loaded.",
   );
 } catch (error) {
   parentPort?.postMessage(
-    `[proxy-worker] Failed to read dyad-component-selector-client.js: ${error.message}`,
+    `[proxy-worker] Failed to read shinso-component-selector-client.js: ${error.message}`,
   );
 }
 
@@ -201,16 +201,16 @@ function injectHTML(buf) {
       );
     }
 
-    if (dyadShimContent) {
-      scripts.push(`<script>${dyadShimContent}</script>`);
+    if (shinsoShimContent) {
+      scripts.push(`<script>${shinsoShimContent}</script>`);
     } else {
       scripts.push(
         '<script>console.warn("[proxy-worker] dyad shim was not injected.");</script>',
       );
     }
   }
-  if (dyadComponentSelectorClientContent) {
-    scripts.push(`<script>${dyadComponentSelectorClientContent}</script>`);
+  if (shinsoComponentSelectorClientContent) {
+    scripts.push(`<script>${shinsoComponentSelectorClientContent}</script>`);
   } else {
     scripts.push(
       '<script>console.warn("[proxy-worker] dyad component selector client was not injected.");</script>',

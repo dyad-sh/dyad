@@ -60,7 +60,7 @@ export const ActionHeader = () => {
   const [indicatorStyle, setIndicatorStyle] = useState({ left: 0, width: 0 });
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const { problemReport } = useCheckProblems(selectedAppId);
-  const { restartApp, refreshAppIframe } = useRunApp();
+  const { restartApp, refreshAppIframe, app } = useRunApp();
 
   const isCompact = windowWidth < 888;
 
@@ -73,6 +73,15 @@ export const ActionHeader = () => {
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
+
+  // Auto-switch to contract mode for contract projects
+  useEffect(() => {
+    if (app?.isContractProject && previewMode === "preview") {
+      setPreviewMode("contract");
+      setIsPreviewOpen(true);
+      console.log("Auto-switched to contract mode for contract project");
+    }
+  }, [app?.isContractProject, previewMode, setPreviewMode, setIsPreviewOpen]);
 
   const selectPanel = (panel: PreviewMode) => {
     if (previewMode === panel) {

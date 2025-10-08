@@ -15,6 +15,8 @@ type AppSearchDialogProps = {
   onOpenChange: (open: boolean) => void;
   onSelectApp: (appId: number) => void;
   allApps: AppSearchResult[];
+  entityName?: string;
+  entityNamePlural?: string;
 };
 
 export function AppSearchDialog({
@@ -22,6 +24,8 @@ export function AppSearchDialog({
   onOpenChange,
   onSelectApp,
   allApps,
+  entityName = "App",
+  entityNamePlural = "Apps",
 }: AppSearchDialogProps) {
   const [searchQuery, setSearchQuery] = useState<string>("");
   function useDebouncedValue<T>(value: T, delay: number): T {
@@ -105,7 +109,7 @@ export function AppSearchDialog({
       filter={commandFilter}
     >
       <CommandInput
-        placeholder="Search apps"
+        placeholder={`Search ${entityNamePlural.toLowerCase()}`}
         value={searchQuery}
         onValueChange={setSearchQuery}
         data-testid="app-search-input"
@@ -114,7 +118,7 @@ export function AppSearchDialog({
         <CommandEmpty data-testid="app-search-empty">
           No results found.
         </CommandEmpty>
-        <CommandGroup heading="Apps" data-testid="app-search-group">
+        <CommandGroup heading={entityNamePlural} data-testid="app-search-group">
           {appsToShow.map((app) => {
             const isSearch = searchQuery.trim() !== "";
             let snippet = null;

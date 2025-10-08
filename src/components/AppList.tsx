@@ -1,7 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { PlusCircle, Search } from "lucide-react";
 import { useAtom, useSetAtom } from "jotai";
-import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { selectedAppIdAtom, homeModeAtom } from "@/atoms/appAtoms";
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -22,8 +22,13 @@ export function AppList({ show }: { show?: boolean }) {
   const { apps, loading, error } = useLoadApps();
   const { toggleFavorite, isLoading: isFavoriteLoading } =
     useAddAppToFavorite();
+  const [mode] = useAtom(homeModeAtom);
   // search dialog state
   const [isSearchDialogOpen, setIsSearchDialogOpen] = useState(false);
+
+  const isTranslateMode = mode === "translate";
+  const entityName = isTranslateMode ? "Contract" : "App";
+  const entityNamePlural = isTranslateMode ? "Contracts" : "Apps";
 
   const allApps = useMemo(
     () =>
@@ -77,7 +82,7 @@ export function AppList({ show }: { show?: boolean }) {
         className="overflow-y-auto h-[calc(100vh-112px)]"
         data-testid="app-list-container"
       >
-        <SidebarGroupLabel>Your Apps</SidebarGroupLabel>
+        <SidebarGroupLabel>Your {entityNamePlural}</SidebarGroupLabel>
         <SidebarGroupContent>
           <div className="flex flex-col space-y-2">
             <Button
@@ -86,7 +91,7 @@ export function AppList({ show }: { show?: boolean }) {
               className="flex items-center justify-start gap-2 mx-2 py-2"
             >
               <PlusCircle size={16} />
-              <span>New App</span>
+              <span>New {entityName}</span>
             </Button>
             <Button
               onClick={() => setIsSearchDialogOpen(!isSearchDialogOpen)}
@@ -95,20 +100,20 @@ export function AppList({ show }: { show?: boolean }) {
               data-testid="search-apps-button"
             >
               <Search size={16} />
-              <span>Search Apps</span>
+              <span>Search {entityNamePlural}</span>
             </Button>
 
             {loading ? (
               <div className="py-2 px-4 text-sm text-gray-500">
-                Loading apps...
+                Loading {entityNamePlural.toLowerCase()}...
               </div>
             ) : error ? (
               <div className="py-2 px-4 text-sm text-red-500">
-                Error loading apps
+                Error loading {entityNamePlural.toLowerCase()}
               </div>
             ) : apps.length === 0 ? (
               <div className="py-2 px-4 text-sm text-gray-500">
-                No apps found
+                No {entityNamePlural.toLowerCase()} found
               </div>
             ) : (
               <SidebarMenu className="space-y-1" data-testid="app-list">
@@ -144,6 +149,8 @@ export function AppList({ show }: { show?: boolean }) {
         onOpenChange={setIsSearchDialogOpen}
         onSelectApp={handleAppClick}
         allApps={allApps}
+        entityName={entityName}
+        entityNamePlural={entityNamePlural}
       />
     </>
   );

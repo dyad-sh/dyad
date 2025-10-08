@@ -266,8 +266,8 @@ export function ModelPicker() {
             {/* Primary providers as submenus */}
             {primaryProviders.map(([providerId, models]) => {
               models = models.filter((model) => {
-                // Don't show free models if Dyad Pro is enabled because
-                // we will use the paid models (in Dyad Pro backend) which
+                // Don't show free models if Shinso pro is enabled because
+                // we will use the paid models (in Shinso pro backend) which
                 // don't have the free limitations.
                 if (
                   isDyadProEnabled(settings) &&

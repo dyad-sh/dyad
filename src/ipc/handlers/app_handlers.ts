@@ -608,20 +608,39 @@ export function registerAppHandlers() {
           fullAppPath,
         });
       } else {
-        // For contract projects, create a minimal structure
+        // For contract projects, create a minimal structure with just src directory
         await fsPromises.mkdir(fullAppPath, { recursive: true });
         await fsPromises.mkdir(path.join(fullAppPath, "src"), { recursive: true });
 
-        // Create a basic package.json for contract projects
-        const packageJson = {
-          name: params.name,
-          version: "0.1.0",
-          private: true,
-          type: "module",
-        };
+        // Create a README for contract projects
+        const readmeContent = `# ${params.name}
+
+Sui Move smart contract project.
+
+## Structure
+
+- \`src/\` - Contains Move package directories
+- Each subdirectory in \`src/\` should contain:
+  - \`Move.toml\` - Package manifest
+  - \`sources/\` - Move source files (.move)
+
+## Building
+
+\`\`\`bash
+cd src/<package-name>
+sui move build
+\`\`\`
+
+## Testing
+
+\`\`\`bash
+cd src/<package-name>
+sui move test
+\`\`\`
+`;
         await fsPromises.writeFile(
-          path.join(fullAppPath, "package.json"),
-          JSON.stringify(packageJson, null, 2),
+          path.join(fullAppPath, "README.md"),
+          readmeContent,
           "utf-8"
         );
       }

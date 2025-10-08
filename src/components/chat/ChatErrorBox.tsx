@@ -26,7 +26,7 @@ export function ChatErrorBox({
             href="https://dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=free-quota-error"
             variant="primary"
           >
-            Access with Dyad Pro
+            Access with Shinso Pro
           </ExternalLink>
         </span>{" "}
         or switch to another model.
@@ -54,7 +54,7 @@ export function ChatErrorBox({
             href="https://dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=rate-limit-error"
             variant="primary"
           >
-            Upgrade to Dyad Pro
+            Upgrade to Shinso Pro
           </ExternalLink>
 
           <ExternalLink href="https://dyad.sh/docs/help/ai-rate-limit">
@@ -69,12 +69,12 @@ export function ChatErrorBox({
     return (
       <ChatInfoContainer onDismiss={onDismiss}>
         <span>
-          Looks like you don't have a valid Dyad Pro key.{" "}
+          Looks like you don't have a valid Shinso Pro key.{" "}
           <ExternalLink
             href="https://dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=invalid-pro-key-error"
             variant="primary"
           >
-            Upgrade to Dyad Pro
+            Upgrade to Shinso Pro
           </ExternalLink>{" "}
           today.
         </span>

@@ -33,6 +33,8 @@ import logo from "../../assets/shinso-logo.png";
 import { OnboardingBanner } from "./home/OnboardingBanner";
 import { showError } from "@/lib/toast";
 import { useSettings } from "@/hooks/useSettings";
+import { homeModeAtom } from "@/atoms/appAtoms";
+import { useAtom } from "jotai";
 
 type NodeInstallStep =
   | "install"
@@ -46,6 +48,8 @@ export function SetupBanner() {
   const [isOnboardingVisible, setIsOnboardingVisible] = useState(true);
   const { isAnyProviderSetup, isLoading: loading } =
     useLanguageModelProviders();
+
+  const [homeMode] = useAtom(homeModeAtom);  
   const [nodeSystemInfo, setNodeSystemInfo] = useState<NodeSystemInfo | null>(
     null,
   );
@@ -150,15 +154,16 @@ export function SetupBanner() {
   if (!isAnyProviderSetup() && !loading) {
     itemsNeedAction.push("ai-setup");
   }
+  const bannerTitle = homeMode === "generate" ? "Build your dream app" : "Translate your code";
 
   if (itemsNeedAction.length === 0) {
     return (
       <h1 className="text-center text-5xl font-bold mb-8 bg-clip-text text-transparent bg-gradient-to-r from-gray-900 to-gray-600 dark:from-gray-100 dark:to-gray-400 tracking-tight">
-        Build your dream app
+        {bannerTitle}
       </h1>
     );
   }
-
+  
   const bannerClasses = cn(
     "w-full mb-6 border rounded-xl shadow-sm overflow-hidden",
     "border-zinc-200 dark:border-zinc-700",

@@ -56,7 +56,7 @@ export function Message({ spans }: MessageConfig) {
 export const TURBO_EDITS_PROMO_MESSAGE: MessageConfig = {
   spans: [
     { type: "text", content: "Tired of waiting on AI?" },
-    { type: "link", content: " Get Dyad Pro", url: "https://dyad.sh/pro#ai" },
+    { type: "link", content: " Get Shinso pro", url: "https://dyad.sh/pro#ai" },
     { type: "text", content: " for faster edits with Turbo Edits." },
   ],
 };

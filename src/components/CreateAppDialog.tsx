@@ -21,6 +21,7 @@ import { useRouter } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 import { neonTemplateHook } from "@/client_logic/template_hook";
 import { showError } from "@/lib/toast";
+import { useStreamChat } from "@/hooks/useStreamChat";
 
 interface CreateAppDialogProps {
   open: boolean;
@@ -39,6 +40,10 @@ export function CreateAppDialog({
   const { createApp } = useCreateApp();
   const { data: nameCheckResult } = useCheckName(appName);
   const router = useRouter();
+  const { streamMessage } = useStreamChat({ hasChatId: false });
+
+  const isContractProject = template?.isContractTranslation;
+  const entityName = isContractProject ? "Contract" : "App";
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -103,10 +108,10 @@ Please create a complete Move package with:
           console.log("Sending translation prompt to chat:", result.chatId);
 
           // Send the translation message to the chat
-          const { IpcClient } = await import("@/ipc/ipc_client");
-          await IpcClient.getInstance().startChatStream({
+          streamMessage({
+            prompt: translationPrompt,
             chatId: result.chatId,
-            message: translationPrompt,
+            attachments: [],
           });
 
           console.log("Translation stream started successfully");
@@ -132,27 +137,30 @@ Please create a complete Move package with:
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Create New App</DialogTitle>
+          <DialogTitle>Create New {entityName}</DialogTitle>
           <DialogDescription>
-            {`Create a new app using the ${template?.title} template.`}
+            {isContractProject
+              ? `Translate the ${template?.title} to Sui Move.`
+              : `Create a new ${entityName.toLowerCase()} using the ${template?.title} template.`
+            }
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit}>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="appName">App Name</Label>
+              <Label htmlFor="appName">{entityName} Name</Label>
               <Input
                 id="appName"
                 value={appName}
                 onChange={(e) => setAppName(e.target.value)}
-                placeholder="Enter app name..."
+                placeholder={`Enter ${entityName.toLowerCase()} name...`}
                 className={nameExists ? "border-red-500" : ""}
                 disabled={isSubmitting}
               />
               {nameExists && (
                 <p className="text-sm text-red-500">
-                  An app with this name already exists
+                  A {entityName.toLowerCase()} with this name already exists
                 </p>
               )}
             </div>
@@ -170,12 +178,12 @@ Please create a complete Move package with:
             <Button
               type="submit"
               disabled={!canSubmit}
-              className="bg-indigo-600 hover:bg-indigo-700"
+              className="bg-primary hover:bg-primary/90"
             >
               {isSubmitting && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
-              {isSubmitting ? "Creating..." : "Create App"}
+              {isSubmitting ? "Creating..." : `Create ${entityName}`}
             </Button>
           </DialogFooter>
         </form>

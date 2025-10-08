@@ -1,4 +1,4 @@
-import { useAtom } from "jotai";
+import { useAtom, useSetAtom } from "jotai";
 import { selectedAppIdAtom, homeModeAtom } from "@/atoms/appAtoms";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useRouter, useLocation } from "@tanstack/react-router";
@@ -63,9 +63,12 @@ export const TitleBar = () => {
 
   // Get selected app name
   const selectedApp = apps.find((app) => app.id === selectedAppId);
+  const [homeMode] = useAtom(homeModeAtom);
+  const isContractProject = selectedApp?.isContractProject;
+  const entityName = isContractProject ? "Contract" : "App";
   const displayText = selectedApp
-    ? `App: ${selectedApp.name}`
-    : "(no app selected)";
+    ? `${entityName}: ${selectedApp.name}`
+    : `(no ${homeMode === "translate" ? "contract" : "app"} selected)`;
 
   const handleAppClick = () => {
     if (selectedApp) {
@@ -76,7 +79,7 @@ export const TitleBar = () => {
   const isDyadPro = !!settings?.providerSettings?.auto?.apiKey?.value;
   const isDyadProEnabled = Boolean(settings?.enableDyadPro);
 
-  const [homeMode, setHomeMode] = useAtom(homeModeAtom);
+  const setHomeMode = useSetAtom(homeModeAtom);
 
   const handleModeChange = (newMode: "generate" | "translate") => {
     setHomeMode(newMode);

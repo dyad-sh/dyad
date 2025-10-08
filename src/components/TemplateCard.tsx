@@ -81,15 +81,15 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
         {template.isContractTranslation ? (
           // Contract translation card with icon header
           <div
-            className={`relative bg-gradient-to-br from-indigo-500 to-purple-600 h-52 flex items-center justify-center transition-opacity duration-300 ${
-              isSelected ? "opacity-75" : "group-hover:opacity-90"
+            className={`relative bg-black border-2 border-primary/20 h-52 flex items-center justify-center transition-all duration-300 ${
+              isSelected ? "border-primary shadow-lg shadow-primary/20" : "group-hover:border-primary/40 group-hover:bg-primary/5"
             }`}
           >
             <div className="text-8xl opacity-90 group-hover:opacity-100 transition-opacity duration-300">
               {template.contractIcon}
             </div>
             {isSelected && (
-              <span className="absolute top-3 right-3 bg-blue-600 text-white text-xs font-bold px-3 py-1.5 rounded-md shadow-lg">
+              <span className="absolute top-3 right-3 bg-primary text-white text-xs font-bold px-3 py-1.5 rounded-md shadow-lg">
                 Selected
               </span>
             )}
@@ -126,8 +126,8 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
               <span
                 className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
                   isSelected
-                    ? "bg-blue-100 text-blue-700 dark:bg-blue-600 dark:text-blue-100"
-                    : "bg-purple-100 text-purple-800 dark:bg-purple-700 dark:text-purple-200"
+                    ? "bg-primary/20 text-primary border border-primary/30"
+                    : "bg-primary/10 text-primary/90 border border-primary/20"
                 }`}
               >
                 Contract
@@ -172,11 +172,11 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
             }}
             size="sm"
             className={cn(
-              "w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold mt-2",
+              "w-full bg-primary hover:bg-primary/90 text-white font-semibold mt-2",
               settings?.selectedTemplateId !== template.id && "invisible",
             )}
           >
-            Create App
+            {template.isContractTranslation ? "Create Contract" : "Create App"}
           </Button>
         </div>
       </div>

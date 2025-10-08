@@ -93,6 +93,27 @@ export function useRunApp() {
         const ipcClient = IpcClient.getInstance();
         console.debug("Running app", appId);
 
+        // Get app details first to check if it's a contract project
+        const app = await ipcClient.getApp(appId);
+        setApp(app);
+
+        // Skip running contract projects - they don't have a dev server
+        if (app.isContractProject) {
+          console.debug("Skipping run for contract project", appId);
+          setAppOutput((prev) => [
+            ...prev,
+            {
+              message: "Contract project loaded. Use the Contract panel to compile and deploy.",
+              type: "stdout",
+              appId,
+              timestamp: Date.now(),
+            },
+          ]);
+          setPreviewErrorMessage(undefined);
+          setLoading(false);
+          return;
+        }
+
         // Clear the URL and add restart message
         setAppUrlObj((prevAppUrlObj) => {
           if (prevAppUrlObj?.appId !== appId) {
@@ -111,8 +132,7 @@ export function useRunApp() {
             appId,
           },
         ]);
-        const app = await ipcClient.getApp(appId);
-        setApp(app);
+
         await ipcClient.runApp(appId, processAppOutput);
         setPreviewErrorMessage(undefined);
       } catch (error) {
@@ -178,6 +198,25 @@ export function useRunApp() {
           removeNodeModules ? "with node_modules cleanup" : "",
         );
 
+        const app = await ipcClient.getApp(appId);
+        setApp(app);
+
+        // Skip restarting contract projects - they don't have a dev server
+        if (app.isContractProject) {
+          console.debug("Skipping restart for contract project", appId);
+          setAppOutput((prev) => [
+            ...prev,
+            {
+              message: "Contract projects don't have a dev server to restart. Use the Contract panel to compile and deploy.",
+              type: "stdout",
+              appId,
+              timestamp: Date.now(),
+            },
+          ]);
+          setLoading(false);
+          return;
+        }
+
         // Clear the URL and add restart message
         setAppUrlObj({ appUrl: null, appId: null, originalUrl: null });
         setConsoleEntries((prev) => [
@@ -191,8 +230,6 @@ export function useRunApp() {
           },
         ]);
 
-        const app = await ipcClient.getApp(appId);
-        setApp(app);
         await ipcClient.restartApp(
           appId,
           (output) => {

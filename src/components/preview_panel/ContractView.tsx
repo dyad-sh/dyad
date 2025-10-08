@@ -1,7 +1,7 @@
 import { FileEditor } from "./FileEditor";
 import { FileTree } from "./FileTree";
 import { useState, useEffect } from "react";
-import { useAtomValue } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import { selectedFileAtom } from "@/atoms/viewAtoms";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,6 +33,7 @@ type DeployStatus = "idle" | "deploying" | "success" | "error";
 
 export const ContractView = ({ loading, app }: ContractViewProps) => {
   const selectedFile = useAtomValue(selectedFileAtom);
+  const setSelectedFile = useSetAtom(selectedFileAtom);
   const { refreshApp } = useLoadApp(app?.id ?? null);
   const [compileStatus, setCompileStatus] = useState<CompileStatus>("idle");
   const [deployStatus, setDeployStatus] = useState<DeployStatus>("idle");
@@ -52,6 +53,19 @@ export const ContractView = ({ loading, app }: ContractViewProps) => {
     };
     loadSuiAddress();
   }, []);
+
+  // Auto-select the first .move file when app loads or files change
+  useEffect(() => {
+    if (!app?.files || loading) return;
+
+    const moveFiles = app.files.filter(f => f.endsWith('.move'));
+
+    // If there are Move files and no file is currently selected, select the first one
+    if (moveFiles.length > 0 && !selectedFile) {
+      setSelectedFile({ path: moveFiles[0] });
+      console.log("Auto-selected Move file:", moveFiles[0]);
+    }
+  }, [app?.files, loading, selectedFile, setSelectedFile]);
 
   const handleCompile = async () => {
     if (!app?.path) return;

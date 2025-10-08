@@ -104,10 +104,10 @@ export function AiAccessBanner() {
           </div>
           <button
             type="button"
-            aria-label="Subscribe to Dyad Pro"
+            aria-label="Subscribe to Shinso pro"
             className="inline-flex items-center rounded-md bg-white/90 text-indigo-800 hover:bg-white shadow px-3 py-1.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-white/50"
           >
-            Get Dyad Pro
+            Get Shinsō Pro
           </button>
         </div>
 
@@ -175,10 +175,10 @@ export function SmartContextBanner() {
           </div>
           <button
             type="button"
-            aria-label="Get Dyad Pro"
+            aria-label="Get Shinso pro"
             className="inline-flex items-center rounded-md bg-white/90 text-emerald-800 hover:bg-white shadow px-3 py-1.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-white/50"
           >
-            Get Dyad Pro
+            Get Shinso pro
           </button>
         </div>
       </div>
@@ -216,10 +216,10 @@ export function TurboBanner() {
           </div>
           <button
             type="button"
-            aria-label="Get Dyad Pro"
+            aria-label="Get Shinso pro"
             className="inline-flex items-center rounded-md bg-white/90 text-rose-800 hover:bg-white shadow px-3 py-1.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-white/50"
           >
-            Get Dyad Pro
+            Get Shinso pro
           </button>
         </div>
       </div>

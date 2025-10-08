@@ -43,6 +43,7 @@ export interface HomeSubmitOptions {
   attachments?: FileAttachment[];
   customName?: string;
   isContractProject?: boolean;
+  prompt?: string;
 }
 
 export default function HomePage() {
@@ -162,21 +163,21 @@ Please translate this Solidity contract to Sui Move following the guidelines abo
     console.log('handleTranslate - extractedName:', extractedName);
     console.log('handleTranslate - finalName:', finalName);
 
-    // Set input value and submit directly
-    setInputValue(translationPrompt);
-
-    // Submit immediately with the translation prompt
+    // Submit immediately with the translation prompt passed directly
     await handleSubmit({
       attachments,
       customName: finalName,
-      isContractProject: true
+      isContractProject: true,
+      prompt: translationPrompt
     });
   };
 
   const handleSubmit = async (options?: HomeSubmitOptions) => {
     const attachments = options?.attachments || [];
+    // Use provided prompt or fall back to inputValue
+    const prompt = options?.prompt || inputValue;
 
-    if (!inputValue.trim() && attachments.length === 0) return;
+    if (!prompt.trim() && attachments.length === 0) return;
 
     try {
       setIsLoading(true);
@@ -204,7 +205,7 @@ Please translate this Solidity contract to Sui Move following the guidelines abo
 
       // Stream the message with attachments
       streamMessage({
-        prompt: inputValue,
+        prompt: prompt,
         chatId: result.chatId,
         attachments,
       });
@@ -278,20 +279,21 @@ Please translate this Solidity contract to Sui Move following the guidelines abo
                       setSelectedTemplateId(template.id);
                       setIsCreateDialogOpen(true);
                     }}
-                    className="flex flex-col items-center gap-3 p-6 rounded-xl border border-gray-200
-                               bg-gradient-to-br from-white to-gray-50
+                    className="relative flex flex-col items-center gap-3 p-6 rounded-xl
+                               border-2 border-primary/20
+                               bg-black
                                transition-all duration-200
-                               hover:shadow-lg hover:border-primary/50 hover:scale-[1.02]
+                               hover:border-primary hover:shadow-lg hover:shadow-primary/20
                                active:scale-[0.98]
-                               dark:from-gray-800 dark:to-gray-900 dark:border-gray-700
-                               dark:hover:border-primary/50"
+                               group"
                   >
-                    <div className="text-4xl">{template.contractIcon}</div>
-                    <div className="text-center">
-                      <div className="font-semibold text-gray-900 dark:text-white mb-1">
+                    <div className="absolute inset-0 bg-primary/5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200"></div>
+                    <div className="relative text-4xl">{template.contractIcon}</div>
+                    <div className="relative text-center">
+                      <div className="font-semibold text-white mb-1">
                         {template.title}
                       </div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">
+                      <div className="text-sm text-gray-400">
                         {template.description}
                       </div>
                     </div>

@@ -13,7 +13,6 @@ import { Button } from "@/components/ui/button";
 import { UserSettings } from "@/lib/schemas";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { showError } from "@/lib/toast";
-// removed popover for paste button per design
 
 // Helper function to mask ENV API keys (move or duplicate if needed elsewhere)
 const maskEnvApiKey = (key: string | undefined): string => {

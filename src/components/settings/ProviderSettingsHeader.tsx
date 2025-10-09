@@ -5,7 +5,6 @@ import {
   ExternalLink,
   GiftIcon,
   KeyRound,
-  Settings as SettingsIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -58,6 +57,17 @@ export function ProviderSettingsHeader({
     }
   };
 
+  const ConfigureButton = (
+    <Button
+      onClick={handleGetApiKeyClick}
+      className="mb-4 cursor-pointer py-5 w-full ring-4 ring-primary/60 shadow-lg shadow-primary/30 border-primary/60"
+    >
+      <KeyRound className="mr-2 h-4 w-4" />
+      {getKeyButtonText({ isConfigured, isDyad })}
+      <ExternalLink className="ml-2 h-4 w-4" />
+    </Button>
+  );
+
   return (
     <>
       <Button
@@ -106,16 +116,7 @@ export function ProviderSettingsHeader({
         !isLoading &&
         (!isConfigured ? (
           <Popover defaultOpen>
-            <PopoverTrigger asChild>
-              <Button
-                onClick={handleGetApiKeyClick}
-                className="mb-4 cursor-pointer py-5 w-full ring-4 ring-primary/60 shadow-lg shadow-primary/30 border-primary/60"
-              >
-                <KeyRound className="mr-2 h-4 w-4" />
-                {getKeyButtonText({ isConfigured, isDyad })}
-                <ExternalLink className="ml-2 h-4 w-4" />
-              </Button>
-            </PopoverTrigger>
+            <PopoverTrigger asChild>{ConfigureButton}</PopoverTrigger>
             <PopoverContent
               side="bottom"
               align="center"
@@ -127,14 +128,7 @@ export function ProviderSettingsHeader({
             </PopoverContent>
           </Popover>
         ) : (
-          <Button
-            onClick={handleGetApiKeyClick}
-            className="mb-4 cursor-pointer py-5 w-full"
-          >
-            <SettingsIcon className="mr-2 h-4 w-4" />
-            {getKeyButtonText({ isConfigured, isDyad })}
-            <ExternalLink className="ml-2 h-4 w-4" />
-          </Button>
+          ConfigureButton
         ))}
     </>
   );

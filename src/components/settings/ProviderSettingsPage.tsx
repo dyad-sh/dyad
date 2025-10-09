@@ -118,11 +118,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
         : isValidUserKey || hasEnvKey; // Configured if either is set
 
   // --- Save Handler ---
-  const handleSaveKey = async () => {
-    if (!apiKeyInput) {
-      setSaveError("API Key cannot be empty.");
-      return;
-    }
+  const handleSaveKey = async (value: string) => {
     setIsSaving(true);
     setSaveError(null);
     try {
@@ -132,7 +128,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
           [provider]: {
             ...settings?.providerSettings?.[provider],
             apiKey: {
-              value: apiKeyInput,
+              value,
             },
           },
         },

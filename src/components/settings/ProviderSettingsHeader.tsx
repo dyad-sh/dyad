@@ -1,5 +1,6 @@
 import {
   ArrowLeft,
+  ArrowUp,
   Circle,
   ExternalLink,
   GiftIcon,
@@ -9,6 +10,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { IpcClient } from "@/ipc/ipc_client";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {} from "react";
 
 interface ProviderSettingsHeaderProps {
   providerDisplayName: string;
@@ -95,21 +102,40 @@ export function ProviderSettingsHeader({
         )}
       </div>
 
-      {providerWebsiteUrl && !isLoading && (
-        <Button
-          onClick={handleGetApiKeyClick}
-          className="mb-4 cursor-pointer py-5 w-full"
-          // variant="primary"
-        >
-          {isConfigured ? (
+      {providerWebsiteUrl &&
+        !isLoading &&
+        (!isConfigured ? (
+          <Popover defaultOpen>
+            <PopoverTrigger asChild>
+              <Button
+                onClick={handleGetApiKeyClick}
+                className="mb-4 cursor-pointer py-5 w-full ring-4 ring-primary/60 shadow-lg shadow-primary/30 border-primary/60"
+              >
+                <KeyRound className="mr-2 h-4 w-4" />
+                {getKeyButtonText({ isConfigured, isDyad })}
+                <ExternalLink className="ml-2 h-4 w-4" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent
+              side="bottom"
+              align="center"
+              className="w-fit py-2 px-3 bg-background text-primary shadow-lg ring-1 ring-primary/40"
+            >
+              <div className="text-sm font-semibold flex items-center gap-1">
+                <ArrowUp /> Create your API key with {providerDisplayName}
+              </div>
+            </PopoverContent>
+          </Popover>
+        ) : (
+          <Button
+            onClick={handleGetApiKeyClick}
+            className="mb-4 cursor-pointer py-5 w-full"
+          >
             <SettingsIcon className="mr-2 h-4 w-4" />
-          ) : (
-            <KeyRound className="mr-2 h-4 w-4" />
-          )}
-          {getKeyButtonText({ isConfigured, isDyad })}
-          <ExternalLink className="ml-2 h-4 w-4" />
-        </Button>
-      )}
+            {getKeyButtonText({ isConfigured, isDyad })}
+            <ExternalLink className="ml-2 h-4 w-4" />
+          </Button>
+        ))}
     </>
   );
 }

@@ -114,9 +114,16 @@ export const VertexProviderSettingSchema = z.object({
 export const ProviderSettingSchema = z.union([
   // Must use more specific type first!
   // Zod uses the first type that matches.
-  AzureProviderSettingSchema,
-  VertexProviderSettingSchema,
-  RegularProviderSettingSchema,
+  //
+  // We use passthrough as a hack because Azure and Vertex
+  // will match together since their required fields overlap.
+  //
+  // In addition, there may be future provider settings that
+  // we may want to preserve (e.g. user downgrades to older version)
+  // so doing passthrough keeps these extra fields.
+  AzureProviderSettingSchema.passthrough(),
+  VertexProviderSettingSchema.passthrough(),
+  RegularProviderSettingSchema.passthrough(),
 ]);
 
 /**

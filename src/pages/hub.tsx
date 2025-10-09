@@ -7,11 +7,14 @@ import { useTemplates } from "@/hooks/useTemplates";
 import { TemplateCard } from "@/components/TemplateCard";
 import { CreateAppDialog } from "@/components/CreateAppDialog";
 import { NeonConnector } from "@/components/NeonConnector";
+import { AddUserTemplateDialog } from "@/components/AddUserTemplateDialog";
+import type { Template } from "@/shared/templates";
 
 const HubPage: React.FC = () => {
   const router = useRouter();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const { templates, isLoading } = useTemplates();
+  const [isAddTemplateDialogOpen, setIsAddTemplateDialogOpen] = useState(false);
+  const { templates, isLoading, refetch } = useTemplates();
   const { settings, updateSettings } = useSettings();
   const selectedTemplateId = settings?.selectedTemplateId;
 
@@ -22,11 +25,26 @@ const HubPage: React.FC = () => {
   const handleCreateApp = () => {
     setIsCreateDialogOpen(true);
   };
+  // Define a virtual template entry for "Import your own template"
+  const importTemplate: Template = {
+    id: "import-template",
+    title: "Import your own template",
+    description:
+      "Bring an existing project into Dyad and use it like any other template.",
+    // Simple placeholder banner image
+    imageUrl:
+      "https://dummyimage.com/800x350/1f2937/ffffff&text=Import+your+own+template",
+    isOfficial: true,
+  };
+
   // Separate templates into official and community
-  const officialTemplates =
-    templates?.filter((template) => template.isOfficial) || [];
+  const officialTemplates = templates?.filter((t) => t.isOfficial) || [];
   const communityTemplates =
     templates?.filter((template) => !template.isOfficial) || [];
+
+  // Derive user templates list by matching settings.userTemplates ids
+  const userTemplateIds = new Set((settings?.userTemplates || []).map((t) => t.id));
+  const yourTemplates: Template[] = templates?.filter((t) => userTemplateIds.has(t.id)) || [];
 
   return (
     <div className="min-h-screen px-8 py-4">
@@ -70,6 +88,39 @@ const HubPage: React.FC = () => {
           </section>
         )}
 
+        {/* Your Templates Section */}
+        <section className="mb-12" aria-label="your-templates">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
+            Your templates
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Import your own template card */}
+            <TemplateCard
+              key={importTemplate.id}
+              template={importTemplate}
+              isSelected={false}
+              onSelect={() => setIsAddTemplateDialogOpen(true)}
+              onCreateApp={handleCreateApp}
+            />
+            {/* User-added templates */}
+            {yourTemplates.map((template) => (
+              <TemplateCard
+                key={template.id}
+                template={template}
+                isSelected={template.id === selectedTemplateId}
+                onSelect={handleTemplateSelect}
+                onCreateApp={handleCreateApp}
+                deletable
+                onDelete={async (templateId) => {
+                  const next = (settings?.userTemplates || []).filter((t) => t.id !== templateId);
+                  await updateSettings({ userTemplates: next });
+                  await refetch();
+                }}
+              />
+            ))}
+          </div>
+        </section>
+
         {/* Community Templates Section */}
         {communityTemplates.length > 0 && (
           <section className="mb-12">
@@ -97,6 +148,16 @@ const HubPage: React.FC = () => {
         open={isCreateDialogOpen}
         onOpenChange={setIsCreateDialogOpen}
         template={templates.find((t) => t.id === settings?.selectedTemplateId)}
+      />
+
+      {/* Add user template dialog triggered by the virtual Import template card */}
+      <AddUserTemplateDialog
+        open={isAddTemplateDialogOpen}
+        onOpenChange={setIsAddTemplateDialogOpen}
+        onAdded={() => {
+          // Refresh template list to include the newly added user template
+          refetch();
+        }}
       />
     </div>
   );

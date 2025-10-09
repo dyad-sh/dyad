@@ -18,6 +18,15 @@ export async function createFromTemplate({
   const settings = readSettings();
   const templateId = settings.selectedTemplateId;
 
+  // If user selected a custom template stored in settings and it's a local folder, copy from it
+  const userTemplate = (settings.userTemplates || []).find(
+    (t) => t.id === templateId,
+  );
+  if (userTemplate && userTemplate.source?.type === "folder") {
+    await copyDirectoryRecursive(userTemplate.source.path, fullAppPath);
+    return;
+  }
+
   if (templateId === "react") {
     await copyDirectoryRecursive(
       path.join(__dirname, "..", "..", "scaffold"),

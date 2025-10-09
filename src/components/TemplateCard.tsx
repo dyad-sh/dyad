@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Trash2 } from "lucide-react";
 import { IpcClient } from "@/ipc/ipc_client";
 import { useSettings } from "@/hooks/useSettings";
 import { CommunityCodeConsentDialog } from "./CommunityCodeConsentDialog";
@@ -13,6 +13,8 @@ interface TemplateCardProps {
   isSelected: boolean;
   onSelect: (templateId: string) => void;
   onCreateApp: () => void;
+  deletable?: boolean;
+  onDelete?: (templateId: string) => void;
 }
 
 export const TemplateCard: React.FC<TemplateCardProps> = ({
@@ -20,6 +22,8 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
   isSelected,
   onSelect,
   onCreateApp,
+  deletable,
+  onDelete,
 }) => {
   const { settings, updateSettings } = useSettings();
   const [showConsentDialog, setShowConsentDialog] = useState(false);
@@ -63,6 +67,13 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
     }
   };
 
+  const handleDeleteClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (deletable && onDelete) {
+      onDelete(template.id);
+    }
+  };
+
   return (
     <>
       <div
@@ -86,6 +97,15 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
               isSelected ? "opacity-75" : ""
             }`}
           />
+          {deletable && (
+            <button
+              title="Delete template"
+              onClick={handleDeleteClick}
+              className="absolute top-3 right-3 bg-red-600/90 hover:bg-red-700 text-white p-1.5 rounded-md shadow focus:outline-none"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
           {isSelected && (
             <span className="absolute top-3 right-3 bg-blue-600 text-white text-xs font-bold px-3 py-1.5 rounded-md shadow-lg">
               Selected

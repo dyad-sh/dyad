@@ -1,4 +1,4 @@
-import { Info, KeyRound, Trash2 } from "lucide-react";
+import { Info, KeyRound, Trash2, Clipboard } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Accordion,
@@ -11,6 +11,8 @@ import { VertexConfiguration } from "./VertexConfiguration";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { UserSettings } from "@/lib/schemas";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
+import { showError } from "@/lib/toast";
 
 // Helper function to mask ENV API keys (move or duplicate if needed elsewhere)
 const maskEnvApiKey = (key: string | undefined): string => {
@@ -29,7 +31,7 @@ interface ApiKeyConfigurationProps {
   saveError: string | null;
   apiKeyInput: string;
   onApiKeyInputChange: (value: string) => void;
-  onSaveKey: () => Promise<void>;
+  onSaveKey: (value: string) => Promise<void>;
   onDeleteKey: () => Promise<void>;
   isDyad: boolean;
   updateSettings: (settings: Partial<UserSettings>) => Promise<UserSettings>;
@@ -144,7 +146,36 @@ export function ApiKeyConfiguration({
                 placeholder={`Enter new ${providerDisplayName} API Key here`}
                 className={`flex-grow ${saveError ? "border-red-500" : ""}`}
               />
-              <Button onClick={onSaveKey} disabled={isSaving || !apiKeyInput}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    onClick={async () => {
+                      try {
+                        const text = await navigator.clipboard.readText();
+                        if (text) {
+                          onSaveKey(text);
+                        }
+                      } catch (error) {
+                        showError("Failed to paste from clipboard");
+                        console.error("Failed to paste from clipboard", error);
+                      }
+                    }}
+                    disabled={isSaving}
+                    variant="outline"
+                    size="icon"
+                    title="Paste from clipboard and save"
+                    aria-label="Paste from clipboard and save"
+                  >
+                    <Clipboard className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Paste from clipboard and save</TooltipContent>
+              </Tooltip>
+
+              <Button
+                onClick={() => onSaveKey(apiKeyInput)}
+                disabled={isSaving || !apiKeyInput}
+              >
                 {isSaving ? "Saving..." : "Save Key"}
               </Button>
             </div>

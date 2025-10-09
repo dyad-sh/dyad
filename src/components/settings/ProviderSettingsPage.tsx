@@ -43,6 +43,14 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
 
   // Find the specific provider data from the fetched list
   const providerData = allProviders?.find((p) => p.id === provider);
+  useEffect(() => {
+    const layoutMainContentContainer = document.getElementById(
+      "layout-main-content-container",
+    );
+    if (layoutMainContentContainer) {
+      layoutMainContentContainer.scrollTo(0, 0);
+    }
+  }, [providerData]);
   const supportsCustomModels =
     providerData?.type === "custom" || providerData?.type === "cloud";
 

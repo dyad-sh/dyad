@@ -208,12 +208,6 @@ export class IpcClient {
             this.chatStreams,
           );
         }
-      } else if (typeof payload === "string") {
-        // Fallback for legacy string errors: broadcast to all and clear
-        for (const [chatId, callbacks] of this.chatStreams.entries()) {
-          callbacks.onError(payload);
-          this.chatStreams.delete(chatId);
-        }
       } else {
         console.error("[IPC] Invalid error data received:", payload);
       }

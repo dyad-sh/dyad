@@ -87,7 +87,7 @@ function ChatActivityList({ onSelect }: { onSelect?: () => void }) {
     };
   }, [recentStreamChatIds]);
 
-  const rows = useMemo(() => chats.slice(0, 10), [chats]);
+  const rows = useMemo(() => chats.slice(0, 30), [chats]);
 
   if (loading) {
     return (

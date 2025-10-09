@@ -50,7 +50,8 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
     if (layoutMainContentContainer) {
       layoutMainContentContainer.scrollTo(0, 0);
     }
-  }, [providerData]);
+  }, [providerData?.id]);
+
   const supportsCustomModels =
     providerData?.type === "custom" || providerData?.type === "cloud";
 

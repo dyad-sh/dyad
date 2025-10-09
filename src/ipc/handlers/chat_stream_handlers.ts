@@ -206,7 +206,8 @@ export function registerChatStreamHandlers() {
   ipcMain.handle("chat:stream", async (event, req: ChatStreamParams) => {
     try {
       const fileUploadsState = FileUploadsState.getInstance();
-
+      fileUploadsState.initialize({ chatId: req.chatId });
+      let dyadRequestId: string | undefined;
       // Create an AbortController for this stream
       const abortController = new AbortController();
       activeStreams.set(req.chatId, abortController);
@@ -383,6 +384,9 @@ ${componentSnippet}
         })
         .returning();
 
+      // Generate requestId early so it can be saved with the message
+      dyadRequestId = uuidv4();
+
       // Add a placeholder assistant message immediately
       const [placeholderAssistantMessage] = await db
         .insert(messages)
@@ -390,6 +394,7 @@ ${componentSnippet}
           chatId: req.chatId,
           role: "assistant",
           content: "", // Start with empty content
+          requestId: dyadRequestId,
         })
         .returning();
 
@@ -412,6 +417,7 @@ ${componentSnippet}
       safeSend(event.sender, "chat:response:chunk", {
         chatId: req.chatId,
         messages: updatedChat.messages,
+        requestId: dyadRequestId,
       });
 
       let fullResponse = "";
@@ -697,7 +703,7 @@ This conversation includes one or more image attachments. When the user uploads 
             } satisfies ModelMessage,
           ];
         }
-
+        // dyadRequestId already generated earlier when creating assistant message
         const simpleStreamText = async ({
           chatMessages,
           modelClient,
@@ -711,7 +717,6 @@ This conversation includes one or more image attachments. When the user uploads 
           systemPromptOverride?: string;
           dyadDisableFiles?: boolean;
         }) => {
-          const dyadRequestId = uuidv4();
           if (isEngineEnabled) {
             logger.log(
               "sending AI request to engine with request id:",
@@ -784,6 +789,9 @@ This conversation includes one or more image attachments. When the user uploads 
             system: systemPromptOverride,
             tools,
             messages: chatMessages.filter((m) => m.content),
+            requestIdPrefix: isEngineEnabled
+              ? `[Request ID: ${dyadRequestId}] `
+              : "",
             onError: (error: any) => {
               logger.error("Error streaming text:", error);
               let errorMessage = (error as any)?.error?.message;
@@ -851,6 +859,7 @@ This conversation includes one or more image attachments. When the user uploads 
           safeSend(event.sender, "chat:response:chunk", {
             chatId: req.chatId,
             messages: currentMessages,
+            requestId: dyadRequestId,
           });
           return fullResponse;
         };
@@ -1154,6 +1163,7 @@ ${problemReport.problems
           safeSend(event.sender, "chat:response:chunk", {
             chatId: req.chatId,
             messages: chat!.messages,
+            requestId: dyadRequestId,
           });
 
           if (status.error) {
@@ -1169,11 +1179,13 @@ ${problemReport.problems
             updatedFiles: status.updatedFiles ?? false,
             extraFiles: status.extraFiles,
             extraFilesError: status.extraFilesError,
+            requestId: dyadRequestId,
           } satisfies ChatResponseEnd);
         } else {
           safeSend(event.sender, "chat:response:end", {
             chatId: req.chatId,
             updatedFiles: false,
+            requestId: dyadRequestId,
           } satisfies ChatResponseEnd);
         }
       }
@@ -1232,6 +1244,7 @@ ${problemReport.problems
     safeSend(event.sender, "chat:response:end", {
       chatId,
       updatedFiles: false,
+      requestId: undefined, // No requestId available during cancellation
     } satisfies ChatResponseEnd);
 
     // Clean up uploads state for this chat

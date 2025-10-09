@@ -119,6 +119,10 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
 
   // --- Save Handler ---
   const handleSaveKey = async (value: string) => {
+    if (!value.trim()) {
+      setSaveError("API Key cannot be empty.");
+      return;
+    }
     setIsSaving(true);
     setSaveError(null);
     try {

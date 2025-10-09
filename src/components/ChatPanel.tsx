@@ -11,6 +11,8 @@ import { MessagesList } from "./chat/MessagesList";
 import { ChatInput } from "./chat/ChatInput";
 import { VersionPane } from "./chat/VersionPane";
 import { ChatError } from "./chat/ChatError";
+import { Button } from "@/components/ui/button";
+import { ArrowDown } from "lucide-react";
 
 interface ChatPanelProps {
   chatId?: number;
@@ -35,21 +37,44 @@ export function ChatPanel({
 
   // Scroll-related properties
   const [isUserScrolling, setIsUserScrolling] = useState(false);
+  const [showScrollButton, setShowScrollButton] = useState(false);
   const userScrollTimeoutRef = useRef<number | null>(null);
   const lastScrollTopRef = useRef<number>(0);
-
   const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
     messagesEndRef.current?.scrollIntoView({ behavior });
   };
 
-  const handleScroll = () => {
+  const handleScrollButtonClick = () => {
+    if (!messagesContainerRef.current) return;
+
+    scrollToBottom("smooth");
+  };
+
+  const getDistanceFromBottom = () => {
+    if (!messagesContainerRef.current) return 0;
+    const container = messagesContainerRef.current;
+    return (
+      container.scrollHeight - (container.scrollTop + container.clientHeight)
+    );
+  };
+
+  const isNearBottom = (threshold: number = 100) => {
+    return getDistanceFromBottom() <= threshold;
+  };
+
+  const scrollAwayThreshold = 150; // pixels from bottom to consider "scrolled away"
+
+  const handleScroll = useCallback(() => {
     if (!messagesContainerRef.current) return;
 
     const container = messagesContainerRef.current;
-    const currentScrollTop = container.scrollTop;
+    const distanceFromBottom =
+      container.scrollHeight - (container.scrollTop + container.clientHeight);
 
-    if (currentScrollTop < lastScrollTopRef.current) {
+    // User has scrolled away from bottom
+    if (distanceFromBottom > scrollAwayThreshold) {
       setIsUserScrolling(true);
+      setShowScrollButton(true);
 
       if (userScrollTimeoutRef.current) {
         window.clearTimeout(userScrollTimeoutRef.current);
@@ -57,15 +82,18 @@ export function ChatPanel({
 
       userScrollTimeoutRef.current = window.setTimeout(() => {
         setIsUserScrolling(false);
-      }, 1000);
+      }, 2000); // Increased timeout to 2 seconds
+    } else {
+      // User is near bottom
+      setIsUserScrolling(false);
+      setShowScrollButton(false);
     }
-
-    lastScrollTopRef.current = currentScrollTop;
-  };
+    lastScrollTopRef.current = container.scrollTop;
+  }, []);
 
   useEffect(() => {
     const streamCount = chatId ? (streamCountById.get(chatId) ?? 0) : 0;
-    console.log("streamCount", streamCount);
+    console.log("streamCount - scrolling to bottom", streamCount);
     scrollToBottom();
   }, [chatId, chatId ? (streamCountById.get(chatId) ?? 0) : 0]);
 
@@ -83,7 +111,7 @@ export function ChatPanel({
         window.clearTimeout(userScrollTimeoutRef.current);
       }
     };
-  }, []);
+  }, [handleScroll]);
 
   const fetchChatMessages = useCallback(async () => {
     if (!chatId) {
@@ -110,13 +138,8 @@ export function ChatPanel({
       messagesContainerRef.current &&
       messages.length > 0
     ) {
-      const { scrollTop, clientHeight, scrollHeight } =
-        messagesContainerRef.current;
-      const threshold = 280;
-      const isNearBottom =
-        scrollHeight - (scrollTop + clientHeight) <= threshold;
-
-      if (isNearBottom) {
+      // Only auto-scroll if user is close to bottom
+      if (isNearBottom(280)) {
         requestAnimationFrame(() => {
           scrollToBottom("instant");
         });
@@ -135,11 +158,29 @@ export function ChatPanel({
       <div className="flex flex-1 overflow-hidden">
         {!isVersionPaneOpen && (
           <div className="flex-1 flex flex-col min-w-0">
-            <MessagesList
-              messages={messages}
-              messagesEndRef={messagesEndRef}
-              ref={messagesContainerRef}
-            />
+            <div className="flex-1 relative overflow-hidden">
+              <MessagesList
+                messages={messages}
+                messagesEndRef={messagesEndRef}
+                ref={messagesContainerRef}
+              />
+
+              {/* Scroll to bottom button */}
+              {showScrollButton && (
+                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10">
+                  <Button
+                    onClick={handleScrollButtonClick}
+                    size="icon"
+                    className="rounded-full shadow-lg hover:shadow-xl transition-all border border-border/50 backdrop-blur-sm bg-background/95 hover:bg-accent"
+                    variant="outline"
+                    title={"Scroll to bottom"}
+                  >
+                    <ArrowDown className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+            </div>
+
             <ChatError error={error} onDismiss={() => setError(null)} />
             <ChatInput chatId={chatId} />
           </div>

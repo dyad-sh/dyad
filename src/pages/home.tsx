@@ -62,9 +62,15 @@ export default function HomePage() {
         settings &&
         settings.lastShownReleaseNotesVersion !== appVersion
       ) {
+        const shouldShowReleaseNotes = !!settings.lastShownReleaseNotesVersion;
         await updateSettings({
           lastShownReleaseNotesVersion: appVersion,
         });
+        // It feels spammy to show release notes if it's
+        // the users very first time.
+        if (!shouldShowReleaseNotes) {
+          return;
+        }
 
         try {
           const result = await IpcClient.getInstance().doesReleaseNoteExist({

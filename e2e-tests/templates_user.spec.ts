@@ -1,4 +1,5 @@
-import { test, expect } from "./helpers/test_helper";
+import { test } from "./helpers/test_helper";
+import { expect } from "@playwright/test";
 import * as eph from "electron-playwright-helpers";
 import path from "path";
 

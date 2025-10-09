@@ -100,8 +100,9 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
           {deletable && (
             <button
               title="Delete template"
+              aria-label="Delete template"
               onClick={handleDeleteClick}
-              className="absolute top-3 right-3 bg-red-600/90 hover:bg-red-700 text-white p-1.5 rounded-md shadow focus:outline-none"
+              className="absolute top-3 left-3 bg-red-600/90 hover:bg-red-700 text-white p-1.5 rounded-md shadow focus:outline-none"
             >
               <Trash2 className="w-4 h-4" />
             </button>

@@ -9,11 +9,22 @@ import { CreateAppDialog } from "@/components/CreateAppDialog";
 import { NeonConnector } from "@/components/NeonConnector";
 import { AddUserTemplateDialog } from "@/components/AddUserTemplateDialog";
 import type { Template } from "@/shared/templates";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const HubPage: React.FC = () => {
   const router = useRouter();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isAddTemplateDialogOpen, setIsAddTemplateDialogOpen] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const { templates, isLoading, refetch } = useTemplates();
   const { settings, updateSettings } = useSettings();
   const selectedTemplateId = settings?.selectedTemplateId;
@@ -24,6 +35,16 @@ const HubPage: React.FC = () => {
 
   const handleCreateApp = () => {
     setIsCreateDialogOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!pendingDeleteId) return;
+    const next = (settings?.userTemplates || []).filter(
+      (t) => t.id !== pendingDeleteId,
+    );
+    await updateSettings({ userTemplates: next });
+    await refetch();
+    setPendingDeleteId(null);
   };
   // Define a virtual template entry for "Import your own template"
   const importTemplate: Template = {
@@ -37,13 +58,15 @@ const HubPage: React.FC = () => {
     isOfficial: true,
   };
 
-  // Separate templates into official and community
+  // User templates identifiers from settings
+  const userTemplateIds = new Set((settings?.userTemplates || []).map((t) => t.id));
+  // Separate templates into official and community (excluding user templates from community)
   const officialTemplates = templates?.filter((t) => t.isOfficial) || [];
   const communityTemplates =
-    templates?.filter((template) => !template.isOfficial) || [];
-
-  // Derive user templates list by matching settings.userTemplates ids
-  const userTemplateIds = new Set((settings?.userTemplates || []).map((t) => t.id));
+    templates?.filter(
+      (template) => !template.isOfficial && !userTemplateIds.has(template.id),
+    ) || [];
+  // Derive templates that belong to the user (persisted)
   const yourTemplates: Template[] = templates?.filter((t) => userTemplateIds.has(t.id)) || [];
 
   return (
@@ -111,10 +134,8 @@ const HubPage: React.FC = () => {
                 onSelect={handleTemplateSelect}
                 onCreateApp={handleCreateApp}
                 deletable
-                onDelete={async (templateId) => {
-                  const next = (settings?.userTemplates || []).filter((t) => t.id !== templateId);
-                  await updateSettings({ userTemplates: next });
-                  await refetch();
+                onDelete={(templateId) => {
+                  setPendingDeleteId(templateId);
                 }}
               />
             ))}
@@ -159,6 +180,26 @@ const HubPage: React.FC = () => {
           refetch();
         }}
       />
+
+      {/* Confirm delete template dialog */}
+      <AlertDialog open={Boolean(pendingDeleteId)} onOpenChange={(open) => {
+        if (!open) setPendingDeleteId(null);
+      }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete template?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove the template from your Hub. Your original project folder will not be deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDelete} className="bg-red-600 hover:bg-red-700">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

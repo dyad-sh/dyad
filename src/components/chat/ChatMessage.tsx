@@ -218,6 +218,26 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
                 )}
               </div>
             )}
+            {message.requestId && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(message.requestId || "");
+                      }}
+                      className="flex items-center space-x-1 px-1 py-0.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
+                    >
+                      <Copy className="h-3 w-3" />
+                      <span className="text-xs">Request ID</span>
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Copy Request ID: {message.requestId.slice(0, 8)}...
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
           </div>
         )}
       </div>

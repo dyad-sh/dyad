@@ -4,12 +4,13 @@ import type {
   Message,
   FileAttachment,
 } from "@/ipc/ipc_types";
-import { useAtom, useSetAtom } from "jotai";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
-  chatErrorAtom,
-  chatMessagesAtom,
-  chatStreamCountAtom,
-  isStreamingAtom,
+  chatErrorByIdAtom,
+  chatMessagesByIdAtom,
+  chatStreamCountByIdAtom,
+  isStreamingByIdAtom,
+  recentStreamChatIdsAtom,
 } from "@/atoms/chatAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
@@ -35,20 +36,24 @@ export function getRandomNumberId() {
 export function useStreamChat({
   hasChatId = true,
 }: { hasChatId?: boolean } = {}) {
-  const [, setMessages] = useAtom(chatMessagesAtom);
-  const [isStreaming, setIsStreaming] = useAtom(isStreamingAtom);
-  const [error, setError] = useAtom(chatErrorAtom);
+  const setMessagesById = useSetAtom(chatMessagesByIdAtom);
+  const isStreamingById = useAtomValue(isStreamingByIdAtom);
+  const setIsStreamingById = useSetAtom(isStreamingByIdAtom);
+  const errorById = useAtomValue(chatErrorByIdAtom);
+  const setErrorById = useSetAtom(chatErrorByIdAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const [selectedAppId] = useAtom(selectedAppIdAtom);
   const { refreshChats } = useChats(selectedAppId);
   const { refreshApp } = useLoadApp(selectedAppId);
-  const setStreamCount = useSetAtom(chatStreamCountAtom);
+
+  const setStreamCountById = useSetAtom(chatStreamCountByIdAtom);
   const { refreshVersions } = useVersions(selectedAppId);
   const { refreshAppIframe } = useRunApp();
   const { countTokens } = useCountTokens();
   const { refetchUserBudget } = useUserBudgetInfo();
   const { checkProblems } = useCheckProblems(selectedAppId);
   const { settings } = useSettings();
+  const setRecentStreamChatIds = useSetAtom(recentStreamChatIdsAtom);
   const posthog = usePostHog();
   let chatId: number | undefined;
 
@@ -79,8 +84,22 @@ export function useStreamChat({
         return;
       }
 
-      setError(null);
-      setIsStreaming(true);
+      setRecentStreamChatIds((prev) => {
+        const next = new Set(prev);
+        next.add(chatId);
+        return next;
+      });
+
+      setErrorById((prev) => {
+        const next = new Map(prev);
+        next.set(chatId, null);
+        return next;
+      });
+      setIsStreamingById((prev) => {
+        const next = new Map(prev);
+        next.set(chatId, true);
+        return next;
+      });
 
       let hasIncrementedStreamCount = false;
       try {
@@ -91,11 +110,19 @@ export function useStreamChat({
           attachments,
           onUpdate: (updatedMessages: Message[]) => {
             if (!hasIncrementedStreamCount) {
-              setStreamCount((streamCount) => streamCount + 1);
+              setStreamCountById((prev) => {
+                const next = new Map(prev);
+                next.set(chatId, (prev.get(chatId) ?? 0) + 1);
+                return next;
+              });
               hasIncrementedStreamCount = true;
             }
 
-            setMessages(updatedMessages);
+            setMessagesById((prev) => {
+              const next = new Map(prev);
+              next.set(chatId, updatedMessages);
+              return next;
+            });
           },
           onEnd: (response: ChatResponseEnd) => {
             if (response.updatedFiles) {
@@ -117,7 +144,11 @@ export function useStreamChat({
             refetchUserBudget();
 
             // Keep the same as below
-            setIsStreaming(false);
+            setIsStreamingById((prev) => {
+              const next = new Map(prev);
+              next.set(chatId, false);
+              return next;
+            });
             refreshChats();
             refreshApp();
             refreshVersions();
@@ -125,10 +156,18 @@ export function useStreamChat({
           },
           onError: (errorMessage: string) => {
             console.error(`[CHAT] Stream error for ${chatId}:`, errorMessage);
-            setError(errorMessage);
+            setErrorById((prev) => {
+              const next = new Map(prev);
+              next.set(chatId, errorMessage);
+              return next;
+            });
 
             // Keep the same as above
-            setIsStreaming(false);
+            setIsStreamingById((prev) => {
+              const next = new Map(prev);
+              next.set(chatId, false);
+              return next;
+            });
             refreshChats();
             refreshApp();
             refreshVersions();
@@ -137,13 +176,25 @@ export function useStreamChat({
         });
       } catch (error) {
         console.error("[CHAT] Exception during streaming setup:", error);
-        setIsStreaming(false);
-        setError(error instanceof Error ? error.message : String(error));
+        setIsStreamingById((prev) => {
+          const next = new Map(prev);
+          if (chatId) next.set(chatId, false);
+          return next;
+        });
+        setErrorById((prev) => {
+          const next = new Map(prev);
+          if (chatId)
+            next.set(
+              chatId,
+              error instanceof Error ? error.message : String(error),
+            );
+          return next;
+        });
       }
     },
     [
-      setMessages,
-      setIsStreaming,
+      setMessagesById,
+      setIsStreamingById,
       setIsPreviewOpen,
       checkProblems,
       selectedAppId,
@@ -154,9 +205,25 @@ export function useStreamChat({
 
   return {
     streamMessage,
-    isStreaming,
-    error,
-    setError,
-    setIsStreaming,
+    isStreaming:
+      hasChatId && chatId !== undefined
+        ? (isStreamingById.get(chatId) ?? false)
+        : false,
+    error:
+      hasChatId && chatId !== undefined
+        ? (errorById.get(chatId) ?? null)
+        : null,
+    setError: (value: string | null) =>
+      setErrorById((prev) => {
+        const next = new Map(prev);
+        if (chatId !== undefined) next.set(chatId, value);
+        return next;
+      }),
+    setIsStreaming: (value: boolean) =>
+      setIsStreamingById((prev) => {
+        const next = new Map(prev);
+        if (chatId !== undefined) next.set(chatId, value);
+        return next;
+      }),
   };
 }

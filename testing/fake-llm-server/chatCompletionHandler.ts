@@ -6,7 +6,7 @@ import { CANNED_MESSAGE, createStreamChunk } from ".";
 let globalCounter = 0;
 
 export const createChatCompletionHandler =
-  (prefix: string) => (req: Request, res: Response) => {
+  (prefix: string) => async (req: Request, res: Response) => {
     const { stream = false, messages = [] } = req.body;
     console.log("* Received messages", messages);
 
@@ -40,6 +40,14 @@ DYAD_ATTACHMENT_0
 </dyad-write>
 `;
       messageContent += "\n\n" + generateDump(req);
+    }
+
+    if (
+      lastMessage &&
+      typeof lastMessage.content === "string" &&
+      lastMessage.content.includes("[sleep=medium]")
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 10_000));
     }
 
     // TS auto-fix prefixes
@@ -145,7 +153,8 @@ export default Index;
       typeof lastMessage.content === "string" &&
       lastMessage.content.startsWith("tc=")
     ) {
-      const testCaseName = lastMessage.content.slice(3); // Remove "tc=" prefix
+      const testCaseName = lastMessage.content.slice(3).split("[")[0].trim(); // Remove "tc=" prefix
+      console.error(`* Loading test case: ${testCaseName}`);
       const testFilePath = path.join(
         __dirname,
         "..",
@@ -162,7 +171,7 @@ export default Index;
           messageContent = fs.readFileSync(testFilePath, "utf-8");
           console.log(`* Loaded test case: ${testCaseName}`);
         } else {
-          console.log(`* Test case file not found: ${testFilePath}`);
+          console.error(`* Test case file not found: ${testFilePath}`);
           messageContent = `Error: Test case file not found: ${testCaseName}.md`;
         }
       } catch (error) {

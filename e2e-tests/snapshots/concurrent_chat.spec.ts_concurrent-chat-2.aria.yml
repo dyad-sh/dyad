@@ -1,0 +1,8 @@
+- paragraph: tc=chat1 [sleep=medium]
+- paragraph: chat1
+- button:
+  - img
+- img
+- text: less than a minute ago
+- button "Retry":
+  - img

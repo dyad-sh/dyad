@@ -24,7 +24,7 @@ import { useSettings } from "@/hooks/useSettings";
 import { IpcClient } from "@/ipc/ipc_client";
 import {
   chatInputValueAtom,
-  chatMessagesAtom,
+  chatMessagesByIdAtom,
   selectedChatIdAtom,
 } from "@/atoms/chatAtoms";
 import { atom, useAtom, useSetAtom, useAtomValue } from "jotai";
@@ -39,7 +39,7 @@ import {
   FileChange,
   SqlQuery,
 } from "@/lib/schemas";
-import type { Message } from "@/ipc/ipc_types";
+
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import { useRunApp } from "@/hooks/useRunApp";
 import { AutoApproveSwitch } from "../AutoApproveSwitch";
@@ -80,7 +80,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const [showError, setShowError] = useState(true);
   const [isApproving, setIsApproving] = useState(false); // State for approving
   const [isRejecting, setIsRejecting] = useState(false); // State for rejecting
-  const [messages, setMessages] = useAtom<Message[]>(chatMessagesAtom);
+  const messagesById = useAtomValue(chatMessagesByIdAtom);
+  const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const [showTokenBar, setShowTokenBar] = useAtom(showTokenBarAtom);
   const [selectedComponent, setSelectedComponent] = useAtom(
@@ -110,7 +111,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const { proposal, messageId } = proposalResult ?? {};
   useChatModeToggle();
 
-  const lastMessage = messages.at(-1);
+  const lastMessage = (chatId ? (messagesById.get(chatId) ?? []) : []).at(-1);
   const disableSendButton =
     lastMessage?.role === "assistant" &&
     !lastMessage.approvalState &&
@@ -126,12 +127,15 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
   const fetchChatMessages = useCallback(async () => {
     if (!chatId) {
-      setMessages([]);
       return;
     }
     const chat = await IpcClient.getInstance().getChat(chatId);
-    setMessages(chat.messages);
-  }, [chatId, setMessages]);
+    setMessagesById((prev) => {
+      const next = new Map(prev);
+      next.set(chatId, chat.messages);
+      return next;
+    });
+  }, [chatId, setMessagesById]);
 
   const handleSubmit = async () => {
     if (

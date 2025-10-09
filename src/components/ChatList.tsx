@@ -28,11 +28,12 @@ import { RenameChatDialog } from "@/components/chat/RenameChatDialog";
 import { DeleteChatDialog } from "@/components/chat/DeleteChatDialog";
 
 import { ChatSearchDialog } from "./ChatSearchDialog";
+import { useSelectChat } from "@/hooks/useSelectChat";
 
 export function ChatList({ show }: { show?: boolean }) {
   const navigate = useNavigate();
   const [selectedChatId, setSelectedChatId] = useAtom(selectedChatIdAtom);
-  const [selectedAppId, setSelectedAppId] = useAtom(selectedAppIdAtom);
+  const [selectedAppId] = useAtom(selectedAppIdAtom);
   const [, setIsDropdownOpen] = useAtom(dropdownOpenAtom);
 
   const { chats, loading, refreshChats } = useChats(selectedAppId);
@@ -51,6 +52,7 @@ export function ChatList({ show }: { show?: boolean }) {
 
   // search dialog state
   const [isSearchDialogOpen, setIsSearchDialogOpen] = useState(false);
+  const { selectChat } = useSelectChat();
 
   // Update selectedChatId when route changes
   useEffect(() => {
@@ -74,13 +76,8 @@ export function ChatList({ show }: { show?: boolean }) {
     chatId: number;
     appId: number;
   }) => {
-    setSelectedChatId(chatId);
-    setSelectedAppId(appId);
+    selectChat({ chatId, appId });
     setIsSearchDialogOpen(false);
-    navigate({
-      to: "/chat",
-      search: { id: chatId },
-    });
   };
 
   const handleNewChat = async () => {

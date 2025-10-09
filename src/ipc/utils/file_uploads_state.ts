@@ -9,8 +9,8 @@ export interface FileUploadInfo {
 
 export class FileUploadsState {
   private static instance: FileUploadsState;
-  private currentChatId: number | null = null;
-  private fileUploadsMap = new Map<string, FileUploadInfo>();
+  // Map of chatId -> (fileId -> fileInfo)
+  private uploadsByChat = new Map<number, Map<string, FileUploadInfo>>();
 
   private constructor() {}
 
@@ -22,45 +22,54 @@ export class FileUploadsState {
   }
 
   /**
-   * Initialize file uploads state for a specific chat and message
+   * Ensure a map exists for a chatId
    */
-  public initialize({ chatId }: { chatId: number }): void {
-    this.currentChatId = chatId;
-    this.fileUploadsMap.clear();
-    logger.debug(`Initialized file uploads state for chat ${chatId}`);
+  private ensureChat(chatId: number): Map<string, FileUploadInfo> {
+    let map = this.uploadsByChat.get(chatId);
+    if (!map) {
+      map = new Map<string, FileUploadInfo>();
+      this.uploadsByChat.set(chatId, map);
+    }
+    return map;
   }
 
   /**
-   * Add a file upload mapping
+   * Add a file upload mapping to a specific chat
    */
-  public addFileUpload(fileId: string, fileInfo: FileUploadInfo): void {
-    this.fileUploadsMap.set(fileId, fileInfo);
-    logger.log(`Added file upload: ${fileId} -> ${fileInfo.originalName}`);
+  public addFileUpload(
+    { chatId, fileId }: { chatId: number; fileId: string },
+    fileInfo: FileUploadInfo,
+  ): void {
+    const map = this.ensureChat(chatId);
+    map.set(fileId, fileInfo);
+    logger.log(
+      `Added file upload for chat ${chatId}: ${fileId} -> ${fileInfo.originalName}`,
+    );
   }
 
   /**
-   * Get the current file uploads map
+   * Get a copy of the file uploads map for a specific chat
    */
   public getFileUploadsForChat(chatId: number): Map<string, FileUploadInfo> {
-    if (this.currentChatId !== chatId) {
-      return new Map();
-    }
-    return new Map(this.fileUploadsMap);
+    const map = this.uploadsByChat.get(chatId);
+    return new Map(map ?? []);
+  }
+
+  // Removed getCurrentChatId(): no longer applicable in per-chat state
+
+  /**
+   * Clear state for a specific chat
+   */
+  public clear(chatId: number): void {
+    this.uploadsByChat.delete(chatId);
+    logger.debug(`Cleared file uploads state for chat ${chatId}`);
   }
 
   /**
-   * Get current chat ID
+   * Clear all uploads (primarily for tests or full reset)
    */
-  public getCurrentChatId(): number | null {
-    return this.currentChatId;
-  }
-
-  /**
-   * Clear the current state
-   */
-  public clear(): void {
-    this.currentChatId = null;
-    this.fileUploadsMap.clear();
-    logger.debug("Cleared file uploads state");
+  public clearAll(): void {
+    this.uploadsByChat.clear();
+    logger.debug("Cleared all file uploads state");
   }
 }

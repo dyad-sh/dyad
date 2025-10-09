@@ -13,7 +13,7 @@ import { useVersions } from "@/hooks/useVersions";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { showError, showWarning } from "@/lib/toast";
 import { IpcClient } from "@/ipc/ipc_client";
-import { chatMessagesAtom } from "@/atoms/chatAtoms";
+import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useSettings } from "@/hooks/useSettings";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
@@ -31,7 +31,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
     const { streamMessage, isStreaming } = useStreamChat();
     const { isAnyProviderSetup, isProviderSetup } = useLanguageModelProviders();
     const { settings } = useSettings();
-    const setMessages = useSetAtom(chatMessagesAtom);
+    const setMessagesById = useSetAtom(chatMessagesByIdAtom);
     const [isUndoLoading, setIsUndoLoading] = useState(false);
     const [isRetryLoading, setIsRetryLoading] = useState(false);
     const selectedChatId = useAtomValue(selectedChatIdAtom);
@@ -107,7 +107,11 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
                             await IpcClient.getInstance().getChat(
                               selectedChatId,
                             );
-                          setMessages(chat.messages);
+                          setMessagesById((prev) => {
+                            const next = new Map(prev);
+                            next.set(selectedChatId, chat.messages);
+                            return next;
+                          });
                         }
                       } else {
                         const chat =
@@ -120,7 +124,11 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
                             await IpcClient.getInstance().deleteMessages(
                               selectedChatId,
                             );
-                            setMessages([]);
+                            setMessagesById((prev) => {
+                              const next = new Map(prev);
+                              next.set(selectedChatId, []);
+                              return next;
+                            });
                           } catch (err) {
                             showError(err);
                           }

@@ -189,15 +189,33 @@ export class IpcClient {
       }
     });
 
-    this.ipcRenderer.on("chat:response:error", (error) => {
+    this.ipcRenderer.on("chat:response:error", (payload) => {
       console.debug("chat:response:error");
-      if (typeof error === "string") {
-        for (const [chatId, callbacks] of this.chatStreams.entries()) {
+      if (
+        payload &&
+        typeof payload === "object" &&
+        "chatId" in payload &&
+        "error" in payload
+      ) {
+        const { chatId, error } = payload as { chatId: number; error: string };
+        const callbacks = this.chatStreams.get(chatId);
+        if (callbacks) {
           callbacks.onError(error);
+          this.chatStreams.delete(chatId);
+        } else {
+          console.warn(
+            `[IPC] No callbacks found for chat ${chatId} on error`,
+            this.chatStreams,
+          );
+        }
+      } else if (typeof payload === "string") {
+        // Fallback for legacy string errors: broadcast to all and clear
+        for (const [chatId, callbacks] of this.chatStreams.entries()) {
+          callbacks.onError(payload);
           this.chatStreams.delete(chatId);
         }
       } else {
-        console.error("[IPC] Invalid error data received:", error);
+        console.error("[IPC] Invalid error data received:", payload);
       }
     });
 

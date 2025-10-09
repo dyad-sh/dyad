@@ -12,7 +12,7 @@ import { DyadCodebaseContext } from "./DyadCodebaseContext";
 import { DyadThink } from "./DyadThink";
 import { CodeHighlight } from "./CodeHighlight";
 import { useAtomValue } from "jotai";
-import { isStreamingAtom } from "@/atoms/chatAtoms";
+import { isStreamingByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { CustomTagState } from "./stateTypes";
 import { DyadOutput } from "./DyadOutput";
 import { DyadProblemSummary } from "./DyadProblemSummary";
@@ -79,7 +79,10 @@ export const VanillaMarkdownParser = ({ content }: { content: string }) => {
 export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
   content,
 }) => {
-  const isStreaming = useAtomValue(isStreamingAtom);
+  const chatId = useAtomValue(selectedChatIdAtom);
+  const isStreaming = chatId
+    ? (useAtomValue(isStreamingByIdAtom).get(chatId) ?? false)
+    : false;
   // Extract content pieces (markdown and custom tags)
   const contentPieces = useMemo(() => {
     return parseCustomTags(content);

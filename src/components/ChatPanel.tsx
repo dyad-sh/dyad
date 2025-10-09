@@ -1,6 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useAtom, useAtomValue } from "jotai";
-import { chatMessagesAtom, chatStreamCountAtom } from "../atoms/chatAtoms";
+import { useAtomValue, useSetAtom } from "jotai";
+import {
+  chatMessagesByIdAtom,
+  chatStreamCountByIdAtom,
+} from "../atoms/chatAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
 
 import { ChatHeader } from "./chat/ChatHeader";
@@ -20,10 +23,11 @@ export function ChatPanel({
   isPreviewOpen,
   onTogglePreview,
 }: ChatPanelProps) {
-  const [messages, setMessages] = useAtom(chatMessagesAtom);
+  const messagesById = useAtomValue(chatMessagesByIdAtom);
+  const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const [isVersionPaneOpen, setIsVersionPaneOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const streamCount = useAtomValue(chatStreamCountAtom);
+  const streamCountById = useAtomValue(chatStreamCountByIdAtom);
   // Reference to store the processed prompt so we don't submit it twice
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -60,9 +64,10 @@ export function ChatPanel({
   };
 
   useEffect(() => {
+    const streamCount = chatId ? (streamCountById.get(chatId) ?? 0) : 0;
     console.log("streamCount", streamCount);
     scrollToBottom();
-  }, [streamCount]);
+  }, [chatId, streamCountById]);
 
   useEffect(() => {
     const container = messagesContainerRef.current;
@@ -82,17 +87,22 @@ export function ChatPanel({
 
   const fetchChatMessages = useCallback(async () => {
     if (!chatId) {
-      setMessages([]);
+      // no-op when no chat
       return;
     }
     const chat = await IpcClient.getInstance().getChat(chatId);
-    setMessages(chat.messages);
-  }, [chatId, setMessages]);
+    setMessagesById((prev) => {
+      const next = new Map(prev);
+      next.set(chatId, chat.messages);
+      return next;
+    });
+  }, [chatId, setMessagesById]);
 
   useEffect(() => {
     fetchChatMessages();
   }, [fetchChatMessages]);
 
+  const messages = chatId ? (messagesById.get(chatId) ?? []) : [];
   // Auto-scroll effect when messages change
   useEffect(() => {
     if (

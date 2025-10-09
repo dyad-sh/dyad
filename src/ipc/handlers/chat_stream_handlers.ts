@@ -206,7 +206,6 @@ export function registerChatStreamHandlers() {
   ipcMain.handle("chat:stream", async (event, req: ChatStreamParams) => {
     try {
       const fileUploadsState = FileUploadsState.getInstance();
-      fileUploadsState.initialize({ chatId: req.chatId });
 
       // Create an AbortController for this stream
       const abortController = new AbortController();
@@ -288,7 +287,7 @@ export function registerChatStreamHandlers() {
             // For upload-to-codebase, create a unique file ID and store the mapping
             const fileId = `DYAD_ATTACHMENT_${index}`;
 
-            fileUploadsState.addFileUpload(fileId, {
+            fileUploadsState.addFileUpload(req.chatId, fileId, {
               filePath,
               originalName: attachment.name,
             });
@@ -793,10 +792,10 @@ This conversation includes one or more image attachments. When the user uploads 
               const requestIdPrefix = isEngineEnabled
                 ? `[Request ID: ${dyadRequestId}] `
                 : "";
-              event.sender.send(
-                "chat:response:error",
-                `Sorry, there was an error from the AI: ${requestIdPrefix}${message}`,
-              );
+              event.sender.send("chat:response:error", {
+                chatId: req.chatId,
+                error: `Sorry, there was an error from the AI: ${requestIdPrefix}${message}`,
+              });
               // Clean up the abort controller
               activeStreams.delete(req.chatId);
             },
@@ -1143,11 +1142,10 @@ ${problemReport.problems
           });
 
           if (status.error) {
-            safeSend(
-              event.sender,
-              "chat:response:error",
-              `Sorry, there was an error applying the AI's changes: ${status.error}`,
-            );
+            safeSend(event.sender, "chat:response:error", {
+              chatId: req.chatId,
+              error: `Sorry, there was an error applying the AI's changes: ${status.error}`,
+            });
           }
 
           // Signal that the stream has completed
@@ -1190,15 +1188,14 @@ ${problemReport.problems
       return req.chatId;
     } catch (error) {
       logger.error("Error calling LLM:", error);
-      safeSend(
-        event.sender,
-        "chat:response:error",
-        `Sorry, there was an error processing your request: ${error}`,
-      );
+      safeSend(event.sender, "chat:response:error", {
+        chatId: req.chatId,
+        error: `Sorry, there was an error processing your request: ${error}`,
+      });
       // Clean up the abort controller
       activeStreams.delete(req.chatId);
       // Clean up file uploads state on error
-      FileUploadsState.getInstance().clear();
+      FileUploadsState.getInstance().clear(req.chatId);
       return "error";
     }
   });
@@ -1221,6 +1218,11 @@ ${problemReport.problems
       chatId,
       updatedFiles: false,
     } satisfies ChatResponseEnd);
+
+    // Clean up uploads state for this chat
+    try {
+      FileUploadsState.getInstance().clear(chatId);
+    } catch {}
 
     return true;
   });

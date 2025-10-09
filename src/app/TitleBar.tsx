@@ -20,7 +20,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { PreviewHeader } from "@/components/preview_panel/PreviewHeader";
+import { ActionHeader } from "@/components/preview_panel/ActionHeader";
 
 export const TitleBar = () => {
   const [selectedAppId] = useAtom(selectedAppIdAtom);
@@ -97,7 +97,7 @@ export const TitleBar = () => {
         {/* Preview Header */}
         {location.pathname === "/chat" && (
           <div className="flex-1 flex justify-end">
-            <PreviewHeader />
+            <ActionHeader />
           </div>
         )}
 

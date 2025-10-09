@@ -153,7 +153,6 @@ export function ApiKeyConfiguration({
                     onClick={async () => {
                       try {
                         const text = await navigator.clipboard.readText();
-                        console.log("clipboardtext", text);
                         if (text) {
                           onSaveKey(text);
                         }

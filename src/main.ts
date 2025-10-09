@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog } from "electron";
+import { app, BrowserWindow, dialog, Menu } from "electron";
 import * as path from "node:path";
 import { registerIpcHandlers } from "./ipc/ipc_host";
 import dotenv from "dotenv";
@@ -163,6 +163,47 @@ const createWindow = () => {
     // Open the DevTools.
     mainWindow.webContents.openDevTools();
   }
+
+  // Enable native context menu on right-click
+  mainWindow.webContents.on("context-menu", (event, params) => {
+    // Prevent any default behavior and show our own menu
+    event.preventDefault();
+
+    const template: Electron.MenuItemConstructorOptions[] = [];
+
+    if (params.isEditable) {
+      template.push(
+        { role: "undo" },
+        { role: "redo" },
+        { type: "separator" },
+        { role: "cut" },
+        { role: "copy" },
+        { role: "paste" },
+        { role: "delete" },
+        { type: "separator" },
+        { role: "selectAll" },
+      );
+    } else {
+      if (params.selectionText && params.selectionText.length > 0) {
+        template.push({ role: "copy" });
+      }
+      template.push({ role: "selectAll" });
+    }
+
+    if (process.env.NODE_ENV === "development") {
+      template.push(
+        { type: "separator" },
+        {
+          label: "Inspect Element",
+          click: () =>
+            mainWindow?.webContents.inspectElement(params.x, params.y),
+        },
+      );
+    }
+
+    const menu = Menu.buildFromTemplate(template);
+    menu.popup({ window: mainWindow! });
+  });
 };
 
 const gotTheLock = app.requestSingleInstanceLock();

@@ -80,9 +80,7 @@ export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
   content,
 }) => {
   const chatId = useAtomValue(selectedChatIdAtom);
-  const isStreaming = chatId
-    ? (useAtomValue(isStreamingByIdAtom).get(chatId) ?? false)
-    : false;
+  const isStreaming = useAtomValue(isStreamingByIdAtom).get(chatId!) ?? false;
   // Extract content pieces (markdown and custom tags)
   const contentPieces = useMemo(() => {
     return parseCustomTags(content);

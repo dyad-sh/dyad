@@ -37,8 +37,7 @@ export class FileUploadsState {
    * Add a file upload mapping to a specific chat
    */
   public addFileUpload(
-    chatId: number,
-    fileId: string,
+    { chatId, fileId }: { chatId: number; fileId: string },
     fileInfo: FileUploadInfo,
   ): void {
     const map = this.ensureChat(chatId);

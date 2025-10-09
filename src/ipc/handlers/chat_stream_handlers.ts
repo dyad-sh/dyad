@@ -287,10 +287,13 @@ export function registerChatStreamHandlers() {
             // For upload-to-codebase, create a unique file ID and store the mapping
             const fileId = `DYAD_ATTACHMENT_${index}`;
 
-            fileUploadsState.addFileUpload(req.chatId, fileId, {
-              filePath,
-              originalName: attachment.name,
-            });
+            fileUploadsState.addFileUpload(
+              { chatId: req.chatId, fileId },
+              {
+                filePath,
+                originalName: attachment.name,
+              },
+            );
 
             // Add instruction for AI to use dyad-write tag
             attachmentInfo += `\n\nFile to upload to codebase: ${attachment.name} (file id: ${fileId})\n`;

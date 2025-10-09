@@ -400,7 +400,8 @@ export class PageObject {
 
   async snapshotMessages({
     replaceDumpPath = false,
-  }: { replaceDumpPath?: boolean } = {}) {
+    timeout,
+  }: { replaceDumpPath?: boolean; timeout?: number } = {}) {
     if (replaceDumpPath) {
       // Update page so that "[[dyad-dump-path=*]]" is replaced with a placeholder path
       // which is stable across runs.
@@ -417,7 +418,9 @@ export class PageObject {
         );
       });
     }
-    await expect(this.page.getByTestId("messages-list")).toMatchAriaSnapshot();
+    await expect(this.page.getByTestId("messages-list")).toMatchAriaSnapshot({
+      timeout,
+    });
   }
 
   async approveProposal() {
@@ -459,6 +462,16 @@ export class PageObject {
 
   async selectPreviewMode(mode: "code" | "problems" | "preview" | "configure") {
     await this.page.getByTestId(`${mode}-mode-button`).click();
+  }
+
+  async clickChatActivityButton() {
+    await this.page.getByTestId("chat-activity-button").click();
+  }
+
+  async snapshotChatActivityList() {
+    await expect(
+      this.page.getByTestId("chat-activity-list"),
+    ).toMatchAriaSnapshot();
   }
 
   async clickRecheckProblems() {

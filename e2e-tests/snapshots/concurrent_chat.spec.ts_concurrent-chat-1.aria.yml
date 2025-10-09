@@ -1,0 +1,8 @@
+- paragraph: tc=chat2
+- paragraph: chat2
+- button:
+  - img
+- img
+- text: less than a minute ago
+- button "Retry":
+  - img

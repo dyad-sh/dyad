@@ -68,7 +68,7 @@ function ChatActivityList({ onSelect }: { onSelect?: () => void }) {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [recentStreamChatIds]);
 
   const rows = useMemo(() => chats.slice(0, 10), [chats]);
 
@@ -88,7 +88,7 @@ function ChatActivityList({ onSelect }: { onSelect?: () => void }) {
   }
 
   return (
-    <div className="py-1">
+    <div className="py-1" data-testid="chat-activity-list">
       {rows.map((c) => {
         const inProgress = isStreamingById.get(c.id) === true;
         return (
@@ -99,6 +99,7 @@ function ChatActivityList({ onSelect }: { onSelect?: () => void }) {
               onSelect?.();
               navigate({ to: "/chat", search: { id: c.id } });
             }}
+            data-testid={`chat-activity-list-item-${c.id}`}
           >
             <div className="min-w-0">
               <div className="truncate text-sm font-medium">

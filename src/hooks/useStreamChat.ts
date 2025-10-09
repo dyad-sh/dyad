@@ -85,8 +85,8 @@ export function useStreamChat({
       }
 
       setRecentStreamChatIds((prev) => {
-        const next = [...prev];
-        next.unshift(chatId);
+        const next = new Set(prev);
+        next.add(chatId);
         return next;
       });
 

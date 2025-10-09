@@ -806,6 +806,8 @@ This conversation includes one or more image attachments. When the user uploads 
           });
         };
 
+        let lastDbSaveAt = 0;
+
         const processResponseChunkUpdate = async ({
           fullResponse,
         }: {
@@ -825,6 +827,16 @@ This conversation includes one or more image attachments. When the user uploads 
           }
           // Store the current partial response
           partialResponses.set(req.chatId, fullResponse);
+          // Save to DB (in case user is switching chats during the stream)
+          const now = Date.now();
+          if (now - lastDbSaveAt >= 150) {
+            await db
+              .update(messages)
+              .set({ content: fullResponse })
+              .where(eq(messages.id, placeholderAssistantMessage.id));
+
+            lastDbSaveAt = now;
+          }
 
           // Update the placeholder assistant message content in the messages array
           const currentMessages = [...updatedChat.messages];

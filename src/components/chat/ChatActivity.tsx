@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
+
 import { Bell, Loader2, CheckCircle2 } from "lucide-react";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { getAllChats } from "@/lib/chat";
 import type { ChatSummary } from "@/lib/schemas";
 import { useAtomValue } from "jotai";
@@ -14,20 +19,37 @@ import {
   recentStreamChatIdsAtom,
 } from "@/atoms/chatAtoms";
 import { useLoadApps } from "@/hooks/useLoadApps";
+import { useSelectChat } from "@/hooks/useSelectChat";
 
 export function ChatActivityButton() {
   const [open, setOpen] = useState(false);
+  const isStreamingById = useAtomValue(isStreamingByIdAtom);
+  const isAnyStreaming = useMemo(() => {
+    for (const v of isStreamingById.values()) {
+      if (v) return true;
+    }
+    return false;
+  }, [isStreamingById]);
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          className="no-app-region-drag flex items-center justify-center p-1.5 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
-          title="Recent chat activity"
-          data-testid="chat-activity-button"
-        >
-          <Bell size={16} />
-        </button>
-      </PopoverTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <button
+              className="no-app-region-drag relative flex items-center justify-center p-1.5 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
+              data-testid="chat-activity-button"
+            >
+              {isAnyStreaming && (
+                <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                  <span className="block size-7 rounded-full border-3 border-blue-500/60 border-t-transparent animate-spin" />
+                </span>
+              )}
+              <Bell size={16} />
+            </button>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent>Recent chat activity</TooltipContent>
+      </Tooltip>
       <PopoverContent
         align="end"
         className="w-80 p-0 max-h-[50vh] overflow-y-auto"
@@ -42,25 +64,20 @@ function ChatActivityList({ onSelect }: { onSelect?: () => void }) {
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const isStreamingById = useAtomValue(isStreamingByIdAtom);
-  const navigate = useNavigate();
   const recentStreamChatIds = useAtomValue(recentStreamChatIdsAtom);
   const apps = useLoadApps();
-
+  const { selectChat } = useSelectChat();
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
         const all = await getAllChats();
         if (!mounted) return;
-        const recent = recentStreamChatIds
+        const recent = Array.from(recentStreamChatIds)
           .map((id) => all.find((c) => c.id === id))
           .filter((c) => c !== undefined);
         // Sort recent first
-        setChats(
-          [...recent].sort(
-            (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
-          ),
-        );
+        setChats([...recent].reverse());
       } finally {
         if (mounted) setLoading(false);
       }
@@ -97,7 +114,7 @@ function ChatActivityList({ onSelect }: { onSelect?: () => void }) {
             className="w-full text-left px-3 py-2 flex items-center justify-between gap-2 rounded-md hover:bg-[var(--background-darker)] dark:hover:bg-[var(--background-lighter)] transition-colors"
             onClick={() => {
               onSelect?.();
-              navigate({ to: "/chat", search: { id: c.id } });
+              selectChat({ chatId: c.id, appId: c.appId });
             }}
             data-testid={`chat-activity-list-item-${c.id}`}
           >

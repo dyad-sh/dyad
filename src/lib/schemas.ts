@@ -254,6 +254,10 @@ export const UserSettingsSchema = z.object({
   releaseChannel: ReleaseChannelSchema,
   runtimeMode2: RuntimeMode2Schema.optional(),
 
+  // Prompt auto-enhancement settings
+  enablePromptAutoEnhance: z.boolean().optional(),
+  promptEnhanceControl: z.enum(["toggle", "button"]).optional(),
+
   ////////////////////////////////
   // E2E TESTING ONLY.
   ////////////////////////////////

@@ -310,6 +310,7 @@ export function WorkflowSettings() {
   );
 }
 export function AISettings() {
+  const { settings, updateSettings } = useSettings();
   return (
     <div
       id="ai-settings"
@@ -325,6 +326,45 @@ export function AISettings() {
 
       <div className="mt-4">
         <MaxChatTurnsSelector />
+      </div>
+
+      {/* Prompt Enhancement */}
+      <div className="mt-6 space-y-3">
+        <h3 className="text-md font-medium text-gray-900 dark:text-white">Prompt Enhancement</h3>
+        <div className="text-sm text-gray-500 dark:text-gray-400">
+          Choose whether the chat input shows a persistent auto-enhance toggle, or a one-time Enhance+Send button.
+        </div>
+
+        <div className="flex items-center gap-3 mt-2">
+          <Label className="text-sm w-48">Control Type</Label>
+          <div className="flex gap-2">
+            <button
+              className={`px-3 py-1.5 text-sm rounded-md border ${settings?.promptEnhanceControl !== 'button' ? 'bg-(--background-lightest) border-border' : 'border-transparent'}`}
+              onClick={() => updateSettings({ promptEnhanceControl: 'toggle' })}
+            >
+              Toggle (per-message)
+            </button>
+            <button
+              className={`px-3 py-1.5 text-sm rounded-md border ${settings?.promptEnhanceControl === 'button' ? 'bg-(--background-lightest) border-border' : 'border-transparent'}`}
+              onClick={() => updateSettings({ promptEnhanceControl: 'button' })}
+            >
+              Button (Enhance+Send)
+            </button>
+          </div>
+        </div>
+
+        {settings?.promptEnhanceControl !== 'button' && (
+          <div className="flex items-center space-x-2 mt-2">
+            <Switch
+              id="enable-prompt-auto-enhance"
+              checked={!!settings?.enablePromptAutoEnhance}
+              onCheckedChange={(checked) =>
+                updateSettings({ enablePromptAutoEnhance: checked })
+              }
+            />
+            <Label htmlFor="enable-prompt-auto-enhance">Auto-enhance by default</Label>
+          </div>
+        )}
       </div>
     </div>
   );

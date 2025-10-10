@@ -1,4 +1,4 @@
-import { SendIcon, StopCircleIcon } from "lucide-react";
+import { SendIcon, StopCircleIcon, Sparkles } from "lucide-react";
 
 import { useSettings } from "@/hooks/useSettings";
 import { homeChatInputValueAtom } from "@/atoms/chatAtoms"; // Use a different atom for home input
@@ -11,6 +11,10 @@ import { FileAttachmentDropdown } from "./FileAttachmentDropdown";
 import { usePostHog } from "posthog-js/react";
 import { HomeSubmitOptions } from "@/pages/home";
 import { ChatInputControls } from "../ChatInputControls";
+import { IpcClient } from "@/ipc/ipc_client";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
+import { Switch } from "@/components/ui/switch";
+import { Button } from "@/components/ui/button";
 import { LexicalChatInput } from "./LexicalChatInput";
 import { useChatModeToggle } from "@/hooks/useChatModeToggle";
 export function HomeChatInput({
@@ -20,7 +24,7 @@ export function HomeChatInput({
 }) {
   const posthog = usePostHog();
   const [inputValue, setInputValue] = useAtom(homeChatInputValueAtom);
-  const { settings } = useSettings();
+  const { settings, updateSettings } = useSettings();
   const { isStreaming } = useStreamChat({
     hasChatId: false,
   }); // eslint-disable-line @typescript-eslint/no-unused-vars
@@ -40,9 +44,20 @@ export function HomeChatInput({
   } = useAttachments();
 
   // Custom submit function that wraps the provided onSubmit
-  const handleCustomSubmit = () => {
+  const handleCustomSubmit = async () => {
     if ((!inputValue.trim() && attachments.length === 0) || isStreaming) {
       return;
+    }
+
+    // Auto-enhance if in toggle mode and enabled
+    try {
+      if (settings?.promptEnhanceControl !== "button" && settings?.enablePromptAutoEnhance) {
+        const enhanced = await IpcClient.getInstance().enhancePrompt(inputValue);
+        // push enhanced into atom so parent handler uses it
+        setInputValue(enhanced);
+      }
+    } catch (e) {
+      console.error("Home enhancement failed, sending original:", e);
     }
 
     // Call the parent's onSubmit handler with attachments
@@ -113,8 +128,56 @@ export function HomeChatInput({
               </button>
             )}
           </div>
-          <div className="px-2 pb-2">
+          <div className="px-2 pb-2 flex items-center">
             <ChatInputControls />
+            <div className="w-1.5"></div>
+            {/* Prompt Enhancement Control */}
+            {settings?.promptEnhanceControl === "button" ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      if ((!inputValue.trim() && attachments.length === 0) || isStreaming) return;
+                      try {
+                        const enhanced = await IpcClient.getInstance().enhancePrompt(inputValue);
+                        setInputValue(enhanced);
+                        onSubmit({ attachments });
+                      } catch (e) {
+                        console.error("Home Enhance+Send failed:", e);
+                        await handleCustomSubmit();
+                      }
+                    }}
+                    disabled={(!inputValue.trim() && attachments.length === 0) || isStreaming}
+                    className="has-[>svg]:px-1.5 flex items-center gap-1.5 h-8 border-orange-500/50 hover:bg-orange-500/10 font-medium shadow-sm shadow-orange-500/10 transition-all hover:shadow-md hover:shadow-orange-500/15"
+                  >
+                    <Sparkles className="h-4 w-4 text-orange-500" />
+                    <span className="text-orange-500 font-medium text-xs-sm">Enhance</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Enhance and start chat</TooltipContent>
+              </Tooltip>
+            ) : (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => updateSettings({ enablePromptAutoEnhance: !settings?.enablePromptAutoEnhance })}
+                    className="has-[>svg]:px-1.5 flex items-center gap-1.5 h-8 border-orange-500/50 hover:bg-orange-500/10 font-medium shadow-sm shadow-orange-500/10 transition-all hover:shadow-md hover:shadow-orange-500/15"
+                  >
+                    <Switch
+                      checked={!!settings?.enablePromptAutoEnhance}
+                      onCheckedChange={(checked) => updateSettings({ enablePromptAutoEnhance: checked })}
+                      className="pointer-events-none"
+                    />
+                    <span className="text-orange-500 font-medium text-xs-sm">Enhance</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Auto-enhance prompts</TooltipContent>
+              </Tooltip>
+            )}
           </div>
         </div>
       </div>

@@ -16,6 +16,7 @@ import {
   ChevronsDownUp,
   ChartColumnIncreasing,
   SendHorizontalIcon,
+  Sparkles,
 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useState } from "react";
@@ -31,6 +32,8 @@ import { atom, useAtom, useSetAtom, useAtomValue } from "jotai";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { useProposal } from "@/hooks/useProposal";
 import {
   ActionProposal,
@@ -72,7 +75,7 @@ const showTokenBarAtom = atom(false);
 export function ChatInput({ chatId }: { chatId?: number }) {
   const posthog = usePostHog();
   const [inputValue, setInputValue] = useAtom(chatInputValueAtom);
-  const { settings } = useSettings();
+  const { settings, updateSettings } = useSettings();
   const appId = useAtomValue(selectedAppIdAtom);
   const { refreshVersions } = useVersions(appId);
   const { streamMessage, isStreaming, setIsStreaming, error, setError } =
@@ -142,7 +145,15 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       return;
     }
 
-    const currentInput = inputValue;
+    let currentInput = inputValue;
+    // Auto-enhance if enabled via toggle
+    try {
+      if (settings?.promptEnhanceControl !== "button" && settings?.enablePromptAutoEnhance) {
+        currentInput = await IpcClient.getInstance().enhancePrompt(currentInput);
+      }
+    } catch (e) {
+      console.error("Prompt enhancement failed, sending original:", e);
+    }
     setInputValue("");
     setSelectedComponent(null);
 
@@ -330,6 +341,68 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           <div className="pl-2 pr-1 flex items-center justify-between pb-2">
             <div className="flex items-center">
               <ChatInputControls showContextFilesPicker={true} />
+              <div className="w-1.5"></div>
+              {/* Prompt Enhancement Control */}
+              {settings?.promptEnhanceControl === "button" ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        if (!chatId) return;
+                        if (!inputValue.trim() && attachments.length === 0) return;
+                        try {
+                          const enhanced = await IpcClient.getInstance().enhancePrompt(inputValue);
+                          setSelectedComponent(null);
+                          await streamMessage({
+                            prompt: enhanced,
+                            chatId,
+                            attachments,
+                            redo: false,
+                            selectedComponent,
+                          });
+                          clearAttachments();
+                          setInputValue("");
+                          posthog.capture("chat:submit_enhanced");
+                        } catch (e) {
+                          console.error("Enhance+Send failed:", e);
+                          await handleSubmit();
+                        }
+                      }}
+                      disabled={
+                        (!inputValue.trim() && attachments.length === 0) ||
+                        disableSendButton ||
+                        isStreaming
+                      }
+                      className="has-[>svg]:px-1.5 flex items-center gap-1.5 h-8 border-orange-500/50 hover:bg-orange-500/10 font-medium shadow-sm shadow-orange-500/10 transition-all hover:shadow-md hover:shadow-orange-500/15"
+                    >
+                      <Sparkles className="h-4 w-4 text-orange-500" />
+                      <span className="text-orange-500 font-medium text-xs-sm">Enhance</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Enhance and send</TooltipContent>
+                </Tooltip>
+              ) : (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => updateSettings({ enablePromptAutoEnhance: !settings?.enablePromptAutoEnhance })}
+                      className="has-[>svg]:px-1.5 flex items-center gap-1.5 h-8 border-orange-500/50 hover:bg-orange-500/10 font-medium shadow-sm shadow-orange-500/10 transition-all hover:shadow-md hover:shadow-orange-500/15"
+                    >
+                      <Switch
+                        checked={!!settings?.enablePromptAutoEnhance}
+                        onCheckedChange={(checked) => updateSettings({ enablePromptAutoEnhance: checked })}
+                        className="pointer-events-none"
+                      />
+                      <span className="text-orange-500 font-medium text-xs-sm">Enhance</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Auto-enhance prompts</TooltipContent>
+                </Tooltip>
+              )}
               {/* File attachment dropdown */}
               <FileAttachmentDropdown
                 onFileSelect={handleFileSelect}

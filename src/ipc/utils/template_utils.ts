@@ -4,6 +4,7 @@ import {
   localTemplatesData,
 } from "../../shared/templates";
 import log from "electron-log";
+import { readSettings } from "@/main/settings";
 
 const logger = log.scope("template_utils");
 
@@ -65,7 +66,18 @@ export async function fetchApiTemplates(): Promise<Template[]> {
 // Get all templates (local + API)
 export async function getAllTemplates(): Promise<Template[]> {
   const apiTemplates = await fetchApiTemplates();
-  return [...localTemplatesData, ...apiTemplates];
+  const settings = readSettings();
+  const userTemplates = (settings.userTemplates || []).map<Template>((t) => ({
+    id: t.id, // already unique, stored in settings
+    title: t.title,
+    description: t.description || "User template",
+    imageUrl:
+      t.imageUrl ||
+      "https://dummyimage.com/800x350/111827/ffffff&text=User+template",
+    isOfficial: false,
+    // no githubUrl for local folder templates
+  }));
+  return [...localTemplatesData, ...apiTemplates, ...userTemplates];
 }
 
 export async function getTemplateOrThrow(

@@ -236,6 +236,21 @@ export const UserSettingsSchema = z.object({
   enableProWebSearch: z.boolean().optional(),
   proSmartContextOption: z.enum(["balanced", "conservative"]).optional(),
   selectedTemplateId: z.string(),
+  // Custom user templates persisted with settings
+  userTemplates: z
+    .array(
+      z.object({
+        id: z.string(),
+        title: z.string(),
+        description: z.string().optional(),
+        imageUrl: z.string().optional(),
+        source: z.union([
+          z.object({ type: z.literal("folder"), path: z.string() }),
+          z.object({ type: z.literal("github"), url: z.string() }),
+        ]),
+      }),
+    )
+    .optional(),
   enableSupabaseWriteSqlMigration: z.boolean().optional(),
   selectedChatMode: ChatModeSchema.optional(),
   acceptedCommunityCode: z.boolean().optional(),
@@ -245,6 +260,10 @@ export const UserSettingsSchema = z.object({
   enableAutoUpdate: z.boolean(),
   releaseChannel: ReleaseChannelSchema,
   runtimeMode2: RuntimeMode2Schema.optional(),
+
+  // Prompt auto-enhancement settings
+  enablePromptAutoEnhance: z.boolean().optional(),
+  promptEnhanceControl: z.enum(["toggle", "button"]).optional(),
 
   ////////////////////////////////
   // E2E TESTING ONLY.

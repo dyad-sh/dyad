@@ -127,6 +127,8 @@ const validInvokeChannels = [
   "prompts:create",
   "prompts:update",
   "prompts:delete",
+  // Prompt enhancement
+  "prompt:enhance",
   // adding app to favorite
   "add-to-favorite",
   // Test-only channels

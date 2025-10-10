@@ -9,6 +9,10 @@ import {
   PromptDto,
   UpdatePromptParamsDto,
 } from "../ipc_types";
+import { readSettings } from "@/main/settings";
+import { getModelClient } from "../utils/get_model_client";
+import { streamText, TextStreamPart, ToolSet } from "ai";
+import { IS_TEST_BUILD } from "../utils/test_utils";
 
 const logger = log.scope("prompt_handlers");
 const handle = createLoggedHandler(logger);
@@ -86,6 +90,64 @@ export function registerPromptHandlers() {
     async (_e: IpcMainInvokeEvent, id: number): Promise<void> => {
       if (!id) throw new Error("Prompt id is required");
       db.delete(prompts).where(eq(prompts.id, id)).run();
+    },
+  );
+
+  // Enhance a user-entered prompt using the current selected model
+  handle(
+    "prompt:enhance",
+    async (_e: IpcMainInvokeEvent, payload: { text: string }): Promise<string> => {
+      const { text } = payload || { text: "" };
+      if (!text || !text.trim()) return text;
+
+      // For E2E tests, short-circuit to avoid network calls
+      if (IS_TEST_BUILD) {
+        return `[enhanced] ${text.trim()}`;
+      }
+
+      const settings = readSettings();
+      const { modelClient, isEngineEnabled } = await getModelClient(
+        settings.selectedModel,
+        settings,
+      );
+
+      // Clear, production-grade enhancement prompt focusing on actionable, concise improvements.
+      const systemPrompt = `You are a professional AI coding assistant. Improve the user's prompt so the model can take high-quality, actionable steps.
+
+Rewrite the prompt to:
+- Make the goal explicit and outcome-driven.
+- Include key constraints (platform, framework, libraries, versions) if implied.
+- Extract hidden requirements, edge cases, and acceptance criteria succinctly.
+- Keep it concise, imperative, and unambiguous.
+- Preserve user intent; do NOT change the task.
+- Output ONLY the improved prompt (no preface, no bullets, no commentary).`;
+
+      // Build messages. If engine is enabled, the engine will handle context smartly; otherwise this is plain LLM call.
+      const messages = [
+        { role: "system" as const, content: systemPrompt },
+        { role: "user" as const, content: text },
+      ];
+
+      const providerOptions: Record<string, any> = isEngineEnabled
+        ? { "dyad-engine": { dyadDisableFiles: true } }
+        : {};
+
+      const { fullStream } = await streamText({
+        model: modelClient.model,
+        messages,
+        maxRetries: 1,
+        temperature: 0.2,
+        providerOptions,
+      });
+
+      let enhanced = "";
+      for await (const part of fullStream as AsyncIterable<TextStreamPart<ToolSet>>) {
+        if (part.type === "text-delta") {
+          enhanced += part.text;
+        }
+      }
+      // Safety clamp
+      return (enhanced || text).trim();
     },
   );
 }

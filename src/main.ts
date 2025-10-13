@@ -170,7 +170,6 @@ const createWindow = () => {
     event.preventDefault();
 
     const template: Electron.MenuItemConstructorOptions[] = [];
-
     if (params.isEditable) {
       template.push(
         { role: "undo" },
@@ -180,9 +179,29 @@ const createWindow = () => {
         { role: "copy" },
         { role: "paste" },
         { role: "delete" },
-        { type: "separator" },
-        { role: "selectAll" },
       );
+      if (params.misspelledWord) {
+        const suggestions: Electron.MenuItemConstructorOptions[] =
+          params.dictionarySuggestions.slice(0, 5).map((suggestion) => ({
+            label: suggestion,
+            click: () => {
+              try {
+                mainWindow?.webContents.replaceMisspelling(suggestion);
+              } catch (error) {
+                logger.error("Failed to replace misspelling:", error);
+              }
+            },
+          }));
+        template.push(
+          { type: "separator" },
+          {
+            type: "submenu",
+            label: `Correct "${params.misspelledWord}"`,
+            submenu: suggestions,
+          },
+        );
+      }
+      template.push({ type: "separator" }, { role: "selectAll" });
     } else {
       if (params.selectionText && params.selectionText.length > 0) {
         template.push({ role: "copy" });

@@ -206,7 +206,7 @@ export function registerChatStreamHandlers() {
   ipcMain.handle("chat:stream", async (event, req: ChatStreamParams) => {
     try {
       const fileUploadsState = FileUploadsState.getInstance();
-
+      let dyadRequestId: string | undefined;
       // Create an AbortController for this stream
       const abortController = new AbortController();
       activeStreams.set(req.chatId, abortController);
@@ -382,6 +382,12 @@ ${componentSnippet}
           content: userPrompt,
         })
         .returning();
+      const settings = readSettings();
+      // Only Dyad Pro requests have request ids.
+      if (settings.enableDyadPro) {
+        // Generate requestId early so it can be saved with the message
+        dyadRequestId = uuidv4();
+      }
 
       // Add a placeholder assistant message immediately
       const [placeholderAssistantMessage] = await db
@@ -390,6 +396,7 @@ ${componentSnippet}
           chatId: req.chatId,
           role: "assistant",
           content: "", // Start with empty content
+          requestId: dyadRequestId,
         })
         .returning();
 
@@ -430,7 +437,6 @@ ${componentSnippet}
         );
       } else {
         // Normal AI processing for non-test prompts
-        const settings = readSettings();
 
         const appPath = getDyadAppPath(updatedChat.app.path);
         const chatContext = req.selectedComponent
@@ -697,7 +703,6 @@ This conversation includes one or more image attachments. When the user uploads 
             } satisfies ModelMessage,
           ];
         }
-
         const simpleStreamText = async ({
           chatMessages,
           modelClient,
@@ -711,7 +716,6 @@ This conversation includes one or more image attachments. When the user uploads 
           systemPromptOverride?: string;
           dyadDisableFiles?: boolean;
         }) => {
-          const dyadRequestId = uuidv4();
           if (isEngineEnabled) {
             logger.log(
               "sending AI request to engine with request id:",

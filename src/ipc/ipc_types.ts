@@ -68,6 +68,7 @@ export interface Message {
   commitHash?: string | null;
   dbTimestamp?: string | null;
   createdAt?: Date | string;
+  requestId?: string | null;
 }
 
 export interface Chat {

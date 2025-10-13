@@ -67,6 +67,7 @@ export const messages = sqliteTable("messages", {
     enum: ["approved", "rejected"],
   }),
   commitHash: text("commit_hash"),
+  requestId: text("request_id"),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),

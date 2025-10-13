@@ -17,7 +17,7 @@ import { formatDistanceToNow, format } from "date-fns";
 import { useVersions } from "@/hooks/useVersions";
 import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import {
   Tooltip,
@@ -57,6 +57,17 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
     }
     return null;
   }, [message.commitHash, message.role, liveVersions]);
+
+  // handle copy request id
+  const [copiedRequestId, setCopiedRequestId] = useState(false);
+  const copiedRequestIdTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  useEffect(() => {
+    return () => {
+      if (copiedRequestIdTimeoutRef.current) {
+        clearTimeout(copiedRequestIdTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Format the message timestamp
   const formatTimestamp = (timestamp: string | Date) => {
@@ -199,7 +210,7 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
         </div>
         {/* Timestamp and commit info for assistant messages - only visible on hover */}
         {message.role === "assistant" && message.createdAt && (
-          <div className="mt-1 flex items-center justify-start space-x-2 text-xs text-gray-500 dark:text-gray-400 ">
+          <div className="mt-1 flex flex-wrap items-center justify-start space-x-2 text-xs text-gray-500 dark:text-gray-400 ">
             <div className="flex items-center space-x-1">
               <Clock className="h-3 w-3" />
               <span>{formatTimestamp(message.createdAt)}</span>
@@ -208,13 +219,18 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
               <div className="flex items-center space-x-1">
                 <GitCommit className="h-3 w-3" />
                 {messageVersion && messageVersion.message && (
-                  <span className="max-w-70 truncate font-medium">
-                    {
-                      messageVersion.message
-                        .replace(/^\[dyad\]\s*/i, "")
-                        .split("\n")[0]
-                    }
-                  </span>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="max-w-50 truncate font-medium">
+                        {
+                          messageVersion.message
+                            .replace(/^\[dyad\]\s*/i, "")
+                            .split("\n")[0]
+                        }
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>{messageVersion.message}</TooltipContent>
+                  </Tooltip>
                 )}
               </div>
             )}
@@ -224,16 +240,39 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
                   <TooltipTrigger asChild>
                     <button
                       onClick={() => {
-                        navigator.clipboard.writeText(message.requestId || "");
+                        if (!message.requestId) return;
+                        navigator.clipboard
+                          .writeText(message.requestId)
+                          .then(() => {
+                            setCopiedRequestId(true);
+                            if (copiedRequestIdTimeoutRef.current) {
+                              clearTimeout(copiedRequestIdTimeoutRef.current);
+                            }
+                            copiedRequestIdTimeoutRef.current = setTimeout(
+                              () => setCopiedRequestId(false),
+                              2000,
+                            );
+                          })
+                          .catch(() => {
+                            // noop
+                          });
                       }}
                       className="flex items-center space-x-1 px-1 py-0.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
                     >
-                      <Copy className="h-3 w-3" />
-                      <span className="text-xs">Request ID</span>
+                      {copiedRequestId ? (
+                        <Check className="h-3 w-3 text-green-500" />
+                      ) : (
+                        <Copy className="h-3 w-3" />
+                      )}
+                      <span className="text-xs">
+                        {copiedRequestId ? "Copied" : "Request ID"}
+                      </span>
                     </button>
                   </TooltipTrigger>
                   <TooltipContent>
-                    Copy Request ID: {message.requestId.slice(0, 8)}...
+                    {copiedRequestId
+                      ? "Copied!"
+                      : `Copy Request ID: ${message.requestId.slice(0, 8)}...`}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>

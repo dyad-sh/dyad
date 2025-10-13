@@ -37,7 +37,6 @@ export interface ChatResponseEnd {
   updatedFiles: boolean;
   extraFiles?: string[];
   extraFilesError?: string;
-  requestId?: string;
 }
 
 export interface ChatProblemsEvent {

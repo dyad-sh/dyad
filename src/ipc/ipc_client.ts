@@ -65,6 +65,7 @@ import type {
   UpdatePromptParamsDto,
   McpServerUpdate,
   CreateMcpServer,
+  CloneRepoParams,
 } from "./ipc_types";
 import type { Template } from "../shared/templates";
 import type {
@@ -1277,11 +1278,9 @@ export class IpcClient {
   public async deletePrompt(id: number): Promise<void> {
     await this.ipcRenderer.invoke("prompts:delete", id);
   }
-  public async cloneRepoFromUrl(params: {
-    url: string;
-    installCommand?: string;
-    startCommand?: string;
-  }): Promise<{ success: boolean; app?: App; error?: string }> {
+  public async cloneRepoFromUrl(
+    params: CloneRepoParams,
+  ): Promise<{ app: App; hasAiRules: boolean } | { error: string }> {
     return this.ipcRenderer.invoke("github:clone-repo-from-url", params);
   }
 

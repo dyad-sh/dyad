@@ -1,5 +1,5 @@
-import { Github, SendIcon, StopCircleIcon } from "lucide-react";
-import { useState } from "react";
+import { SendIcon, StopCircleIcon } from "lucide-react";
+
 import { useSettings } from "@/hooks/useSettings";
 import { homeChatInputValueAtom } from "@/atoms/chatAtoms"; // Use a different atom for home input
 import { useAtom } from "jotai";
@@ -12,9 +12,7 @@ import { usePostHog } from "posthog-js/react";
 import { HomeSubmitOptions } from "@/pages/home";
 import { ChatInputControls } from "../ChatInputControls";
 import { LexicalChatInput } from "./LexicalChatInput";
-import { GithubRepoModal } from "./GithubRepoModal";
 import { useChatModeToggle } from "@/hooks/useChatModeToggle";
-import { Button } from "@/components/ui/button";
 export function HomeChatInput({
   onSubmit,
 }: {
@@ -26,8 +24,6 @@ export function HomeChatInput({
   const { isStreaming } = useStreamChat({
     hasChatId: false,
   }); // eslint-disable-line @typescript-eslint/no-unused-vars
-  const [isRepoModalOpen, setIsRepoModalOpen] = useState(false);
-
   useChatModeToggle();
 
   // Use the attachments hook
@@ -63,10 +59,6 @@ export function HomeChatInput({
 
   return (
     <>
-      <GithubRepoModal
-        isOpen={isRepoModalOpen}
-        onClose={() => setIsRepoModalOpen(false)}
-      />
       <div className="p-4" data-testid="home-chat-input-container">
         <div
           className={`relative flex flex-col space-y-2 border border-border rounded-lg bg-(--background-lighter) shadow-sm ${
@@ -121,21 +113,8 @@ export function HomeChatInput({
               </button>
             )}
           </div>
-          <div className="px-2 pb-2 flex items-center justify-between">
+          <div className="px-2 pb-2">
             <ChatInputControls />
-
-            <Button
-              variant="outline"
-              data-testid="import-from-github-button"
-              size="sm"
-              onClick={() => setIsRepoModalOpen(true)}
-              className="has-[>svg]:px-1.5 flex items-center gap-1.5 h-8 border-primary/50 hover:bg-primary/10 font-medium shadow-sm shadow-primary/10 transition-all hover:shadow-md hover:shadow-primary/15"
-            >
-              <Github className="h-4 w-4 text-primary" />
-              <span className="text-primary font-medium text-xs-sm">
-                Import from Github
-              </span>
-            </Button>
           </div>
         </div>
       </div>

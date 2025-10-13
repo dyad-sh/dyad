@@ -487,3 +487,15 @@ export interface McpToolConsent {
   consent: McpToolConsentType;
   updatedAt: number;
 }
+export interface CloneRepoParams {
+  url: string;
+  installCommand?: string;
+  startCommand?: string;
+  appName: string;
+}
+
+export interface GithubRepository {
+  name: string;
+  full_name: string;
+  private: boolean;
+}

@@ -724,7 +724,9 @@ export function registerAppHandlers() {
     let supabaseProjectName: string | null = null;
     const settings = readSettings();
     if (app.supabaseProjectId && settings.supabase?.accessToken?.value) {
-      supabaseProjectName = await getSupabaseProjectName(app.supabaseProjectId);
+      supabaseProjectName = await getSupabaseProjectName(
+        app.supabaseParentProjectId || app.supabaseProjectId,
+      );
     }
 
     let vercelTeamSlug: string | null = null;

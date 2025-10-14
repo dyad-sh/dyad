@@ -29,6 +29,12 @@ export const apps = sqliteTable("apps", {
   githubRepo: text("github_repo"),
   githubBranch: text("github_branch"),
   supabaseProjectId: text("supabase_project_id"),
+  // If supabaseProjectId is a branch, then the parent project id set.
+  // This is because there's no way to retrieve ALL the branches for ALL projects
+  // in a single API call
+  // This is only used for display purposes but is NOT used for any actual
+  // supabase management logic.
+  supabaseParentProjectId: text("supabase_parent_project_id"),
   neonProjectId: text("neon_project_id"),
   neonDevelopmentBranchId: text("neon_development_branch_id"),
   neonPreviewBranchId: text("neon_preview_branch_id"),

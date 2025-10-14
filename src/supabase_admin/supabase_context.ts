@@ -56,6 +56,9 @@ export async function getSupabaseContext({
   supabaseProjectId: string;
 }) {
   if (IS_TEST_BUILD) {
+    if (supabaseProjectId === "test-branch-project-id") {
+      return "1234".repeat(200_000);
+    }
     return "[[TEST_BUILD_SUPABASE_CONTEXT]]";
   }
 

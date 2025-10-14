@@ -67,7 +67,7 @@ export function TokenBar({ chatId }: TokenBarProps) {
   const inputPercent = (inputTokens / contextWindow) * 100;
 
   return (
-    <div className="px-4 pb-2 text-xs">
+    <div className="px-4 pb-2 text-xs" data-testid="token-bar">
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>

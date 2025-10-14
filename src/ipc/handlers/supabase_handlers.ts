@@ -70,7 +70,7 @@ export function registerSupabaseHandlers() {
   handle("supabase:unset-app-project", async (_, { app }: { app: number }) => {
     await db
       .update(apps)
-      .set({ supabaseProjectId: null })
+      .set({ supabaseProjectId: null, supabaseParentProjectId: null })
       .where(eq(apps.id, app));
 
     logger.info(`Removed Supabase project association for app ${app}`);

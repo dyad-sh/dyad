@@ -32,18 +32,16 @@ export function ProModeSelector() {
     });
   };
 
-  const handleSmartContextChange = (
-    newValue: "off" | "conservative" | "balanced",
-  ) => {
+  const handleSmartContextChange = (newValue: "off" | "v3" | "balanced") => {
     if (newValue === "off") {
       updateSettings({
         enableProSmartFilesContextMode: false,
         proSmartContextOption: undefined,
       });
-    } else if (newValue === "conservative") {
+    } else if (newValue === "v3") {
       updateSettings({
         enableProSmartFilesContextMode: true,
-        proSmartContextOption: "conservative",
+        proSmartContextOption: "v3",
       });
     } else if (newValue === "balanced") {
       updateSettings({

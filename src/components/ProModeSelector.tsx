@@ -278,12 +278,15 @@ function SmartContextSelector({
 }: {
   isTogglable: boolean;
   settings: UserSettings | null;
-  onValueChange: (value: "off" | "conservative" | "balanced") => void;
+  onValueChange: (value: "off" | "conservative" | "balanced" | "v3") => void;
 }) {
   // Determine current value based on settings
-  const getCurrentValue = (): "off" | "conservative" | "balanced" => {
+  const getCurrentValue = (): "off" | "conservative" | "balanced" | "v3" => {
     if (!settings?.enableProSmartFilesContextMode) {
       return "off";
+    }
+    if (settings?.proSmartContextOption === "v3") {
+      return "v3";
     }
     if (settings?.proSmartContextOption === "balanced") {
       return "balanced";
@@ -330,15 +333,6 @@ function SmartContextSelector({
           Off
         </Button>
         <Button
-          variant={currentValue === "conservative" ? "default" : "ghost"}
-          size="sm"
-          onClick={() => onValueChange("conservative")}
-          disabled={!isTogglable}
-          className="rounded-none border-r border-input h-8 px-3 text-xs flex-shrink-0"
-        >
-          Conservative
-        </Button>
-        <Button
           variant={currentValue === "balanced" ? "default" : "ghost"}
           size="sm"
           onClick={() => onValueChange("balanced")}
@@ -346,6 +340,15 @@ function SmartContextSelector({
           className="rounded-l-none h-8 px-3 text-xs flex-shrink-0"
         >
           Balanced
+        </Button>
+        <Button
+          variant={currentValue === "v3" ? "default" : "ghost"}
+          size="sm"
+          onClick={() => onValueChange("v3")}
+          disabled={!isTogglable}
+          className="rounded-none border-r border-input h-8 px-3 text-xs flex-shrink-0"
+        >
+          Power (Beta)
         </Button>
       </div>
     </div>

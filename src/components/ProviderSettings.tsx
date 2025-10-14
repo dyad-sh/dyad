@@ -27,6 +27,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 import { CreateCustomProviderDialog } from "./CreateCustomProviderDialog";
 
@@ -118,45 +123,52 @@ export function ProviderSettingsGrid() {
                   className="p-4 cursor-pointer"
                   onClick={() => handleProviderClick(provider.id)}
                 >
-                  <div className="flex items-center justify-between mb-3">
+                  {isCustom && (
+                    <div
+                      className="flex items-center justify-end"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            data-testid="edit-custom-provider"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 hover:bg-muted rounded-md"
+                            onClick={() => handleEditProvider(provider)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Edit Provider</TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            data-testid="delete-custom-provider"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10 rounded-md"
+                            onClick={() => setProviderToDelete(provider.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Delete Provider</TooltipContent>
+                      </Tooltip>
+                    </div>
+                  )}
+                  <CardTitle className="text-lg font-medium mb-2">
+                    {provider.name}
                     {isProviderSetup(provider.id) ? (
-                      <span className="text-sm font-medium text-green-500 bg-green-50 dark:bg-green-900/30 border border-green-500/50 dark:border-green-500/50 px-2 py-1 rounded-full whitespace-nowrap">
+                      <span className="ml-3 text-sm font-medium text-green-500 bg-green-50 dark:bg-green-900/30 border border-green-500/50 dark:border-green-500/50 px-2 py-1 rounded-full">
                         Ready
                       </span>
                     ) : (
-                      <span className="text-sm text-gray-500 bg-gray-50 dark:bg-gray-900 dark:text-gray-300 px-2 py-1 rounded-full whitespace-nowrap">
+                      <span className="text-sm text-gray-500 bg-gray-50 dark:bg-gray-900 dark:text-gray-300 px-2 py-1 rounded-full">
                         Needs Setup
                       </span>
                     )}
-
-                    {isCustom && (
-                      <div
-                        className="flex items-center"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <Button
-                          data-testid="edit-custom-provider"
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0 hover:bg-muted rounded-md"
-                          onClick={() => handleEditProvider(provider)}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          data-testid="delete-custom-provider"
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10 rounded-md"
-                          onClick={() => setProviderToDelete(provider.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                  <CardTitle className="text-lg font-medium mb-2">
-                    {provider.name}
                   </CardTitle>
                   <CardDescription>
                     {provider.hasFreeTier && (

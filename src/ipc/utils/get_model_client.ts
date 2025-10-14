@@ -27,7 +27,6 @@ import { getOllamaApiUrl } from "../handlers/local_model_ollama_handler";
 import { createFallback } from "./fallback_ai_model";
 
 const dyadEngineUrl = process.env.DYAD_ENGINE_URL;
-const dyadGatewayUrl = process.env.DYAD_GATEWAY_URL;
 
 const AUTO_MODELS = [
   {
@@ -85,62 +84,43 @@ export async function getModelClient(
     // IMPORTANT: some providers like OpenAI have an empty string gateway prefix,
     // so we do a nullish and not a truthy check here.
     if (providerConfig.gatewayPrefix != null || dyadEngineUrl) {
-      const isEngineEnabled =
-        settings.enableProSmartFilesContextMode ||
-        settings.enableProLazyEditsMode ||
-        settings.enableProWebSearch;
-      const provider = isEngineEnabled
-        ? createDyadEngine({
-            apiKey: dyadApiKey,
-            baseURL: dyadEngineUrl ?? "https://engine.dyad.sh/v1",
-            originalProviderId: model.provider,
-            dyadOptions: {
-              enableLazyEdits:
-                settings.selectedChatMode === "ask"
-                  ? false
-                  : settings.enableProLazyEditsMode,
-              enableSmartFilesContext: settings.enableProSmartFilesContextMode,
-              // Keep in sync with getCurrentValue in ProModeSelector.tsx
-              smartContextMode: settings.proSmartContextOption ?? "balanced",
-              enableWebSearch: settings.enableProWebSearch,
-            },
-            settings,
-          })
-        : createOpenAICompatible({
-            name: "dyad-gateway",
-            apiKey: dyadApiKey,
-            baseURL: dyadGatewayUrl ?? "https://llm-gateway.dyad.sh/v1",
-          });
+      const provider = createDyadEngine({
+        apiKey: dyadApiKey,
+        baseURL: dyadEngineUrl ?? "https://engine.dyad.sh/v1",
+        originalProviderId: model.provider,
+        dyadOptions: {
+          enableLazyEdits:
+            settings.selectedChatMode === "ask"
+              ? false
+              : settings.enableProLazyEditsMode,
+          enableSmartFilesContext: settings.enableProSmartFilesContextMode,
+          // Keep in sync with getCurrentValue in ProModeSelector.tsx
+          smartContextMode: settings.proSmartContextOption ?? "balanced",
+          enableWebSearch: settings.enableProWebSearch,
+        },
+        settings,
+      });
 
       logger.info(
-        `\x1b[1;97;44m Using Dyad Pro API key for model: ${model.name}. engine_enabled=${isEngineEnabled} \x1b[0m`,
+        `\x1b[1;97;44m Using Dyad Pro API key for model: ${model.name} \x1b[0m`,
       );
-      if (isEngineEnabled) {
-        logger.info(
-          `\x1b[1;30;42m Using Dyad Pro engine: ${dyadEngineUrl ?? "<prod>"} \x1b[0m`,
-        );
-      } else {
-        logger.info(
-          `\x1b[1;30;43m Using Dyad Pro gateway: ${dyadGatewayUrl ?? "<prod>"} \x1b[0m`,
-        );
-      }
+
+      logger.info(
+        `\x1b[1;30;42m Using Dyad Pro engine: ${dyadEngineUrl ?? "<prod>"} \x1b[0m`,
+      );
+
       // Do not use free variant (for openrouter).
       const modelName = model.name.split(":free")[0];
       const autoModelClient = {
-        model: provider(
-          `${providerConfig.gatewayPrefix || ""}${modelName}`,
-          isEngineEnabled
-            ? {
-                files,
-              }
-            : undefined,
-        ),
+        model: provider(`${providerConfig.gatewayPrefix || ""}${modelName}`, {
+          files,
+        }),
         builtinProviderId: model.provider,
       };
 
       return {
         modelClient: autoModelClient,
-        isEngineEnabled,
+        isEngineEnabled: true,
       };
     } else {
       logger.warn(

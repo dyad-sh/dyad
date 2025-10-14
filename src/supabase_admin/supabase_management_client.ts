@@ -200,7 +200,6 @@ export async function listSupabaseBranches({
 
   logger.info(`Listed Supabase branches for project: ${supabaseProjectId}`);
   const jsonResponse = await response.json();
-  console.log("*********", jsonResponse);
   return jsonResponse;
 }
 

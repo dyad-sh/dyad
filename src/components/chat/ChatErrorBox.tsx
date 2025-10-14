@@ -99,12 +99,14 @@ export function ChatErrorBox({
     <ChatErrorContainer onDismiss={onDismiss}>
       {error}
       <div className="mt-2 space-y-2 space-x-2">
-        <ExternalLink
-          href="https://dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=general-error"
-          variant="primary"
-        >
-          Upgrade to Dyad Pro
-        </ExternalLink>
+        {!isDyadProEnabled && (
+          <ExternalLink
+            href="https://dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=general-error"
+            variant="primary"
+          >
+            Upgrade to Dyad Pro
+          </ExternalLink>
+        )}
 
         <ExternalLink href="https://www.dyad.sh/docs/faq">
           Read docs

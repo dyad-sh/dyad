@@ -75,7 +75,6 @@ export function SupabaseConnector({ appId }: { appId: number }) {
       await setAppProject({ projectId, appId });
       toast.success("Project connected to app successfully");
       await refreshApp();
-      await loadBranches(projectId);
     } catch (error) {
       toast.error("Failed to connect project to app: " + error);
     }

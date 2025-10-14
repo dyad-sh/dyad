@@ -8,6 +8,7 @@ import {
   selectedSupabaseProjectAtom,
 } from "@/atoms/supabaseAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
+import { SetSupabaseAppProjectParams } from "@/ipc/ipc_types";
 
 export function useSupabase() {
   const [projects, setProjects] = useAtom(supabaseProjectsAtom);
@@ -61,30 +62,13 @@ export function useSupabase() {
    * Associate a Supabase project with an app
    */
   const setAppProject = useCallback(
-    async (projectId: string, appId: number) => {
+    async (params: SetSupabaseAppProjectParams) => {
       setLoading(true);
       try {
-        await ipcClient.setSupabaseAppProject(projectId, appId);
+        await ipcClient.setSupabaseAppProject(params);
         setError(null);
       } catch (error) {
         console.error("Error setting Supabase project for app:", error);
-        setError(error instanceof Error ? error : new Error(String(error)));
-        throw error;
-      } finally {
-        setLoading(false);
-      }
-    },
-    [ipcClient, setError, setLoading],
-  );
-
-  const setAppBranch = useCallback(
-    async (branchId: string | null, appId: number) => {
-      setLoading(true);
-      try {
-        await ipcClient.setSupabaseAppBranch({ app: appId, branchId });
-        setError(null);
-      } catch (error) {
-        console.error("Error setting Supabase branch for app:", error);
         setError(error instanceof Error ? error : new Error(String(error)));
         throw error;
       } finally {
@@ -135,6 +119,5 @@ export function useSupabase() {
     setAppProject,
     unsetAppProject,
     selectProject,
-    setAppBranch,
   };
 }

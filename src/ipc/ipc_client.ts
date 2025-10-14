@@ -66,6 +66,8 @@ import type {
   McpServerUpdate,
   CreateMcpServer,
   CloneRepoParams,
+  SupabaseBranch,
+  SetSupabaseAppProjectParams,
 } from "./ipc_types";
 import type { Template } from "../shared/templates";
 import type {
@@ -963,31 +965,20 @@ export class IpcClient {
 
   public async listSupabaseBranches(params: {
     projectId: string;
-  }): Promise<any[]> {
+  }): Promise<SupabaseBranch[]> {
     return this.ipcRenderer.invoke("supabase:list-branches", params);
   }
 
   public async setSupabaseAppProject(
-    project: string,
-    app: number,
+    params: SetSupabaseAppProjectParams,
   ): Promise<void> {
-    await this.ipcRenderer.invoke("supabase:set-app-project", {
-      project,
-      app,
-    });
+    await this.ipcRenderer.invoke("supabase:set-app-project", params);
   }
 
   public async unsetSupabaseAppProject(app: number): Promise<void> {
     await this.ipcRenderer.invoke("supabase:unset-app-project", {
       app,
     });
-  }
-
-  public async setSupabaseAppBranch(params: {
-    app: number;
-    branchId: string | null;
-  }): Promise<void> {
-    await this.ipcRenderer.invoke("supabase:set-app-branch", params);
   }
 
   public async fakeHandleSupabaseConnect(params: {

@@ -168,6 +168,42 @@ export async function deleteSupabaseFunction({
   );
 }
 
+export async function listSupabaseBranches({
+  supabaseProjectId,
+}: {
+  supabaseProjectId: string;
+}): Promise<
+  Array<{
+    id: string;
+    name: string;
+    is_default: boolean;
+    project_ref: string;
+    parent_project_ref: string;
+  }>
+> {
+  logger.info(`Listing Supabase branches for project: ${supabaseProjectId}`);
+  const supabase = await getSupabaseClient();
+
+  const response = await fetch(
+    `https://api.supabase.com/v1/projects/${supabaseProjectId}/branches`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${(supabase as any).options.accessToken}`,
+      },
+    },
+  );
+
+  if (response.status !== 200) {
+    throw await createResponseError(response, "list branches");
+  }
+
+  logger.info(`Listed Supabase branches for project: ${supabaseProjectId}`);
+  const jsonResponse = await response.json();
+  console.log("*********", jsonResponse);
+  return jsonResponse;
+}
+
 export async function deploySupabaseFunctions({
   supabaseProjectId,
   functionName,

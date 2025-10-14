@@ -60,7 +60,6 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     loadBranches,
     setAppProject,
     unsetAppProject,
-    setAppBranch,
   } = useSupabase();
   const currentProjectId = app?.supabaseProjectId;
 
@@ -73,7 +72,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
 
   const handleProjectSelect = async (projectId: string) => {
     try {
-      await setAppProject(projectId, appId);
+      await setAppProject({ projectId, appId });
       toast.success("Project connected to app successfully");
       await refreshApp();
       await loadBranches(projectId);
@@ -82,11 +81,13 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     }
   };
 
+  const projectIdForBranches =
+    app?.supabaseParentProjectId || app?.supabaseProjectId;
   useEffect(() => {
-    if (currentProjectId) {
-      loadBranches(currentProjectId);
+    if (projectIdForBranches) {
+      loadBranches(projectIdForBranches);
     }
-  }, [currentProjectId, loadBranches]);
+  }, [projectIdForBranches, loadBranches]);
 
   const handleUnsetProject = async () => {
     try {
@@ -136,10 +137,20 @@ export function SupabaseConnector({ appId }: { appId: number }) {
               <div className="space-y-2">
                 <Label htmlFor="branch-select">Database Branch</Label>
                 <Select
-                  value={app.supabaseBranchId || ""}
-                  onValueChange={async (branchId) => {
+                  value={app.supabaseProjectId || ""}
+                  onValueChange={async (supabaseBranchProjectId) => {
                     try {
-                      await setAppBranch(branchId || null, appId);
+                      const branch = branches.find(
+                        (b) => b.projectRef === supabaseBranchProjectId,
+                      );
+                      if (!branch) {
+                        throw new Error("Branch not found");
+                      }
+                      await setAppProject({
+                        projectId: branch.projectRef,
+                        parentProjectId: branch.parentProjectRef,
+                        appId,
+                      });
                       toast.success("Branch selected");
                       await refreshApp();
                     } catch (error) {
@@ -152,12 +163,13 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                     <SelectValue placeholder="Select a branch" />
                   </SelectTrigger>
                   <SelectContent>
-                    {branches.map((branch: any) => (
+                    {branches.map((branch) => (
                       <SelectItem
-                        key={branch.id || branch.branch_id}
-                        value={(branch.id || branch.branch_id) as string}
+                        key={branch.projectRef}
+                        value={branch.projectRef}
                       >
-                        {branch.name || branch.branch_name || branch.id}
+                        {branch.name}
+                        {branch.isDefault && " (Default)"}
                       </SelectItem>
                     ))}
                   </SelectContent>

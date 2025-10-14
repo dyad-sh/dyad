@@ -2,14 +2,18 @@ import log from "electron-log";
 import { db } from "../../db";
 import { eq } from "drizzle-orm";
 import { apps } from "../../db/schema";
-import { getSupabaseClient } from "../../supabase_admin/supabase_management_client";
+import {
+  getSupabaseClient,
+  listSupabaseBranches,
+} from "../../supabase_admin/supabase_management_client";
 import {
   createLoggedHandler,
   createTestOnlyLoggedHandler,
 } from "./safe_handle";
 import { handleSupabaseOAuthReturn } from "../../supabase_admin/supabase_return_handler";
 import { safeSend } from "../utils/safe_sender";
-import { readSettings } from "../../main/settings";
+
+import { SetSupabaseAppProjectParams, SupabaseBranch } from "../ipc_types";
 
 const logger = log.scope("supabase_handlers");
 const handle = createLoggedHandler(logger);
@@ -24,21 +28,41 @@ export function registerSupabaseHandlers() {
   // List branches for a Supabase project (database branches)
   handle(
     "supabase:list-branches",
-    async (_, { projectId }: { projectId: string }) => {
-      const supabase = await getSupabaseClient();
+    async (
+      _,
+      { projectId }: { projectId: string },
+    ): Promise<Array<SupabaseBranch>> => {
+      const branches = await listSupabaseBranches({
+        supabaseProjectId: projectId,
+      });
+      return branches.map((branch) => ({
+        id: branch.id,
+        name: branch.name,
+        isDefault: branch.is_default,
+        projectRef: branch.project_ref,
+        parentProjectRef: branch.parent_project_ref,
+      }));
     },
   );
 
   // Set app project - links a Dyad app to a Supabase project
   handle(
     "supabase:set-app-project",
-    async (_, { project, app }: { project: string; app: number }) => {
+    async (
+      _,
+      { projectId, appId, parentProjectId }: SetSupabaseAppProjectParams,
+    ) => {
       await db
         .update(apps)
-        .set({ supabaseProjectId: project, supabaseBranchId: null })
-        .where(eq(apps.id, app));
+        .set({
+          supabaseProjectId: projectId,
+          supabaseParentProjectId: parentProjectId,
+        })
+        .where(eq(apps.id, appId));
 
-      logger.info(`Associated app ${app} with Supabase project ${project}`);
+      logger.info(
+        `Associated app ${appId} with Supabase project ${projectId} ${parentProjectId ? `and parent project ${parentProjectId}` : ""}`,
+      );
     },
   );
 
@@ -46,25 +70,11 @@ export function registerSupabaseHandlers() {
   handle("supabase:unset-app-project", async (_, { app }: { app: number }) => {
     await db
       .update(apps)
-      .set({ supabaseProjectId: null, supabaseBranchId: null })
+      .set({ supabaseProjectId: null })
       .where(eq(apps.id, app));
 
     logger.info(`Removed Supabase project association for app ${app}`);
   });
-
-  // Set selected Supabase branch for the app
-  handle(
-    "supabase:set-app-branch",
-    async (_, { app, branchId }: { app: number; branchId: string | null }) => {
-      await db
-        .update(apps)
-        .set({ supabaseBranchId: branchId })
-        .where(eq(apps.id, app));
-      logger.info(
-        `Updated Supabase branch for app ${app} to ${branchId ?? "<null>"}`,
-      );
-    },
-  );
 
   testOnlyHandle(
     "supabase:fake-connect-and-set-project",

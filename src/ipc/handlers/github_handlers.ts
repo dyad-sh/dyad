@@ -1,17 +1,19 @@
 import { ipcMain, BrowserWindow, IpcMainInvokeEvent } from "electron";
 import fetch from "node-fetch"; // Use node-fetch for making HTTP requests in main process
 import { writeSettings, readSettings } from "../../main/settings";
-import git from "isomorphic-git";
+import git, { clone } from "isomorphic-git";
 import http from "isomorphic-git/http/node";
 import * as schema from "../../db/schema";
 import fs from "node:fs";
 import { getDyadAppPath } from "../../paths/paths";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
+import type { CloneRepoParams, CloneRepoReturnType } from "@/ipc/ipc_types";
 import { eq } from "drizzle-orm";
 import { GithubUser } from "../../lib/schemas";
 import log from "electron-log";
 import { IS_TEST_BUILD } from "../utils/test_utils";
+import path from "node:path"; // ← ADD THIS
 
 const logger = log.scope("github_handlers");
 
@@ -627,6 +629,115 @@ async function handleDisconnectGithubRepo(
     })
     .where(eq(apps.id, appId));
 }
+// --- GitHub Clone Repo from URL Handler ---
+async function handleCloneRepoFromUrl(
+  event: IpcMainInvokeEvent,
+  params: CloneRepoParams,
+): Promise<CloneRepoReturnType> {
+  const { url, installCommand, startCommand, appName } = params;
+  try {
+    const settings = readSettings();
+    const accessToken = settings.githubAccessToken?.value;
+    const urlPattern = /github\.com[:/]([^/]+)\/([^/]+?)(?:\.git)?\/?$/;
+    const match = url.match(urlPattern);
+    if (!match) {
+      return {
+        error:
+          "Invalid GitHub URL. Expected format: https://github.com/owner/repo.git",
+      };
+    }
+    const [, owner, repoName] = match;
+    if (accessToken) {
+      const repoResponse = await fetch(
+        `${GITHUB_API_BASE}/repos/${owner}/${repoName}`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: "application/vnd.github+json",
+          },
+        },
+      );
+      if (!repoResponse.ok) {
+        return {
+          error: "Repository not found or you do not have access to it.",
+        };
+      }
+    }
+    const finalAppName = appName && appName.trim() ? appName.trim() : repoName;
+    const existingApp = await db.query.apps.findFirst({
+      where: eq(apps.name, finalAppName),
+    });
+
+    if (existingApp) {
+      return { error: `An app named "${finalAppName}" already exists.` };
+    }
+
+    const appPath = getDyadAppPath(finalAppName);
+    if (!fs.existsSync(appPath)) {
+      fs.mkdirSync(appPath, { recursive: true });
+    }
+    // Use authenticated URL if token exists, otherwise use public HTTPS URL
+    const cloneUrl = accessToken
+      ? IS_TEST_BUILD
+        ? `${GITHUB_GIT_BASE}/${owner}/${repoName}.git`
+        : `https://${accessToken}:x-oauth-basic@github.com/${owner}/${repoName}.git`
+      : `https://github.com/${owner}/${repoName}.git`; // Changed: use public HTTPS URL instead of original url
+    try {
+      await clone({
+        fs,
+        http,
+        dir: appPath,
+        url: cloneUrl,
+        onAuth: accessToken
+          ? () => ({
+              username: accessToken,
+              password: "x-oauth-basic",
+            })
+          : undefined,
+        singleBranch: false,
+      });
+    } catch (cloneErr) {
+      logger.error("[GitHub Handler] Clone failed:", cloneErr);
+      return {
+        error:
+          "Failed to clone repository. Please check the URL and try again.",
+      };
+    }
+    const aiRulesPath = path.join(appPath, "AI_RULES.md");
+    const hasAiRules = fs.existsSync(aiRulesPath);
+    const [newApp] = await db
+      .insert(schema.apps)
+      .values({
+        name: finalAppName,
+        path: finalAppName,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        githubOrg: owner,
+        githubRepo: repoName,
+        githubBranch: "main",
+        installCommand: installCommand || null,
+        startCommand: startCommand || null,
+      })
+      .returning();
+    logger.log(`Successfully cloned repo ${owner}/${repoName} to ${appPath}`);
+    // Return success object
+    return {
+      app: {
+        ...newApp,
+        files: [],
+        supabaseProjectName: null,
+        vercelTeamSlug: null,
+      },
+      hasAiRules,
+    };
+  } catch (err: any) {
+    // Catch any remaining unexpected errors and return an error object
+    logger.error("[GitHub Handler] Unexpected error in clone flow:", err);
+    return {
+      error: err.message || "An unexpected error occurred during cloning.",
+    };
+  }
+}
 
 // --- Registration ---
 export function registerGithubHandlers() {
@@ -649,6 +760,12 @@ export function registerGithubHandlers() {
   ipcMain.handle("github:push", handlePushToGithub);
   ipcMain.handle("github:disconnect", (event, args: { appId: number }) =>
     handleDisconnectGithubRepo(event, args),
+  );
+  ipcMain.handle(
+    "github:clone-repo-from-url",
+    async (event, args: CloneRepoParams) => {
+      return await handleCloneRepoFromUrl(event, args);
+    },
   );
 }
 

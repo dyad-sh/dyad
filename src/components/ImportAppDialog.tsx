@@ -89,10 +89,32 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
       setLoading(false);
     }
   };
+  const handleUrlBlur = async () => {
+    if (!url.trim()) return;
+    const repoName = extractRepoNameFromUrl(url);
+    if (repoName) {
+      setGithubAppName(repoName);
+      setIsCheckingGithubName(true);
+      try {
+        const result = await IpcClient.getInstance().checkAppName({
+          appName: repoName,
+        });
+        setGithubNameExists(result.exists);
+      } catch (error: unknown) {
+        showError("Failed to check app name: " + (error as any).toString());
+      } finally {
+        setIsCheckingGithubName(false);
+      }
+    }
+  };
+  const extractRepoNameFromUrl = (url: string): string | null => {
+    const match = url.match(/github\.com[:/]([^/]+)\/([^/]+?)(?:\.git)?\/?$/);
+    return match ? match[2] : null;
+  };
   const handleImportFromUrl = async () => {
     setImporting(true);
     try {
-      const match = url.match(/github\.com[:/]([^/]+)\/([^/]+?)(?:\.git)?\/?$/);
+      const match = extractRepoNameFromUrl(url);
       const repoName = match ? match[2] : "";
       const appName = githubAppName.trim() || repoName;
       const result = await IpcClient.getInstance().cloneRepoFromUrl({
@@ -297,8 +319,8 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
         <Tabs defaultValue="local-folder" className="w-full">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="local-folder">Local Folder</TabsTrigger>
-            <TabsTrigger value="github-repos">Your Repositories</TabsTrigger>
-            <TabsTrigger value="github-url">From URL</TabsTrigger>
+            <TabsTrigger value="github-repos">Your GitHub Repos</TabsTrigger>
+            <TabsTrigger value="github-url">GitHub URL</TabsTrigger>
           </TabsList>
           <TabsContent value="local-folder" className="space-y-4">
             <div className="py-4">
@@ -574,12 +596,21 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
           </TabsContent>
           <TabsContent value="github-url" className="space-y-4">
             <div className="space-y-2">
-              <Label className="text-sm ml-2 mb-2">App name (optional)</Label>
+              <Label className="text-sm">Repository URL</Label>
+              <Input
+                placeholder="https://github.com/user/repo.git"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                disabled={importing}
+                onBlur={handleUrlBlur}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm">App name (optional)</Label>
               <Input
                 value={githubAppName}
                 onChange={handleGithubAppNameChange}
                 placeholder="Leave empty to use repository name"
-                className="w-full pr-8"
                 disabled={importing}
               />
               {isCheckingGithubName && (
@@ -593,16 +624,6 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                   different name.
                 </p>
               )}
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-sm">Repository URL</Label>
-              <Input
-                placeholder="https://github.com/user/repo.git"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                disabled={importing}
-              />
             </div>
 
             <Accordion type="single" collapsible>

@@ -8,7 +8,7 @@ import fs from "node:fs";
 import { getDyadAppPath } from "../../paths/paths";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
-import type { App, CloneRepoParams } from "@/ipc/ipc_types";
+import type { CloneRepoParams, CloneRepoReturnType } from "@/ipc/ipc_types";
 import { eq } from "drizzle-orm";
 import { GithubUser } from "../../lib/schemas";
 import log from "electron-log";
@@ -633,13 +633,7 @@ async function handleDisconnectGithubRepo(
 async function handleCloneRepoFromUrl(
   event: IpcMainInvokeEvent,
   params: CloneRepoParams,
-): Promise<
-  | {
-      app: App;
-      hasAiRules: boolean;
-    }
-  | { error: string }
-> {
+): Promise<CloneRepoReturnType> {
   const { url, installCommand, startCommand, appName } = params;
   try {
     const settings = readSettings();

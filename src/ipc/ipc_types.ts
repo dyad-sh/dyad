@@ -499,3 +499,11 @@ export interface GithubRepository {
   full_name: string;
   private: boolean;
 }
+export type CloneRepoReturnType =
+  | {
+      app: App;
+      hasAiRules: boolean;
+    }
+  | {
+      error: string;
+    };

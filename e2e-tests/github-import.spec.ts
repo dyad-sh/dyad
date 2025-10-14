@@ -20,15 +20,15 @@ test("should open GitHub import modal from home", async ({ po }) => {
     po.page.getByRole("tab", { name: "Local Folder" }),
   ).toBeVisible();
   await expect(
-    po.page.getByRole("tab", { name: "Your Repositories" }),
+    po.page.getByRole("tab", { name: "Your GitHub Repos" }),
   ).toBeVisible();
-  await expect(po.page.getByRole("tab", { name: "From URL" })).toBeVisible();
+  await expect(po.page.getByRole("tab", { name: "GitHub URL" })).toBeVisible();
   // Local Folder tab should be active by default
   await expect(
     po.page.getByRole("button", { name: "Select Folder" }),
   ).toBeVisible();
-  // Switch to Your Repositories tab - should show GitHub connector
-  await po.page.getByRole("tab", { name: "Your Repositories" }).click();
+  // Switch to Your GitHub Repos tab - should show GitHub connector
+  await po.page.getByRole("tab", { name: "Your GitHub Repos" }).click();
   await expect(
     po.page.getByRole("button", { name: "Connect to GitHub" }),
   ).toBeVisible();
@@ -38,8 +38,8 @@ test("should connect to GitHub and show import UI", async ({ po }) => {
   await po.setUp();
   // Open modal
   await po.page.getByRole("button", { name: "Import App" }).click();
-  // Switch to Your Repositories tab - should show GitHub connector when not authenticated
-  await po.page.getByRole("tab", { name: "Your Repositories" }).click();
+  // Switch to Your GitHub Repos tab - should show GitHub connector when not authenticated
+  await po.page.getByRole("tab", { name: "Your GitHub Repos" }).click();
   // Connect to GitHub (reuse existing connector)
   await po.page.getByRole("button", { name: "Connect to GitHub" }).click();
   // Wait for device flow code
@@ -48,23 +48,23 @@ test("should connect to GitHub and show import UI", async ({ po }) => {
   await expect(po.page.getByText("testuser/existing-app")).toBeVisible();
   // Should be able to see all tabs
   await expect(
-    po.page.getByRole("tab", { name: "Your Repositories" }),
+    po.page.getByRole("tab", { name: "Your GitHub Repos" }),
   ).toBeVisible();
-  await expect(po.page.getByRole("tab", { name: "From URL" })).toBeVisible();
+  await expect(po.page.getByRole("tab", { name: "GitHub URL" })).toBeVisible();
   await expect(
     po.page.getByRole("tab", { name: "Local Folder" }),
   ).toBeVisible();
 });
 
-test("should import from URL", async ({ po }) => {
+test("should import GitHub URL", async ({ po }) => {
   await po.setUp();
   // Open modal and connect
   await po.page.getByRole("button", { name: "Import App" }).click();
-  await po.page.getByRole("tab", { name: "Your Repositories" }).click();
+  await po.page.getByRole("tab", { name: "Your GitHub Repos" }).click();
   await po.page.getByRole("button", { name: "Connect to GitHub" }).click();
   await expect(po.page.locator("text=FAKE-CODE")).toBeVisible();
-  // Switch to "From URL" tab
-  await po.page.getByRole("tab", { name: "From URL" }).click();
+  // Switch to "GitHub URL" tab
+  await po.page.getByRole("tab", { name: "GitHub URL" }).click();
   // Enter URL
   await po.page
     .getByPlaceholder("https://github.com/user/repo.git")
@@ -84,13 +84,13 @@ test("should import from repository list", async ({ po }) => {
 
   // Open modal and connect
   await po.page.getByRole("button", { name: "Import App" }).click();
-  // Switch to Your Repositories tab - should show GitHub connector when not authenticated
-  await po.page.getByRole("tab", { name: "Your Repositories" }).click();
+  // Switch to Your GitHub Repos tab - should show GitHub connector when not authenticated
+  await po.page.getByRole("tab", { name: "Your GitHub Repos" }).click();
   await po.page.getByRole("button", { name: "Connect to GitHub" }).click();
   await expect(po.page.locator("text=FAKE-CODE")).toBeVisible();
 
-  // Switch to Your Repositories tab
-  await po.page.getByRole("tab", { name: "Your Repositories" }).click();
+  // Switch to Your GitHub Repos tab
+  await po.page.getByRole("tab", { name: "Your GitHub Repos" }).click();
 
   // Should show repositories list
   await expect(po.page.getByText("testuser/existing-app")).toBeVisible();
@@ -112,8 +112,8 @@ test("should support advanced options with custom commands", async ({ po }) => {
 
   // Open modal and connect
   await po.page.getByRole("button", { name: "Import App" }).click();
-  // Go to From URL tab
-  await po.page.getByRole("tab", { name: "From URL" }).click();
+  // Go to GitHub URL tab
+  await po.page.getByRole("tab", { name: "GitHub URL" }).click();
   await po.page
     .getByPlaceholder("https://github.com/user/repo.git")
     .fill("https://github.com/dyad-sh/nextjs-template.git");
@@ -154,8 +154,8 @@ test("should allow empty commands to use defaults", async ({ po }) => {
   // Open modal and connect
   await po.page.getByRole("button", { name: "Import App" }).click();
 
-  // Go to From URL tab
-  await po.page.getByRole("tab", { name: "From URL" }).click();
+  // Go to GitHub URL tab
+  await po.page.getByRole("tab", { name: "GitHub URL" }).click();
   await po.page
     .getByPlaceholder("https://github.com/user/repo.git")
     .fill("https://github.com/dyad-sh/nextjs-template.git");

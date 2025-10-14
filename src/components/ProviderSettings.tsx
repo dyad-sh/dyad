@@ -10,17 +10,12 @@ import type { LanguageModelProvider } from "@/ipc/ipc_types";
 
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useCustomLanguageModelProvider } from "@/hooks/useCustomLanguageModelProvider";
-import { GiftIcon, PlusIcon, MoreVertical, Trash2, Edit } from "lucide-react";
+import { GiftIcon, PlusIcon, Trash2, Edit } from "lucide-react";
 import { Skeleton } from "./ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { AlertTriangle } from "lucide-react";
 import { useState } from "react";
 
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -123,17 +118,45 @@ export function ProviderSettingsGrid() {
                   className="p-4 cursor-pointer"
                   onClick={() => handleProviderClick(provider.id)}
                 >
-                  <CardTitle className="text-lg font-medium flex items-center justify-between mr-5">
-                    {provider.name}
+                  <div className="flex items-center justify-between mb-3">
                     {isProviderSetup(provider.id) ? (
-                      <span className="ml-3 text-sm font-medium text-green-500 bg-green-50 dark:bg-green-900/30 border border-green-500/50 dark:border-green-500/50 px-2 py-1 rounded-full">
+                      <span className="text-sm font-medium text-green-500 bg-green-50 dark:bg-green-900/30 border border-green-500/50 dark:border-green-500/50 px-2 py-1 rounded-full whitespace-nowrap">
                         Ready
                       </span>
                     ) : (
-                      <span className="text-sm text-gray-500 bg-gray-50 dark:bg-gray-900 dark:text-gray-300 px-2 py-1 rounded-full">
+                      <span className="text-sm text-gray-500 bg-gray-50 dark:bg-gray-900 dark:text-gray-300 px-2 py-1 rounded-full whitespace-nowrap">
                         Needs Setup
                       </span>
                     )}
+
+                    {isCustom && (
+                      <div
+                        className="flex items-center"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Button
+                          data-testid="edit-custom-provider"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 hover:bg-muted rounded-md"
+                          onClick={() => handleEditProvider(provider)}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          data-testid="delete-custom-provider"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10 rounded-md"
+                          onClick={() => setProviderToDelete(provider.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                  <CardTitle className="text-lg font-medium mb-2">
+                    {provider.name}
                   </CardTitle>
                   <CardDescription>
                     {provider.hasFreeTier && (
@@ -144,46 +167,6 @@ export function ProviderSettingsGrid() {
                     )}
                   </CardDescription>
                 </CardHeader>
-
-                {isCustom && (
-                  <div
-                    className="absolute top-2 right-0"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="p-1 hover:bg-muted rounded-full focus:outline-none"
-                          data-testid="custom-provider-more-options"
-                        >
-                          <MoreVertical className="h-4 w-4 text-muted-foreground" />
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent align="end" className="w-48 p-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="w-full justify-start mb-1"
-                          onClick={() => handleEditProvider(provider)}
-                        >
-                          <Edit className="h-4 w-4 mr-2" />
-                          Edit Provider
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="w-full justify-start text-destructive hover:text-destructive hover:bg-destructive/10"
-                          onClick={() => setProviderToDelete(provider.id)}
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Delete Provider
-                        </Button>
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                )}
               </Card>
             );
           })}

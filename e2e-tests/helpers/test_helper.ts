@@ -776,9 +776,7 @@ export class PageObject {
   }
 
   async setUpTestModel() {
-    await this.page
-      .getByRole("heading", { name: "test-provider Needs Setup" })
-      .click();
+    await this.page.getByRole("heading", { name: "test-provider" }).click();
     await this.page.getByRole("button", { name: "Add Custom Model" }).click();
     await this.page
       .getByRole("textbox", { name: "Model ID*" })

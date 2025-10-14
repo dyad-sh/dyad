@@ -181,6 +181,26 @@ export async function listSupabaseBranches({
     parent_project_ref: string;
   }>
 > {
+  if (IS_TEST_BUILD) {
+    return [
+      {
+        id: "default-branch-id",
+        name: "Default Branch",
+        is_default: true,
+        project_ref: "fake-project-id",
+        parent_project_ref: "fake-project-id",
+      },
+
+      {
+        id: "test-branch-id",
+        name: "Test Branch",
+        is_default: false,
+        project_ref: "test-branch-project-id",
+        parent_project_ref: "fake-project-id",
+      },
+    ];
+  }
+
   logger.info(`Listing Supabase branches for project: ${supabaseProjectId}`);
   const supabase = await getSupabaseClient();
 

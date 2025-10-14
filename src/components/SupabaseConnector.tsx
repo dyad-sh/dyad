@@ -135,7 +135,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
           <CardContent>
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="branch-select">Database Branch</Label>
+                <Label htmlFor="supabase-branch-select">Database Branch</Label>
                 <Select
                   value={app.supabaseProjectId || ""}
                   onValueChange={async (supabaseBranchProjectId) => {
@@ -159,7 +159,10 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                   }}
                   disabled={loading}
                 >
-                  <SelectTrigger id="branch-select">
+                  <SelectTrigger
+                    id="supabase-branch-select"
+                    data-testid="supabase-branch-select"
+                  >
                     <SelectValue placeholder="Select a branch" />
                   </SelectTrigger>
                   <SelectContent>

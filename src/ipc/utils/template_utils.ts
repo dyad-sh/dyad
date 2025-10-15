@@ -4,6 +4,7 @@ import {
   localTemplatesData,
 } from "../../shared/templates";
 import log from "electron-log";
+import { readSettings } from "../../main/settings";
 
 const logger = log.scope("template_utils");
 
@@ -62,10 +63,27 @@ export async function fetchApiTemplates(): Promise<Template[]> {
   return apiTemplatesFetchPromise;
 }
 
-// Get all templates (local + API)
+// Get custom templates from user settings
+function getCustomTemplates(): Template[] {
+  const settings = readSettings();
+  const customTemplates = settings.customTemplates || [];
+
+  return customTemplates.map((ct) => ({
+    id: ct.id,
+    title: ct.title,
+    description: ct.description,
+    imageUrl: ct.imageUrl || "", // Empty string if no custom image - frontend will generate placeholder
+    isOfficial: false,
+    isCustom: true,
+    folderPath: ct.folderPath,
+  }));
+}
+
+// Get all templates (local + custom + API)
 export async function getAllTemplates(): Promise<Template[]> {
   const apiTemplates = await fetchApiTemplates();
-  return [...localTemplatesData, ...apiTemplates];
+  const customTemplates = getCustomTemplates();
+  return [...localTemplatesData, ...customTemplates, ...apiTemplates];
 }
 
 export async function getTemplateOrThrow(

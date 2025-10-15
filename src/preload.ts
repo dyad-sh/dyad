@@ -109,6 +109,12 @@ const validInvokeChannels = [
   "check-problems",
   "restart-dyad",
   "get-templates",
+  // Template management
+  "add-custom-template",
+  "edit-custom-template",
+  "delete-custom-template",
+  "select-folder",
+  "select-image",
   "portal:migrate-create",
   // MCP
   "mcp:list-servers",

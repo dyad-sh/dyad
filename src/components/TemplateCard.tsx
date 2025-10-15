@@ -1,18 +1,21 @@
 import React, { useState } from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Trash2, Edit3 } from "lucide-react";
 import { IpcClient } from "@/ipc/ipc_client";
 import { useSettings } from "@/hooks/useSettings";
 import { CommunityCodeConsentDialog } from "./CommunityCodeConsentDialog";
 import type { Template } from "@/shared/templates";
 import { Button } from "./ui/button";
 import { cn } from "@/lib/utils";
-import { showWarning } from "@/lib/toast";
+import { showWarning, showSuccess, showError } from "@/lib/toast";
+import { generateTemplatePlaceholder } from "@/lib/template-placeholder";
 
 interface TemplateCardProps {
   template: Template;
   isSelected: boolean;
   onSelect: (templateId: string) => void;
   onCreateApp: () => void;
+  onTemplateDeleted?: () => void;
+  onTemplateEdit?: (template: Template) => void;
 }
 
 export const TemplateCard: React.FC<TemplateCardProps> = ({
@@ -20,13 +23,31 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
   isSelected,
   onSelect,
   onCreateApp,
+  onTemplateDeleted,
+  onTemplateEdit,
 }) => {
   const { settings, updateSettings } = useSettings();
   const [showConsentDialog, setShowConsentDialog] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Get the image URL, using placeholder if not provided for custom templates
+  const getImageUrl = () => {
+    if (template.imageUrl) {
+      return template.imageUrl;
+    }
+    if (template.isCustom) {
+      return generateTemplatePlaceholder(template.title);
+    }
+    return template.imageUrl;
+  };
 
   const handleCardClick = () => {
-    // If it's a community template and user hasn't accepted community code yet, show dialog
-    if (!template.isOfficial && !settings?.acceptedCommunityCode) {
+    // If it's a community template (not official and not custom) and user hasn't accepted community code yet, show dialog
+    if (
+      !template.isOfficial &&
+      !template.isCustom &&
+      !settings?.acceptedCommunityCode
+    ) {
       setShowConsentDialog(true);
       return;
     }
@@ -63,6 +84,44 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
     }
   };
 
+  const handleDeleteCustomTemplate = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!template.isCustom) return;
+
+    if (
+      !confirm(
+        `Are you sure you want to delete "${template.title}"? This action cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      const result = await IpcClient.getInstance().deleteCustomTemplate(
+        template.id,
+      );
+      if (result.success) {
+        showSuccess("Template deleted successfully");
+        onTemplateDeleted?.();
+      } else {
+        showError(result.error || "Failed to delete template");
+      }
+    } catch (error) {
+      showError(
+        error instanceof Error ? error.message : "Failed to delete template",
+      );
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleEditCustomTemplate = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!template.isCustom) return;
+    onTemplateEdit?.(template);
+  };
+
   return (
     <>
       <div
@@ -80,7 +139,7 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
       >
         <div className="relative">
           <img
-            src={template.imageUrl}
+            src={getImageUrl()}
             alt={template.title}
             className={`w-full h-52 object-cover transition-opacity duration-300 group-hover:opacity-80 ${
               isSelected ? "opacity-75" : ""
@@ -151,6 +210,31 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
             Create App
           </Button>
         </div>
+
+        {/* Custom Template Action Buttons */}
+        {template.isCustom && (
+          <div className="flex items-center gap-2 px-4 pb-4">
+            <Button
+              onClick={handleEditCustomTemplate}
+              variant="outline"
+              size="sm"
+              className="flex-1 flex items-center justify-center gap-2"
+            >
+              <Edit3 className="h-4 w-4" />
+              Edit Template
+            </Button>
+            <Button
+              onClick={handleDeleteCustomTemplate}
+              disabled={isDeleting}
+              variant="outline"
+              size="sm"
+              className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+              title="Delete template"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
       </div>
 
       <CommunityCodeConsentDialog

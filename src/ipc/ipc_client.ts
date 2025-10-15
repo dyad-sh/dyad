@@ -1266,6 +1266,39 @@ export class IpcClient {
     return this.ipcRenderer.invoke("get-templates");
   }
 
+  public async addCustomTemplate(params: {
+    title: string;
+    description: string;
+    folderPath: string;
+    imageUrl?: string;
+  }): Promise<{ success: boolean; templateId?: string; error?: string }> {
+    return this.ipcRenderer.invoke("add-custom-template", params);
+  }
+
+  public async deleteCustomTemplate(
+    templateId: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    return this.ipcRenderer.invoke("delete-custom-template", templateId);
+  }
+
+  public async editCustomTemplate(params: {
+    templateId: string;
+    title?: string;
+    description?: string;
+    folderPath?: string;
+    imageUrl?: string;
+  }): Promise<{ success: boolean; error?: string }> {
+    return this.ipcRenderer.invoke("edit-custom-template", params);
+  }
+
+  public async selectFolder(): Promise<string | null> {
+    return this.ipcRenderer.invoke("select-folder");
+  }
+
+  public async selectImage(): Promise<string | null> {
+    return this.ipcRenderer.invoke("select-image");
+  }
+
   // --- Prompts Library ---
   public async listPrompts(): Promise<PromptDto[]> {
     return this.ipcRenderer.invoke("prompts:list");

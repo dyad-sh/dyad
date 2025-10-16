@@ -7,7 +7,7 @@ let globalCounter = 0;
 
 export const createChatCompletionHandler =
   (prefix: string) => async (req: Request, res: Response) => {
-    const { stream = false, messages = [] } = req.body;
+    const { stream = false, messages = [], system = "" } = req.body;
     console.log("* Received messages", messages);
 
     // Check if the last message contains "[429]" to simulate rate limiting
@@ -24,6 +24,19 @@ export const createChatCompletionHandler =
     }
 
     let messageContent = CANNED_MESSAGE;
+
+    // Check if this is a prompt enhancement request
+    if (
+      system &&
+      typeof system === "string" &&
+      system.includes("prompt engineer")
+    ) {
+      const userPrompt =
+        lastMessage && typeof lastMessage.content === "string"
+          ? lastMessage.content
+          : "";
+      messageContent = `Create a comprehensive and detailed ${userPrompt} with proper structure, clear requirements, and specific implementation details.`;
+    }
 
     if (
       lastMessage &&

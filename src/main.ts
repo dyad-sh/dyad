@@ -335,16 +335,26 @@ function handleDeepLinkReturn(url: string) {
       dialog.showErrorBox("Invalid URL", "Expected name and config");
       return;
     }
-    const decodedName = decodeURIComponent(name);
-    const decodedConfig = JSON.parse(atob(decodeURIComponent(config)));
-    const parsedConfig = AddMcpServerConfigSchema.parse(decodedConfig);
-    mainWindow?.webContents.send("deep-link-received", {
-      type: parsed.hostname,
-      payload: {
-        name: decodedName,
-        config: parsedConfig,
-      } as AddMcpServerPayload,
-    });
+
+    try {
+      const decodedConfigJson = atob(config);
+      const decodedConfig = JSON.parse(decodedConfigJson);
+      const parsedConfig = AddMcpServerConfigSchema.parse(decodedConfig);
+
+      mainWindow?.webContents.send("deep-link-received", {
+        type: parsed.hostname,
+        payload: {
+          name,
+          config: parsedConfig,
+        } as AddMcpServerPayload,
+      });
+    } catch (error) {
+      logger.error("Failed to parse add-mcp-server deep link:", error);
+      dialog.showErrorBox(
+        "Invalid MCP Server Configuration",
+        "The deep link contains malformed configuration data. Please check the URL and try again.",
+      );
+    }
     return;
   }
   dialog.showErrorBox("Invalid deep link URL", url);

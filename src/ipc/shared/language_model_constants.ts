@@ -213,6 +213,15 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       dollarSigns: 0,
     },
     {
+      name: "z-ai/glm-4.6",
+      displayName: "GLM 4.6",
+      description: "Z-AI's best coding model",
+      maxOutputTokens: 32_000,
+      contextWindow: 200_000,
+      temperature: 0,
+      dollarSigns: 2,
+    },
+    {
       name: "qwen/qwen3-coder",
       displayName: "Qwen3 Coder",
       description: "Qwen's best coding model",

@@ -25,7 +25,11 @@ import {
 import { getDyadAppPath } from "../../paths/paths";
 import { readSettings } from "../../main/settings";
 import type { ChatResponseEnd, ChatStreamParams } from "../ipc_types";
-import { extractCodebase, readFileWithCache } from "../../utils/codebase";
+import {
+  CodebaseFile,
+  extractCodebase,
+  readFileWithCache,
+} from "../../utils/codebase";
 import { processFullResponseActions } from "../processors/response_processor";
 import { streamTestResponse } from "./testing_chat_handlers";
 import { getTestResponse } from "./testing_chat_handlers";
@@ -437,27 +441,39 @@ ${componentSnippet}
         );
       } else {
         // Normal AI processing for non-test prompts
+        const { modelClient, isEngineEnabled } = await getModelClient(
+          settings.selectedModel,
+          settings,
+        );
 
         const appPath = getDyadAppPath(updatedChat.app.path);
-        const chatContext = req.selectedComponent
-          ? {
-              contextPaths: [
-                {
-                  globPath: req.selectedComponent.relativePath,
-                },
-              ],
-              smartContextAutoIncludes: [],
-            }
-          : validateChatContext(updatedChat.app.chatContext);
-
-        // Parse app mentions from the prompt
-        const mentionedAppNames = parseAppMentions(req.prompt);
+        const chatContext =
+          req.selectedComponent && !isEngineEnabled
+            ? {
+                contextPaths: [
+                  {
+                    globPath: req.selectedComponent.relativePath,
+                  },
+                ],
+                smartContextAutoIncludes: [],
+              }
+            : validateChatContext(updatedChat.app.chatContext);
 
         // Extract codebase for current app
         const { formattedOutput: codebaseInfo, files } = await extractCodebase({
           appPath,
           chatContext,
         });
+        if (isEngineEnabled && req.selectedComponent) {
+          for (const file of files) {
+            if (file.path === req.selectedComponent.relativePath) {
+              file.focused = true;
+            }
+          }
+        }
+
+        // Parse app mentions from the prompt
+        const mentionedAppNames = parseAppMentions(req.prompt);
 
         // Extract codebases for mentioned apps
         const mentionedAppsCodebases = await extractMentionedAppsCodebases(
@@ -488,11 +504,6 @@ ${componentSnippet}
           codebaseInfo.length,
           "estimated tokens",
           codebaseInfo.length / 4,
-        );
-        const { modelClient, isEngineEnabled } = await getModelClient(
-          settings.selectedModel,
-          settings,
-          files,
         );
 
         // Prepare message history for the AI
@@ -709,9 +720,11 @@ This conversation includes one or more image attachments. When the user uploads 
           tools,
           systemPromptOverride = systemPrompt,
           dyadDisableFiles = false,
+          files,
         }: {
           chatMessages: ModelMessage[];
           modelClient: ModelClient;
+          files: CodebaseFile[];
           tools?: ToolSet;
           systemPromptOverride?: string;
           dyadDisableFiles?: boolean;
@@ -729,6 +742,7 @@ This conversation includes one or more image attachments. When the user uploads 
             "dyad-engine": {
               dyadRequestId,
               dyadDisableFiles,
+              dyadFiles: files,
               dyadMentionedApps: mentionedAppsCodebases.map(
                 ({ files, appName }) => ({
                   appName,
@@ -878,6 +892,7 @@ This conversation includes one or more image attachments. When the user uploads 
               aiRules: await readAiRules(getDyadAppPath(updatedChat.app.path)),
               chatMode: "agent",
             }),
+            files: files,
             dyadDisableFiles: true,
           });
 
@@ -903,6 +918,7 @@ This conversation includes one or more image attachments. When the user uploads 
         const { fullStream } = await simpleStreamText({
           chatMessages,
           modelClient,
+          files: files,
         });
 
         // Process the stream as before
@@ -939,6 +955,7 @@ This conversation includes one or more image attachments. When the user uploads 
                   { role: "assistant", content: fullResponse },
                 ],
                 modelClient,
+                files: files,
               });
               for await (const part of contStream) {
                 // If the stream was aborted, exit early
@@ -1020,11 +1037,11 @@ ${problemReport.problems
                 const { modelClient } = await getModelClient(
                   settings.selectedModel,
                   settings,
-                  files,
                 );
 
                 const { fullStream } = await simpleStreamText({
                   modelClient,
+                  files: files,
                   chatMessages: [
                     ...chatMessages.map((msg, index) => {
                       if (

@@ -406,6 +406,7 @@ ${content}
 export type CodebaseFile = {
   path: string;
   content: string;
+  focused?: boolean;
   force?: boolean;
 };
 

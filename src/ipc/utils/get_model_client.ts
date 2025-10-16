@@ -52,16 +52,11 @@ export interface ModelClient {
   builtinProviderId?: string;
 }
 
-interface File {
-  path: string;
-  content: string;
-}
-
 const logger = log.scope("getModelClient");
 export async function getModelClient(
   model: LargeLanguageModel,
   settings: UserSettings,
-  files?: File[],
+  // files?: File[],
 ): Promise<{
   modelClient: ModelClient;
   isEngineEnabled?: boolean;
@@ -112,9 +107,7 @@ export async function getModelClient(
       // Do not use free variant (for openrouter).
       const modelName = model.name.split(":free")[0];
       const autoModelClient = {
-        model: provider(`${providerConfig.gatewayPrefix || ""}${modelName}`, {
-          files,
-        }),
+        model: provider(`${providerConfig.gatewayPrefix || ""}${modelName}`),
         builtinProviderId: model.provider,
       };
 
@@ -176,7 +169,6 @@ export async function getModelClient(
             name: autoModel.name,
           },
           settings,
-          files,
         );
       }
     }

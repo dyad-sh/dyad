@@ -40,17 +40,18 @@ import { useTheme } from "@/contexts/ThemeContext";
 export function SupabaseConnector({ appId }: { appId: number }) {
   const { settings, refreshSettings } = useSettings();
   const { app, refreshApp } = useLoadApp(appId);
-  const { lastDeepLink } = useDeepLink();
+  const { lastDeepLink, clearLastDeepLink } = useDeepLink();
   const { isDarkMode } = useTheme();
   useEffect(() => {
     const handleDeepLink = async () => {
       if (lastDeepLink?.type === "supabase-oauth-return") {
         await refreshSettings();
         await refreshApp();
+        clearLastDeepLink();
       }
     };
     handleDeepLink();
-  }, [lastDeepLink]);
+  }, [lastDeepLink?.timestamp]);
   const {
     projects,
     loading,

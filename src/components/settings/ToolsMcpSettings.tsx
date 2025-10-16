@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,8 +11,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useMcp, type Transport } from "@/hooks/useMcp";
-import { showError, showSuccess } from "@/lib/toast";
+import { showError, showInfo, showSuccess } from "@/lib/toast";
 import { Edit2, Plus, Save, Trash2, X } from "lucide-react";
+import { useDeepLink } from "@/contexts/DeepLinkContext";
+import { AddMcpServerDeepLinkData } from "@/ipc/deep_link_data";
 
 type KeyValue = { key: string; value: string };
 
@@ -299,6 +301,29 @@ export function ToolsMcpSettings() {
   const [args, setArgs] = useState<string>("");
   const [url, setUrl] = useState("");
   const [enabled, setEnabled] = useState(true);
+  const { lastDeepLink, clearLastDeepLink } = useDeepLink();
+  console.log("lastDeepLink!!!", lastDeepLink);
+  useEffect(() => {
+    console.log("rerun effect");
+    const handleDeepLink = async () => {
+      if (lastDeepLink?.type === "add-mcp-server") {
+        const deepLink = lastDeepLink as AddMcpServerDeepLinkData;
+        const payload = deepLink.payload;
+        showInfo(`Prefilled ${payload.name} MCP server`);
+        setName(payload.name);
+        setTransport(payload.config.type);
+        if (payload.config.type === "stdio") {
+          const [command, ...args] = payload.config.command.split(" ");
+          setCommand(command);
+          setArgs(args.join(" "));
+        } else {
+          setUrl(payload.config.url);
+        }
+        clearLastDeepLink();
+      }
+    };
+    handleDeepLink();
+  }, [lastDeepLink?.timestamp]);
 
   React.useEffect(() => {
     setConsents(consentsMap);

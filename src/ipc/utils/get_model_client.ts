@@ -60,6 +60,7 @@ export async function getModelClient(
 ): Promise<{
   modelClient: ModelClient;
   isEngineEnabled?: boolean;
+  isSmartContextEnabled?: boolean;
 }> {
   const allProviders = await getLanguageModelProviders();
 
@@ -79,6 +80,7 @@ export async function getModelClient(
     // IMPORTANT: some providers like OpenAI have an empty string gateway prefix,
     // so we do a nullish and not a truthy check here.
     if (providerConfig.gatewayPrefix != null || dyadEngineUrl) {
+      const enableSmartFilesContext = settings.enableProSmartFilesContextMode;
       const provider = createDyadEngine({
         apiKey: dyadApiKey,
         baseURL: dyadEngineUrl ?? "https://engine.dyad.sh/v1",
@@ -88,7 +90,7 @@ export async function getModelClient(
             settings.selectedChatMode === "ask"
               ? false
               : settings.enableProLazyEditsMode,
-          enableSmartFilesContext: settings.enableProSmartFilesContextMode,
+          enableSmartFilesContext,
           // Keep in sync with getCurrentValue in ProModeSelector.tsx
           smartContextMode: settings.proSmartContextOption ?? "balanced",
           enableWebSearch: settings.enableProWebSearch,
@@ -114,6 +116,7 @@ export async function getModelClient(
       return {
         modelClient: autoModelClient,
         isEngineEnabled: true,
+        isSmartContextEnabled: enableSmartFilesContext,
       };
     } else {
       logger.warn(

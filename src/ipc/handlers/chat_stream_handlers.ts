@@ -441,14 +441,17 @@ ${componentSnippet}
         );
       } else {
         // Normal AI processing for non-test prompts
-        const { modelClient, isEngineEnabled } = await getModelClient(
-          settings.selectedModel,
-          settings,
-        );
+        const { modelClient, isEngineEnabled, isSmartContextEnabled } =
+          await getModelClient(settings.selectedModel, settings);
 
         const appPath = getDyadAppPath(updatedChat.app.path);
+        // When we don't have smart context enabled, we
+        // only include the selected component's file for codebase context.
+        //
+        // If we have selected component and smart context is enabled,
+        // we handle this specially below.
         const chatContext =
-          req.selectedComponent && !isEngineEnabled
+          req.selectedComponent && !isSmartContextEnabled
             ? {
                 contextPaths: [
                   {
@@ -464,7 +467,11 @@ ${componentSnippet}
           appPath,
           chatContext,
         });
-        if (isEngineEnabled && req.selectedComponent) {
+
+        // For smart context and selected component, we will mark the selected component's file as focused.
+        // This means that we don't do the regular smart context handling, but we'll allow fetching
+        // additional files through <dyad-read> as needed.
+        if (isSmartContextEnabled && req.selectedComponent) {
           for (const file of files) {
             if (file.path === req.selectedComponent.relativePath) {
               file.focused = true;

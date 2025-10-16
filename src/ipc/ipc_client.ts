@@ -77,6 +77,7 @@ import type {
   ProposalResult,
 } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
+import { DeepLinkData } from "./deep_link_data";
 
 export interface ChatStreamCallbacks {
   onUpdate: (messages: Message[]) => void;
@@ -100,10 +101,6 @@ export interface GitHubDeviceFlowSuccessData {
 
 export interface GitHubDeviceFlowErrorData {
   error: string;
-}
-
-export interface DeepLinkData {
-  type: string;
 }
 
 interface DeleteCustomModelParams {

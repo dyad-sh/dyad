@@ -18,6 +18,10 @@ import { BackupManager } from "./backup_manager";
 import { getDatabasePath, initializeDatabase } from "./db";
 import { UserSettings } from "./lib/schemas";
 import { handleNeonOAuthReturn } from "./neon_admin/neon_return_handler";
+import {
+  AddMcpServerConfigSchema,
+  AddMcpServerPayload,
+} from "./ipc/deep_link_data";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -320,6 +324,26 @@ function handleDeepLinkReturn(url: string) {
     // Send message to renderer to trigger re-render
     mainWindow?.webContents.send("deep-link-received", {
       type: parsed.hostname,
+    });
+    return;
+  }
+  // dyad://add-mcp-server?name=Chrome%20DevTools&config=eyJjb21tYW5kIjpudWxsLCJ0eXBlIjoic3RkaW8ifQ%3D%3D
+  if (parsed.hostname === "add-mcp-server") {
+    const name = parsed.searchParams.get("name");
+    const config = parsed.searchParams.get("config");
+    if (!name || !config) {
+      dialog.showErrorBox("Invalid URL", "Expected name and config");
+      return;
+    }
+    const decodedName = decodeURIComponent(name);
+    const decodedConfig = JSON.parse(atob(decodeURIComponent(config)));
+    const parsedConfig = AddMcpServerConfigSchema.parse(decodedConfig);
+    mainWindow?.webContents.send("deep-link-received", {
+      type: parsed.hostname,
+      payload: {
+        name: decodedName,
+        config: parsedConfig,
+      } as AddMcpServerPayload,
     });
     return;
   }

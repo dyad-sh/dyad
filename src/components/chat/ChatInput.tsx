@@ -16,6 +16,7 @@ import {
   ChevronsDownUp,
   ChartColumnIncreasing,
   SendHorizontalIcon,
+  Zap,
 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useState } from "react";
@@ -80,6 +81,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const [showError, setShowError] = useState(true);
   const [isApproving, setIsApproving] = useState(false); // State for approving
   const [isRejecting, setIsRejecting] = useState(false); // State for rejecting
+  const [isEnhancingPrompt, setIsEnhancingPrompt] = useState(false);
   const messagesById = useAtomValue(chatMessagesByIdAtom);
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
@@ -160,6 +162,25 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     });
     clearAttachments();
     posthog.capture("chat:submit");
+  };
+
+  const handleEnhancePrompt = async () => {
+    if (isStreaming || isEnhancingPrompt) return;
+    const trimmed = (inputValue || "").trim();
+    if (!trimmed) return;
+    try {
+      setIsEnhancingPrompt(true);
+      const { enhancedPrompt } = await IpcClient.getInstance().enhancePrompt(
+        trimmed,
+      );
+      if (enhancedPrompt) {
+        setInputValue(enhancedPrompt);
+      }
+    } catch (err) {
+      showError(err);
+    } finally {
+      setIsEnhancingPrompt(false);
+    }
   };
 
   const handleCancel = () => {
@@ -308,6 +329,25 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               placeholder="Ask Dyad to build..."
               excludeCurrentApp={true}
             />
+
+            {/* Enhance prompt button */}
+            <button
+              onClick={handleEnhancePrompt}
+              disabled={
+                isStreaming ||
+                isEnhancingPrompt ||
+                !(inputValue && inputValue.trim()) ||
+                disableSendButton
+              }
+              className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
+              title="Enhance prompt"
+            >
+              {isEnhancingPrompt ? (
+                <Loader2 size={20} className="animate-spin" />
+              ) : (
+                <Zap size={20} />
+              )}
+            </button>
 
             {isStreaming ? (
               <button

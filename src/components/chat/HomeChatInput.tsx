@@ -1,8 +1,9 @@
-import { SendIcon, StopCircleIcon } from "lucide-react";
+import { SendIcon, StopCircleIcon, Zap, Loader2 } from "lucide-react";
 
 import { useSettings } from "@/hooks/useSettings";
 import { homeChatInputValueAtom } from "@/atoms/chatAtoms"; // Use a different atom for home input
 import { useAtom } from "jotai";
+import { useState } from "react";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { useAttachments } from "@/hooks/useAttachments";
 import { AttachmentsList } from "./AttachmentsList";
@@ -13,6 +14,7 @@ import { HomeSubmitOptions } from "@/pages/home";
 import { ChatInputControls } from "../ChatInputControls";
 import { LexicalChatInput } from "./LexicalChatInput";
 import { useChatModeToggle } from "@/hooks/useChatModeToggle";
+import { IpcClient } from "@/ipc/ipc_client";
 export function HomeChatInput({
   onSubmit,
 }: {
@@ -25,6 +27,7 @@ export function HomeChatInput({
     hasChatId: false,
   }); // eslint-disable-line @typescript-eslint/no-unused-vars
   useChatModeToggle();
+  const [isEnhancingPrompt, setIsEnhancingPrompt] = useState(false);
 
   // Use the attachments hook
   const {
@@ -51,6 +54,29 @@ export function HomeChatInput({
     // Clear attachments as part of submission process
     clearAttachments();
     posthog.capture("chat:home_submit");
+  };
+
+  const handleEnhancePrompt = async () => {
+    if (isStreaming || isEnhancingPrompt) return;
+    const trimmed = (inputValue || "").trim();
+    if (!trimmed) return;
+    try {
+      setIsEnhancingPrompt(true);
+      const { enhancedPrompt } = await IpcClient.getInstance().enhancePrompt(
+        trimmed,
+      );
+      if (enhancedPrompt) {
+        setInputValue(enhancedPrompt);
+      }
+    } catch (err) {
+      // Reuse chat toast error utility
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      // @ts-expect-error showError types are permissive in project
+      // Importing here would create cycle; rely on global error handler if needed
+      console.error(err);
+    } finally {
+      setIsEnhancingPrompt(false);
+    }
   };
 
   if (!settings) {
@@ -88,6 +114,24 @@ export function HomeChatInput({
               excludeCurrentApp={false}
             />
 
+            {/* Enhance prompt button */}
+            <button
+              onClick={handleEnhancePrompt}
+              disabled={
+                isStreaming ||
+                isEnhancingPrompt ||
+                !(inputValue && inputValue.trim())
+              }
+              className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
+              title="Enhance prompt"
+            >
+              {isEnhancingPrompt ? (
+                <Loader2 size={20} className="animate-spin" />
+              ) : (
+                <Zap size={20} />
+              )}
+            </button>
+
             {/* File attachment dropdown */}
             <FileAttachmentDropdown
               className="mt-1 mr-1"
@@ -96,7 +140,7 @@ export function HomeChatInput({
             />
 
             {isStreaming ? (
-              <button
+            <button
                 className="px-2 py-2 mt-1 mr-2 text-(--sidebar-accent-fg) rounded-lg opacity-50 cursor-not-allowed" // Indicate disabled state
                 title="Cancel generation (unavailable here)"
               >

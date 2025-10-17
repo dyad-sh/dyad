@@ -1076,6 +1076,19 @@ export class IpcClient {
     }
   }
 
+  // Enhance a free-form prompt using the currently selected model
+  public async enhancePrompt(
+    prompt: string,
+  ): Promise<{ enhancedPrompt: string }> {
+    try {
+      const result = await this.ipcRenderer.invoke("prompt:enhance", { prompt });
+      return result as { enhancedPrompt: string };
+    } catch (error) {
+      showError(error);
+      throw error;
+    }
+  }
+
   // Window control methods
   public async minimizeWindow(): Promise<void> {
     try {

@@ -27,6 +27,14 @@ export async function createFromTemplate({
   }
 
   const template = await getTemplateOrThrow(templateId);
+
+  // Handle custom templates
+  if (template.isCustom && template.folderPath) {
+    logger.info(`Using custom template from ${template.folderPath}`);
+    await copyDirectoryRecursive(template.folderPath, fullAppPath);
+    return;
+  }
+
   if (!template.githubUrl) {
     throw new Error(`Template ${templateId} has no GitHub URL`);
   }

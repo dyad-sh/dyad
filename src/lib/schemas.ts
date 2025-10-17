@@ -236,6 +236,17 @@ export const UserSettingsSchema = z.object({
   enableProWebSearch: z.boolean().optional(),
   proSmartContextOption: z.enum(["balanced", "conservative"]).optional(),
   selectedTemplateId: z.string(),
+  customTemplates: z
+    .array(
+      z.object({
+        id: z.string(),
+        title: z.string(),
+        description: z.string(),
+        folderPath: z.string(),
+        imageUrl: z.string().optional(),
+      }),
+    )
+    .optional(),
   enableSupabaseWriteSqlMigration: z.boolean().optional(),
   selectedChatMode: ChatModeSchema.optional(),
   acceptedCommunityCode: z.boolean().optional(),

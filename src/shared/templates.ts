@@ -7,6 +7,8 @@ export interface Template {
   isOfficial: boolean;
   isExperimental?: boolean;
   requiresNeon?: boolean;
+  isCustom?: boolean;
+  folderPath?: string;
 }
 
 // API Template interface from the external API

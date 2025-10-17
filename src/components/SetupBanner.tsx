@@ -8,7 +8,6 @@ import {
   XCircle,
   Loader2,
   Settings,
-  GlobeIcon,
 } from "lucide-react";
 import { providerSettingsRoute } from "@/routes/settings/providers/$provider";
 
@@ -246,47 +245,40 @@ export function SetupBanner() {
                 <div className="flex items-center gap-3">
                   {getStatusIcon(isAnyProviderSetup())}
                   <span className="font-medium text-sm">
-                    2. Setup AI Model Access
+                    2. Setup AI Access
                   </span>
                 </div>
               </div>
             </AccordionTrigger>
             <AccordionContent className="px-4 pt-2 pb-4 bg-white dark:bg-zinc-900 border-t border-inherit">
-              <p className="text-sm mb-3">
-                Connect your preferred AI provider to start generating code.
+              <p className="text-[15px] mb-3">
+                Not sure what to do? Watch the Get Started video above ☝️
               </p>
-              <SetupProviderCard
-                variant="google"
-                onClick={handleGoogleSetupClick}
-                tabIndex={isNodeSetupComplete ? 0 : -1}
-                leadingIcon={
-                  <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                }
-                title="Setup Google Gemini API Key"
-                subtitle={
-                  <>
-                    <GiftIcon className="w-3 h-3" />
-                    Use Google Gemini for free
-                  </>
-                }
-              />
+              <div className="flex gap-2">
+                <SetupProviderCard
+                  className="flex-1"
+                  variant="google"
+                  onClick={handleGoogleSetupClick}
+                  tabIndex={isNodeSetupComplete ? 0 : -1}
+                  leadingIcon={
+                    <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  }
+                  title="Setup Google Gemini API Key"
+                  chip={<>Free</>}
+                />
 
-              <SetupProviderCard
-                className="mt-2"
-                variant="openrouter"
-                onClick={handleOpenRouterSetupClick}
-                tabIndex={isNodeSetupComplete ? 0 : -1}
-                leadingIcon={
-                  <Sparkles className="w-4 h-4 text-teal-600 dark:text-teal-400" />
-                }
-                title="Setup OpenRouter API Key"
-                subtitle={
-                  <>
-                    <GiftIcon className="w-3 h-3" />
-                    Free models available
-                  </>
-                }
-              />
+                <SetupProviderCard
+                  className="flex-1"
+                  variant="openrouter"
+                  onClick={handleOpenRouterSetupClick}
+                  tabIndex={isNodeSetupComplete ? 0 : -1}
+                  leadingIcon={
+                    <Sparkles className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+                  }
+                  title="Setup OpenRouter API Key"
+                  chip={<>Free</>}
+                />
+              </div>
 
               <SetupProviderCard
                 className="mt-2"
@@ -297,12 +289,8 @@ export function SetupBanner() {
                   <img src={logo} alt="Dyad Logo" className="w-6 h-6 mr-0.5" />
                 }
                 title="Setup Dyad Pro"
-                subtitle={
-                  <>
-                    <GlobeIcon className="w-3 h-3" />
-                    Access all AI models with one plan
-                  </>
-                }
+                subtitle="Access all AI models with one plan"
+                chip={<>Recommended</>}
               />
 
               <div
@@ -317,11 +305,11 @@ export function SetupBanner() {
                       <Settings className="w-4 h-4 text-gray-600 dark:text-gray-400" />
                     </div>
                     <div>
-                      <h4 className="font-medium text-sm text-gray-800 dark:text-gray-300">
+                      <h4 className="font-medium text-[15px] text-gray-800 dark:text-gray-300">
                         Setup other AI providers
                       </h4>
                       <p className="text-xs text-gray-600 dark:text-gray-400">
-                        OpenAI, Anthropic, OpenRouter and more
+                        OpenAI, Anthropic and more
                       </p>
                     </div>
                   </div>
@@ -428,7 +416,7 @@ export const OpenRouterSetupBanner = ({
         <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />
       }
       title="Setup OpenRouter API Key"
-      subtitle={
+      chip={
         <>
           <GiftIcon className="w-3 h-3" />
           Free models available

@@ -52,19 +52,15 @@ export interface ModelClient {
   builtinProviderId?: string;
 }
 
-interface File {
-  path: string;
-  content: string;
-}
-
 const logger = log.scope("getModelClient");
 export async function getModelClient(
   model: LargeLanguageModel,
   settings: UserSettings,
-  files?: File[],
+  // files?: File[],
 ): Promise<{
   modelClient: ModelClient;
   isEngineEnabled?: boolean;
+  isSmartContextEnabled?: boolean;
 }> {
   const allProviders = await getLanguageModelProviders();
 
@@ -84,6 +80,7 @@ export async function getModelClient(
     // IMPORTANT: some providers like OpenAI have an empty string gateway prefix,
     // so we do a nullish and not a truthy check here.
     if (providerConfig.gatewayPrefix != null || dyadEngineUrl) {
+      const enableSmartFilesContext = settings.enableProSmartFilesContextMode;
       const provider = createDyadEngine({
         apiKey: dyadApiKey,
         baseURL: dyadEngineUrl ?? "https://engine.dyad.sh/v1",
@@ -93,7 +90,7 @@ export async function getModelClient(
             settings.selectedChatMode === "ask"
               ? false
               : settings.enableProLazyEditsMode,
-          enableSmartFilesContext: settings.enableProSmartFilesContextMode,
+          enableSmartFilesContext,
           // Keep in sync with getCurrentValue in ProModeSelector.tsx
           smartContextMode: settings.proSmartContextOption ?? "balanced",
           enableWebSearch: settings.enableProWebSearch,
@@ -112,15 +109,14 @@ export async function getModelClient(
       // Do not use free variant (for openrouter).
       const modelName = model.name.split(":free")[0];
       const autoModelClient = {
-        model: provider(`${providerConfig.gatewayPrefix || ""}${modelName}`, {
-          files,
-        }),
+        model: provider(`${providerConfig.gatewayPrefix || ""}${modelName}`),
         builtinProviderId: model.provider,
       };
 
       return {
         modelClient: autoModelClient,
         isEngineEnabled: true,
+        isSmartContextEnabled: enableSmartFilesContext,
       };
     } else {
       logger.warn(
@@ -176,7 +172,6 @@ export async function getModelClient(
             name: autoModel.name,
           },
           settings,
-          files,
         );
       }
     }

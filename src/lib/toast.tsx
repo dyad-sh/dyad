@@ -10,16 +10,17 @@ import { McpConsentToast } from "../components/McpConsentToast";
  */
 
 /**
- * Show a success toast
- * @param message The message to display
+ * Shows a success toast.
+ * @param {string} message - The message to display.
  */
 export const showSuccess = (message: string) => {
   toast.success(message);
 };
 
 /**
- * Show an error toast
- * @param message The error message to display
+ * Shows an error toast.
+ * @param {any} message - The error message to display.
+ * @returns {string | number} The ID of the toast.
  */
 export const showError = (message: any) => {
   const errorMessage = message.toString();
@@ -73,8 +74,8 @@ export const showError = (message: any) => {
 };
 
 /**
- * Show a warning toast
- * @param message The warning message to display
+ * Shows a warning toast.
+ * @param {string} message - The warning message to display.
  */
 export const showWarning = (message: string) => {
   toast.warning(message);
@@ -82,17 +83,18 @@ export const showWarning = (message: string) => {
 };
 
 /**
- * Show an info toast
- * @param message The info message to display
+ * Shows an info toast.
+ * @param {string} message - The info message to display.
  */
 export const showInfo = (message: string) => {
   toast.info(message);
 };
 
 /**
- * Show an input request toast for interactive prompts (y/n)
- * @param message The prompt message to display
- * @param onResponse Callback function called when user responds
+ * Shows an input request toast for interactive prompts (y/n).
+ * @param {string} message - The prompt message to display.
+ * @param {(response: "y" | "n") => void} onResponse - The callback function called when the user responds.
+ * @returns {string | number} The ID of the toast.
  */
 export const showInputRequest = (
   message: string,
@@ -112,6 +114,16 @@ export const showInputRequest = (
   return toastId;
 };
 
+/**
+ * Shows a toast for MCP tool consent.
+ * @param {object} args - The arguments for the toast.
+ * @param {string} args.serverName - The name of the server.
+ * @param {string} args.toolName - The name of the tool.
+ * @param {string | null} [args.toolDescription] - A description of the tool.
+ * @param {string | null} [args.inputPreview] - A preview of the input.
+ * @param {(d: "accept-once" | "accept-always" | "decline") => void} args.onDecision - The callback for the user's decision.
+ * @returns {string | number} The ID of the toast.
+ */
 export function showMcpConsentToast(args: {
   serverName: string;
   toolName: string;
@@ -135,6 +147,13 @@ export function showMcpConsentToast(args: {
   return toastId;
 }
 
+/**
+ * Shows a toast for extra files that were changed outside of Dyad.
+ * @param {object} args - The arguments for the toast.
+ * @param {string[]} args.files - The files that were changed.
+ * @param {string} [args.error] - An error message.
+ * @param {PostHog} args.posthog - The PostHog instance.
+ */
 export const showExtraFilesToast = ({
   files,
   error,

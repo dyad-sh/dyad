@@ -38,10 +38,20 @@ const DEFAULT_SETTINGS: UserSettings = {
 
 const SETTINGS_FILE = "user-settings.json";
 
+/**
+ * Gets the file path for the user settings file.
+ * @returns {string} The path to the settings file.
+ */
 export function getSettingsFilePath(): string {
   return path.join(getUserDataPath(), SETTINGS_FILE);
 }
 
+/**
+ * Reads the user settings from the file system.
+ * If the settings file does not exist, it creates one with default settings.
+ * It also handles the decryption of sensitive data.
+ * @returns {UserSettings} The user settings object.
+ */
 export function readSettings(): UserSettings {
   try {
     const filePath = getSettingsFilePath();
@@ -142,6 +152,11 @@ export function readSettings(): UserSettings {
   }
 }
 
+/**
+ * Writes the user settings to the file system.
+ * It merges the provided settings with the current settings and handles encryption of sensitive data.
+ * @param {Partial<UserSettings>} settings - The settings to write.
+ */
 export function writeSettings(settings: Partial<UserSettings>): void {
   try {
     const filePath = getSettingsFilePath();
@@ -200,6 +215,11 @@ export function writeSettings(settings: Partial<UserSettings>): void {
   }
 }
 
+/**
+ * Encrypts a string using electron's safeStorage if available.
+ * @param {string} data - The string to encrypt.
+ * @returns {Secret} The encrypted data as a Secret object.
+ */
 export function encrypt(data: string): Secret {
   if (safeStorage.isEncryptionAvailable() && !IS_TEST_BUILD) {
     return {
@@ -213,6 +233,11 @@ export function encrypt(data: string): Secret {
   };
 }
 
+/**
+ * Decrypts a Secret object using electron's safeStorage if it was encrypted with it.
+ * @param {Secret} data - The Secret object to decrypt.
+ * @returns {string} The decrypted string.
+ */
 export function decrypt(data: Secret): string {
   if (data.encryptionType === "electron-safe-storage") {
     return safeStorage.decryptString(Buffer.from(data.value, "base64"));

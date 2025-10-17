@@ -1,12 +1,18 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
+/**
+ * A utility function to merge Tailwind CSS classes.
+ * @param {...ClassValue[]} inputs - The class values to merge.
+ * @returns {string} The merged class names.
+ */
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
 /**
- * Generates a cute app name.
+ * Generates a cute app name by combining a random adjective, animal, and verb.
+ * @returns {string} A cute app name.
  */
 export function generateCuteAppName(): string {
   const adjectives = [

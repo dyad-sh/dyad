@@ -17,14 +17,16 @@ const logger = log.scope("db");
 let _db: ReturnType<typeof drizzle> | null = null;
 
 /**
- * Get the database path based on the current environment
+ * Gets the path to the database file.
+ * @returns {string} The path to the database file.
  */
 export function getDatabasePath(): string {
   return path.join(getUserDataPath(), "sqlite.db");
 }
 
 /**
- * Initialize the database connection
+ * Initializes the database connection, runs migrations, and returns the database instance.
+ * @returns {BetterSQLite3Database<typeof schema> & { $client: Database.Database }} The initialized database instance.
  */
 export function initializeDatabase(): BetterSQLite3Database<typeof schema> & {
   $client: Database.Database;
@@ -71,7 +73,8 @@ export function initializeDatabase(): BetterSQLite3Database<typeof schema> & {
 }
 
 /**
- * Get the database instance (throws if not initialized)
+ * Gets the database instance. Throws an error if the database is not initialized.
+ * @returns {BetterSQLite3Database<typeof schema> & { $client: Database.Database }} The database instance.
  */
 export function getDb(): BetterSQLite3Database<typeof schema> & {
   $client: Database.Database;

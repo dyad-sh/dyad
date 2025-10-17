@@ -1,5 +1,16 @@
 import { useEffect } from "react";
 
+/**
+ * A hook for registering a keyboard shortcut.
+ * @param {string} key - The key to listen for.
+ * @param {object} modifiers - The modifiers to listen for.
+ * @param {boolean} [modifiers.ctrl] - Whether the control key should be pressed.
+ * @param {boolean} [modifiers.shift] - Whether the shift key should be pressed.
+ * @param {boolean} [modifiers.meta] - Whether the meta key should be pressed.
+ * @param {() => void} callback - The callback to run when the shortcut is pressed.
+ * @param {boolean} isComponentSelectorInitialized - Whether the component selector is initialized.
+ * @param {React.RefObject<HTMLIFrameElement | null>} [iframeRef] - A ref to the iframe.
+ */
 export function useShortcut(
   key: string,
   modifiers: { ctrl?: boolean; shift?: boolean; meta?: boolean },

@@ -3,6 +3,13 @@ import { IpcClient } from "@/ipc/ipc_client";
 import { showError } from "@/lib/toast";
 import type { CreateAppParams, CreateAppResult } from "@/ipc/ipc_types";
 
+/**
+ * A hook for creating a new app.
+ * @returns {object} An object with a function to create an app, and the loading and error states.
+ * @property {(params: CreateAppParams) => Promise<CreateAppResult>} createApp - A function to create a new app.
+ * @property {boolean} isCreating - Whether the app is being created.
+ * @property {Error | null} error - The error object if the creation fails.
+ */
 export function useCreateApp() {
   const queryClient = useQueryClient();
 

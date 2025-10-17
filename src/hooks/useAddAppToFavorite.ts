@@ -4,6 +4,16 @@ import { showError, showSuccess } from "@/lib/toast";
 import { useAtom } from "jotai";
 import { appsListAtom } from "@/atoms/appAtoms";
 
+/**
+ * A hook for adding or removing an app from favorites.
+ * @returns {object} An object with functions and state for managing favorite status.
+ * @property {Function} toggleFavorite - A function to toggle the favorite status of an app.
+ * @property {Function} toggleFavoriteAsync - An async function to toggle the favorite status of an app.
+ * @property {boolean} isLoading - Whether the mutation is pending.
+ * @property {Error | null} error - The error object if the mutation fails.
+ * @property {boolean} isError - Whether the mutation has failed.
+ * @property {boolean} isSuccess - Whether the mutation was successful.
+ */
 export function useAddAppToFavorite() {
   const [_, setApps] = useAtom(appsListAtom);
 

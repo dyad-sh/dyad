@@ -8,6 +8,17 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { RevertVersionResponse, Version } from "@/ipc/ipc_types";
 import { toast } from "sonner";
 
+/**
+ * A hook for managing app versions.
+ * @param {number | null} appId - The ID of the app.
+ * @returns {object} An object with the list of versions, loading state, error, and functions to manage versions.
+ * @property {Version[]} versions - The list of versions.
+ * @property {boolean} loading - Whether the versions are being loaded.
+ * @property {Error | null} error - The error object if the query fails.
+ * @property {() => void} refreshVersions - A function to refetch the versions.
+ * @property {(params: { versionId: string; }) => Promise<RevertVersionResponse>} revertVersion - A function to revert to a specific version.
+ * @property {boolean} isRevertingVersion - Whether a version is being reverted.
+ */
 export function useVersions(appId: number | null) {
   const [, setVersionsAtom] = useAtom(versionsListAtom);
   const selectedChatId = useAtomValue(selectedChatIdAtom);

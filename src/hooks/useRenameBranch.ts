@@ -4,12 +4,26 @@ import { showError } from "@/lib/toast";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useAtomValue } from "jotai";
 
+/**
+ * Represents the parameters for renaming a branch.
+ * @interface
+ */
 interface RenameBranchParams {
+  /** The ID of the application. */
   appId: number;
+  /** The old name of the branch. */
   oldBranchName: string;
+  /** The new name of the branch. */
   newBranchName: string;
 }
 
+/**
+ * A hook for renaming a branch.
+ * @returns {object} An object with a function to rename a branch, and the loading and error states.
+ * @property {(params: Omit<RenameBranchParams, "appId">) => Promise<void | undefined>} renameBranch - A function to rename a branch.
+ * @property {boolean} isRenamingBranch - Whether the branch is being renamed.
+ * @property {Error | null} renameBranchError - The error object if the renaming fails.
+ */
 export function useRenameBranch() {
   const queryClient = useQueryClient();
   const currentAppId = useAtomValue(selectedAppIdAtom);

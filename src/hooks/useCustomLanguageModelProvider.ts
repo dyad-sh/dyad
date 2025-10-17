@@ -6,6 +6,17 @@ import type {
 } from "@/ipc/ipc_types";
 import { showError } from "@/lib/toast";
 
+/**
+ * A hook for managing custom language model providers.
+ * @returns {object} An object with functions to create, edit, and delete providers, and the loading and error states.
+ * @property {(params: CreateCustomLanguageModelProviderParams) => Promise<LanguageModelProvider>} createProvider - A function to create a new provider.
+ * @property {(params: CreateCustomLanguageModelProviderParams) => Promise<LanguageModelProvider>} editProvider - A function to edit an existing provider.
+ * @property {(providerId: string) => Promise<void>} deleteProvider - A function to delete a provider.
+ * @property {boolean} isCreating - Whether a provider is being created.
+ * @property {boolean} isEditing - Whether a provider is being edited.
+ * @property {boolean} isDeleting - Whether a provider is being deleted.
+ * @property {Error | null} error - The error object if any of the mutations fail.
+ */
 export function useCustomLanguageModelProvider() {
   const queryClient = useQueryClient();
   const ipcClient = IpcClient.getInstance();

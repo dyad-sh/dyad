@@ -2,13 +2,25 @@ import { useEffect, useMemo, useState } from "react";
 import { useLoadAppFile } from "@/hooks/useLoadAppFile";
 import { useLoadApp } from "@/hooks/useLoadApp";
 
+/**
+ * Represents a parsed route.
+ * @interface
+ */
 export interface ParsedRoute {
+  /** The path of the route. */
   path: string;
+  /** The label for the route. */
   label: string;
 }
 
 /**
- * Loads the app router file and parses available routes for quick navigation.
+ * A hook that loads the app router file and parses available routes for quick navigation.
+ * @param {number | null} appId - The ID of the app.
+ * @returns {object} An object with the parsed routes, loading state, error, and a function to refresh the file.
+ * @property {ParsedRoute[]} routes - The parsed routes.
+ * @property {boolean} loading - Whether the routes are being loaded.
+ * @property {Error | null} error - The error object if the query fails.
+ * @property {() => Promise<void>} refreshFile - A function to refresh the file.
  */
 export function useParseRouter(appId: number | null) {
   const [routes, setRoutes] = useState<ParsedRoute[]>([]);

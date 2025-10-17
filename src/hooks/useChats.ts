@@ -4,6 +4,14 @@ import { chatsAtom, chatsLoadingAtom } from "@/atoms/chatAtoms";
 import { getAllChats } from "@/lib/chat";
 import type { ChatSummary } from "@/lib/schemas";
 
+/**
+ * A hook for managing chats.
+ * @param {number | null} appId - The ID of the app to fetch chats for.
+ * @returns {object} An object with the list of chats, loading state, and a function to refresh the chats.
+ * @property {ChatSummary[]} chats - The list of chats.
+ * @property {boolean} loading - Whether the chats are being loaded.
+ * @property {() => Promise<ChatSummary[]>} refreshChats - A function to refresh the list of chats.
+ */
 export function useChats(appId: number | null) {
   const [chats, setChats] = useAtom(chatsAtom);
   const [loading, setLoading] = useAtom(chatsLoadingAtom);

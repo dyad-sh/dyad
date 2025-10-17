@@ -3,9 +3,9 @@ import type { ChatSummary } from "./schemas";
 import type { CreateAppParams, CreateAppResult } from "../ipc/ipc_types";
 
 /**
- * Create a new app with an initial chat and prompt
- * @param params Object containing name, path, and initialPrompt
- * @returns The created app and chatId
+ * Creates a new app with an initial chat and prompt.
+ * @param {CreateAppParams} params - An object containing the name, path, and initial prompt.
+ * @returns {Promise<CreateAppResult>} The created app and chat ID.
  */
 export async function createApp(
   params: CreateAppParams,
@@ -19,9 +19,9 @@ export async function createApp(
 }
 
 /**
- * Get all chats from the database
- * @param appId Optional app ID to filter chats by app
- * @returns Array of chat summaries with id, title, and createdAt
+ * Gets all chats from the database.
+ * @param {number} [appId] - An optional app ID to filter chats by app.
+ * @returns {Promise<ChatSummary[]>} An array of chat summaries with id, title, and createdAt.
  */
 export async function getAllChats(appId?: number): Promise<ChatSummary[]> {
   try {

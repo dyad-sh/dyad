@@ -9,8 +9,32 @@ import type {
   CreateMcpServer,
 } from "@/ipc/ipc_types";
 
+/**
+ * The transport type for an MCP server.
+ */
 export type Transport = "stdio" | "http";
 
+/**
+ * A hook for managing MCP servers, tools, and consents.
+ * @returns {object} An object with the MCP data, loading state, error, and functions to manage MCP.
+ * @property {McpServer[]} servers - The list of MCP servers.
+ * @property {Record<number, McpTool[]>} toolsByServer - The tools for each server.
+ * @property {McpToolConsent[]} consentsList - The list of tool consents.
+ * @property {Record<string, McpToolConsent["consent"]>} consentsMap - A map of tool consents.
+ * @property {boolean} isLoading - Whether the MCP data is being loaded.
+ * @property {Error | null} error - The error object if any of the queries fail.
+ * @property {() => Promise<void>} refetchAll - A function to refetch all MCP data.
+ * @property {(params: CreateMcpServer) => Promise<any>} createServer - A function to create a new server.
+ * @property {(id: number, currentEnabled: boolean) => Promise<any>} toggleEnabled - A function to toggle the enabled state of a server.
+ * @property {(params: McpServerUpdate) => Promise<any>} updateServer - A function to update a server.
+ * @property {(id: number) => Promise<any>} deleteServer - A function to delete a server.
+ * @property {(serverId: number, toolName: string, consent: McpToolConsent["consent"]) => Promise<any>} setToolConsent - A function to set the consent for a tool.
+ * @property {boolean} isCreating - Whether a server is being created.
+ * @property {boolean} isToggling - Whether a server is being toggled.
+ * @property {boolean} isUpdatingServer - Whether a server is being updated.
+ * @property {boolean} isDeleting - Whether a server is being deleted.
+ * @property {boolean} isSettingConsent - Whether a tool consent is being set.
+ */
 export function useMcp() {
   const queryClient = useQueryClient();
 

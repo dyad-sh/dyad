@@ -91,4 +91,4 @@ npm run e2e e2e-tests/context_manage.spec.ts
 
 ```sh
 npm run e2e e2e-tests/context_manage.spec.ts -- --update-snapshots
-```
+npm run e2e e2e-tests/context_manage.spec.ts -- --update-snapshots

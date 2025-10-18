@@ -22,6 +22,35 @@ No sign-up required. Just download and go.
 
 Join our growing community of AI app builders on **Reddit**: [r/dyadbuilders](https://www.reddit.com/r/dyadbuilders/) - share your projects and get help from the community!
 
+## Setup
+
+To set up the development environment, follow these steps:
+
+1.  **Clone the repository**:
+    ```bash
+    git clone 
+    cd dyad
+    ```
+
+2.  **Install dependencies**:
+    This project uses `npm`. To install the dependencies, run:
+    ```bash
+    npm install
+    ```
+
+3.  **Set up environment variables**:
+    Copy the `.env.example` file to `.env`. You will need to add the necessary API keys and configurations to this file.
+
+## Usage
+
+To start the development server, run the following command:
+
+```bash
+npm start
+```
+
+This will start the application in development mode, with hot-reloading enabled.
+
 ## 🛠️ Contributing
 
 **Dyad** is open-source (Apache 2.0 licensed).

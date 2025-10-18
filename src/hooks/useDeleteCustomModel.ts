@@ -1,11 +1,24 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { IpcClient } from "@/ipc/ipc_client";
 
+/**
+ * Represents the parameters for deleting a custom model.
+ * @interface
+ */
 interface DeleteCustomModelParams {
+  /** The ID of the provider. */
   providerId: string;
+  /** The API name of the model. */
   modelApiName: string;
 }
 
+/**
+ * A hook for deleting a custom model.
+ * @param {object} options - The options for the hook.
+ * @param {() => void} [options.onSuccess] - A callback to run on success.
+ * @param {(error: Error) => void} [options.onError] - A callback to run on error.
+ * @returns {import("@tanstack/react-query").UseMutationResult<void, Error, DeleteCustomModelParams, unknown>} The mutation result.
+ */
 export function useDeleteCustomModel({
   onSuccess,
   onError,

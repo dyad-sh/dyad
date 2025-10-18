@@ -29,10 +29,25 @@ import { usePostHog } from "posthog-js/react";
 import { useCheckProblems } from "./useCheckProblems";
 import { useSettings } from "./useSettings";
 
+/**
+ * Generates a random number ID.
+ * @returns {number} A random number ID.
+ */
 export function getRandomNumberId() {
   return Math.floor(Math.random() * 1_000_000_000_000_000);
 }
 
+/**
+ * A hook for streaming chat messages.
+ * @param {object} [options] - The options for the hook.
+ * @param {boolean} [options.hasChatId=true] - Whether the hook has a chat ID.
+ * @returns {object} An object with functions and state for streaming chat messages.
+ * @property {(params: { prompt: string; chatId: number; redo?: boolean; attachments?: FileAttachment[]; selectedComponent?: ComponentSelection | null; }) => Promise<void>} streamMessage - A function to stream a message.
+ * @property {boolean} isStreaming - Whether a message is being streamed.
+ * @property {string | null} error - The error message if the stream fails.
+ * @property {(value: string | null) => void} setError - A function to set the error message.
+ * @property {(value: boolean) => void} setIsStreaming - A function to set the streaming state.
+ */
 export function useStreamChat({
   hasChatId = true,
 }: { hasChatId?: boolean } = {}) {
@@ -200,6 +215,16 @@ export function useStreamChat({
       selectedAppId,
       refetchUserBudget,
       settings,
+      setStreamCountById,
+      refreshChats,
+      refreshApp,
+      refreshVersions,
+      countTokens,
+      posthog,
+      refreshProposal,
+      setRecentStreamChatIds,
+      setErrorById,
+      refreshAppIframe,
     ],
   );
 

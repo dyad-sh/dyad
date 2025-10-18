@@ -4,6 +4,12 @@ import { useShortcut } from "./useShortcut";
 import { usePostHog } from "posthog-js/react";
 import { ChatModeSchema } from "../lib/schemas";
 
+/**
+ * A hook for toggling the chat mode.
+ * @returns {object} An object with a function to toggle the chat mode and a boolean indicating if the user is on a Mac.
+ * @property {() => void} toggleChatMode - A function to toggle the chat mode.
+ * @property {boolean} isMac - Whether the user is on a Mac.
+ */
 export function useChatModeToggle() {
   const { settings, updateSettings } = useSettings();
   const posthog = usePostHog();
@@ -48,13 +54,16 @@ export function useChatModeToggle() {
   return { toggleChatMode, isMac };
 }
 
-// Add this function at the top
 type NavigatorWithUserAgentData = Navigator & {
   userAgentData?: {
     platform?: string;
   };
 };
 
+/**
+ * Detects if the user is on a Mac.
+ * @returns {boolean} Whether the user is on a Mac.
+ */
 export function detectIsMac(): boolean {
   const nav = navigator as NavigatorWithUserAgentData;
   // Try modern API first
@@ -65,7 +74,11 @@ export function detectIsMac(): boolean {
   // Fallback to user agent check
   return /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
 }
-// Export the utility function and hook for use elsewhere
+
+/**
+ * A hook to determine if the user is on a Mac.
+ * @returns {boolean} Whether the user is on a Mac.
+ */
 export function useIsMac(): boolean {
   return useMemo(() => detectIsMac(), []);
 }

@@ -10,6 +10,20 @@ import {
 import { IpcClient } from "@/ipc/ipc_client";
 import { SetSupabaseAppProjectParams } from "@/ipc/ipc_types";
 
+/**
+ * A hook for managing Supabase projects and branches.
+ * @returns {object} An object with the Supabase data, loading state, error, and functions to manage Supabase.
+ * @property {any[]} projects - The list of Supabase projects.
+ * @property {any[]} branches - The list of branches for the selected project.
+ * @property {boolean} loading - Whether the Supabase data is being loaded.
+ * @property {Error | null} error - The error object if any of the queries fail.
+ * @property {string | null} selectedProject - The ID of the selected project.
+ * @property {() => Promise<void>} loadProjects - A function to load the Supabase projects.
+ * @property {(projectId: string) => Promise<void>} loadBranches - A function to load the branches for a project.
+ * @property {(params: SetSupabaseAppProjectParams) => Promise<void>} setAppProject - A function to set the Supabase project for an app.
+ * @property {(appId: number) => Promise<void>} unsetAppProject - A function to unset the Supabase project for an app.
+ * @property {(projectId: string | null) => void} selectProject - A function to select a project.
+ */
 export function useSupabase() {
   const [projects, setProjects] = useAtom(supabaseProjectsAtom);
   const [branches, setBranches] = useAtom(supabaseBranchesAtom);
@@ -21,9 +35,6 @@ export function useSupabase() {
 
   const ipcClient = IpcClient.getInstance();
 
-  /**
-   * Load Supabase projects from the API
-   */
   const loadProjects = useCallback(async () => {
     setLoading(true);
     try {
@@ -38,9 +49,6 @@ export function useSupabase() {
     }
   }, [ipcClient, setProjects, setError, setLoading]);
 
-  /**
-   * Load branches for a Supabase project
-   */
   const loadBranches = useCallback(
     async (projectId: string) => {
       setLoading(true);
@@ -58,9 +66,6 @@ export function useSupabase() {
     [ipcClient, setBranches, setError, setLoading],
   );
 
-  /**
-   * Associate a Supabase project with an app
-   */
   const setAppProject = useCallback(
     async (params: SetSupabaseAppProjectParams) => {
       setLoading(true);
@@ -78,9 +83,6 @@ export function useSupabase() {
     [ipcClient, setError, setLoading],
   );
 
-  /**
-   * Remove a Supabase project association from an app
-   */
   const unsetAppProject = useCallback(
     async (appId: number) => {
       setLoading(true);
@@ -98,9 +100,6 @@ export function useSupabase() {
     [ipcClient, setError, setLoading],
   );
 
-  /**
-   * Select a project for current use
-   */
   const selectProject = useCallback(
     (projectId: string | null) => {
       setSelectedProject(projectId);

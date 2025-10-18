@@ -3,6 +3,15 @@ import { IpcClient } from "@/ipc/ipc_client";
 import type { ProposalResult } from "@/lib/schemas"; // Import Proposal type
 import { proposalResultAtom } from "@/atoms/proposalAtoms";
 import { useAtom } from "jotai";
+/**
+ * A hook for fetching a proposal for a chat.
+ * @param {number | undefined} chatId - The ID of the chat.
+ * @returns {object} An object with the proposal result, loading state, error, and a function to refresh the proposal.
+ * @property {ProposalResult | null} proposalResult - The proposal result.
+ * @property {boolean} isLoading - Whether the proposal is being loaded.
+ * @property {string | null} error - The error message if the query fails.
+ * @property {(overrideChatId?: number) => Promise<void>} refreshProposal - A function to refresh the proposal.
+ */
 export function useProposal(chatId?: number | undefined) {
   const [proposalResult, setProposalResult] = useAtom(proposalResultAtom);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -37,8 +46,8 @@ export function useProposal(chatId?: number | undefined) {
         setIsLoading(false);
       }
     },
-    [chatId], // Only depend on chatId, setProposalResult is stable
-  ); // Depend on chatId
+    [chatId, setProposalResult],
+  );
 
   useEffect(() => {
     fetchProposal();

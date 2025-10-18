@@ -4,6 +4,18 @@ import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
 import { GlobPath, ContextPathResults } from "@/lib/schemas";
 
+/**
+ * A hook for managing context paths for an app.
+ * @returns {object} An object with the context paths data, loading state, error, and functions to update the context paths.
+ * @property {ContextPathResult[]} contextPaths - The list of context paths.
+ * @property {ContextPathResult[]} smartContextAutoIncludes - The list of smart context auto-includes.
+ * @property {ContextPathResult[]} excludePaths - The list of excluded paths.
+ * @property {boolean} isLoading - Whether the context paths are being loaded.
+ * @property {Error | null} error - The error object if the query fails.
+ * @property {(paths: GlobPath[]) => Promise<unknown>} updateContextPaths - A function to update the context paths.
+ * @property {(paths: GlobPath[]) => Promise<unknown>} updateSmartContextAutoIncludes - A function to update the smart context auto-includes.
+ * @property {(paths: GlobPath[]) => Promise<unknown>} updateExcludePaths - A function to update the excluded paths.
+ */
 export function useContextPaths() {
   const queryClient = useQueryClient();
   const appId = useAtomValue(selectedAppIdAtom);

@@ -16,6 +16,12 @@ const CUSTOM_TAG_NAMES = [
   "think",
   "dyad-command",
 ];
+/**
+ * A hook for copying message content to the clipboard.
+ * @returns {object} An object with a function to copy message content and a boolean indicating if the content has been copied.
+ * @property {(messageContent: string) => Promise<boolean>} copyMessageContent - A function to copy the message content to the clipboard.
+ * @property {boolean} copied - Whether the content has been copied.
+ */
 export const useCopyToClipboard = () => {
   const [copied, setCopied] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);

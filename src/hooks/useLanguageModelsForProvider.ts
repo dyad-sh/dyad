@@ -3,10 +3,9 @@ import { IpcClient } from "@/ipc/ipc_client";
 import type { LanguageModel } from "@/ipc/ipc_types";
 
 /**
- * Fetches the list of available language models for a specific provider.
- *
- * @param providerId The ID of the language model provider.
- * @returns TanStack Query result object for the language models.
+ * A hook to fetch the list of available language models for a specific provider.
+ * @param {string | undefined} providerId - The ID of the language model provider.
+ * @returns {import("@tanstack/react-query").UseQueryResult<LanguageModel[], Error>} The result of the query.
  */
 export function useLanguageModelsForProvider(providerId: string | undefined) {
   const ipcClient = IpcClient.getInstance();

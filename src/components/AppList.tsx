@@ -15,6 +15,12 @@ import { useMemo, useState } from "react";
 import { AppSearchDialog } from "./AppSearchDialog";
 import { useAddAppToFavorite } from "@/hooks/useAddAppToFavorite";
 import { AppItem } from "./appItem";
+/**
+ * A component that displays a list of apps.
+ * @param {object} props - The component props.
+ * @param {boolean} [props.show=true] - Whether to show the component.
+ * @returns {JSX.Element | null} The rendered component.
+ */
 export function AppList({ show }: { show?: boolean }) {
   const navigate = useNavigate();
   const [selectedAppId, setSelectedAppId] = useAtom(selectedAppIdAtom);

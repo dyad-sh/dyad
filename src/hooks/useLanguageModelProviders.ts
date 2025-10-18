@@ -8,6 +8,13 @@ import {
   AzureProviderSetting,
 } from "@/lib/schemas";
 
+/**
+ * A hook for managing language model providers.
+ * @returns {object} An object with the query result and functions to check if a provider is set up.
+ * @property {import("@tanstack/react-query").UseQueryResult<LanguageModelProvider[], Error>} ...queryResult - The result of the query.
+ * @property {(provider: string) => boolean} isProviderSetup - A function to check if a provider is set up.
+ * @property {() => boolean} isAnyProviderSetup - A function to check if any provider is set up.
+ */
 export function useLanguageModelProviders() {
   const ipcClient = IpcClient.getInstance();
   const { settings, envVars } = useSettings();

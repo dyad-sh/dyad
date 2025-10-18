@@ -15,6 +15,16 @@ import { showInputRequest } from "@/lib/toast";
 
 const useRunAppLoadingAtom = atom(false);
 
+/**
+ * A hook for running and managing an app.
+ * @returns {object} An object with functions to run, stop, and restart an app, and the loading state and app data.
+ * @property {boolean} loading - Whether the app is running.
+ * @property {(appId: number) => Promise<void>} runApp - A function to run an app.
+ * @property {(appId: number) => Promise<void>} stopApp - A function to stop an app.
+ * @property {(options?: { removeNodeModules?: boolean }) => Promise<void>} restartApp - A function to restart an app.
+ * @property {import("@/ipc/ipc_types").App | null} app - The current app.
+ * @property {() => Promise<void>} refreshAppIframe - A function to refresh the app iframe.
+ */
 export function useRunApp() {
   const [loading, setLoading] = useAtom(useRunAppLoadingAtom);
   const [app, setApp] = useAtom(currentAppAtom);
@@ -115,7 +125,7 @@ export function useRunApp() {
         setLoading(false);
       }
     },
-    [processAppOutput],
+    [processAppOutput, setApp, setAppOutput, setAppUrlObj, setPreviewErrorMessage],
   );
 
   const stopApp = useCallback(async (appId: number) => {
@@ -142,7 +152,7 @@ export function useRunApp() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [setPreviewErrorMessage]);
 
   const onHotModuleReload = useCallback(() => {
     setPreviewPanelKey((prevKey) => prevKey + 1);
@@ -216,6 +226,7 @@ export function useRunApp() {
       setPreviewPanelKey,
       processAppOutput,
       onHotModuleReload,
+      setPreviewErrorMessage,
     ],
   );
 

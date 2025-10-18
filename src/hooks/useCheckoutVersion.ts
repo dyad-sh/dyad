@@ -3,11 +3,23 @@ import { IpcClient } from "@/ipc/ipc_client";
 import { useSetAtom } from "jotai";
 import { activeCheckoutCounterAtom } from "@/store/appAtoms";
 
+/**
+ * Represents the variables for checking out a version.
+ * @interface
+ */
 interface CheckoutVersionVariables {
+  /** The ID of the application. */
   appId: number;
+  /** The ID of the version to checkout. */
   versionId: string;
 }
 
+/**
+ * A hook for checking out a version of an app.
+ * @returns {object} An object with a function to checkout a version and a boolean indicating if the checkout is in progress.
+ * @property {Function} checkoutVersion - A function to checkout a version.
+ * @property {boolean} isCheckingOutVersion - Whether the checkout is in progress.
+ */
 export function useCheckoutVersion() {
   const queryClient = useQueryClient();
   const setActiveCheckouts = useSetAtom(activeCheckoutCounterAtom);

@@ -5,6 +5,12 @@ import { ChatModeSelector } from "./ChatModeSelector";
 import { McpToolsPicker } from "@/components/McpToolsPicker";
 import { useSettings } from "@/hooks/useSettings";
 
+/**
+ * A component that displays the chat input controls.
+ * @param {object} props - The component props.
+ * @param {boolean} [props.showContextFilesPicker=false] - Whether to show the context files picker.
+ * @returns {JSX.Element} The rendered component.
+ */
 export function ChatInputControls({
   showContextFilesPicker = false,
 }: {

@@ -14,12 +14,24 @@ import { ChatError } from "./chat/ChatError";
 import { Button } from "@/components/ui/button";
 import { ArrowDown } from "lucide-react";
 
+/**
+ * Represents the props for the ChatPanel component.
+ * @interface
+ */
 interface ChatPanelProps {
+  /** The ID of the chat. */
   chatId?: number;
+  /** Whether the preview panel is open. */
   isPreviewOpen: boolean;
+  /** A function to toggle the preview panel. */
   onTogglePreview: () => void;
 }
 
+/**
+ * A component that displays the chat panel.
+ * @param {ChatPanelProps} props - The component props.
+ * @returns {JSX.Element} The rendered component.
+ */
 export function ChatPanel({
   chatId,
   isPreviewOpen,
@@ -95,7 +107,7 @@ export function ChatPanel({
     const streamCount = chatId ? (streamCountById.get(chatId) ?? 0) : 0;
     console.log("streamCount - scrolling to bottom", streamCount);
     scrollToBottom();
-  }, [chatId, chatId ? (streamCountById.get(chatId) ?? 0) : 0]);
+  }, [chatId, chatId ? (streamCountById.get(chatId) ?? 0) : 0, streamCountById]);
 
   useEffect(() => {
     const container = messagesContainerRef.current;

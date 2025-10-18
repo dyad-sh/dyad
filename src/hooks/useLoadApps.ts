@@ -3,6 +3,14 @@ import { useAtom } from "jotai";
 import { appBasePathAtom, appsListAtom } from "@/atoms/appAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
 
+/**
+ * A hook for loading the list of apps.
+ * @returns {object} An object with the list of apps, loading state, error, and a function to refresh the apps.
+ * @property {import("@/ipc/ipc_types").App[]} apps - The list of apps.
+ * @property {boolean} loading - Whether the apps are being loaded.
+ * @property {Error | null} error - The error object if the query fails.
+ * @property {() => Promise<void>} refreshApps - A function to refresh the apps.
+ */
 export function useLoadApps() {
   const [apps, setApps] = useAtom(appsListAtom);
   const [, setAppBasePath] = useAtom(appBasePathAtom);
@@ -23,7 +31,7 @@ export function useLoadApps() {
     } finally {
       setLoading(false);
     }
-  }, [setApps, setError, setLoading]);
+  }, [setApps, setAppBasePath, setError, setLoading]);
 
   useEffect(() => {
     refreshApps();

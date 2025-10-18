@@ -30,6 +30,12 @@ import { DeleteChatDialog } from "@/components/chat/DeleteChatDialog";
 import { ChatSearchDialog } from "./ChatSearchDialog";
 import { useSelectChat } from "@/hooks/useSelectChat";
 
+/**
+ * A component that displays a list of chats.
+ * @param {object} props - The component props.
+ * @param {boolean} [props.show=true] - Whether to show the component.
+ * @returns {JSX.Element | undefined} The rendered component.
+ */
 export function ChatList({ show }: { show?: boolean }) {
   const navigate = useNavigate();
   const [selectedChatId, setSelectedChatId] = useAtom(selectedChatIdAtom);

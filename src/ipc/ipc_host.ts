@@ -32,6 +32,10 @@ import { registerPromptHandlers } from "./handlers/prompt_handlers";
 import { registerHelpBotHandlers } from "./handlers/help_bot_handlers";
 import { registerMcpHandlers } from "./handlers/mcp_handlers";
 
+/**
+ * Registers all IPC handlers for the application.
+ * This function imports and calls the registration function for each category of IPC handlers.
+ */
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
   registerAppHandlers();

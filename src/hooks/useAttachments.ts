@@ -1,6 +1,22 @@
 import React, { useState, useRef } from "react";
 import type { FileAttachment } from "@/ipc/ipc_types";
 
+/**
+ * A hook for managing file attachments.
+ * @returns {object} An object with state and handlers for managing attachments.
+ * @property {FileAttachment[]} attachments - The current list of attachments.
+ * @property {React.RefObject<HTMLInputElement>} fileInputRef - A ref for the file input element.
+ * @property {boolean} isDraggingOver - Whether a file is being dragged over the drop zone.
+ * @property {() => void} handleAttachmentClick - A function to trigger the file input.
+ * @property {(e: React.ChangeEvent<HTMLInputElement>, type?: "chat-context" | "upload-to-codebase") => void} handleFileChange - A function to handle file changes from the file input.
+ * @property {(fileList: FileList, type: "chat-context" | "upload-to-codebase") => void} handleFileSelect - A function to handle file selections.
+ * @property {(index: number) => void} removeAttachment - A function to remove an attachment.
+ * @property {(e: React.DragEvent) => void} handleDragOver - A function to handle drag over events.
+ * @property {() => void} handleDragLeave - A function to handle drag leave events.
+ * @property {(e: React.DragEvent) => void} handleDrop - A function to handle drop events.
+ * @property {() => void} clearAttachments - A function to clear all attachments.
+ * @property {(e: React.ClipboardEvent) => Promise<void>} handlePaste - A function to handle paste events.
+ */
 export function useAttachments() {
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);

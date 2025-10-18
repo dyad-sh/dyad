@@ -2,6 +2,18 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { IpcClient } from "@/ipc/ipc_client";
 import { VercelDeployment } from "@/ipc/ipc_types";
 
+/**
+ * A hook for managing Vercel deployments.
+ * @param {number} appId - The ID of the app.
+ * @returns {object} An object with the list of deployments, loading state, error, and functions to manage deployments.
+ * @property {VercelDeployment[]} deployments - The list of deployments.
+ * @property {boolean} isLoading - Whether the deployments are being loaded.
+ * @property {string | null} error - The error message if the query fails.
+ * @property {() => Promise<any>} getDeployments - A function to fetch the deployments.
+ * @property {() => Promise<void>} disconnectProject - A function to disconnect the project.
+ * @property {boolean} isDisconnecting - Whether the project is being disconnected.
+ * @property {string | null} disconnectError - The error message if the disconnection fails.
+ */
 export function useVercelDeployments(appId: number) {
   const queryClient = useQueryClient();
 

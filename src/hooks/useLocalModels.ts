@@ -7,6 +7,14 @@ import {
 } from "@/atoms/localModelsAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
 
+/**
+ * A hook for managing local models from Ollama.
+ * @returns {object} An object with the list of models, loading state, error, and a function to load the models.
+ * @property {import("@/ipc/ipc_types").LocalModel[]} models - The list of local models.
+ * @property {boolean} loading - Whether the models are being loaded.
+ * @property {Error | null} error - The error object if the query fails.
+ * @property {() => Promise<import("@/ipc/ipc_types").LocalModel[]>} loadModels - A function to load the models.
+ */
 export function useLocalModels() {
   const [models, setModels] = useAtom(localModelsAtom);
   const [loading, setLoading] = useAtom(localModelsLoadingAtom);
@@ -14,9 +22,6 @@ export function useLocalModels() {
 
   const ipcClient = IpcClient.getInstance();
 
-  /**
-   * Load local models from Ollama
-   */
   const loadModels = useCallback(async () => {
     setLoading(true);
     try {

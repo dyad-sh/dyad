@@ -2,6 +2,9 @@ import { sql } from "drizzle-orm";
 import { integer, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
 import { relations } from "drizzle-orm";
 
+/**
+ * The prompts table schema.
+ */
 export const prompts = sqliteTable("prompts", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   title: text("title").notNull(),
@@ -15,6 +18,9 @@ export const prompts = sqliteTable("prompts", {
     .default(sql`(unixepoch())`),
 });
 
+/**
+ * The apps table schema.
+ */
 export const apps = sqliteTable("apps", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
@@ -50,6 +56,9 @@ export const apps = sqliteTable("apps", {
     .default(sql`0`),
 });
 
+/**
+ * The chats table schema.
+ */
 export const chats = sqliteTable("chats", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   appId: integer("app_id")
@@ -62,6 +71,9 @@ export const chats = sqliteTable("chats", {
     .default(sql`(unixepoch())`),
 });
 
+/**
+ * The messages table schema.
+ */
 export const messages = sqliteTable("messages", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   chatId: integer("chat_id")
@@ -79,6 +91,9 @@ export const messages = sqliteTable("messages", {
     .default(sql`(unixepoch())`),
 });
 
+/**
+ * The versions table schema.
+ */
 export const versions = sqliteTable(
   "versions",
   {
@@ -101,12 +116,17 @@ export const versions = sqliteTable(
   ],
 );
 
-// Define relations
+/**
+ * Relations for the apps table.
+ */
 export const appsRelations = relations(apps, ({ many }) => ({
   chats: many(chats),
   versions: many(versions),
 }));
 
+/**
+ * Relations for the chats table.
+ */
 export const chatsRelations = relations(chats, ({ many, one }) => ({
   messages: many(messages),
   app: one(apps, {
@@ -115,6 +135,9 @@ export const chatsRelations = relations(chats, ({ many, one }) => ({
   }),
 }));
 
+/**
+ * Relations for the messages table.
+ */
 export const messagesRelations = relations(messages, ({ one }) => ({
   chat: one(chats, {
     fields: [messages.chatId],
@@ -122,6 +145,9 @@ export const messagesRelations = relations(messages, ({ one }) => ({
   }),
 }));
 
+/**
+ * The language model providers table schema.
+ */
 export const language_model_providers = sqliteTable(
   "language_model_providers",
   {
@@ -138,6 +164,9 @@ export const language_model_providers = sqliteTable(
   },
 );
 
+/**
+ * The language models table schema.
+ */
 export const language_models = sqliteTable("language_models", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   displayName: text("display_name").notNull(),
@@ -158,7 +187,9 @@ export const language_models = sqliteTable("language_models", {
     .default(sql`(unixepoch())`),
 });
 
-// Define relations for new tables
+/**
+ * Relations for the language model providers table.
+ */
 export const languageModelProvidersRelations = relations(
   language_model_providers,
   ({ many }) => ({
@@ -166,6 +197,9 @@ export const languageModelProvidersRelations = relations(
   }),
 );
 
+/**
+ * Relations for the language models table.
+ */
 export const languageModelsRelations = relations(
   language_models,
   ({ one }) => ({
@@ -176,6 +210,9 @@ export const languageModelsRelations = relations(
   }),
 );
 
+/**
+ * Relations for the versions table.
+ */
 export const versionsRelations = relations(versions, ({ one }) => ({
   app: one(apps, {
     fields: [versions.appId],
@@ -183,7 +220,9 @@ export const versionsRelations = relations(versions, ({ one }) => ({
   }),
 }));
 
-// --- MCP (Model Context Protocol) tables ---
+/**
+ * The MCP (Model Context Protocol) servers table schema.
+ */
 export const mcpServers = sqliteTable("mcp_servers", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
@@ -207,6 +246,9 @@ export const mcpServers = sqliteTable("mcp_servers", {
     .default(sql`(unixepoch())`),
 });
 
+/**
+ * The MCP tool consents table schema.
+ */
 export const mcpToolConsents = sqliteTable(
   "mcp_tool_consents",
   {

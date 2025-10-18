@@ -4,6 +4,15 @@ import type { UserBudgetInfo } from "@/ipc/ipc_types";
 
 const FIVE_MINUTES_IN_MS = 5 * 60 * 1000;
 
+/**
+ * A hook for fetching user budget information.
+ * @returns {object} An object with the user budget data, loading state, error, and a function to refetch the data.
+ * @property {UserBudgetInfo | null | undefined} userBudget - The user budget information.
+ * @property {boolean} isLoadingUserBudget - Whether the user budget is being loaded.
+ * @property {Error | null} userBudgetError - The error object if the query fails.
+ * @property {boolean} isFetchingUserBudget - Whether the user budget is being fetched.
+ * @property {() => void} refetchUserBudget - A function to refetch the user budget.
+ */
 export function useUserBudgetInfo() {
   const queryKey = ["userBudgetInfo"];
 

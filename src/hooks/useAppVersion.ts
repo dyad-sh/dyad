@@ -1,6 +1,10 @@
 import { useState, useEffect } from "react";
 import { IpcClient } from "@/ipc/ipc_client";
 
+/**
+ * A hook to get the application version.
+ * @returns {string | null} The application version, or null if it cannot be fetched.
+ */
 export function useAppVersion() {
   const [appVersion, setAppVersion] = useState<string | null>(null);
 

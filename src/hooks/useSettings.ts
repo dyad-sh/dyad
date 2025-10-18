@@ -9,16 +9,34 @@ import { useAppVersion } from "./useAppVersion";
 const TELEMETRY_CONSENT_KEY = "dyadTelemetryConsent";
 const TELEMETRY_USER_ID_KEY = "dyadTelemetryUserId";
 
+/**
+ * Checks if the user has opted in to telemetry.
+ * @returns {boolean} Whether the user has opted in to telemetry.
+ */
 export function isTelemetryOptedIn() {
   return window.localStorage.getItem(TELEMETRY_CONSENT_KEY) === "opted_in";
 }
 
+/**
+ * Gets the telemetry user ID.
+ * @returns {string | null} The telemetry user ID.
+ */
 export function getTelemetryUserId(): string | null {
   return window.localStorage.getItem(TELEMETRY_USER_ID_KEY);
 }
 
 let isInitialLoad = false;
 
+/**
+ * A hook for managing user settings.
+ * @returns {object} An object with the settings, environment variables, loading state, error, and functions to manage settings.
+ * @property {UserSettings | null} settings - The user settings.
+ * @property {Record<string, string | undefined>} envVars - The environment variables.
+ * @property {boolean} loading - Whether the settings are being loaded.
+ * @property {Error | null} error - The error object if the query fails.
+ * @property {(newSettings: Partial<UserSettings>) => Promise<UserSettings | undefined>} updateSettings - A function to update the settings.
+ * @property {() => Promise<void>} refreshSettings - A function to refresh the settings.
+ */
 export function useSettings() {
   const posthog = usePostHog();
   const [settings, setSettingsAtom] = useAtom(userSettingsAtom);
@@ -52,7 +70,7 @@ export function useSettings() {
     } finally {
       setLoading(false);
     }
-  }, [setSettingsAtom, setEnvVarsAtom, appVersion]);
+  }, [setSettingsAtom, setEnvVarsAtom, appVersion, posthog]);
 
   useEffect(() => {
     // Only run once on mount, dependencies are stable getters/setters

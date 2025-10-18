@@ -22,13 +22,13 @@ No sign-up required. Just download and go.
 
 Join our growing community of AI app builders on **Reddit**: [r/dyadbuilders](https://www.reddit.com/r/dyadbuilders/) - share your projects and get help from the community!
 
-## 셋업
+## Setup
 
 To set up the development environment, follow these steps:
 
 1.  **Clone the repository**:
     ```bash
-    git clone https://github.com/your-repo/dyad.git
+    git clone 
     cd dyad
     ```
 
@@ -41,7 +41,7 @@ To set up the development environment, follow these steps:
 3.  **Set up environment variables**:
     Copy the `.env.example` file to `.env`. You will need to add the necessary API keys and configurations to this file.
 
-## 사용법
+## Usage
 
 To start the development server, run the following command:
 

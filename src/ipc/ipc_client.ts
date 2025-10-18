@@ -77,6 +77,7 @@ import type {
   ProposalResult,
 } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
+import { DeepLinkData } from "./deep_link_data";
 
 /**
  * Callbacks for chat stream events.
@@ -143,19 +144,6 @@ export interface GitHubDeviceFlowErrorData {
   error: string;
 }
 
-/**
- * Data for a deep link event.
- * @interface
- */
-export interface DeepLinkData {
-  /** The type of the deep link. */
-  type: string;
-}
-
-/**
- * Parameters for deleting a custom model.
- * @interface
- */
 interface DeleteCustomModelParams {
   /** The ID of the provider. */
   providerId: string;

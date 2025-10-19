@@ -8,6 +8,7 @@ import {
   XCircle,
   Loader2,
   Settings,
+  Folder,
 } from "lucide-react";
 import { providerSettingsRoute } from "@/routes/settings/providers/$provider";
 
@@ -30,6 +31,7 @@ import { useScrollAndNavigateTo } from "@/hooks/useScrollAndNavigateTo";
 // @ts-ignore
 import logo from "../../assets/logo.svg";
 import { OnboardingBanner } from "./home/OnboardingBanner";
+import { showError } from "@/lib/toast";
 
 type NodeInstallStep =
   | "install"
@@ -60,6 +62,30 @@ export function SetupBanner() {
       setNodeCheckError(true);
     }
   }, [setNodeSystemInfo, setNodeCheckError]);
+  const [showManualConfig, setShowManualConfig] = useState(false);
+  const [isSelectingPath, setIsSelectingPath] = useState(false);
+
+  // Add handler for manual path selection
+  const handleManualNodeConfig = useCallback(async () => {
+    setIsSelectingPath(true);
+    try {
+      const result = await IpcClient.getInstance().selectNodeFolder();
+      if (result.path) {
+        await IpcClient.getInstance().setNodePath(result.path);
+        await IpcClient.getInstance().reloadEnvPath();
+        await checkNode();
+        setNodeInstallStep("finished-checking");
+        setShowManualConfig(false);
+      } else {
+        // Show error message
+        showError("Invalid Node.js path selected");
+      }
+    } catch (error) {
+      showError("Error setting Node.js path:" + error);
+    } finally {
+      setIsSelectingPath(false);
+    }
+  }, [checkNode]);
 
   useEffect(() => {
     checkNode();
@@ -222,6 +248,42 @@ export function SetupBanner() {
                     handleNodeInstallClick={handleNodeInstallClick}
                     finishNodeInstall={finishNodeInstall}
                   />
+
+                  <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                    <button
+                      onClick={() => setShowManualConfig(!showManualConfig)}
+                      className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                    >
+                      Node.js already installed? Configure path manually →
+                    </button>
+
+                    {showManualConfig && (
+                      <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                        <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">
+                          Select the folder where Node.js is installed (usually
+                          contains node.exe on Windows or bin/node on Mac/Linux)
+                        </p>
+                        <Button
+                          onClick={handleManualNodeConfig}
+                          disabled={isSelectingPath}
+                          variant="outline"
+                          size="sm"
+                        >
+                          {isSelectingPath ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Selecting...
+                            </>
+                          ) : (
+                            <>
+                              <Folder className="mr-2 h-4 w-4" />
+                              Browse for Node.js folder
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
               <NodeJsHelpCallout />

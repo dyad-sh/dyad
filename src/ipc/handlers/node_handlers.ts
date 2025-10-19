@@ -1,14 +1,18 @@
-import { ipcMain } from "electron";
+import { ipcMain, dialog } from "electron";
 import { execSync } from "child_process";
 import { platform, arch } from "os";
 import { NodeSystemInfo } from "../ipc_types";
 import fixPath from "fix-path";
 import { runShellCommand } from "../utils/runShellCommand";
 import log from "electron-log";
+import { existsSync } from "fs";
+import { join } from "path";
+import { writeSettings, readSettings } from "../../main/settings";
 
 const logger = log.scope("node_handlers");
 
 export function registerNodeHandlers() {
+  const settings = readSettings();
   ipcMain.handle("nodejs-status", async (): Promise<NodeSystemInfo> => {
     logger.log(
       "handling ipc: nodejs-status for platform:",
@@ -52,6 +56,62 @@ export function registerNodeHandlers() {
     } else {
       fixPath();
     }
+
+    if (settings.customNodePath) {
+      const separator = platform() === "win32" ? ";" : ":";
+      process.env.PATH = `${settings.customNodePath}${separator}${process.env.PATH}`;
+      logger.debug(
+        "Added custom Node.js path to PATH:",
+        settings.customNodePath,
+      );
+    }
     logger.debug("Reloaded env path, now:", process.env.PATH);
+  });
+  ipcMain.handle("select-node-folder", async () => {
+    const result = await dialog.showOpenDialog({
+      title: "Select Node.js Installation Folder",
+      properties: ["openDirectory"],
+      message: "Select the folder where Node.js is installed",
+    });
+
+    if (result.canceled || !result.filePaths[0]) {
+      return { path: null };
+    }
+
+    const selectedPath = result.filePaths[0];
+
+    // Verify Node.js exists in selected path
+    const nodeBinary = platform() === "win32" ? "node.exe" : "node";
+    const nodePath = join(selectedPath, nodeBinary);
+
+    if (!existsSync(nodePath)) {
+      // Check bin subdirectory (common on Unix systems)
+      const binPath = join(selectedPath, "bin", nodeBinary);
+      if (existsSync(binPath)) {
+        return { path: join(selectedPath, "bin") };
+      }
+      return { path: null };
+    }
+
+    return { path: selectedPath };
+  });
+
+  ipcMain.handle("set-node-path", async (_, params) => {
+    const { nodePath } = params;
+    writeSettings({
+      customNodePath: nodePath,
+    });
+    // Update PATH environment variable
+    if (platform() === "win32") {
+      process.env.PATH = `${nodePath};${process.env.PATH}`;
+    } else {
+      process.env.PATH = `${nodePath}:${process.env.PATH}`;
+    }
+
+    logger.info("Custom Node.js path set:", nodePath);
+  });
+
+  ipcMain.handle("get-node-path", async () => {
+    return settings.customNodePath || null;
   });
 }

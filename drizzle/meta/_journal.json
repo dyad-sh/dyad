@@ -106,6 +106,13 @@
       "when": 1760034009367,
       "tag": "0014_needy_vertigo",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1760819777073,
+      "tag": "0015_sudden_blazing_skull",
+      "breakpoints": true
     }
   ]
 }

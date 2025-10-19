@@ -130,6 +130,11 @@ const validInvokeChannels = [
   // adding app to favorite
   "add-to-favorite",
   "github:clone-repo-from-url",
+  // Device presets
+  "get-device-presets",
+  "add-device-preset",
+  "update-device-preset",
+  "delete-device-preset",
   // Test-only channels
   // These should ALWAYS be guarded with IS_TEST_BUILD in the main process.
   // We can't detect with IS_TEST_BUILD in the preload script because

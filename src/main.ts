@@ -16,6 +16,7 @@ import { handleDyadProReturn } from "./main/pro";
 import { IS_TEST_BUILD } from "./ipc/utils/test_utils";
 import { BackupManager } from "./backup_manager";
 import { getDatabasePath, initializeDatabase } from "./db";
+import { seedDevicePresets } from "./db/seed_device_presets";
 import { UserSettings } from "./lib/schemas";
 import { handleNeonOAuthReturn } from "./neon_admin/neon_return_handler";
 
@@ -58,6 +59,14 @@ export async function onReady() {
     logger.error("Error initializing backup manager", e);
   }
   initializeDatabase();
+
+  // Seed default device presets if they don't exist
+  try {
+    await seedDevicePresets();
+  } catch (e) {
+    logger.error("Error seeding device presets", e);
+  }
+
   const settings = readSettings();
   await onFirstRunMaybe(settings);
   createWindow();

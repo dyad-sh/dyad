@@ -19,6 +19,7 @@ import {
   ChevronRight,
   MousePointerClick,
   Power,
+  MonitorSmartphone,
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
@@ -42,6 +43,7 @@ import {
 import { useRunApp } from "@/hooks/useRunApp";
 import { useShortcut } from "@/hooks/useShortcut";
 import { cn } from "@/lib/utils";
+import { ScreenSizeMenu } from "./ScreenSizeMenu";
 
 interface ErrorBannerProps {
   error: { message: string; source: "preview-app" | "dyad-app" } | undefined;
@@ -164,9 +166,101 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   );
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isPicking, setIsPicking] = useState(false);
+  const [showScreenSizeMenu, setShowScreenSizeMenu] = useState(false);
+  const [screenWidth, setScreenWidth] = useState<string>("100%");
+  const [screenHeight, setScreenHeight] = useState<string>("100%");
+  const [isRotated, setIsRotated] = useState(false);
+  const [selectedDevice, setSelectedDevice] = useState<string>("Select Device");
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState<number>(1);
 
   //detect if the user is using Mac
   const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+
+  const handleDeviceSelect = (name: string, width: number, height: number) => {
+    setSelectedDevice(name);
+    if (isRotated) {
+      setScreenWidth(`${height}px`);
+      setScreenHeight(`${width}px`);
+    } else {
+      setScreenWidth(`${width}px`);
+      setScreenHeight(`${height}px`);
+    }
+  };
+
+  const handleWidthChange = (value: string) => {
+    // Remove any non-numeric characters and append 'px'
+    const numericValue = value.replace(/[^\d]/g, "");
+    setScreenWidth(numericValue ? `${numericValue}px` : "");
+  };
+
+  const handleHeightChange = (value: string) => {
+    // Remove any non-numeric characters and append 'px'
+    const numericValue = value.replace(/[^\d]/g, "");
+    setScreenHeight(numericValue ? `${numericValue}px` : "");
+  };
+
+  const getDisplayWidth = () => {
+    return screenWidth.replace("px", "");
+  };
+
+  const getDisplayHeight = () => {
+    return screenHeight.replace("px", "");
+  };
+
+  const handleRotate = () => {
+    setIsRotated(!isRotated);
+    // Swap width and height
+    const temp = screenWidth;
+    setScreenWidth(screenHeight);
+    setScreenHeight(temp);
+  };
+
+  // Calculate scale for iframe when dimensions are too large
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const calculateScale = () => {
+      const container = containerRef.current;
+      if (!container) return;
+
+      const containerWidth = container.clientWidth;
+      const containerHeight = container.clientHeight;
+
+      // Skip scaling for 100% sizes
+      if (screenWidth === "100%" && screenHeight === "100%") {
+        setScale(1);
+        return;
+      }
+
+      // Parse iframe dimensions (now always in px)
+      const iframeWidth = parseInt(screenWidth);
+      const iframeHeight = parseInt(screenHeight);
+
+      // Add padding for better visual experience (20px on each side)
+      const padding = 40;
+      const availableWidth = containerWidth - padding;
+      const availableHeight = containerHeight - padding;
+
+      // Calculate scale needed to fit
+      const scaleX = availableWidth / iframeWidth;
+      const scaleY = availableHeight / iframeHeight;
+
+      // Use the smaller scale to ensure it fits in both dimensions
+      // Never scale up beyond 100%
+      const newScale = Math.min(1, scaleX, scaleY);
+
+      setScale(newScale);
+    };
+
+    calculateScale();
+
+    // Recalculate on window resize
+    const resizeObserver = new ResizeObserver(calculateScale);
+    resizeObserver.observe(containerRef.current);
+
+    return () => resizeObserver.disconnect();
+  }, [screenWidth, screenHeight]);
 
   // Deactivate component selector when selection is cleared
   useEffect(() => {
@@ -547,8 +641,42 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           >
             <ExternalLink size={16} />
           </button>
+          <button
+            onClick={() => {
+              if (showScreenSizeMenu) {
+                // Reset to initial state when closing
+                setScreenWidth("100%");
+                setScreenHeight("100%");
+                setSelectedDevice("Select Device");
+                setIsRotated(false);
+              }
+              setShowScreenSizeMenu(!showScreenSizeMenu);
+            }}
+            className={`p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300 ${
+              showScreenSizeMenu ? "bg-gray-200 dark:bg-gray-700" : ""
+            }`}
+            disabled={loading || !selectedAppId}
+            data-testid="preview-screen-size-button"
+          >
+            <MonitorSmartphone size={16} />
+          </button>
         </div>
       </div>
+
+      {/* Screen Size Menu */}
+      {showScreenSizeMenu && (
+        <ScreenSizeMenu
+          screenWidth={screenWidth}
+          screenHeight={screenHeight}
+          selectedDevice={selectedDevice}
+          onDeviceSelect={handleDeviceSelect}
+          onWidthChange={handleWidthChange}
+          onHeightChange={handleHeightChange}
+          onRotate={handleRotate}
+          getDisplayWidth={getDisplayWidth}
+          getDisplayHeight={getDisplayHeight}
+        />
+      )}
 
       <div className="relative flex-grow ">
         <ErrorBanner
@@ -572,19 +700,69 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             </p>
           </div>
         ) : (
-          <iframe
-            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-downloads"
-            data-testid="preview-iframe-element"
-            onLoad={() => {
-              setErrorMessage(undefined);
+          <div
+            ref={containerRef}
+            className="w-full h-full"
+            style={{
+              backgroundColor:
+                screenWidth === "100%" && screenHeight === "100%"
+                  ? "transparent"
+                  : "bg-gray-100 dark:bg-gray-500",
             }}
-            ref={iframeRef}
-            key={reloadKey}
-            title={`Preview for App ${selectedAppId}`}
-            className="w-full h-full border-none bg-white dark:bg-gray-950"
-            src={appUrl}
-            allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
-          />
+          >
+            {/* Show zoom indicator when scaled down */}
+            {scale < 1 && scale > 0 && (
+              <div className="absolute top-2 right-2 z-10 px-2 py-1 bg-black/70 text-white text-xs rounded-md backdrop-blur-sm">
+                {Math.round(scale * 100)}% zoom
+              </div>
+            )}
+
+            {screenWidth === "100%" && screenHeight === "100%" ? (
+              // Default state
+              <iframe
+                sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-downloads"
+                data-testid="preview-iframe-element"
+                onLoad={() => {
+                  setErrorMessage(undefined);
+                }}
+                ref={iframeRef}
+                key={reloadKey}
+                title={`Preview for App ${selectedAppId}`}
+                className="w-full h-full border-none bg-white dark:bg-gray-950"
+                src={appUrl}
+                allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
+              />
+            ) : (
+              // Custom size state - with scaling and centering
+              <div
+                className="w-full h-full flex justify-center items-center"
+                style={{ padding: "20px" }}
+              >
+                <div
+                  style={{
+                    transform: `scale(${scale})`,
+                    transformOrigin: "center center",
+                    transition: "transform 300ms cubic-bezier(0.4, 0, 0.2, 1)",
+                  }}
+                >
+                  <iframe
+                    sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-downloads"
+                    data-testid="preview-iframe-element"
+                    onLoad={() => {
+                      setErrorMessage(undefined);
+                    }}
+                    ref={iframeRef}
+                    key={reloadKey}
+                    title={`Preview for App ${selectedAppId}`}
+                    style={{ width: screenWidth, height: screenHeight }}
+                    className="border-none bg-white dark:bg-gray-950 shadow-lg"
+                    src={appUrl}
+                    allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>

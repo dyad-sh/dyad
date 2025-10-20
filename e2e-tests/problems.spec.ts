@@ -86,7 +86,7 @@ export default App;
 testSkipIfWindows(
   "problems - select specific problems and fix",
   async ({ po }) => {
-    await po.setUp({ enableAutoFixProblems: true });
+    await po.setUp();
     await po.importApp(MINIMAL_APP);
 
     // Create multiple TS errors in one file
@@ -108,6 +108,7 @@ export default App;
     // Trigger creation of problems and open problems panel
     // await po.sendPrompt("tc=create-ts-errors");
     await po.selectPreviewMode("problems");
+    await po.clickRecheckProblems();
 
     // Initially, all selected: button shows Fix X problems and Clear all is visible
     const fixButton = po.page.getByTestId("fix-all-button");

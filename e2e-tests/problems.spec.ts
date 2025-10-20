@@ -83,7 +83,7 @@ export default App;
   await po.snapshotMessages({ replaceDumpPath: true });
 });
 
-testSkipIfWindows.only(
+testSkipIfWindows(
   "problems - select specific problems and fix",
   async ({ po }) => {
     await po.setUp({ enableAutoFixProblems: true });

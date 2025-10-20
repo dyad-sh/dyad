@@ -27,10 +27,17 @@ interface ProblemItemProps {
 
 const ProblemItem = ({ problem, checked, onToggle }: ProblemItemProps) => {
   return (
-    <div className="flex items-start gap-3 p-3 border-b border-border hover:bg-[var(--background-darkest)] transition-colors">
+    <div
+      role="checkbox"
+      aria-checked={checked}
+      onClick={onToggle}
+      className="cursor-pointer flex items-start gap-3 p-3 border-b border-border hover:bg-[var(--background-darker)] dark:hover:bg-[var(--background-lightest)] transition-colors"
+      data-testid="problem-row"
+    >
       <Checkbox
         checked={checked}
         onCheckedChange={onToggle}
+        onClick={(e) => e.stopPropagation()}
         className="mt-0.5"
         aria-label="Select problem"
       />
@@ -119,6 +126,7 @@ interface ProblemsSummaryProps {
   selectedCount: number;
   onClearAll: () => void;
   onFixSelected: () => void;
+  onSelectAll: () => void;
 }
 
 const ProblemsSummary = ({
@@ -127,6 +135,7 @@ const ProblemsSummary = ({
   selectedCount,
   onClearAll,
   onFixSelected,
+  onSelectAll,
 }: ProblemsSummaryProps) => {
   const { problems } = problemReport;
   const totalErrors = problems.length;
@@ -162,14 +171,25 @@ const ProblemsSummary = ({
       </div>
       <div className="flex items-center gap-2">
         <RecheckButton appId={appId} onBeforeRecheck={onClearAll} />
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={onClearAll}
-          className="h-7 px-3 text-xs"
-        >
-          Clear all
-        </Button>
+        {selectedCount === 0 ? (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onSelectAll}
+            className="h-7 px-3 text-xs"
+          >
+            Select all
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onClearAll}
+            className="h-7 px-3 text-xs"
+          >
+            Clear all
+          </Button>
+        )}
         <Button
           size="sm"
           variant="default"
@@ -258,6 +278,11 @@ export function _Problems() {
           ).length
         }
         onClearAll={() => setSelectedKeys(new Set())}
+        onSelectAll={() =>
+          setSelectedKeys(
+            new Set(problemReport.problems.map((p) => problemKey(p))),
+          )
+        }
         onFixSelected={() => {
           if (!selectedChatId) return;
           const selectedProblems = problemReport.problems.filter((p) =>

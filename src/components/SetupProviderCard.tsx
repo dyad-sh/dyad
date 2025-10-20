@@ -8,6 +8,7 @@ export function SetupProviderCard({
   variant,
   title,
   subtitle,
+  chip,
   leadingIcon,
   onClick,
   tabIndex = 0,
@@ -15,7 +16,8 @@ export function SetupProviderCard({
 }: {
   variant: SetupProviderVariant;
   title: string;
-  subtitle?: ReactNode;
+  subtitle?: string;
+  chip?: ReactNode;
   leadingIcon: ReactNode;
   onClick: () => void;
   tabIndex?: number;
@@ -26,7 +28,7 @@ export function SetupProviderCard({
   return (
     <div
       className={cn(
-        "p-3 border rounded-lg cursor-pointer transition-colors",
+        "p-3 border rounded-lg cursor-pointer transition-colors relative",
         styles.container,
         className,
       )}
@@ -34,19 +36,30 @@ export function SetupProviderCard({
       role="button"
       tabIndex={tabIndex}
     >
+      {chip && (
+        <div
+          className={cn(
+            "absolute top-2 right-2 px-2 py-1 rounded-full text-xs font-semibold",
+            styles.subtitleColor,
+            "bg-white/80 dark:bg-black/20 backdrop-blur-sm",
+          )}
+        >
+          {chip}
+        </div>
+      )}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <div className={cn("p-1.5 rounded-full", styles.iconWrapper)}>
             {leadingIcon}
           </div>
           <div>
-            <h4 className={cn("font-medium text-sm", styles.titleColor)}>
+            <h4 className={cn("font-medium text-[15px]", styles.titleColor)}>
               {title}
             </h4>
             {subtitle ? (
               <div
                 className={cn(
-                  "text-xs flex items-center gap-1",
+                  "text-sm flex items-center gap-1",
                   styles.subtitleColor,
                 )}
               >

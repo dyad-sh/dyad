@@ -1187,10 +1187,6 @@ export class IpcClient {
     return this.ipcRenderer.invoke("select-node-folder");
   }
 
-  public async setNodePath(nodePath: string): Promise<void> {
-    await this.ipcRenderer.invoke("set-node-path", { nodePath });
-  }
-
   public async getNodePath(): Promise<string | null> {
     return this.ipcRenderer.invoke("get-node-path");
   }

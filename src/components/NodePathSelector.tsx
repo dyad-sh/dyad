@@ -64,7 +64,6 @@ export function NodePathSelector() {
         // Save the custom path to settings
         await updateSettings({ customNodePath: result.path });
         // Update the environment PATH
-        await IpcClient.getInstance().setNodePath(result.path);
         await IpcClient.getInstance().reloadEnvPath();
         // Recheck Node.js status
         await checkNodeStatus();

@@ -52,7 +52,6 @@ const validInvokeChannels = [
   "nodejs-status",
   "install-node",
   "select-node-folder",
-  "set-node-path",
   "github:start-flow",
   "github:list-repos",
   "github:get-repo-branches",

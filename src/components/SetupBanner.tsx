@@ -32,6 +32,7 @@ import { useScrollAndNavigateTo } from "@/hooks/useScrollAndNavigateTo";
 import logo from "../../assets/logo.svg";
 import { OnboardingBanner } from "./home/OnboardingBanner";
 import { showError } from "@/lib/toast";
+import { useSettings } from "@/hooks/useSettings";
 
 type NodeInstallStep =
   | "install"
@@ -64,6 +65,7 @@ export function SetupBanner() {
   }, [setNodeSystemInfo, setNodeCheckError]);
   const [showManualConfig, setShowManualConfig] = useState(false);
   const [isSelectingPath, setIsSelectingPath] = useState(false);
+  const { updateSettings } = useSettings();
 
   // Add handler for manual path selection
   const handleManualNodeConfig = useCallback(async () => {
@@ -71,7 +73,7 @@ export function SetupBanner() {
     try {
       const result = await IpcClient.getInstance().selectNodeFolder();
       if (result.path) {
-        await IpcClient.getInstance().setNodePath(result.path);
+        await updateSettings({ customNodePath: result.path });
         await IpcClient.getInstance().reloadEnvPath();
         await checkNode();
         setNodeInstallStep("finished-checking");

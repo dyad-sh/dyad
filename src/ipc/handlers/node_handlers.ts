@@ -7,7 +7,7 @@ import { runShellCommand } from "../utils/runShellCommand";
 import log from "electron-log";
 import { existsSync } from "fs";
 import { join } from "path";
-import { writeSettings, readSettings } from "../../main/settings";
+import { readSettings } from "../../main/settings";
 
 const logger = log.scope("node_handlers");
 
@@ -100,20 +100,5 @@ export function registerNodeHandlers() {
       return { path: null, canceled: false, selectedPath };
     }
     return { path: selectedPath, canceled: false, selectedPath };
-  });
-
-  ipcMain.handle("set-node-path", async (_, params) => {
-    const { nodePath } = params;
-    writeSettings({
-      customNodePath: nodePath,
-    });
-    // Update PATH environment variable
-    if (platform() === "win32") {
-      process.env.PATH = `${nodePath};${process.env.PATH}`;
-    } else {
-      process.env.PATH = `${nodePath}:${process.env.PATH}`;
-    }
-
-    logger.info("Custom Node.js path set:", nodePath);
   });
 }

@@ -24,17 +24,18 @@ export function NodePathSelector() {
     checkNodeStatus();
   }, [settings?.customNodePath]);
 
+  const fetchSystemPath = async () => {
+    try {
+      const debugInfo = await IpcClient.getInstance().getSystemDebugInfo();
+      setSystemPath(debugInfo.nodePath || "System PATH (not available)");
+    } catch (err) {
+      console.error("Failed to fetch system path:", err);
+      setSystemPath("System PATH (not available)");
+    }
+  };
+
   useEffect(() => {
     // Fetch system path on mount
-    const fetchSystemPath = async () => {
-      try {
-        const debugInfo = await IpcClient.getInstance().getSystemDebugInfo();
-        setSystemPath(debugInfo.nodePath || "System PATH (not available)");
-      } catch (err) {
-        console.error("Failed to fetch system path:", err);
-        setSystemPath("System PATH (not available)");
-      }
-    };
     fetchSystemPath();
   }, []);
 
@@ -68,8 +69,10 @@ export function NodePathSelector() {
         // Recheck Node.js status
         await checkNodeStatus();
         showSuccess("Node.js path updated successfully");
-      } else if (result.path === null) {
-        showError("Invalid Node.js path selected");
+      } else if (result.path === null && result.canceled === false) {
+        showError(
+          `Could not find Node.js at the path "${result.selectedPath}"`,
+        );
       }
     } catch (error: any) {
       showError(`Failed to set Node.js path: ${error.message}`);
@@ -84,6 +87,7 @@ export function NodePathSelector() {
       // Reload environment to use system PATH
       await IpcClient.getInstance().reloadEnvPath();
       // Recheck Node.js status
+      await fetchSystemPath();
       await checkNodeStatus();
       showSuccess("Reset to system Node.js path");
     } catch (error: any) {

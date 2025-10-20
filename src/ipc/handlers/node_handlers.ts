@@ -12,7 +12,6 @@ import { writeSettings, readSettings } from "../../main/settings";
 const logger = log.scope("node_handlers");
 
 export function registerNodeHandlers() {
-  const settings = readSettings();
   ipcMain.handle("nodejs-status", async (): Promise<NodeSystemInfo> => {
     logger.log(
       "handling ipc: nodejs-status for platform:",
@@ -56,7 +55,7 @@ export function registerNodeHandlers() {
     } else {
       fixPath();
     }
-
+    const settings = readSettings();
     if (settings.customNodePath) {
       const separator = platform() === "win32" ? ";" : ":";
       process.env.PATH = `${settings.customNodePath}${separator}${process.env.PATH}`;
@@ -74,8 +73,12 @@ export function registerNodeHandlers() {
       message: "Select the folder where Node.js is installed",
     });
 
-    if (result.canceled || !result.filePaths[0]) {
-      return { path: null };
+    if (result.canceled) {
+      return { path: null, canceled: true, selectedPath: null };
+    }
+
+    if (!result.filePaths[0]) {
+      return { path: null, canceled: false, selectedPath: null };
     }
 
     const selectedPath = result.filePaths[0];
@@ -88,12 +91,15 @@ export function registerNodeHandlers() {
       // Check bin subdirectory (common on Unix systems)
       const binPath = join(selectedPath, "bin", nodeBinary);
       if (existsSync(binPath)) {
-        return { path: join(selectedPath, "bin") };
+        return {
+          path: join(selectedPath, "bin"),
+          canceled: false,
+          selectedPath,
+        };
       }
-      return { path: null };
+      return { path: null, canceled: false, selectedPath };
     }
-
-    return { path: selectedPath };
+    return { path: selectedPath, canceled: false, selectedPath };
   });
 
   ipcMain.handle("set-node-path", async (_, params) => {
@@ -109,9 +115,5 @@ export function registerNodeHandlers() {
     }
 
     logger.info("Custom Node.js path set:", nodePath);
-  });
-
-  ipcMain.handle("get-node-path", async () => {
-    return settings.customNodePath || null;
   });
 }

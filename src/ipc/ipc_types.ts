@@ -529,4 +529,6 @@ export interface SetNodePathParams {
 
 export interface SelectNodeFolderResult {
   path: string | null;
+  canceled?: boolean;
+  selectedPath: string | null;
 }

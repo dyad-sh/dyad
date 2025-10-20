@@ -51,6 +51,8 @@ const validInvokeChannels = [
   "reset-all",
   "nodejs-status",
   "install-node",
+  "select-node-folder",
+  "set-node-path",
   "github:start-flow",
   "github:list-repos",
   "github:get-repo-branches",
@@ -136,9 +138,6 @@ const validInvokeChannels = [
   // We can't detect with IS_TEST_BUILD in the preload script because
   // it's a separate process from the main process.
   "supabase:fake-connect-and-set-project",
-  "select-node-folder",
-  "set-node-path",
-  "get-node-path",
 ];
 
 // Add valid receive channels

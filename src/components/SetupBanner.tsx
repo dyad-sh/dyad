@@ -76,9 +76,10 @@ export function SetupBanner() {
         await checkNode();
         setNodeInstallStep("finished-checking");
         setShowManualConfig(false);
-      } else {
-        // Show error message
-        showError("Invalid Node.js path selected");
+      } else if (result.path === null && result.canceled === false) {
+        showError(
+          `Could not find Node.js at the path "${result.selectedPath}"`,
+        );
       }
     } catch (error) {
       showError("Error setting Node.js path:" + error);
@@ -259,10 +260,6 @@ export function SetupBanner() {
 
                     {showManualConfig && (
                       <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                        <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">
-                          Select the folder where Node.js is installed (usually
-                          contains node.exe on Windows or bin/node on Mac/Linux)
-                        </p>
                         <Button
                           onClick={handleManualNodeConfig}
                           disabled={isSelectingPath}

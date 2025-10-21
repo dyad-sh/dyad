@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useAtom, useAtomValue } from "jotai";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
@@ -218,20 +218,17 @@ export function _Problems() {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { problemReport } = useCheckProblems(selectedAppId);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
-  const hasInitializedSelectionRef = useRef(false);
   const problemKey = (p: Problem) =>
     `${p.file}:${p.line}:${p.column}:${p.code}`;
   const { streamMessage } = useStreamChat();
   const [selectedChatId] = useAtom(selectedChatIdAtom);
 
-  // Select all on initial load only
+  // Whenever the problems pane is shown or the report updates, select all problems
   useEffect(() => {
-    if (
-      !hasInitializedSelectionRef.current &&
-      problemReport?.problems?.length
-    ) {
-      hasInitializedSelectionRef.current = true;
+    if (problemReport?.problems?.length) {
       setSelectedKeys(new Set(problemReport.problems.map(problemKey)));
+    } else {
+      setSelectedKeys(new Set());
     }
   }, [problemReport]);
 

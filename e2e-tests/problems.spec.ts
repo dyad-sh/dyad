@@ -142,12 +142,10 @@ export default App;
     await rows.nth(1).click();
     await expect(fixButton).toContainText(/Fix 2 problems/);
 
-    // await po.sleep(10_000);
-
     await fixButton.click();
-
-    // await po.snapshotServerDump("last-message");
-    await po.snapshotMessages();
+    await po.waitForChatCompletion();
+    await po.snapshotServerDump("last-message");
+    await po.snapshotMessages({ replaceDumpPath: true });
   },
 );
 

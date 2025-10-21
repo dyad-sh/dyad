@@ -68,6 +68,7 @@ import type {
   CloneRepoParams,
   SupabaseBranch,
   SetSupabaseAppProjectParams,
+  SelectNodeFolderResult,
 } from "./ipc_types";
 import type { Template } from "../shared/templates";
 import type {
@@ -1178,6 +1179,16 @@ export class IpcClient {
     name: string | null;
   }> {
     return this.ipcRenderer.invoke("select-app-folder");
+  }
+
+  // Add these methods to IpcClient class
+
+  public async selectNodeFolder(): Promise<SelectNodeFolderResult> {
+    return this.ipcRenderer.invoke("select-node-folder");
+  }
+
+  public async getNodePath(): Promise<string | null> {
+    return this.ipcRenderer.invoke("get-node-path");
   }
 
   public async checkAiRules(params: {

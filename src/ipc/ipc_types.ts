@@ -523,3 +523,12 @@ export interface SetSupabaseAppProjectParams {
   parentProjectId?: string;
   appId: number;
 }
+export interface SetNodePathParams {
+  nodePath: string;
+}
+
+export interface SelectNodeFolderResult {
+  path: string | null;
+  canceled?: boolean;
+  selectedPath: string | null;
+}

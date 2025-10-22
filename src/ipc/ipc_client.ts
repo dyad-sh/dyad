@@ -66,6 +66,9 @@ import type {
   McpServerUpdate,
   CreateMcpServer,
   CloneRepoParams,
+  SupabaseBranch,
+  SetSupabaseAppProjectParams,
+  SelectNodeFolderResult,
 } from "./ipc_types";
 import type { Template } from "../shared/templates";
 import type {
@@ -75,6 +78,7 @@ import type {
   ProposalResult,
 } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
+import { DeepLinkData } from "./deep_link_data";
 
 export interface ChatStreamCallbacks {
   onUpdate: (messages: Message[]) => void;
@@ -98,10 +102,6 @@ export interface GitHubDeviceFlowSuccessData {
 
 export interface GitHubDeviceFlowErrorData {
   error: string;
-}
-
-export interface DeepLinkData {
-  type: string;
 }
 
 interface DeleteCustomModelParams {
@@ -961,14 +961,16 @@ export class IpcClient {
     return this.ipcRenderer.invoke("supabase:list-projects");
   }
 
+  public async listSupabaseBranches(params: {
+    projectId: string;
+  }): Promise<SupabaseBranch[]> {
+    return this.ipcRenderer.invoke("supabase:list-branches", params);
+  }
+
   public async setSupabaseAppProject(
-    project: string,
-    app: number,
+    params: SetSupabaseAppProjectParams,
   ): Promise<void> {
-    await this.ipcRenderer.invoke("supabase:set-app-project", {
-      project,
-      app,
-    });
+    await this.ipcRenderer.invoke("supabase:set-app-project", params);
   }
 
   public async unsetSupabaseAppProject(app: number): Promise<void> {
@@ -1177,6 +1179,16 @@ export class IpcClient {
     name: string | null;
   }> {
     return this.ipcRenderer.invoke("select-app-folder");
+  }
+
+  // Add these methods to IpcClient class
+
+  public async selectNodeFolder(): Promise<SelectNodeFolderResult> {
+    return this.ipcRenderer.invoke("select-node-folder");
+  }
+
+  public async getNodePath(): Promise<string | null> {
+    return this.ipcRenderer.invoke("get-node-path");
   }
 
   public async checkAiRules(params: {

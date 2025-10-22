@@ -24,6 +24,7 @@ import { AutoUpdateSwitch } from "@/components/AutoUpdateSwitch";
 import { ReleaseChannelSelector } from "@/components/ReleaseChannelSelector";
 import { NeonIntegration } from "@/components/NeonIntegration";
 import { RuntimeModeSelector } from "@/components/RuntimeModeSelector";
+import { NodePathSelector } from "@/components/NodePathSelector";
 import { ToolsMcpSettings } from "@/components/settings/ToolsMcpSettings";
 
 export default function SettingsPage() {
@@ -271,6 +272,9 @@ export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
 
       <div className="mt-4">
         <RuntimeModeSelector />
+      </div>
+      <div className="mt-4">
+        <NodePathSelector />
       </div>
 
       <div className="flex items-center text-sm text-gray-500 dark:text-gray-400 mt-4">

@@ -351,6 +351,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                       showTokenBar ? "text-purple-500 bg-purple-100" : ""
                     }`}
                     size="sm"
+                    data-testid="token-bar-toggle"
                   >
                     <ChartColumnIncreasing size={14} />
                   </Button>

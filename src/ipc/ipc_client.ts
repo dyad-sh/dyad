@@ -109,31 +109,6 @@ interface DeleteCustomModelParams {
   modelApiName: string;
 }
 
-export interface DevicePreset {
-  id: number;
-  name: string;
-  width: number;
-  height: number;
-  isDefault: boolean;
-  isCustom: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface CreateDevicePresetParams {
-  name: string;
-  width: number;
-  height: number;
-  isCustom?: boolean;
-}
-
-export interface UpdateDevicePresetParams {
-  id: number;
-  name?: string;
-  width?: number;
-  height?: number;
-}
-
 export class IpcClient {
   private static instance: IpcClient;
   private ipcRenderer: IpcRenderer;
@@ -1331,46 +1306,5 @@ export class IpcClient {
 
   public cancelHelpChat(sessionId: string): void {
     this.ipcRenderer.invoke("help:chat:cancel", sessionId).catch(() => {});
-  }
-
-  // --- Device Presets ---
-  public async getDevicePresets(): Promise<DevicePreset[]> {
-    try {
-      return await this.ipcRenderer.invoke("get-device-presets");
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
-  }
-
-  public async addDevicePreset(
-    params: CreateDevicePresetParams,
-  ): Promise<DevicePreset> {
-    try {
-      return await this.ipcRenderer.invoke("add-device-preset", params);
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
-  }
-
-  public async updateDevicePreset(
-    params: UpdateDevicePresetParams,
-  ): Promise<DevicePreset> {
-    try {
-      return await this.ipcRenderer.invoke("update-device-preset", params);
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
-  }
-
-  public async deleteDevicePreset(id: number): Promise<void> {
-    try {
-      await this.ipcRenderer.invoke("delete-device-preset", id);
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
   }
 }

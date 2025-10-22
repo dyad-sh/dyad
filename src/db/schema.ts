@@ -216,22 +216,3 @@ export const mcpToolConsents = sqliteTable(
   },
   (table) => [unique("uniq_mcp_consent").on(table.serverId, table.toolName)],
 );
-
-export const devicePresets = sqliteTable("device_presets", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  name: text("name").notNull().unique(),
-  width: integer("width").notNull(),
-  height: integer("height").notNull(),
-  isDefault: integer("is_default", { mode: "boolean" })
-    .notNull()
-    .default(sql`0`),
-  isCustom: integer("is_custom", { mode: "boolean" })
-    .notNull()
-    .default(sql`1`),
-  createdAt: integer("created_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-  updatedAt: integer("updated_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-});

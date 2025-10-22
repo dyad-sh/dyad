@@ -293,13 +293,12 @@ export function _Problems() {
         }}
       />
       <div className="flex-1 overflow-y-auto">
-        {problemReport.problems.map((problem, index) => {
-          const key = `${problem.file}-${problem.line}-${problem.column}-${index}`;
+        {problemReport.problems.map((problem) => {
           const selKey = problemKey(problem);
           const checked = selectedKeys.has(selKey);
           return (
             <ProblemItem
-              key={key}
+              key={selKey}
               problem={problem}
               checked={checked}
               onToggle={() => {

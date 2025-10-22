@@ -1,41 +1,32 @@
-import { spawn } from "child_process";
-import log from "electron-log";
+import { execFile } from 'child_process'
+import { promisify } from 'util'
+import { parse } from 'shell-quote'
 
-const logger = log.scope("runShellCommand");
+const execFilePromise = promisify(execFile)
 
-export function runShellCommand(command: string): Promise<string | null> {
-  logger.log(`Running command: ${command}`);
-  return new Promise((resolve) => {
-    let output = "";
-    const process = spawn(command, {
-      shell: true,
-      stdio: ["ignore", "pipe", "pipe"], // ignore stdin, pipe stdout/stderr
-    });
+export const runShellCommand = async (command: string) => {
+  try {
+    if (!command.trim()) {
+      return { data: '' }
+    }
 
-    process.stdout?.on("data", (data) => {
-      output += data.toString();
-    });
+    const args = parse(command)
 
-    process.stderr?.on("data", (data) => {
-      // Log stderr but don't treat it as a failure unless the exit code is non-zero
-      logger.warn(`Stderr from "${command}": ${data.toString().trim()}`);
-    });
-
-    process.on("error", (error) => {
-      logger.error(`Error executing command "${command}":`, error.message);
-      resolve(null); // Command execution failed
-    });
-
-    process.on("close", (code) => {
-      if (code === 0) {
-        logger.debug(
-          `Command "${command}" succeeded with code ${code}: ${output.trim()}`,
-        );
-        resolve(output.trim()); // Command succeeded, return trimmed output
-      } else {
-        logger.error(`Command "${command}" failed with code ${code}`);
-        resolve(null); // Command failed
+    if (args.some((arg) => typeof arg !== 'string')) {
+      return {
+        error: 'Shell features like pipes and redirection are not supported.',
       }
-    });
-  });
+    }
+
+    const [cmd, ...cmdArgs] = args as string[]
+
+    const { stdout, stderr } = await execFilePromise(cmd, cmdArgs)
+
+    if (stderr) {
+      return { error: stderr }
+    }
+    return { data: stdout }
+  } catch (error) {
+    return { error: error.message }
+  }
 }

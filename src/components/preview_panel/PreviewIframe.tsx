@@ -176,35 +176,15 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const [isPicking, setIsPicking] = useState(false);
 
   // Device mode state
-  type DeviceMode = "desktop" | "tablet" | "mobile" | "original";
-  const [deviceMode, setDeviceMode] = useState<DeviceMode>("original");
+  type DeviceMode = "desktop" | "tablet" | "mobile";
+  const [deviceMode, setDeviceMode] = useState<DeviceMode>("desktop");
   const [isDevicePopoverOpen, setIsDevicePopoverOpen] = useState(false);
-  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
-  const containerRef = useRef<HTMLDivElement>(null);
 
   // Device configurations
-  const deviceConfig = {
-    original: { width: 0, height: 0 }, // Original responsive size
-    desktop: { width: 1920, height: 1080 },
-    tablet: { width: 768, height: 1024 },
-    mobile: { width: 375, height: 667 },
+  const deviceWidthConfig = {
+    tablet: 768,
+    mobile: 375,
   };
-
-  // Track container size for zoom calculations
-  useEffect(() => {
-    const updateSize = () => {
-      if (containerRef.current) {
-        setContainerSize({
-          width: containerRef.current.clientWidth,
-          height: containerRef.current.clientHeight,
-        });
-      }
-    };
-
-    updateSize();
-    window.addEventListener("resize", updateSize);
-    return () => window.removeEventListener("resize", updateSize);
-  }, []);
 
   //detect if the user is using Mac
   const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
@@ -596,12 +576,12 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 data-testid="device-mode-button"
                 onClick={() => {
                   // Toggle popover open/close
-                  if (isDevicePopoverOpen) setDeviceMode("original");
+                  if (isDevicePopoverOpen) setDeviceMode("desktop");
                   setIsDevicePopoverOpen(!isDevicePopoverOpen);
                 }}
                 className={cn(
                   "p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 dark:text-gray-300",
-                  isDevicePopoverOpen && "bg-gray-200 dark:bg-gray-700",
+                  deviceMode !== "desktop" && "bg-gray-200 dark:bg-gray-700",
                 )}
                 title="Device Mode"
               >
@@ -613,60 +593,64 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               onOpenAutoFocus={(e) => e.preventDefault()}
               onInteractOutside={(e) => e.preventDefault()}
             >
-              <ToggleGroup
-                type="single"
-                value={deviceMode || ""}
-                onValueChange={(value) => {
-                  if (value) {
-                    setDeviceMode(value as DeviceMode);
-                  }
-                }}
-                variant="outline"
-              >
-                <ToggleGroupItem
-                  value="original"
-                  aria-label="Original size"
-                  name="Original size"
-                  title="Original Size (Responsive)"
-                  className="px-4"
+              <TooltipProvider>
+                <ToggleGroup
+                  type="single"
+                  value={deviceMode}
+                  onValueChange={(value) => {
+                    if (value) {
+                      setDeviceMode(value as DeviceMode);
+                      setIsDevicePopoverOpen(false);
+                    }
+                  }}
+                  variant="outline"
                 >
-                  <span className="text-xs font-medium">Original</span>
-                </ToggleGroupItem>
-                <ToggleGroupItem
-                  value="desktop"
-                  aria-label="Desktop view"
-                  title="Desktop (1920x1080)"
-                >
-                  <Monitor size={16} />
-                </ToggleGroupItem>
-                <ToggleGroupItem
-                  value="tablet"
-                  aria-label="Tablet view"
-                  title="Tablet (1024x768)"
-                >
-                  <Tablet size={16} className="scale-x-130" />
-                </ToggleGroupItem>
-                <ToggleGroupItem
-                  value="mobile"
-                  aria-label="Mobile view"
-                  title="Mobile (375x667)"
-                >
-                  <Smartphone size={16} />
-                </ToggleGroupItem>
-              </ToggleGroup>
+                  {/* Tooltips placed inside items instead of wrapping 
+                  to avoid asChild prop merging that breaks highlighting */}
+                  <ToggleGroupItem value="desktop" aria-label="Desktop view">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="flex items-center justify-center">
+                          <Monitor size={16} />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Desktop</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="tablet" aria-label="Tablet view">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="flex items-center justify-center">
+                          <Tablet size={16} className="scale-x-130" />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Tablet</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="mobile" aria-label="Mobile view">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="flex items-center justify-center">
+                          <Smartphone size={16} />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Mobile</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </ToggleGroupItem>
+                </ToggleGroup>
+              </TooltipProvider>
             </PopoverContent>
           </Popover>
         </div>
       </div>
 
-      <div
-        ref={containerRef}
-        className={cn(
-          "relative flex-grow",
-          deviceMode !== "original" &&
-            "overflow-auto bg-gray-100 dark:bg-gray-900",
-        )}
-      >
+      <div className="relative flex-grow ">
         <ErrorBanner
           error={errorMessage}
           onDismiss={() => setErrorMessage(undefined)}
@@ -688,75 +672,31 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             </p>
           </div>
         ) : (
-          (() => {
-            // Original responsive mode ("original") fills the container
-            if (deviceMode === "original") {
-              return (
-                <iframe
-                  sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-downloads"
-                  data-testid="preview-iframe-element"
-                  onLoad={() => {
-                    setErrorMessage(undefined);
-                  }}
-                  ref={iframeRef}
-                  key={reloadKey}
-                  title={`Preview for App ${selectedAppId}`}
-                  className="w-full h-full border-none bg-white dark:bg-gray-950"
-                  src={appUrl}
-                  allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
-                />
-              );
-            }
-
-            // Calculate device dimensions and zoom for fixed-size modes
-            const deviceWidth = deviceConfig[deviceMode].width;
-            const deviceHeight = deviceConfig[deviceMode].height;
-
-            // Calculate zoom to fit if device is too big for container
-            const scaleX =
-              containerSize.width > 0
-                ? (containerSize.width - 40) / deviceWidth
-                : 1;
-            const scaleY =
-              containerSize.height > 0
-                ? (containerSize.height - 40) / deviceHeight
-                : 1;
-            const scale = Math.min(scaleX, scaleY, 1); // Don't zoom in, only zoom out
-
-            // Desktop, tablet, and mobile modes use fixed dimensions with zoom - with scaling and centering
-            return (
-              <div
-                className="w-full h-full flex justify-center items-center"
-                style={{ padding: "20px" }}
-              >
-                <div
-                  style={{
-                    transform: `scale(${scale})`,
-                    transformOrigin: "center center",
-                    transition: "transform 300ms cubic-bezier(0.4, 0, 0.2, 1)",
-                  }}
-                >
-                  <iframe
-                    sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-downloads"
-                    data-testid="preview-iframe-element"
-                    onLoad={() => {
-                      setErrorMessage(undefined);
-                    }}
-                    ref={iframeRef}
-                    key={reloadKey}
-                    title={`Preview for App ${selectedAppId}`}
-                    style={{
-                      width: `${deviceWidth}px`,
-                      height: `${deviceHeight}px`,
-                    }}
-                    className="border-none bg-white dark:bg-gray-950 shadow-lg"
-                    src={appUrl}
-                    allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
-                  />
-                </div>
-              </div>
-            );
-          })()
+          <div
+            className={cn(
+              "w-full h-full",
+              deviceMode !== "desktop" && "flex justify-center",
+            )}
+          >
+            <iframe
+              sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-downloads"
+              data-testid="preview-iframe-element"
+              onLoad={() => {
+                setErrorMessage(undefined);
+              }}
+              ref={iframeRef}
+              key={reloadKey}
+              title={`Preview for App ${selectedAppId}`}
+              className="w-full h-full border-none bg-white dark:bg-gray-950"
+              style={
+                deviceMode == "desktop"
+                  ? {}
+                  : { width: `${deviceWidthConfig[deviceMode]}px` }
+              }
+              src={appUrl}
+              allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
+            />
+          </div>
         )}
       </div>
     </div>

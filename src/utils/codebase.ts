@@ -56,7 +56,15 @@ const ALLOWED_EXTENSIONS = [
 // be conservative and never include these directories.
 //
 // ex: https://github.com/dyad-sh/dyad/issues/727
-const EXCLUDED_DIRS = ["node_modules", ".git", "dist", "build", ".next"];
+const EXCLUDED_DIRS = [
+  "node_modules",
+  ".git",
+  "dist",
+  "build",
+  ".next",
+  ".venv",
+  "venv",
+];
 
 // Files to always exclude
 const EXCLUDED_FILES = ["pnpm-lock.yaml", "package-lock.json"];

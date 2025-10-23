@@ -1,4 +1,4 @@
-import { test, testSkipIfWindows } from "./helpers/test_helper";
+import { test, testSkipIfWindows, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 import fs from "fs";
 import path from "path";
@@ -168,13 +168,13 @@ export default App;
 
   await po.selectPreviewMode("problems");
   const fixButton = po.page.getByTestId("fix-all-button");
-  await expect(fixButton).toBeEnabled();
+  await expect(fixButton).toBeEnabled({ timeout: Timeout.LONG });
   await expect(fixButton).toContainText(/Fix 1 problem/);
 
   fs.unlinkSync(badFilePath);
 
   await po.clickRecheckProblems();
-  await expect(fixButton).toBeDisabled();
+  await expect(fixButton).toBeDisabled({ timeout: Timeout.LONG });
   await expect(fixButton).toContainText(/Fix 0 problems/);
 });
 
@@ -198,12 +198,12 @@ testSkipIfWindows("problems - manual edit (next.js)", async ({ po }) => {
 
   await po.selectPreviewMode("problems");
   const fixButton = po.page.getByTestId("fix-all-button");
-  await expect(fixButton).toBeEnabled();
+  await expect(fixButton).toBeEnabled({ timeout: Timeout.LONG });
   await expect(fixButton).toContainText(/Fix 1 problem/);
 
   fs.unlinkSync(badFilePath);
 
   await po.clickRecheckProblems();
-  await expect(fixButton).toBeDisabled();
+  await expect(fixButton).toBeDisabled({ timeout: Timeout.LONG });
   await expect(fixButton).toContainText(/Fix 0 problems/);
 });

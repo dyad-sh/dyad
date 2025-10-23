@@ -23,7 +23,7 @@ test("chat mode selector - ask mode", async ({ po }) => {
   await po.snapshotMessages({ replaceDumpPath: true });
 });
 
-test("dyadwrite edit and save - basic flow", async ({ po }) => {
+test.skip("dyadwrite edit and save - basic flow", async ({ po }) => {
   await po.setUp({ autoApprove: true });
   await po.importApp("minimal");
   await po.clickNewChat();

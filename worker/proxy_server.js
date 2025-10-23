@@ -191,7 +191,16 @@ const server = http.createServer((clientReq, clientRes) => {
   };
 
   const upReq = lib.request(upOpts, (upRes) => {
-    const inject = needsInjection(target.pathname);
+    const wantsInjection = needsInjection(target.pathname);
+    // Only inject when upstream indicates HTML content
+    const contentTypeHeader = upRes.headers["content-type"];
+    const contentType = Array.isArray(contentTypeHeader)
+      ? contentTypeHeader[0]
+      : contentTypeHeader || "";
+    const isHtml =
+      typeof contentType === "string" &&
+      contentType.toLowerCase().includes("text/html");
+    const inject = wantsInjection && isHtml;
 
     if (!inject) {
       clientRes.writeHead(upRes.statusCode, upRes.headers);

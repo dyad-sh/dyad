@@ -1,27 +1,28 @@
-import { app, BrowserWindow, dialog, Menu } from "electron";
+import dotenv from "dotenv";
+import type { MessageBoxOptions } from "electron";
+import { app, autoUpdater, BrowserWindow, dialog, Menu } from "electron";
 import * as path from "node:path";
 import { registerIpcHandlers } from "./ipc/ipc_host";
-import dotenv from "dotenv";
 // @ts-ignore
+import log from "electron-log";
 import started from "electron-squirrel-startup";
 import { updateElectronApp, UpdateSourceType } from "update-electron-app";
-import log from "electron-log";
+import { BackupManager } from "./backup_manager";
+import { getDatabasePath, initializeDatabase } from "./db";
+import {
+  AddMcpServerConfigSchema,
+  AddMcpServerPayload,
+} from "./ipc/deep_link_data";
+import { IS_TEST_BUILD } from "./ipc/utils/test_utils";
+import { UserSettings } from "./lib/schemas";
+import { handleDyadProReturn } from "./main/pro";
 import {
   getSettingsFilePath,
   readSettings,
   writeSettings,
 } from "./main/settings";
-import { handleSupabaseOAuthReturn } from "./supabase_admin/supabase_return_handler";
-import { handleDyadProReturn } from "./main/pro";
-import { IS_TEST_BUILD } from "./ipc/utils/test_utils";
-import { BackupManager } from "./backup_manager";
-import { getDatabasePath, initializeDatabase } from "./db";
-import { UserSettings } from "./lib/schemas";
 import { handleNeonOAuthReturn } from "./neon_admin/neon_return_handler";
-import {
-  AddMcpServerConfigSchema,
-  AddMcpServerPayload,
-} from "./ipc/deep_link_data";
+import { handleSupabaseOAuthReturn } from "./supabase_admin/supabase_return_handler";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -80,6 +81,25 @@ export async function onReady() {
         type: UpdateSourceType.ElectronPublicUpdateService,
         repo: "dyad-sh/dyad",
         host,
+      },
+      onNotifyUser: ({ releaseNotes, releaseName }) => {
+        const dialogOpts: MessageBoxOptions = {
+          type: "info",
+          buttons: ["Restart", "Later"],
+          defaultId: 1,
+          cancelId: 1,
+          noLink: true,
+          title: "Application Update: " + releaseName,
+          message: releaseNotes,
+          detail:
+            "A new version has been downloaded. Restart the application to apply the updates.",
+        };
+
+        dialog.showMessageBox(dialogOpts).then(({ response }) => {
+          if (response === 0) {
+            autoUpdater.quitAndInstall();
+          }
+        });
       },
     }); // additional configuration options available
   }

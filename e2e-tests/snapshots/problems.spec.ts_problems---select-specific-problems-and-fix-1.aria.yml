@@ -1,0 +1,21 @@
+- paragraph: "Fix these 2 TypeScript compile-time errors:"
+- list:
+  - listitem: src/bad-file.tsx:2:1 - Cannot find name 'nonExistentFunction1'. (TS2304)
+- code: const App = () => <div>Minimal imported app</div>; nonExistentFunction1(); // <-- TypeScript compiler error here nonExistentFunction2();
+- list:
+  - listitem: src/bad-file.tsx:4:1 - Cannot find name 'nonExistentFunction3'. (TS2304)
+- code: nonExistentFunction2(); nonExistentFunction3(); // <-- TypeScript compiler error here
+- paragraph: Please fix all errors in a concise way.
+- img
+- text: bad-file.ts
+- button "Edit":
+  - img
+- img
+- text: "src/bad-file.ts Summary: Fix 2 errors and introduce a new error."
+- paragraph: "[[dyad-dump-path=*]]"
+- button:
+  - img
+- img
+- text: less than a minute ago
+- button "Retry":
+  - img

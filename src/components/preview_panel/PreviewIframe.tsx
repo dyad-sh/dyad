@@ -19,6 +19,10 @@ import {
   ChevronRight,
   MousePointerClick,
   Power,
+  MonitorSmartphone,
+  Monitor,
+  Tablet,
+  Smartphone,
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
@@ -39,6 +43,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useRunApp } from "@/hooks/useRunApp";
 import { useShortcut } from "@/hooks/useShortcut";
 import { cn } from "@/lib/utils";
@@ -164,6 +174,17 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   );
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isPicking, setIsPicking] = useState(false);
+
+  // Device mode state
+  type DeviceMode = "desktop" | "tablet" | "mobile";
+  const [deviceMode, setDeviceMode] = useState<DeviceMode>("desktop");
+  const [isDevicePopoverOpen, setIsDevicePopoverOpen] = useState(false);
+
+  // Device configurations
+  const deviceWidthConfig = {
+    tablet: 768,
+    mobile: 375,
+  };
 
   //detect if the user is using Mac
   const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
@@ -547,6 +568,85 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           >
             <ExternalLink size={16} />
           </button>
+
+          {/* Device Mode Button */}
+          <Popover open={isDevicePopoverOpen} modal={false}>
+            <PopoverTrigger asChild>
+              <button
+                data-testid="device-mode-button"
+                onClick={() => {
+                  // Toggle popover open/close
+                  if (isDevicePopoverOpen) setDeviceMode("desktop");
+                  setIsDevicePopoverOpen(!isDevicePopoverOpen);
+                }}
+                className={cn(
+                  "p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 dark:text-gray-300",
+                  deviceMode !== "desktop" && "bg-gray-200 dark:bg-gray-700",
+                )}
+                title="Device Mode"
+              >
+                <MonitorSmartphone size={16} />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              className="w-auto p-2"
+              onOpenAutoFocus={(e) => e.preventDefault()}
+              onInteractOutside={(e) => e.preventDefault()}
+            >
+              <TooltipProvider>
+                <ToggleGroup
+                  type="single"
+                  value={deviceMode}
+                  onValueChange={(value) => {
+                    if (value) {
+                      setDeviceMode(value as DeviceMode);
+                      setIsDevicePopoverOpen(false);
+                    }
+                  }}
+                  variant="outline"
+                >
+                  {/* Tooltips placed inside items instead of wrapping 
+                  to avoid asChild prop merging that breaks highlighting */}
+                  <ToggleGroupItem value="desktop" aria-label="Desktop view">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="flex items-center justify-center">
+                          <Monitor size={16} />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Desktop</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="tablet" aria-label="Tablet view">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="flex items-center justify-center">
+                          <Tablet size={16} className="scale-x-130" />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Tablet</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="mobile" aria-label="Mobile view">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="flex items-center justify-center">
+                          <Smartphone size={16} />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Mobile</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </ToggleGroupItem>
+                </ToggleGroup>
+              </TooltipProvider>
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
 
@@ -572,19 +672,31 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             </p>
           </div>
         ) : (
-          <iframe
-            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-downloads"
-            data-testid="preview-iframe-element"
-            onLoad={() => {
-              setErrorMessage(undefined);
-            }}
-            ref={iframeRef}
-            key={reloadKey}
-            title={`Preview for App ${selectedAppId}`}
-            className="w-full h-full border-none bg-white dark:bg-gray-950"
-            src={appUrl}
-            allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
-          />
+          <div
+            className={cn(
+              "w-full h-full",
+              deviceMode !== "desktop" && "flex justify-center",
+            )}
+          >
+            <iframe
+              sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-downloads"
+              data-testid="preview-iframe-element"
+              onLoad={() => {
+                setErrorMessage(undefined);
+              }}
+              ref={iframeRef}
+              key={reloadKey}
+              title={`Preview for App ${selectedAppId}`}
+              className="w-full h-full border-none bg-white dark:bg-gray-950"
+              style={
+                deviceMode == "desktop"
+                  ? {}
+                  : { width: `${deviceWidthConfig[deviceMode]}px` }
+              }
+              src={appUrl}
+              allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
+            />
+          </div>
         )}
       </div>
     </div>

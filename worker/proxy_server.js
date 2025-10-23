@@ -85,7 +85,9 @@ try {
 
 /* ---------------------- helper: need to inject? ------------------------ */
 function needsInjection(pathname) {
-  return pathname.endsWith("index.html") || pathname === "/";
+  // Inject for routes without a file extension (e.g., "/foo", "/foo/bar", "/")
+  const ext = path.extname(pathname).toLowerCase();
+  return ext === "" || ext === ".html";
 }
 
 function injectHTML(buf) {
@@ -171,7 +173,7 @@ const server = http.createServer((clientReq, clientRes) => {
       delete headers.referer;
     }
   }
-  if (needsInjection) {
+  if (needsInjection(target.pathname)) {
     // Request uncompressed content from upstream
     delete headers["accept-encoding"];
   }

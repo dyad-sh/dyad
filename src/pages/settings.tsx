@@ -26,6 +26,7 @@ import { NeonIntegration } from "@/components/NeonIntegration";
 import { RuntimeModeSelector } from "@/components/RuntimeModeSelector";
 import { NodePathSelector } from "@/components/NodePathSelector";
 import { ToolsMcpSettings } from "@/components/settings/ToolsMcpSettings";
+import { LocalModelEndpointSettings } from "@/components/LocalModelEndpointSettings";
 
 export default function SettingsPage() {
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
@@ -322,6 +323,8 @@ export function AISettings() {
       <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
         AI Settings
       </h2>
+
+      <LocalModelEndpointSettings />
 
       <div className="mt-4">
         <ThinkingBudgetSelector />

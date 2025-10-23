@@ -1,12 +1,21 @@
+import {
+  DEFAULT_OLLAMA_ENDPOINT,
+  DEFAULT_OLLAMA_PORT,
+} from "@/constants/localModels";
 import { ipcMain } from "electron";
 import log from "electron-log";
-import { LocalModelListResponse, LocalModel } from "../ipc_types";
+import { readSettings } from "../../main/settings";
+import { LocalModel, LocalModelListResponse } from "../ipc_types";
 
 const logger = log.scope("ollama_handler");
 
 export function parseOllamaHost(host?: string): string {
   if (!host) {
-    return "http://localhost:11434";
+    return DEFAULT_OLLAMA_ENDPOINT;
+  }
+
+  if (!host) {
+    return DEFAULT_OLLAMA_ENDPOINT;
   }
 
   // If it already has a protocol, use as-is
@@ -30,15 +39,22 @@ export function parseOllamaHost(host?: string): string {
 
   // Check if it's a plain IPv6 address (contains :: or multiple colons)
   if (host.includes("::") || host.split(":").length > 2) {
-    return `http://[${host}]:11434`;
+    const address = host.startsWith("[") ? host : `[${host}]`;
+    return `http://${address}:${DEFAULT_OLLAMA_PORT}`;
   }
 
   // If it's just a hostname, add default port
-  return `http://${host}:11434`;
+  return `http://${host}:${DEFAULT_OLLAMA_PORT}`;
 }
 
 export function getOllamaApiUrl(): string {
-  return parseOllamaHost(process.env.OLLAMA_HOST);
+  const envHost = process.env.OLLAMA_HOST;
+  if (envHost && envHost.trim()) {
+    return parseOllamaHost(envHost);
+  }
+  const settings = readSettings();
+  const endpointFromSettings = settings.ollamaEndpoint;
+  return parseOllamaHost(endpointFromSettings);
 }
 
 interface OllamaModel {
@@ -56,8 +72,9 @@ interface OllamaModel {
 }
 
 export async function fetchOllamaModels(): Promise<LocalModelListResponse> {
+  const apiUrl = getOllamaApiUrl();
   try {
-    const response = await fetch(`${getOllamaApiUrl()}/api/tags`);
+    const response = await fetch(`${apiUrl}/api/tags`);
     if (!response.ok) {
       throw new Error(`Failed to fetch model: ${response.statusText}`);
     }
@@ -89,10 +106,10 @@ export async function fetchOllamaModels(): Promise<LocalModelListResponse> {
       (error as Error).message.includes("fetch failed")
     ) {
       throw new Error(
-        "Could not connect to Ollama. Make sure it's running at http://localhost:11434",
+        `Could not connect to the local model endpoint at ${apiUrl}.`,
       );
     }
-    throw new Error("Failed to fetch models from Ollama");
+    throw new Error("Failed to fetch models from the local model endpoint");
   }
 }
 

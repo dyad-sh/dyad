@@ -12,6 +12,10 @@ import { v4 as uuidv4 } from "uuid";
 import log from "electron-log";
 import { DEFAULT_TEMPLATE_ID } from "@/shared/templates";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
+import {
+  DEFAULT_LM_STUDIO_ENDPOINT,
+  DEFAULT_OLLAMA_ENDPOINT,
+} from "@/constants/localModels";
 
 const logger = log.scope("settings");
 
@@ -23,6 +27,8 @@ const DEFAULT_SETTINGS: UserSettings = {
     provider: "auto",
   },
   providerSettings: {},
+  ollamaEndpoint: DEFAULT_OLLAMA_ENDPOINT,
+  lmStudioEndpoint: DEFAULT_LM_STUDIO_ENDPOINT,
   telemetryConsent: "unset",
   telemetryUserId: uuidv4(),
   hasRunBefore: false,

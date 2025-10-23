@@ -1,7 +1,7 @@
 import { ipcMain, app } from "electron";
 import { db, getDatabasePath } from "../../db";
-import { apps, chats } from "../../db/schema";
-import { desc, eq } from "drizzle-orm";
+import { apps, chats, messages } from "../../db/schema";
+import { desc, eq, like } from "drizzle-orm";
 import type {
   App,
   CreateAppParams,
@@ -50,6 +50,7 @@ import { normalizePath } from "../../../shared/normalizePath";
 import { isServerFunction } from "@/supabase_admin/supabase_utils";
 import { getVercelTeamSlug } from "../utils/vercel_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
+import { AppSearchResult } from "@/lib/schemas";
 
 const DEFAULT_COMMAND =
   "(pnpm install && pnpm run dev --port 32100) || (npm install --legacy-peer-deps && npm run dev -- --port 32100)";
@@ -151,12 +152,43 @@ async function executeAppLocalNode({
   if (!spawnedProcess.pid) {
     // Attempt to capture any immediate errors if possible
     let errorOutput = "";
-    spawnedProcess.stderr?.on("data", (data) => (errorOutput += data));
-    await new Promise((resolve) => spawnedProcess.on("error", resolve)); // Wait for error event
-    throw new Error(
-      `Failed to spawn process for app ${appId}. Error: ${
-        errorOutput || "Unknown spawn error"
+    let spawnErr: any | null = null;
+    spawnedProcess.stderr?.on(
+      "data",
+      (data) => (errorOutput += data.toString()),
+    );
+    await new Promise<void>((resolve) => {
+      spawnedProcess.once("error", (err) => {
+        spawnErr = err;
+        resolve();
+      });
+    }); // Wait for error event
+
+    const details = [
+      spawnErr?.message ? `message=${spawnErr.message}` : null,
+      spawnErr?.code ? `code=${spawnErr.code}` : null,
+      spawnErr?.errno ? `errno=${spawnErr.errno}` : null,
+      spawnErr?.syscall ? `syscall=${spawnErr.syscall}` : null,
+      spawnErr?.path ? `path=${spawnErr.path}` : null,
+      spawnErr?.spawnargs
+        ? `spawnargs=${JSON.stringify(spawnErr.spawnargs)}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(", ");
+
+    logger.error(
+      `Failed to spawn process for app ${appId}. Command="${command}", CWD="${appPath}", ${details}\nSTDERR:\n${
+        errorOutput || "(empty)"
       }`,
+    );
+
+    throw new Error(
+      `Failed to spawn process for app ${appId}.
+Error output:
+${errorOutput || "(empty)"}
+Details: ${details || "n/a"}
+`,
     );
   }
 
@@ -408,12 +440,39 @@ RUN npm install -g pnpm
   if (!process.pid) {
     // Attempt to capture any immediate errors if possible
     let errorOutput = "";
-    process.stderr?.on("data", (data) => (errorOutput += data));
-    await new Promise((resolve) => process.on("error", resolve)); // Wait for error event
-    throw new Error(
-      `Failed to spawn Docker container for app ${appId}. Error: ${
-        errorOutput || "Unknown spawn error"
+    let spawnErr: any = null;
+    process.stderr?.on("data", (data) => (errorOutput += data.toString()));
+    await new Promise<void>((resolve) => {
+      process.once("error", (err) => {
+        spawnErr = err;
+        resolve();
+      });
+    }); // Wait for error event
+
+    const details = [
+      spawnErr?.message ? `message=${spawnErr.message}` : null,
+      spawnErr?.code ? `code=${spawnErr.code}` : null,
+      spawnErr?.errno ? `errno=${spawnErr.errno}` : null,
+      spawnErr?.syscall ? `syscall=${spawnErr.syscall}` : null,
+      spawnErr?.path ? `path=${spawnErr.path}` : null,
+      spawnErr?.spawnargs
+        ? `spawnargs=${JSON.stringify(spawnErr.spawnargs)}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(", ");
+
+    logger.error(
+      `Failed to spawn Docker container for app ${appId}. ${details}\nSTDERR:\n${
+        errorOutput || "(empty)"
       }`,
+    );
+
+    throw new Error(
+      `Failed to spawn Docker container for app ${appId}.
+Details: ${details || "n/a"}
+STDERR:
+${errorOutput || "(empty)"}`,
     );
   }
 
@@ -665,7 +724,9 @@ export function registerAppHandlers() {
     let supabaseProjectName: string | null = null;
     const settings = readSettings();
     if (app.supabaseProjectId && settings.supabase?.accessToken?.value) {
-      supabaseProjectName = await getSupabaseProjectName(app.supabaseProjectId);
+      supabaseProjectName = await getSupabaseProjectName(
+        app.supabaseParentProjectId || app.supabaseProjectId,
+      );
     }
 
     let vercelTeamSlug: string | null = null;
@@ -1075,6 +1136,53 @@ export function registerAppHandlers() {
   );
 
   ipcMain.handle(
+    "add-to-favorite",
+    async (
+      _,
+      { appId }: { appId: number },
+    ): Promise<{ isFavorite: boolean }> => {
+      return withLock(appId, async () => {
+        try {
+          // Fetch the current isFavorite value
+          const result = await db
+            .select({ isFavorite: apps.isFavorite })
+            .from(apps)
+            .where(eq(apps.id, appId))
+            .limit(1);
+
+          if (result.length === 0) {
+            throw new Error(`App with ID ${appId} not found.`);
+          }
+
+          const currentIsFavorite = result[0].isFavorite;
+
+          // Toggle the isFavorite value
+          const updated = await db
+            .update(apps)
+            .set({ isFavorite: !currentIsFavorite })
+            .where(eq(apps.id, appId))
+            .returning({ isFavorite: apps.isFavorite });
+
+          if (updated.length === 0) {
+            throw new Error(
+              `Failed to update favorite status for app ID ${appId}.`,
+            );
+          }
+
+          // Return the updated isFavorite value
+          return { isFavorite: updated[0].isFavorite };
+        } catch (error: any) {
+          logger.error(
+            `Error in add-to-favorite handler for app ID ${appId}:`,
+            error,
+          );
+          throw new Error(`Failed to toggle favorite status: ${error.message}`);
+        }
+      });
+    },
+  );
+
+  ipcMain.handle(
     "rename-app",
     async (
       _,
@@ -1338,6 +1446,91 @@ export function registerAppHandlers() {
         logger.error(`Error sending response to app ${appId}:`, error);
         throw new Error(`Failed to send response to app: ${error.message}`);
       }
+    },
+  );
+
+  handle(
+    "search-app",
+    async (_, searchQuery: string): Promise<AppSearchResult[]> => {
+      // Use parameterized query to prevent SQL injection
+      const pattern = `%${searchQuery.replace(/[%_]/g, "\\$&")}%`;
+
+      // 1) Apps whose name matches
+      const appNameMatches = await db
+        .select({
+          id: apps.id,
+          name: apps.name,
+          createdAt: apps.createdAt,
+        })
+        .from(apps)
+        .where(like(apps.name, pattern))
+        .orderBy(desc(apps.createdAt));
+
+      const appNameMatchesResult: AppSearchResult[] = appNameMatches.map(
+        (r) => ({
+          id: r.id,
+          name: r.name,
+          createdAt: r.createdAt,
+          matchedChatTitle: null,
+          matchedChatMessage: null,
+        }),
+      );
+
+      // 2) Apps whose chat title matches
+      const chatTitleMatches = await db
+        .select({
+          id: apps.id,
+          name: apps.name,
+          createdAt: apps.createdAt,
+          matchedChatTitle: chats.title,
+        })
+        .from(apps)
+        .innerJoin(chats, eq(apps.id, chats.appId))
+        .where(like(chats.title, pattern))
+        .orderBy(desc(apps.createdAt));
+
+      const chatTitleMatchesResult: AppSearchResult[] = chatTitleMatches.map(
+        (r) => ({
+          id: r.id,
+          name: r.name,
+          createdAt: r.createdAt,
+          matchedChatTitle: r.matchedChatTitle,
+          matchedChatMessage: null,
+        }),
+      );
+
+      // 3) Apps whose chat message content matches
+      const chatMessageMatches = await db
+        .select({
+          id: apps.id,
+          name: apps.name,
+          createdAt: apps.createdAt,
+          matchedChatTitle: chats.title,
+          matchedChatMessage: messages.content,
+        })
+        .from(apps)
+        .innerJoin(chats, eq(apps.id, chats.appId))
+        .innerJoin(messages, eq(chats.id, messages.chatId))
+        .where(like(messages.content, pattern))
+        .orderBy(desc(apps.createdAt));
+
+      // Flatten and dedupe by app id
+      const allMatches: AppSearchResult[] = [
+        ...appNameMatchesResult,
+        ...chatTitleMatchesResult,
+        ...chatMessageMatches,
+      ];
+      const uniqueApps = Array.from(
+        new Map(allMatches.map((app) => [app.id, app])).values(),
+      );
+
+      // Sort newest apps first
+      uniqueApps.sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+
+      return uniqueApps;
     },
   );
 }

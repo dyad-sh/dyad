@@ -22,6 +22,13 @@ export const DyadThink: React.FC<DyadThinkProps> = ({ children, node }) => {
         )
       : null;
 
+  // Collapse when transitioning from in-progress to not-in-progress
+  useEffect(() => {
+    if (!inProgress && isExpanded) {
+      setIsExpanded(false);
+    }
+  }, [inProgress]);
+
   // If it's token savings format, render DyadTokenSavings component
   if (tokenSavingsMatch) {
     const originalTokens = parseFloat(tokenSavingsMatch[1]);
@@ -33,13 +40,6 @@ export const DyadThink: React.FC<DyadThinkProps> = ({ children, node }) => {
       />
     );
   }
-
-  // Collapse when transitioning from in-progress to not-in-progress
-  useEffect(() => {
-    if (!inProgress && isExpanded) {
-      setIsExpanded(false);
-    }
-  }, [inProgress]);
 
   return (
     <div

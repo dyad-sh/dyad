@@ -1,4 +1,3 @@
-import { LanguageModel } from "ai";
 import { OpenAICompatibleChatLanguageModel } from "@ai-sdk/openai-compatible";
 import {
   FetchFunction,
@@ -9,14 +8,12 @@ import {
 import log from "electron-log";
 import { getExtraProviderOptions } from "./thinking_utils";
 import type { UserSettings } from "../../lib/schemas";
+import { LanguageModelV2 } from "@ai-sdk/provider";
 
 const logger = log.scope("llm_engine_provider");
 
 export type ExampleChatModelId = string & {};
-
-export interface ExampleChatSettings {
-  files?: { path: string; content: string }[];
-}
+export interface ExampleChatSettings {}
 export interface ExampleProviderSettings {
   /**
 Example API key.
@@ -44,7 +41,8 @@ or to provide a custom fetch implementation for e.g. testing.
   dyadOptions: {
     enableLazyEdits?: boolean;
     enableSmartFilesContext?: boolean;
-    smartContextMode?: "balanced";
+    enableWebSearch?: boolean;
+    smartContextMode?: "balanced" | "conservative";
   };
   settings: UserSettings;
 }
@@ -53,7 +51,10 @@ export interface DyadEngineProvider {
   /**
 Creates a model for text generation.
 */
-  (modelId: ExampleChatModelId, settings?: ExampleChatSettings): LanguageModel;
+  (
+    modelId: ExampleChatModelId,
+    settings?: ExampleChatSettings,
+  ): LanguageModelV2;
 
   /**
 Creates a chat model for text generation.
@@ -61,7 +62,7 @@ Creates a chat model for text generation.
   chatModel(
     modelId: ExampleChatModelId,
     settings?: ExampleChatSettings,
-  ): LanguageModel;
+  ): LanguageModelV2;
 }
 
 export function createDyadEngine(
@@ -102,13 +103,7 @@ export function createDyadEngine(
     fetch: options.fetch,
   });
 
-  const createChatModel = (
-    modelId: ExampleChatModelId,
-    settings: ExampleChatSettings = {},
-  ) => {
-    // Extract files from settings to process them appropriately
-    const { files } = settings;
-
+  const createChatModel = (modelId: ExampleChatModelId) => {
     // Create configuration with file handling
     const config = {
       ...getCommonModelConfig(),
@@ -130,9 +125,21 @@ export function createDyadEngine(
               options.settings,
             ),
           };
+          const dyadFiles = parsedBody.dyadFiles;
+          if ("dyadFiles" in parsedBody) {
+            delete parsedBody.dyadFiles;
+          }
           const requestId = parsedBody.dyadRequestId;
           if ("dyadRequestId" in parsedBody) {
             delete parsedBody.dyadRequestId;
+          }
+          const dyadDisableFiles = parsedBody.dyadDisableFiles;
+          if ("dyadDisableFiles" in parsedBody) {
+            delete parsedBody.dyadDisableFiles;
+          }
+          const dyadMentionedApps = parsedBody.dyadMentionedApps;
+          if ("dyadMentionedApps" in parsedBody) {
+            delete parsedBody.dyadMentionedApps;
           }
 
           // Track and modify requestId with attempt number
@@ -144,14 +151,18 @@ export function createDyadEngine(
           }
 
           // Add files to the request if they exist
-          if (files?.length) {
+          if (dyadFiles?.length && !dyadDisableFiles) {
             parsedBody.dyad_options = {
-              files,
+              files: dyadFiles,
               enable_lazy_edits: options.dyadOptions.enableLazyEdits,
               enable_smart_files_context:
                 options.dyadOptions.enableSmartFilesContext,
               smart_context_mode: options.dyadOptions.smartContextMode,
+              enable_web_search: options.dyadOptions.enableWebSearch,
             };
+            if (dyadMentionedApps?.length) {
+              parsedBody.dyad_options.mentioned_apps = dyadMentionedApps;
+            }
           }
 
           // Return modified request with files included and requestId in headers
@@ -179,10 +190,7 @@ export function createDyadEngine(
     return new OpenAICompatibleChatLanguageModel(modelId, config);
   };
 
-  const provider = (
-    modelId: ExampleChatModelId,
-    settings?: ExampleChatSettings,
-  ) => createChatModel(modelId, settings);
+  const provider = (modelId: ExampleChatModelId) => createChatModel(modelId);
 
   provider.chatModel = createChatModel;
 

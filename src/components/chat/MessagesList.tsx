@@ -2,7 +2,7 @@ import type React from "react";
 import type { Message } from "@/ipc/ipc_types";
 import { forwardRef, useState } from "react";
 import ChatMessage from "./ChatMessage";
-import { SetupBanner } from "../SetupBanner";
+import { OpenRouterSetupBanner, SetupBanner } from "../SetupBanner";
 
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
@@ -13,7 +13,7 @@ import { useVersions } from "@/hooks/useVersions";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { showError, showWarning } from "@/lib/toast";
 import { IpcClient } from "@/ipc/ipc_client";
-import { chatMessagesAtom } from "@/atoms/chatAtoms";
+import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useSettings } from "@/hooks/useSettings";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
@@ -29,36 +29,50 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
     const appId = useAtomValue(selectedAppIdAtom);
     const { versions, revertVersion } = useVersions(appId);
     const { streamMessage, isStreaming } = useStreamChat();
-    const { isAnyProviderSetup } = useLanguageModelProviders();
+    const { isAnyProviderSetup, isProviderSetup } = useLanguageModelProviders();
     const { settings } = useSettings();
-    const setMessages = useSetAtom(chatMessagesAtom);
+    const setMessagesById = useSetAtom(chatMessagesByIdAtom);
     const [isUndoLoading, setIsUndoLoading] = useState(false);
     const [isRetryLoading, setIsRetryLoading] = useState(false);
     const selectedChatId = useAtomValue(selectedChatIdAtom);
     const { userBudget } = useUserBudgetInfo();
 
+    const renderSetupBanner = () => {
+      const selectedModel = settings?.selectedModel;
+      if (
+        selectedModel?.name === "free" &&
+        selectedModel?.provider === "auto" &&
+        !isProviderSetup("openrouter")
+      ) {
+        return <OpenRouterSetupBanner className="w-full" />;
+      }
+      if (!isAnyProviderSetup()) {
+        return <SetupBanner />;
+      }
+      return null;
+    };
+
     return (
       <div
-        className="flex-1 overflow-y-auto p-4"
+        className="absolute inset-0 overflow-y-auto p-4"
         ref={ref}
         data-testid="messages-list"
       >
-        {messages.length > 0 ? (
-          messages.map((message, index) => (
-            <ChatMessage
-              key={index}
-              message={message}
-              isLastMessage={index === messages.length - 1}
-            />
-          ))
-        ) : (
-          <div className="flex flex-col items-center justify-center h-full max-w-2xl mx-auto">
-            <div className="flex flex-1 items-center justify-center text-gray-500">
-              No messages yet
-            </div>
-            {!isAnyProviderSetup() && <SetupBanner />}
-          </div>
-        )}
+        {messages.length > 0
+          ? messages.map((message, index) => (
+              <ChatMessage
+                key={index}
+                message={message}
+                isLastMessage={index === messages.length - 1}
+              />
+            ))
+          : !renderSetupBanner() && (
+              <div className="flex flex-col items-center justify-center h-full max-w-2xl mx-auto">
+                <div className="flex flex-1 items-center justify-center text-gray-500">
+                  No messages yet
+                </div>
+              </div>
+            )}
         {!isStreaming && (
           <div className="flex max-w-3xl mx-auto gap-2">
             {!!messages.length &&
@@ -93,7 +107,11 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
                             await IpcClient.getInstance().getChat(
                               selectedChatId,
                             );
-                          setMessages(chat.messages);
+                          setMessagesById((prev) => {
+                            const next = new Map(prev);
+                            next.set(selectedChatId, chat.messages);
+                            return next;
+                          });
                         }
                       } else {
                         const chat =
@@ -106,7 +124,11 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
                             await IpcClient.getInstance().deleteMessages(
                               selectedChatId,
                             );
-                            setMessages([]);
+                            setMessagesById((prev) => {
+                              const next = new Map(prev);
+                              next.set(selectedChatId, []);
+                              return next;
+                            });
                           } catch (err) {
                             showError(err);
                           }
@@ -230,6 +252,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
             />
           )}
         <div ref={messagesEndRef} />
+        {renderSetupBanner()}
       </div>
     );
   },

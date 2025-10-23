@@ -1,0 +1,7 @@
+- paragraph: "[call_tool=calculator_add]"
+- img
+- text: Tool Call
+- img
+- text: testing-mcp-server calculator_add
+- img
+- text: less than a minute ago

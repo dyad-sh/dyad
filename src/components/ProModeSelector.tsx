@@ -19,6 +19,12 @@ import { hasDyadProKey, type UserSettings } from "@/lib/schemas";
 export function ProModeSelector() {
   const { settings, updateSettings } = useSettings();
 
+  const toggleWebSearch = () => {
+    updateSettings({
+      enableProWebSearch: !settings?.enableProWebSearch,
+    });
+  };
+
   const toggleLazyEdits = () => {
     updateSettings({
       enableProLazyEditsMode: !settings?.enableProLazyEditsMode,
@@ -36,7 +42,7 @@ export function ProModeSelector() {
     } else if (newValue === "conservative") {
       updateSettings({
         enableProSmartFilesContextMode: true,
-        proSmartContextOption: undefined, // Conservative is the default when enabled but no option set
+        proSmartContextOption: "conservative",
       });
     } else if (newValue === "balanced") {
       updateSettings({
@@ -104,6 +110,15 @@ export function ProModeSelector() {
               isTogglable={hasProKey}
               settingEnabled={Boolean(settings?.enableDyadPro)}
               toggle={toggleProEnabled}
+            />
+            <SelectorRow
+              id="web-search"
+              label="Web Search"
+              description="Search the web for information"
+              tooltip="Uses the web to search for information"
+              isTogglable={proModeTogglable}
+              settingEnabled={Boolean(settings?.enableProWebSearch)}
+              toggle={toggleWebSearch}
             />
             <SelectorRow
               id="lazy-edits"
@@ -197,8 +212,12 @@ function SmartContextSelector({
     if (settings?.proSmartContextOption === "balanced") {
       return "balanced";
     }
-    // If enabled but no option set (undefined/falsey), it's conservative
-    return "conservative";
+    if (settings?.proSmartContextOption === "conservative") {
+      return "conservative";
+    }
+    // Keep in sync with getModelClient in get_model_client.ts
+    // If enabled but no option set (undefined/falsey), it's balanced
+    return "balanced";
   };
 
   const currentValue = getCurrentValue();

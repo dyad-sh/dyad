@@ -24,6 +24,9 @@ import { useLanguageModelsByProviders } from "@/hooks/useLanguageModelsByProvide
 import { LocalModel } from "@/ipc/ipc_types";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useSettings } from "@/hooks/useSettings";
+import { PriceBadge } from "@/components/PriceBadge";
+import { TURBO_MODELS } from "@/ipc/shared/language_model_constants";
+import { cn } from "@/lib/utils";
 
 export function ModelPicker() {
   const { settings, updateSettings } = useSettings();
@@ -106,7 +109,23 @@ export function ModelPicker() {
   // Get auto provider models (if any)
   const autoModels =
     !loading && modelsByProviders && modelsByProviders["auto"]
-      ? modelsByProviders["auto"]
+      ? modelsByProviders["auto"].filter((model) => {
+          if (
+            settings &&
+            !isDyadProEnabled(settings) &&
+            ["turbo", "value"].includes(model.apiName)
+          ) {
+            return false;
+          }
+          if (
+            settings &&
+            isDyadProEnabled(settings) &&
+            model.apiName === "free"
+          ) {
+            return false;
+          }
+          return true;
+        })
       : [];
 
   // Determine availability of local models
@@ -119,8 +138,6 @@ export function ModelPicker() {
     return null;
   }
   const selectedModel = settings?.selectedModel;
-  const isSmartAutoEnabled =
-    settings.enableProSmartFilesContextMode && isDyadProEnabled(settings);
   const modelDisplayName = getModelDisplayName();
   // Split providers into primary and secondary groups (excluding auto)
   const providerEntries =
@@ -134,6 +151,9 @@ export function ModelPicker() {
     const provider = providers?.find((p) => p.id === providerId);
     return !(provider && provider.secondary);
   });
+  if (settings && isDyadProEnabled(settings)) {
+    primaryProviders.unshift(["auto", TURBO_MODELS]);
+  }
   const secondaryProviders = providerEntries.filter(([providerId, models]) => {
     if (models.length === 0) return false;
     const provider = providers?.find((p) => p.id === providerId);
@@ -209,20 +229,16 @@ export function ModelPicker() {
                       >
                         <div className="flex justify-between items-start w-full">
                           <span className="flex flex-col items-start">
-                            <span>
-                              {isSmartAutoEnabled
-                                ? "Smart Auto"
-                                : model.displayName}
-                            </span>
+                            <span>{model.displayName}</span>
                           </span>
                           <div className="flex items-center gap-1.5">
-                            {isSmartAutoEnabled && (
-                              <span className="text-[10px] bg-gradient-to-r from-indigo-600 via-indigo-500 to-indigo-600 bg-[length:200%_100%] animate-[shimmer_5s_ease-in-out_infinite] text-white px-1.5 py-0.5 rounded-full font-medium">
-                                Dyad Pro
-                              </span>
-                            )}
                             {model.tag && (
-                              <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">
+                              <span
+                                className={cn(
+                                  "text-[11px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium",
+                                  model.tagColor,
+                                )}
+                              >
                                 {model.tag}
                               </span>
                             )}
@@ -231,15 +247,7 @@ export function ModelPicker() {
                       </DropdownMenuItem>
                     </TooltipTrigger>
                     <TooltipContent side="right">
-                      {isSmartAutoEnabled ? (
-                        <p>
-                          <strong>Smart Auto</strong> uses a cheaper model for
-                          easier tasks
-                          <br /> and a flagship model for harder tasks
-                        </p>
-                      ) : (
-                        model.description
-                      )}
+                      {model.description}
                     </TooltipContent>
                   </Tooltip>
                 ))}
@@ -251,13 +259,29 @@ export function ModelPicker() {
 
             {/* Primary providers as submenus */}
             {primaryProviders.map(([providerId, models]) => {
+              models = models.filter((model) => {
+                // Don't show free models if Dyad Pro is enabled because
+                // we will use the paid models (in Dyad Pro backend) which
+                // don't have the free limitations.
+                if (
+                  isDyadProEnabled(settings) &&
+                  model.apiName.endsWith(":free")
+                ) {
+                  return false;
+                }
+                return true;
+              });
               const provider = providers?.find((p) => p.id === providerId);
+              const providerDisplayName =
+                provider?.id === "auto"
+                  ? "Dyad Turbo"
+                  : (provider?.name ?? providerId);
               return (
                 <DropdownMenuSub key={providerId}>
                   <DropdownMenuSubTrigger className="w-full font-normal">
                     <div className="flex flex-col items-start w-full">
                       <div className="flex items-center gap-2">
-                        <span>{provider?.name ?? providerId}</span>
+                        <span>{providerDisplayName}</span>
                         {provider?.type === "cloud" &&
                           !provider?.secondary &&
                           isDyadProEnabled(settings) && (
@@ -276,9 +300,9 @@ export function ModelPicker() {
                       </span>
                     </div>
                   </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent className="w-56">
+                  <DropdownMenuSubContent className="w-56 max-h-100 overflow-y-auto">
                     <DropdownMenuLabel>
-                      {(provider?.name ?? providerId) + " Models"}
+                      {providerDisplayName + " Models"}
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
                     {models.map((model) => (
@@ -304,11 +328,7 @@ export function ModelPicker() {
                           >
                             <div className="flex justify-between items-start w-full">
                               <span>{model.displayName}</span>
-                              {model.dollarSigns && (
-                                <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">
-                                  {"$".repeat(model.dollarSigns)}
-                                </span>
-                              )}
+                              <PriceBadge dollarSigns={model.dollarSigns} />
                               {model.tag && (
                                 <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">
                                   {model.tag}
@@ -452,7 +472,7 @@ export function ModelPicker() {
                   )}
                 </div>
               </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent className="w-56">
+              <DropdownMenuSubContent className="w-56 max-h-100 overflow-y-auto">
                 <DropdownMenuLabel>Ollama Models</DropdownMenuLabel>
                 <DropdownMenuSeparator />
 
@@ -533,7 +553,7 @@ export function ModelPicker() {
                   )}
                 </div>
               </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent className="w-56">
+              <DropdownMenuSubContent className="w-56 max-h-100 overflow-y-auto">
                 <DropdownMenuLabel>LM Studio Models</DropdownMenuLabel>
                 <DropdownMenuSeparator />
 

@@ -26,15 +26,50 @@ export type ChatSummary = z.infer<typeof ChatSummarySchema>;
  */
 export const ChatSummariesSchema = z.array(ChatSummarySchema);
 
+/**
+ * Zod schema for chat search result objects returned by the search-chats IPC
+ */
+export const ChatSearchResultSchema = z.object({
+  id: z.number(),
+  appId: z.number(),
+  title: z.string().nullable(),
+  createdAt: z.date(),
+  matchedMessageContent: z.string().nullable(),
+});
+
+/**
+ * Type derived from the ChatSearchResultSchema
+ */
+export type ChatSearchResult = z.infer<typeof ChatSearchResultSchema>;
+
+export const ChatSearchResultsSchema = z.array(ChatSearchResultSchema);
+
+// Zod schema for app search result objects returned by the search-app IPC
+export const AppSearchResultSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  createdAt: z.date(),
+  matchedChatTitle: z.string().nullable(),
+  matchedChatMessage: z.string().nullable(),
+});
+
+// Type derived from AppSearchResultSchema
+export type AppSearchResult = z.infer<typeof AppSearchResultSchema>;
+
+export const AppSearchResultsSchema = z.array(AppSearchResultSchema);
+
 const providers = [
   "openai",
   "anthropic",
   "google",
+  "vertex",
   "auto",
   "openrouter",
   "ollama",
   "lmstudio",
   "azure",
+  "xai",
+  "bedrock",
 ] as const;
 
 export const cloudProviders = providers.filter(
@@ -57,15 +92,49 @@ export type LargeLanguageModel = z.infer<typeof LargeLanguageModelSchema>;
 
 /**
  * Zod schema for provider settings
+ * Regular providers use only apiKey. Vertex has additional optional fields.
  */
-export const ProviderSettingSchema = z.object({
+export const RegularProviderSettingSchema = z.object({
   apiKey: SecretSchema.optional(),
 });
+
+export const AzureProviderSettingSchema = z.object({
+  apiKey: SecretSchema.optional(),
+  resourceName: z.string().optional(),
+});
+
+export const VertexProviderSettingSchema = z.object({
+  // We make this undefined so that it makes existing callsites easier.
+  apiKey: z.undefined(),
+  projectId: z.string().optional(),
+  location: z.string().optional(),
+  serviceAccountKey: SecretSchema.optional(),
+});
+
+export const ProviderSettingSchema = z.union([
+  // Must use more specific type first!
+  // Zod uses the first type that matches.
+  //
+  // We use passthrough as a hack because Azure and Vertex
+  // will match together since their required fields overlap.
+  //
+  // In addition, there may be future provider settings that
+  // we may want to preserve (e.g. user downgrades to older version)
+  // so doing passthrough keeps these extra fields.
+  AzureProviderSettingSchema.passthrough(),
+  VertexProviderSettingSchema.passthrough(),
+  RegularProviderSettingSchema.passthrough(),
+]);
 
 /**
  * Type derived from the ProviderSettingSchema
  */
 export type ProviderSetting = z.infer<typeof ProviderSettingSchema>;
+export type RegularProviderSetting = z.infer<
+  typeof RegularProviderSettingSchema
+>;
+export type AzureProviderSetting = z.infer<typeof AzureProviderSettingSchema>;
+export type VertexProviderSetting = z.infer<typeof VertexProviderSettingSchema>;
 
 export const RuntimeModeSchema = z.enum(["web-sandbox", "local-node", "unset"]);
 export type RuntimeMode = z.infer<typeof RuntimeModeSchema>;
@@ -73,7 +142,7 @@ export type RuntimeMode = z.infer<typeof RuntimeModeSchema>;
 export const RuntimeMode2Schema = z.enum(["host", "docker"]);
 export type RuntimeMode2 = z.infer<typeof RuntimeMode2Schema>;
 
-export const ChatModeSchema = z.enum(["build", "ask"]);
+export const ChatModeSchema = z.enum(["build", "ask", "agent"]);
 export type ChatMode = z.infer<typeof ChatModeSchema>;
 
 export const GitHubSecretsSchema = z.object({
@@ -164,7 +233,8 @@ export const UserSettingsSchema = z.object({
   thinkingBudget: z.enum(["low", "medium", "high"]).optional(),
   enableProLazyEditsMode: z.boolean().optional(),
   enableProSmartFilesContextMode: z.boolean().optional(),
-  proSmartContextOption: z.enum(["balanced"]).optional(),
+  enableProWebSearch: z.boolean().optional(),
+  proSmartContextOption: z.enum(["balanced", "conservative"]).optional(),
   selectedTemplateId: z.string(),
   enableSupabaseWriteSqlMigration: z.boolean().optional(),
   selectedChatMode: ChatModeSchema.optional(),
@@ -175,6 +245,7 @@ export const UserSettingsSchema = z.object({
   enableAutoUpdate: z.boolean(),
   releaseChannel: ReleaseChannelSchema,
   runtimeMode2: RuntimeMode2Schema.optional(),
+  customNodePath: z.string().optional().nullable(),
 
   ////////////////////////////////
   // E2E TESTING ONLY.

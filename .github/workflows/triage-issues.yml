@@ -1,0 +1,68 @@
+# This was copied from https://github.com/sst/opencode/blob/d7a9f343c53d481802c134ce25691a8c150d59d2/.github/workflows/duplicate-issues.yml
+# MIT License
+# Copyright (c) 2025 opencode
+
+name: Triage Issue
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  triage-issues:
+    environment: ai-bots
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install opencode
+        run: curl -fsSL https://opencode.ai/install | bash
+
+      - name: Triage issue
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENCODE_PERMISSION: |
+            {
+              "bash": {
+                "gh issue*": "allow",
+                "*": "deny" 
+              }, 
+              "webfetch": "deny"
+            }
+        run: |
+          opencode run -m anthropic/claude-sonnet-4-20250514 "A new issue has been created:'
+
+          Issue number:
+          ${{ github.event.issue.number }}
+
+          If most of the issue description is written in a language other than English, label the issue with 'issue/lang' and leave a friendly comment: 'Hi! We're only able to respond to issues in English. Please translate your issue with ChatGPT so we can help you. Thanks!'
+
+          If the issue has several blank sections, then label the issue with 'issue/incomplete' and leave a friendly comment: 'Hi! Please fill in all the fields in the issue so we can help you. A screenshot is very helpful!'
+
+          Here's an example of an empty issue:
+
+          <!-- 
+          ⚠️ IMPORTANT: All sections marked as required must be completed in English.
+          Issues that do not meet these requirements will be closed and may need to be resubmitted.
+          -->
+
+          ## Bug Description (required)
+          <!-- Please describe the issue you're experiencing -->
+
+          ## Steps to Reproduce (required)
+          <!-- Please list the steps to reproduce the issue -->
+
+          ## Expected Behavior (required)
+          <!-- What did you expect to happen? -->
+
+          ## Actual Behavior (required)
+          <!-- What actually happened? -->
+
+          "

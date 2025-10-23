@@ -330,7 +330,7 @@ export class PageObject {
     await this.page.getByRole("button", { name: "Import" }).click();
   }
 
-  async selectChatMode(mode: "build" | "ask") {
+  async selectChatMode(mode: "build" | "ask" | "agent") {
     await this.page.getByTestId("chat-mode-selector").click();
     await this.page.getByRole("option", { name: mode }).click();
   }
@@ -400,7 +400,8 @@ export class PageObject {
 
   async snapshotMessages({
     replaceDumpPath = false,
-  }: { replaceDumpPath?: boolean } = {}) {
+    timeout,
+  }: { replaceDumpPath?: boolean; timeout?: number } = {}) {
     if (replaceDumpPath) {
       // Update page so that "[[dyad-dump-path=*]]" is replaced with a placeholder path
       // which is stable across runs.
@@ -417,7 +418,9 @@ export class PageObject {
         );
       });
     }
-    await expect(this.page.getByTestId("messages-list")).toMatchAriaSnapshot();
+    await expect(this.page.getByTestId("messages-list")).toMatchAriaSnapshot({
+      timeout,
+    });
   }
 
   async approveProposal() {
@@ -431,6 +434,27 @@ export class PageObject {
   async clickRestart() {
     await this.page.getByRole("button", { name: "Restart" }).click();
   }
+  ////////////////////////////////
+  // Inline code editor
+  ////////////////////////////////
+  async clickEditButton() {
+    await this.page.locator('button:has-text("Edit")').first().click();
+  }
+
+  async editFileContent(content: string) {
+    const editor = this.page.locator(".monaco-editor textarea").first();
+    await editor.focus();
+    await editor.press("Home");
+    await editor.type(content);
+  }
+
+  async saveFile() {
+    await this.page.locator('[data-testid="save-file-button"]').click();
+  }
+
+  async cancelEdit() {
+    await this.page.locator('button:has-text("Cancel")').first().click();
+  }
 
   ////////////////////////////////
   // Preview panel
@@ -438,6 +462,16 @@ export class PageObject {
 
   async selectPreviewMode(mode: "code" | "problems" | "preview" | "configure") {
     await this.page.getByTestId(`${mode}-mode-button`).click();
+  }
+
+  async clickChatActivityButton() {
+    await this.page.getByTestId("chat-activity-button").click();
+  }
+
+  async snapshotChatActivityList() {
+    await expect(
+      this.page.getByTestId("chat-activity-list"),
+    ).toMatchAriaSnapshot();
   }
 
   async clickRecheckProblems() {
@@ -664,11 +698,16 @@ export class PageObject {
     await this.page.getByRole("button", { name: "Back" }).click();
   }
 
-  async sendPrompt(prompt: string) {
+  async sendPrompt(
+    prompt: string,
+    { skipWaitForCompletion = false }: { skipWaitForCompletion?: boolean } = {},
+  ) {
     await this.getChatInput().click();
     await this.getChatInput().fill(prompt);
     await this.page.getByRole("button", { name: "Send message" }).click();
-    await this.waitForChatCompletion();
+    if (!skipWaitForCompletion) {
+      await this.waitForChatCompletion();
+    }
   }
 
   async selectModel({ provider, model }: { provider: string; model: string }) {
@@ -737,9 +776,7 @@ export class PageObject {
   }
 
   async setUpTestModel() {
-    await this.page
-      .getByRole("heading", { name: "test-provider Needs Setup" })
-      .click();
+    await this.page.getByRole("heading", { name: "test-provider" }).click();
     await this.page.getByRole("button", { name: "Add Custom Model" }).click();
     await this.page
       .getByRole("textbox", { name: "Model ID*" })
@@ -1002,6 +1039,7 @@ export class PageObject {
 
 interface ElectronConfig {
   preLaunchHook?: ({ userDataDir }: { userDataDir: string }) => Promise<void>;
+  showSetupScreen?: boolean;
 }
 
 // From https://github.com/microsoft/playwright/issues/8208#issuecomment-1435475930
@@ -1064,8 +1102,10 @@ export const test = base.extend<{
       process.env.DYAD_ENGINE_URL = "http://localhost:3500/engine/v1";
       process.env.DYAD_GATEWAY_URL = "http://localhost:3500/gateway/v1";
       process.env.E2E_TEST_BUILD = "true";
-      // This is just a hack to avoid the AI setup screen.
-      process.env.OPENAI_API_KEY = "sk-test";
+      if (!electronConfig.showSetupScreen) {
+        // This is just a hack to avoid the AI setup screen.
+        process.env.OPENAI_API_KEY = "sk-test";
+      }
       const baseTmpDir = os.tmpdir();
       const userDataDir = path.join(baseTmpDir, `dyad-e2e-tests-${Date.now()}`);
       if (electronConfig.preLaunchHook) {
@@ -1142,6 +1182,17 @@ export const test = base.extend<{
 });
 
 export function testWithConfig(config: ElectronConfig) {
+  return test.extend({
+    electronConfig: async ({}, use) => {
+      await use(config);
+    },
+  });
+}
+
+export function testWithConfigSkipIfWindows(config: ElectronConfig) {
+  if (os.platform() === "win32") {
+    return test.skip;
+  }
   return test.extend({
     electronConfig: async ({}, use) => {
       await use(config);

@@ -68,7 +68,7 @@ export async function processFullResponseActions(
 }> {
   const fileUploadsState = FileUploadsState.getInstance();
   const fileUploadsMap = fileUploadsState.getFileUploadsForChat(chatId);
-  fileUploadsState.clear();
+  fileUploadsState.clear(chatId);
   logger.log("processFullResponseActions for chatId", chatId);
   // Get the app associated with the chat
   const chatWithApp = await db.query.chats.findFirst({

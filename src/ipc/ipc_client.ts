@@ -4,6 +4,8 @@ import {
   ChatSummariesSchema,
   type UserSettings,
   type ContextPathResults,
+  ChatSearchResultsSchema,
+  AppSearchResultsSchema,
 } from "../lib/schemas";
 import type {
   AppOutput,
@@ -61,10 +63,22 @@ import type {
   PromptDto,
   CreatePromptParamsDto,
   UpdatePromptParamsDto,
+  McpServerUpdate,
+  CreateMcpServer,
+  CloneRepoParams,
+  SupabaseBranch,
+  SetSupabaseAppProjectParams,
+  SelectNodeFolderResult,
 } from "./ipc_types";
 import type { Template } from "../shared/templates";
-import type { AppChatContext, ProposalResult } from "@/lib/schemas";
+import type {
+  AppChatContext,
+  AppSearchResult,
+  ChatSearchResult,
+  ProposalResult,
+} from "@/lib/schemas";
 import { showError } from "@/lib/toast";
+import { DeepLinkData } from "./deep_link_data";
 
 export interface ChatStreamCallbacks {
   onUpdate: (messages: Message[]) => void;
@@ -90,10 +104,6 @@ export interface GitHubDeviceFlowErrorData {
   error: string;
 }
 
-export interface DeepLinkData {
-  type: string;
-}
-
 interface DeleteCustomModelParams {
   providerId: string;
   modelApiName: string;
@@ -112,11 +122,13 @@ export class IpcClient {
       onError: (error: string) => void;
     }
   >;
+  private mcpConsentHandlers: Map<string, (payload: any) => void>;
   private constructor() {
     this.ipcRenderer = (window as any).electron.ipcRenderer as IpcRenderer;
     this.chatStreams = new Map();
     this.appStreams = new Map();
     this.helpStreams = new Map();
+    this.mcpConsentHandlers = new Map();
     // Set up listeners for stream events
     this.ipcRenderer.on("chat:response:chunk", (data) => {
       if (
@@ -178,15 +190,27 @@ export class IpcClient {
       }
     });
 
-    this.ipcRenderer.on("chat:response:error", (error) => {
+    this.ipcRenderer.on("chat:response:error", (payload) => {
       console.debug("chat:response:error");
-      if (typeof error === "string") {
-        for (const [chatId, callbacks] of this.chatStreams.entries()) {
+      if (
+        payload &&
+        typeof payload === "object" &&
+        "chatId" in payload &&
+        "error" in payload
+      ) {
+        const { chatId, error } = payload as { chatId: number; error: string };
+        const callbacks = this.chatStreams.get(chatId);
+        if (callbacks) {
           callbacks.onError(error);
           this.chatStreams.delete(chatId);
+        } else {
+          console.warn(
+            `[IPC] No callbacks found for chat ${chatId} on error`,
+            this.chatStreams,
+          );
         }
       } else {
-        console.error("[IPC] Invalid error data received:", error);
+        console.error("[IPC] Invalid error data received:", payload);
       }
     });
 
@@ -231,6 +255,12 @@ export class IpcClient {
         this.helpStreams.delete(sessionId);
       }
     });
+
+    // MCP tool consent request from main
+    this.ipcRenderer.on("mcp:tool-consent-request", (payload) => {
+      const handler = this.mcpConsentHandlers.get("consent");
+      if (handler) handler(payload);
+    });
   }
 
   public static getInstance(): IpcClient {
@@ -255,6 +285,20 @@ export class IpcClient {
 
   public async getApp(appId: number): Promise<App> {
     return this.ipcRenderer.invoke("get-app", appId);
+  }
+
+  public async addAppToFavorite(
+    appId: number,
+  ): Promise<{ isFavorite: boolean }> {
+    try {
+      const result = await this.ipcRenderer.invoke("add-to-favorite", {
+        appId,
+      });
+      return result;
+    } catch (error) {
+      showError(error);
+      throw error;
+    }
   }
 
   public async getAppEnvVars(
@@ -288,9 +332,34 @@ export class IpcClient {
     }
   }
 
+  // search for chats
+  public async searchChats(
+    appId: number,
+    query: string,
+  ): Promise<ChatSearchResult[]> {
+    try {
+      const data = await this.ipcRenderer.invoke("search-chats", appId, query);
+      return ChatSearchResultsSchema.parse(data);
+    } catch (error) {
+      showError(error);
+      throw error;
+    }
+  }
+
   // Get all apps
   public async listApps(): Promise<ListAppsResponse> {
     return this.ipcRenderer.invoke("list-apps");
+  }
+
+  // Search apps by name
+  public async searchApps(searchQuery: string): Promise<AppSearchResult[]> {
+    try {
+      const data = await this.ipcRenderer.invoke("search-app", searchQuery);
+      return AppSearchResultsSchema.parse(data);
+    } catch (error) {
+      showError(error);
+      throw error;
+    }
   }
 
   public async readAppFile(appId: number, filePath: string): Promise<string> {
@@ -782,6 +851,67 @@ export class IpcClient {
     return result.version as string;
   }
 
+  // --- MCP Client Methods ---
+  public async listMcpServers() {
+    return this.ipcRenderer.invoke("mcp:list-servers");
+  }
+
+  public async createMcpServer(params: CreateMcpServer) {
+    return this.ipcRenderer.invoke("mcp:create-server", params);
+  }
+
+  public async updateMcpServer(params: McpServerUpdate) {
+    return this.ipcRenderer.invoke("mcp:update-server", params);
+  }
+
+  public async deleteMcpServer(id: number) {
+    return this.ipcRenderer.invoke("mcp:delete-server", id);
+  }
+
+  public async listMcpTools(serverId: number) {
+    return this.ipcRenderer.invoke("mcp:list-tools", serverId);
+  }
+
+  // Removed: upsertMcpTools and setMcpToolActive – tools are fetched dynamically at runtime
+
+  public async getMcpToolConsents() {
+    return this.ipcRenderer.invoke("mcp:get-tool-consents");
+  }
+
+  public async setMcpToolConsent(params: {
+    serverId: number;
+    toolName: string;
+    consent: "ask" | "always" | "denied";
+  }) {
+    return this.ipcRenderer.invoke("mcp:set-tool-consent", params);
+  }
+
+  public onMcpToolConsentRequest(
+    handler: (payload: {
+      requestId: string;
+      serverId: number;
+      serverName: string;
+      toolName: string;
+      toolDescription?: string | null;
+      inputPreview?: string | null;
+    }) => void,
+  ) {
+    this.mcpConsentHandlers.set("consent", handler as any);
+    return () => {
+      this.mcpConsentHandlers.delete("consent");
+    };
+  }
+
+  public respondToMcpConsentRequest(
+    requestId: string,
+    decision: "accept-once" | "accept-always" | "decline",
+  ) {
+    this.ipcRenderer.invoke("mcp:tool-consent-response", {
+      requestId,
+      decision,
+    });
+  }
+
   // Get proposal details
   public async getProposal(chatId: number): Promise<ProposalResult | null> {
     try {
@@ -831,14 +961,16 @@ export class IpcClient {
     return this.ipcRenderer.invoke("supabase:list-projects");
   }
 
+  public async listSupabaseBranches(params: {
+    projectId: string;
+  }): Promise<SupabaseBranch[]> {
+    return this.ipcRenderer.invoke("supabase:list-branches", params);
+  }
+
   public async setSupabaseAppProject(
-    project: string,
-    app: number,
+    params: SetSupabaseAppProjectParams,
   ): Promise<void> {
-    await this.ipcRenderer.invoke("supabase:set-app-project", {
-      project,
-      app,
-    });
+    await this.ipcRenderer.invoke("supabase:set-app-project", params);
   }
 
   public async unsetSupabaseAppProject(app: number): Promise<void> {
@@ -1013,6 +1145,14 @@ export class IpcClient {
       envVarName,
     });
   }
+  public async editCustomLanguageModelProvider(
+    params: CreateCustomLanguageModelProviderParams,
+  ): Promise<LanguageModelProvider> {
+    return this.ipcRenderer.invoke(
+      "edit-custom-language-model-provider",
+      params,
+    );
+  }
 
   public async createCustomLanguageModel(
     params: CreateCustomLanguageModelParams,
@@ -1039,6 +1179,16 @@ export class IpcClient {
     name: string | null;
   }> {
     return this.ipcRenderer.invoke("select-app-folder");
+  }
+
+  // Add these methods to IpcClient class
+
+  public async selectNodeFolder(): Promise<SelectNodeFolderResult> {
+    return this.ipcRenderer.invoke("select-node-folder");
+  }
+
+  public async getNodePath(): Promise<string | null> {
+    return this.ipcRenderer.invoke("get-node-path");
   }
 
   public async checkAiRules(params: {
@@ -1139,6 +1289,11 @@ export class IpcClient {
 
   public async deletePrompt(id: number): Promise<void> {
     await this.ipcRenderer.invoke("prompts:delete", id);
+  }
+  public async cloneRepoFromUrl(
+    params: CloneRepoParams,
+  ): Promise<{ app: App; hasAiRules: boolean } | { error: string }> {
+    return this.ipcRenderer.invoke("github:clone-repo-from-url", params);
   }
 
   // --- Help bot ---

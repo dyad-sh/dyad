@@ -20,7 +20,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { PreviewHeader } from "@/components/preview_panel/PreviewHeader";
+import { ActionHeader } from "@/components/preview_panel/ActionHeader";
 
 export const TitleBar = () => {
   const [selectedAppId] = useAtom(selectedAppIdAtom);
@@ -49,16 +49,17 @@ export const TitleBar = () => {
     setIsSuccessDialogOpen(true);
   };
 
-  const { lastDeepLink } = useDeepLink();
+  const { lastDeepLink, clearLastDeepLink } = useDeepLink();
   useEffect(() => {
     const handleDeepLink = async () => {
       if (lastDeepLink?.type === "dyad-pro-return") {
         await refreshSettings();
         showDyadProSuccessDialog();
+        clearLastDeepLink();
       }
     };
     handleDeepLink();
-  }, [lastDeepLink]);
+  }, [lastDeepLink?.timestamp]);
 
   // Get selected app name
   const selectedApp = apps.find((app) => app.id === selectedAppId);
@@ -97,7 +98,7 @@ export const TitleBar = () => {
         {/* Preview Header */}
         {location.pathname === "/chat" && (
           <div className="flex-1 flex justify-end">
-            <PreviewHeader />
+            <ActionHeader />
           </div>
         )}
 
@@ -235,14 +236,6 @@ export function AICreditStatus({ userBudget }: { userBudget: UserBudgetInfo }) {
       </TooltipTrigger>
       <TooltipContent>
         <div>
-          <p>
-            You have used {Math.round(userBudget.usedCredits)} credits out of{" "}
-            {userBudget.totalCredits}.
-          </p>
-          <p>
-            Your budget resets on{" "}
-            {userBudget.budgetResetDate.toLocaleDateString()}
-          </p>
           <p>Note: there is a slight delay in updating the credit status.</p>
         </div>
       </TooltipContent>

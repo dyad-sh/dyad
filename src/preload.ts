@@ -11,6 +11,7 @@ const validInvokeChannels = [
   "get-language-model-providers",
   "delete-custom-language-model-provider",
   "create-custom-language-model-provider",
+  "edit-custom-language-model-provider",
   "delete-custom-language-model",
   "delete-custom-model",
   "chat:add-dep",
@@ -23,6 +24,7 @@ const validInvokeChannels = [
   "copy-app",
   "get-chat",
   "get-chats",
+  "search-chats",
   "get-chat-logs",
   "list-apps",
   "get-app",
@@ -34,6 +36,7 @@ const validInvokeChannels = [
   "stop-app",
   "restart-app",
   "respond-to-app-input",
+  "search-app",
   "list-versions",
   "revert-version",
   "checkout-version",
@@ -48,6 +51,7 @@ const validInvokeChannels = [
   "reset-all",
   "nodejs-status",
   "install-node",
+  "select-node-folder",
   "github:start-flow",
   "github:list-repos",
   "github:get-repo-branches",
@@ -73,6 +77,7 @@ const validInvokeChannels = [
   "reject-proposal",
   "get-system-debug-info",
   "supabase:list-projects",
+  "supabase:list-branches",
   "supabase:set-app-project",
   "supabase:unset-app-project",
   "local-models:list-ollama",
@@ -106,6 +111,16 @@ const validInvokeChannels = [
   "restart-dyad",
   "get-templates",
   "portal:migrate-create",
+  // MCP
+  "mcp:list-servers",
+  "mcp:create-server",
+  "mcp:update-server",
+  "mcp:delete-server",
+  "mcp:list-tools",
+  "mcp:get-tool-consents",
+  "mcp:set-tool-consent",
+  // MCP consent response from renderer to main
+  "mcp:tool-consent-response",
   // Help bot
   "help:chat:start",
   "help:chat:cancel",
@@ -114,6 +129,9 @@ const validInvokeChannels = [
   "prompts:create",
   "prompts:update",
   "prompts:delete",
+  // adding app to favorite
+  "add-to-favorite",
+  "github:clone-repo-from-url",
   // Test-only channels
   // These should ALWAYS be guarded with IS_TEST_BUILD in the main process.
   // We can't detect with IS_TEST_BUILD in the preload script because
@@ -135,6 +153,8 @@ const validReceiveChannels = [
   "help:chat:response:chunk",
   "help:chat:response:end",
   "help:chat:response:error",
+  // MCP consent request from main to renderer
+  "mcp:tool-consent-request",
 ] as const;
 
 type ValidInvokeChannel = (typeof validInvokeChannels)[number];

@@ -29,6 +29,12 @@ export const apps = sqliteTable("apps", {
   githubRepo: text("github_repo"),
   githubBranch: text("github_branch"),
   supabaseProjectId: text("supabase_project_id"),
+  // If supabaseProjectId is a branch, then the parent project id set.
+  // This is because there's no way to retrieve ALL the branches for ALL projects
+  // in a single API call
+  // This is only used for display purposes but is NOT used for any actual
+  // supabase management logic.
+  supabaseParentProjectId: text("supabase_parent_project_id"),
   neonProjectId: text("neon_project_id"),
   neonDevelopmentBranchId: text("neon_development_branch_id"),
   neonPreviewBranchId: text("neon_preview_branch_id"),
@@ -39,6 +45,9 @@ export const apps = sqliteTable("apps", {
   installCommand: text("install_command"),
   startCommand: text("start_command"),
   chatContext: text("chat_context", { mode: "json" }),
+  isFavorite: integer("is_favorite", { mode: "boolean" })
+    .notNull()
+    .default(sql`0`),
 });
 
 export const chats = sqliteTable("chats", {
@@ -64,6 +73,7 @@ export const messages = sqliteTable("messages", {
     enum: ["approved", "rejected"],
   }),
   commitHash: text("commit_hash"),
+  requestId: text("request_id"),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),
@@ -172,3 +182,43 @@ export const versionsRelations = relations(versions, ({ one }) => ({
     references: [apps.id],
   }),
 }));
+
+// --- MCP (Model Context Protocol) tables ---
+export const mcpServers = sqliteTable("mcp_servers", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  transport: text("transport").notNull(),
+  command: text("command"),
+  // Store typed JSON for args and environment variables
+  args: text("args", { mode: "json" }).$type<string[] | null>(),
+  envJson: text("env_json", { mode: "json" }).$type<Record<
+    string,
+    string
+  > | null>(),
+  url: text("url"),
+  enabled: integer("enabled", { mode: "boolean" })
+    .notNull()
+    .default(sql`0`),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+export const mcpToolConsents = sqliteTable(
+  "mcp_tool_consents",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    serverId: integer("server_id")
+      .notNull()
+      .references(() => mcpServers.id, { onDelete: "cascade" }),
+    toolName: text("tool_name").notNull(),
+    consent: text("consent").notNull().default("ask"), // ask | always | denied
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [unique("uniq_mcp_consent").on(table.serverId, table.toolName)],
+);

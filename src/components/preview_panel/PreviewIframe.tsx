@@ -19,6 +19,10 @@ import {
   ChevronRight,
   MousePointerClick,
   Power,
+  MonitorSmartphone,
+  Monitor,
+  Tablet,
+  Smartphone,
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
@@ -39,10 +43,18 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useRunApp } from "@/hooks/useRunApp";
+import { useShortcut } from "@/hooks/useShortcut";
+import { cn } from "@/lib/utils";
 
 interface ErrorBannerProps {
-  error: string | undefined;
+  error: { message: string; source: "preview-app" | "dyad-app" } | undefined;
   onDismiss: () => void;
   onAIFix: () => void;
 }
@@ -51,12 +63,12 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
   const [isCollapsed, setIsCollapsed] = useState(true);
   const { isStreaming } = useStreamChat();
   if (!error) return null;
-  const isDockerError = error.includes("Cannot connect to the Docker");
+  const isDockerError = error.message.includes("Cannot connect to the Docker");
 
   const getTruncatedError = () => {
-    const firstLine = error.split("\n")[0];
+    const firstLine = error.message.split("\n")[0];
     const snippetLength = 250;
-    const snippet = error.substring(0, snippetLength);
+    const snippet = error.message.substring(0, snippetLength);
     return firstLine.length < snippet.length
       ? firstLine
       : snippet + (snippet.length === snippetLength ? "..." : "");
@@ -75,8 +87,20 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
         <X size={14} className="text-red-500 dark:text-red-400" />
       </button>
 
+      {/* Add a little chip that says "Internal error" if source is "dyad-app" */}
+      {error.source === "dyad-app" && (
+        <div className="absolute top-1 right-1 p-1 bg-red-100 dark:bg-red-900 rounded-md text-xs font-medium text-red-700 dark:text-red-300">
+          Internal Dyad error
+        </div>
+      )}
+
       {/* Error message in the middle */}
-      <div className="px-6 py-1 text-sm">
+      <div
+        className={cn(
+          "px-6 py-1 text-sm",
+          error.source === "dyad-app" && "pt-6",
+        )}
+      >
         <div
           className="text-red-700 dark:text-red-300 text-wrap font-mono whitespace-pre-wrap break-words text-xs cursor-pointer flex gap-1 items-start"
           onClick={() => setIsCollapsed(!isCollapsed)}
@@ -87,7 +111,7 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
               isCollapsed ? "" : "rotate-90"
             }`}
           />
-          {isCollapsed ? getTruncatedError() : error}
+          {isCollapsed ? getTruncatedError() : error.message}
         </div>
       </div>
 
@@ -101,13 +125,15 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
             <span className="font-medium">Tip: </span>
             {isDockerError
               ? "Make sure Docker Desktop is running and try restarting the app."
-              : "Check if restarting the app fixes the error."}
+              : error.source === "dyad-app"
+                ? "Try restarting the Dyad app or restarting your computer to see if that fixes the error."
+                : "Check if restarting the app fixes the error."}
           </span>
         </div>
       </div>
 
       {/* AI Fix button at the bottom */}
-      {!isDockerError && (
+      {!isDockerError && error.source === "preview-app" && (
         <div className="mt-2 flex justify-end">
           <button
             disabled={isStreaming}
@@ -148,6 +174,20 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   );
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isPicking, setIsPicking] = useState(false);
+
+  // Device mode state
+  type DeviceMode = "desktop" | "tablet" | "mobile";
+  const [deviceMode, setDeviceMode] = useState<DeviceMode>("desktop");
+  const [isDevicePopoverOpen, setIsDevicePopoverOpen] = useState(false);
+
+  // Device configurations
+  const deviceWidthConfig = {
+    tablet: 768,
+    mobile: 375,
+  };
+
+  //detect if the user is using Mac
+  const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
 
   // Deactivate component selector when selection is cleared
   useEffect(() => {
@@ -213,7 +253,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           payload?.message || payload?.reason
         }\nStack trace: ${stack}`;
         console.error("Iframe error:", errorMessage);
-        setErrorMessage(errorMessage);
+        setErrorMessage({ message: errorMessage, source: "preview-app" });
         setAppOutput((prev) => [
           ...prev,
           {
@@ -226,7 +266,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       } else if (type === "build-error-report") {
         console.debug(`Build error report: ${payload}`);
         const errorMessage = `${payload?.message} from file ${payload?.file}.\n\nSource code:\n${payload?.frame}`;
-        setErrorMessage(errorMessage);
+        setErrorMessage({ message: errorMessage, source: "preview-app" });
         setAppOutput((prev) => [
           ...prev,
           {
@@ -300,6 +340,15 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       );
     }
   };
+
+  // Activate component selector using a shortcut
+  useShortcut(
+    "c",
+    { shift: true, ctrl: !isMac, meta: isMac },
+    handleActivateComponentSelector,
+    isComponentSelectorInitialized,
+    iframeRef,
+  );
 
   // Function to navigate back
   const handleNavigateBack = () => {
@@ -433,6 +482,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                     ? "Deactivate component selector"
                     : "Select component"}
                 </p>
+                <p>{isMac ? "⌘ + ⇧ + C" : "Ctrl + ⇧ + C"}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -518,6 +568,85 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           >
             <ExternalLink size={16} />
           </button>
+
+          {/* Device Mode Button */}
+          <Popover open={isDevicePopoverOpen} modal={false}>
+            <PopoverTrigger asChild>
+              <button
+                data-testid="device-mode-button"
+                onClick={() => {
+                  // Toggle popover open/close
+                  if (isDevicePopoverOpen) setDeviceMode("desktop");
+                  setIsDevicePopoverOpen(!isDevicePopoverOpen);
+                }}
+                className={cn(
+                  "p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 dark:text-gray-300",
+                  deviceMode !== "desktop" && "bg-gray-200 dark:bg-gray-700",
+                )}
+                title="Device Mode"
+              >
+                <MonitorSmartphone size={16} />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              className="w-auto p-2"
+              onOpenAutoFocus={(e) => e.preventDefault()}
+              onInteractOutside={(e) => e.preventDefault()}
+            >
+              <TooltipProvider>
+                <ToggleGroup
+                  type="single"
+                  value={deviceMode}
+                  onValueChange={(value) => {
+                    if (value) {
+                      setDeviceMode(value as DeviceMode);
+                      setIsDevicePopoverOpen(false);
+                    }
+                  }}
+                  variant="outline"
+                >
+                  {/* Tooltips placed inside items instead of wrapping 
+                  to avoid asChild prop merging that breaks highlighting */}
+                  <ToggleGroupItem value="desktop" aria-label="Desktop view">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="flex items-center justify-center">
+                          <Monitor size={16} />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Desktop</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="tablet" aria-label="Tablet view">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="flex items-center justify-center">
+                          <Tablet size={16} className="scale-x-130" />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Tablet</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="mobile" aria-label="Mobile view">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="flex items-center justify-center">
+                          <Smartphone size={16} />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Mobile</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </ToggleGroupItem>
+                </ToggleGroup>
+              </TooltipProvider>
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
 
@@ -528,7 +657,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           onAIFix={() => {
             if (selectedChatId) {
               streamMessage({
-                prompt: `Fix error: ${errorMessage}`,
+                prompt: `Fix error: ${errorMessage?.message}`,
                 chatId: selectedChatId,
               });
             }
@@ -543,19 +672,31 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             </p>
           </div>
         ) : (
-          <iframe
-            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-downloads"
-            data-testid="preview-iframe-element"
-            onLoad={() => {
-              setErrorMessage(undefined);
-            }}
-            ref={iframeRef}
-            key={reloadKey}
-            title={`Preview for App ${selectedAppId}`}
-            className="w-full h-full border-none bg-white dark:bg-gray-950"
-            src={appUrl}
-            allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
-          />
+          <div
+            className={cn(
+              "w-full h-full",
+              deviceMode !== "desktop" && "flex justify-center",
+            )}
+          >
+            <iframe
+              sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-downloads"
+              data-testid="preview-iframe-element"
+              onLoad={() => {
+                setErrorMessage(undefined);
+              }}
+              ref={iframeRef}
+              key={reloadKey}
+              title={`Preview for App ${selectedAppId}`}
+              className="w-full h-full border-none bg-white dark:bg-gray-950"
+              style={
+                deviceMode == "desktop"
+                  ? {}
+                  : { width: `${deviceWidthConfig[deviceMode]}px` }
+              }
+              src={appUrl}
+              allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
+            />
+          </div>
         )}
       </div>
     </div>

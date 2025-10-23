@@ -3,6 +3,7 @@ import { PostHog } from "posthog-js";
 import React from "react";
 import { CustomErrorToast } from "../components/CustomErrorToast";
 import { InputRequestToast } from "../components/InputRequestToast";
+import { McpConsentToast } from "../components/McpConsentToast";
 
 /**
  * Toast utility functions for consistent notifications across the app
@@ -110,6 +111,29 @@ export const showInputRequest = (
 
   return toastId;
 };
+
+export function showMcpConsentToast(args: {
+  serverName: string;
+  toolName: string;
+  toolDescription?: string | null;
+  inputPreview?: string | null;
+  onDecision: (d: "accept-once" | "accept-always" | "decline") => void;
+}) {
+  const toastId = toast.custom(
+    (t) => (
+      <McpConsentToast
+        toastId={t}
+        serverName={args.serverName}
+        toolName={args.toolName}
+        toolDescription={args.toolDescription}
+        inputPreview={args.inputPreview}
+        onDecision={args.onDecision}
+      />
+    ),
+    { duration: Infinity },
+  );
+  return toastId;
+}
 
 export const showExtraFilesToast = ({
   files,

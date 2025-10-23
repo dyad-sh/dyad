@@ -24,7 +24,7 @@ import { useSettings } from "@/hooks/useSettings";
 import { IpcClient } from "@/ipc/ipc_client";
 import {
   chatInputValueAtom,
-  chatMessagesAtom,
+  chatMessagesByIdAtom,
   selectedChatIdAtom,
 } from "@/atoms/chatAtoms";
 import { atom, useAtom, useSetAtom, useAtomValue } from "jotai";
@@ -39,7 +39,7 @@ import {
   FileChange,
   SqlQuery,
 } from "@/lib/schemas";
-import type { Message } from "@/ipc/ipc_types";
+
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import { useRunApp } from "@/hooks/useRunApp";
 import { AutoApproveSwitch } from "../AutoApproveSwitch";
@@ -65,6 +65,7 @@ import { selectedComponentPreviewAtom } from "@/atoms/previewAtoms";
 import { SelectedComponentDisplay } from "./SelectedComponentDisplay";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
 import { LexicalChatInput } from "./LexicalChatInput";
+import { useChatModeToggle } from "@/hooks/useChatModeToggle";
 
 const showTokenBarAtom = atom(false);
 
@@ -79,7 +80,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const [showError, setShowError] = useState(true);
   const [isApproving, setIsApproving] = useState(false); // State for approving
   const [isRejecting, setIsRejecting] = useState(false); // State for rejecting
-  const [, setMessages] = useAtom<Message[]>(chatMessagesAtom);
+  const messagesById = useAtomValue(chatMessagesByIdAtom);
+  const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const [showTokenBar, setShowTokenBar] = useAtom(showTokenBarAtom);
   const [selectedComponent, setSelectedComponent] = useAtom(
@@ -107,6 +109,15 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     refreshProposal,
   } = useProposal(chatId);
   const { proposal, messageId } = proposalResult ?? {};
+  useChatModeToggle();
+
+  const lastMessage = (chatId ? (messagesById.get(chatId) ?? []) : []).at(-1);
+  const disableSendButton =
+    lastMessage?.role === "assistant" &&
+    !lastMessage.approvalState &&
+    !!proposal &&
+    proposal.type === "code-proposal" &&
+    messageId === lastMessage.id;
 
   useEffect(() => {
     if (error) {
@@ -116,12 +127,15 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
   const fetchChatMessages = useCallback(async () => {
     if (!chatId) {
-      setMessages([]);
       return;
     }
     const chat = await IpcClient.getInstance().getChat(chatId);
-    setMessages(chat.messages);
-  }, [chatId, setMessages]);
+    setMessagesById((prev) => {
+      const next = new Map(prev);
+      next.set(chatId, chat.messages);
+      return next;
+    });
+  }, [chatId, setMessagesById]);
 
   const handleSubmit = async () => {
     if (
@@ -214,7 +228,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       setError((err as Error)?.message || "An error occurred while rejecting");
     } finally {
       setIsRejecting(false);
-
       // Keep same as handleApprove
       refreshProposal();
       fetchChatMessages();
@@ -307,7 +320,10 @@ export function ChatInput({ chatId }: { chatId?: number }) {
             ) : (
               <button
                 onClick={handleSubmit}
-                disabled={!inputValue.trim() && attachments.length === 0}
+                disabled={
+                  (!inputValue.trim() && attachments.length === 0) ||
+                  disableSendButton
+                }
                 className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
                 title="Send message"
               >
@@ -335,6 +351,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                       showTokenBar ? "text-purple-500 bg-purple-100" : ""
                     }`}
                     size="sm"
+                    data-testid="token-bar-toggle"
                   >
                     <ChartColumnIncreasing size={14} />
                   </Button>
@@ -544,7 +561,7 @@ function KeepGoingButton() {
   );
 }
 
-function mapActionToButton(action: SuggestedAction) {
+export function mapActionToButton(action: SuggestedAction) {
   switch (action.id) {
     case "summarize-in-new-chat":
       return <SummarizeInNewChatButton />;

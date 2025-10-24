@@ -69,6 +69,7 @@ describe("readSettings", () => {
           "selectedTemplateId": "react",
           "telemetryConsent": "unset",
           "telemetryUserId": "[scrubbed]",
+          "workspaceTextSize": "medium",
         }
       `);
     });
@@ -315,6 +316,7 @@ describe("readSettings", () => {
           "selectedTemplateId": "react",
           "telemetryConsent": "unset",
           "telemetryUserId": "[scrubbed]",
+          "workspaceTextSize": "medium",
         }
       `);
     });

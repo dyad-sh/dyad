@@ -34,6 +34,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   enableAutoUpdate: true,
   releaseChannel: "stable",
   selectedTemplateId: DEFAULT_TEMPLATE_ID,
+  workspaceTextSize: "medium",
 };
 
 const SETTINGS_FILE = "user-settings.json";

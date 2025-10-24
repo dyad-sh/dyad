@@ -382,6 +382,30 @@ export class IpcClient {
     });
   }
 
+  // Create a new file in an app directory
+  public async createAppFile(
+    appId: number,
+    filePath: string,
+    content?: string,
+  ): Promise<void> {
+    return this.ipcRenderer.invoke("create-app-file", {
+      appId,
+      filePath,
+      content: content || "",
+    });
+  }
+
+  // Delete a file from an app directory
+  public async deleteAppFile(
+    appId: number,
+    filePath: string,
+  ): Promise<void> {
+    return this.ipcRenderer.invoke("delete-app-file", {
+      appId,
+      filePath,
+    });
+  }
+
   // New method for streaming responses
   public streamMessage(
     prompt: string,

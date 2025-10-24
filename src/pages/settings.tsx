@@ -26,6 +26,7 @@ import { NeonIntegration } from "@/components/NeonIntegration";
 import { RuntimeModeSelector } from "@/components/RuntimeModeSelector";
 import { NodePathSelector } from "@/components/NodePathSelector";
 import { ToolsMcpSettings } from "@/components/settings/ToolsMcpSettings";
+import { WorkspaceTextSizeSelector } from "@/components/WorkspaceTextSizeSelector";
 
 export default function SettingsPage() {
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
@@ -256,6 +257,10 @@ export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
             ))}
           </div>
         </div>
+      </div>
+
+      <div className="mt-4">
+        <WorkspaceTextSizeSelector />
       </div>
 
       <div className="space-y-1 mt-4">

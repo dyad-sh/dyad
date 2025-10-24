@@ -176,10 +176,9 @@ const server = http.createServer((clientReq, clientRes) => {
   if (needsInjection(target.pathname)) {
     // Request uncompressed content from upstream
     delete headers["accept-encoding"];
-  }
-
-  if (headers["if-none-match"] && needsInjection(target.pathname))
+    // Avoid getting cached resources.
     delete headers["if-none-match"];
+  }
 
   const upOpts = {
     protocol: target.protocol,

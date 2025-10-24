@@ -9,6 +9,8 @@ import type {
   CopyAppParams,
   EditAppFileReturnType,
   RespondToAppInputParams,
+  CreateAppFileParams,
+  DeleteAppFileParams,
 } from "../ipc_types";
 import fs from "node:fs";
 import path from "node:path";
@@ -1080,6 +1082,155 @@ export function registerAppHandlers() {
         }
       }
       return {};
+    },
+  );
+
+  ipcMain.handle(
+    "create-app-file",
+    async (_, params: CreateAppFileParams): Promise<void> => {
+      const { appId, filePath, content } = params;
+      
+      const app = await db.query.apps.findFirst({
+        where: eq(apps.id, appId),
+      });
+
+      if (!app) {
+        throw new Error("App not found");
+      }
+
+      const appPath = getDyadAppPath(app.path);
+      const fullPath = path.join(appPath, filePath);
+
+      // Check if the path is within the app directory (security check)
+      if (!fullPath.startsWith(appPath)) {
+        throw new Error("Invalid file path");
+      }
+
+      // Check if file already exists
+      if (fs.existsSync(fullPath)) {
+        throw new Error("File already exists");
+      }
+
+      if (app.neonProjectId && app.neonDevelopmentBranchId) {
+        try {
+          await storeDbTimestampAtCurrentVersion({
+            appId: app.id,
+          });
+        } catch (error) {
+          logger.error(
+            "Error storing Neon timestamp at current version:",
+            error,
+          );
+          throw new Error(
+            "Could not store Neon timestamp at current version; database versioning functionality is not working: " +
+              error,
+          );
+        }
+      }
+
+      // Ensure directory exists
+      const dirPath = path.dirname(fullPath);
+      await fsPromises.mkdir(dirPath, { recursive: true });
+
+      try {
+        await fsPromises.writeFile(fullPath, content || "", "utf-8");
+
+        // Check if git repository exists and commit the change
+        if (fs.existsSync(path.join(appPath, ".git"))) {
+          await git.add({
+            fs,
+            dir: appPath,
+            filepath: filePath,
+          });
+
+          await gitCommit({
+            path: appPath,
+            message: `Created ${filePath}`,
+          });
+        }
+      } catch (error: any) {
+        logger.error(`Error creating file ${filePath} for app ${appId}:`, error);
+        throw new Error(`Failed to create file: ${error.message}`);
+      }
+
+      if (isServerFunction(filePath) && app.supabaseProjectId) {
+        try {
+          await deploySupabaseFunctions({
+            supabaseProjectId: app.supabaseProjectId,
+            functionName: path.basename(path.dirname(filePath)),
+            content: content || "",
+          });
+        } catch (error) {
+          logger.error(`Error deploying Supabase function ${filePath}:`, error);
+          // Don't throw here, file was created successfully
+        }
+      }
+    },
+  );
+
+  ipcMain.handle(
+    "delete-app-file",
+    async (_, params: DeleteAppFileParams): Promise<void> => {
+      const { appId, filePath } = params;
+      
+      const app = await db.query.apps.findFirst({
+        where: eq(apps.id, appId),
+      });
+
+      if (!app) {
+        throw new Error("App not found");
+      }
+
+      const appPath = getDyadAppPath(app.path);
+      const fullPath = path.join(appPath, filePath);
+
+      // Check if the path is within the app directory (security check)
+      if (!fullPath.startsWith(appPath)) {
+        throw new Error("Invalid file path");
+      }
+
+      // Check if file exists
+      if (!fs.existsSync(fullPath)) {
+        throw new Error("File not found");
+      }
+
+      if (app.neonProjectId && app.neonDevelopmentBranchId) {
+        try {
+          await storeDbTimestampAtCurrentVersion({
+            appId: app.id,
+          });
+        } catch (error) {
+          logger.error(
+            "Error storing Neon timestamp at current version:",
+            error,
+          );
+          throw new Error(
+            "Could not store Neon timestamp at current version; database versioning functionality is not working: " +
+              error,
+          );
+        }
+      }
+
+      try {
+        await fsPromises.unlink(fullPath);
+
+        // Check if git repository exists and commit the change
+        if (fs.existsSync(path.join(appPath, ".git"))) {
+          await git.add({
+            fs,
+            dir: appPath,
+            filepath: filePath,
+          });
+
+          await gitCommit({
+            path: appPath,
+            message: `Deleted ${filePath}`,
+          });
+        }
+      } catch (error: any) {
+        logger.error(`Error deleting file ${filePath} for app ${appId}:`, error);
+        throw new Error(`Failed to delete file: ${error.message}`);
+      }
     },
   );
 

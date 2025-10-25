@@ -1,14 +1,14 @@
-import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import { useSettings } from "@/hooks/useSettings";
-import { showError, showSuccess } from "@/lib/toast";
-import type { UserSettings } from "@/lib/schemas";
 import {
   DEFAULT_LM_STUDIO_ENDPOINT,
   DEFAULT_OLLAMA_ENDPOINT,
 } from "@/constants/localModels";
+import { useSettings } from "@/hooks/useSettings";
+import type { UserSettings } from "@/lib/schemas";
+import { showError, showSuccess } from "@/lib/toast";
+import { useEffect, useState } from "react";
 
 type SavingTarget = "ollama" | "lmstudio" | null;
 
@@ -96,7 +96,7 @@ export function LocalModelEndpointSettings() {
           : String(error ?? "Unknown error");
       showError(`${config.errorMessage}: ${message}`);
     } finally {
-      setSaving(null);
+      setSaving((current) => (current === kind ? null : current));
     }
   };
 
@@ -123,7 +123,7 @@ export function LocalModelEndpointSettings() {
           : String(error ?? "Unknown error");
       showError(`${config.errorMessage}: ${message}`);
     } finally {
-      setSaving(null);
+      setSaving((current) => (current === kind ? null : current));
     }
   };
 

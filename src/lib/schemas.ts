@@ -217,6 +217,8 @@ export type ReleaseChannel = z.infer<typeof ReleaseChannelSchema>;
 export const UserSettingsSchema = z.object({
   selectedModel: LargeLanguageModelSchema,
   providerSettings: z.record(z.string(), ProviderSettingSchema),
+  ollamaEndpoint: z.string(),
+  lmStudioEndpoint: z.string(),
   githubUser: GithubUserSchema.optional(),
   githubAccessToken: SecretSchema.optional(),
   vercelAccessToken: SecretSchema.optional(),

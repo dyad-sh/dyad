@@ -1,30 +1,30 @@
-import { createOpenAI } from "@ai-sdk/openai";
-import { createGoogleGenerativeAI as createGoogle } from "@ai-sdk/google";
-import { createAnthropic } from "@ai-sdk/anthropic";
-import { createXai } from "@ai-sdk/xai";
-import { createVertex as createGoogleVertex } from "@ai-sdk/google-vertex";
-import { createAzure } from "@ai-sdk/azure";
-import { LanguageModelV2 } from "@ai-sdk/provider";
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { createAzure } from "@ai-sdk/azure";
+import { createGoogleGenerativeAI as createGoogle } from "@ai-sdk/google";
+import { createVertex as createGoogleVertex } from "@ai-sdk/google-vertex";
+import { createOpenAI } from "@ai-sdk/openai";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { LanguageModelV2 } from "@ai-sdk/provider";
+import { createXai } from "@ai-sdk/xai";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import log from "electron-log";
 import type {
+  AzureProviderSetting,
   LargeLanguageModel,
   UserSettings,
   VertexProviderSetting,
-  AzureProviderSetting,
 } from "../../lib/schemas";
-import { getEnvVar } from "./read_env";
-import log from "electron-log";
+import { LanguageModelProvider } from "../ipc_types";
 import { FREE_OPENROUTER_MODEL_NAMES } from "../shared/language_model_constants";
 import { getLanguageModelProviders } from "../shared/language_model_helpers";
-import { LanguageModelProvider } from "../ipc_types";
 import { createDyadEngine } from "./llm_engine_provider";
+import { getEnvVar } from "./read_env";
 
-import { LM_STUDIO_BASE_URL } from "./lm_studio_utils";
-import { createOllamaProvider } from "./ollama_provider";
 import { getOllamaApiUrl } from "../handlers/local_model_ollama_handler";
 import { createFallback } from "./fallback_ai_model";
+import { getLMStudioBaseUrl } from "./lm_studio_utils";
+import { createOllamaProvider } from "./ollama_provider";
 
 const dyadEngineUrl = process.env.DYAD_ENGINE_URL;
 
@@ -363,7 +363,7 @@ function getRegularModelClient(
     }
     case "lmstudio": {
       // LM Studio uses OpenAI compatible API
-      const baseURL = providerConfig.apiBaseUrl || LM_STUDIO_BASE_URL + "/v1";
+      const baseURL = providerConfig.apiBaseUrl || `${getLMStudioBaseUrl()}/v1`;
       const provider = createOpenAICompatible({
         name: "lmstudio",
         baseURL,

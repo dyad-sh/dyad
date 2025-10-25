@@ -1,19 +1,25 @@
 import { parseOllamaHost } from "@/ipc/handlers/local_model_ollama_handler";
 import { describe, it, expect } from "vitest";
+import { DEFAULT_OLLAMA_ENDPOINT } from "@/constants/localModels";
 
 describe("parseOllamaHost", () => {
   it("should return default URL when no host is provided", () => {
     const result = parseOllamaHost();
-    expect(result).toBe("http://localhost:11434");
+    expect(result).toBe(DEFAULT_OLLAMA_ENDPOINT);
   });
 
   it("should return default URL when host is undefined", () => {
     const result = parseOllamaHost(undefined);
-    expect(result).toBe("http://localhost:11434");
+    expect(result).toBe(DEFAULT_OLLAMA_ENDPOINT);
   });
 
   it("should return default URL when host is empty string", () => {
     const result = parseOllamaHost("");
+    expect(result).toBe(DEFAULT_OLLAMA_ENDPOINT);
+  });
+
+  it("should trim whitespace before parsing", () => {
+    const result = parseOllamaHost("  localhost  ");
     expect(result).toBe("http://localhost:11434");
   });
 

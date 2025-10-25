@@ -96,6 +96,15 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       dollarSigns: 5,
     },
     {
+      name: "claude-haiku-4-5",
+      displayName: "Claude 4.5 Haiku",
+      description: "Fast and affordable Claude 4.5 variant",
+      maxOutputTokens: 64_000,
+      contextWindow: 200_000,
+      temperature: 0,
+      dollarSigns: 3,
+    },
+    {
       name: "claude-sonnet-4-20250514",
       displayName: "Claude 4 Sonnet",
       description: "Excellent coder (note: >200k tokens is very expensive!)",

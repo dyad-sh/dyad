@@ -99,7 +99,11 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       name: "claude-haiku-4-5",
       displayName: "Claude 4.5 Haiku",
       description: "Fast and affordable Claude 4.5 variant",
-      maxOutputTokens: 64_000,
+       // Technically the max output tokens is 64k, *however* if the user has a lot of input tokens,
+      // then setting a high max output token will cause the request to fail because
+      // the max output tokens is *included* in the context window limit, see:
+      // https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking#max-tokens-and-context-window-size-with-extended-thinking
+      maxOutputTokens: 16_000,
       contextWindow: 200_000,
       temperature: 0,
       dollarSigns: 3,

@@ -18,33 +18,45 @@ export function parseOllamaHost(host?: string): string {
     return DEFAULT_OLLAMA_ENDPOINT;
   }
 
+  const hostWithoutWhitespace = host.replace(/\s+/g, "");
+  if (!hostWithoutWhitespace) {
+    return DEFAULT_OLLAMA_ENDPOINT;
+  }
+
   // If it already has a protocol, use as-is
-  if (host.startsWith("http://") || host.startsWith("https://")) {
-    return host;
-  }
-
-  // Check for bracketed IPv6 with port: [::1]:8080
-  if (host.startsWith("[") && host.includes("]:")) {
-    return `http://${host}`;
-  }
-
-  // Check for regular host:port (but not plain IPv6)
   if (
-    host.includes(":") &&
-    !host.includes("::") &&
-    host.split(":").length === 2
+    hostWithoutWhitespace.startsWith("http://") ||
+    hostWithoutWhitespace.startsWith("https://")
   ) {
-    return `http://${host}`;
+    return hostWithoutWhitespace;
   }
 
-  // Check if it's a plain IPv6 address (contains :: or multiple colons)
-  if (host.includes("::") || host.split(":").length > 2) {
-    const address = host.startsWith("[") ? host : `[${host}]`;
+  if (
+    hostWithoutWhitespace.startsWith("[") &&
+    hostWithoutWhitespace.includes("]:")
+  ) {
+    return `http://${hostWithoutWhitespace}`;
+  }
+
+  if (
+    hostWithoutWhitespace.includes(":") &&
+    !hostWithoutWhitespace.includes("::") &&
+    hostWithoutWhitespace.split(":").length === 2
+  ) {
+    return `http://${hostWithoutWhitespace}`;
+  }
+
+  if (
+    hostWithoutWhitespace.includes("::") ||
+    hostWithoutWhitespace.split(":").length > 2
+  ) {
+    const address = hostWithoutWhitespace.startsWith("[")
+      ? hostWithoutWhitespace
+      : `[${hostWithoutWhitespace}]`;
     return `http://${address}:${DEFAULT_OLLAMA_PORT}`;
   }
 
-  // If it's just a hostname, add default port
-  return `http://${host}:${DEFAULT_OLLAMA_PORT}`;
+  return `http://${hostWithoutWhitespace}:${DEFAULT_OLLAMA_PORT}`;
 }
 
 export function getOllamaApiUrl(): string {

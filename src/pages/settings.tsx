@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { ProviderSettingsGrid } from "@/components/ProviderSettings";
 import ConfirmationDialog from "@/components/ConfirmationDialog";
@@ -27,6 +27,8 @@ import { RuntimeModeSelector } from "@/components/RuntimeModeSelector";
 import { NodePathSelector } from "@/components/NodePathSelector";
 import { ToolsMcpSettings } from "@/components/settings/ToolsMcpSettings";
 import { LocalModelEndpointSettings } from "@/components/LocalModelEndpointSettings";
+import { useSetAtom } from "jotai";
+import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
 
 export default function SettingsPage() {
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
@@ -34,6 +36,11 @@ export default function SettingsPage() {
   const appVersion = useAppVersion();
   const { settings, updateSettings } = useSettings();
   const router = useRouter();
+  const setActiveSettingsSection = useSetAtom(activeSettingsSectionAtom);
+
+  useEffect(() => {
+    setActiveSettingsSection("general-settings");
+  }, [setActiveSettingsSection]);
 
   const handleResetEverything = async () => {
     setIsResetting(true);

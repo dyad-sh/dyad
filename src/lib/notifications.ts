@@ -99,7 +99,17 @@ function playNotificationSound() {
       return;
     }
 
-    const audioContext = new AudioContextClass();
+    // Singleton AudioContext for reuse across notifications
+    let sharedAudioContext = null;
+    
+    // Create or reuse AudioContext
+    if (!sharedAudioContext || sharedAudioContext.state === 'closed') {
+      sharedAudioContext = new AudioContextClass();
+    } else if (sharedAudioContext.state === 'suspended') {
+      sharedAudioContext.resume();
+    }
+    
+    const audioContext = sharedAudioContext;
     const oscillator = audioContext.createOscillator();
     const gainNode = audioContext.createGain();
 
@@ -121,13 +131,18 @@ function playNotificationSound() {
       audioContext.currentTime + 0.3,
     );
 
-    oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + 0.3);
+    const startTime = audioContext.currentTime;
+    const stopTime = startTime + 0.3;
+    
+    oscillator.start(startTime);
+    oscillator.stop(stopTime);
 
-    // Clean up
-    setTimeout(() => {
-      audioContext.close();
-    }, 500);
+    // Clean up connections when the sound is done
+    // We don't close the context, just disconnect the nodes
+    oscillator.onended = () => {
+      gainNode.disconnect();
+      oscillator.disconnect();
+    };
   } catch (error) {
     // Silently fail if audio is not available
     console.debug("Audio notification failed:", error);

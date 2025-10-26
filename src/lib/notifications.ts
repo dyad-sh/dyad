@@ -127,7 +127,7 @@ function playNotificationSound() {
       audioContext.currentTime + 0.05,
     );
     gainNode.gain.exponentialRampToValueAtTime(
-      0.001,
+      0.01,
       audioContext.currentTime + 0.3,
     );
 

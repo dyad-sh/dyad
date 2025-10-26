@@ -68,6 +68,7 @@ import type {
   CloneRepoParams,
   SupabaseBranch,
   SetSupabaseAppProjectParams,
+  SelectNodeFolderResult,
 } from "./ipc_types";
 import type { Template } from "../shared/templates";
 import type {
@@ -1707,6 +1708,16 @@ export class IpcClient {
    * @param {string} params.path - The path to check.
    * @returns {Promise<{ exists: boolean }>} Whether AI rules exist.
    */
+  // Add these methods to IpcClient class
+
+  public async selectNodeFolder(): Promise<SelectNodeFolderResult> {
+    return this.ipcRenderer.invoke("select-node-folder");
+  }
+
+  public async getNodePath(): Promise<string | null> {
+    return this.ipcRenderer.invoke("get-node-path");
+  }
+
   public async checkAiRules(params: {
     path: string;
   }): Promise<{ exists: boolean }> {

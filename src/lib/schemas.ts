@@ -318,6 +318,7 @@ export const UserSettingsSchema = z.object({
   enableAutoUpdate: z.boolean(),
   releaseChannel: ReleaseChannelSchema,
   runtimeMode2: RuntimeMode2Schema.optional(),
+  customNodePath: z.string().optional().nullable(),
 
   ////////////////////////////////
   // E2E TESTING ONLY.

@@ -61,14 +61,22 @@ export const showNativeNotification = (
       return true;
     } else if (Notification.permission !== "denied") {
       // Ask for permission once
-      Notification.requestPermission().then((permission) => {
-        if (permission === "granted") {
-          new Notification(title, { body });
-        } else {
-          showSuccess(body); // fallback inside request callback
-        }
-      });
-      return true; // handled asynchronously
+      const permission = Notification.permission;
+      if (permission === "granted") {
+        new Notification(title, { body });
+        return true; // handled synchronously
+      } else if (permission === "denied") {
+        return false; // let the caller handle the fallback
+      } else {
+        // Permission state is "default" (not yet determined)
+        Notification.requestPermission().then((result) => {
+          if (result === "granted") {
+            new Notification(title, { body });
+          }
+          // Don't show fallback here, let the caller handle it
+        });
+        return false; // let the caller handle the fallback
+      }
     }
   } catch (err) {
     console.error("Failed to show native notification:", err);

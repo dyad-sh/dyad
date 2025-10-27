@@ -340,6 +340,37 @@ export function registerChatStreamHandlers() {
       } catch (e) {
         logger.error("Failed to inline referenced prompts:", e);
       }
+      // --- File mention support: parse @file:<path> ---
+      let referencedFilesSection = "";
+      try {
+        const fileMentionRegex = /@file:([^\s]+)/g;
+        const mentionedFiles = [];
+        let match;
+        while ((match = fileMentionRegex.exec(userPrompt)) !== null) {
+          mentionedFiles.push(match[1]);
+        }
+        console.log(mentionedFiles);
+        if (mentionedFiles.length > 0) {
+          const appRoot = getDyadAppPath(chat.app.path);
+          for (const relPath of mentionedFiles) {
+            // Prevent directory traversal
+            const absPath = path.resolve(appRoot, relPath);
+            if (!absPath.startsWith(appRoot)) continue;
+            try {
+              const exists = await fileExists(absPath);
+              if (!exists) {
+                logger.log(`Referenced file not found, skipping: ${relPath}`);
+                continue;
+              }
+              referencedFilesSection += `\nFile : ${relPath}`;
+            } catch (err) {
+              logger.error(`Error checking referenced file ${relPath}:`, err);
+            }
+          }
+        }
+      } catch (e) {
+        logger.error("Failed to process referenced files:", e);
+      }
       if (req.selectedComponent) {
         let componentSnippet = "[component snippet not available]";
         try {
@@ -572,6 +603,10 @@ ${componentSnippet}
             .join(", ");
 
           systemPrompt += `\n\n# Referenced Apps\nThe user has mentioned the following apps in their prompt: ${mentionedAppsList}. Their codebases have been included in the context for your reference. When referring to these apps, you can understand their structure and code to provide better assistance, however you should NOT edit the files in these referenced apps. The referenced apps are NOT part of the current app and are READ-ONLY.`;
+        }
+        // Add referenced files section if any
+        if (referencedFilesSection) {
+          systemPrompt += `\n\n# Referenced Files\nThe user has mentioned the following files in their prompt: ${referencedFilesSection}\nThese files are READ-ONLY unless the user asks you to edit them.`;
         }
         if (
           updatedChat.app?.supabaseProjectId &&

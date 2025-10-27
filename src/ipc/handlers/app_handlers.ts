@@ -51,6 +51,7 @@ import { isServerFunction } from "@/supabase_admin/supabase_utils";
 import { getVercelTeamSlug } from "../utils/vercel_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import { AppSearchResult } from "@/lib/schemas";
+import { extractCodebase } from "@/utils/codebase";
 
 const DEFAULT_COMMAND =
   "(pnpm install && pnpm run dev --port 32100) || (npm install --legacy-peer-deps && npm run dev -- --port 32100)";
@@ -1533,6 +1534,27 @@ export function registerAppHandlers() {
       return uniqueApps;
     },
   );
+
+  handle("get-app-files", async (_, appId: number): Promise<string[]> => {
+    const app = await db.query.apps.findFirst({
+      where: eq(apps.id, appId),
+    });
+
+    if (!app) throw new Error("App not found");
+
+    const appPath = getDyadAppPath(app.path);
+    const { files } = await extractCodebase({
+      appPath,
+      chatContext: {
+        contextPaths: [],
+        smartContextAutoIncludes: [],
+        excludePaths: [],
+      },
+      virtualFileSystem: undefined,
+    });
+
+    return files.map((f) => f.path);
+  });
 }
 
 function getCommand({

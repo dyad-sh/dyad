@@ -563,6 +563,10 @@ ${componentSnippet}
             settings.selectedChatMode === "agent"
               ? "build"
               : settings.selectedChatMode,
+          enableTurboEditsV2: Boolean(
+            settings.enableProLazyEditsMode &&
+              settings.proLazyEditsMode === "v2",
+          ),
         });
 
         // Add information about mentioned apps if any
@@ -898,6 +902,7 @@ This conversation includes one or more image attachments. When the user uploads 
             systemPromptOverride: constructSystemPrompt({
               aiRules: await readAiRules(getDyadAppPath(updatedChat.app.path)),
               chatMode: "agent",
+              enableTurboEditsV2: false,
             }),
             files: files,
             dyadDisableFiles: true,

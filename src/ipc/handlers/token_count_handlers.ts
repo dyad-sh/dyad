@@ -63,6 +63,9 @@ export function registerTokenCountHandlers() {
       let systemPrompt = constructSystemPrompt({
         aiRules: await readAiRules(getDyadAppPath(chat.app.path)),
         chatMode: settings.selectedChatMode,
+        enableTurboEditsV2: Boolean(
+          settings.enableProLazyEditsMode && settings.proLazyEditsMode === "v2",
+        ),
       });
       let supabaseContext = "";
 

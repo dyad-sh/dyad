@@ -25,9 +25,10 @@ export function ProModeSelector() {
     });
   };
 
-  const toggleLazyEdits = () => {
+  const handleTurboEditsChange = (newValue: "off" | "v1" | "v2") => {
     updateSettings({
-      enableProLazyEditsMode: !settings?.enableProLazyEditsMode,
+      enableProLazyEditsMode: newValue !== "off",
+      proLazyEditsMode: newValue,
     });
   };
 
@@ -120,14 +121,11 @@ export function ProModeSelector() {
               settingEnabled={Boolean(settings?.enableProWebSearch)}
               toggle={toggleWebSearch}
             />
-            <SelectorRow
-              id="lazy-edits"
-              label="Turbo Edits"
-              description="Makes file edits faster and cheaper"
-              tooltip="Uses a faster, cheaper model to generate full file updates."
+
+            <TurboEditsSelector
               isTogglable={proModeTogglable}
-              settingEnabled={Boolean(settings?.enableProLazyEditsMode)}
-              toggle={toggleLazyEdits}
+              settings={settings}
+              onValueChange={handleTurboEditsChange}
             />
             <SmartContextSelector
               isTogglable={proModeTogglable}
@@ -191,6 +189,90 @@ function SelectorRow({
         onCheckedChange={toggle}
         disabled={!isTogglable}
       />
+    </div>
+  );
+}
+
+function TurboEditsSelector({
+  isTogglable,
+  settings,
+  onValueChange,
+}: {
+  isTogglable: boolean;
+  settings: UserSettings | null;
+  onValueChange: (value: "off" | "v1" | "v2") => void;
+}) {
+  // Determine current value based on settings
+  const getCurrentValue = (): "off" | "v1" | "v2" => {
+    if (!settings?.enableProLazyEditsMode) {
+      return "off";
+    }
+    if (settings?.proLazyEditsMode === "v1") {
+      return "v1";
+    }
+    if (settings?.proLazyEditsMode === "v2") {
+      return "v2";
+    }
+    // Keep in sync with getModelClient in get_model_client.ts
+    // If enabled but no option set (undefined/falsey), it's v1
+    return "v1";
+  };
+
+  const currentValue = getCurrentValue();
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1.5">
+        <Label className={!isTogglable ? "text-muted-foreground/50" : ""}>
+          Turbo Edits
+        </Label>
+        <div className="flex items-center gap-1">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Info
+                className={`h-4 w-4 cursor-help ${!isTogglable ? "text-muted-foreground/50" : "text-muted-foreground"}`}
+              />
+            </TooltipTrigger>
+            <TooltipContent side="right" className="max-w-72">
+              Avoids rewriting entire files through targeted edits.
+            </TooltipContent>
+          </Tooltip>
+          <p
+            className={`text-xs ${!isTogglable ? "text-muted-foreground/50" : "text-muted-foreground"}`}
+          >
+            Makes file edits faster and cheaper
+          </p>
+        </div>
+      </div>
+      <div className="inline-flex rounded-md border border-input">
+        <Button
+          variant={currentValue === "off" ? "default" : "ghost"}
+          size="sm"
+          onClick={() => onValueChange("off")}
+          disabled={!isTogglable}
+          className="rounded-r-none border-r border-input h-8 px-3 text-xs flex-shrink-0"
+        >
+          Off
+        </Button>
+        <Button
+          variant={currentValue === "v1" ? "default" : "ghost"}
+          size="sm"
+          onClick={() => onValueChange("v1")}
+          disabled={!isTogglable}
+          className="rounded-none border-r border-input h-8 px-3 text-xs flex-shrink-0"
+        >
+          Classic
+        </Button>
+        <Button
+          variant={currentValue === "v2" ? "default" : "ghost"}
+          size="sm"
+          onClick={() => onValueChange("v2")}
+          disabled={!isTogglable}
+          className="rounded-l-none h-8 px-3 text-xs flex-shrink-0"
+        >
+          Search-replace
+        </Button>
+      </div>
     </div>
   );
 }

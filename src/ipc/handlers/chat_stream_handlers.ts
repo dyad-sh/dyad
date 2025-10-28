@@ -78,6 +78,7 @@ import { inArray } from "drizzle-orm";
 import { replacePromptReference } from "../utils/replacePromptReference";
 import { mcpManager } from "../utils/mcp_manager";
 import z from "zod";
+import { isTurboEditsV2Enabled } from "@/lib/schemas";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
@@ -566,10 +567,7 @@ ${componentSnippet}
             settings.selectedChatMode === "agent"
               ? "build"
               : settings.selectedChatMode,
-          enableTurboEditsV2: Boolean(
-            settings.enableProLazyEditsMode &&
-              settings.proLazyEditsMode === "v2",
-          ),
+          enableTurboEditsV2: isTurboEditsV2Enabled(settings),
         });
 
         // Add information about mentioned apps if any
@@ -949,8 +947,7 @@ This conversation includes one or more image attachments. When the user uploads 
 
           if (
             settings.selectedChatMode !== "ask" &&
-            settings.enableProLazyEditsMode &&
-            settings.proLazyEditsMode === "v2"
+            isTurboEditsV2Enabled(settings)
           ) {
             const issues = await dryRunSearchReplace({
               fullResponse,

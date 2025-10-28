@@ -274,6 +274,14 @@ export function hasDyadProKey(settings: UserSettings): boolean {
   return !!settings.providerSettings?.auto?.apiKey?.value;
 }
 
+export function isTurboEditsV2Enabled(settings: UserSettings): boolean {
+  return Boolean(
+    isDyadProEnabled(settings) &&
+      settings.enableProLazyEditsMode === true &&
+      settings.proLazyEditsMode === "v2",
+  );
+}
+
 // Define interfaces for the props
 export interface SecurityRisk {
   type: "warning" | "danger";

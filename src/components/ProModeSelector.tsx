@@ -106,7 +106,6 @@ export function ProModeSelector() {
             <SelectorRow
               id="pro-enabled"
               label="Enable Dyad Pro"
-              description="Use Dyad Pro AI credits"
               tooltip="Uses Dyad Pro AI credits for the main AI model and Pro modes."
               isTogglable={hasProKey}
               settingEnabled={Boolean(settings?.enableDyadPro)}
@@ -114,9 +113,8 @@ export function ProModeSelector() {
             />
             <SelectorRow
               id="web-search"
-              label="Web Search"
-              description="Search the web for information"
-              tooltip="Uses the web to search for information"
+              label="Web Access"
+              tooltip="Allows Dyad to access the web (e.g. search for information)"
               isTogglable={proModeTogglable}
               settingEnabled={Boolean(settings?.enableProWebSearch)}
               toggle={toggleWebSearch}
@@ -142,7 +140,6 @@ export function ProModeSelector() {
 function SelectorRow({
   id,
   label,
-  description,
   tooltip,
   isTogglable,
   settingEnabled,
@@ -150,7 +147,6 @@ function SelectorRow({
 }: {
   id: string;
   label: string;
-  description: string;
   tooltip: string;
   isTogglable: boolean;
   settingEnabled: boolean;
@@ -158,30 +154,23 @@ function SelectorRow({
 }) {
   return (
     <div className="flex items-center justify-between">
-      <div className="space-y-1.5">
+      <div className="flex items-center gap-1.5">
         <Label
           htmlFor={id}
           className={!isTogglable ? "text-muted-foreground/50" : ""}
         >
           {label}
         </Label>
-        <div className="flex items-center gap-1">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Info
-                className={`h-4 w-4 cursor-help ${!isTogglable ? "text-muted-foreground/50" : "text-muted-foreground"}`}
-              />
-            </TooltipTrigger>
-            <TooltipContent side="right" className="max-w-72">
-              {tooltip}
-            </TooltipContent>
-          </Tooltip>
-          <p
-            className={`text-xs ${!isTogglable ? "text-muted-foreground/50" : "text-muted-foreground"} max-w-55`}
-          >
-            {description}
-          </p>
-        </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Info
+              className={`h-4 w-4 cursor-help ${!isTogglable ? "text-muted-foreground/50" : "text-muted-foreground"}`}
+            />
+          </TooltipTrigger>
+          <TooltipContent side="right" className="max-w-72">
+            {tooltip}
+          </TooltipContent>
+        </Tooltip>
       </div>
       <Switch
         id={id}
@@ -221,28 +210,30 @@ function TurboEditsSelector({
   const currentValue = getCurrentValue();
 
   return (
-    <div className="space-y-3">
-      <div className="space-y-1.5">
+    <div className="space-y-2">
+      <div className="flex items-center gap-1.5">
         <Label className={!isTogglable ? "text-muted-foreground/50" : ""}>
           Turbo Edits
         </Label>
-        <div className="flex items-center gap-1">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Info
-                className={`h-4 w-4 cursor-help ${!isTogglable ? "text-muted-foreground/50" : "text-muted-foreground"}`}
-              />
-            </TooltipTrigger>
-            <TooltipContent side="right" className="max-w-72">
-              Avoids rewriting entire files through targeted edits.
-            </TooltipContent>
-          </Tooltip>
-          <p
-            className={`text-xs ${!isTogglable ? "text-muted-foreground/50" : "text-muted-foreground"}`}
-          >
-            Makes file edits faster and cheaper
-          </p>
-        </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Info
+              className={`h-4 w-4 cursor-help ${!isTogglable ? "text-muted-foreground/50" : "text-muted-foreground"}`}
+            />
+          </TooltipTrigger>
+          <TooltipContent side="right" className="max-w-72">
+            Edits files efficiently without full rewrites.
+            <br />
+            <ul className="list-disc ml-4">
+              <li>
+                <b>Classic:</b> Uses a smaller model to complete edits.
+              </li>
+              <li>
+                <b>Search & replace:</b> Find and replaces specific text blocks.
+              </li>
+            </ul>
+          </TooltipContent>
+        </Tooltip>
       </div>
       <div
         className="inline-flex rounded-md border border-input"
@@ -273,7 +264,7 @@ function TurboEditsSelector({
           disabled={!isTogglable}
           className="rounded-l-none h-8 px-3 text-xs flex-shrink-0"
         >
-          Search-replace
+          Search & replace
         </Button>
       </div>
     </div>
@@ -308,28 +299,22 @@ function SmartContextSelector({
   const currentValue = getCurrentValue();
 
   return (
-    <div className="space-y-3">
-      <div className="space-y-1.5">
+    <div className="space-y-2">
+      <div className="flex items-center gap-1.5">
         <Label className={!isTogglable ? "text-muted-foreground/50" : ""}>
           Smart Context
         </Label>
-        <div className="flex items-center gap-1">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Info
-                className={`h-4 w-4 cursor-help ${!isTogglable ? "text-muted-foreground/50" : "text-muted-foreground"}`}
-              />
-            </TooltipTrigger>
-            <TooltipContent side="right" className="max-w-72">
-              Improve efficiency and save credits working on large codebases.
-            </TooltipContent>
-          </Tooltip>
-          <p
-            className={`text-xs ${!isTogglable ? "text-muted-foreground/50" : "text-muted-foreground"}`}
-          >
-            Optimizes your AI's code context
-          </p>
-        </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Info
+              className={`h-4 w-4 cursor-help ${!isTogglable ? "text-muted-foreground/50" : "text-muted-foreground"}`}
+            />
+          </TooltipTrigger>
+          <TooltipContent side="right" className="max-w-72">
+            Selects the most relevant files as context to save credits working
+            on large codebases.
+          </TooltipContent>
+        </Tooltip>
       </div>
       <div
         className="inline-flex rounded-md border border-input"

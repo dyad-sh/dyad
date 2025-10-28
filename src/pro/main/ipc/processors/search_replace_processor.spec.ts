@@ -243,6 +243,49 @@ middle
     expect(error).toMatch(/Search and replace blocks are identical/i);
   });
 
+  it("errors when SEARCH block matches multiple locations (ambiguous)", () => {
+    const original = ["foo", "bar", "baz", "bar", "qux"].join("\n");
+
+    const diff = `
+<<<<<<< SEARCH
+bar
+=======
+BAR
+>>>>>>> REPLACE
+`;
+
+    const { success, error } = applySearchReplace(original, diff);
+    expect(success).toBe(false);
+    expect(error).toMatch(/(ambiguous|multiple)/i);
+  });
+
+  it("errors when SEARCH block fuzzy matches multiple locations (ambiguous)", () => {
+    const original = [
+      "\tif (ready) {",
+      "\t\tstart();   ",
+      "\t}",
+      "  if (ready) {",
+      "    start();   ",
+      "  }",
+    ].join("\n");
+
+    const diff = `
+<<<<<<< SEARCH
+if (ready) {
+  start();
+}
+=======
+if (ready) {
+  launch();
+}
+>>>>>>> REPLACE
+`;
+
+    const { success, error } = applySearchReplace(original, diff);
+    expect(success).toBe(false);
+    expect(error).toMatch(/fuzzy matched/i);
+  });
+
   it("errors when SEARCH block is empty", () => {
     const original = ["a", "b"].join("\n");
     const diff = `

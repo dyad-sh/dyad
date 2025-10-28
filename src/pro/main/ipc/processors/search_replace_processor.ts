@@ -60,8 +60,26 @@ export function applySearchReplace(
 
     const target = searchLines.join("\n");
     const hay = resultLines.join("\n");
-    const pos = hay.indexOf(target);
-    if (pos !== -1) {
+
+    // Try exact string matching first and detect ambiguity
+    const exactPositions: number[] = [];
+    let fromIndex = 0;
+    while (true) {
+      const found = hay.indexOf(target, fromIndex);
+      if (found === -1) break;
+      exactPositions.push(found);
+      fromIndex = found + 1;
+    }
+
+    if (exactPositions.length > 1) {
+      return {
+        success: false,
+        error:
+          "Search block matched multiple locations in the target file (ambiguous)",
+      };
+    }
+    if (exactPositions.length === 1) {
+      const pos = exactPositions[0];
       matchIndex = hay.substring(0, pos).split("\n").length - 1;
     }
 
@@ -72,6 +90,7 @@ export function applySearchReplace(
 
       const normalizedSearch = searchLines.map(normalizeForMatch);
 
+      const candidates: number[] = [];
       for (let i = 0; i <= resultLines.length - searchLines.length; i++) {
         let allMatch = true;
         for (let j = 0; j < searchLines.length; j++) {
@@ -81,17 +100,27 @@ export function applySearchReplace(
           }
         }
         if (allMatch) {
-          matchIndex = i;
-          break;
+          candidates.push(i);
+          if (candidates.length > 1) break; // we only care if >1 for ambiguity
         }
       }
 
-      if (matchIndex === -1) {
+      if (candidates.length > 1) {
+        return {
+          success: false,
+          error:
+            "Search block fuzzy matched multiple locations in the target file (ambiguous)",
+        };
+      }
+
+      if (candidates.length === 0) {
         return {
           success: false,
           error: "Search block did not match any content in the target file",
         };
       }
+
+      matchIndex = candidates[0];
     }
 
     const matchedLines = resultLines.slice(

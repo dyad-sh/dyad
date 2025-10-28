@@ -9,5 +9,5 @@ jobs:
       - uses: vedantmgoyal9/winget-releaser@19e706d4c9121098010096f9c495a70a7518b30f
         with:
           identifier: Dyad.Dyad
-          installers-regex: 'dyad-.*\.Setup.exe'
+          installers-regex: 'dyad-.*\.Setup\.exe'
           token: ${{ secrets.WINGET_ACC_TOKEN }}

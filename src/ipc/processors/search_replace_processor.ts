@@ -1,6 +1,6 @@
 /* eslint-disable no-irregular-whitespace */
 
-import { everyLineHasLineNumbers, stripLineNumbers } from "./line_number_utils";
+// No line-number handling required
 
 // addLineNumbers intentionally omitted here (only needed for verbose diagnostics)
 
@@ -75,20 +75,7 @@ export function applySearchReplace(
       continue;
     }
 
-    const hasAllLineNumbers =
-      (everyLineHasLineNumbers(searchContent) &&
-        everyLineHasLineNumbers(replaceContent)) ||
-      (everyLineHasLineNumbers(searchContent) && replaceContent.trim() === "");
-
-    if (hasAllLineNumbers && startLine === 0) {
-      startLine = parseInt(searchContent.split("\n")[0].split("|")[0]);
-    }
-    if (hasAllLineNumbers) {
-      searchContent = stripLineNumbers(searchContent);
-      replaceContent = stripLineNumbers(replaceContent);
-      searchLines = searchContent ? searchContent.split(/\r?\n/) : [];
-      replaceLines = replaceContent ? replaceContent.split(/\r?\n/) : [];
-    }
+    // No line-number based detection/stripping
 
     // Try exact match at hinted start line first
     let matchIndex = -1;

@@ -106,11 +106,10 @@ FOUR
     const original = ["a", "b", "c", "d"].join("\n");
     const diff = `
 <<<<<<< SEARCH
-1 | a
-2 | b
+-------
+a\nb
 =======
-1 | A
-2 | B
+A\nB
 >>>>>>> REPLACE
 `;
     const { success, content } = applySearchReplace(original, diff);

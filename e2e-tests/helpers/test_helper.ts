@@ -84,7 +84,10 @@ class ProModesDialog {
     await this.page
       .getByTestId("turbo-edits-selector")
       .getByRole("button", {
-        name: mode.charAt(0).toUpperCase() + mode.slice(1),
+        name:
+          mode === "search-replace"
+            ? "Search & replace"
+            : mode.charAt(0).toUpperCase() + mode.slice(1),
       })
       .click();
   }

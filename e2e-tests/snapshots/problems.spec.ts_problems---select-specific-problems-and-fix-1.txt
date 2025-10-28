@@ -1,0 +1,19 @@
+===
+role: user
+message: Fix these 2 TypeScript compile-time errors:
+
+1. src/bad-file.tsx:2:1 - Cannot find name 'nonExistentFunction1'. (TS2304)
+```
+const App = () => <div>Minimal imported app</div>;
+nonExistentFunction1(); // <-- TypeScript compiler error here
+nonExistentFunction2();
+```
+
+2. src/bad-file.tsx:4:1 - Cannot find name 'nonExistentFunction3'. (TS2304)
+```
+nonExistentFunction2();
+nonExistentFunction3(); // <-- TypeScript compiler error here
+```
+
+
+Please fix all errors in a concise way.

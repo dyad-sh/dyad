@@ -1,39 +1,28 @@
 /* eslint-disable no-irregular-whitespace */
 
-// No line-number handling required
-
-// addLineNumbers intentionally omitted here (only needed for verbose diagnostics)
-
 type SearchReplaceBlock = {
-  startLine: number; // 1-based; 0 if unknown
   searchContent: string;
   replaceContent: string;
 };
 
 const BLOCK_REGEX =
-  /(?:^|\n)<<<<<<<\s+SEARCH>?\s*\n((?:\:start_line:\s*(\d+)\s*\n))?((?:\:end_line:\s*(\d+)\s*\n))?((?<!\\)-------\s*\n)?([\s\S]*?)(?:\n)?(?:(?<=\n)(?<!\\)=======\s*\n)([\s\S]*?)(?:\n)?(?:(?<=\n)(?<!\\)>>>>>>>\s+REPLACE)(?=\n|$)/g;
+  /(?:^|\n)<<<<<<<\s+SEARCH>?\s*\n([\s\S]*?)(?:\n)?(?:(?<=\n)(?<!\\)=======\s*\n)([\s\S]*?)(?:\n)?(?:(?<=\n)(?<!\\)>>>>>>>\s+REPLACE)(?=\n|$)/g;
 
 export function parseSearchReplaceBlocks(
   diffContent: string,
 ): SearchReplaceBlock[] {
   const matches = [...diffContent.matchAll(BLOCK_REGEX)];
-  return matches
-    .map((m) => ({
-      startLine: Number(m[2] ?? 0),
-      searchContent: m[6] ?? "",
-      replaceContent: m[7] ?? "",
-    }))
-    .sort((a, b) => a.startLine - b.startLine);
+  return matches.map((m) => ({
+    searchContent: m[1] ?? "",
+    replaceContent: m[2] ?? "",
+  }));
 }
 
 function unescapeMarkers(content: string): string {
   return content
     .replace(/^\\<<<<<<</gm, "<<<<<<<")
     .replace(/^\\=======/gm, "=======")
-    .replace(/^\\>>>>>>>/gm, ">>>>>>>")
-    .replace(/^\\-------/gm, "-------")
-    .replace(/^\\:end_line:/gm, ":end_line:")
-    .replace(/^\\:start_line:/gm, ":start_line:");
+    .replace(/^\\>>>>>>>/gm, ">>>>>>>");
 }
 
 export function applySearchReplace(
@@ -49,18 +38,16 @@ export function applySearchReplace(
     return {
       success: false,
       error:
-        "Invalid diff format - missing required sections. Expected <<<<<<< SEARCH / :start_line: / ------- / ======= / >>>>>>> REPLACE",
+        "Invalid diff format - missing required sections. Expected <<<<<<< SEARCH / ======= / >>>>>>> REPLACE",
     };
   }
 
   const lineEnding = originalContent.includes("\r\n") ? "\r\n" : "\n";
   let resultLines = originalContent.split(/\r?\n/);
-  let delta = 0;
   let appliedCount = 0;
 
   for (const block of blocks) {
     let { searchContent, replaceContent } = block;
-    let startLine = block.startLine + (block.startLine === 0 ? 0 : delta);
 
     // Normalize markers and strip line numbers if present on all lines
     searchContent = unescapeMarkers(searchContent);
@@ -71,38 +58,34 @@ export function applySearchReplace(
       replaceContent === "" ? [] : replaceContent.split(/\r?\n/);
 
     if (searchLines.length === 0) {
-      // Empty search not allowed
-      continue;
+      return {
+        success: false,
+        error: "Invalid diff format - empty SEARCH block is not allowed",
+      };
     }
 
-    // No line-number based detection/stripping
+    // If search and replace are identical, it's a no-op and should be treated as an error
+    if (searchLines.join("\n") === replaceLines.join("\n")) {
+      return {
+        success: false,
+        error: "Search and replace blocks are identical",
+      };
+    }
 
-    // Try exact match at hinted start line first
     let matchIndex = -1;
-    if (startLine) {
-      const exactStartIdx = Math.max(0, startLine - 1);
-      const exactEndIdx = exactStartIdx + searchLines.length - 1;
-      const chunk = resultLines
-        .slice(exactStartIdx, exactEndIdx + 1)
-        .join("\n");
-      if (chunk === searchLines.join("\n")) {
-        matchIndex = exactStartIdx;
-      }
-    }
 
-    // Fallback to global exact search if no match at hint
-    if (matchIndex === -1) {
-      const target = searchLines.join("\n");
-      const hay = resultLines.join("\n");
-      const pos = hay.indexOf(target);
-      if (pos !== -1) {
-        matchIndex = hay.substring(0, pos).split("\n").length - 1;
-      }
+    const target = searchLines.join("\n");
+    const hay = resultLines.join("\n");
+    const pos = hay.indexOf(target);
+    if (pos !== -1) {
+      matchIndex = hay.substring(0, pos).split("\n").length - 1;
     }
 
     if (matchIndex === -1) {
-      // No match; skip this block
-      continue;
+      return {
+        success: false,
+        error: "Search block did not match any content in the target file",
+      };
     }
 
     const matchedLines = resultLines.slice(
@@ -144,7 +127,6 @@ export function applySearchReplace(
     const beforeMatch = resultLines.slice(0, matchIndex);
     const afterMatch = resultLines.slice(matchIndex + searchLines.length);
     resultLines = [...beforeMatch, ...indentedReplaceLines, ...afterMatch];
-    delta = delta - matchedLines.length + indentedReplaceLines.length;
     appliedCount++;
   }
 

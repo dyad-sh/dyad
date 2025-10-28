@@ -385,7 +385,7 @@ export async function processFullResponseActions(
         const result = applySearchReplace(original, tag.content);
         if (!result.success || typeof result.content !== "string") {
           errors.push({
-            message: `Failed to apply search-replace to ${filePath}`,
+            message: `Failed to apply search-replace to ${filePath}. Use dyad-write to re-generate the file.`,
             error: result.error ?? "unknown",
           });
           continue;

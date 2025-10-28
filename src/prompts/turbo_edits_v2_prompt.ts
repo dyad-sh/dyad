@@ -10,7 +10,6 @@ ALWAYS make as many changes in a single 'dyad-search-replace' call as possible u
 Diff format:
 \`\`\`
 <<<<<<< SEARCH
--------
 [exact content to find including whitespace]
 =======
 [new content to replace with]
@@ -31,7 +30,6 @@ def calculate_total(items):
 Search/Replace content:
 \`\`\`
 <<<<<<< SEARCH
--------
 def calculate_total(items):
     total = 0
     for item in items:
@@ -48,7 +46,6 @@ def calculate_total(items):
 Search/Replace content with multiple edits:
 \`\`\`
 <<<<<<< SEARCH
--------
 def calculate_total(items):
     sum = 0
 =======
@@ -57,7 +54,6 @@ def calculate_sum(items):
 >>>>>>> REPLACE
 
 <<<<<<< SEARCH
--------
         total += item
     return total
 =======
@@ -70,7 +66,6 @@ def calculate_sum(items):
 Usage:
 <dyad-search-replace path="path/to/file.js">
 <<<<<<< SEARCH
--------
 def calculate_total(items):
     sum = 0
 =======
@@ -79,7 +74,6 @@ def calculate_sum(items):
 >>>>>>> REPLACE
 
 <<<<<<< SEARCH
--------
         total += item
     return total
 =======

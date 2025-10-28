@@ -8,16 +8,12 @@ describe("search_replace_processor - parseSearchReplaceBlocks", () => {
   it("parses multiple blocks with start_line in ascending order", () => {
     const diff = `
 <<<<<<< SEARCH
-:start_line:1
--------
 line one
 =======
 LINE ONE
 >>>>>>> REPLACE
 
 <<<<<<< SEARCH
-:start_line:4
--------
 line four
 =======
 LINE FOUR
@@ -25,8 +21,6 @@ LINE FOUR
 `;
     const blocks = parseSearchReplaceBlocks(diff);
     expect(blocks.length).toBe(2);
-    expect(blocks[0].startLine).toBe(1);
-    expect(blocks[1].startLine).toBe(4);
     expect(blocks[0].searchContent.trim()).toBe("line one");
     expect(blocks[0].replaceContent.trim()).toBe("LINE ONE");
   });
@@ -45,8 +39,6 @@ describe("search_replace_processor - applySearchReplace", () => {
 
     const diff = `
 <<<<<<< SEARCH
-:start_line:1
--------
 def calculate_total(items):
     total = 0
 =======
@@ -65,7 +57,6 @@ def calculate_sum(items):
     const original = ["alpha", "beta", "gamma"].join("\n");
     const diff = `
 <<<<<<< SEARCH
--------
 beta
 =======
 BETA
@@ -80,16 +71,12 @@ BETA
     const original = ["1", "2", "3", "4", "5"].join("\n");
     const diff = `
 <<<<<<< SEARCH
-:start_line:1
--------
 1
 =======
 ONE\nONE-EXTRA
 >>>>>>> REPLACE
 
 <<<<<<< SEARCH
-:start_line:4
--------
 4
 =======
 FOUR
@@ -106,7 +93,6 @@ FOUR
     const original = ["a", "b", "c", "d"].join("\n");
     const diff = `
 <<<<<<< SEARCH
--------
 a\nb
 =======
 A\nB
@@ -127,8 +113,6 @@ A\nB
     ].join("\n");
     const diff = `
 <<<<<<< SEARCH
-:start_line:2
--------
   if (x) {
     doThing();
 =======
@@ -149,8 +133,6 @@ A\nB
     const original = ["x", "y", "z"].join("\n");
     const diff = `
 <<<<<<< SEARCH
-:start_line:2
--------
 y
 =======
 
@@ -165,8 +147,6 @@ y
     const original = ["a", "b", "c"].join("\r\n");
     const diff = `
 <<<<<<< SEARCH
-:start_line:2
--------
 b
 =======
 B
@@ -181,7 +161,6 @@ B
     const original = ["begin", ">>>>>>> REPLACE", "end"].join("\n");
     const diff = `
 <<<<<<< SEARCH
--------
 \\>>>>>>> REPLACE
 =======
 LITERAL MARKER
@@ -192,12 +171,10 @@ LITERAL MARKER
     expect(content).toBe(["begin", "LITERAL MARKER", "end"].join("\n"));
   });
 
-  it("returns failure when no blocks can be applied", () => {
+  it("errors when SEARCH block does not match any content", () => {
     const original = "foo\nbar\nbaz";
     const diff = `
 <<<<<<< SEARCH
-:start_line:1
--------
 NOT IN FILE
 =======
 STILL NOT
@@ -205,6 +182,33 @@ STILL NOT
 `;
     const { success, error } = applySearchReplace(original, diff);
     expect(success).toBe(false);
-    expect(error).toMatch(/No search\/replace blocks could be applied/);
+    expect(error).toMatch(/Search block did not match any content/i);
+  });
+
+  it("errors when SEARCH and REPLACE blocks are identical", () => {
+    const original = ["x", "y", "z"].join("\n");
+    const diff = `
+<<<<<<< SEARCH
+middle
+=======
+middle
+>>>>>>> REPLACE
+`;
+    const { success, error } = applySearchReplace(original, diff);
+    expect(success).toBe(false);
+    expect(error).toMatch(/Search and replace blocks are identical/i);
+  });
+
+  it("errors when SEARCH block is empty", () => {
+    const original = ["a", "b"].join("\n");
+    const diff = `
+<<<<<<< SEARCH
+=======
+REPLACEMENT
+>>>>>>> REPLACE
+`;
+    const { success, error } = applySearchReplace(original, diff);
+    expect(success).toBe(false);
+    expect(error).toMatch(/empty SEARCH block is not allowed/i);
   });
 });

@@ -532,7 +532,6 @@ export const getSystemPromptForChatMode = ({
   if (chatMode === "ask") {
     return ASK_MODE_SYSTEM_PROMPT;
   }
-  console.log("!!!!!!!enableTurboEditsV2", enableTurboEditsV2);
   return (
     BUILD_SYSTEM_PROMPT +
     (enableTurboEditsV2 ? TURBO_EDITS_V2_SYSTEM_PROMPT : "")

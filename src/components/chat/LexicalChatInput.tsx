@@ -26,7 +26,7 @@ import { forwardRef } from "react";
 import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { MENTION_REGEX, parseAppMentions } from "@/shared/parse_mention_apps";
-import { useAppFiles } from "@/hooks/useAppFiles";
+import { useLoadApp } from "@/hooks/useLoadApp";
 
 // Define the theme for mentions
 const beautifulMentionsTheme: BeautifulMentionsTheme = {
@@ -247,10 +247,11 @@ export function LexicalChatInput({
   disabled = false,
 }: LexicalChatInputProps) {
   const { apps } = useLoadApps();
-  const { appFiles } = useAppFiles();
   const { prompts } = usePrompts();
   const [shouldClear, setShouldClear] = useState(false);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
+  const { app } = useLoadApp(selectedAppId);
+  const appFiles = app?.files;
 
   // Prepare mention items - convert apps to mention format
   const mentionItems = React.useMemo(() => {

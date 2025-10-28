@@ -26,11 +26,6 @@ Available packages and libraries:
 
 ${BUILD_SYSTEM_POSTFIX}
 
-# Referenced Files
-The user has mentioned the following files in their prompt: 
-File : AI_RULES.md
-These files are READ-ONLY unless the user asks you to edit them.
-
 
 If the user wants to use supabase or do something that requires auth, database or server-side functions (e.g. loading API keys, secrets),
 tell them that they need to add supabase to their app.
@@ -1037,4 +1032,4 @@ message: OK, got it. I'm ready to help
 
 ===
 role: user
-message: [dump] @file:AI_RULES.md hi
+message: [dump] @file:AI_RULES.md

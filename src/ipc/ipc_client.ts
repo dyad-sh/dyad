@@ -311,16 +311,6 @@ export class IpcClient {
     return this.ipcRenderer.invoke("set-app-env-vars", params);
   }
 
-  public async getAppFiles(appId: number): Promise<string[]> {
-    try {
-      const data = await this.ipcRenderer.invoke("get-app-files", appId);
-      return data;
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
-  }
-
   public async getChat(chatId: number): Promise<Chat> {
     try {
       const data = await this.ipcRenderer.invoke("get-chat", chatId);

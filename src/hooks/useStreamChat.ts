@@ -70,12 +70,14 @@ export function useStreamChat({
       redo,
       attachments,
       selectedComponent,
+      onEnd,
     }: {
       prompt: string;
       chatId: number;
       redo?: boolean;
       attachments?: FileAttachment[];
       selectedComponent?: ComponentSelection | null;
+      onEnd?: () => void;
     }) => {
       if (
         (!prompt.trim() && (!attachments || attachments.length === 0)) ||
@@ -153,6 +155,7 @@ export function useStreamChat({
             refreshApp();
             refreshVersions();
             countTokens(chatId, "");
+            onEnd?.();
           },
           onError: (errorMessage: string) => {
             console.error(`[CHAT] Stream error for ${chatId}:`, errorMessage);

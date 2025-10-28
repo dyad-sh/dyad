@@ -48,6 +48,7 @@ import type {
   VercelDeployment,
   GetVercelDeploymentsParams,
   DisconnectVercelProjectParams,
+  SecurityReviewResult,
   IsVercelProjectAvailableParams,
   SaveVercelAccessTokenParams,
   VercelProject,
@@ -1195,6 +1196,12 @@ export class IpcClient {
     path: string;
   }): Promise<{ exists: boolean }> {
     return this.ipcRenderer.invoke("check-ai-rules", params);
+  }
+
+  public async getLatestSecurityReview(
+    appId: number,
+  ): Promise<SecurityReviewResult> {
+    return this.ipcRenderer.invoke("get-latest-security-review", appId);
   }
 
   public async importApp(params: ImportAppParams): Promise<ImportAppResult> {

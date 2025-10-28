@@ -43,6 +43,7 @@ import {
   getSupabaseClientCode,
 } from "../../supabase_admin/supabase_context";
 import { SUMMARIZE_CHAT_SYSTEM_PROMPT } from "../../prompts/summarize_chat_system_prompt";
+import { SECURITY_REVIEW_SYSTEM_PROMPT } from "../../prompts/security_review_prompt";
 import fs from "node:fs";
 import * as path from "path";
 import * as os from "os";
@@ -600,6 +601,12 @@ ${componentSnippet}
         );
         if (isSummarizeIntent) {
           systemPrompt = SUMMARIZE_CHAT_SYSTEM_PROMPT;
+        }
+
+        const isSecurityReviewIntent =
+          req.prompt.startsWith("/security-review");
+        if (isSecurityReviewIntent) {
+          systemPrompt = SECURITY_REVIEW_SYSTEM_PROMPT;
         }
 
         // Update the system prompt for images if there are image attachments

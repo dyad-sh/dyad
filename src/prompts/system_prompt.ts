@@ -1,7 +1,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import log from "electron-log";
-import { TURBO_EDITS_V2_SYSTEM_PROMPT } from "./turbo_edits_v2_prompt";
+import { TURBO_EDITS_V2_SYSTEM_PROMPT } from "../pro/main/prompts/turbo_edits_v2_prompt";
 
 const logger = log.scope("system_prompt");
 

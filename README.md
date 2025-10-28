@@ -27,3 +27,8 @@ Join our growing community of AI app builders on **Reddit**: [r/dyadbuilders](ht
 **Dyad** is open-source (Apache 2.0 licensed).
 
 If you're interested in contributing to dyad, please read our [contributing](./CONTRIBUTING.md) doc.
+
+## License
+
+- All the code in this repo outside of `src/pro` is open-source and licensed under Apache 2.0 - see [LICENSE](./LICENSE).
+- All the code in this repo within `src/pro` is fair-source and licensed under [Function Source License 1.1 Apache 2.0](https://fsl.software/) - see [LICENSE](./src/pro/LICENSE).

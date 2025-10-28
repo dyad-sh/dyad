@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   applySearchReplace,
   parseSearchReplaceBlocks,
-} from "@/ipc/processors/search_replace_processor";
+} from "@/pro/main/ipc/processors/search_replace_processor";
 
 describe("search_replace_processor - parseSearchReplaceBlocks", () => {
   it("parses multiple blocks with start_line in ascending order", () => {

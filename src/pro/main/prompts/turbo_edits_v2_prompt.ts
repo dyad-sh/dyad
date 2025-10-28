@@ -1,3 +1,9 @@
+// This approach is inspired by Roo Code
+// https://github.com/RooCodeInc/Roo-Code/blob/fceb4130478b20de2bc854c8dd0aad743f844b53/src/core/diff/strategies/multi-search-replace.ts#L4
+// but we've modified it to be simpler and not rely on line numbers.
+//
+// Also, credit to https://aider.chat/ for popularizing this approach
+
 export const TURBO_EDITS_V2_SYSTEM_PROMPT = `
 ## Search-replace file edits
 

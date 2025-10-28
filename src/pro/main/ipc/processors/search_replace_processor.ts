@@ -66,10 +66,32 @@ export function applySearchReplace(
     }
 
     if (matchIndex === -1) {
-      return {
-        success: false,
-        error: "Search block did not match any content in the target file",
-      };
+      // Lenient fallback: ignore leading indentation and trailing whitespace
+      const normalizeForMatch = (line: string) =>
+        line.replace(/^[\t ]*/, "").replace(/[\t ]+$/, "");
+
+      const normalizedSearch = searchLines.map(normalizeForMatch);
+
+      for (let i = 0; i <= resultLines.length - searchLines.length; i++) {
+        let allMatch = true;
+        for (let j = 0; j < searchLines.length; j++) {
+          if (normalizeForMatch(resultLines[i + j]) !== normalizedSearch[j]) {
+            allMatch = false;
+            break;
+          }
+        }
+        if (allMatch) {
+          matchIndex = i;
+          break;
+        }
+      }
+
+      if (matchIndex === -1) {
+        return {
+          success: false,
+          error: "Search block did not match any content in the target file",
+        };
+      }
     }
 
     const matchedLines = resultLines.slice(

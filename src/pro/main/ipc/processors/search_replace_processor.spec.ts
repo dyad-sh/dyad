@@ -183,6 +183,52 @@ STILL NOT
     expect(error).toMatch(/Search block did not match any content/i);
   });
 
+  it("matches despite differing indentation and trailing whitespace", () => {
+    const original = [
+      "\tfunction example() {",
+      "\t    doThing();   ", // extra trailing spaces
+      "\t}",
+    ].join("\n");
+
+    const diff = `
+<<<<<<< SEARCH
+function example() {
+  doThing();
+}
+=======
+function example() {
+  doOther();
+}
+>>>>>>> REPLACE
+`;
+
+    const { success, content } = applySearchReplace(original, diff);
+    expect(success).toBe(true);
+    expect(content).toContain("doOther();");
+    expect(content).not.toContain("doThing();");
+  });
+
+  it("matches when search uses spaces and target uses tabs (and vice versa)", () => {
+    const original = ["\tif (ready) {", "\t\tstart();", "\t}"].join("\n");
+
+    const diff = `
+<<<<<<< SEARCH
+  if (ready) {
+    start();
+  }
+=======
+  if (ready) {
+    launch();
+  }
+>>>>>>> REPLACE
+`;
+
+    const { success, content } = applySearchReplace(original, diff);
+    expect(success).toBe(true);
+    expect(content).toContain("launch();");
+    expect(content).not.toContain("start();");
+  });
+
   it("errors when SEARCH and REPLACE blocks are identical", () => {
     const original = ["x", "y", "z"].join("\n");
     const diff = `

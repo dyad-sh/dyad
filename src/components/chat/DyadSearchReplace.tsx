@@ -109,7 +109,9 @@ export const DyadSearchReplace: React.FC<DyadSearchReplaceProps> = ({
           onClick={(e) => e.stopPropagation()}
         >
           {blocks.length === 0 ? (
-            <CodeHighlight className="language-text">{children}</CodeHighlight>
+            <CodeHighlight className="language-typescript">
+              {children}
+            </CodeHighlight>
           ) : (
             <div className="space-y-3">
               {blocks.map((b, i) => (
@@ -125,7 +127,7 @@ export const DyadSearchReplace: React.FC<DyadSearchReplaceProps> = ({
                       <div className="text-[11px] mb-1 text-muted-foreground font-medium">
                         Search
                       </div>
-                      <CodeHighlight className="language-text">
+                      <CodeHighlight className="language-typescript">
                         {b.searchContent}
                       </CodeHighlight>
                     </div>
@@ -133,7 +135,7 @@ export const DyadSearchReplace: React.FC<DyadSearchReplaceProps> = ({
                       <div className="text-[11px] mb-1 text-muted-foreground font-medium">
                         Replace
                       </div>
-                      <CodeHighlight className="language-text">
+                      <CodeHighlight className="language-typescript">
                         {b.replaceContent}
                       </CodeHighlight>
                     </div>

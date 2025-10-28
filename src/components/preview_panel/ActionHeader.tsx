@@ -257,18 +257,18 @@ export const ActionHeader = () => {
             "configure-mode-button",
           )}
           {renderButton(
-            "publish",
-            publishRef,
-            <Globe size={iconSize} />,
-            "Publish",
-            "publish-mode-button",
-          )}
-          {renderButton(
             "security",
             securityRef,
             <Shield size={iconSize} />,
             "Security",
             "security-mode-button",
+          )}
+          {renderButton(
+            "publish",
+            publishRef,
+            <Globe size={iconSize} />,
+            "Publish",
+            "publish-mode-button",
           )}
         </div>
         {/* Chat activity bell */}

@@ -71,6 +71,8 @@ export async function getSupabaseContext({
     SUPABASE_SCHEMA_QUERY,
   );
 
+  console.log("schema", schema);
+
   const secrets = await supabase.getSecrets(supabaseProjectId);
   const secretNames = secrets?.map((secret) => secret.name);
 

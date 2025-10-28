@@ -579,6 +579,29 @@ ${componentSnippet}
 
           systemPrompt += `\n\n# Referenced Apps\nThe user has mentioned the following apps in their prompt: ${mentionedAppsList}. Their codebases have been included in the context for your reference. When referring to these apps, you can understand their structure and code to provide better assistance, however you should NOT edit the files in these referenced apps. The referenced apps are NOT part of the current app and are READ-ONLY.`;
         }
+
+        const isSecurityReviewIntent =
+          req.prompt.startsWith("/security-review");
+        if (isSecurityReviewIntent) {
+          systemPrompt = SECURITY_REVIEW_SYSTEM_PROMPT;
+          try {
+            const appPath = getDyadAppPath(updatedChat.app.path);
+            const rulesPath = path.join(appPath, "SECURITY_RULES.md");
+            let securityRules = "";
+
+            await fs.promises.access(rulesPath);
+            securityRules = await fs.promises.readFile(rulesPath, "utf8");
+
+            if (securityRules && securityRules.trim().length > 0) {
+              systemPrompt +=
+                "\n\n# Project-specific security rules:\n" + securityRules;
+            }
+          } catch (error) {
+            // Best-effort: if reading rules fails, continue without them
+            logger.info("Failed to read security rules", error);
+          }
+        }
+
         if (
           updatedChat.app?.supabaseProjectId &&
           settings.supabase?.accessToken?.value
@@ -601,12 +624,6 @@ ${componentSnippet}
         );
         if (isSummarizeIntent) {
           systemPrompt = SUMMARIZE_CHAT_SYSTEM_PROMPT;
-        }
-
-        const isSecurityReviewIntent =
-          req.prompt.startsWith("/security-review");
-        if (isSecurityReviewIntent) {
-          systemPrompt = SECURITY_REVIEW_SYSTEM_PROMPT;
         }
 
         // Update the system prompt for images if there are image attachments

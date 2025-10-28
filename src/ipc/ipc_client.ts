@@ -1204,6 +1204,17 @@ export class IpcClient {
     return this.ipcRenderer.invoke("get-latest-security-review", appId);
   }
 
+  public async getSecurityRules(appId: number): Promise<string> {
+    return this.ipcRenderer.invoke("get-security-rules", appId);
+  }
+
+  public async setSecurityRules(params: {
+    appId: number;
+    content: string;
+  }): Promise<void> {
+    await this.ipcRenderer.invoke("set-security-rules", params);
+  }
+
   public async importApp(params: ImportAppParams): Promise<ImportAppResult> {
     return this.ipcRenderer.invoke("import-app", params);
   }

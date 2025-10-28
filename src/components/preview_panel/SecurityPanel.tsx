@@ -19,14 +19,17 @@ import {
   AlertCircle,
   Info,
   ChevronDown,
+  Pencil,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { showError } from "@/lib/toast";
 import { Badge } from "@/components/ui/badge";
 import type { SecurityFinding, SecurityReviewResult } from "@/ipc/ipc_types";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { VanillaMarkdownParser } from "@/components/chat/DyadMarkdownParser";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { showSuccess } from "@/lib/toast";
 
 const getSeverityColor = (level: SecurityFinding["level"]) => {
   switch (level) {
@@ -55,6 +58,26 @@ const getSeverityIcon = (level: SecurityFinding["level"]) => {
 };
 
 const DESCRIPTION_PREVIEW_LENGTH = 150;
+
+const formatTimeAgo = (input: string | number | Date): string => {
+  const timestampMs = new Date(input).getTime();
+  const nowMs = Date.now();
+  const diffMs = Math.max(0, nowMs - timestampMs);
+
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) {
+    return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  }
+
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+};
 
 const getSeverityOrder = (level: SecurityFinding["level"]): number => {
   switch (level) {
@@ -140,14 +163,7 @@ function ReviewSummary({ data }: { data: SecurityReviewResult }) {
   return (
     <div className="space-y-1">
       <div className="text-sm text-gray-600 dark:text-gray-400">
-        Last reviewed:{" "}
-        {new Date(data.timestamp).toLocaleDateString("en-US", {
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        })}
+        Last reviewed {formatTimeAgo(data.timestamp)}
       </div>
       <div className="flex items-center gap-3 text-sm">
         {severityLevels
@@ -172,10 +188,12 @@ function SecurityHeader({
   isRunning,
   onRun,
   data,
+  onOpenEditRules,
 }: {
   isRunning: boolean;
   onRun: () => void;
   data?: SecurityReviewResult | undefined;
+  onOpenEditRules: () => void;
 }) {
   return (
     <div className="sticky top-0 z-10 bg-background pt-4 pb-4 space-y-4">
@@ -192,7 +210,13 @@ function SecurityHeader({
             <p>Note: this may not catch every security issue.</p>
           </div>
         </div>
-        <RunReviewButton isRunning={isRunning} onRun={onRun} />
+        <div className="flex flex-col items-center gap-2">
+          <Button variant="outline" onClick={onOpenEditRules}>
+            <Pencil className="w-4 h-4" />
+            Edit Security Rules
+          </Button>
+          <RunReviewButton isRunning={isRunning} onRun={onRun} />
+        </div>
       </div>
 
       {data && data.findings.length > 0 && <ReviewSummary data={data} />}
@@ -329,14 +353,7 @@ function NoIssuesCard({ data }: { data?: SecurityReviewResult }) {
           </p>
           {data && (
             <p className="text-sm text-gray-500 dark:text-gray-500 mt-2">
-              Last reviewed:{" "}
-              {new Date(data.timestamp).toLocaleDateString("en-US", {
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
+              Last reviewed {formatTimeAgo(data.timestamp)}
             </p>
           )}
         </div>
@@ -349,10 +366,12 @@ function FindingsTable({
   findings,
   onOpenDetails,
   onFix,
+  fixingFindingKey,
 }: {
   findings: SecurityFinding[];
   onOpenDetails: (finding: SecurityFinding) => void;
   onFix: (finding: SecurityFinding) => void;
+  fixingFindingKey?: string | null;
 }) {
   return (
     <div className="border rounded-lg overflow-hidden">
@@ -382,6 +401,8 @@ function FindingsTable({
                 ? finding.description.substring(0, DESCRIPTION_PREVIEW_LENGTH) +
                   "..."
                 : finding.description;
+              const findingKey = `${finding.title}|${finding.level}|${finding.description}`;
+              const isFixing = fixingFindingKey === findingKey;
 
               return (
                 <tr
@@ -431,8 +452,35 @@ function FindingsTable({
                       onClick={() => onFix(finding)}
                       size="sm"
                       variant="default"
+                      className="gap-2"
+                      disabled={isFixing}
                     >
-                      Fix Issue
+                      {isFixing ? (
+                        <>
+                          <svg
+                            className="w-4 h-4 animate-spin"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                          >
+                            <circle
+                              className="opacity-25"
+                              cx="12"
+                              cy="12"
+                              r="10"
+                              stroke="currentColor"
+                              strokeWidth="4"
+                            />
+                            <path
+                              className="opacity-75"
+                              fill="currentColor"
+                              d="m4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 0 1 4 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                            />
+                          </svg>
+                          Fixing Issue...
+                        </>
+                      ) : (
+                        <>Fix Issue</>
+                      )}
                     </Button>
                   </td>
                 </tr>
@@ -449,22 +497,24 @@ function FindingDetailsDialog({
   finding,
   onClose,
   onFix,
+  fixingFindingKey,
 }: {
   open: boolean;
   finding: SecurityFinding | null;
   onClose: (open: boolean) => void;
   onFix: (finding: SecurityFinding) => void;
+  fixingFindingKey?: string | null;
 }) {
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-2xl md:max-w-3xl lg:max-w-4xl max-h-[(calc(90vh-100px))] overflow-y-auto">
+      <DialogContent className="sm:max-w-[80vw] md:max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center justify-between gap-3 pr-4">
             <span className="truncate">{finding?.title}</span>
             {finding && <SeverityBadge level={finding.level} />}
           </DialogTitle>
         </DialogHeader>
-        <div className="text-sm text-gray-700 dark:text-gray-300 prose prose-sm dark:prose-invert max-w-none break-words max-h-[65vh] overflow-auto">
+        <div className="text-sm text-gray-700 dark:text-gray-300 prose prose-sm dark:prose-invert max-w-none break-words max-h-[60vh] overflow-auto">
           {finding && <VanillaMarkdownParser content={finding.description} />}
         </div>
         <DialogFooter>
@@ -475,8 +525,41 @@ function FindingDetailsDialog({
                 onClose(false);
               }
             }}
+            disabled={
+              finding
+                ? fixingFindingKey ===
+                  `${finding.title}|${finding.level}|${finding.description}`
+                : false
+            }
           >
-            Fix Issue
+            {finding &&
+            fixingFindingKey ===
+              `${finding.title}|${finding.level}|${finding.description}` ? (
+              <>
+                <svg
+                  className="w-4 h-4 animate-spin mr-2"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="m4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 0 1 4 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  />
+                </svg>
+                Fixing Issue...
+              </>
+            ) : (
+              <>Fix Issue</>
+            )}
           </Button>
           <DialogClose asChild>
             <Button variant="outline">Close</Button>
@@ -498,6 +581,46 @@ export const SecurityPanel = () => {
   const [detailsFinding, setDetailsFinding] = useState<SecurityFinding | null>(
     null,
   );
+  const [isEditRulesOpen, setIsEditRulesOpen] = useState(false);
+  const [rulesContent, setRulesContent] = useState("");
+  const [fixingFindingKey, setFixingFindingKey] = useState<string | null>(null);
+
+  const {
+    data: fetchedRules,
+    refetch: refetchRules,
+    isFetching: isFetchingRules,
+  } = useQuery({
+    queryKey: ["security-rules", selectedAppId],
+    queryFn: async () => {
+      if (!selectedAppId) throw new Error("No app selected");
+      return IpcClient.getInstance().getSecurityRules(selectedAppId);
+    },
+    enabled: isEditRulesOpen && !!selectedAppId,
+  });
+
+  useEffect(() => {
+    if (typeof fetchedRules === "string") {
+      setRulesContent(fetchedRules);
+    }
+  }, [fetchedRules]);
+
+  const saveRulesMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedAppId) throw new Error("No app selected");
+      await IpcClient.getInstance().setSecurityRules({
+        appId: selectedAppId,
+        content: rulesContent,
+      });
+    },
+    onSuccess: () => {
+      showSuccess("Security rules saved");
+      setIsEditRulesOpen(false);
+      refetchRules();
+    },
+    onError: (err: any) => {
+      showError(`Failed to save security rules: ${err}`);
+    },
+  });
 
   const openFindingDetails = (finding: SecurityFinding) => {
     setDetailsFinding(finding);
@@ -524,7 +647,7 @@ export const SecurityPanel = () => {
       await streamMessage({
         prompt: "/security-review",
         chatId,
-        onEnd: () => {
+        onSettled: () => {
           refetch();
           setIsRunningReview(false);
         },
@@ -542,6 +665,8 @@ export const SecurityPanel = () => {
     }
 
     try {
+      const key = `${finding.title}|${finding.level}|${finding.description}`;
+      setFixingFindingKey(key);
       // Create a new chat
       const chatId = await IpcClient.getInstance().createChat(selectedAppId);
 
@@ -559,9 +684,13 @@ ${finding.description}`;
       await streamMessage({
         prompt,
         chatId,
+        onSettled: () => {
+          setFixingFindingKey(null);
+        },
       });
     } catch (err) {
       showError(`Failed to create fix chat: ${err}`);
+      setFixingFindingKey(null);
     }
   };
 
@@ -580,6 +709,12 @@ ${finding.description}`;
           isRunning={isRunningReview}
           onRun={handleRunSecurityReview}
           data={data}
+          onOpenEditRules={() => {
+            setIsEditRulesOpen(true);
+            if (selectedAppId) {
+              refetchRules();
+            }
+          }}
         />
 
         {isRunningReview ? (
@@ -594,6 +729,7 @@ ${finding.description}`;
             findings={data.findings}
             onOpenDetails={openFindingDetails}
             onFix={handleFixIssue}
+            fixingFindingKey={fixingFindingKey}
           />
         ) : (
           <NoIssuesCard data={data} />
@@ -603,7 +739,40 @@ ${finding.description}`;
           finding={detailsFinding}
           onClose={setDetailsOpen}
           onFix={handleFixIssue}
+          fixingFindingKey={fixingFindingKey}
         />
+        <Dialog open={isEditRulesOpen} onOpenChange={setIsEditRulesOpen}>
+          <DialogContent className="sm:max-w-2xl md:max-w-3xl lg:max-w-4xl">
+            <DialogHeader>
+              <DialogTitle>Edit Security Rules</DialogTitle>
+            </DialogHeader>
+            <div className="text-sm text-gray-600 dark:text-gray-400">
+              This allows you to add additional context about your project
+              specifically for security reviews. This can help catch additional
+              issues or avoid flagging issues that are not relevant for your
+              app.
+            </div>
+            <div className="mt-3">
+              <textarea
+                className="w-full h-72 rounded-md border border-gray-300 dark:border-gray-700 bg-transparent p-3 font-mono text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                value={rulesContent}
+                onChange={(e) => setRulesContent(e.target.value)}
+                placeholder="# SECURITY_RULES.md\n\nDescribe relevant security context, accepted risks, non-issues, and environment details."
+              />
+            </div>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="outline">Cancel</Button>
+              </DialogClose>
+              <Button
+                onClick={() => saveRulesMutation.mutate()}
+                disabled={saveRulesMutation.isPending || isFetchingRules}
+              >
+                {saveRulesMutation.isPending ? "Saving..." : "Save"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

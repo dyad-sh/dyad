@@ -30,7 +30,10 @@ import {
   extractCodebase,
   readFileWithCache,
 } from "../../utils/codebase";
-import { processFullResponseActions } from "../processors/response_processor";
+import {
+  dryRunSearchReplace,
+  processFullResponseActions,
+} from "../processors/response_processor";
 import { streamTestResponse } from "./testing_chat_handlers";
 import { getTestResponse } from "./testing_chat_handlers";
 import { getModelClient, ModelClient } from "../utils/get_model_client";
@@ -943,6 +946,54 @@ This conversation includes one or more image attachments. When the user uploads 
             processResponseChunkUpdate,
           });
           fullResponse = result.fullResponse;
+
+          if (
+            settings.selectedChatMode !== "ask" &&
+            settings.enableProLazyEditsMode &&
+            settings.proLazyEditsMode === "v2"
+          ) {
+            const issues = await dryRunSearchReplace({
+              fullResponse,
+              appPath: getDyadAppPath(updatedChat.app.path),
+            });
+            if (issues.length > 0) {
+              logger.warn(
+                `Detected search-replace issues: ${issues.map((i) => i.error).join(", ")}`,
+              );
+              const formattedSearchReplaceIssues = issues
+                .map(({ filePath, error }) => {
+                  return `File path: ${filePath}\nError: ${error}`;
+                })
+                .join("\n\n");
+              const originalFullResponse = fullResponse;
+              fullResponse += `<dyad-output type="warning" message="Could not apply Turbo Edits properly for some of the files; re-generating code...">${formattedSearchReplaceIssues}</dyad-output>`;
+
+              const { fullStream: fixSearchReplaceStream } =
+                await simpleStreamText({
+                  // Build messages: reuse chat history and original full response, then ask to fix search-replace issues.
+                  chatMessages: [
+                    ...chatMessages,
+                    { role: "assistant", content: originalFullResponse },
+                    {
+                      role: "user",
+                      content: `There was an issue with the following \`dyad-search-replace\` tags. Please fix them by generating the code changes using \`dyad-write\` tags instead.
+                      
+${formattedSearchReplaceIssues}`,
+                    },
+                  ],
+                  modelClient,
+                  files: files,
+                });
+              const result = await processStreamChunks({
+                fullStream: fixSearchReplaceStream,
+                fullResponse,
+                abortController,
+                chatId: req.chatId,
+                processResponseChunkUpdate,
+              });
+              fullResponse = result.fullResponse;
+            }
+          }
 
           if (
             !abortController.signal.aborted &&

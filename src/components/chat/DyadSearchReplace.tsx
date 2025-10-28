@@ -11,49 +11,13 @@ import {
 } from "lucide-react";
 import { CodeHighlight } from "./CodeHighlight";
 import { CustomTagState } from "./stateTypes";
+import { parseSearchReplaceBlocks } from "@/pro/shared/search_replace_parser";
 
 interface DyadSearchReplaceProps {
   children?: ReactNode;
   node?: any;
   path?: string;
   description?: string;
-}
-
-type SearchReplaceBlock = {
-  startLine?: number;
-  searchText: string;
-  replaceText: string;
-};
-
-function parseSearchReplaceBlocks(raw: string): SearchReplaceBlock[] {
-  const text = String(raw ?? "");
-  const blocks: SearchReplaceBlock[] = [];
-
-  // Matches blocks of the form:
-  // <<<<<<< SEARCH\n
-  // :start_line:<num>\n (optional)
-  // -------\n
-  // <searchText>
-  // =======\n
-  // <replaceText>
-  // >>>>>>> REPLACE
-  const regex =
-    /<<<<<<<\s+SEARCH\s*\n(?::start_line:(\d+)\s*\n)?-+\s*\n([\s\S]*?)\n=======\s*\n([\s\S]*?)\n>>>>>>>\s+REPLACE/g;
-
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(text)) !== null) {
-    const startLineStr = match[1];
-    const searchText = match[2] ?? "";
-    const replaceText = match[3] ?? "";
-    const startLine = startLineStr ? Number(startLineStr) : undefined;
-    blocks.push({
-      startLine,
-      searchText: searchText.trimEnd(),
-      replaceText: replaceText.trimEnd(),
-    });
-  }
-
-  return blocks;
 }
 
 export const DyadSearchReplace: React.FC<DyadSearchReplaceProps> = ({
@@ -154,11 +118,6 @@ export const DyadSearchReplace: React.FC<DyadSearchReplaceProps> = ({
                     <div className="flex items-center gap-2">
                       <ArrowLeftRight size={14} />
                       <span className="font-medium">Change {i + 1}</span>
-                      {typeof b.startLine === "number" ? (
-                        <span className="text-muted-foreground">
-                          Start line {b.startLine}
-                        </span>
-                      ) : null}
                     </div>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
@@ -167,7 +126,7 @@ export const DyadSearchReplace: React.FC<DyadSearchReplaceProps> = ({
                         Search
                       </div>
                       <CodeHighlight className="language-text">
-                        {b.searchText}
+                        {b.searchContent}
                       </CodeHighlight>
                     </div>
                     <div className="p-3 border-t">
@@ -175,7 +134,7 @@ export const DyadSearchReplace: React.FC<DyadSearchReplaceProps> = ({
                         Replace
                       </div>
                       <CodeHighlight className="language-text">
-                        {b.replaceText}
+                        {b.replaceContent}
                       </CodeHighlight>
                     </div>
                   </div>

@@ -244,7 +244,10 @@ function TurboEditsSelector({
           </p>
         </div>
       </div>
-      <div className="inline-flex rounded-md border border-input">
+      <div
+        className="inline-flex rounded-md border border-input"
+        data-testid="turbo-edits-selector"
+      >
         <Button
           variant={currentValue === "off" ? "default" : "ghost"}
           size="sm"
@@ -328,7 +331,10 @@ function SmartContextSelector({
           </p>
         </div>
       </div>
-      <div className="inline-flex rounded-md border border-input">
+      <div
+        className="inline-flex rounded-md border border-input"
+        data-testid="smart-context-selector"
+      >
         <Button
           variant={currentValue === "off" ? "default" : "ghost"}
           size="sm"

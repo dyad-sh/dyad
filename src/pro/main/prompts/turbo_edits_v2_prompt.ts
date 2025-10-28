@@ -64,7 +64,7 @@ def calculate_sum(items):
     return total
 =======
         sum += item
-    return sum 
+    return sum
 >>>>>>> REPLACE
 \`\`\`
 
@@ -84,7 +84,7 @@ def calculate_sum(items):
     return total
 =======
         sum += item
-    return sum 
+    return sum
 >>>>>>> REPLACE
 </dyad-search-replace>
 

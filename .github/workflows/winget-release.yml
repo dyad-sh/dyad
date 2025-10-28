@@ -1,0 +1,13 @@
+name: Publish release to WinGet
+on:
+  release:
+    types: [released]
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - uses: vedantmgoyal9/winget-releaser@main
+        with:
+          identifier: Dyad.Dyad
+          installers-regex: 'dyad-.*\.Setup.exe'
+          token: ${{ secrets.WINGET_ACC_TOKEN }}

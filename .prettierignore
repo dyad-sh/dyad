@@ -5,3 +5,5 @@ coverage
 drizzle/
 **/pnpm-lock.yaml
 **/snapshots/**
+# test fixtures
+e2e-tests/fixtures/**

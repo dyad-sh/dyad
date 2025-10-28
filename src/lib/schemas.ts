@@ -232,6 +232,7 @@ export const UserSettingsSchema = z.object({
   maxChatTurnsInContext: z.number().optional(),
   thinkingBudget: z.enum(["low", "medium", "high"]).optional(),
   enableProLazyEditsMode: z.boolean().optional(),
+  proLazyEditsMode: z.enum(["off", "v1", "v2"]).optional(),
   enableProSmartFilesContextMode: z.boolean().optional(),
   enableProWebSearch: z.boolean().optional(),
   proSmartContextOption: z.enum(["balanced", "conservative"]).optional(),
@@ -271,6 +272,14 @@ export function isDyadProEnabled(settings: UserSettings): boolean {
 
 export function hasDyadProKey(settings: UserSettings): boolean {
   return !!settings.providerSettings?.auto?.apiKey?.value;
+}
+
+export function isTurboEditsV2Enabled(settings: UserSettings): boolean {
+  return Boolean(
+    isDyadProEnabled(settings) &&
+      settings.enableProLazyEditsMode === true &&
+      settings.proLazyEditsMode === "v2",
+  );
 }
 
 // Define interfaces for the props

@@ -127,6 +127,22 @@ export default Index;
       </dyad-write>
       `;
     }
+    if (
+      lastMessage &&
+      typeof lastMessage.content === "string" &&
+      lastMessage.content.startsWith(
+        "There was an issue with the following `dyad-search-replace` tags",
+      )
+    ) {
+      // Fix errors in create-ts-errors.md and introduce a new error
+      messageContent =
+        `
+<dyad-write path="src/pages/Index.tsx" description="Rewrite file.">
+// FILE IS REPLACED WITH FALLBACK WRITE.
+</dyad-write>` +
+        "\n\n" +
+        generateDump(req);
+    }
     console.error("LASTMESSAGE", lastMessage);
     // Check if the last message is "[dump]" to write messages to file and return path
     if (

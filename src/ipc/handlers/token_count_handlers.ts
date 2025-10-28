@@ -22,6 +22,7 @@ import { validateChatContext } from "../utils/context_paths_utils";
 import { readSettings } from "@/main/settings";
 import { extractMentionedAppsCodebases } from "../utils/mention_apps";
 import { parseAppMentions } from "@/shared/parse_mention_apps";
+import { isTurboEditsV2Enabled } from "@/lib/schemas";
 
 const logger = log.scope("token_count_handlers");
 
@@ -63,6 +64,7 @@ export function registerTokenCountHandlers() {
       let systemPrompt = constructSystemPrompt({
         aiRules: await readAiRules(getDyadAppPath(chat.app.path)),
         chatMode: settings.selectedChatMode,
+        enableTurboEditsV2: isTurboEditsV2Enabled(settings),
       });
       let supabaseContext = "";
 

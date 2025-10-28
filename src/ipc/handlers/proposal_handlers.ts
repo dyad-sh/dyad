@@ -18,6 +18,7 @@ import {
   getDyadAddDependencyTags,
   getDyadChatSummaryTag,
   getDyadCommandTags,
+  getDyadSearchReplaceTags,
 } from "../utils/dyad_tag_parser";
 import log from "electron-log";
 import { isServerFunction } from "../../supabase_admin/supabase_utils";
@@ -153,19 +154,23 @@ const getProposalHandler = async (
         const proposalTitle = getDyadChatSummaryTag(messageContent);
 
         const proposalWriteFiles = getDyadWriteTags(messageContent);
+        const proposalSearchReplaceFiles =
+          getDyadSearchReplaceTags(messageContent);
         const proposalRenameFiles = getDyadRenameTags(messageContent);
         const proposalDeleteFiles = getDyadDeleteTags(messageContent);
         const proposalExecuteSqlQueries = getDyadExecuteSqlTags(messageContent);
         const packagesAdded = getDyadAddDependencyTags(messageContent);
 
         const filesChanged = [
-          ...proposalWriteFiles.map((tag) => ({
-            name: path.basename(tag.path),
-            path: tag.path,
-            summary: tag.description ?? "(no change summary found)", // Generic summary
-            type: "write" as const,
-            isServerFunction: isServerFunction(tag.path),
-          })),
+          ...proposalWriteFiles
+            .concat(proposalSearchReplaceFiles)
+            .map((tag) => ({
+              name: path.basename(tag.path),
+              path: tag.path,
+              summary: tag.description ?? "(no change summary found)", // Generic summary
+              type: "write" as const,
+              isServerFunction: isServerFunction(tag.path),
+            })),
           ...proposalRenameFiles.map((tag) => ({
             name: path.basename(tag.to),
             path: tag.to,

@@ -6,7 +6,7 @@ jobs:
   publish:
     runs-on: windows-latest
     steps:
-      - uses: vedantmgoyal9/winget-releaser@main
+      - uses: vedantmgoyal9/winget-releaser@19e706d4c9121098010096f9c495a70a7518b30f
         with:
           identifier: Dyad.Dyad
           installers-regex: 'dyad-.*\.Setup.exe'

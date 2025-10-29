@@ -89,7 +89,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       displayName: "Claude 4.5 Sonnet",
       description:
         "Anthropic's best model for coding (note: >200k tokens is very expensive!)",
-      // Set to 32k since context window is 1M tokens
+      // Set to 32k since context window is 1M tokens.
       maxOutputTokens: 32_000,
       contextWindow: 1_000_000,
       temperature: 0,

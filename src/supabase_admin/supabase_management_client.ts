@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { withLock } from "../ipc/utils/lock_utils";
 import { readSettings, writeSettings } from "../main/settings";
 import {
@@ -7,7 +9,42 @@ import {
 import log from "electron-log";
 import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
 
+const fsPromises = fs.promises;
+
 const logger = log.scope("supabase_management_client");
+
+interface ZipFileEntry {
+  relativePath: string;
+  content: Buffer;
+  date: Date;
+}
+
+interface FileStatEntry {
+  absolutePath: string;
+  relativePath: string;
+  mtimeMs: number;
+  size: number;
+}
+
+interface CachedSharedFiles {
+  signature: string;
+  files: ZipFileEntry[];
+}
+
+interface CachedFunctionZip {
+  signature: string;
+  buffer: Buffer;
+}
+
+interface FunctionFilesResult {
+  files: ZipFileEntry[];
+  signature: string;
+  entrypointPath: string;
+  cacheKey: string;
+}
+
+const sharedFilesCache = new Map<string, CachedSharedFiles>();
+const functionZipCache = new Map<string, CachedFunctionZip>();
 
 /**
  * Checks if the Supabase access token is expired or about to expire
@@ -226,27 +263,62 @@ export async function listSupabaseBranches({
 export async function deploySupabaseFunctions({
   supabaseProjectId,
   functionName,
-  content,
+  appPath,
+  functionPath,
 }: {
   supabaseProjectId: string;
   functionName: string;
-  content: string;
+  appPath: string;
+  functionPath: string;
 }): Promise<void> {
   logger.info(
     `Deploying Supabase function: ${functionName} to project: ${supabaseProjectId}`,
   );
+
+  const functionFiles = await collectFunctionFiles({
+    appPath,
+    functionPath,
+    functionName,
+  });
+
+  const sharedFiles = await getSharedFiles(appPath);
+  const combinedSignature = `${functionFiles.signature}|shared:${sharedFiles.signature}`;
+  const cacheKey = functionFiles.cacheKey;
+
+  let zipBuffer: Buffer;
+  const cachedZip = functionZipCache.get(cacheKey);
+  if (cachedZip && cachedZip.signature === combinedSignature) {
+    logger.debug(
+      `Using cached zip for Supabase function ${functionName} at ${cacheKey}`,
+    );
+    zipBuffer = cachedZip.buffer;
+  } else {
+    const filesToPackage = [...functionFiles.files, ...sharedFiles.files];
+    zipBuffer = createZipBuffer(filesToPackage);
+    functionZipCache.set(cacheKey, {
+      signature: combinedSignature,
+      buffer: zipBuffer,
+    });
+  }
+
   const supabase = await getSupabaseClient();
   const formData = new FormData();
   formData.append(
     "metadata",
     JSON.stringify({
-      entrypoint_path: "index.ts",
+      entrypoint_path: functionFiles.entrypointPath,
       name: functionName,
       // See: https://github.com/dyad-sh/dyad/issues/1010
       verify_jwt: false,
     }),
   );
-  formData.append("file", new Blob([content]), "index.ts");
+  const zipArrayBuffer = new ArrayBuffer(zipBuffer.length);
+  new Uint8Array(zipArrayBuffer).set(zipBuffer);
+  formData.append(
+    "file",
+    new Blob([zipArrayBuffer], { type: "application/zip" }),
+    `${functionName}.zip`,
+  );
 
   const response = await fetch(
     `https://api.supabase.com/v1/projects/${supabaseProjectId}/functions/deploy?slug=${functionName}`,
@@ -260,13 +332,280 @@ export async function deploySupabaseFunctions({
   );
 
   if (response.status !== 201) {
+    functionZipCache.delete(cacheKey);
     throw await createResponseError(response, "create function");
   }
 
   logger.info(
     `Deployed Supabase function: ${functionName} to project: ${supabaseProjectId}`,
   );
-  return response.json();
+  await response.json();
+}
+
+async function collectFunctionFiles({
+  appPath,
+  functionPath,
+  functionName,
+}: {
+  appPath: string;
+  functionPath: string;
+  functionName: string;
+}): Promise<FunctionFilesResult> {
+  const normalizedFunctionPath = path.resolve(functionPath);
+  const stats = await fsPromises.stat(normalizedFunctionPath);
+
+  if (stats.isFile()) {
+    const directoryName = path.basename(path.dirname(normalizedFunctionPath));
+
+    if (directoryName !== functionName) {
+      const relativeFilePath = toPosixPath(
+        path.relative(appPath, normalizedFunctionPath),
+      );
+      const content = await fsPromises.readFile(normalizedFunctionPath);
+      return {
+        files: [
+          {
+            relativePath: relativeFilePath,
+            content,
+            date: stats.mtime,
+          },
+        ],
+        signature: buildSignature([
+          {
+            absolutePath: normalizedFunctionPath,
+            relativePath: relativeFilePath,
+            mtimeMs: stats.mtimeMs,
+            size: stats.size,
+          },
+        ]),
+        entrypointPath: relativeFilePath,
+        cacheKey: normalizedFunctionPath,
+      };
+    }
+  }
+
+  const functionDirectory = stats.isDirectory()
+    ? normalizedFunctionPath
+    : path.dirname(normalizedFunctionPath);
+
+  const relativeDirectory = toPosixPath(path.relative(appPath, functionDirectory));
+  const indexPath = path.join(functionDirectory, "index.ts");
+
+  try {
+    await fsPromises.access(indexPath);
+  } catch {
+    throw new Error(
+      `Supabase function ${functionName} is missing an index.ts entrypoint`,
+    );
+  }
+
+  const statEntries = await listFilesWithStats(
+    functionDirectory,
+    relativeDirectory,
+  );
+  const signature = buildSignature(statEntries);
+  const files = await loadZipEntries(statEntries);
+
+  return {
+    files,
+    signature,
+    entrypointPath: toPosixPath(path.relative(appPath, indexPath)),
+    cacheKey: functionDirectory,
+  };
+}
+
+async function getSharedFiles(appPath: string): Promise<CachedSharedFiles> {
+  const sharedDirectory = path.join(appPath, "supabase", "shared");
+
+  try {
+    const sharedStats = await fsPromises.stat(sharedDirectory);
+    if (!sharedStats.isDirectory()) {
+      return { signature: "", files: [] };
+    }
+  } catch (error: any) {
+    if (error && error.code === "ENOENT") {
+      return { signature: "", files: [] };
+    }
+    throw error;
+  }
+
+  const relativeDirectory = toPosixPath(
+    path.relative(appPath, sharedDirectory),
+  );
+  const statEntries = await listFilesWithStats(sharedDirectory, relativeDirectory);
+  const signature = buildSignature(statEntries);
+
+  const cached = sharedFilesCache.get(sharedDirectory);
+  if (cached && cached.signature === signature) {
+    return cached;
+  }
+
+  const files = await loadZipEntries(statEntries);
+  const result = { signature, files };
+  sharedFilesCache.set(sharedDirectory, result);
+  return result;
+}
+
+async function listFilesWithStats(
+  directory: string,
+  prefix: string,
+): Promise<FileStatEntry[]> {
+  const dirents = await fsPromises.readdir(directory, { withFileTypes: true });
+  dirents.sort((a, b) => a.name.localeCompare(b.name));
+  const entries: FileStatEntry[] = [];
+
+  for (const dirent of dirents) {
+    const absolutePath = path.join(directory, dirent.name);
+    const relativePath = path.posix.join(prefix, dirent.name);
+
+    if (dirent.isDirectory()) {
+      const nestedEntries = await listFilesWithStats(absolutePath, relativePath);
+      entries.push(...nestedEntries);
+    } else if (dirent.isFile() || dirent.isSymbolicLink()) {
+      const stat = await fsPromises.stat(absolutePath);
+      entries.push({
+        absolutePath,
+        relativePath,
+        mtimeMs: stat.mtimeMs,
+        size: stat.size,
+      });
+    }
+  }
+
+  return entries;
+}
+
+function buildSignature(entries: FileStatEntry[]): string {
+  return entries
+    .map(
+      (entry) =>
+        `${entry.relativePath}:${entry.mtimeMs.toString(16)}:${entry.size.toString(16)}`,
+    )
+    .sort()
+    .join("|");
+}
+
+async function loadZipEntries(entries: FileStatEntry[]): Promise<ZipFileEntry[]> {
+  const files: ZipFileEntry[] = [];
+
+  for (const entry of entries) {
+    const content = await fsPromises.readFile(entry.absolutePath);
+    files.push({
+      relativePath: toPosixPath(entry.relativePath),
+      content,
+      date: new Date(entry.mtimeMs),
+    });
+  }
+
+  return files;
+}
+
+function toPosixPath(filePath: string): string {
+  return filePath.split(path.sep).join(path.posix.sep);
+}
+
+function createZipBuffer(files: ZipFileEntry[]): Buffer {
+  if (files.length === 0) {
+    throw new Error("Cannot deploy an empty Supabase function");
+  }
+
+  const fileParts: Buffer[] = [];
+  const centralDirectoryParts: Buffer[] = [];
+  let offset = 0;
+
+  for (const file of files) {
+    const fileNameBytes = Buffer.from(file.relativePath, "utf8");
+    const crc = crc32(file.content);
+    const { dosDate, dosTime } = toDosDateTime(file.date);
+
+    const localHeader = Buffer.alloc(30);
+    localHeader.writeUInt32LE(0x04034b50, 0);
+    localHeader.writeUInt16LE(20, 4);
+    localHeader.writeUInt16LE(0, 6);
+    localHeader.writeUInt16LE(0, 8);
+    localHeader.writeUInt16LE(dosTime, 10);
+    localHeader.writeUInt16LE(dosDate, 12);
+    localHeader.writeUInt32LE(crc >>> 0, 14);
+    localHeader.writeUInt32LE(file.content.length, 18);
+    localHeader.writeUInt32LE(file.content.length, 22);
+    localHeader.writeUInt16LE(fileNameBytes.length, 26);
+    localHeader.writeUInt16LE(0, 28);
+
+    fileParts.push(localHeader, fileNameBytes, file.content);
+
+    const centralHeader = Buffer.alloc(46);
+    centralHeader.writeUInt32LE(0x02014b50, 0);
+    centralHeader.writeUInt16LE(20, 4);
+    centralHeader.writeUInt16LE(20, 6);
+    centralHeader.writeUInt16LE(0, 8);
+    centralHeader.writeUInt16LE(0, 10);
+    centralHeader.writeUInt16LE(dosTime, 12);
+    centralHeader.writeUInt16LE(dosDate, 14);
+    centralHeader.writeUInt32LE(crc >>> 0, 16);
+    centralHeader.writeUInt32LE(file.content.length, 20);
+    centralHeader.writeUInt32LE(file.content.length, 24);
+    centralHeader.writeUInt16LE(fileNameBytes.length, 28);
+    centralHeader.writeUInt16LE(0, 30);
+    centralHeader.writeUInt16LE(0, 32);
+    centralHeader.writeUInt16LE(0, 34);
+    centralHeader.writeUInt16LE(0, 36);
+    centralHeader.writeUInt32LE(0, 38);
+    centralHeader.writeUInt32LE(offset, 42);
+
+    centralDirectoryParts.push(centralHeader, fileNameBytes);
+
+    offset += localHeader.length + fileNameBytes.length + file.content.length;
+  }
+
+  const centralDirectoryBuffer = Buffer.concat(centralDirectoryParts);
+  const endOfCentralDirectory = Buffer.alloc(22);
+  endOfCentralDirectory.writeUInt32LE(0x06054b50, 0);
+  endOfCentralDirectory.writeUInt16LE(0, 4);
+  endOfCentralDirectory.writeUInt16LE(0, 6);
+  endOfCentralDirectory.writeUInt16LE(files.length, 8);
+  endOfCentralDirectory.writeUInt16LE(files.length, 10);
+  endOfCentralDirectory.writeUInt32LE(centralDirectoryBuffer.length, 12);
+  endOfCentralDirectory.writeUInt32LE(offset, 16);
+  endOfCentralDirectory.writeUInt16LE(0, 20);
+
+  return Buffer.concat([...fileParts, centralDirectoryBuffer, endOfCentralDirectory]);
+}
+
+function toDosDateTime(date: Date): { dosDate: number; dosTime: number } {
+  let year = date.getFullYear();
+  if (year < 1980) {
+    year = 1980;
+  }
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const hours = date.getHours();
+  const minutes = date.getMinutes();
+  const seconds = Math.floor(date.getSeconds() / 2);
+
+  const dosDate = ((year - 1980) << 9) | (month << 5) | day;
+  const dosTime = (hours << 11) | (minutes << 5) | seconds;
+
+  return { dosDate, dosTime };
+}
+
+const CRC32_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let j = 0; j < 8; j++) {
+      c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    }
+    table[i] = c >>> 0;
+  }
+  return table;
+})();
+
+function crc32(buffer: Buffer): number {
+  let crc = 0 ^ -1;
+  for (let i = 0; i < buffer.length; i++) {
+    crc = (crc >>> 8) ^ CRC32_TABLE[(crc ^ buffer[i]) & 0xff];
+  }
+  return (crc ^ -1) >>> 0;
 }
 
 async function createResponseError(response: Response, action: string) {

@@ -374,7 +374,10 @@ function FindingsTable({
   fixingFindingKey?: string | null;
 }) {
   return (
-    <div className="border rounded-lg overflow-hidden">
+    <div
+      className="border rounded-lg overflow-hidden"
+      data-testid="security-findings-table"
+    >
       <table className="w-full">
         <thead className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700">
           <tr>
@@ -675,7 +678,7 @@ export const SecurityPanel = () => {
       await navigate({ to: "/chat", search: { id: chatId } });
 
       // Stream a prompt asking to fix the specific security issue
-      const prompt = `Please fix the following security issue in a simple and direct way:
+      const prompt = `Please fix the following security issue in a simple and effective way:
 
 **${finding.title}** (${finding.level} severity)
 

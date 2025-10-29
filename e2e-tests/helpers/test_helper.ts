@@ -476,7 +476,9 @@ export class PageObject {
   // Preview panel
   ////////////////////////////////
 
-  async selectPreviewMode(mode: "code" | "problems" | "preview" | "configure") {
+  async selectPreviewMode(
+    mode: "code" | "problems" | "preview" | "configure" | "security",
+  ) {
     await this.page.getByTestId(`${mode}-mode-button`).click();
   }
 
@@ -594,6 +596,12 @@ export class PageObject {
       name,
       timeout: Timeout.LONG,
     });
+  }
+
+  async snapshotSecurityFindingsTable() {
+    await expect(
+      this.page.getByTestId("security-findings-table"),
+    ).toMatchAriaSnapshot();
   }
 
   async snapshotServerDump(

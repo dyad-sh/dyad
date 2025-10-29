@@ -299,7 +299,7 @@ export function LexicalChatInput({
     return {
       "@": [...appMentions, ...promptItems, ...fileItems],
     };
-  }, [apps, selectedAppId, value, excludeCurrentApp, prompts]);
+  }, [apps, selectedAppId, value, excludeCurrentApp, prompts, appFiles]);
 
   const initialConfig = {
     namespace: "ChatInput",

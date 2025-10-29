@@ -194,6 +194,7 @@ export function useStreamChat({
             );
           return next;
         });
+        onSettled?.();
       }
     },
     [

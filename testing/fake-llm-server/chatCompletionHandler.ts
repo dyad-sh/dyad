@@ -144,6 +144,20 @@ export default Index;
         generateDump(req);
     }
 
+    console.error("LASTMESSAGE", lastMessage);
+    // Check if the last message is "[dump]" to write messages to file and return path
+    if (
+      lastMessage &&
+      (Array.isArray(lastMessage.content)
+        ? lastMessage.content.some(
+            (part: { type: string; text: string }) =>
+              part.type === "text" && part.text.includes("[dump]"),
+          )
+        : lastMessage.content.includes("[dump]"))
+    ) {
+      messageContent = generateDump(req);
+    }
+
     if (
       lastMessage &&
       typeof lastMessage.content === "string" &&

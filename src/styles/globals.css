@@ -74,9 +74,7 @@
 :root {
   --docs-bg: #f5f5f5;
 
-  --workspace-font-scale: 1;
-
-  font-size: calc(16px * var(--workspace-font-scale));
+  font-size: 16px;
 
   --default-font-family: "Geist", sans-serif;
   --default-mono-font-family: "Geist Mono", monospace;

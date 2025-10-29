@@ -42,8 +42,7 @@ export function ZoomSelector() {
       <div className="flex flex-col gap-1">
         <Label htmlFor="zoom-level">Zoom level</Label>
         <p className="text-sm text-muted-foreground">
-          Adjust how large the entire Dyad workspace appears. This mirrors the
-          browser zoom controls that Electron provides.
+          Adjusts the zoom level to make content easier to read.
         </p>
       </div>
       <Select

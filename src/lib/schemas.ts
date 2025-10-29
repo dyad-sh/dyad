@@ -211,22 +211,14 @@ export type ContextPathResults = {
 export const ReleaseChannelSchema = z.enum(["stable", "beta"]);
 export type ReleaseChannel = z.infer<typeof ReleaseChannelSchema>;
 
-const LegacyWorkspaceTextSizeSchema = z.enum([
-  "small",
-  "medium",
-  "large",
-  "extraLarge",
-]);
-export type LegacyWorkspaceTextSize = z.infer<typeof LegacyWorkspaceTextSizeSchema>;
-
-export const WorkspaceZoomLevelSchema = z.enum([
+export const ZoomLevelSchema = z.enum([
   "90",
   "100",
   "110",
   "125",
   "150",
 ]);
-export type WorkspaceZoomLevel = z.infer<typeof WorkspaceZoomLevelSchema>;
+export type ZoomLevel = z.infer<typeof ZoomLevelSchema>;
 
 /**
  * Zod schema for user settings
@@ -256,8 +248,7 @@ export const UserSettingsSchema = z.object({
   enableSupabaseWriteSqlMigration: z.boolean().optional(),
   selectedChatMode: ChatModeSchema.optional(),
   acceptedCommunityCode: z.boolean().optional(),
-  workspaceTextSize: LegacyWorkspaceTextSizeSchema.optional(),
-  workspaceZoomLevel: WorkspaceZoomLevelSchema.optional(),
+  zoomLevel: ZoomLevelSchema.optional(),
 
   enableAutoFixProblems: z.boolean().optional(),
   enableNativeGit: z.boolean().optional(),

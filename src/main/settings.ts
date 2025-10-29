@@ -6,8 +6,8 @@ import {
   type UserSettings,
   Secret,
   VertexProviderSetting,
-  type WorkspaceZoomLevel,
-  type LegacyWorkspaceTextSize,
+  type ZoomLevel,
+  ZoomLevelSchema,
 } from "../lib/schemas";
 import { safeStorage } from "electron";
 import { v4 as uuidv4 } from "uuid";
@@ -19,17 +19,6 @@ const logger = log.scope("settings");
 
 // IF YOU NEED TO UPDATE THIS, YOU'RE PROBABLY DOING SOMETHING WRONG!
 // Need to maintain backwards compatibility!
-const DEFAULT_WORKSPACE_ZOOM_LEVEL: WorkspaceZoomLevel = "100";
-const LEGACY_TEXT_SIZE_TO_ZOOM: Record<
-  LegacyWorkspaceTextSize,
-  WorkspaceZoomLevel
-> = {
-  small: "90",
-  medium: "100",
-  large: "110",
-  extraLarge: "125",
-};
-
 const DEFAULT_SETTINGS: UserSettings = {
   selectedModel: {
     name: "auto",
@@ -47,7 +36,6 @@ const DEFAULT_SETTINGS: UserSettings = {
   enableAutoUpdate: true,
   releaseChannel: "stable",
   selectedTemplateId: DEFAULT_TEMPLATE_ID,
-  workspaceZoomLevel: DEFAULT_WORKSPACE_ZOOM_LEVEL,
 };
 
 const SETTINGS_FILE = "user-settings.json";
@@ -64,19 +52,19 @@ export function readSettings(): UserSettings {
       return DEFAULT_SETTINGS;
     }
     const rawSettings = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-    const combinedSettings: UserSettings = {
+    const combinedSettings = {
       ...DEFAULT_SETTINGS,
       ...rawSettings,
-    };
-    if (!combinedSettings.workspaceZoomLevel) {
-      const legacyTextSize = combinedSettings.workspaceTextSize;
-      combinedSettings.workspaceZoomLevel = legacyTextSize
-        ? LEGACY_TEXT_SIZE_TO_ZOOM[
-            legacyTextSize as LegacyWorkspaceTextSize
-          ] ?? DEFAULT_WORKSPACE_ZOOM_LEVEL
-        : DEFAULT_WORKSPACE_ZOOM_LEVEL;
+    } as Record<string, unknown> & Partial<UserSettings>;
+
+    if (
+      combinedSettings.zoomLevel &&
+      !isValidZoomLevel(combinedSettings.zoomLevel)
+    ) {
+      delete combinedSettings.zoomLevel;
     }
-    delete (combinedSettings as Record<string, unknown>).workspaceTextSize;
+
+    delete combinedSettings.workspaceTextSize;
     const supabase = combinedSettings.supabase;
     if (supabase) {
       if (supabase.refreshToken) {
@@ -169,8 +157,17 @@ export function writeSettings(settings: Partial<UserSettings>): void {
   try {
     const filePath = getSettingsFilePath();
     const currentSettings = readSettings();
-    const newSettings = { ...currentSettings, ...settings };
-    delete (newSettings as Record<string, unknown>).workspaceTextSize;
+    const newSettings = {
+      ...currentSettings,
+      ...settings,
+    } as Record<string, unknown> & UserSettings;
+
+    delete newSettings.workspaceTextSize;
+
+    const { zoomLevel } = newSettings;
+    if (zoomLevel && !isValidZoomLevel(zoomLevel)) {
+      delete newSettings.zoomLevel;
+    }
     if (newSettings.githubAccessToken) {
       newSettings.githubAccessToken = encrypt(
         newSettings.githubAccessToken.value,
@@ -242,4 +239,8 @@ export function decrypt(data: Secret): string {
     return safeStorage.decryptString(Buffer.from(data.value, "base64"));
   }
   return data.value;
+}
+
+function isValidZoomLevel(value: unknown): value is ZoomLevel {
+  return ZoomLevelSchema.safeParse(value).success;
 }

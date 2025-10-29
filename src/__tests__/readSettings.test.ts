@@ -69,7 +69,6 @@ describe("readSettings", () => {
           "selectedTemplateId": "react",
           "telemetryConsent": "unset",
           "telemetryUserId": "[scrubbed]",
-          "workspaceZoomLevel": "100",
         }
       `);
     });
@@ -316,7 +315,6 @@ describe("readSettings", () => {
           "selectedTemplateId": "react",
           "telemetryConsent": "unset",
           "telemetryUserId": "[scrubbed]",
-          "workspaceZoomLevel": "100",
         }
       `);
     });

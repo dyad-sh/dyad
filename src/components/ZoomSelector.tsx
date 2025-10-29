@@ -1,9 +1,6 @@
 import { useMemo } from "react";
 import { useSettings } from "@/hooks/useSettings";
-import {
-  WorkspaceZoomLevel,
-  WorkspaceZoomLevelSchema,
-} from "@/lib/schemas";
+import { ZoomLevel, ZoomLevelSchema } from "@/lib/schemas";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -13,7 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const WORKSPACE_ZOOM_LEVEL_LABELS: Record<WorkspaceZoomLevel, string> = {
+const ZOOM_LEVEL_LABELS: Record<ZoomLevel, string> = {
   "90": "90%",
   "100": "100%",
   "110": "110%",
@@ -21,7 +18,7 @@ const WORKSPACE_ZOOM_LEVEL_LABELS: Record<WorkspaceZoomLevel, string> = {
   "150": "150%",
 };
 
-const WORKSPACE_ZOOM_LEVEL_DESCRIPTIONS: Record<WorkspaceZoomLevel, string> = {
+const ZOOM_LEVEL_DESCRIPTIONS: Record<ZoomLevel, string> = {
   "90": "Slightly zoomed out to fit more content on screen.",
   "100": "Default zoom level.",
   "110": "Zoom in a little for easier reading.",
@@ -29,21 +26,21 @@ const WORKSPACE_ZOOM_LEVEL_DESCRIPTIONS: Record<WorkspaceZoomLevel, string> = {
   "150": "Maximum zoom for maximum accessibility.",
 };
 
-const DEFAULT_ZOOM_LEVEL: WorkspaceZoomLevel = "100";
+const DEFAULT_ZOOM_LEVEL: ZoomLevel = "100";
 
-export function WorkspaceZoomSelector() {
+export function ZoomSelector() {
   const { settings, updateSettings } = useSettings();
-  const currentZoomLevel: WorkspaceZoomLevel = useMemo(() => {
-    const value = settings?.workspaceZoomLevel ?? DEFAULT_ZOOM_LEVEL;
-    return WorkspaceZoomLevelSchema.safeParse(value).success
-      ? (value as WorkspaceZoomLevel)
+  const currentZoomLevel: ZoomLevel = useMemo(() => {
+    const value = settings?.zoomLevel ?? DEFAULT_ZOOM_LEVEL;
+    return ZoomLevelSchema.safeParse(value).success
+      ? (value as ZoomLevel)
       : DEFAULT_ZOOM_LEVEL;
-  }, [settings?.workspaceZoomLevel]);
+  }, [settings?.zoomLevel]);
 
   return (
     <div className="space-y-2">
       <div className="flex flex-col gap-1">
-        <Label htmlFor="workspace-zoom-level">Workspace zoom level</Label>
+        <Label htmlFor="zoom-level">Zoom level</Label>
         <p className="text-sm text-muted-foreground">
           Adjust how large the entire Dyad workspace appears. This mirrors the
           browser zoom controls that Electron provides.
@@ -52,23 +49,19 @@ export function WorkspaceZoomSelector() {
       <Select
         value={currentZoomLevel}
         onValueChange={(value) =>
-          updateSettings({ workspaceZoomLevel: value as WorkspaceZoomLevel })
+          updateSettings({ zoomLevel: value as ZoomLevel })
         }
       >
-        <SelectTrigger id="workspace-zoom-level" className="w-[220px]">
+        <SelectTrigger id="zoom-level" className="w-[220px]">
           <SelectValue placeholder="Select zoom level" />
         </SelectTrigger>
         <SelectContent>
-          {Object.entries(WORKSPACE_ZOOM_LEVEL_LABELS).map(([value, label]) => (
+          {Object.entries(ZOOM_LEVEL_LABELS).map(([value, label]) => (
             <SelectItem key={value} value={value}>
               <div className="flex flex-col text-left">
                 <span>{label}</span>
                 <span className="text-xs text-muted-foreground">
-                  {
-                    WORKSPACE_ZOOM_LEVEL_DESCRIPTIONS[
-                      value as WorkspaceZoomLevel
-                    ]
-                  }
+                  {ZOOM_LEVEL_DESCRIPTIONS[value as ZoomLevel]}
                 </span>
               </div>
             </SelectItem>

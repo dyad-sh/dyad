@@ -9,10 +9,10 @@ import { useRunApp } from "@/hooks/useRunApp";
 import { useAtomValue } from "jotai";
 import { previewModeAtom } from "@/atoms/appAtoms";
 import { useSettings } from "@/hooks/useSettings";
-import type { WorkspaceZoomLevel } from "@/lib/schemas";
+import type { ZoomLevel } from "@/lib/schemas";
 
-const DEFAULT_WORKSPACE_ZOOM_LEVEL: WorkspaceZoomLevel = "100";
-const WORKSPACE_ZOOM_FACTORS: Record<WorkspaceZoomLevel, number> = {
+const DEFAULT_ZOOM_LEVEL: ZoomLevel = "100";
+const ZOOM_FACTORS: Record<ZoomLevel, number> = {
   "90": 0.9,
   "100": 1,
   "110": 1.1,
@@ -30,11 +30,8 @@ export default function RootLayout({
   const { settings } = useSettings();
 
   useEffect(() => {
-    const zoomLevel =
-      settings?.workspaceZoomLevel ?? DEFAULT_WORKSPACE_ZOOM_LEVEL;
-    const zoomFactor =
-      WORKSPACE_ZOOM_FACTORS[zoomLevel] ??
-      WORKSPACE_ZOOM_FACTORS[DEFAULT_WORKSPACE_ZOOM_LEVEL];
+    const zoomLevel = settings?.zoomLevel ?? DEFAULT_ZOOM_LEVEL;
+    const zoomFactor = ZOOM_FACTORS[zoomLevel] ?? ZOOM_FACTORS[DEFAULT_ZOOM_LEVEL];
 
     const electronApi = (window as Window & {
       electron?: {
@@ -46,27 +43,14 @@ export default function RootLayout({
 
     if (electronApi?.webFrame?.setZoomFactor) {
       electronApi.webFrame.setZoomFactor(zoomFactor);
-      document.documentElement.style.setProperty("--workspace-font-scale", "1");
 
       return () => {
-        electronApi.webFrame?.setZoomFactor(
-          WORKSPACE_ZOOM_FACTORS[DEFAULT_WORKSPACE_ZOOM_LEVEL],
-        );
+        electronApi.webFrame?.setZoomFactor(ZOOM_FACTORS[DEFAULT_ZOOM_LEVEL]);
       };
     }
 
-    document.documentElement.style.setProperty(
-      "--workspace-font-scale",
-      zoomFactor.toString(),
-    );
-
-    return () => {
-      document.documentElement.style.setProperty(
-        "--workspace-font-scale",
-        WORKSPACE_ZOOM_FACTORS[DEFAULT_WORKSPACE_ZOOM_LEVEL].toString(),
-      );
-    };
-  }, [settings?.workspaceZoomLevel]);
+    return () => {};
+  }, [settings?.zoomLevel]);
   // Global keyboard listener for refresh events
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {

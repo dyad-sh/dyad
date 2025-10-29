@@ -12,16 +12,13 @@ export function getSupabaseFunctionName(filePath: string): string {
   }
 
   const trimmedPath = normalizedPath.replace(/\/$/, "");
-  const extension = path.posix.extname(trimmedPath);
-  const hasExtension = extension !== "";
+  const withoutPrefix = trimmedPath.slice("supabase/functions/".length);
+  const [firstSegment = ""] = withoutPrefix.split("/");
 
-  if (hasExtension) {
-    const parentDirectory = path.posix.dirname(trimmedPath);
-    if (parentDirectory === "supabase/functions") {
-      return path.posix.basename(trimmedPath, extension);
-    }
-    return path.posix.basename(parentDirectory);
+  if (firstSegment === "") {
+    return "";
   }
 
-  return path.posix.basename(trimmedPath);
+  const extension = path.posix.extname(firstSegment);
+  return extension ? firstSegment.slice(0, -extension.length) : firstSegment;
 }

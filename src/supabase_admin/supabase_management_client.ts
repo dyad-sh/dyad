@@ -354,18 +354,26 @@ async function collectFunctionFiles({
   const normalizedFunctionPath = path.resolve(functionPath);
   const stats = await fsPromises.stat(normalizedFunctionPath);
 
-  if (stats.isFile()) {
-    const directoryName = path.basename(path.dirname(normalizedFunctionPath));
+  let functionDirectory: string | null = null;
 
-    if (directoryName !== functionName) {
+  if (stats.isDirectory()) {
+    functionDirectory = normalizedFunctionPath;
+  } else {
+    functionDirectory = findFunctionDirectory(normalizedFunctionPath, functionName);
+
+    if (!functionDirectory) {
       const relativeFilePath = toPosixPath(
         path.relative(appPath, normalizedFunctionPath),
+      );
+      const zipRelativePath = stripSupabaseFunctionsPrefix(
+        relativeFilePath,
+        functionName,
       );
       const content = await fsPromises.readFile(normalizedFunctionPath);
       return {
         files: [
           {
-            relativePath: relativeFilePath,
+            relativePath: zipRelativePath,
             content,
             date: stats.mtime,
           },
@@ -373,22 +381,23 @@ async function collectFunctionFiles({
         signature: buildSignature([
           {
             absolutePath: normalizedFunctionPath,
-            relativePath: relativeFilePath,
+            relativePath: zipRelativePath,
             mtimeMs: stats.mtimeMs,
             size: stats.size,
           },
         ]),
-        entrypointPath: relativeFilePath,
+        entrypointPath: zipRelativePath,
         cacheKey: normalizedFunctionPath,
       };
     }
   }
 
-  const functionDirectory = stats.isDirectory()
-    ? normalizedFunctionPath
-    : path.dirname(normalizedFunctionPath);
+  if (!functionDirectory) {
+    throw new Error(
+      `Unable to locate directory for Supabase function ${functionName}`,
+    );
+  }
 
-  const relativeDirectory = toPosixPath(path.relative(appPath, functionDirectory));
   const indexPath = path.join(functionDirectory, "index.ts");
 
   try {
@@ -399,17 +408,14 @@ async function collectFunctionFiles({
     );
   }
 
-  const statEntries = await listFilesWithStats(
-    functionDirectory,
-    relativeDirectory,
-  );
+  const statEntries = await listFilesWithStats(functionDirectory, "");
   const signature = buildSignature(statEntries);
   const files = await loadZipEntries(statEntries);
 
   return {
     files,
     signature,
-    entrypointPath: toPosixPath(path.relative(appPath, indexPath)),
+    entrypointPath: toPosixPath(path.relative(functionDirectory, indexPath)),
     cacheKey: functionDirectory,
   };
 }
@@ -429,10 +435,7 @@ async function getSharedFiles(appPath: string): Promise<CachedSharedFiles> {
     throw error;
   }
 
-  const relativeDirectory = toPosixPath(
-    path.relative(appPath, sharedDirectory),
-  );
-  const statEntries = await listFilesWithStats(sharedDirectory, relativeDirectory);
+  const statEntries = await listFilesWithStats(sharedDirectory, "shared");
   const signature = buildSignature(statEntries);
 
   const cached = sharedFilesCache.get(sharedDirectory);
@@ -502,6 +505,67 @@ async function loadZipEntries(entries: FileStatEntry[]): Promise<ZipFileEntry[]>
 
 function toPosixPath(filePath: string): string {
   return filePath.split(path.sep).join(path.posix.sep);
+}
+
+function findFunctionDirectory(
+  filePath: string,
+  functionName: string,
+): string | null {
+  let currentDir = path.dirname(filePath);
+
+  while (true) {
+    const parentDir = path.dirname(currentDir);
+    const normalized = toPosixPath(currentDir);
+
+    if (normalized.endsWith(`/supabase/functions/${functionName}`)) {
+      return currentDir;
+    }
+
+    if (!normalized.includes("/supabase/functions/")) {
+      break;
+    }
+
+    if (currentDir === parentDir) {
+      break;
+    }
+
+    currentDir = parentDir;
+  }
+
+  return null;
+}
+
+function stripSupabaseFunctionsPrefix(
+  relativePath: string,
+  functionName: string,
+): string {
+  const normalized = toPosixPath(relativePath).replace(/^\//, "");
+  const slugPrefix = `supabase/functions/${functionName}/`;
+
+  if (normalized.startsWith(slugPrefix)) {
+    const remainder = normalized.slice(slugPrefix.length);
+    return remainder || "index.ts";
+  }
+
+  const slugFilePrefix = `supabase/functions/${functionName}`;
+
+  if (normalized.startsWith(slugFilePrefix)) {
+    const remainder = normalized.slice(slugFilePrefix.length);
+    if (remainder.startsWith("/")) {
+      const trimmed = remainder.slice(1);
+      return trimmed || "index.ts";
+    }
+    const combined = `${functionName}${remainder}`;
+    return combined || "index.ts";
+  }
+
+  const basePrefix = "supabase/functions/";
+  if (normalized.startsWith(basePrefix)) {
+    const withoutBase = normalized.slice(basePrefix.length);
+    return withoutBase || path.posix.basename(normalized);
+  }
+
+  return normalized || path.posix.basename(relativePath);
 }
 
 function createZipBuffer(files: ZipFileEntry[]): Buffer {

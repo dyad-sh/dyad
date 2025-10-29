@@ -29,14 +29,14 @@ Private API keys/tokens exposed in browser where they can be stolen
 **Relevant Files**: Relevant file paths
 </dyad-security-finding>
 
-# Example: 
+# Example:
 
 <dyad-security-finding title="SQL Injection in User Lookup" level="critical">
 **What**: User input flows directly into database queries without validation, allowing attackers to execute arbitrary SQL commands
 
 **Risk**: An attacker could steal all customer data, delete your entire database, or take over admin accounts by manipulating the URL
 
-**Potential Solutions**: 
+**Potential Solutions**:
 1. Use parameterized queries: `db.query('SELECT * FROM users WHERE id = ?', [userId])`
 2. Add input validation to ensure `userId` is a number
 3. Implement an ORM like Prisma or TypeORM that prevents SQL injection by default

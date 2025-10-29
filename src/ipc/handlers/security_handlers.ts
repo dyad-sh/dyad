@@ -1,11 +1,8 @@
 import { ipcMain } from "electron";
 import { db } from "../../db";
-import { apps, chats } from "../../db/schema";
-import { eq } from "drizzle-orm";
+import { chats, messages } from "../../db/schema";
+import { eq, and, like, desc } from "drizzle-orm";
 import type { SecurityReviewResult, SecurityFinding } from "../ipc_types";
-import * as fs from "node:fs";
-import * as path from "node:path";
-import { getDyadAppPath } from "../../paths/paths";
 
 export function registerSecurityHandlers() {
   ipcMain.handle("get-latest-security-review", async (event, appId: number) => {
@@ -13,85 +10,43 @@ export function registerSecurityHandlers() {
       throw new Error("App ID is required");
     }
 
-    // Find all chats for this app
-    const appChats = await db.query.chats.findMany({
-      where: eq(chats.appId, appId),
-      with: {
-        messages: {
-          orderBy: (messages, { desc }) => [desc(messages.createdAt)],
-        },
-      },
-      orderBy: (chats, { desc }) => [desc(chats.createdAt)],
-    });
+    // Query for the most recent message with security findings
+    // Use database filtering instead of loading all data into memory
+    const result = await db
+      .select({
+        content: messages.content,
+        createdAt: messages.createdAt,
+        chatId: messages.chatId,
+      })
+      .from(messages)
+      .innerJoin(chats, eq(messages.chatId, chats.id))
+      .where(
+        and(
+          eq(chats.appId, appId),
+          eq(messages.role, "assistant"),
+          like(messages.content, "%<dyad-security-finding%"),
+        ),
+      )
+      .orderBy(desc(messages.createdAt))
+      .limit(1);
 
-    // Search through messages to find one with security findings
-    for (const chat of appChats) {
-      for (const message of chat.messages) {
-        if (
-          message.role === "assistant" &&
-          message.content.includes("<dyad-security-finding")
-        ) {
-          // Parse the security findings from the message
-          const findings = parseSecurityFindings(message.content);
-
-          if (findings.length > 0) {
-            const result: SecurityReviewResult = {
-              findings,
-              timestamp: message.createdAt.toISOString(),
-              chatId: chat.id,
-            };
-            return result;
-          }
-        }
-      }
+    if (result.length === 0) {
+      throw new Error("No security review found for this app");
     }
 
-    throw new Error("No security review found for this app");
+    const message = result[0];
+    const findings = parseSecurityFindings(message.content);
+
+    if (findings.length === 0) {
+      throw new Error("No security review found for this app");
+    }
+
+    return {
+      findings,
+      timestamp: message.createdAt.toISOString(),
+      chatId: message.chatId,
+    } satisfies SecurityReviewResult;
   });
-
-  // Read SECURITY_RULES.md for a given app
-  ipcMain.handle("get-security-rules", async (_event, appId: number) => {
-    if (!appId) {
-      throw new Error("App ID is required");
-    }
-
-    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-    if (!app) {
-      throw new Error("App not found");
-    }
-
-    const appPath = getDyadAppPath(app.path);
-    const rulesPath = path.join(appPath, "SECURITY_RULES.md");
-    try {
-      await fs.promises.access(rulesPath);
-    } catch {
-      return "";
-    }
-    const content = await fs.promises.readFile(rulesPath, "utf8");
-    return content;
-  });
-
-  // Write SECURITY_RULES.md for a given app
-  ipcMain.handle(
-    "set-security-rules",
-    async (
-      _event,
-      params: { appId: number; content: string },
-    ): Promise<{ success: true }> => {
-      const { appId, content } = params;
-      if (!appId) {
-        throw new Error("App ID is required");
-      }
-      const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-      if (!app) {
-        throw new Error("App not found");
-      }
-      const appPath = getDyadAppPath(app.path);
-      const rulesPath = path.join(appPath, "SECURITY_RULES.md");
-      await fs.promises.writeFile(rulesPath, content ?? "", "utf8");
-      return { success: true };
-    },
-  );
 }
 
 function parseSecurityFindings(content: string): SecurityFinding[] {

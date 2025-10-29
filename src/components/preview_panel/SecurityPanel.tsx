@@ -28,8 +28,9 @@ import { Badge } from "@/components/ui/badge";
 import type { SecurityFinding, SecurityReviewResult } from "@/ipc/ipc_types";
 import { useState, useEffect } from "react";
 import { VanillaMarkdownParser } from "@/components/chat/DyadMarkdownParser";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { showSuccess } from "@/lib/toast";
+import { showSuccess, showWarning } from "@/lib/toast";
+import { useLoadAppFile } from "@/hooks/useLoadAppFile";
+import { useQueryClient } from "@tanstack/react-query";
 
 const getSeverityColor = (level: SecurityFinding["level"]) => {
   switch (level) {
@@ -58,6 +59,18 @@ const getSeverityIcon = (level: SecurityFinding["level"]) => {
 };
 
 const DESCRIPTION_PREVIEW_LENGTH = 150;
+
+const createFindingKey = (finding: {
+  title: string;
+  level: string;
+  description: string;
+}): string => {
+  return JSON.stringify({
+    title: finding.title,
+    level: finding.level,
+    description: finding.description,
+  });
+};
 
 const formatTimeAgo = (input: string | number | Date): string => {
   const timestampMs = new Date(input).getTime();
@@ -404,7 +417,7 @@ function FindingsTable({
                 ? finding.description.substring(0, DESCRIPTION_PREVIEW_LENGTH) +
                   "..."
                 : finding.description;
-              const findingKey = `${finding.title}|${finding.level}|${finding.description}`;
+              const findingKey = createFindingKey(finding);
               const isFixing = fixingFindingKey === findingKey;
 
               return (
@@ -529,15 +542,10 @@ function FindingDetailsDialog({
               }
             }}
             disabled={
-              finding
-                ? fixingFindingKey ===
-                  `${finding.title}|${finding.level}|${finding.description}`
-                : false
+              finding ? fixingFindingKey === createFindingKey(finding) : false
             }
           >
-            {finding &&
-            fixingFindingKey ===
-              `${finding.title}|${finding.level}|${finding.description}` ? (
+            {finding && fixingFindingKey === createFindingKey(finding) ? (
               <>
                 <svg
                   className="w-4 h-4 animate-spin mr-2"
@@ -577,6 +585,7 @@ export const SecurityPanel = () => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { streamMessage } = useStreamChat({ hasChatId: false });
   const { data, isLoading, error, refetch } = useSecurityReview(selectedAppId);
   const [isRunningReview, setIsRunningReview] = useState(false);
@@ -587,43 +596,53 @@ export const SecurityPanel = () => {
   const [isEditRulesOpen, setIsEditRulesOpen] = useState(false);
   const [rulesContent, setRulesContent] = useState("");
   const [fixingFindingKey, setFixingFindingKey] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const {
-    data: fetchedRules,
-    refetch: refetchRules,
-    isFetching: isFetchingRules,
-  } = useQuery({
-    queryKey: ["security-rules", selectedAppId],
-    queryFn: async () => {
-      if (!selectedAppId) throw new Error("No app selected");
-      return IpcClient.getInstance().getSecurityRules(selectedAppId);
-    },
-    enabled: isEditRulesOpen && !!selectedAppId,
-  });
+    content: fetchedRules,
+    loading: isFetchingRules,
+    refreshFile: refetchRules,
+  } = useLoadAppFile(
+    isEditRulesOpen && selectedAppId ? selectedAppId : null,
+    isEditRulesOpen ? "SECURITY_RULES.md" : null,
+  );
 
   useEffect(() => {
-    if (typeof fetchedRules === "string") {
+    if (fetchedRules !== null) {
       setRulesContent(fetchedRules);
     }
   }, [fetchedRules]);
 
-  const saveRulesMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedAppId) throw new Error("No app selected");
-      await IpcClient.getInstance().setSecurityRules({
-        appId: selectedAppId,
-        content: rulesContent,
+  const handleSaveRules = async () => {
+    if (!selectedAppId) {
+      showError("No app selected");
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      const ipcClient = IpcClient.getInstance();
+      const { warning } = await ipcClient.editAppFile(
+        selectedAppId,
+        "SECURITY_RULES.md",
+        rulesContent,
+      );
+      await queryClient.invalidateQueries({
+        queryKey: ["versions", selectedAppId],
       });
-    },
-    onSuccess: () => {
-      showSuccess("Security rules saved");
+      if (warning) {
+        showWarning(warning);
+      } else {
+        showSuccess("Security rules saved");
+      }
       setIsEditRulesOpen(false);
       refetchRules();
-    },
-    onError: (err: any) => {
-      showError(`Failed to save security rules: ${err}`);
-    },
-  });
+    } catch (err: any) {
+      showError(`Failed to save security rules: ${err.message || err}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const openFindingDetails = (finding: SecurityFinding) => {
     setDetailsFinding(finding);
@@ -668,7 +687,7 @@ export const SecurityPanel = () => {
     }
 
     try {
-      const key = `${finding.title}|${finding.level}|${finding.description}`;
+      const key = createFindingKey(finding);
       setFixingFindingKey(key);
       // Create a new chat
       const chatId = await IpcClient.getInstance().createChat(selectedAppId);
@@ -768,10 +787,10 @@ ${finding.description}`;
                 <Button variant="outline">Cancel</Button>
               </DialogClose>
               <Button
-                onClick={() => saveRulesMutation.mutate()}
-                disabled={saveRulesMutation.isPending || isFetchingRules}
+                onClick={handleSaveRules}
+                disabled={isSaving || isFetchingRules}
               >
-                {saveRulesMutation.isPending ? "Saving..." : "Save"}
+                {isSaving ? "Saving..." : "Save"}
               </Button>
             </DialogFooter>
           </DialogContent>

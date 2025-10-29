@@ -6,6 +6,8 @@ import {
   type UserSettings,
   Secret,
   VertexProviderSetting,
+  type WorkspaceZoomLevel,
+  type LegacyWorkspaceTextSize,
 } from "../lib/schemas";
 import { safeStorage } from "electron";
 import { v4 as uuidv4 } from "uuid";
@@ -17,6 +19,17 @@ const logger = log.scope("settings");
 
 // IF YOU NEED TO UPDATE THIS, YOU'RE PROBABLY DOING SOMETHING WRONG!
 // Need to maintain backwards compatibility!
+const DEFAULT_WORKSPACE_ZOOM_LEVEL: WorkspaceZoomLevel = "100";
+const LEGACY_TEXT_SIZE_TO_ZOOM: Record<
+  LegacyWorkspaceTextSize,
+  WorkspaceZoomLevel
+> = {
+  small: "90",
+  medium: "100",
+  large: "110",
+  extraLarge: "125",
+};
+
 const DEFAULT_SETTINGS: UserSettings = {
   selectedModel: {
     name: "auto",
@@ -34,7 +47,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   enableAutoUpdate: true,
   releaseChannel: "stable",
   selectedTemplateId: DEFAULT_TEMPLATE_ID,
-  workspaceTextSize: "medium",
+  workspaceZoomLevel: DEFAULT_WORKSPACE_ZOOM_LEVEL,
 };
 
 const SETTINGS_FILE = "user-settings.json";
@@ -55,6 +68,15 @@ export function readSettings(): UserSettings {
       ...DEFAULT_SETTINGS,
       ...rawSettings,
     };
+    if (!combinedSettings.workspaceZoomLevel) {
+      const legacyTextSize = combinedSettings.workspaceTextSize;
+      combinedSettings.workspaceZoomLevel = legacyTextSize
+        ? LEGACY_TEXT_SIZE_TO_ZOOM[
+            legacyTextSize as LegacyWorkspaceTextSize
+          ] ?? DEFAULT_WORKSPACE_ZOOM_LEVEL
+        : DEFAULT_WORKSPACE_ZOOM_LEVEL;
+    }
+    delete (combinedSettings as Record<string, unknown>).workspaceTextSize;
     const supabase = combinedSettings.supabase;
     if (supabase) {
       if (supabase.refreshToken) {
@@ -148,6 +170,7 @@ export function writeSettings(settings: Partial<UserSettings>): void {
     const filePath = getSettingsFilePath();
     const currentSettings = readSettings();
     const newSettings = { ...currentSettings, ...settings };
+    delete (newSettings as Record<string, unknown>).workspaceTextSize;
     if (newSettings.githubAccessToken) {
       newSettings.githubAccessToken = encrypt(
         newSettings.githubAccessToken.value,

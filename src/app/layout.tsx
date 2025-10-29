@@ -9,14 +9,15 @@ import { useRunApp } from "@/hooks/useRunApp";
 import { useAtomValue } from "jotai";
 import { previewModeAtom } from "@/atoms/appAtoms";
 import { useSettings } from "@/hooks/useSettings";
-import type { WorkspaceTextSize } from "@/lib/schemas";
+import type { WorkspaceZoomLevel } from "@/lib/schemas";
 
-const DEFAULT_WORKSPACE_TEXT_SIZE: WorkspaceTextSize = "medium";
-const WORKSPACE_TEXT_SCALE: Record<WorkspaceTextSize, number> = {
-  small: 0.9,
-  medium: 1,
-  large: 1.1,
-  extraLarge: 1.25,
+const DEFAULT_WORKSPACE_ZOOM_LEVEL: WorkspaceZoomLevel = "100";
+const WORKSPACE_ZOOM_FACTORS: Record<WorkspaceZoomLevel, number> = {
+  "90": 0.9,
+  "100": 1,
+  "110": 1.1,
+  "125": 1.25,
+  "150": 1.5,
 };
 
 export default function RootLayout({
@@ -29,24 +30,43 @@ export default function RootLayout({
   const { settings } = useSettings();
 
   useEffect(() => {
-    const textSize =
-      settings?.workspaceTextSize ?? DEFAULT_WORKSPACE_TEXT_SIZE;
-    const scale =
-      WORKSPACE_TEXT_SCALE[textSize] ??
-      WORKSPACE_TEXT_SCALE[DEFAULT_WORKSPACE_TEXT_SIZE];
+    const zoomLevel =
+      settings?.workspaceZoomLevel ?? DEFAULT_WORKSPACE_ZOOM_LEVEL;
+    const zoomFactor =
+      WORKSPACE_ZOOM_FACTORS[zoomLevel] ??
+      WORKSPACE_ZOOM_FACTORS[DEFAULT_WORKSPACE_ZOOM_LEVEL];
+
+    const electronApi = (window as Window & {
+      electron?: {
+        webFrame?: {
+          setZoomFactor: (factor: number) => void;
+        };
+      };
+    }).electron;
+
+    if (electronApi?.webFrame?.setZoomFactor) {
+      electronApi.webFrame.setZoomFactor(zoomFactor);
+      document.documentElement.style.setProperty("--workspace-font-scale", "1");
+
+      return () => {
+        electronApi.webFrame?.setZoomFactor(
+          WORKSPACE_ZOOM_FACTORS[DEFAULT_WORKSPACE_ZOOM_LEVEL],
+        );
+      };
+    }
 
     document.documentElement.style.setProperty(
       "--workspace-font-scale",
-      scale.toString(),
+      zoomFactor.toString(),
     );
 
     return () => {
       document.documentElement.style.setProperty(
         "--workspace-font-scale",
-        WORKSPACE_TEXT_SCALE[DEFAULT_WORKSPACE_TEXT_SIZE].toString(),
+        WORKSPACE_ZOOM_FACTORS[DEFAULT_WORKSPACE_ZOOM_LEVEL].toString(),
       );
     };
-  }, [settings?.workspaceTextSize]);
+  }, [settings?.workspaceZoomLevel]);
   // Global keyboard listener for refresh events
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {

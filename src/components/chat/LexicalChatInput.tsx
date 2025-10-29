@@ -26,6 +26,7 @@ import { forwardRef } from "react";
 import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { MENTION_REGEX, parseAppMentions } from "@/shared/parse_mention_apps";
+import { useLoadApp } from "@/hooks/useLoadApp";
 
 // Define the theme for mentions
 const beautifulMentionsTheme: BeautifulMentionsTheme = {
@@ -38,9 +39,10 @@ const CustomMenuItem = forwardRef<
   HTMLLIElement,
   BeautifulMentionsMenuItemProps
 >(({ selected, item, ...props }, ref) => {
-  const isPrompt = typeof item !== "string" && item.data?.type === "prompt";
-  const label = isPrompt ? "Prompt" : "App";
-  const value = typeof item === "string" ? item : (item as any)?.value;
+  const isPrompt = item.data?.type === "prompt";
+  const isApp = item.data?.type === "app";
+  const label = isPrompt ? "Prompt" : isApp ? "App" : "File";
+  const value = (item as any)?.value;
   return (
     <li
       className={`m-0 flex items-center px-3 py-2 cursor-pointer whitespace-nowrap ${
@@ -56,7 +58,9 @@ const CustomMenuItem = forwardRef<
           className={`px-2 py-0.5 text-xs font-medium rounded-md flex-shrink-0 ${
             isPrompt
               ? "bg-purple-500 text-white"
-              : "bg-primary text-primary-foreground"
+              : isApp
+                ? "bg-primary text-primary-foreground"
+                : "bg-blue-600 text-white"
           }`}
         >
           {label}
@@ -181,7 +185,7 @@ function ExternalValueSyncPlugin({
       // Build nodes from internal value, turning @app:Name and @prompt:<id> into mention nodes
       let lastIndex = 0;
       let match: RegExpExecArray | null;
-      const combined = /@app:([a-zA-Z0-9_-]+)|@prompt:(\d+)/g;
+      const combined = /@app:([a-zA-Z0-9_-]+)|@prompt:(\d+)|@file:([^\s]+)/g;
       while ((match = combined.exec(value)) !== null) {
         const start = match.index;
         const full = match[0];
@@ -196,6 +200,9 @@ function ExternalValueSyncPlugin({
           const id = Number(match[2]);
           const title = promptsById[id] || `prompt:${id}`;
           paragraph.append($createBeautifulMentionNode("@", title));
+        } else if (match[3]) {
+          const filePath = match[3];
+          paragraph.append($createBeautifulMentionNode("@", filePath));
         }
         lastIndex = start + full.length;
       }
@@ -243,6 +250,8 @@ export function LexicalChatInput({
   const { prompts } = usePrompts();
   const [shouldClear, setShouldClear] = useState(false);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
+  const { app } = useLoadApp(selectedAppId);
+  const appFiles = app?.files;
 
   // Prepare mention items - convert apps to mention format
   const mentionItems = React.useMemo(() => {
@@ -271,7 +280,10 @@ export function LexicalChatInput({
       return true;
     });
 
-    const appMentions = filteredApps.map((app) => app.name);
+    const appMentions = filteredApps.map((app) => ({
+      value: app.name,
+      type: "app",
+    }));
 
     const promptItems = (prompts || []).map((p) => ({
       value: p.title,
@@ -279,10 +291,15 @@ export function LexicalChatInput({
       id: p.id,
     }));
 
+    const fileItems = (appFiles || []).map((item) => ({
+      value: item,
+      type: "file",
+    }));
+
     return {
-      "@": [...appMentions, ...promptItems],
+      "@": [...appMentions, ...promptItems, ...fileItems],
     };
-  }, [apps, selectedAppId, value, excludeCurrentApp, prompts]);
+  }, [apps, selectedAppId, value, excludeCurrentApp, prompts, appFiles]);
 
   const initialConfig = {
     namespace: "ChatInput",
@@ -325,11 +342,20 @@ export function LexicalChatInput({
             const regex = new RegExp(`@(${escapedTitle})(?![\\w-])`, "g");
             textContent = textContent.replace(regex, `@prompt:${id}`);
           }
+
+          for (const fullPath of appFiles || []) {
+            const escapedDisplay = fullPath.replace(
+              /[.*+?^${}()|[\]\\]/g,
+              "\\$&",
+            );
+            const fileRegex = new RegExp(`@(${escapedDisplay})(?![\\w-])`, "g");
+            textContent = textContent.replace(fileRegex, `@file:${fullPath}`);
+          }
         }
         onChange(textContent);
       });
     },
-    [onChange, apps, prompts],
+    [onChange, apps, prompts, appFiles],
   );
 
   const handleSubmit = useCallback(() => {

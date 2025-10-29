@@ -14,7 +14,10 @@ import {
   deploySupabaseFunctions,
   executeSupabaseSql,
 } from "../../supabase_admin/supabase_management_client";
-import { isServerFunction } from "../../supabase_admin/supabase_utils";
+import {
+  getSupabaseFunctionName,
+  isServerFunction,
+} from "../../supabase_admin/supabase_utils";
 import { UserSettings } from "../../lib/schemas";
 import { gitCommit } from "../utils/git_utils";
 import { readSettings } from "@/main/settings";
@@ -30,7 +33,6 @@ import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils"
 
 import { FileUploadsState } from "../utils/file_uploads_state";
 
-const readFile = fs.promises.readFile;
 const logger = log.scope("response_processor");
 
 interface Output {
@@ -38,17 +40,7 @@ interface Output {
   error: unknown;
 }
 
-function getFunctionNameFromPath(input: string): string {
-  return path.basename(path.extname(input) ? path.dirname(input) : input);
-}
-
-async function readFileFromFunctionPath(input: string): Promise<string> {
-  // Sometimes, the path given is a directory, sometimes it's the file itself.
-  if (path.extname(input) === "") {
-    return readFile(path.join(input, "index.ts"), "utf8");
-  }
-  return readFile(input, "utf8");
-}
+const readFile = fs.promises.readFile;
 
 export async function processFullResponseActions(
   fullResponse: string,
@@ -238,7 +230,7 @@ export async function processFullResponseActions(
         try {
           await deleteSupabaseFunction({
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
-            functionName: getFunctionNameFromPath(filePath),
+            functionName: getSupabaseFunctionName(filePath),
           });
         } catch (error) {
           errors.push({
@@ -287,7 +279,7 @@ export async function processFullResponseActions(
         try {
           await deleteSupabaseFunction({
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
-            functionName: getFunctionNameFromPath(tag.from),
+            functionName: getSupabaseFunctionName(tag.from),
           });
         } catch (error) {
           warnings.push({
@@ -300,8 +292,9 @@ export async function processFullResponseActions(
         try {
           await deploySupabaseFunctions({
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
-            functionName: getFunctionNameFromPath(tag.to),
-            content: await readFileFromFunctionPath(toPath),
+            functionName: getSupabaseFunctionName(tag.to),
+            appPath,
+            functionPath: toPath,
           });
         } catch (error) {
           errors.push({
@@ -350,12 +343,13 @@ export async function processFullResponseActions(
       fs.writeFileSync(fullFilePath, content);
       logger.log(`Successfully wrote file: ${fullFilePath}`);
       writtenFiles.push(filePath);
-      if (isServerFunction(filePath) && typeof content === "string") {
+      if (isServerFunction(filePath)) {
         try {
           await deploySupabaseFunctions({
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
-            functionName: path.basename(path.dirname(filePath)),
-            content: content,
+            functionName: getSupabaseFunctionName(filePath),
+            appPath,
+            functionPath: fullFilePath,
           });
         } catch (error) {
           errors.push({

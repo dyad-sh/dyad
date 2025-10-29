@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import log from "electron-log";
 import { db } from "../../db";
 import { eq } from "drizzle-orm";
@@ -14,10 +16,27 @@ import { handleSupabaseOAuthReturn } from "../../supabase_admin/supabase_return_
 import { safeSend } from "../utils/safe_sender";
 
 import { SetSupabaseAppProjectParams, SupabaseBranch } from "../ipc_types";
+import { getDyadAppPath } from "../../paths/paths";
 
 const logger = log.scope("supabase_handlers");
 const handle = createLoggedHandler(logger);
 const testOnlyHandle = createTestOnlyLoggedHandler(logger);
+const fsPromises = fs.promises;
+
+const SHARED_README_TEMPLATE = [
+  "# Supabase Shared Modules",
+  "",
+  "Store reusable utilities for Supabase Edge Functions in this directory. Each file should export logic that can be imported from individual functions within `supabase/functions`.",
+  "",
+  "Import helpers from functions using relative paths, for example:",
+  "",
+  "```ts",
+  'import { exampleHelper } from "../shared/exampleHelper.ts";',
+  "```",
+  "",
+  "Avoid importing client-side application code into shared modules. Everything in this directory must be compatible with the Deno runtime used by Supabase Edge Functions.",
+  "",
+].join("\n");
 
 export function registerSupabaseHandlers() {
   handle("supabase:list-projects", async () => {
@@ -52,6 +71,9 @@ export function registerSupabaseHandlers() {
       _,
       { projectId, appId, parentProjectId }: SetSupabaseAppProjectParams,
     ) => {
+      const appRecord = await db.query.apps.findFirst({
+        where: eq(apps.id, appId),
+      });
       await db
         .update(apps)
         .set({
@@ -63,6 +85,10 @@ export function registerSupabaseHandlers() {
       logger.info(
         `Associated app ${appId} with Supabase project ${projectId} ${parentProjectId ? `and parent project ${parentProjectId}` : ""}`,
       );
+
+      if (appRecord) {
+        await ensureSupabaseSharedDirectory(appRecord.path);
+      }
     },
   );
 
@@ -103,6 +129,13 @@ export function registerSupabaseHandlers() {
         `Set fake Supabase project ${fakeProjectId} for app ${appId} during testing.`,
       );
 
+      const appRecord = await db.query.apps.findFirst({
+        where: eq(apps.id, appId),
+      });
+      if (appRecord) {
+        await ensureSupabaseSharedDirectory(appRecord.path);
+      }
+
       // Simulate the deep link event
       safeSend(event.sender, "deep-link-received", {
         type: "supabase-oauth-return",
@@ -113,4 +146,33 @@ export function registerSupabaseHandlers() {
       );
     },
   );
+}
+
+async function ensureSupabaseSharedDirectory(appPathValue: string) {
+  const appDirectory = getDyadAppPath(appPathValue);
+  const sharedDirectory = path.join(appDirectory, "supabase", "shared");
+
+  try {
+    await fsPromises.mkdir(sharedDirectory, { recursive: true });
+  } catch (error) {
+    logger.warn(
+      `Failed to ensure Supabase shared directory at ${sharedDirectory}:`,
+      error,
+    );
+    return;
+  }
+
+  const readmePath = path.join(sharedDirectory, "README.md");
+  try {
+    await fsPromises.access(readmePath);
+  } catch {
+    try {
+      await fsPromises.writeFile(readmePath, SHARED_README_TEMPLATE, "utf8");
+    } catch (writeError) {
+      logger.warn(
+        `Failed to write Supabase shared README at ${readmePath}:`,
+        writeError,
+      );
+    }
+  }
 }

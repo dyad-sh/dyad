@@ -20,6 +20,6 @@ When creating hooks/components that call IPC handlers:
 ## General guidance
 - Favor descriptive module/function names that mirror IPC channel semantics.
 - Keep Electron security practices in mind (no `remote`, validate/lock by `appId` when mutating shared resources).
-- Add tests or stories in the same folder tree when touching renderer components.
+- Add tests in the same folder tree when touching renderer components.
 
 Use these guidelines whenever you work within this repository.

@@ -32,6 +32,8 @@ const validInvokeChannels = [
   "set-app-env-vars",
   "edit-app-file",
   "read-app-file",
+  "create-app-file",
+  "delete-app-file",
   "run-app",
   "stop-app",
   "restart-app",

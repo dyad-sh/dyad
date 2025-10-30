@@ -297,6 +297,17 @@ export interface EditAppFileReturnType {
   warning?: string;
 }
 
+export interface CreateAppFileParams {
+  appId: number;
+  filePath: string;
+  content?: string;
+}
+
+export interface DeleteAppFileParams {
+  appId: number;
+  filePath: string;
+}
+
 export interface EnvVar {
   key: string;
   value: string;

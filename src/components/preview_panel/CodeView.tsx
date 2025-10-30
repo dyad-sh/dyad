@@ -49,7 +49,7 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
         {/* Content */}
         <div className="flex flex-1 overflow-hidden">
           <div className="w-1/3 overflow-auto border-r">
-            <FileTree files={app.files} />
+            <FileTree files={app.files} appId={app.id ?? null} />
           </div>
           <div className="w-2/3">
             {selectedFile ? (

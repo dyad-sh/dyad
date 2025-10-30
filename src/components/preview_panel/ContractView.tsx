@@ -1,8 +1,10 @@
 import { FileEditor } from "./FileEditor";
 import { FileTree } from "./FileTree";
+import { SuiSetup } from "./SuiSetup";
 import { useState, useEffect } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 import { selectedFileAtom } from "@/atoms/viewAtoms";
+import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { Button } from "@/components/ui/button";
 import {
   Code2,
@@ -11,10 +13,13 @@ import {
   XCircle,
   Loader2,
   RefreshCw,
-  FileCode
+  FileCode,
+  Sparkles,
+  Settings
 } from "lucide-react";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { IpcClient } from "@/ipc/ipc_client";
+import { useStreamChat } from "@/hooks/useStreamChat";
 
 interface App {
   id?: number;
@@ -34,12 +39,16 @@ type DeployStatus = "idle" | "deploying" | "success" | "error";
 export const ContractView = ({ loading, app }: ContractViewProps) => {
   const selectedFile = useAtomValue(selectedFileAtom);
   const setSelectedFile = useSetAtom(selectedFileAtom);
+  const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { refreshApp } = useLoadApp(app?.id ?? null);
+  const { streamMessage } = useStreamChat();
   const [compileStatus, setCompileStatus] = useState<CompileStatus>("idle");
   const [deployStatus, setDeployStatus] = useState<DeployStatus>("idle");
   const [compileOutput, setCompileOutput] = useState("");
   const [deployOutput, setDeployOutput] = useState("");
   const [suiAddress, setSuiAddress] = useState<string | null>(null);
+  const [rawCompileError, setRawCompileError] = useState("");
+  const [showSetup, setShowSetup] = useState(false);
 
   // Get Sui address on mount
   useEffect(() => {
@@ -72,6 +81,7 @@ export const ContractView = ({ loading, app }: ContractViewProps) => {
 
     setCompileStatus("compiling");
     setCompileOutput("");
+    setRawCompileError("");
 
     try {
       const result = await IpcClient.getInstance().suiCompile(app.path);
@@ -79,14 +89,41 @@ export const ContractView = ({ loading, app }: ContractViewProps) => {
       if (result.success) {
         setCompileStatus("success");
         setCompileOutput(result.output);
+        setRawCompileError("");
       } else {
         setCompileStatus("error");
-        setCompileOutput(result.error || result.output);
+        // Use the truncated formatted output for UI display
+        setCompileOutput(result.output);
+        // Store full formatted error for AI fix prompt (all errors, not truncated)
+        setRawCompileError(result.fullError || result.error || "");
       }
     } catch (error) {
       setCompileStatus("error");
       setCompileOutput(`✗ Compilation failed:\n${error}`);
+      setRawCompileError(String(error));
     }
+  };
+
+  const handleFixErrors = () => {
+    if (!selectedChatId || !rawCompileError) return;
+
+    const fixPrompt = `The Move smart contract failed to compile with the following errors:
+
+\`\`\`
+${rawCompileError}
+\`\`\`
+
+Please fix these compilation errors in the contract. Make sure to:
+1. Address all the error messages shown above
+2. Update the Move.toml file if needed (e.g., add missing dependencies)
+3. Fix any syntax errors, type mismatches, or missing imports
+4. Ensure the code follows Sui Move 2024 edition standards
+5. Maintain the original functionality while fixing the errors`;
+
+    streamMessage({
+      prompt: fixPrompt,
+      chatId: selectedChatId,
+    });
   };
 
   const handleDeploy = async () => {
@@ -98,7 +135,6 @@ export const ContractView = ({ loading, app }: ContractViewProps) => {
     try {
       const result = await IpcClient.getInstance().suiDeploy({
         appPath: app.path,
-        gasAddress: suiAddress || undefined,
       });
 
       if (result.success) {
@@ -141,6 +177,15 @@ export const ContractView = ({ loading, app }: ContractViewProps) => {
 
         <div className="flex items-center gap-2">
           <Button
+            onClick={() => setShowSetup(!showSetup)}
+            variant={showSetup ? "default" : "ghost"}
+            size="sm"
+            title="Sui Deployment Setup"
+          >
+            <Settings className="w-4 h-4" />
+          </Button>
+
+          <Button
             onClick={() => refreshApp()}
             variant="ghost"
             size="sm"
@@ -180,6 +225,21 @@ export const ContractView = ({ loading, app }: ContractViewProps) => {
             )}
           </Button>
 
+          {/* Fix with AI button - only show when there are compilation errors */}
+          {compileStatus === "error" && rawCompileError && (
+            <Button
+              onClick={handleFixErrors}
+              variant="secondary"
+              size="sm"
+              disabled={!selectedChatId}
+              className="gap-2 bg-purple-600 hover:bg-purple-700 text-white"
+              title={!selectedChatId ? "No chat selected" : "Ask AI to fix errors"}
+            >
+              <Sparkles className="w-4 h-4" />
+              Fix with AI
+            </Button>
+          )}
+
           <Button
             onClick={handleDeploy}
             variant="default"
@@ -215,6 +275,13 @@ export const ContractView = ({ loading, app }: ContractViewProps) => {
         </div>
       </div>
 
+      {/* Sui Setup Panel */}
+      {showSetup && (
+        <div className="border-b p-4 bg-muted/30">
+          <SuiSetup suiAddress={suiAddress} />
+        </div>
+      )}
+
       {/* Content Area */}
       <div className="flex flex-1 overflow-hidden">
         {/* File Tree */}
@@ -239,9 +306,18 @@ export const ContractView = ({ loading, app }: ContractViewProps) => {
 
           {/* Compile/Deploy Output */}
           {(compileOutput || deployOutput) && (
-            <div className="border-t bg-muted/50 p-3 max-h-48 overflow-auto">
-              <div className="font-mono text-xs whitespace-pre-wrap">
-                {deployOutput || compileOutput}
+            <div className="border-t bg-muted/50 p-4 max-h-96 overflow-auto">
+              <div className="space-y-2">
+                {/* Output header */}
+                <div className="flex items-center gap-2 pb-2 border-b border-border/50">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    {deployOutput ? "Deployment Output" : "Compilation Output"}
+                  </span>
+                </div>
+                {/* Output content */}
+                <div className="font-mono text-xs whitespace-pre-wrap leading-relaxed">
+                  {deployOutput || compileOutput}
+                </div>
               </div>
             </div>
           )}

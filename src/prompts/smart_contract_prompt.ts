@@ -156,9 +156,9 @@ When translating a contract:
 6. Testing recommendations
 
 **File Structure Requirements:**
-- Always create Move.toml in the contract root directory
-- Place all .move files in a sources/ subdirectory
-- Example: erc20_token/Move.toml and erc20_token/sources/erc20_token.move
+- Always create Move.toml in the contract root directory (src/<package_name>/)
+- Place all .move files in a sources/ subdirectory (src/<package_name>/sources/)
+- The package name should match the contract type (e.g., erc20, erc721, erc1155, etc.)
 
 Always prioritize correctness and safety over feature parity. If a Solidity pattern doesn't translate cleanly to Move, explain the recommended Sui-native approach.
 `;

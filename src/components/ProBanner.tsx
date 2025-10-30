@@ -100,7 +100,7 @@ export function AiAccessBanner() {
       <div className="relative z-10 text-center flex flex-col items-center gap-0.5 sm:gap-1 md:gap-1.5 px-4 md:px-6 pr-6 md:pr-8">
         <div className="mt-0.5 sm:mt-1 flex items-center gap-2 sm:gap-3 justify-center">
           <div className="text-xl font-semibold tracking-tight text-indigo-900 dark:text-indigo-100">
-            Access leading AI models with one plan
+            Translate and generate code with one plan
           </div>
           <button
             type="button"
@@ -112,7 +112,7 @@ export function AiAccessBanner() {
         </div>
 
         <div className="mt-1.5 sm:mt-2 grid grid-cols-3 gap-6 md:gap-8 items-center justify-items-center opacity-90">
-          <div className="flex items-center justify-center">
+          {/* <div className="flex items-center justify-center">
             <img
               src={openAiLogo}
               alt="OpenAI"
@@ -138,7 +138,7 @@ export function AiAccessBanner() {
               height={30}
               className="h-3 w-auto dark:invert"
             />
-          </div>
+          </div> */}
         </div>
       </div>
     </div>

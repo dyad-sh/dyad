@@ -47,7 +47,10 @@ import { createFromTemplate } from "./createFromTemplate";
 import { gitCommit } from "../utils/git_utils";
 import { safeSend } from "../utils/safe_sender";
 import { normalizePath } from "../../../shared/normalizePath";
-import { isServerFunction } from "@/supabase_admin/supabase_utils";
+import {
+  getSupabaseFunctionName,
+  isServerFunction,
+} from "@/supabase_admin/supabase_utils";
 import { getVercelTeamSlug } from "../utils/vercel_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import { AppSearchResult } from "@/lib/schemas";
@@ -1069,8 +1072,9 @@ export function registerAppHandlers() {
         try {
           await deploySupabaseFunctions({
             supabaseProjectId: app.supabaseProjectId,
-            functionName: path.basename(path.dirname(filePath)),
-            content: content,
+            functionName: getSupabaseFunctionName(filePath),
+            appPath,
+            functionPath: fullPath,
           });
         } catch (error) {
           logger.error(`Error deploying Supabase function ${filePath}:`, error);

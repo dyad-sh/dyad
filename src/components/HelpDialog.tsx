@@ -93,7 +93,7 @@ Issues that do not meet these requirements will be closed and may need to be res
 ## Actual Behavior (required)
 <!-- What actually happened? -->
 
-## Screenshout (Optional)
+## Screenshot (Optional)
 <!-- Screenshot of the bug -->
 
 ## System Information

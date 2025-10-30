@@ -40,7 +40,7 @@ export function ScreenshotSuccessDialog({
           className="w-full py-6 border-primary/50 shadow-sm shadow-primary/10 transition-all hover:shadow-md hover:shadow-primary/15"
         >
           <BugIcon className="mr-2 h-5 w-5" />{" "}
-          {isLoading ? "Preparing Report..." : "Proceed the the github issue"}
+          {isLoading ? "Preparing Report..." : "Proceed to the github issue"}
         </Button>
       </DialogContent>
     </Dialog>

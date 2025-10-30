@@ -212,6 +212,7 @@ export function registerDebugHandlers() {
       clipboard.writeImage(image);
     } catch (err) {
       console.error("Error taking screenshot:", err);
+      throw err;
     }
   });
 }

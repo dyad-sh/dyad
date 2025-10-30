@@ -1,0 +1,45 @@
+- paragraph: "Please fix the following security issue in a simple and effective way:"
+- paragraph:
+  - strong: SQL Injection in User Lookup
+  - text: (critical severity)
+- paragraph:
+  - strong: What
+  - text: ": User input flows directly into database queries without validation, allowing attackers to execute arbitrary SQL commands"
+- paragraph:
+  - strong: Risk
+  - text: ": An attacker could steal all customer data, delete your entire database, or take over admin accounts by manipulating the URL"
+- paragraph:
+  - strong: Potential Solutions
+  - text: ":"
+- list:
+  - listitem:
+    - text: "Use parameterized queries:"
+    - code: "`db.query('SELECT * FROM users WHERE id = ?', [userId])`"
+  - listitem:
+    - text: Add input validation to ensure
+    - code: "`userId`"
+    - text: is a number
+  - listitem: Implement an ORM like Prisma or TypeORM that prevents SQL injection by default
+- paragraph:
+  - strong: Relevant Files
+  - text: ":"
+  - code: "`src/api/users.ts`"
+- img
+- text: file1.txt
+- button "Edit":
+  - img
+- img
+- text: file1.txt
+- paragraph: More EOM
+- button:
+  - img
+- img
+- text: Approved
+- img
+- text: less than a minute ago
+- img
+- text: wrote 1 file(s)
+- button "Undo":
+  - img
+- button "Retry":
+  - img

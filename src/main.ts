@@ -12,6 +12,8 @@ import { getDatabasePath, initializeDatabase } from "./db";
 import {
   AddMcpServerConfigSchema,
   AddMcpServerPayload,
+  AddPromptDataSchema,
+  AddPromptPayload,
 } from "./ipc/deep_link_data";
 import { IS_TEST_BUILD } from "./ipc/utils/test_utils";
 import { UserSettings } from "./lib/schemas";
@@ -373,6 +375,32 @@ function handleDeepLinkReturn(url: string) {
       dialog.showErrorBox(
         "Invalid MCP Server Configuration",
         "The deep link contains malformed configuration data. Please check the URL and try again.",
+      );
+    }
+    return;
+  }
+  // dyad://add-prompt?data=<base64-encoded-json>
+  if (parsed.hostname === "add-prompt") {
+    const data = parsed.searchParams.get("data");
+    if (!data) {
+      dialog.showErrorBox("Invalid URL", "Expected data parameter");
+      return;
+    }
+
+    try {
+      const decodedJson = atob(data);
+      const decoded = JSON.parse(decodedJson);
+      const parsedData = AddPromptDataSchema.parse(decoded);
+
+      mainWindow?.webContents.send("deep-link-received", {
+        type: parsed.hostname,
+        payload: parsedData as AddPromptPayload,
+      });
+    } catch (error) {
+      logger.error("Failed to parse add-prompt deep link:", error);
+      dialog.showErrorBox(
+        "Invalid Prompt Data",
+        "The deep link contains malformed data. Please check the URL and try again.",
       );
     }
     return;

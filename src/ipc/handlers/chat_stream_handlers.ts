@@ -30,7 +30,10 @@ import {
   extractCodebase,
   readFileWithCache,
 } from "../../utils/codebase";
-import { processFullResponseActions } from "../processors/response_processor";
+import {
+  dryRunSearchReplace,
+  processFullResponseActions,
+} from "../processors/response_processor";
 import { streamTestResponse } from "./testing_chat_handlers";
 import { getTestResponse } from "./testing_chat_handlers";
 import { getModelClient, ModelClient } from "../utils/get_model_client";
@@ -40,6 +43,7 @@ import {
   getSupabaseClientCode,
 } from "../../supabase_admin/supabase_context";
 import { SUMMARIZE_CHAT_SYSTEM_PROMPT } from "../../prompts/summarize_chat_system_prompt";
+import { SECURITY_REVIEW_SYSTEM_PROMPT } from "../../prompts/security_review_prompt";
 import fs from "node:fs";
 import * as path from "path";
 import * as os from "os";
@@ -75,6 +79,7 @@ import { inArray } from "drizzle-orm";
 import { replacePromptReference } from "../utils/replacePromptReference";
 import { mcpManager } from "../utils/mcp_manager";
 import z from "zod";
+import { isTurboEditsV2Enabled } from "@/lib/schemas";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
@@ -563,6 +568,7 @@ ${componentSnippet}
             settings.selectedChatMode === "agent"
               ? "build"
               : settings.selectedChatMode,
+          enableTurboEditsV2: isTurboEditsV2Enabled(settings),
         });
 
         // Add information about mentioned apps if any
@@ -573,6 +579,29 @@ ${componentSnippet}
 
           systemPrompt += `\n\n# Referenced Apps\nThe user has mentioned the following apps in their prompt: ${mentionedAppsList}. Their codebases have been included in the context for your reference. When referring to these apps, you can understand their structure and code to provide better assistance, however you should NOT edit the files in these referenced apps. The referenced apps are NOT part of the current app and are READ-ONLY.`;
         }
+
+        const isSecurityReviewIntent =
+          req.prompt.startsWith("/security-review");
+        if (isSecurityReviewIntent) {
+          systemPrompt = SECURITY_REVIEW_SYSTEM_PROMPT;
+          try {
+            const appPath = getDyadAppPath(updatedChat.app.path);
+            const rulesPath = path.join(appPath, "SECURITY_RULES.md");
+            let securityRules = "";
+
+            await fs.promises.access(rulesPath);
+            securityRules = await fs.promises.readFile(rulesPath, "utf8");
+
+            if (securityRules && securityRules.trim().length > 0) {
+              systemPrompt +=
+                "\n\n# Project-specific security rules:\n" + securityRules;
+            }
+          } catch (error) {
+            // Best-effort: if reading rules fails, continue without them
+            logger.info("Failed to read security rules", error);
+          }
+        }
+
         if (
           updatedChat.app?.supabaseProjectId &&
           settings.supabase?.accessToken?.value
@@ -586,7 +615,9 @@ ${componentSnippet}
             }));
         } else if (
           // Neon projects don't need Supabase.
-          !updatedChat.app?.neonProjectId
+          !updatedChat.app?.neonProjectId &&
+          // If in security review mode, we don't need to mention supabase is available.
+          !isSecurityReviewIntent
         ) {
           systemPrompt += "\n\n" + SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT;
         }
@@ -898,6 +929,7 @@ This conversation includes one or more image attachments. When the user uploads 
             systemPromptOverride: constructSystemPrompt({
               aiRules: await readAiRules(getDyadAppPath(updatedChat.app.path)),
               chatMode: "agent",
+              enableTurboEditsV2: false,
             }),
             files: files,
             dyadDisableFiles: true,
@@ -938,6 +970,53 @@ This conversation includes one or more image attachments. When the user uploads 
             processResponseChunkUpdate,
           });
           fullResponse = result.fullResponse;
+
+          if (
+            settings.selectedChatMode !== "ask" &&
+            isTurboEditsV2Enabled(settings)
+          ) {
+            const issues = await dryRunSearchReplace({
+              fullResponse,
+              appPath: getDyadAppPath(updatedChat.app.path),
+            });
+            if (issues.length > 0) {
+              logger.warn(
+                `Detected search-replace issues: ${issues.map((i) => i.error).join(", ")}`,
+              );
+              const formattedSearchReplaceIssues = issues
+                .map(({ filePath, error }) => {
+                  return `File path: ${filePath}\nError: ${error}`;
+                })
+                .join("\n\n");
+              const originalFullResponse = fullResponse;
+              fullResponse += `<dyad-output type="warning" message="Could not apply Turbo Edits properly for some of the files; re-generating code...">${formattedSearchReplaceIssues}</dyad-output>`;
+
+              const { fullStream: fixSearchReplaceStream } =
+                await simpleStreamText({
+                  // Build messages: reuse chat history and original full response, then ask to fix search-replace issues.
+                  chatMessages: [
+                    ...chatMessages,
+                    { role: "assistant", content: originalFullResponse },
+                    {
+                      role: "user",
+                      content: `There was an issue with the following \`dyad-search-replace\` tags. Please fix them by generating the code changes using \`dyad-write\` tags instead.
+                      
+${formattedSearchReplaceIssues}`,
+                    },
+                  ],
+                  modelClient,
+                  files: files,
+                });
+              const result = await processStreamChunks({
+                fullStream: fixSearchReplaceStream,
+                fullResponse,
+                abortController,
+                chatId: req.chatId,
+                processResponseChunkUpdate,
+              });
+              fullResponse = result.fullResponse;
+            }
+          }
 
           if (
             !abortController.signal.aborted &&

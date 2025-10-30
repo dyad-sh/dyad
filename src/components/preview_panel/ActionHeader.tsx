@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   Wrench,
   Globe,
+  Shield,
 } from "lucide-react";
 import { ChatActivityButton } from "@/components/chat/ChatActivity";
 import { motion } from "framer-motion";
@@ -39,10 +40,8 @@ export type PreviewMode =
   | "code"
   | "problems"
   | "configure"
-  | "publish";
-
-const BUTTON_CLASS_NAME =
-  "no-app-region-drag cursor-pointer relative flex items-center gap-1 px-2 py-1 rounded-md text-[13px] font-medium z-10 hover:bg-[var(--background)]";
+  | "publish"
+  | "security";
 
 // Preview Header component with preview mode toggle
 export const ActionHeader = () => {
@@ -54,6 +53,7 @@ export const ActionHeader = () => {
   const problemsRef = useRef<HTMLButtonElement>(null);
   const configureRef = useRef<HTMLButtonElement>(null);
   const publishRef = useRef<HTMLButtonElement>(null);
+  const securityRef = useRef<HTMLButtonElement>(null);
   const [indicatorStyle, setIndicatorStyle] = useState({ left: 0, width: 0 });
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const { problemReport } = useCheckProblems(selectedAppId);
@@ -139,6 +139,9 @@ export const ActionHeader = () => {
         case "publish":
           targetRef = publishRef;
           break;
+        case "security":
+          targetRef = securityRef;
+          break;
         default:
           return;
       }
@@ -177,12 +180,14 @@ export const ActionHeader = () => {
       <button
         data-testid={testId}
         ref={ref}
-        className={BUTTON_CLASS_NAME}
+        className="no-app-region-drag cursor-pointer relative flex items-center gap-0.5 px-2 py-0.5 rounded-md text-xs font-medium z-10 hover:bg-[var(--background)] flex-col"
         onClick={() => selectPanel(mode)}
       >
         {icon}
-        {!isCompact && <span>{text}</span>}
-        {badge}
+        <span>
+          {!isCompact && <span>{text}</span>}
+          {badge}
+        </span>
       </button>
     );
 
@@ -199,6 +204,7 @@ export const ActionHeader = () => {
 
     return buttonContent;
   };
+  const iconSize = 15;
 
   return (
     <TooltipProvider>
@@ -220,14 +226,14 @@ export const ActionHeader = () => {
           {renderButton(
             "preview",
             previewRef,
-            <Eye size={14} />,
+            <Eye size={iconSize} />,
             "Preview",
             "preview-mode-button",
           )}
           {renderButton(
             "problems",
             problemsRef,
-            <AlertTriangle size={14} />,
+            <AlertTriangle size={iconSize} />,
             "Problems",
             "problems-mode-button",
             displayCount && (
@@ -239,21 +245,28 @@ export const ActionHeader = () => {
           {renderButton(
             "code",
             codeRef,
-            <Code size={14} />,
+            <Code size={iconSize} />,
             "Code",
             "code-mode-button",
           )}
           {renderButton(
             "configure",
             configureRef,
-            <Wrench size={14} />,
+            <Wrench size={iconSize} />,
             "Configure",
             "configure-mode-button",
           )}
           {renderButton(
+            "security",
+            securityRef,
+            <Shield size={iconSize} />,
+            "Security",
+            "security-mode-button",
+          )}
+          {renderButton(
             "publish",
             publishRef,
-            <Globe size={14} />,
+            <Globe size={iconSize} />,
             "Publish",
             "publish-mode-button",
           )}

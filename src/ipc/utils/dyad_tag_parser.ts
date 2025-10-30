@@ -137,3 +137,48 @@ export function getDyadCommandTags(fullResponse: string): string[] {
 
   return commands;
 }
+
+export function getDyadSearchReplaceTags(fullResponse: string): {
+  path: string;
+  content: string;
+  description?: string;
+}[] {
+  const dyadSearchReplaceRegex =
+    /<dyad-search-replace([^>]*)>([\s\S]*?)<\/dyad-search-replace>/gi;
+  const pathRegex = /path="([^"]+)"/;
+  const descriptionRegex = /description="([^"]+)"/;
+
+  let match;
+  const tags: { path: string; content: string; description?: string }[] = [];
+
+  while ((match = dyadSearchReplaceRegex.exec(fullResponse)) !== null) {
+    const attributesString = match[1] || "";
+    let content = match[2].trim();
+
+    const pathMatch = pathRegex.exec(attributesString);
+    const descriptionMatch = descriptionRegex.exec(attributesString);
+
+    if (pathMatch && pathMatch[1]) {
+      const path = pathMatch[1];
+      const description = descriptionMatch?.[1];
+
+      // Handle markdown code fences if present
+      const contentLines = content.split("\n");
+      if (contentLines[0]?.startsWith("```")) {
+        contentLines.shift();
+      }
+      if (contentLines[contentLines.length - 1]?.startsWith("```")) {
+        contentLines.pop();
+      }
+      content = contentLines.join("\n");
+
+      tags.push({ path: normalizePath(path), content, description });
+    } else {
+      logger.warn(
+        "Found <dyad-search-replace> tag without a valid 'path' attribute:",
+        match[0],
+      );
+    }
+  }
+  return tags;
+}

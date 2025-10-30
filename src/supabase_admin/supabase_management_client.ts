@@ -282,46 +282,137 @@ export async function deploySupabaseFunctions({
   });
 
   const sharedFiles = await getSharedFiles(appPath);
-  const combinedSignature = `${functionFiles.signature}|shared:${sharedFiles.signature}`;
-  const cacheKey = functionFiles.cacheKey;
 
-  let zipBuffer: Buffer;
-  const cachedZip = functionZipCache.get(cacheKey);
-  if (cachedZip && cachedZip.signature === combinedSignature) {
-    logger.debug(
-      `Using cached zip for Supabase function ${functionName} at ${cacheKey}`,
-    );
-    zipBuffer = cachedZip.buffer;
-  } else {
-    const filesToPackage = [...functionFiles.files, ...sharedFiles.files];
-    zipBuffer = createZipBuffer(filesToPackage);
-    functionZipCache.set(cacheKey, {
-      signature: combinedSignature,
-      buffer: zipBuffer,
-    });
-  }
+  // Preserve your current structure (no "source/" prefixing)
+  let filesToUpload = [...functionFiles.files, ...sharedFiles.files].map(f => ({
+    ...f,
+    relativePath: f.relativePath,
+  }));
 
+  // ————————————————————————————————————————————————————————————————
+  // (1) In-memory import rewrite (deploy-only)
+  // Convert "../shared/..." and "./shared/..." to a bare specifier "shared/..."
+  // This keeps local code unchanged but makes it work reliably in Deno with an import map.
+ const rewriteImports = (content: string) =>
+  content
+    // Replace ANY number of "../" segments before "shared/" with "./"
+    .replace(/(\.\.\/)+shared\//g, "./shared/")
+    // Normalize accidental "././shared/" to a single "./shared/"
+    .replace(/(\.\/)+shared\//g, "./shared/");
+
+
+
+  filesToUpload = filesToUpload.map(f => {
+    const isJSorTS =
+      f.relativePath.endsWith(".ts") ||
+      f.relativePath.endsWith(".js") ||
+      f.relativePath.endsWith(".mjs") ||
+      f.relativePath.endsWith(".tsx") ||
+      f.relativePath.endsWith(".jsx");
+
+    if (!isJSorTS) return f;
+
+    const originalBuf: Buffer =
+      (f as any).content ?? (f as any).buffer ?? (f as any).data ?? Buffer.from([]);
+
+    const rewritten = rewriteImports(originalBuf.toString("utf8"));
+    if (rewritten === originalBuf.toString("utf8")) return f; // no change
+
+    return {
+      ...f,
+      // Safe in-memory change for deploy only:
+      content: Buffer.from(rewritten, "utf8"),
+      buffer: undefined,
+      data: undefined,
+    };
+  });
+
+  // ————————————————————————————————————————————————————————————————
+  // (2) Create a fresh import map beside the entrypoint
+  // We point the bare specifier "shared/" to a path *relative to the entrypoint directory*.
+  const entrypointPath = functionFiles.entrypointPath; // e.g., "functions/random-demo/index.ts"
+  const entryDir = path.posix.dirname(entrypointPath);
+  const importMapRelPath = path.posix.join(entryDir, "import_map.json");
+
+  // IMPORTANT: We want "shared/" to resolve to the *sibling* shared folder (if you keep structure)
+  // Example layout:
+  //   shared/util.ts
+  //   functions/random-demo/index.ts
+  //
+  // From entryDir = "functions/random-demo", the relative path to shared is "../shared/"
+  // But since we *upload* both "shared/..." and "functions/random-demo/...", the runtime sees both at /tmp/...,
+  // and "./" here refers to the entryDir. We want the specifier "shared/" to resolve correctly regardless.
+  //
+  // Two robust choices:
+  //  A) Map "shared/" -> "../shared/" (for sibling folder)
+  //  B) If you upload a nested "functions/random-demo/shared/...", use "./shared/"
+  //
+  // Choose A (sibling) for your described structure:
+  const importMap = {
+    imports: {
+      "shared/": "../shared/",
+    },
+  };
+
+  // Ensure we also upload the import_map.json file
+  const importMapBlob = new Blob(
+    [Buffer.from(JSON.stringify(importMap, null, 2), "utf8")],
+    { type: "application/json" },
+  );
+
+  // ————————————————————————————————————————————————————————————————
+  // (3) Build multipart form
   const supabase = await getSupabaseClient();
   const formData = new FormData();
-  formData.append(
-    "metadata",
-    JSON.stringify({
-      entrypoint_path: functionFiles.entrypointPath,
-      name: functionName,
-      // See: https://github.com/dyad-sh/dyad/issues/1010
-      verify_jwt: false,
-    }),
-  );
-  const zipArrayBuffer = new ArrayBuffer(zipBuffer.length);
-  new Uint8Array(zipArrayBuffer).set(zipBuffer);
-  formData.append(
-    "file",
-    new Blob([zipArrayBuffer], { type: "application/zip" }),
-    `${functionName}.zip`,
-  );
+
+  // Metadata: include the newly created import_map path
+  const metadata = {
+    entrypoint_path: entrypointPath,
+    name: functionName,
+    verify_jwt: false,
+    import_map: importMapRelPath,
+  };
+
+  formData.append("metadata", JSON.stringify(metadata));
+
+  const guessMime = (p: string) => {
+    if (p.endsWith(".json")) return "application/json";
+    if (p.endsWith(".ts")) return "application/typescript";
+    if (p.endsWith(".mjs")) return "application/javascript";
+    if (p.endsWith(".js")) return "application/javascript";
+    if (p.endsWith(".wasm")) return "application/wasm";
+    if (p.endsWith(".map")) return "application/json";
+    return "application/octet-stream";
+  };
+
+  logger.debug("Files to upload (multipart):");
+  for (const f of filesToUpload) {
+    logger.debug(` - ${f.relativePath}`);
+    const buf: Buffer =
+      (f as any).content ?? (f as any).buffer ?? (f as any).data ?? Buffer.from([]);
+    const mime = guessMime(f.relativePath);
+
+    // Use a Uint8Array to avoid TS union issues (ArrayBuffer | SharedArrayBuffer)
+    const blob = new Blob([new Uint8Array(buf)], { type: mime });
+    formData.append("file", blob, f.relativePath);
+  }
+
+  // Append the generated import map file last
+  formData.append("file", importMapBlob, importMapRelPath);
+
+  logger.debug("---- DEPLOY (NO ZIP) PAYLOAD DEBUG ----");
+  logger.debug("Metadata:", JSON.stringify(metadata));
+  logger.debug("Files:", [
+    ...filesToUpload.map(f => f.relativePath),
+    importMapRelPath,
+  ]);
+  logger.debug("Import map content:", JSON.stringify(importMap, null, 2));
+  logger.debug("---------------------------------------");
 
   const response = await fetch(
-    `https://api.supabase.com/v1/projects/${supabaseProjectId}/functions/deploy?slug=${functionName}`,
+    `https://api.supabase.com/v1/projects/${encodeURIComponent(
+      supabaseProjectId,
+    )}/functions/deploy?slug=${encodeURIComponent(functionName)}`,
     {
       method: "POST",
       headers: {
@@ -332,7 +423,8 @@ export async function deploySupabaseFunctions({
   );
 
   if (response.status !== 201) {
-    functionZipCache.delete(cacheKey);
+    const text = await response.text();
+    logger.error(`Supabase response: ${response.status} ${text}`);
     throw await createResponseError(response, "create function");
   }
 
@@ -341,6 +433,7 @@ export async function deploySupabaseFunctions({
   );
   await response.json();
 }
+
 
 async function collectFunctionFiles({
   appPath,
@@ -566,73 +659,6 @@ function stripSupabaseFunctionsPrefix(
   }
 
   return normalized || path.posix.basename(relativePath);
-}
-
-function createZipBuffer(files: ZipFileEntry[]): Buffer {
-  if (files.length === 0) {
-    throw new Error("Cannot deploy an empty Supabase function");
-  }
-
-  const fileParts: Buffer[] = [];
-  const centralDirectoryParts: Buffer[] = [];
-  let offset = 0;
-
-  for (const file of files) {
-    const fileNameBytes = Buffer.from(file.relativePath, "utf8");
-    const crc = crc32(file.content);
-    const { dosDate, dosTime } = toDosDateTime(file.date);
-
-    const localHeader = Buffer.alloc(30);
-    localHeader.writeUInt32LE(0x04034b50, 0);
-    localHeader.writeUInt16LE(20, 4);
-    localHeader.writeUInt16LE(0, 6);
-    localHeader.writeUInt16LE(0, 8);
-    localHeader.writeUInt16LE(dosTime, 10);
-    localHeader.writeUInt16LE(dosDate, 12);
-    localHeader.writeUInt32LE(crc >>> 0, 14);
-    localHeader.writeUInt32LE(file.content.length, 18);
-    localHeader.writeUInt32LE(file.content.length, 22);
-    localHeader.writeUInt16LE(fileNameBytes.length, 26);
-    localHeader.writeUInt16LE(0, 28);
-
-    fileParts.push(localHeader, fileNameBytes, file.content);
-
-    const centralHeader = Buffer.alloc(46);
-    centralHeader.writeUInt32LE(0x02014b50, 0);
-    centralHeader.writeUInt16LE(20, 4);
-    centralHeader.writeUInt16LE(20, 6);
-    centralHeader.writeUInt16LE(0, 8);
-    centralHeader.writeUInt16LE(0, 10);
-    centralHeader.writeUInt16LE(dosTime, 12);
-    centralHeader.writeUInt16LE(dosDate, 14);
-    centralHeader.writeUInt32LE(crc >>> 0, 16);
-    centralHeader.writeUInt32LE(file.content.length, 20);
-    centralHeader.writeUInt32LE(file.content.length, 24);
-    centralHeader.writeUInt16LE(fileNameBytes.length, 28);
-    centralHeader.writeUInt16LE(0, 30);
-    centralHeader.writeUInt16LE(0, 32);
-    centralHeader.writeUInt16LE(0, 34);
-    centralHeader.writeUInt16LE(0, 36);
-    centralHeader.writeUInt32LE(0, 38);
-    centralHeader.writeUInt32LE(offset, 42);
-
-    centralDirectoryParts.push(centralHeader, fileNameBytes);
-
-    offset += localHeader.length + fileNameBytes.length + file.content.length;
-  }
-
-  const centralDirectoryBuffer = Buffer.concat(centralDirectoryParts);
-  const endOfCentralDirectory = Buffer.alloc(22);
-  endOfCentralDirectory.writeUInt32LE(0x06054b50, 0);
-  endOfCentralDirectory.writeUInt16LE(0, 4);
-  endOfCentralDirectory.writeUInt16LE(0, 6);
-  endOfCentralDirectory.writeUInt16LE(files.length, 8);
-  endOfCentralDirectory.writeUInt16LE(files.length, 10);
-  endOfCentralDirectory.writeUInt32LE(centralDirectoryBuffer.length, 12);
-  endOfCentralDirectory.writeUInt32LE(offset, 16);
-  endOfCentralDirectory.writeUInt16LE(0, 20);
-
-  return Buffer.concat([...fileParts, centralDirectoryBuffer, endOfCentralDirectory]);
 }
 
 function toDosDateTime(date: Date): { dosDate: number; dosTime: number } {

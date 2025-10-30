@@ -385,9 +385,7 @@ export async function deploySupabaseFunctions({
     return "application/octet-stream";
   };
 
-  logger.debug("Files to upload (multipart):");
   for (const f of filesToUpload) {
-    logger.debug(` - ${f.relativePath}`);
     const buf: Buffer =
       (f as any).content ?? (f as any).buffer ?? (f as any).data ?? Buffer.from([]);
     const mime = guessMime(f.relativePath);
@@ -399,15 +397,6 @@ export async function deploySupabaseFunctions({
 
   // Append the generated import map file last
   formData.append("file", importMapBlob, importMapRelPath);
-
-  logger.debug("---- DEPLOY (NO ZIP) PAYLOAD DEBUG ----");
-  logger.debug("Metadata:", JSON.stringify(metadata));
-  logger.debug("Files:", [
-    ...filesToUpload.map(f => f.relativePath),
-    importMapRelPath,
-  ]);
-  logger.debug("Import map content:", JSON.stringify(importMap, null, 2));
-  logger.debug("---------------------------------------");
 
   const response = await fetch(
     `https://api.supabase.com/v1/projects/${encodeURIComponent(

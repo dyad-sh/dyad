@@ -615,7 +615,9 @@ ${componentSnippet}
             }));
         } else if (
           // Neon projects don't need Supabase.
-          !updatedChat.app?.neonProjectId
+          !updatedChat.app?.neonProjectId &&
+          // If in security review mode, we don't need to mention supabase is available.
+          !isSecurityReviewIntent
         ) {
           systemPrompt += "\n\n" + SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT;
         }

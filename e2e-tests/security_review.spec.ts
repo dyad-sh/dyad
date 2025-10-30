@@ -1,6 +1,9 @@
-import { test } from "./helpers/test_helper";
+import { test, testSkipIfWindows } from "./helpers/test_helper";
 
-test("security review", async ({ po }) => {
+// Skipping because snapshotting the security findings table is not
+// consistent across platforms because different amounts of text
+// get ellipsis'd out.
+testSkipIfWindows("security review", async ({ po }) => {
   await po.setUp({ autoApprove: true });
   await po.sendPrompt("tc=1");
 

@@ -174,7 +174,7 @@ function ReviewSummary({ data }: { data: SecurityReviewResult }) {
   ];
 
   return (
-    <div className="space-y-1">
+    <div className="space-y-1 mt-1">
       <div className="text-sm text-gray-600 dark:text-gray-400">
         Last reviewed {formatTimeAgo(data.timestamp)}
       </div>
@@ -209,8 +209,8 @@ function SecurityHeader({
   onOpenEditRules: () => void;
 }) {
   return (
-    <div className="sticky top-0 z-10 bg-background pt-4 pb-4 space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="sticky top-0 z-10 bg-background pt-3 pb-3 space-y-2">
+      <div className="flex items-center justify-between gap-2">
         <div>
           <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-1 flex items-center gap-2">
             <Shield className="w-5 h-5" />
@@ -219,9 +219,21 @@ function SecurityHeader({
               experimental
             </Badge>
           </h1>
-          <div className="text-sm text-gray-600 dark:text-gray-400">
-            <p>Note: this may not catch every security issue.</p>
+          <div className="text-sm">
+            <p>
+              <a
+                className="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                onClick={() =>
+                  IpcClient.getInstance().openExternalUrl(
+                    "https://www.dyad.sh/docs/guides/security-review",
+                  )
+                }
+              >
+                Open Security Review docs
+              </a>
+            </p>
           </div>
+          {data && data.findings.length > 0 && <ReviewSummary data={data} />}
         </div>
         <div className="flex flex-col items-center gap-2">
           <Button variant="outline" onClick={onOpenEditRules}>
@@ -231,8 +243,6 @@ function SecurityHeader({
           <RunReviewButton isRunning={isRunning} onRun={onRun} />
         </div>
       </div>
-
-      {data && data.findings.length > 0 && <ReviewSummary data={data} />}
     </div>
   );
 }
@@ -689,14 +699,13 @@ export const SecurityPanel = () => {
     try {
       const key = createFindingKey(finding);
       setFixingFindingKey(key);
-      // Create a new chat
+
       const chatId = await IpcClient.getInstance().createChat(selectedAppId);
 
       // Navigate to the new chat
       setSelectedChatId(chatId);
       await navigate({ to: "/chat", search: { id: chatId } });
 
-      // Stream a prompt asking to fix the specific security issue
       const prompt = `Please fix the following security issue in a simple and effective way:
 
 **${finding.title}** (${finding.level} severity)
@@ -770,9 +779,10 @@ ${finding.description}`;
             </DialogHeader>
             <div className="text-sm text-gray-600 dark:text-gray-400">
               This allows you to add additional context about your project
-              specifically for security reviews. This can help catch additional
-              issues or avoid flagging issues that are not relevant for your
-              app.
+              specifically for security reviews. This content is saved to the{" "}
+              <code className="text-xs">SECURITY_RULES.md</code> file. This can
+              help catch additional issues or avoid flagging issues that are not
+              relevant for your app.
             </div>
             <div className="mt-3">
               <textarea

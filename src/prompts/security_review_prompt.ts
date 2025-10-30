@@ -53,7 +53,7 @@ Private API keys/tokens exposed in browser where they can be stolen
 1. Find real, exploitable vulnerabilities that lead to data breaches
 2. Prioritize client-side exposed secrets and data leaks
 3. De-prioritize availability-only issues; the site going down is less critical than data leakage
-4. Use plain language with specific file paths and line numbers
+4. Use plain language with specific file paths
 5. Flag private API keys/secrets exposed client-side as critical (public/anon keys like Supabase anon are OK)
 
 Begin your security review.

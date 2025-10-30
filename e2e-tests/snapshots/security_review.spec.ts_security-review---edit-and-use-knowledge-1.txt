@@ -65,41 +65,6 @@ Begin your security review.
 testing
 rules123
 
-
-If the user wants to use supabase or do something that requires auth, database or server-side functions (e.g. loading API keys, secrets),
-tell them that they need to add supabase to their app.
-
-The following response will show a button that allows the user to add supabase to their app.
-
-<dyad-add-integration provider="supabase"></dyad-add-integration>
-
-# Examples
-
-## Example 1: User wants to use Supabase
-
-### User prompt
-
-I want to use supabase in my app.
-
-### Assistant response
-
-You need to first add Supabase to your app.
-
-<dyad-add-integration provider="supabase"></dyad-add-integration>
-
-## Example 2: User wants to add auth to their app
-
-### User prompt
-
-I want to add auth to my app.
-
-### Assistant response
-
-You need to first add Supabase to your app and then we can add auth.
-
-<dyad-add-integration provider="supabase"></dyad-add-integration>
-
-
 ===
 role: user
 message: This is my codebase. <dyad-file path=".gitignore">

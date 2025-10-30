@@ -1,21 +1,65 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { usePrompts } from "@/hooks/usePrompts";
 import {
   CreatePromptDialog,
   CreateOrEditPromptDialog,
 } from "@/components/CreatePromptDialog";
 import { DeleteConfirmationDialog } from "@/components/DeleteConfirmationDialog";
+import { useDeepLink } from "@/contexts/DeepLinkContext";
+import { AddPromptDeepLinkData } from "@/ipc/deep_link_data";
+import { showInfo } from "@/lib/toast";
 
 export default function LibraryPage() {
   const { prompts, isLoading, createPrompt, updatePrompt, deletePrompt } =
     usePrompts();
+  const { lastDeepLink, clearLastDeepLink } = useDeepLink();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [prefillData, setPrefillData] = useState<
+    | {
+        title: string;
+        description: string;
+        content: string;
+      }
+    | undefined
+  >(undefined);
+
+  useEffect(() => {
+    const handleDeepLink = async () => {
+      if (lastDeepLink?.type === "add-prompt") {
+        const deepLink = lastDeepLink as AddPromptDeepLinkData;
+        const payload = deepLink.payload;
+        showInfo(`Prefilled prompt: ${payload.title}`);
+        setPrefillData({
+          title: payload.title,
+          description: payload.description,
+          content: payload.content,
+        });
+        setDialogOpen(true);
+        clearLastDeepLink();
+      }
+    };
+    handleDeepLink();
+  }, [lastDeepLink?.timestamp, clearLastDeepLink]);
+
+  const handleDialogClose = (open: boolean) => {
+    setDialogOpen(open);
+    if (!open) {
+      // Clear prefill data when dialog closes
+      setPrefillData(undefined);
+    }
+  };
 
   return (
     <div className="min-h-screen px-8 py-6">
       <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-3xl font-bold mr-4">Library: Prompts</h1>
-          <CreatePromptDialog onCreatePrompt={createPrompt} />
+          <CreatePromptDialog
+            onCreatePrompt={createPrompt}
+            prefillData={prefillData}
+            isOpen={dialogOpen}
+            onOpenChange={handleDialogClose}
+          />
         </div>
 
         {isLoading ? (

@@ -1100,3 +1100,12 @@ export interface SetSupabaseAppProjectParams {
   /** The ID of the application. */
   appId: number;
 }
+export interface SetNodePathParams {
+  nodePath: string;
+}
+
+export interface SelectNodeFolderResult {
+  path: string | null;
+  canceled?: boolean;
+  selectedPath: string | null;
+}

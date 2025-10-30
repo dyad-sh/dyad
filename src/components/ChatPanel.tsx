@@ -3,6 +3,7 @@ import { useAtomValue, useSetAtom } from "jotai";
 import {
   chatMessagesByIdAtom,
   chatStreamCountByIdAtom,
+  isStreamingByIdAtom,
 } from "../atoms/chatAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
 
@@ -42,6 +43,7 @@ export function ChatPanel({
   const [isVersionPaneOpen, setIsVersionPaneOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const streamCountById = useAtomValue(chatStreamCountByIdAtom);
+  const isStreamingById = useAtomValue(isStreamingByIdAtom);
   // Reference to store the processed prompt so we don't submit it twice
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -143,10 +145,13 @@ export function ChatPanel({
   }, [fetchChatMessages]);
 
   const messages = chatId ? (messagesById.get(chatId) ?? []) : [];
-  // Auto-scroll effect when messages change
+  const isStreaming = chatId ? (isStreamingById.get(chatId) ?? false) : false;
+
+  // Auto-scroll effect when messages change during streaming
   useEffect(() => {
     if (
       !isUserScrolling &&
+      isStreaming &&
       messagesContainerRef.current &&
       messages.length > 0
     ) {
@@ -157,7 +162,7 @@ export function ChatPanel({
         });
       }
     }
-  }, [messages, isUserScrolling]);
+  }, [messages, isUserScrolling, isStreaming]);
 
   return (
     <div className="flex flex-col h-full">

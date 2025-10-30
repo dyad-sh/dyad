@@ -85,12 +85,14 @@ export function useStreamChat({
       redo,
       attachments,
       selectedComponent,
+      onSettled,
     }: {
       prompt: string;
       chatId: number;
       redo?: boolean;
       attachments?: FileAttachment[];
       selectedComponent?: ComponentSelection | null;
+      onSettled?: () => void;
     }) => {
       if (
         (!prompt.trim() && (!attachments || attachments.length === 0)) ||
@@ -168,6 +170,7 @@ export function useStreamChat({
             refreshApp();
             refreshVersions();
             countTokens(chatId, "");
+            onSettled?.();
           },
           onError: (errorMessage: string) => {
             console.error(`[CHAT] Stream error for ${chatId}:`, errorMessage);
@@ -187,6 +190,7 @@ export function useStreamChat({
             refreshApp();
             refreshVersions();
             countTokens(chatId, "");
+            onSettled?.();
           },
         });
       } catch (error) {
@@ -205,6 +209,7 @@ export function useStreamChat({
             );
           return next;
         });
+        onSettled?.();
       }
     },
     [

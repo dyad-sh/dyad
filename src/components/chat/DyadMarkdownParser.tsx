@@ -8,6 +8,7 @@ import { DyadAddDependency } from "./DyadAddDependency";
 import { DyadExecuteSql } from "./DyadExecuteSql";
 import { DyadAddIntegration } from "./DyadAddIntegration";
 import { DyadEdit } from "./DyadEdit";
+import { DyadSearchReplace } from "./DyadSearchReplace";
 import { DyadCodebaseContext } from "./DyadCodebaseContext";
 import { DyadThink } from "./DyadThink";
 import { CodeHighlight } from "./CodeHighlight";
@@ -129,6 +130,7 @@ function preprocessUnclosedTags(content: string): {
     "dyad-problem-report",
     "dyad-chat-summary",
     "dyad-edit",
+    "dyad-search-replace",
     "dyad-codebase-context",
     "dyad-web-search-result",
     "dyad-web-search",
@@ -201,6 +203,7 @@ function parseCustomTags(content: string): ContentPiece[] {
     "dyad-problem-report",
     "dyad-chat-summary",
     "dyad-edit",
+    "dyad-search-replace",
     "dyad-codebase-context",
     "dyad-web-search-result",
     "dyad-web-search",
@@ -435,6 +438,21 @@ function renderCustomTag(
         >
           {content}
         </DyadEdit>
+      );
+
+    case "dyad-search-replace":
+      return (
+        <DyadSearchReplace
+          node={{
+            properties: {
+              path: attributes.path || "",
+              description: attributes.description || "",
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadSearchReplace>
       );
 
     case "dyad-codebase-context":

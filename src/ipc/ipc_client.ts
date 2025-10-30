@@ -48,6 +48,7 @@ import type {
   VercelDeployment,
   GetVercelDeploymentsParams,
   DisconnectVercelProjectParams,
+  SecurityReviewResult,
   IsVercelProjectAvailableParams,
   SaveVercelAccessTokenParams,
   VercelProject,
@@ -68,6 +69,7 @@ import type {
   CloneRepoParams,
   SupabaseBranch,
   SetSupabaseAppProjectParams,
+  SelectNodeFolderResult,
 } from "./ipc_types";
 import type { Template } from "../shared/templates";
 import type {

@@ -1,0 +1,7 @@
+- heading "Deep Link Test Prompt" [level=3]
+- paragraph: A prompt created via deep link
+- button:
+  - img
+- button:
+  - img
+- text: "You are a helpful assistant. Please help with: [task here]"

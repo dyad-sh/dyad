@@ -305,6 +305,7 @@ export const UserSettingsSchema = z.object({
   maxChatTurnsInContext: z.number().optional(),
   thinkingBudget: z.enum(["low", "medium", "high"]).optional(),
   enableProLazyEditsMode: z.boolean().optional(),
+  proLazyEditsMode: z.enum(["off", "v1", "v2"]).optional(),
   enableProSmartFilesContextMode: z.boolean().optional(),
   enableProWebSearch: z.boolean().optional(),
   proSmartContextOption: z.enum(["balanced", "conservative"]).optional(),
@@ -318,6 +319,7 @@ export const UserSettingsSchema = z.object({
   enableAutoUpdate: z.boolean(),
   releaseChannel: ReleaseChannelSchema,
   runtimeMode2: RuntimeMode2Schema.optional(),
+  customNodePath: z.string().optional().nullable(),
 
   ////////////////////////////////
   // E2E TESTING ONLY.

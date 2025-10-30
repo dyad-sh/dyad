@@ -1,4 +1,4 @@
-import { ipcMain } from "electron";
+import { BrowserWindow, clipboard, ipcMain } from "electron";
 import { platform, arch } from "os";
 import { SystemDebugInfo, ChatLogsData } from "../ipc_types";
 import { readSettings } from "../../main/settings";
@@ -196,6 +196,24 @@ export function registerDebugHandlers() {
   );
 
   console.log("Registered debug IPC handlers");
+
+  ipcMain.handle("take-screenshot", async () => {
+    const win = BrowserWindow.getFocusedWindow();
+    if (!win) throw new Error("No focused window to capture");
+
+    try {
+      // Capture the window’s current contents as a NativeImage
+      const image = await win.capturePage();
+      // Validate image
+      if (!image || image.isEmpty()) {
+        throw new Error("Failed to capture screenshot");
+      }
+      // Write the image to the clipboard
+      clipboard.writeImage(image);
+    } catch (err) {
+      console.error("Error taking screenshot:", err);
+    }
+  });
 }
 
 function serializeModelForDebug(model: LargeLanguageModel): string {

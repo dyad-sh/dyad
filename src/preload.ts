@@ -121,6 +121,8 @@ const validInvokeChannels = [
   "mcp:set-tool-consent",
   // MCP consent response from renderer to main
   "mcp:tool-consent-response",
+  // Help
+  "take-screenshot",
   // Help bot
   "help:chat:start",
   "help:chat:cancel",

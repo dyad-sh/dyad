@@ -75,6 +75,15 @@ For each translation, provide:
 - Sui framework dependency
 - Address mappings
 
+**CRITICAL PATH STRUCTURE**:
+All files MUST be created in the src/<package-name>/ directory structure:
+- Move.toml goes in: src/<package-name>/Move.toml
+- Move modules go in: src/<package-name>/sources/<module>.move
+
+For example, a counter package creates:
+- src/counter/Move.toml
+- src/counter/sources/counter.move
+
 ### 7. **Example Translation Pattern**
 
 Solidity:
@@ -87,8 +96,9 @@ contract Counter {
 }
 \`\`\`
 
-**Move.toml:**
-\`\`\`toml
+Expected output (note the src/counter/ prefix on all paths):
+
+<dyad-write path="src/counter/Move.toml" description="Create package manifest">
 [package]
 name = "counter"
 version = "0.0.1"
@@ -99,10 +109,9 @@ Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-fram
 
 [addresses]
 counter = "0x0"
-\`\`\`
+</dyad-write>
 
-**sources/counter.move:**
-\`\`\`move
+<dyad-write path="src/counter/sources/counter.move" description="Create Move module">
 module counter::counter {
     use sui::object::{Self, UID};
     use sui::transfer;
@@ -132,7 +141,7 @@ module counter::counter {
         counter.count
     }
 }
-\`\`\`
+</dyad-write>
 
 ## Critical Security Considerations
 
@@ -156,9 +165,10 @@ When translating a contract:
 6. Testing recommendations
 
 **File Structure Requirements:**
-- Always create Move.toml in the contract root directory (src/<package_name>/)
-- Place all .move files in a sources/ subdirectory (src/<package_name>/sources/)
+- Always create Move.toml at: src/<package_name>/Move.toml
+- Place all .move files at: src/<package_name>/sources/<module_name>.move
 - The package name should match the contract type (e.g., erc20, erc721, erc1155, etc.)
+- NEVER forget the src/<package_name>/ prefix on ALL file paths
 
 Always prioritize correctness and safety over feature parity. If a Solidity pattern doesn't translate cleanly to Move, explain the recommended Sui-native approach.
 `;

@@ -402,6 +402,25 @@ function getRegularModelClient(
         backupModelClients: [],
       };
     }
+    case "solmover": {
+      // SolMover runs in Ollama deployment with OpenAI-compatible endpoint
+      // Ollama exposes OpenAI-compatible API at /v1/chat/completions
+      const provider = createOpenAICompatible({
+        name: "solmover",
+        baseURL: "https://49c5eafe-4c4e-4951-bdb0-aa2b2af9ee8c.app.gra.ai.cloud.ovh.net/v1",
+        apiKey: apiKey || "3Na6Bbq6RyyHiFE50WhSBPQGYE6c8iVGmWlmjxzs2sMENew798ajXM3rEcp/FUfh",
+        headers: {
+          "Authorization": `Bearer ${apiKey || "3Na6Bbq6RyyHiFE50WhSBPQGYE6c8iVGmWlmjxzs2sMENew798ajXM3rEcp/FUfh"}`,
+        },
+      });
+      return {
+        modelClient: {
+          model: provider(model.name),
+          builtinProviderId: providerId,
+        },
+        backupModelClients: [],
+      };
+    }
     default: {
       // Handle custom providers
       if (providerConfig.type === "custom") {

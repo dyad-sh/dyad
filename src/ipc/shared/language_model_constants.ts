@@ -438,6 +438,18 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       temperature: 0,
     },
   ],
+  solmover: [
+    {
+      name: "solmover",
+      displayName: "SolMover",
+      description: "Specialized model for Solidity to Move transpilation",
+      maxOutputTokens: 8_000,
+      contextWindow: 128_000,
+      temperature: 0,
+      tag: "Specialized",
+      tagColor: "bg-purple-700 text-white",
+    },
+  ],
 };
 
 export const TURBO_MODELS: LanguageModel[] = [
@@ -475,6 +487,7 @@ export const PROVIDER_TO_ENV_VAR: Record<string, string> = {
   azure: "AZURE_API_KEY",
   xai: "XAI_API_KEY",
   bedrock: "AWS_BEARER_TOKEN_BEDROCK",
+  solmover: "SOLMOVER_API_KEY",
 };
 
 export const CLOUD_PROVIDERS: Record<
@@ -544,6 +557,13 @@ export const CLOUD_PROVIDERS: Record<
     websiteUrl: "https://console.aws.amazon.com/bedrock/",
     gatewayPrefix: "bedrock/",
     secondary: true,
+  },
+  solmover: {
+    displayName: "SolMover",
+    hasFreeTier: false,
+    websiteUrl: "https://49c5eafe-4c4e-4951-bdb0-aa2b2af9ee8c.app.gra.ai.cloud.ovh.net/",
+    gatewayPrefix: "",
+    secondary: false,
   },
 };
 

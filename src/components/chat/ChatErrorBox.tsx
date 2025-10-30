@@ -99,7 +99,7 @@ export function ChatErrorBox({
     <ChatErrorContainer onDismiss={onDismiss}>
       {error}
       <div className="mt-2 space-y-2 space-x-2">
-        {!isDyadProEnabled && (
+        {!isDyadProEnabled && !error.includes("TypeError: terminated") && (
           <ExternalLink
             href="https://dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=general-error"
             variant="primary"
@@ -107,7 +107,6 @@ export function ChatErrorBox({
             Upgrade to Dyad Pro
           </ExternalLink>
         )}
-
         <ExternalLink href="https://www.dyad.sh/docs/faq">
           Read docs
         </ExternalLink>

@@ -53,8 +53,9 @@ function parseSecurityFindings(content: string): SecurityFinding[] {
   const findings: SecurityFinding[] = [];
 
   // Regex to match dyad-security-finding tags
+  // Using lazy quantifier with proper boundaries to prevent catastrophic backtracking
   const regex =
-    /<dyad-security-finding\s+title="([^"]+)"\s+level="(critical|high|medium|low)">([^<]*(?:<(?!\/dyad-security-finding>)[^<]*)*)<\/dyad-security-finding>/gs;
+    /<dyad-security-finding\s+title="([^"]+)"\s+level="(critical|high|medium|low)">([\s\S]*?)<\/dyad-security-finding>/g;
 
   let match;
   while ((match = regex.exec(content)) !== null) {

@@ -80,6 +80,7 @@ import { replacePromptReference } from "../utils/replacePromptReference";
 import { mcpManager } from "../utils/mcp_manager";
 import z from "zod";
 import { isTurboEditsV2Enabled } from "@/lib/schemas";
+import { AI_STREAMING_ERROR_MESSAGE_PREFIX } from "@/shared/texts";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
@@ -853,7 +854,7 @@ This conversation includes one or more image attachments. When the user uploads 
                 : "";
               event.sender.send("chat:response:error", {
                 chatId: req.chatId,
-                error: `Sorry, there was an error from the AI: ${requestIdPrefix}${message}`,
+                error: `${AI_STREAMING_ERROR_MESSAGE_PREFIX}${requestIdPrefix}${message}`,
               });
               // Clean up the abort controller
               activeStreams.delete(req.chatId);

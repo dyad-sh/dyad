@@ -6,8 +6,6 @@ import {
   type UserSettings,
   Secret,
   VertexProviderSetting,
-  type ZoomLevel,
-  ZoomLevelSchema,
 } from "../lib/schemas";
 import { safeStorage } from "electron";
 import { v4 as uuidv4 } from "uuid";
@@ -52,19 +50,10 @@ export function readSettings(): UserSettings {
       return DEFAULT_SETTINGS;
     }
     const rawSettings = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-    const combinedSettings = {
+    const combinedSettings: UserSettings = {
       ...DEFAULT_SETTINGS,
       ...rawSettings,
-    } as Record<string, unknown> & Partial<UserSettings>;
-
-    if (
-      combinedSettings.zoomLevel &&
-      !isValidZoomLevel(combinedSettings.zoomLevel)
-    ) {
-      delete combinedSettings.zoomLevel;
-    }
-
-    delete combinedSettings.workspaceTextSize;
+    };
     const supabase = combinedSettings.supabase;
     if (supabase) {
       if (supabase.refreshToken) {
@@ -157,17 +146,7 @@ export function writeSettings(settings: Partial<UserSettings>): void {
   try {
     const filePath = getSettingsFilePath();
     const currentSettings = readSettings();
-    const newSettings = {
-      ...currentSettings,
-      ...settings,
-    } as Record<string, unknown> & UserSettings;
-
-    delete newSettings.workspaceTextSize;
-
-    const { zoomLevel } = newSettings;
-    if (zoomLevel && !isValidZoomLevel(zoomLevel)) {
-      delete newSettings.zoomLevel;
-    }
+    const newSettings = { ...currentSettings, ...settings };
     if (newSettings.githubAccessToken) {
       newSettings.githubAccessToken = encrypt(
         newSettings.githubAccessToken.value,
@@ -239,8 +218,4 @@ export function decrypt(data: Secret): string {
     return safeStorage.decryptString(Buffer.from(data.value, "base64"));
   }
   return data.value;
-}
-
-function isValidZoomLevel(value: unknown): value is ZoomLevel {
-  return ZoomLevelSchema.safeParse(value).success;
 }

@@ -12,13 +12,6 @@ import { useSettings } from "@/hooks/useSettings";
 import type { ZoomLevel } from "@/lib/schemas";
 
 const DEFAULT_ZOOM_LEVEL: ZoomLevel = "100";
-const ZOOM_FACTORS: Record<ZoomLevel, number> = {
-  "90": 0.9,
-  "100": 1,
-  "110": 1.1,
-  "125": 1.25,
-  "150": 1.5,
-};
 
 export default function RootLayout({
   children,
@@ -31,7 +24,7 @@ export default function RootLayout({
 
   useEffect(() => {
     const zoomLevel = settings?.zoomLevel ?? DEFAULT_ZOOM_LEVEL;
-    const zoomFactor = ZOOM_FACTORS[zoomLevel] ?? ZOOM_FACTORS[DEFAULT_ZOOM_LEVEL];
+    const zoomFactor = Number(zoomLevel) / 100;
 
     const electronApi = (window as Window & {
       electron?: {
@@ -45,7 +38,7 @@ export default function RootLayout({
       electronApi.webFrame.setZoomFactor(zoomFactor);
 
       return () => {
-        electronApi.webFrame?.setZoomFactor(ZOOM_FACTORS[DEFAULT_ZOOM_LEVEL]);
+        electronApi.webFrame?.setZoomFactor(Number(DEFAULT_ZOOM_LEVEL) / 100);
       };
     }
 

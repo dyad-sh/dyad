@@ -73,9 +73,6 @@
 }
 :root {
   --docs-bg: #f5f5f5;
-
-  font-size: 16px;
-
   --default-font-family: "Geist", sans-serif;
   --default-mono-font-family: "Geist Mono", monospace;
   /* --background: oklch(1 0 0); */

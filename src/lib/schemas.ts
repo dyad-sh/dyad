@@ -235,7 +235,7 @@ export const UserSettingsSchema = z.object({
   proLazyEditsMode: z.enum(["off", "v1", "v2"]).optional(),
   enableProSmartFilesContextMode: z.boolean().optional(),
   enableProWebSearch: z.boolean().optional(),
-  proSmartContextOption: z.enum(["balanced", "conservative"]).optional(),
+  proSmartContextOption: z.enum(["balanced", "conservative", "v3"]).optional(),
   selectedTemplateId: z.string(),
   enableSupabaseWriteSqlMigration: z.boolean().optional(),
   selectedChatMode: ChatModeSchema.optional(),

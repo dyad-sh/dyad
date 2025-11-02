@@ -5,16 +5,12 @@ import { Rabbit } from "lucide-react";
 interface DyadWebCrawlProps {
   children?: ReactNode;
   node?: any;
-  query?: string;
 }
 
 export const DyadWebCrawl: React.FC<DyadWebCrawlProps> = ({
   children,
   node: _node,
-  query: queryProp,
 }) => {
-  const query = queryProp || (typeof children === "string" ? children : "");
-
   return (
     <div className="bg-(--background-lightest) rounded-lg px-4 py-2 border my-2">
       <div className="flex items-center justify-between">
@@ -24,7 +20,7 @@ export const DyadWebCrawl: React.FC<DyadWebCrawlProps> = ({
         </div>
       </div>
       <div className="text-sm italic text-gray-600 dark:text-gray-300 mt-2">
-        {query || children}
+        {children}
       </div>
     </div>
   );

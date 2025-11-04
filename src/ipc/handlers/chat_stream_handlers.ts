@@ -842,7 +842,6 @@ This conversation includes one or more image attachments. When the user uploads 
             tools,
             messages: chatMessages.filter((m) => m.content),
             onError: (error: any) => {
-              logger.error("Error streaming text:", error);
               let errorMessage = (error as any)?.error?.message;
               const responseBody = error?.error?.responseBody;
               if (errorMessage && responseBody) {
@@ -852,6 +851,10 @@ This conversation includes one or more image attachments. When the user uploads 
               const requestIdPrefix = isEngineEnabled
                 ? `[Request ID: ${dyadRequestId}] `
                 : "";
+              logger.error(
+                `AI stream text error for request: ${requestIdPrefix} errorMessage=${errorMessage} error=`,
+                error,
+              );
               event.sender.send("chat:response:error", {
                 chatId: req.chatId,
                 error: `${AI_STREAMING_ERROR_MESSAGE_PREFIX}${requestIdPrefix}${message}`,

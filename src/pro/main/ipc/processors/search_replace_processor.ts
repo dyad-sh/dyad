@@ -5,7 +5,13 @@ import { distance } from "fastest-levenshtein";
 import { normalizeString } from "@/utils/text_normalization";
 
 // Minimum similarity threshold for fuzzy matching (0 to 1, where 1 is exact match)
-const FUZZY_MATCH_THRESHOLD = 0.8;
+const FUZZY_MATCH_THRESHOLD = 0.9;
+
+// Early termination threshold - stop searching if we find a match this good
+const EARLY_STOP_THRESHOLD = 0.95;
+
+// Maximum time to spend on fuzzy matching (in milliseconds)
+const MAX_FUZZY_SEARCH_TIME_MS = 10_000; // 10 seconds
 
 function unescapeMarkers(content: string): string {
   return content
@@ -44,50 +50,114 @@ function getSimilarity(original: string, search: string): number {
 }
 
 /**
- * Performs a "middle-out" search of `lines` (between [startIndex, endIndex]) to find
- * the slice that is most similar to `searchChunk`. Returns the best score, index, and matched text.
+ * Quick scoring function that counts how many lines exactly match.
+ * This is much faster than Levenshtein and serves as a good pre-filter.
  */
-function fuzzySearch(
+function quickScoreByExactLines(
+  targetLines: string[],
+  searchLines: string[],
+  startIdx: number,
+): number {
+  let exactMatches = 0;
+
+  for (let i = 0; i < searchLines.length; i++) {
+    if (startIdx + i >= targetLines.length) break;
+
+    if (
+      normalizeString(targetLines[startIdx + i]) ===
+      normalizeString(searchLines[i])
+    ) {
+      exactMatches++;
+    }
+  }
+
+  return exactMatches / searchLines.length;
+}
+
+/**
+ * Fast fuzzy search using a two-pass approach:
+ * 1. Quick pre-filter pass: Count exact line matches (fast)
+ * 2. Detailed pass: Only compute Levenshtein on promising candidates (expensive)
+ *
+ * The key insight: If two blocks are similar enough for fuzzy matching (e.g., 90%),
+ * then likely at least 50% of their lines will match exactly.
+ */
+function fastFuzzySearch(
   lines: string[],
   searchChunk: string,
   startIndex: number,
   endIndex: number,
 ) {
+  const searchLines = searchChunk.split(/\r?\n/);
+  const searchLen = searchLines.length;
+
+  // Track start time for timeout
+  const startTime = performance.now();
+
+  // Quick threshold: require at least 60% exact line matches to be a candidate
+  const QUICK_THRESHOLD = 0.6;
+
+  // First pass: find candidates with high exact line match ratio (very fast)
+  const candidates: Array<{ index: number; quickScore: number }> = [];
+
+  for (let i = startIndex; i <= endIndex - searchLen; i++) {
+    // Check time limit
+    const elapsed = performance.now() - startTime;
+    if (elapsed > MAX_FUZZY_SEARCH_TIME_MS) {
+      console.warn(
+        `Fast fuzzy search timed out during pre-filter after ${(elapsed / 1000).toFixed(1)}s`,
+      );
+      break;
+    }
+
+    const quickScore = quickScoreByExactLines(lines, searchLines, i);
+
+    if (quickScore >= QUICK_THRESHOLD) {
+      candidates.push({ index: i, quickScore });
+    }
+  }
+
+  // Sort candidates by quick score (best first)
+  candidates.sort((a, b) => b.quickScore - a.quickScore);
+
+  // Second pass: only compute expensive Levenshtein on top candidates
   let bestScore = 0;
   let bestMatchIndex = -1;
   let bestMatchContent = "";
-  const searchLen = searchChunk.split(/\r?\n/).length;
 
-  // Middle-out from the midpoint
-  const midPoint = Math.floor((startIndex + endIndex) / 2);
-  let leftIndex = midPoint;
-  let rightIndex = midPoint + 1;
+  const MAX_CANDIDATES_TO_CHECK = 10; // Only check top 10 candidates
 
-  while (leftIndex >= startIndex || rightIndex <= endIndex - searchLen) {
-    if (leftIndex >= startIndex) {
-      const originalChunk = lines
-        .slice(leftIndex, leftIndex + searchLen)
-        .join("\n");
-      const similarity = getSimilarity(originalChunk, searchChunk);
-      if (similarity > bestScore) {
-        bestScore = similarity;
-        bestMatchIndex = leftIndex;
-        bestMatchContent = originalChunk;
-      }
-      leftIndex--;
+  for (
+    let i = 0;
+    i < Math.min(candidates.length, MAX_CANDIDATES_TO_CHECK);
+    i++
+  ) {
+    const candidate = candidates[i];
+
+    // Check time limit
+    const elapsed = performance.now() - startTime;
+    if (elapsed > MAX_FUZZY_SEARCH_TIME_MS) {
+      console.warn(
+        `Fast fuzzy search timed out during detailed pass after ${(elapsed / 1000).toFixed(1)}s. Best match: ${(bestScore * 100).toFixed(1)}%`,
+      );
+      break;
     }
 
-    if (rightIndex <= endIndex - searchLen) {
-      const originalChunk = lines
-        .slice(rightIndex, rightIndex + searchLen)
-        .join("\n");
-      const similarity = getSimilarity(originalChunk, searchChunk);
-      if (similarity > bestScore) {
-        bestScore = similarity;
-        bestMatchIndex = rightIndex;
-        bestMatchContent = originalChunk;
+    const originalChunk = lines
+      .slice(candidate.index, candidate.index + searchLen)
+      .join("\n");
+
+    const similarity = getSimilarity(originalChunk, searchChunk);
+
+    if (similarity > bestScore) {
+      bestScore = similarity;
+      bestMatchIndex = candidate.index;
+      bestMatchContent = originalChunk;
+
+      // Early exit if we found a very good match
+      if (bestScore >= EARLY_STOP_THRESHOLD) {
+        return { bestScore, bestMatchIndex, bestMatchContent };
       }
-      rightIndex++;
     }
   }
 
@@ -206,7 +276,7 @@ export function applySearchReplace(
     // If still no match, try fuzzy matching with Levenshtein distance
     if (matchIndex === -1) {
       const searchChunk = searchLines.join("\n");
-      const { bestScore, bestMatchIndex } = fuzzySearch(
+      const { bestScore, bestMatchIndex } = fastFuzzySearch(
         resultLines,
         searchChunk,
         0,

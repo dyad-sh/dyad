@@ -1,0 +1,74 @@
+- paragraph: "Please fix the following 2 security issues in a simple and effective way:"
+- list:
+  - listitem:
+    - strong: SQL Injection in User Lookup
+    - text: (critical severity)
+    - strong: What
+    - text: ": User input flows directly into database queries without validation, allowing attackers to execute arbitrary SQL commands"
+- paragraph:
+  - strong: Risk
+  - text: ": An attacker could steal all customer data, delete your entire database, or take over admin accounts by manipulating the URL"
+- paragraph:
+  - strong: Potential Solutions
+  - text: ":"
+- list:
+  - listitem:
+    - text: "Use parameterized queries:"
+    - code: "`db.query('SELECT * FROM users WHERE id = ?', [userId])`"
+  - listitem:
+    - text: Add input validation to ensure
+    - code: "`userId`"
+    - text: is a number
+  - listitem: Implement an ORM like Prisma or TypeORM that prevents SQL injection by default
+- paragraph:
+  - strong: Relevant Files
+  - text: ":"
+  - code: "`src/api/users.ts`"
+- list:
+  - listitem:
+    - strong: Hardcoded AWS Credentials in Source Code
+    - text: (critical severity)
+    - strong: What
+    - text: ": AWS access keys are stored directly in the codebase and committed to version control, exposing full cloud infrastructure access"
+- paragraph:
+  - strong: Risk
+  - text: ": Anyone with repository access (including former employees or compromised accounts) could spin up expensive resources, access S3 buckets with customer data, or destroy production infrastructure"
+- paragraph:
+  - strong: Potential Solutions
+  - text: ":"
+- list:
+  - listitem: Immediately rotate the exposed credentials in AWS IAM
+  - listitem:
+    - text: Use environment variables and add
+    - code: "`.env`"
+    - text: to
+    - code: "`.gitignore`"
+  - listitem: Implement AWS Secrets Manager or similar vault solution
+  - listitem:
+    - text: Scan git history and purge the credentials using tools like
+    - code: "`git-filter-repo`"
+- paragraph:
+  - strong: Relevant Files
+  - text: ":"
+  - code: "`src/config/aws.ts`"
+  - text: ","
+  - code: "`src/services/s3-uploader.ts`"
+- img
+- text: file1.txt
+- button "Edit":
+  - img
+- img
+- text: file1.txt
+- paragraph: More EOM
+- button:
+  - img
+- img
+- text: Approved
+- img
+- text: less than a minute ago
+- img
+- text: wrote 1 file(s)
+- button "Undo":
+  - img
+- button "Retry":
+  - img

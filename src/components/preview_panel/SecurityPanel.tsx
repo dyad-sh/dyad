@@ -5,6 +5,7 @@ import { useSecurityReview } from "@/hooks/useSecurityReview";
 import { IpcClient } from "@/ipc/ipc_client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -202,12 +203,24 @@ function SecurityHeader({
   onRun,
   data,
   onOpenEditRules,
+  selectedCount,
+  onFixSelected,
+  onSelectAll,
+  onClearAll,
+  isFixingMultiple,
 }: {
   isRunning: boolean;
   onRun: () => void;
   data?: SecurityReviewResult | undefined;
   onOpenEditRules: () => void;
+  selectedCount: number;
+  onFixSelected: () => void;
+  onSelectAll: () => void;
+  onClearAll: () => void;
+  isFixingMultiple: boolean;
 }) {
+  const totalFindings = data?.findings.length || 0;
+
   return (
     <div className="sticky top-0 z-10 bg-background pt-3 pb-3 space-y-2">
       <div className="flex items-center justify-between gap-2">
@@ -243,6 +256,68 @@ function SecurityHeader({
           <RunReviewButton isRunning={isRunning} onRun={onRun} />
         </div>
       </div>
+      {totalFindings > 0 && (
+        <div className="flex items-center justify-between gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+          <div className="flex items-center gap-2">
+            {selectedCount === 0 ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={onSelectAll}
+                className="h-7 px-3 text-xs"
+              >
+                Select all
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={onClearAll}
+                className="h-7 px-3 text-xs"
+              >
+                Clear all
+              </Button>
+            )}
+          </div>
+          <Button
+            size="sm"
+            variant="default"
+            onClick={onFixSelected}
+            className="h-7 px-3 text-xs gap-2"
+            disabled={selectedCount === 0 || isFixingMultiple}
+          >
+            {isFixingMultiple ? (
+              <>
+                <svg
+                  className="w-3 h-3 animate-spin"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="m4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 0 1 4 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  />
+                </svg>
+                Fixing Issues...
+              </>
+            ) : (
+              <>
+                <Pencil className="w-3 h-3" />
+                {`Fix ${selectedCount} ${selectedCount === 1 ? "issue" : "issues"}`}
+              </>
+            )}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -390,11 +465,15 @@ function FindingsTable({
   onOpenDetails,
   onFix,
   fixingFindingKey,
+  selectedKeys,
+  onToggleSelection,
 }: {
   findings: SecurityFinding[];
   onOpenDetails: (finding: SecurityFinding) => void;
   onFix: (finding: SecurityFinding) => void;
   fixingFindingKey?: string | null;
+  selectedKeys: Set<string>;
+  onToggleSelection: (findingKey: string) => void;
 }) {
   return (
     <div
@@ -404,6 +483,9 @@ function FindingsTable({
       <table className="w-full">
         <thead className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700">
           <tr>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider w-12">
+              <span className="sr-only">Select</span>
+            </th>
             <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider w-24">
               Level
             </th>
@@ -429,12 +511,21 @@ function FindingsTable({
                 : finding.description;
               const findingKey = createFindingKey(finding);
               const isFixing = fixingFindingKey === findingKey;
+              const isSelected = selectedKeys.has(findingKey);
 
               return (
                 <tr
                   key={index}
                   className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors"
                 >
+                  <td className="px-4 py-4 align-top">
+                    <Checkbox
+                      checked={isSelected}
+                      onCheckedChange={() => onToggleSelection(findingKey)}
+                      onClick={(e) => e.stopPropagation()}
+                      aria-label={`Select ${finding.title}`}
+                    />
+                  </td>
                   <td className="px-4 py-4 align-top">
                     <SeverityBadge level={finding.level} />
                   </td>
@@ -607,6 +698,7 @@ export const SecurityPanel = () => {
   const [rulesContent, setRulesContent] = useState("");
   const [fixingFindingKey, setFixingFindingKey] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
 
   const {
     content: fetchedRules,
@@ -725,6 +817,76 @@ ${finding.description}`;
     }
   };
 
+  const handleFixSelected = async () => {
+    if (!selectedAppId || !data) {
+      showError("No app selected or no data available");
+      return;
+    }
+
+    if (selectedKeys.size === 0) {
+      showError("No issues selected");
+      return;
+    }
+
+    try {
+      setFixingFindingKey("multiple");
+
+      const selectedFindings = data.findings.filter((finding) =>
+        selectedKeys.has(createFindingKey(finding)),
+      );
+
+      const chatId = await IpcClient.getInstance().createChat(selectedAppId);
+
+      // Navigate to the new chat
+      setSelectedChatId(chatId);
+      await navigate({ to: "/chat", search: { id: chatId } });
+
+      const findingsList = selectedFindings
+        .map(
+          (finding) =>
+            `**${finding.title}** (${finding.level} severity)\n\n${finding.description}`,
+        )
+        .join("\n\n---\n\n");
+
+      const prompt = `Please fix the following ${selectedFindings.length} security issue${selectedFindings.length === 1 ? "" : "s"} in a simple and effective way:
+
+${findingsList}`;
+
+      await streamMessage({
+        prompt,
+        chatId,
+        onSettled: () => {
+          setFixingFindingKey(null);
+          setSelectedKeys(new Set());
+        },
+      });
+    } catch (err) {
+      showError(`Failed to create fix chat: ${err}`);
+      setFixingFindingKey(null);
+    }
+  };
+
+  const handleToggleSelection = (findingKey: string) => {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(findingKey)) {
+        next.delete(findingKey);
+      } else {
+        next.add(findingKey);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (!data) return;
+    setSelectedKeys(new Set(data.findings.map((f) => createFindingKey(f))));
+  };
+
+  const handleClearAll = () => {
+    setSelectedKeys(new Set());
+  };
+
   if (isLoading) {
     return <LoadingView />;
   }
@@ -746,6 +908,11 @@ ${finding.description}`;
               refetchRules();
             }
           }}
+          selectedCount={selectedKeys.size}
+          onFixSelected={handleFixSelected}
+          onSelectAll={handleSelectAll}
+          onClearAll={handleClearAll}
+          isFixingMultiple={fixingFindingKey === "multiple"}
         />
 
         {isRunningReview ? (
@@ -761,6 +928,8 @@ ${finding.description}`;
             onOpenDetails={openFindingDetails}
             onFix={handleFixIssue}
             fixingFindingKey={fixingFindingKey}
+            selectedKeys={selectedKeys}
+            onToggleSelection={handleToggleSelection}
           />
         ) : (
           <NoIssuesCard data={data} />

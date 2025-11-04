@@ -81,6 +81,11 @@ import { mcpManager } from "../utils/mcp_manager";
 import z from "zod";
 import { isTurboEditsV2Enabled } from "@/lib/schemas";
 import { AI_STREAMING_ERROR_MESSAGE_PREFIX } from "@/shared/texts";
+import { getCurrentCommitHash } from "../utils/git_utils";
+import {
+  getVersionedCodebaseContext as getVersionedFiles,
+  VersionedCodebaseContext as VersionedFiles,
+} from "../utils/versioned_codebase_context";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
@@ -407,6 +412,9 @@ ${componentSnippet}
           role: "assistant",
           content: "", // Start with empty content
           requestId: dyadRequestId,
+          sourceCommitHash: await getCurrentCommitHash({
+            path: getDyadAppPath(chat.app.path),
+          }),
         })
         .returning();
 
@@ -523,12 +531,19 @@ ${componentSnippet}
         const messageHistory = updatedChat.messages.map((message) => ({
           role: message.role as "user" | "assistant" | "system",
           content: message.content,
+          sourceCommitHash: message.sourceCommitHash,
         }));
 
+        // For Dyad Pro + Deep Context, we set to 10 chat turns (+1)
+        // this is to enable more cache hits and we do server optimizations
+        // as needed.
+        //
         // Limit chat history based on maxChatTurnsInContext setting
         // We add 1 because the current prompt counts as a turn.
         const maxChatTurns =
-          (settings.maxChatTurnsInContext || MAX_CHAT_TURNS_IN_CONTEXT) + 1;
+          isEngineEnabled && settings.proSmartContextOption === "deep"
+            ? 11
+            : (settings.maxChatTurnsInContext || MAX_CHAT_TURNS_IN_CONTEXT) + 1;
 
         // If we need to limit the context, we take only the most recent turns
         let limitedMessageHistory = messageHistory;
@@ -713,6 +728,11 @@ This conversation includes one or more image attachments. When the user uploads 
             settings.selectedChatMode === "ask"
               ? removeDyadTags(removeNonEssentialTags(msg.content))
               : removeNonEssentialTags(msg.content),
+          providerOptions: {
+            "dyad-engine": {
+              sourceCommitHash: msg.sourceCommitHash,
+            },
+          },
         }));
 
         let chatMessages: ModelMessage[] = [
@@ -776,12 +796,21 @@ This conversation includes one or more image attachments. When the user uploads 
           } else {
             logger.log("sending AI request");
           }
+          let versionedFiles: VersionedFiles | undefined;
+          if (isEngineEnabled && settings.proSmartContextOption === "deep") {
+            versionedFiles = await getVersionedFiles({
+              files,
+              chatMessages,
+              appPath,
+            });
+          }
           // Build provider options with correct Google/Vertex thinking config gating
           const providerOptions: Record<string, any> = {
             "dyad-engine": {
               dyadRequestId,
               dyadDisableFiles,
-              dyadFiles: files,
+              dyadFiles: versionedFiles ? undefined : files,
+              dyadVersionedCodebaseContext: versionedFiles,
               dyadMentionedApps: mentionedAppsCodebases.map(
                 ({ files, appName }) => ({
                   appName,

@@ -43,3 +43,34 @@ test("security review - edit and use knowledge", async ({ po }) => {
   await po.waitForChatCompletion();
   await po.snapshotServerDump("all-messages");
 });
+
+test("security review - multi-select and fix issues", async ({ po }) => {
+  await po.setUp({ autoApprove: true });
+  await po.sendPrompt("tc=1");
+
+  await po.selectPreviewMode("security");
+
+  await po.page
+    .getByRole("button", { name: "Run Security Review" })
+    .first()
+    .click();
+  await po.waitForChatCompletion();
+
+  // Select the first two issues using individual checkboxes
+  const checkboxes = po.page.getByRole("checkbox").filter({
+    hasNotText: "Select all issues",
+  });
+  await checkboxes.nth(0).click();
+  await checkboxes.nth(1).click();
+
+  // Wait for the "Fix X Issues" button to appear
+  const fixSelectedButton = po.page.getByRole("button", {
+    name: /Fix \d+ Issues?/,
+  });
+  await fixSelectedButton.waitFor({ state: "visible" });
+
+  // Click the fix selected button
+  await fixSelectedButton.click();
+  await po.waitForChatCompletion();
+  await po.snapshotMessages();
+});

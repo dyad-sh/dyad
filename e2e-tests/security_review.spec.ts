@@ -57,15 +57,14 @@ test("security review - multi-select and fix issues", async ({ po }) => {
   await po.waitForChatCompletion();
 
   // Select the first two issues using individual checkboxes
-  const checkboxes = po.page.getByRole("checkbox").filter({
-    hasNotText: "Select all issues",
-  });
-  await checkboxes.nth(0).click();
+  const checkboxes = po.page.getByRole("checkbox");
+  // Skip the first checkbox (select all)
   await checkboxes.nth(1).click();
+  await checkboxes.nth(2).click();
 
   // Wait for the "Fix X Issues" button to appear
   const fixSelectedButton = po.page.getByRole("button", {
-    name: /Fix \d+ Issues?/,
+    name: "Fix 2 Issues",
   });
   await fixSelectedButton.waitFor({ state: "visible" });
 

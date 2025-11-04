@@ -80,7 +80,7 @@ function quickScoreByExactLines(
  * 2. Detailed pass: Only compute Levenshtein on promising candidates (expensive)
  *
  * The key insight: If two blocks are similar enough for fuzzy matching (e.g., 90%),
- * then likely at least 50% of their lines will match exactly.
+ * then likely at least 60% of their lines will match exactly.
  */
 function fastFuzzySearch(
   lines: string[],
@@ -123,7 +123,6 @@ function fastFuzzySearch(
   // Second pass: only compute expensive Levenshtein on top candidates
   let bestScore = 0;
   let bestMatchIndex = -1;
-  let bestMatchContent = "";
 
   const MAX_CANDIDATES_TO_CHECK = 10; // Only check top 10 candidates
 
@@ -152,16 +151,15 @@ function fastFuzzySearch(
     if (similarity > bestScore) {
       bestScore = similarity;
       bestMatchIndex = candidate.index;
-      bestMatchContent = originalChunk;
 
       // Early exit if we found a very good match
       if (bestScore >= EARLY_STOP_THRESHOLD) {
-        return { bestScore, bestMatchIndex, bestMatchContent };
+        return { bestScore, bestMatchIndex };
       }
     }
   }
 
-  return { bestScore, bestMatchIndex, bestMatchContent };
+  return { bestScore, bestMatchIndex };
 }
 
 export function applySearchReplace(

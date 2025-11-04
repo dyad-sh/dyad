@@ -1,6 +1,6 @@
 import type React from "react";
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   ChevronsDownUp,
   ChevronsUpDown,
@@ -9,12 +9,15 @@ import {
   CircleX,
   Edit,
   X,
+  GitCompare,
 } from "lucide-react";
 import { CodeHighlight } from "./CodeHighlight";
 import { CustomTagState } from "./stateTypes";
 import { FileEditor } from "../preview_panel/FileEditor";
+import { DiffViewer } from "./DiffViewer";
 import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { useQuery } from "@tanstack/react-query";
 
 interface DyadWriteProps {
   children?: ReactNode;
@@ -30,6 +33,7 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
   description: descriptionProp,
 }) => {
   const [isContentVisible, setIsContentVisible] = useState(false);
+  const [showDiff, setShowDiff] = useState(false);
 
   // Use props directly if provided, otherwise extract from node
   const path = pathProp || node?.properties?.path || "";
@@ -40,6 +44,28 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
   const appId = useAtomValue(selectedAppIdAtom);
   const [isEditing, setIsEditing] = useState(false);
   const inProgress = state === "pending";
+
+  // Get the new content from children
+  const newContent = typeof children === "string" ? children : "";
+
+  // Fetch original file content for diff view
+  const { data: originalContent } = useQuery({
+    queryKey: ["file-content", appId, path],
+    queryFn: async () => {
+      if (!appId || !path) return "";
+      try {
+        const result = await window.electron.ipc.invoke("load-app-file", {
+          appId,
+          filePath: path,
+        });
+        return result || "";
+      } catch (error) {
+        // File might not exist yet (new file)
+        return "";
+      }
+    },
+    enabled: !!(appId && path && showDiff),
+  });
 
   const handleCancel = () => {
     setIsEditing(false);
@@ -84,9 +110,29 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
             </div>
           )}
         </div>
-        <div className="flex items-center">
+        <div className="flex items-center gap-2">
           {!inProgress && (
             <>
+              {/* Diff Toggle Button */}
+              {originalContent !== undefined && !isEditing && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowDiff(!showDiff);
+                    if (!isContentVisible) setIsContentVisible(true);
+                  }}
+                  className={`flex items-center gap-1 text-xs px-2 py-1 rounded cursor-pointer ${
+                    showDiff
+                      ? "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300"
+                      : "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                  }`}
+                >
+                  <GitCompare size={14} />
+                  Diff
+                </button>
+              )}
+
+              {/* Edit Button */}
               {isEditing ? (
                 <>
                   <button
@@ -140,13 +186,21 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
       )}
       {isContentVisible && (
         <div
-          className="text-xs cursor-text"
+          className="text-xs cursor-text mt-3"
           onClick={(e) => e.stopPropagation()}
         >
           {isEditing ? (
             <div className="h-96 min-h-96 border border-gray-200 dark:border-gray-700 rounded overflow-hidden">
               <FileEditor appId={appId ?? null} filePath={path} />
             </div>
+          ) : showDiff && originalContent !== undefined ? (
+            <DiffViewer
+              original={originalContent}
+              modified={newContent}
+              path={path}
+              readOnly={true}
+              height="400px"
+            />
           ) : (
             <CodeHighlight className="language-typescript">
               {children}

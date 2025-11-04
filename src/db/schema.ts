@@ -222,3 +222,72 @@ export const mcpToolConsents = sqliteTable(
   },
   (table) => [unique("uniq_mcp_consent").on(table.serverId, table.toolName)],
 );
+
+// --- Multi-cloud Deployment tables ---
+export const deploymentConfigs = sqliteTable("deployment_configs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  appId: integer("app_id")
+    .notNull()
+    .references(() => apps.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull(), // 'aws' | 'cloudflare' | 'netlify' | 'vercel'
+  projectId: text("project_id"),
+  projectName: text("project_name"),
+  accessToken: text("access_token"),
+  region: text("region"),
+  deploymentUrl: text("deployment_url"),
+  config: text("config", { mode: "json" }).$type<Record<string, unknown> | null>(),
+  enabled: integer("enabled", { mode: "boolean" })
+    .notNull()
+    .default(sql`1`),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+export const deployments = sqliteTable("deployments", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  appId: integer("app_id")
+    .notNull()
+    .references(() => apps.id, { onDelete: "cascade" }),
+  configId: integer("config_id")
+    .notNull()
+    .references(() => deploymentConfigs.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull(),
+  deploymentId: text("deployment_id"),
+  url: text("url"),
+  status: text("status").notNull(), // 'pending' | 'building' | 'ready' | 'error'
+  commitHash: text("commit_hash"),
+  logs: text("logs"),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+// --- Component Library tables ---
+export const componentLibraries = sqliteTable("component_libraries", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  appId: integer("app_id")
+    .notNull()
+    .references(() => apps.id, { onDelete: "cascade" }),
+  library: text("library").notNull(), // 'shadcn' | 'mui' | 'chakra' | etc.
+  installedAt: integer("installed_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+export const installedComponents = sqliteTable("installed_components", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  libraryId: integer("library_id")
+    .notNull()
+    .references(() => componentLibraries.id, { onDelete: "cascade" }),
+  componentName: text("component_name").notNull(),
+  installedAt: integer("installed_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});

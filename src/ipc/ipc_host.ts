@@ -32,6 +32,9 @@ import { registerPromptHandlers } from "./handlers/prompt_handlers";
 import { registerHelpBotHandlers } from "./handlers/help_bot_handlers";
 import { registerMcpHandlers } from "./handlers/mcp_handlers";
 import { registerSecurityHandlers } from "./handlers/security_handlers";
+import { registerTestGenerationHandlers } from "./handlers/test_generation_handlers";
+import { registerDeploymentHandlers } from "./handlers/deployment_handlers";
+import { registerComponentLibraryHandlers } from "./handlers/component_library_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -69,4 +72,7 @@ export function registerIpcHandlers() {
   registerHelpBotHandlers();
   registerMcpHandlers();
   registerSecurityHandlers();
+  registerTestGenerationHandlers();
+  registerDeploymentHandlers();
+  registerComponentLibraryHandlers();
 }

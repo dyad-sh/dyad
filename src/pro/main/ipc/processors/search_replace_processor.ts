@@ -1,12 +1,97 @@
 /* eslint-disable no-irregular-whitespace */
 
 import { parseSearchReplaceBlocks } from "@/pro/shared/search_replace_parser";
+import { distance } from "fastest-levenshtein";
+import { normalizeString } from "@/utils/text_normalization";
+
+// Minimum similarity threshold for fuzzy matching (0 to 1, where 1 is exact match)
+const FUZZY_MATCH_THRESHOLD = 0.8;
 
 function unescapeMarkers(content: string): string {
   return content
     .replace(/^\\<<<<<<</gm, "<<<<<<<")
     .replace(/^\\=======/gm, "=======")
     .replace(/^\\>>>>>>>/gm, ">>>>>>>");
+}
+
+/**
+ * Calculate similarity between two strings using Levenshtein distance
+ * Returns a value between 0 and 1, where 1 is an exact match
+ */
+function getSimilarity(original: string, search: string): number {
+  // Empty searches are no longer supported
+  if (search === "") {
+    return 0;
+  }
+
+  // Use the normalizeString utility to handle smart quotes and other special characters
+  const normalizedOriginal = normalizeString(original);
+  const normalizedSearch = normalizeString(search);
+
+  if (normalizedOriginal === normalizedSearch) {
+    return 1;
+  }
+
+  // Calculate Levenshtein distance using fastest-levenshtein's distance function
+  const dist = distance(normalizedOriginal, normalizedSearch);
+
+  // Calculate similarity ratio (0 to 1, where 1 is an exact match)
+  const maxLength = Math.max(
+    normalizedOriginal.length,
+    normalizedSearch.length,
+  );
+  return 1 - dist / maxLength;
+}
+
+/**
+ * Performs a "middle-out" search of `lines` (between [startIndex, endIndex]) to find
+ * the slice that is most similar to `searchChunk`. Returns the best score, index, and matched text.
+ */
+function fuzzySearch(
+  lines: string[],
+  searchChunk: string,
+  startIndex: number,
+  endIndex: number,
+) {
+  let bestScore = 0;
+  let bestMatchIndex = -1;
+  let bestMatchContent = "";
+  const searchLen = searchChunk.split(/\r?\n/).length;
+
+  // Middle-out from the midpoint
+  const midPoint = Math.floor((startIndex + endIndex) / 2);
+  let leftIndex = midPoint;
+  let rightIndex = midPoint + 1;
+
+  while (leftIndex >= startIndex || rightIndex <= endIndex - searchLen) {
+    if (leftIndex >= startIndex) {
+      const originalChunk = lines
+        .slice(leftIndex, leftIndex + searchLen)
+        .join("\n");
+      const similarity = getSimilarity(originalChunk, searchChunk);
+      if (similarity > bestScore) {
+        bestScore = similarity;
+        bestMatchIndex = leftIndex;
+        bestMatchContent = originalChunk;
+      }
+      leftIndex--;
+    }
+
+    if (rightIndex <= endIndex - searchLen) {
+      const originalChunk = lines
+        .slice(rightIndex, rightIndex + searchLen)
+        .join("\n");
+      const similarity = getSimilarity(originalChunk, searchChunk);
+      if (similarity > bestScore) {
+        bestScore = similarity;
+        bestMatchIndex = rightIndex;
+        bestMatchContent = originalChunk;
+      }
+      rightIndex++;
+    }
+  }
+
+  return { bestScore, bestMatchIndex, bestMatchContent };
 }
 
 export function applySearchReplace(
@@ -113,14 +198,29 @@ export function applySearchReplace(
         };
       }
 
-      if (candidates.length === 0) {
+      if (candidates.length === 1) {
+        matchIndex = candidates[0];
+      }
+    }
+
+    // If still no match, try fuzzy matching with Levenshtein distance
+    if (matchIndex === -1) {
+      const searchChunk = searchLines.join("\n");
+      const { bestScore, bestMatchIndex } = fuzzySearch(
+        resultLines,
+        searchChunk,
+        0,
+        resultLines.length,
+      );
+
+      if (bestScore >= FUZZY_MATCH_THRESHOLD) {
+        matchIndex = bestMatchIndex;
+      } else {
         return {
           success: false,
-          error: "Search block did not match any content in the target file",
+          error: `Search block did not match any content in the target file. Best fuzzy match had similarity of ${(bestScore * 100).toFixed(1)}% (threshold: ${(FUZZY_MATCH_THRESHOLD * 100).toFixed(1)}%)`,
         };
       }
-
-      matchIndex = candidates[0];
     }
 
     const matchedLines = resultLines.slice(

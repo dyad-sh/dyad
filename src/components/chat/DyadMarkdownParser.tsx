@@ -22,6 +22,7 @@ import { DyadMcpToolCall } from "./DyadMcpToolCall";
 import { DyadMcpToolResult } from "./DyadMcpToolResult";
 import { DyadWebSearchResult } from "./DyadWebSearchResult";
 import { DyadWebSearch } from "./DyadWebSearch";
+import { DyadWebCrawl } from "./DyadWebCrawl";
 import { DyadRead } from "./DyadRead";
 import { mapActionToButton } from "./ChatInput";
 import { SuggestedAction } from "@/lib/schemas";
@@ -134,6 +135,7 @@ function preprocessUnclosedTags(content: string): {
     "dyad-codebase-context",
     "dyad-web-search-result",
     "dyad-web-search",
+    "dyad-web-crawl",
     "dyad-read",
     "think",
     "dyad-command",
@@ -207,6 +209,7 @@ function parseCustomTags(content: string): ContentPiece[] {
     "dyad-codebase-context",
     "dyad-web-search-result",
     "dyad-web-search",
+    "dyad-web-crawl",
     "dyad-read",
     "think",
     "dyad-command",
@@ -318,6 +321,16 @@ function renderCustomTag(
         >
           {content}
         </DyadWebSearch>
+      );
+    case "dyad-web-crawl":
+      return (
+        <DyadWebCrawl
+          node={{
+            properties: {},
+          }}
+        >
+          {content}
+        </DyadWebCrawl>
       );
     case "dyad-web-search-result":
       return (

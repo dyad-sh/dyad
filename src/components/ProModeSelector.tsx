@@ -32,16 +32,16 @@ export function ProModeSelector() {
     });
   };
 
-  const handleSmartContextChange = (newValue: "off" | "v3" | "balanced") => {
+  const handleSmartContextChange = (newValue: "off" | "deep" | "balanced") => {
     if (newValue === "off") {
       updateSettings({
         enableProSmartFilesContextMode: false,
         proSmartContextOption: undefined,
       });
-    } else if (newValue === "v3") {
+    } else if (newValue === "deep") {
       updateSettings({
         enableProSmartFilesContextMode: true,
-        proSmartContextOption: "v3",
+        proSmartContextOption: "deep",
       });
     } else if (newValue === "balanced") {
       updateSettings({
@@ -276,21 +276,18 @@ function SmartContextSelector({
 }: {
   isTogglable: boolean;
   settings: UserSettings | null;
-  onValueChange: (value: "off" | "conservative" | "balanced" | "v3") => void;
+  onValueChange: (value: "off" | "balanced" | "deep") => void;
 }) {
   // Determine current value based on settings
-  const getCurrentValue = (): "off" | "conservative" | "balanced" | "v3" => {
+  const getCurrentValue = (): "off" | "conservative" | "balanced" | "deep" => {
     if (!settings?.enableProSmartFilesContextMode) {
       return "off";
     }
-    if (settings?.proSmartContextOption === "v3") {
-      return "v3";
+    if (settings?.proSmartContextOption === "deep") {
+      return "deep";
     }
     if (settings?.proSmartContextOption === "balanced") {
       return "balanced";
-    }
-    if (settings?.proSmartContextOption === "conservative") {
-      return "conservative";
     }
     // Keep in sync with getModelClient in get_model_client.ts
     // If enabled but no option set (undefined/falsey), it's balanced
@@ -340,13 +337,13 @@ function SmartContextSelector({
           Balanced
         </Button>
         <Button
-          variant={currentValue === "v3" ? "default" : "ghost"}
+          variant={currentValue === "deep" ? "default" : "ghost"}
           size="sm"
-          onClick={() => onValueChange("v3")}
+          onClick={() => onValueChange("deep")}
           disabled={!isTogglable}
           className="rounded-none border-r border-input h-8 px-3 text-xs flex-shrink-0"
         >
-          Power (Beta)
+          Deep (Beta)
         </Button>
       </div>
     </div>

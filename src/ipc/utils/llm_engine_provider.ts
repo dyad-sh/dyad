@@ -42,7 +42,7 @@ or to provide a custom fetch implementation for e.g. testing.
     enableLazyEdits?: boolean;
     enableSmartFilesContext?: boolean;
     enableWebSearch?: boolean;
-    smartContextMode?: "balanced" | "conservative" | "v3";
+    smartContextMode?: "balanced" | "conservative" | "deep";
   };
   settings: UserSettings;
 }

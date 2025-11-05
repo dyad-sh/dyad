@@ -33,8 +33,7 @@ export function parseFilesFromMessage(content: string): string[] {
   const matches: TagMatch[] = [];
 
   // Parse <dyad-read path="$filePath"></dyad-read>
-  const dyadReadRegex =
-    /<dyad-read\s+path="([^"]+)"\s*(?:\/>|><\/dyad-read>)/gs;
+  const dyadReadRegex = /<dyad-read\s+path="([^"]+)"\s*><\/dyad-read>/gs;
   let match: RegExpExecArray | null;
   while ((match = dyadReadRegex.exec(content)) !== null) {
     const filePath = normalizePath(match[1].trim());

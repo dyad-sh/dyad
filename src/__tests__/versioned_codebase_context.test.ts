@@ -3,13 +3,7 @@ import { describe, it, expect } from "vitest";
 
 describe("parseFilesFromMessage", () => {
   describe("dyad-read tags", () => {
-    it("should parse a single dyad-read tag with self-closing syntax", () => {
-      const input = '<dyad-read path="src/components/Button.tsx" />';
-      const result = parseFilesFromMessage(input);
-      expect(result).toEqual(["src/components/Button.tsx"]);
-    });
-
-    it("should parse a single dyad-read tag with closing tag syntax", () => {
+    it("should parse a single dyad-read tag", () => {
       const input = '<dyad-read path="src/components/Button.tsx"></dyad-read>';
       const result = parseFilesFromMessage(input);
       expect(result).toEqual(["src/components/Button.tsx"]);
@@ -17,9 +11,9 @@ describe("parseFilesFromMessage", () => {
 
     it("should parse multiple dyad-read tags", () => {
       const input = `
-        <dyad-read path="src/components/Button.tsx" />
-        <dyad-read path="src/utils/helpers.ts" />
-        <dyad-read path="src/styles/main.css" />
+        <dyad-read path="src/components/Button.tsx"></dyad-read>
+        <dyad-read path="src/utils/helpers.ts"></dyad-read>
+        <dyad-read path="src/styles/main.css"></dyad-read>
       `;
       const result = parseFilesFromMessage(input);
       expect(result).toEqual([
@@ -30,16 +24,17 @@ describe("parseFilesFromMessage", () => {
     });
 
     it("should trim whitespace from file paths in dyad-read tags", () => {
-      const input = '<dyad-read path="  src/components/Button.tsx  " />';
+      const input =
+        '<dyad-read path="  src/components/Button.tsx  "></dyad-read>';
       const result = parseFilesFromMessage(input);
       expect(result).toEqual(["src/components/Button.tsx"]);
     });
 
     it("should skip empty path attributes", () => {
       const input = `
-        <dyad-read path="src/components/Button.tsx" />
-        <dyad-read path="" />
-        <dyad-read path="src/utils/helpers.ts" />
+        <dyad-read path="src/components/Button.tsx"></dyad-read>
+        <dyad-read path=""></dyad-read>
+        <dyad-read path="src/utils/helpers.ts"></dyad-read>
       `;
       const result = parseFilesFromMessage(input);
       expect(result).toEqual([
@@ -50,7 +45,7 @@ describe("parseFilesFromMessage", () => {
 
     it("should handle file paths with special characters", () => {
       const input =
-        '<dyad-read path="src/components/@special/Button-v2.tsx" />';
+        '<dyad-read path="src/components/@special/Button-v2.tsx"></dyad-read>';
       const result = parseFilesFromMessage(input);
       expect(result).toEqual(["src/components/@special/Button-v2.tsx"]);
     });
@@ -151,14 +146,14 @@ src/styles/main.css
   describe("mixed tags", () => {
     it("should parse both dyad-read and dyad-code-search-result tags", () => {
       const input = `
-<dyad-read path="src/config/app.ts" />
+<dyad-read path="src/config/app.ts"></dyad-read>
 
 <dyad-code-search-result>
 src/components/Button.tsx
 src/components/Input.tsx
 </dyad-code-search-result>
 
-<dyad-read path="src/utils/helpers.ts" />
+<dyad-read path="src/utils/helpers.ts"></dyad-read>
 `;
       const result = parseFilesFromMessage(input);
       expect(result).toEqual([
@@ -171,7 +166,7 @@ src/components/Input.tsx
 
     it("should deduplicate file paths", () => {
       const input = `
-<dyad-read path="src/components/Button.tsx" />
+<dyad-read path="src/components/Button.tsx"></dyad-read>
 <dyad-read path="src/components/Button.tsx"></dyad-read>
 
 <dyad-code-search-result>
@@ -190,7 +185,7 @@ src/utils/helpers.ts
       const input = `
 Here's what I found:
 
-<dyad-read path="src/components/Header.tsx" />
+<dyad-read path="src/components/Header.tsx"></dyad-read>
 
 I also searched for related files:
 
@@ -202,7 +197,7 @@ src/styles/layout.css
 
 Let me also check the config:
 
-<dyad-read path="src/config/site.ts" />
+<dyad-read path="src/config/site.ts"></dyad-read>
 
 And finally:
 
@@ -248,7 +243,8 @@ src/file2.ts
     });
 
     it("should handle nested angle brackets in file paths", () => {
-      const input = '<dyad-read path="src/components/Generic<T>.tsx" />';
+      const input =
+        '<dyad-read path="src/components/Generic<T>.tsx"></dyad-read>';
       const result = parseFilesFromMessage(input);
       expect(result).toEqual(["src/components/Generic<T>.tsx"]);
     });
@@ -270,7 +266,7 @@ SRC/COMPONENTS/BUTTON.TSX
     it("should handle very long file paths", () => {
       const longPath =
         "src/very/deeply/nested/directory/structure/with/many/levels/components/Button.tsx";
-      const input = `<dyad-read path="${longPath}" />`;
+      const input = `<dyad-read path="${longPath}"></dyad-read>`;
       const result = parseFilesFromMessage(input);
       expect(result).toEqual([longPath]);
     });

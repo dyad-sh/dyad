@@ -3,13 +3,14 @@ import { ModelMessage } from "@ai-sdk/provider-utils";
 import crypto from "node:crypto";
 import log from "electron-log";
 import { getFileAtCommit } from "./git_utils";
-import { normalizePath } from "shared/normalizePath";
+import { normalizePath } from "../../../shared/normalizePath";
 
 const logger = log.scope("versioned_codebase_context");
 
 export interface VersionedFiles {
   fileIdToContent: Record<string, string>;
   fileReferences: CodebaseFileReference[];
+  messageIndexToFilePathToFileId: Record<number, Record<string, string>>;
 }
 
 interface DyadEngineProviderOptions {
@@ -31,8 +32,9 @@ export function parseFilesFromMessage(content: string): string[] {
   }
   const matches: TagMatch[] = [];
 
-  // Parse <dyad-read>$filePath</dyad-read>
-  const dyadReadRegex = /<dyad-read>(.*?)<\/dyad-read>/gs;
+  // Parse <dyad-read path="$filePath"></dyad-read>
+  const dyadReadRegex =
+    /<dyad-read\s+path="([^"]+)"\s*(?:\/>|><\/dyad-read>)/gs;
   let match: RegExpExecArray | null;
   while ((match = dyadReadRegex.exec(content)) !== null) {
     const filePath = normalizePath(match[1].trim());
@@ -96,7 +98,10 @@ export async function processChatMessagesWithVersionedFiles({
 }): Promise<VersionedFiles> {
   const fileIdToContent: Record<string, string> = {};
   const fileReferences: CodebaseFileReference[] = [];
-
+  const messageIndexToFilePathToFileId: Record<
+    number,
+    Record<string, string>
+  > = {};
   // Add all files from the files parameter to fileIdToContent and filePathToId
   for (const file of files) {
     // Generate SHA-256 hash of content as fileId
@@ -159,7 +164,7 @@ export async function processChatMessagesWithVersionedFiles({
     // Parse file paths from message content
     const filePaths = parseFilesFromMessage(textContent);
     const filePathsToFileIds: Record<string, string> = {};
-
+    messageIndexToFilePathToFileId[messageIndex] = filePathsToFileIds;
     for (const filePath of filePaths) {
       try {
         // Read file content from git at sourceCommitHash
@@ -207,5 +212,6 @@ export async function processChatMessagesWithVersionedFiles({
   return {
     fileIdToContent,
     fileReferences,
+    messageIndexToFilePathToFileId,
   };
 }

@@ -137,6 +137,10 @@ export function createDyadEngine(
           if ("dyadRequestId" in parsedBody) {
             delete parsedBody.dyadRequestId;
           }
+          const dyadAppId = parsedBody.dyadAppId;
+          if ("dyadAppId" in parsedBody) {
+            delete parsedBody.dyadAppId;
+          }
           const dyadDisableFiles = parsedBody.dyadDisableFiles;
           if ("dyadDisableFiles" in parsedBody) {
             delete parsedBody.dyadDisableFiles;
@@ -164,6 +168,7 @@ export function createDyadEngine(
                 options.dyadOptions.enableSmartFilesContext,
               smart_context_mode: options.dyadOptions.smartContextMode,
               enable_web_search: options.dyadOptions.enableWebSearch,
+              app_id: dyadAppId,
             };
             if (dyadMentionedApps?.length) {
               parsedBody.dyad_options.mentioned_apps = dyadMentionedApps;

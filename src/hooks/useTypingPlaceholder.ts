@@ -14,6 +14,7 @@ export function useTypingPlaceholder(
   useEffect(() => {
     const current = phrases[index];
     const speed = deleting ? deletingSpeed : typingSpeed;
+    let pauseTimer: NodeJS.Timeout;
     const timer = setTimeout(() => {
       if (!deleting && charIndex < current.length) {
         setText((prev) => prev + current.charAt(charIndex));
@@ -22,14 +23,17 @@ export function useTypingPlaceholder(
         setText((prev) => prev.slice(0, -1));
         setCharIndex((prev) => prev - 1);
       } else if (!deleting && charIndex === current.length) {
-        setTimeout(() => setDeleting(true), pauseTime);
+        pauseTimer = setTimeout(() => setDeleting(true), pauseTime);
       } else if (deleting && charIndex === 0) {
         setDeleting(false);
         setIndex((prev) => (prev + 1) % phrases.length);
       }
     }, speed);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(pauseTimer);
+    };
   }, [
     phrases,
     index,

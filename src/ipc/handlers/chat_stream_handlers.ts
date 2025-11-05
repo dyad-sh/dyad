@@ -83,8 +83,8 @@ import { isTurboEditsV2Enabled } from "@/lib/schemas";
 import { AI_STREAMING_ERROR_MESSAGE_PREFIX } from "@/shared/texts";
 import { getCurrentCommitHash } from "../utils/git_utils";
 import {
-  getVersionedCodebaseContext as getVersionedFiles,
-  VersionedCodebaseContext as VersionedFiles,
+  processChatMessagesWithVersionedFiles as getVersionedFiles,
+  VersionedFiles as VersionedFiles,
 } from "../utils/versioned_codebase_context";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;

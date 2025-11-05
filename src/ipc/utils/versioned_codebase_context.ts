@@ -1,4 +1,4 @@
-import { CodebaseFile } from "@/utils/codebase";
+import { CodebaseFile, CodebaseFileReference } from "@/utils/codebase";
 import { ModelMessage } from "@ai-sdk/provider-utils";
 import crypto from "node:crypto";
 import log from "electron-log";
@@ -7,10 +7,9 @@ import { normalizePath } from "shared/normalizePath";
 
 const logger = log.scope("versioned_codebase_context");
 
-export interface VersionedCodebaseContext {
-  messageIndexToFileId: Record<number, string[]>;
+export interface VersionedFiles {
   fileIdToContent: Record<string, string>;
-  filePathToId: Record<string, string>;
+  fileReferences: CodebaseFileReference[];
 }
 
 interface DyadEngineProviderOptions {
@@ -86,7 +85,7 @@ export function parseFilesFromMessage(content: string): string[] {
 
   return filePaths;
 }
-export async function getVersionedCodebaseContext({
+export async function processChatMessagesWithVersionedFiles({
   files,
   chatMessages,
   appPath,
@@ -94,10 +93,9 @@ export async function getVersionedCodebaseContext({
   files: CodebaseFile[];
   chatMessages: ModelMessage[];
   appPath: string;
-}): Promise<VersionedCodebaseContext> {
-  const messageIndexToFileId: Record<number, string[]> = {};
+}): Promise<VersionedFiles> {
   const fileIdToContent: Record<string, string> = {};
-  const filePathToId: Record<string, string> = {};
+  const fileReferences: CodebaseFileReference[] = [];
 
   // Add all files from the files parameter to fileIdToContent and filePathToId
   for (const file of files) {
@@ -107,11 +105,13 @@ export async function getVersionedCodebaseContext({
       .update(file.content)
       .digest("hex");
 
-    // Store in fileIdToContent
     fileIdToContent[fileId] = file.content;
+    const { content: _content, ...restOfFile } = file;
 
-    // Store in filePathToId
-    filePathToId[file.path] = fileId;
+    fileReferences.push({
+      ...restOfFile,
+      fileId,
+    });
   }
 
   for (
@@ -158,7 +158,7 @@ export async function getVersionedCodebaseContext({
 
     // Parse file paths from message content
     const filePaths = parseFilesFromMessage(textContent);
-    const fileIds: string[] = [];
+    const filePathsToFileIds: Record<string, string> = {};
 
     for (const filePath of filePaths) {
       try {
@@ -185,11 +185,8 @@ export async function getVersionedCodebaseContext({
         // Store in fileIdToContent
         fileIdToContent[fileId] = fileContent;
 
-        // Store in filePathToId (latest version)
-        filePathToId[filePath] = fileId;
-
         // Add to this message's file IDs
-        fileIds.push(fileId);
+        filePathsToFileIds[filePath] = fileId;
       } catch (error) {
         logger.error(
           `Error reading file ${filePath} at commit ${sourceCommitHash}:`,
@@ -197,16 +194,18 @@ export async function getVersionedCodebaseContext({
         );
       }
     }
-
-    // Store message index to file IDs mapping
-    if (fileIds.length > 0) {
-      messageIndexToFileId[messageIndex] = fileIds;
+    if (!message.providerOptions) {
+      message.providerOptions = {};
     }
+    if (!message.providerOptions["dyad-engine"]) {
+      message.providerOptions["dyad-engine"] = {};
+    }
+    message.providerOptions["dyad-engine"]["file_path_to_file_id"] =
+      filePathsToFileIds;
   }
 
   return {
-    messageIndexToFileId,
     fileIdToContent,
-    filePathToId,
+    fileReferences,
   };
 }

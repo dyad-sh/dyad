@@ -6,7 +6,8 @@ import pathModule from "node:path";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { readSettings } from "../../main/settings";
-
+import log from "electron-log";
+const logger = log.scope("git_utils");
 const execAsync = promisify(exec);
 
 async function verboseExecAsync(
@@ -24,6 +25,18 @@ async function verboseExecAsync(
     }
     throw new Error(errorMessage);
   }
+}
+
+export async function getCurrentCommitHash({
+  path,
+}: {
+  path: string;
+}): Promise<string> {
+  return await git.resolveRef({
+    fs,
+    dir: path,
+    ref: "HEAD",
+  });
 }
 
 export async function gitCommit({
@@ -164,5 +177,47 @@ export async function gitAddAll({ path }: { path: string }): Promise<void> {
     return;
   } else {
     return git.add({ fs, dir: path, filepath: "." });
+  }
+}
+
+export async function getFileAtCommit({
+  path,
+  filePath,
+  commitHash,
+}: {
+  path: string;
+  filePath: string;
+  commitHash: string;
+}): Promise<string | null> {
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    try {
+      const { stdout } = await execAsync(
+        `git -C "${path}" show "${commitHash}:${filePath}"`,
+      );
+      return stdout;
+    } catch (error: any) {
+      logger.error(
+        `Error getting file at commit ${commitHash}: ${error.message}`,
+      );
+      // File doesn't exist at this commit
+      return null;
+    }
+  } else {
+    try {
+      const { blob } = await git.readBlob({
+        fs,
+        dir: path,
+        oid: commitHash,
+        filepath: filePath,
+      });
+      return Buffer.from(blob).toString("utf-8");
+    } catch (error: any) {
+      logger.error(
+        `Error getting file at commit ${commitHash}: ${error.message}`,
+      );
+      // File doesn't exist at this commit
+      return null;
+    }
   }
 }

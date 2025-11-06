@@ -411,12 +411,19 @@ ${content}
   }
 }
 
-export type CodebaseFile = {
+export interface BaseFile {
   path: string;
-  content: string;
   focused?: boolean;
   force?: boolean;
-};
+}
+
+export interface CodebaseFile extends BaseFile {
+  content: string;
+}
+
+export interface CodebaseFileReference extends BaseFile {
+  fileId: string;
+}
 
 /**
  * Extract and format codebase files as a string to be included in prompts

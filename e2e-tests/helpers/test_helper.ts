@@ -71,7 +71,7 @@ class ProModesDialog {
     public close: () => Promise<void>,
   ) {}
 
-  async setSmartContextMode(mode: "balanced" | "off" | "conservative") {
+  async setSmartContextMode(mode: "balanced" | "off" | "deep") {
     await this.page
       .getByTestId("smart-context-selector")
       .getByRole("button", {

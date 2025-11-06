@@ -131,17 +131,36 @@ export default Index;
       lastMessage &&
       typeof lastMessage.content === "string" &&
       lastMessage.content.startsWith(
-        "There was an issue with the following `dyad-search-replace` tags",
+        "There was an issue with the following `dyad-search-replace` tags.",
       )
     ) {
-      // Fix errors in create-ts-errors.md and introduce a new error
-      messageContent =
-        `
+      if (lastMessage.content.includes("Make sure you use `dyad-read`")) {
+        // Fix errors in create-ts-errors.md and introduce a new error
+        messageContent =
+          `
+<dyad-read path="src/pages/Index.tsx"></dyad-read>
+
+<dyad-search-replace path="src/pages/Index.tsx">
+<<<<<<< SEARCH
+        // STILL Intentionally DO NOT MATCH ANYTHING TO TRIGGER FALLBACK
+        <h1 className="text-4xl font-bold mb-4">Welcome to Your Blank App</h1>
+=======
+        <h1 className="text-4xl font-bold mb-4">Welcome to the UPDATED App</h1>
+>>>>>>> REPLACE
+</dyad-search-replace>
+` +
+          "\n\n" +
+          generateDump(req);
+      } else {
+        // Fix errors in create-ts-errors.md and introduce a new error
+        messageContent =
+          `
 <dyad-write path="src/pages/Index.tsx" description="Rewrite file.">
 // FILE IS REPLACED WITH FALLBACK WRITE.
 </dyad-write>` +
-        "\n\n" +
-        generateDump(req);
+          "\n\n" +
+          generateDump(req);
+      }
     }
 
     console.error("LASTMESSAGE", lastMessage);

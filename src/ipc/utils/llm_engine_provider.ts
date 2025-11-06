@@ -42,7 +42,7 @@ or to provide a custom fetch implementation for e.g. testing.
     enableLazyEdits?: boolean;
     enableSmartFilesContext?: boolean;
     enableWebSearch?: boolean;
-    smartContextMode?: "balanced" | "conservative";
+    smartContextMode?: "balanced" | "conservative" | "deep";
   };
   settings: UserSettings;
 }
@@ -125,6 +125,10 @@ export function createDyadEngine(
               options.settings,
             ),
           };
+          const dyadVersionedFiles = parsedBody.dyadVersionedFiles;
+          if ("dyadVersionedFiles" in parsedBody) {
+            delete parsedBody.dyadVersionedFiles;
+          }
           const dyadFiles = parsedBody.dyadFiles;
           if ("dyadFiles" in parsedBody) {
             delete parsedBody.dyadFiles;
@@ -132,6 +136,10 @@ export function createDyadEngine(
           const requestId = parsedBody.dyadRequestId;
           if ("dyadRequestId" in parsedBody) {
             delete parsedBody.dyadRequestId;
+          }
+          const dyadAppId = parsedBody.dyadAppId;
+          if ("dyadAppId" in parsedBody) {
+            delete parsedBody.dyadAppId;
           }
           const dyadDisableFiles = parsedBody.dyadDisableFiles;
           if ("dyadDisableFiles" in parsedBody) {
@@ -151,14 +159,16 @@ export function createDyadEngine(
           }
 
           // Add files to the request if they exist
-          if (dyadFiles?.length && !dyadDisableFiles) {
+          if (!dyadDisableFiles) {
             parsedBody.dyad_options = {
               files: dyadFiles,
+              versioned_files: dyadVersionedFiles,
               enable_lazy_edits: options.dyadOptions.enableLazyEdits,
               enable_smart_files_context:
                 options.dyadOptions.enableSmartFilesContext,
               smart_context_mode: options.dyadOptions.smartContextMode,
               enable_web_search: options.dyadOptions.enableWebSearch,
+              app_id: dyadAppId,
             };
             if (dyadMentionedApps?.length) {
               parsedBody.dyad_options.mentioned_apps = dyadMentionedApps;

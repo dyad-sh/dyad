@@ -1,12 +1,5 @@
-import React, { useEffect, useState, useMemo } from "react";
-import {
-  ChevronDown,
-  ChevronUp,
-  FileCode,
-  Loader,
-  FileText,
-} from "lucide-react";
-import { CustomTagState } from "./stateTypes";
+import React, { useState, useMemo } from "react";
+import { ChevronDown, ChevronUp, FileCode, FileText } from "lucide-react";
 
 interface DyadCodeSearchResultProps {
   node?: any;
@@ -15,11 +8,8 @@ interface DyadCodeSearchResultProps {
 
 export const DyadCodeSearchResult: React.FC<DyadCodeSearchResultProps> = ({
   children,
-  node,
 }) => {
-  const state = node?.properties?.state as CustomTagState;
-  const inProgress = state === "pending";
-  const [isExpanded, setIsExpanded] = useState(inProgress);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   // Parse file paths from children content
   const files = useMemo(() => {
@@ -45,18 +35,9 @@ export const DyadCodeSearchResult: React.FC<DyadCodeSearchResultProps> = ({
     return filePaths;
   }, [children]);
 
-  // Collapse when transitioning from in-progress to not-in-progress
-  useEffect(() => {
-    if (!inProgress && isExpanded) {
-      setIsExpanded(false);
-    }
-  }, [inProgress]);
-
   return (
     <div
-      className={`relative bg-(--background-lightest) dark:bg-zinc-900 hover:bg-(--background-lighter) rounded-lg px-4 py-2 border my-2 cursor-pointer ${
-        inProgress ? "border-purple-500" : "border-border"
-      }`}
+      className="relative bg-(--background-lightest) dark:bg-zinc-900 hover:bg-(--background-lighter) rounded-lg px-4 py-2 border border-border my-2 cursor-pointer"
       onClick={() => setIsExpanded(!isExpanded)}
       role="button"
       aria-expanded={isExpanded}
@@ -75,9 +56,6 @@ export const DyadCodeSearchResult: React.FC<DyadCodeSearchResultProps> = ({
       >
         <FileCode size={16} className="text-purple-600" />
         <span>Code Search Result</span>
-        {inProgress && (
-          <Loader size={14} className="ml-1 text-purple-600 animate-spin" />
-        )}
       </div>
 
       {/* File count when collapsed */}

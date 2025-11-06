@@ -534,15 +534,16 @@ ${componentSnippet}
           sourceCommitHash: message.sourceCommitHash,
         }));
 
-        // For Dyad Pro + Deep Context, we set to 10 chat turns (+1)
-        // this is to enable more cache hits and we do server optimizations
-        // as needed.
+        // For Dyad Pro + Deep Context, we set to 200 chat turns (+1)
+        // this is to enable more cache hits. Practically, users should
+        // rarely go over this limit because they will hit the model's
+        // context window limit.
         //
         // Limit chat history based on maxChatTurnsInContext setting
         // We add 1 because the current prompt counts as a turn.
         const maxChatTurns =
           isEngineEnabled && settings.proSmartContextOption === "deep"
-            ? 101
+            ? 201
             : (settings.maxChatTurnsInContext || MAX_CHAT_TURNS_IN_CONTEXT) + 1;
 
         // If we need to limit the context, we take only the most recent turns
@@ -1077,7 +1078,7 @@ ${formattedSearchReplaceIssues}`,
 
               // Re-check for issues after the fix attempt
               issues = await dryRunSearchReplace({
-                fullResponse,
+                fullResponse: result.incrementalResponse,
                 appPath: getDyadAppPath(updatedChat.app.path),
               });
             }

@@ -86,6 +86,7 @@ export function parseFilesFromMessage(content: string): string[] {
 
   return filePaths;
 }
+
 export async function processChatMessagesWithVersionedFiles({
   files,
   chatMessages,
@@ -101,7 +102,6 @@ export async function processChatMessagesWithVersionedFiles({
     number,
     Record<string, string>
   > = {};
-  // Add all files from the files parameter to fileIdToContent and filePathToId
   for (const file of files) {
     // Generate SHA-256 hash of content as fileId
     const fileId = crypto
@@ -164,48 +164,51 @@ export async function processChatMessagesWithVersionedFiles({
     const filePaths = parseFilesFromMessage(textContent);
     const filePathsToFileIds: Record<string, string> = {};
     messageIndexToFilePathToFileId[messageIndex] = filePathsToFileIds;
-    for (const filePath of filePaths) {
-      try {
-        // Read file content from git at sourceCommitHash
-        const fileContent = await getFileAtCommit({
-          path: appPath,
-          filePath,
-          commitHash: sourceCommitHash,
-        });
 
-        if (fileContent === null) {
-          logger.warn(
-            `File ${filePath} not found at commit ${sourceCommitHash} for message ${messageIndex}`,
-          );
-          continue;
-        }
+    // Parallelize file content fetching
+    const fileContentPromises = filePaths.map((filePath) =>
+      getFileAtCommit({
+        path: appPath,
+        filePath,
+        commitHash: sourceCommitHash,
+      }).then(
+        (content) => ({ filePath, content, status: "fulfilled" as const }),
+        (error) => ({ filePath, error, status: "rejected" as const }),
+      ),
+    );
 
-        // Generate SHA-256 hash of content as fileId
-        const fileId = crypto
-          .createHash("sha256")
-          .update(fileContent)
-          .digest("hex");
+    const results = await Promise.all(fileContentPromises);
 
-        // Store in fileIdToContent
-        fileIdToContent[fileId] = fileContent;
-
-        // Add to this message's file IDs
-        filePathsToFileIds[filePath] = fileId;
-      } catch (error) {
+    for (const result of results) {
+      if (result.status === "rejected") {
         logger.error(
-          `Error reading file ${filePath} at commit ${sourceCommitHash}:`,
-          error,
+          `Error reading file ${result.filePath} at commit ${sourceCommitHash}:`,
+          result.error,
         );
+        continue;
       }
+
+      const { filePath, content: fileContent } = result;
+
+      if (fileContent === null) {
+        logger.warn(
+          `File ${filePath} not found at commit ${sourceCommitHash} for message ${messageIndex}`,
+        );
+        continue;
+      }
+
+      // Generate SHA-256 hash of content as fileId
+      const fileId = crypto
+        .createHash("sha256")
+        .update(fileContent)
+        .digest("hex");
+
+      // Store in fileIdToContent
+      fileIdToContent[fileId] = fileContent;
+
+      // Add to this message's file IDs
+      filePathsToFileIds[filePath] = fileId;
     }
-    if (!message.providerOptions) {
-      message.providerOptions = {};
-    }
-    if (!message.providerOptions["dyad-engine"]) {
-      message.providerOptions["dyad-engine"] = {};
-    }
-    message.providerOptions["dyad-engine"]["file_path_to_file_id"] =
-      filePathsToFileIds;
   }
 
   return {

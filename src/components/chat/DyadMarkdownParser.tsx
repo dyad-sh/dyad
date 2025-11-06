@@ -350,9 +350,7 @@ function renderCustomTag(
       return (
         <DyadCodeSearchResult
           node={{
-            properties: {
-              state: getState({ isStreaming, inProgress }),
-            },
+            properties: {},
           }}
         >
           {content}

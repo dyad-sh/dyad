@@ -367,7 +367,7 @@ function SmartContextSelector({
               disabled={!isTogglable}
               className="rounded-none border-r border-input h-8 px-3 text-xs flex-shrink-0"
             >
-              Classic
+              Balanced
             </Button>
           </TooltipTrigger>
           <TooltipContent>

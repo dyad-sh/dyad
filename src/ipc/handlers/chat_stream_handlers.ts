@@ -1033,6 +1033,9 @@ This conversation includes one or more image attachments. When the user uploads 
                 .join("\n\n");
 
               fullResponse += `<dyad-output type="warning" message="Could not apply Turbo Edits properly for some of the files; re-generating code...">${formattedSearchReplaceIssues}</dyad-output>`;
+              await processResponseChunkUpdate({
+                fullResponse,
+              });
 
               logger.info(
                 `Attempting to fix search-replace issues, attempt #${searchReplaceFixAttempts + 1}`,

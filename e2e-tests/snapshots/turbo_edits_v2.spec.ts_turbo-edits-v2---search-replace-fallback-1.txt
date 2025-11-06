@@ -22,7 +22,7 @@
       },
       {
         "role": "assistant",
-        "content": "<dyad-write path=\"src/pages/Index.tsx\" description=\"Rewrite file.\">\n// FILE IS REPLACED WITH FALLBACK WRITE.\n</dyad-write>\n\n[[dyad-dump-path=*]]"
+        "content": "<dyad-read path=\"src/pages/Index.tsx\"></dyad-read>\n\n<dyad-search-replace path=\"src/pages/Index.tsx\">\n<<<<<<< SEARCH\n        // STILL Intentionally DO NOT MATCH ANYTHING TO TRIGGER FALLBACK\n        <h1 className=\"text-4xl font-bold mb-4\">Welcome to Your Blank App</h1>\n=======\n        <h1 className=\"text-4xl font-bold mb-4\">Welcome to the UPDATED App</h1>\n>>>>>>> REPLACE\n</dyad-search-replace>\n\n\n[[dyad-dump-path=*]]"
       },
       {
         "role": "user",

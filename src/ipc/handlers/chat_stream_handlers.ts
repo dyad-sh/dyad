@@ -346,44 +346,52 @@ export function registerChatStreamHandlers() {
       } catch (e) {
         logger.error("Failed to inline referenced prompts:", e);
       }
-      if (req.selectedComponent) {
-        let componentSnippet = "[component snippet not available]";
-        try {
-          const componentFileContent = await readFile(
-            path.join(
-              getDyadAppPath(chat.app.path),
-              req.selectedComponent.relativePath,
-            ),
-            "utf8",
-          );
-          const lines = componentFileContent.split("\n");
-          const selectedIndex = req.selectedComponent.lineNumber - 1;
 
-          // Let's get one line before and three after for context.
-          const startIndex = Math.max(0, selectedIndex - 1);
-          const endIndex = Math.min(lines.length, selectedIndex + 4);
+      const componentsToProcess = req.selectedComponents || [];
 
-          const snippetLines = lines.slice(startIndex, endIndex);
-          const selectedLineInSnippetIndex = selectedIndex - startIndex;
+      if (componentsToProcess.length > 0) {
+        userPrompt += "\n\nSelected components:\n";
 
-          if (snippetLines[selectedLineInSnippetIndex]) {
-            snippetLines[selectedLineInSnippetIndex] =
-              `${snippetLines[selectedLineInSnippetIndex]} // <-- EDIT HERE`;
+        for (const component of componentsToProcess) {
+          let componentSnippet = "[component snippet not available]";
+          try {
+            const componentFileContent = await readFile(
+              path.join(getDyadAppPath(chat.app.path), component.relativePath),
+              "utf8",
+            );
+            const lines = componentFileContent.split("\n");
+            const selectedIndex = component.lineNumber - 1;
+
+            // Let's get one line before and three after for context.
+            const startIndex = Math.max(0, selectedIndex - 1);
+            const endIndex = Math.min(lines.length, selectedIndex + 4);
+
+            const snippetLines = lines.slice(startIndex, endIndex);
+            const selectedLineInSnippetIndex = selectedIndex - startIndex;
+
+            if (snippetLines[selectedLineInSnippetIndex]) {
+              snippetLines[selectedLineInSnippetIndex] =
+                `${snippetLines[selectedLineInSnippetIndex]} // <-- EDIT HERE`;
+            }
+
+            componentSnippet = snippetLines.join("\n");
+          } catch (err) {
+            logger.error(
+              `Error reading selected component file content: ${err}`,
+            );
           }
 
-          componentSnippet = snippetLines.join("\n");
-        } catch (err) {
-          logger.error(`Error reading selected component file content: ${err}`);
-        }
-
-        userPrompt += `\n\nSelected component: ${req.selectedComponent.name} (file: ${req.selectedComponent.relativePath})
+          userPrompt += `\n${componentsToProcess.length > 1 ? `${componentsToProcess.indexOf(component) + 1}. ` : ""}Component: ${component.name} (file: ${component.relativePath})
 
 Snippet:
 \`\`\`
 ${componentSnippet}
 \`\`\`
 `;
+        }
+        console.log(userPrompt);
       }
+
       await db
         .insert(messages)
         .values({
@@ -452,18 +460,18 @@ ${componentSnippet}
 
         const appPath = getDyadAppPath(updatedChat.app.path);
         // When we don't have smart context enabled, we
-        // only include the selected component's file for codebase context.
+        // only include the selected components' files for codebase context.
         //
-        // If we have selected component and smart context is enabled,
+        // If we have selected components and smart context is enabled,
         // we handle this specially below.
         const chatContext =
-          req.selectedComponent && !isSmartContextEnabled
+          req.selectedComponents &&
+          req.selectedComponents.length > 0 &&
+          !isSmartContextEnabled
             ? {
-                contextPaths: [
-                  {
-                    globPath: req.selectedComponent.relativePath,
-                  },
-                ],
+                contextPaths: req.selectedComponents.map((component) => ({
+                  globPath: component.relativePath,
+                })),
                 smartContextAutoIncludes: [],
               }
             : validateChatContext(updatedChat.app.chatContext);
@@ -474,12 +482,19 @@ ${componentSnippet}
           chatContext,
         });
 
-        // For smart context and selected component, we will mark the selected component's file as focused.
+        // For smart context and selected components, we will mark the selected components' files as focused.
         // This means that we don't do the regular smart context handling, but we'll allow fetching
         // additional files through <dyad-read> as needed.
-        if (isSmartContextEnabled && req.selectedComponent) {
+        if (
+          isSmartContextEnabled &&
+          req.selectedComponents &&
+          req.selectedComponents.length > 0
+        ) {
+          const selectedPaths = new Set(
+            req.selectedComponents.map((component) => component.relativePath),
+          );
           for (const file of files) {
-            if (file.path === req.selectedComponent.relativePath) {
+            if (selectedPaths.has(file.path)) {
               file.focused = true;
             }
           }

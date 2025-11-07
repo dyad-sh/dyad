@@ -148,7 +148,13 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
     const currentInput = inputValue;
     setInputValue("");
-    setSelectedComponent(null);
+
+    // Use all selected components for multi-component editing
+    const componentsToSend =
+      selectedComponent && selectedComponent.length > 0
+        ? selectedComponent
+        : [];
+    setSelectedComponent([]);
 
     // Send message with attachments and clear them after sending
     await streamMessage({
@@ -156,7 +162,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       chatId,
       attachments,
       redo: false,
-      selectedComponent,
+      selectedComponents: componentsToSend,
     });
     clearAttachments();
     posthog.capture("chat:submit");

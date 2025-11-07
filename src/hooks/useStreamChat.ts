@@ -70,6 +70,7 @@ export function useStreamChat({
       redo,
       attachments,
       selectedComponent,
+      selectedComponents,
       onSettled,
     }: {
       prompt: string;
@@ -77,6 +78,7 @@ export function useStreamChat({
       redo?: boolean;
       attachments?: FileAttachment[];
       selectedComponent?: ComponentSelection | null;
+      selectedComponents?: ComponentSelection[];
       onSettled?: () => void;
     }) => {
       if (
@@ -107,6 +109,7 @@ export function useStreamChat({
       try {
         IpcClient.getInstance().streamMessage(prompt, {
           selectedComponent: selectedComponent ?? null,
+          selectedComponents: selectedComponents ?? [],
           chatId,
           redo,
           attachments,

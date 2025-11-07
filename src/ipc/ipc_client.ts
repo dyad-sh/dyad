@@ -388,6 +388,7 @@ export class IpcClient {
     prompt: string,
     options: {
       selectedComponent: ComponentSelection | null;
+      selectedComponents?: ComponentSelection[];
       chatId: number;
       redo?: boolean;
       attachments?: FileAttachment[];
@@ -402,6 +403,7 @@ export class IpcClient {
       redo,
       attachments,
       selectedComponent,
+      selectedComponents,
       onUpdate,
       onEnd,
       onError,
@@ -442,6 +444,7 @@ export class IpcClient {
               chatId,
               redo,
               selectedComponent,
+              selectedComponents,
               attachments: fileDataArray,
             })
             .catch((err) => {
@@ -465,6 +468,7 @@ export class IpcClient {
           chatId,
           redo,
           selectedComponent,
+          selectedComponents,
         })
         .catch((err) => {
           console.error("Error streaming message:", err);

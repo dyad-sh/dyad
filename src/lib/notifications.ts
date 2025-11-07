@@ -24,8 +24,17 @@ export const showResponseCompleted = (options: NotificationOptions) => {
   } = options;
 
   // Respect user settings
-  if (!settings?.enableResponseEndNotification || !visual) {
-    return; // user disabled response end notifications
+  if (!settings?.enableResponseEndNotification) {
+    return; // user disabled all response notifications
+  }
+
+  // Handle visual and sound independently
+  if (visual) {
+    // Show visual notification
+  }
+
+  if (sound) {
+    playNotificationSound();
   }
 
   // Try native notification first, fallback to toast

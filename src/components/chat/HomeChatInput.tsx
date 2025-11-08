@@ -27,6 +27,13 @@ export function HomeChatInput({
   }); // eslint-disable-line @typescript-eslint/no-unused-vars
   useChatModeToggle();
 
+  const typingText = useTypingPlaceholder([
+    "an ecommerce store...",
+    "an information page...",
+    "a landing page...",
+  ]);
+  const placeholder = `Ask Dyad to build ${typingText ?? ""}`;
+
   // Use the attachments hook
   const {
     attachments,
@@ -57,13 +64,6 @@ export function HomeChatInput({
   if (!settings) {
     return null; // Or loading state
   }
-  const placeholder =
-    "Ask Dyad to build " +
-    useTypingPlaceholder([
-      "an ecommerce store...",
-      "an information page...",
-      "a landing page...",
-    ]);
 
   return (
     <>

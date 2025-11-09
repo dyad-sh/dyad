@@ -3,9 +3,8 @@
   let overlays = [];
   let hoverOverlay = null;
   let hoverLabel = null;
-  let isCtrlPressed = false;
   let currentHoveredElement = null;
-  //detect if the user is using Macis
+  //detect if the user is using Mac
   const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
 
   // The possible states are:
@@ -57,10 +56,6 @@
     if (!el) {
       if (hoverOverlay) hoverOverlay.style.display = "none";
       return;
-    }
-
-    if (!isCtrlPressed && !isSelected) {
-      clearOverlays();
     }
 
     if (isSelected) {
@@ -244,17 +239,6 @@
   }
 
   function onKeyDown(e) {
-    if ((e.key === "Control" || e.key === "Meta") && !e.shiftKey && !e.altKey) {
-      isCtrlPressed = true;
-      window.parent.postMessage(
-        {
-          type: "dyad-ctrl-key-pressed",
-          pressed: true,
-        },
-        "*",
-      );
-    }
-
     // Ignore keystrokes if the user is typing in an input field, textarea, or editable element
     if (
       e.target.tagName === "INPUT" ||
@@ -279,26 +263,12 @@
     }
   }
 
-  function onKeyUp(e) {
-    if (e.key === "Control" || e.key === "Meta") {
-      isCtrlPressed = false;
-      window.parent.postMessage(
-        {
-          type: "dyad-ctrl-key-pressed",
-          pressed: false,
-        },
-        "*",
-      );
-    }
-  }
-
   /* ---------- activation / deactivation --------------------------------- */
   function activate() {
     if (state.type === "inactive") {
       window.addEventListener("click", onClick, true);
     }
     state = { type: "inspecting", element: null };
-    clearOverlays();
   }
 
   function deactivate() {
@@ -324,14 +294,10 @@
     if (e.data.type === "activate-dyad-component-selector") activate();
     if (e.data.type === "deactivate-dyad-component-selector") deactivate();
     if (e.data.type === "clear-dyad-component-overlays") clearOverlays();
-    if (e.data.type === "dyad-parent-ctrl-key-state") {
-      isCtrlPressed = e.data.pressed;
-    }
   });
 
   // Always listen for keyboard shortcuts
   window.addEventListener("keydown", onKeyDown, true);
-  window.addEventListener("keyup", onKeyUp, true);
 
   // Always listen for mouse move to show/hide labels on selected overlays
   window.addEventListener("mousemove", onMouseMove, true);

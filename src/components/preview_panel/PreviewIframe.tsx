@@ -178,7 +178,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const setPreviewIframeRef = useSetAtom(previewIframeRefAtom);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isPicking, setIsPicking] = useState(false);
-  const [ctrlKeyPressed, setCtrlKeyPressed] = useState(false);
 
   // Device mode state
   type DeviceMode = "desktop" | "tablet" | "mobile";
@@ -199,47 +198,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     setPreviewIframeRef(iframeRef.current);
   }, [iframeRef.current, setPreviewIframeRef]);
 
-  // Listen for Ctrl key presses globally (outside iframe)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (
-        (e.key === "Control" || e.key === "Meta") &&
-        !e.shiftKey &&
-        !e.altKey
-      ) {
-        setCtrlKeyPressed(true);
-        // Send message to iframe to sync state
-        if (iframeRef.current?.contentWindow) {
-          iframeRef.current.contentWindow.postMessage(
-            { type: "dyad-parent-ctrl-key-state", pressed: true },
-            "*",
-          );
-        }
-      }
-    };
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === "Control" || e.key === "Meta") {
-        setCtrlKeyPressed(false);
-        // Send message to iframe to sync state
-        if (iframeRef.current?.contentWindow) {
-          iframeRef.current.contentWindow.postMessage(
-            { type: "dyad-parent-ctrl-key-state", pressed: false },
-            "*",
-          );
-        }
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
-    };
-  }, []);
-
   // Deactivate component selector when selection is cleared
   useEffect(() => {
     if (!selectedComponentPreview || selectedComponentPreview.length === 0) {
@@ -252,23 +210,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       setIsPicking(false);
     }
   }, [selectedComponentPreview]);
-
-  useEffect(() => {
-    if (
-      !ctrlKeyPressed &&
-      isPicking &&
-      selectedComponentPreview &&
-      selectedComponentPreview.length > 0
-    ) {
-      setIsPicking(false);
-      if (iframeRef.current?.contentWindow) {
-        iframeRef.current.contentWindow.postMessage(
-          { type: "deactivate-dyad-component-selector" },
-          "*",
-        );
-      }
-    }
-  }, [ctrlKeyPressed]);
 
   // Add message listener for iframe errors and navigation events
   useEffect(() => {
@@ -283,16 +224,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         return;
       }
 
-      if (event.data?.type === "dyad-ctrl-key-pressed") {
-        console.log("Ctrl key state:", event.data.pressed);
-        setCtrlKeyPressed(event.data.pressed);
-        console.log("Ctrl key parent state:", event.data.pressed);
-        return;
-      }
-
       if (event.data?.type === "dyad-component-selected") {
         console.log("Component picked:", event.data);
-        console.log("Ctrl key pressed:", ctrlKeyPressed);
 
         // Parse all components from the selection
         const components = event.data.components
@@ -316,16 +249,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           return [...prev, ...newComponents];
         });
 
-        // Only deactivate picking mode if Ctrl is not pressed
-        if (!ctrlKeyPressed) {
-          setIsPicking(false);
-          if (iframeRef.current?.contentWindow) {
-            iframeRef.current.contentWindow.postMessage(
-              { type: "deactivate-dyad-component-selector" },
-              "*",
-            );
-          }
-        }
         return;
       }
 
@@ -414,7 +337,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     setErrorMessage,
     setIsComponentSelectorInitialized,
     setSelectedComponentPreview,
-    ctrlKeyPressed,
   ]);
 
   useEffect(() => {

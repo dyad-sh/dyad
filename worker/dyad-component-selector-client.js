@@ -158,6 +158,25 @@
     currentHoveredElement = null;
   }
 
+  function removeOverlayById(componentId) {
+    const index = overlays.findIndex(
+      ({ el }) => el.dataset.dyadId === componentId,
+    );
+    if (index !== -1) {
+      const { overlay } = overlays[index];
+      overlay.remove();
+      overlays.splice(index, 1);
+
+      // If this was the currently hovered element, clear it
+      if (
+        currentHoveredElement &&
+        currentHoveredElement.dataset.dyadId === componentId
+      ) {
+        currentHoveredElement = null;
+      }
+    }
+  }
+
   // Helper function to show/hide and populate label for a selected overlay
   function updateSelectedOverlayLabel(item, show) {
     const { label, el } = item;
@@ -332,6 +351,11 @@
     if (e.data.type === "activate-dyad-component-selector") activate();
     if (e.data.type === "deactivate-dyad-component-selector") deactivate();
     if (e.data.type === "clear-dyad-component-overlays") clearOverlays();
+    if (e.data.type === "remove-dyad-component-overlay") {
+      if (e.data.componentId) {
+        removeOverlayById(e.data.componentId);
+      }
+    }
   });
 
   // Always listen for keyboard shortcuts

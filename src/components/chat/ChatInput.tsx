@@ -61,7 +61,10 @@ import { FileAttachmentDropdown } from "./FileAttachmentDropdown";
 import { showError, showExtraFilesToast } from "@/lib/toast";
 import { ChatInputControls } from "../ChatInputControls";
 import { ChatErrorBox } from "./ChatErrorBox";
-import { selectedComponentPreviewAtom } from "@/atoms/previewAtoms";
+import {
+  selectedComponentPreviewAtom,
+  previewIframeRefAtom,
+} from "@/atoms/previewAtoms";
 import { SelectedComponentDisplay } from "./SelectedComponentDisplay";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
 import { LexicalChatInput } from "./LexicalChatInput";
@@ -87,6 +90,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const [selectedComponent, setSelectedComponent] = useAtom(
     selectedComponentPreviewAtom,
   );
+  const previewIframeRef = useAtomValue(previewIframeRefAtom);
   const { checkProblems } = useCheckProblems(appId);
   // Use the attachments hook
   const {
@@ -155,6 +159,14 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         ? selectedComponent
         : [];
     setSelectedComponent([]);
+
+    // Clear overlays in the preview iframe
+    if (previewIframeRef?.contentWindow) {
+      previewIframeRef.contentWindow.postMessage(
+        { type: "clear-dyad-component-overlays" },
+        "*",
+      );
+    }
 
     // Send message with attachments and clear them after sending
     await streamMessage({

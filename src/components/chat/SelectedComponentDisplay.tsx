@@ -12,13 +12,17 @@ export function SelectedComponentDisplay() {
   const previewIframeRef = useAtomValue(previewIframeRefAtom);
 
   const handleRemoveComponent = (index: number) => {
+    const componentToRemove = selectedComponents[index];
     const newComponents = selectedComponents.filter((_, i) => i !== index);
     setSelectedComponents(newComponents);
 
-    // If all components are removed, clear the overlays in the iframe
-    if (newComponents.length === 0 && previewIframeRef?.contentWindow) {
+    // Remove the specific overlay from the iframe
+    if (previewIframeRef?.contentWindow) {
       previewIframeRef.contentWindow.postMessage(
-        { type: "clear-dyad-component-overlays" },
+        {
+          type: "remove-dyad-component-overlay",
+          componentId: componentToRemove.id,
+        },
         "*",
       );
     }

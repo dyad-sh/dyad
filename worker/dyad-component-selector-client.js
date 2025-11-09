@@ -112,6 +112,37 @@
       fileEl.textContent = file;
       hoverLabel.appendChild(fileEl);
     }
+
+    // Update positions after showing hover label in case it caused layout shift
+    requestAnimationFrame(updateAllOverlayPositions);
+  }
+
+  function updateAllOverlayPositions() {
+    // Update all selected overlays
+    overlays.forEach(({ overlay, el }) => {
+      const rect = el.getBoundingClientRect();
+      css(overlay, {
+        top: `${rect.top + window.scrollY}px`,
+        left: `${rect.left + window.scrollX}px`,
+        width: `${rect.width}px`,
+        height: `${rect.height}px`,
+      });
+    });
+
+    // Update hover overlay if visible
+    if (
+      hoverOverlay &&
+      hoverOverlay.style.display !== "none" &&
+      state.element
+    ) {
+      const rect = state.element.getBoundingClientRect();
+      css(hoverOverlay, {
+        top: `${rect.top + window.scrollY}px`,
+        left: `${rect.left + window.scrollX}px`,
+        width: `${rect.width}px`,
+        height: `${rect.height}px`,
+      });
+    }
   }
 
   function clearOverlays() {
@@ -133,6 +164,8 @@
 
     if (!show) {
       css(label, { display: "none" });
+      // Update positions after hiding label in case it caused layout shift
+      requestAnimationFrame(updateAllOverlayPositions);
       return;
     }
 
@@ -176,6 +209,9 @@
       fileEl.textContent = file;
       label.appendChild(fileEl);
     }
+
+    // Update positions after showing label in case it caused layout shift
+    requestAnimationFrame(updateAllOverlayPositions);
   }
 
   /* ---------- event handlers -------------------------------------------- */
@@ -221,6 +257,8 @@
     e.stopPropagation();
 
     updateOverlay(state.element, true);
+
+    requestAnimationFrame(updateAllOverlayPositions);
 
     const componentsData = overlays.map(({ el }) => ({
       id: el.dataset.dyadId,
@@ -301,6 +339,9 @@
 
   // Always listen for mouse move to show/hide labels on selected overlays
   window.addEventListener("mousemove", onMouseMove, true);
+
+  // Update overlay positions on window resize
+  window.addEventListener("resize", updateAllOverlayPositions);
 
   function initializeComponentSelector() {
     if (!document.body) {

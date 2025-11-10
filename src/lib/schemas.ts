@@ -211,13 +211,7 @@ export type ContextPathResults = {
 export const ReleaseChannelSchema = z.enum(["stable", "beta"]);
 export type ReleaseChannel = z.infer<typeof ReleaseChannelSchema>;
 
-export const ZoomLevelSchema = z.enum([
-  "90",
-  "100",
-  "110",
-  "125",
-  "150",
-]);
+export const ZoomLevelSchema = z.enum(["90", "100", "110", "125", "150"]);
 export type ZoomLevel = z.infer<typeof ZoomLevelSchema>;
 
 /**

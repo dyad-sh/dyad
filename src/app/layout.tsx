@@ -13,11 +13,7 @@ import type { ZoomLevel } from "@/lib/schemas";
 
 const DEFAULT_ZOOM_LEVEL: ZoomLevel = "100";
 
-export default function RootLayout({
-  children,
-}: {
-  children: ReactNode;
-}) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   const { refreshAppIframe } = useRunApp();
   const previewMode = useAtomValue(previewModeAtom);
   const { settings } = useSettings();
@@ -26,13 +22,15 @@ export default function RootLayout({
     const zoomLevel = settings?.zoomLevel ?? DEFAULT_ZOOM_LEVEL;
     const zoomFactor = Number(zoomLevel) / 100;
 
-    const electronApi = (window as Window & {
-      electron?: {
-        webFrame?: {
-          setZoomFactor: (factor: number) => void;
+    const electronApi = (
+      window as Window & {
+        electron?: {
+          webFrame?: {
+            setZoomFactor: (factor: number) => void;
+          };
         };
-      };
-    }).electron;
+      }
+    ).electron;
 
     if (electronApi?.webFrame?.setZoomFactor) {
       electronApi.webFrame.setZoomFactor(zoomFactor);

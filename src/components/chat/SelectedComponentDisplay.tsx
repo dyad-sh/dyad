@@ -28,6 +28,17 @@ export function SelectedComponentDisplay() {
     }
   };
 
+  const handleClearAll = () => {
+    setSelectedComponents([]);
+
+    if (previewIframeRef?.contentWindow) {
+      previewIframeRef.contentWindow.postMessage(
+        { type: "clear-dyad-component-overlays" },
+        "*",
+      );
+    }
+  };
+
   if (!selectedComponents || selectedComponents.length === 0) {
     return null;
   }
@@ -37,6 +48,18 @@ export function SelectedComponentDisplay() {
       className="p-2 pb-1 max-h-[180px] overflow-y-auto"
       data-testid="selected-component-display"
     >
+      <div className="flex items-center justify-between mb-2 px-1">
+        <span className="text-xs font-medium text-muted-foreground">
+          Selected Components ({selectedComponents.length})
+        </span>
+        <button
+          onClick={handleClearAll}
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          title="Clear all selected components"
+        >
+          Clear all
+        </button>
+      </div>
       {selectedComponents.map((selectedComponent, index) => (
         <div key={selectedComponent.id} className="mb-1 last:mb-0">
           <div className="flex items-center justify-between rounded-md bg-indigo-600/10 px-2 py-1 text-sm">

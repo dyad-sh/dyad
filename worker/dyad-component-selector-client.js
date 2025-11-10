@@ -166,14 +166,6 @@
       const { overlay } = overlays[index];
       overlay.remove();
       overlays.splice(index, 1);
-
-      // If this was the currently hovered element, clear it
-      if (
-        currentHoveredElement &&
-        currentHoveredElement.dataset.dyadId === componentId
-      ) {
-        currentHoveredElement = null;
-      }
     }
   }
 
@@ -279,17 +271,13 @@
 
     requestAnimationFrame(updateAllOverlayPositions);
 
-    const componentsData = overlays.map(({ el }) => ({
-      id: el.dataset.dyadId,
-      name: el.dataset.dyadName,
-    }));
-
-    if (componentsData.length === 0) return;
-
     window.parent.postMessage(
       {
         type: "dyad-component-selected",
-        components: componentsData,
+        component: {
+          id: state.element.dataset.dyadId,
+          name: state.element.dataset.dyadName,
+        },
       },
       "*",
     );

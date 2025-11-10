@@ -227,26 +227,24 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       if (event.data?.type === "dyad-component-selected") {
         console.log("Component picked:", event.data);
 
-        // Parse all components from the selection
-        const components = event.data.components
-          ? event.data.components
-              .map((comp: any) =>
-                parseComponentSelection({
-                  type: "dyad-component-selected",
-                  id: comp.id,
-                  name: comp.name,
-                }),
-              )
-              .filter((c: ComponentSelection | null) => c !== null)
-          : [];
+        // Parse the single selected component
+        const component = event.data.component
+          ? parseComponentSelection({
+              type: "dyad-component-selected",
+              id: event.data.component.id,
+              name: event.data.component.name,
+            })
+          : null;
+
+        if (!component) return;
 
         // Add to existing components, avoiding duplicates by id
         setSelectedComponentPreview((prev) => {
-          const existingIds = new Set(prev.map((c) => c.id));
-          const newComponents = components.filter(
-            (c: ComponentSelection) => !existingIds.has(c.id),
-          );
-          return [...prev, ...newComponents];
+          // Check if this component is already selected
+          if (prev.some((c) => c.id === component.id)) {
+            return prev;
+          }
+          return [...prev, component];
         });
 
         return;
@@ -769,10 +767,13 @@ function parseComponentSelection(data: any): ComponentSelection | null {
     return null;
   }
 
+  // Normalize path separators to forward slashes for cross-platform consistency
+  const normalizedRelativePath = relativePath.replace(/\\/g, "/");
+
   return {
     id,
     name,
-    relativePath,
+    relativePath: normalizedRelativePath,
     lineNumber,
     columnNumber,
   };

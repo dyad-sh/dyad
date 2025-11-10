@@ -594,7 +594,12 @@ export class PageObject {
   }
 
   async snapshotSelectedComponentDisplay() {
-    await expect(this.getSelectedComponentDisplay()).toMatchAriaSnapshot();
+    // Get the text content and normalize path separators for cross-platform consistency
+    const textContent = await this.getSelectedComponentDisplay().textContent();
+    const normalizedContent = textContent?.replace(/\\/g, "/") || "";
+
+    // Use text snapshot instead of ARIA snapshot to handle normalized paths
+    expect(normalizedContent).toMatchSnapshot();
   }
 
   async snapshotPreview({ name }: { name?: string } = {}) {

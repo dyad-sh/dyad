@@ -15,7 +15,7 @@ const showDebugLogs = process.env.DEBUG_LOGS === "true";
 
 export const Timeout = {
   // Things generally take longer on CI, so we make them longer.
-  EXTRA_LONG: process.env.CI ? 120_000 : 120_000,
+  EXTRA_LONG: process.env.CI ? 120_000 : 60_000,
   LONG: process.env.CI ? 60_000 : 30_000,
   MEDIUM: process.env.CI ? 30_000 : 15_000,
 };
@@ -517,11 +517,9 @@ export class PageObject {
   }
 
   async clickPreviewPickElement() {
-    const button = this.page.getByTestId("preview-pick-element-button");
-    // Wait for the button to be enabled (component selector initialized)
-    await button.waitFor({ state: "attached", timeout: Timeout.EXTRA_LONG });
-    await expect(button).toBeEnabled({ timeout: Timeout.EXTRA_LONG });
-    await button.click({ timeout: Timeout.EXTRA_LONG });
+    await this.page
+      .getByTestId("preview-pick-element-button")
+      .click({ timeout: Timeout.EXTRA_LONG });
   }
 
   async clickDeselectComponent(options?: { index?: number }) {
@@ -910,7 +908,7 @@ export class PageObject {
     upgradeId: string;
   }) {
     await expect(this.locateAppUpgradeButton({ upgradeId })).toBeHidden({
-      timeout: Timeout.EXTRA_LONG,
+      timeout: Timeout.MEDIUM,
     });
   }
 

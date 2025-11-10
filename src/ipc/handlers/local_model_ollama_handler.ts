@@ -1,44 +1,72 @@
+import {
+  DEFAULT_OLLAMA_ENDPOINT,
+  DEFAULT_OLLAMA_PORT,
+} from "@/constants/localModels";
 import { ipcMain } from "electron";
 import log from "electron-log";
-import { LocalModelListResponse, LocalModel } from "../ipc_types";
+import { readSettings } from "../../main/settings";
+import { LocalModel, LocalModelListResponse } from "../ipc_types";
 
 const logger = log.scope("ollama_handler");
 
 export function parseOllamaHost(host?: string): string {
   if (!host) {
-    return "http://localhost:11434";
+    return DEFAULT_OLLAMA_ENDPOINT;
+  }
+
+  if (!host) {
+    return DEFAULT_OLLAMA_ENDPOINT;
+  }
+
+  const hostWithoutWhitespace = host.replace(/\s+/g, "");
+  if (!hostWithoutWhitespace) {
+    return DEFAULT_OLLAMA_ENDPOINT;
   }
 
   // If it already has a protocol, use as-is
-  if (host.startsWith("http://") || host.startsWith("https://")) {
-    return host;
-  }
-
-  // Check for bracketed IPv6 with port: [::1]:8080
-  if (host.startsWith("[") && host.includes("]:")) {
-    return `http://${host}`;
-  }
-
-  // Check for regular host:port (but not plain IPv6)
   if (
-    host.includes(":") &&
-    !host.includes("::") &&
-    host.split(":").length === 2
+    hostWithoutWhitespace.startsWith("http://") ||
+    hostWithoutWhitespace.startsWith("https://")
   ) {
-    return `http://${host}`;
+    return hostWithoutWhitespace;
   }
 
-  // Check if it's a plain IPv6 address (contains :: or multiple colons)
-  if (host.includes("::") || host.split(":").length > 2) {
-    return `http://[${host}]:11434`;
+  if (
+    hostWithoutWhitespace.startsWith("[") &&
+    hostWithoutWhitespace.includes("]:")
+  ) {
+    return `http://${hostWithoutWhitespace}`;
   }
 
-  // If it's just a hostname, add default port
-  return `http://${host}:11434`;
+  if (
+    hostWithoutWhitespace.includes(":") &&
+    !hostWithoutWhitespace.includes("::") &&
+    hostWithoutWhitespace.split(":").length === 2
+  ) {
+    return `http://${hostWithoutWhitespace}`;
+  }
+
+  if (
+    hostWithoutWhitespace.includes("::") ||
+    hostWithoutWhitespace.split(":").length > 2
+  ) {
+    const address = hostWithoutWhitespace.startsWith("[")
+      ? hostWithoutWhitespace
+      : `[${hostWithoutWhitespace}]`;
+    return `http://${address}:${DEFAULT_OLLAMA_PORT}`;
+  }
+
+  return `http://${hostWithoutWhitespace}:${DEFAULT_OLLAMA_PORT}`;
 }
 
 export function getOllamaApiUrl(): string {
-  return parseOllamaHost(process.env.OLLAMA_HOST);
+  const envHost = process.env.OLLAMA_HOST;
+  if (envHost && envHost.trim()) {
+    return parseOllamaHost(envHost);
+  }
+  const settings = readSettings();
+  const endpointFromSettings = settings.ollamaEndpoint;
+  return parseOllamaHost(endpointFromSettings);
 }
 
 interface OllamaModel {
@@ -56,8 +84,9 @@ interface OllamaModel {
 }
 
 export async function fetchOllamaModels(): Promise<LocalModelListResponse> {
+  const apiUrl = getOllamaApiUrl();
   try {
-    const response = await fetch(`${getOllamaApiUrl()}/api/tags`);
+    const response = await fetch(`${apiUrl}/api/tags`);
     if (!response.ok) {
       throw new Error(`Failed to fetch model: ${response.statusText}`);
     }
@@ -89,10 +118,10 @@ export async function fetchOllamaModels(): Promise<LocalModelListResponse> {
       (error as Error).message.includes("fetch failed")
     ) {
       throw new Error(
-        "Could not connect to Ollama. Make sure it's running at http://localhost:11434",
+        `Could not connect to the local model endpoint at ${apiUrl}.`,
       );
     }
-    throw new Error("Failed to fetch models from Ollama");
+    throw new Error("Failed to fetch models from the local model endpoint");
   }
 }
 

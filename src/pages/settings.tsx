@@ -26,6 +26,7 @@ import { NeonIntegration } from "@/components/NeonIntegration";
 import { RuntimeModeSelector } from "@/components/RuntimeModeSelector";
 import { NodePathSelector } from "@/components/NodePathSelector";
 import { ToolsMcpSettings } from "@/components/settings/ToolsMcpSettings";
+import { ZoomSelector } from "@/components/ZoomSelector";
 import { useSetAtom } from "jotai";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
 
@@ -263,6 +264,10 @@ export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
             ))}
           </div>
         </div>
+      </div>
+
+      <div className="mt-4">
+        <ZoomSelector />
       </div>
 
       <div className="space-y-1 mt-4">

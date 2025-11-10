@@ -267,6 +267,19 @@
     e.preventDefault();
     e.stopPropagation();
 
+    const selectedItem = overlays.find((item) => item.el === e.target);
+    if (selectedItem) {
+      removeOverlayById(state.element.dataset.dyadId);
+      window.parent.postMessage(
+        {
+          type: "dyad-component-deselected",
+          componentId: state.element.dataset.dyadId,
+        },
+        "*",
+      );
+      return;
+    }
+
     updateOverlay(state.element, true);
 
     requestAnimationFrame(updateAllOverlayPositions);

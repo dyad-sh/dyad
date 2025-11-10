@@ -250,6 +250,16 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         return;
       }
 
+      if (event.data?.type === "dyad-component-deselected") {
+        const componentId = event.data.componentId;
+        if (componentId) {
+          setSelectedComponentPreview((prev) =>
+            prev.filter((c) => c.id !== componentId),
+          );
+        }
+        return;
+      }
+
       const { type, payload } = event.data as {
         type:
           | "window-error"

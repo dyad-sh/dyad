@@ -767,13 +767,10 @@ function parseComponentSelection(data: any): ComponentSelection | null {
     return null;
   }
 
-  // Normalize path separators to forward slashes for cross-platform consistency
-  const normalizedRelativePath = relativePath.replace(/\\/g, "/");
-
   return {
     id,
     name,
-    relativePath: normalizedRelativePath,
+    relativePath,
     lineNumber,
     columnNumber,
   };

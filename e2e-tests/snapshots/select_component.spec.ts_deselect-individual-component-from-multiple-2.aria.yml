@@ -5,4 +5,4 @@
 - paragraph: Start building your amazing project here!
 - link "Made with Dyad":
   - /url: https://www.dyad.sh/
-- text: h1 src\pages\Index.tsx
+- text: a src\components\made-with-dyad.tsx

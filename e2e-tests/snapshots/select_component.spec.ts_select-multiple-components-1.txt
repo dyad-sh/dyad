@@ -79,11 +79,11 @@ message: This is a simple basic response
 
 ===
 role: user
-message: [dump] make it smaller
+message: [dump] make both smaller
 
 Selected components:
 
-Component: h1 (file: src\pages\Index.tsx)
+1. Component: h1 (file: src\pages\Index.tsx)
 
 Snippet:
 ```
@@ -92,4 +92,15 @@ Snippet:
         <p className="text-xl text-gray-600">
           Start building your amazing project here!
         </p>
+```
+
+2. Component: a (file: src\components\made-with-dyad.tsx)
+
+Snippet:
+```
+    <div className="p-4 text-center">
+      <a // <-- EDIT HERE
+        href="https://www.dyad.sh/"
+        target="_blank"
+        rel="noopener noreferrer"
 ```

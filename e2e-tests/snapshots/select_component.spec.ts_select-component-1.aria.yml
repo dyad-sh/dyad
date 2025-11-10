@@ -5,5 +5,4 @@
 - paragraph: Start building your amazing project here!
 - link "Made with Dyad":
   - /url: https://www.dyad.sh/
-- img
-- text: Edit with AI h1 src/pages/Index.tsx
+- text: h1 src\pages\Index.tsx

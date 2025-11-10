@@ -27,6 +27,34 @@ testSkipIfWindows("select component", async ({ po }) => {
   await po.snapshotServerDump("last-message");
 });
 
+testSkipIfWindows("select multiple components", async ({ po }) => {
+  await po.setUp();
+  await po.sendPrompt("tc=basic");
+  await po.clickTogglePreviewPanel();
+  await po.clickPreviewPickElement();
+
+  await po
+    .getPreviewIframeElement()
+    .contentFrame()
+    .getByRole("heading", { name: "Welcome to Your Blank App" })
+    .click();
+
+  await po
+    .getPreviewIframeElement()
+    .contentFrame()
+    .getByText("Made with Dyad")
+    .click();
+
+  await po.snapshotPreview();
+  await po.snapshotSelectedComponentDisplay();
+
+  await po.sendPrompt("[dump] make both smaller");
+  await po.snapshotPreview();
+  await expect(po.getSelectedComponentDisplay()).not.toBeVisible();
+
+  await po.snapshotServerDump("all-messages");
+});
+
 testSkipIfWindows("deselect component", async ({ po }) => {
   await po.setUp();
   await po.sendPrompt("tc=basic");
@@ -52,6 +80,37 @@ testSkipIfWindows("deselect component", async ({ po }) => {
   await po.sendPrompt("[dump] tc=basic");
   await po.snapshotServerDump("last-message");
 });
+
+testSkipIfWindows(
+  "deselect individual component from multiple",
+  async ({ po }) => {
+    await po.setUp();
+    await po.sendPrompt("tc=basic");
+    await po.clickTogglePreviewPanel();
+    await po.clickPreviewPickElement();
+
+    await po
+      .getPreviewIframeElement()
+      .contentFrame()
+      .getByRole("heading", { name: "Welcome to Your Blank App" })
+      .click();
+
+    await po
+      .getPreviewIframeElement()
+      .contentFrame()
+      .getByText("Made with Dyad")
+      .click();
+
+    await po.snapshotSelectedComponentDisplay();
+
+    await po.clickDeselectComponent({ index: 0 });
+
+    await po.snapshotPreview();
+    await po.snapshotSelectedComponentDisplay();
+
+    await expect(po.getSelectedComponentDisplay()).toBeVisible();
+  },
+);
 
 testSkipIfWindows("upgrade app to select component", async ({ po }) => {
   await po.setUp();

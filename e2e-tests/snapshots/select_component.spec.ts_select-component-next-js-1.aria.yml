@@ -1,1 +1,8 @@
-- text: Edit with AI h1 src/app/page.tsx
+- main:
+  - heading "Blank page" [level=1]
+- link "Made with Dyad":
+  - /url: https://www.dyad.sh/
+- alert
+- button "Open Next.js Dev Tools":
+  - img
+- text: h1 src\app\page.tsx

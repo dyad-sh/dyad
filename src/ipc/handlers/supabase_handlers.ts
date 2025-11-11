@@ -31,7 +31,7 @@ const SHARED_README_TEMPLATE = [
   "Import helpers from functions using relative paths, for example:",
   "",
   "```ts",
-  'import { exampleHelper } from "../shared/exampleHelper.ts";',
+  'import { exampleHelper } from "../_shared/exampleHelper.ts";',
   "```",
   "",
   "Avoid importing client-side application code into shared modules. Everything in this directory must be compatible with the Deno runtime used by Supabase Edge Functions.",
@@ -150,7 +150,12 @@ export function registerSupabaseHandlers() {
 
 async function ensureSupabaseSharedDirectory(appPathValue: string) {
   const appDirectory = getDyadAppPath(appPathValue);
-  const sharedDirectory = path.join(appDirectory, "supabase", "shared");
+  const sharedDirectory = path.join(
+    appDirectory,
+    "supabase",
+    "functions",
+    "_shared",
+  );
 
   try {
     await fsPromises.mkdir(sharedDirectory, { recursive: true });

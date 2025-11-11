@@ -334,31 +334,6 @@ export async function deploySupabaseFunctions({
   const entryDir = path.posix.dirname(entrypointPath);
   const importMapRelPath = path.posix.join(entryDir, "import_map.json");
 
-  // IMPORTANT: We want "_shared/" to resolve to the *sibling* shared folder (if you keep structure)
-  // Example layout:
-  //   functions/_shared/util.ts
-  //   functions/random-demo/index.ts
-  //
-  // From entryDir = "functions/random-demo", the relative path to shared is "../_shared/"
-  // But since we *upload* both "_shared/..." and "functions/random-demo/...", the runtime sees both at /tmp/...,
-  // and "./" here refers to the entryDir. We want the specifier "_shared/" to resolve correctly regardless.
-  //
-  // Two robust choices:
-  //  A) Map "_shared/" -> "../_shared/" (for sibling folder)
-  //  B) If you upload a nested "functions/random-demo/_shared/...", use "./_shared/"
-  //
-  // Choose A (sibling) for your described structure:
-  const importMap = {
-    imports: {
-      "_shared/": "../_shared/",
-    },
-  };
-
-  // Ensure we also upload the import_map.json file
-  const importMapBlob = new Blob(
-    [Buffer.from(JSON.stringify(importMap, null, 2), "utf8")],
-    { type: "application/json" },
-  );
 
   // ————————————————————————————————————————————————————————————————
   // (3) Build multipart form
@@ -394,9 +369,6 @@ export async function deploySupabaseFunctions({
     const blob = new Blob([new Uint8Array(buf)], { type: mime });
     formData.append("file", blob, f.relativePath);
   }
-
-  // Append the generated import map file last
-  formData.append("file", importMapBlob, importMapRelPath);
 
   const response = await fetch(
     `https://api.supabase.com/v1/projects/${encodeURIComponent(

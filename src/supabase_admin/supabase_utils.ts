@@ -3,7 +3,7 @@ import { promises as fsPromises } from "node:fs";
 import path from "node:path";
 
 export function isServerFunction(filePath: string) {
-  return filePath.startsWith("supabase/functions/");
+  return filePath.startsWith("supabase/functions/") && !isSupabaseSharedFile(filePath);
 }
 
 export function getSupabaseFunctionName(filePath: string): string {
@@ -27,10 +27,16 @@ export function getSupabaseFunctionName(filePath: string): string {
 
 export function isSupabaseSharedFile(filePath: string): boolean {
   const normalizedPath = filePath.split(path.sep).join(path.posix.sep);
-  return (
-    normalizedPath === "supabase/functions/_shared" ||
-    normalizedPath.startsWith("supabase/functions/_shared/")
-  );
+  const parts = normalizedPath.split(path.posix.sep);
+
+  // Check if the path contains "supabase/functions/_shared" anywhere
+  for (let i = 0; i < parts.length - 2; i++) {
+    if (parts[i] === "supabase" && parts[i + 1] === "functions" && parts[i + 2] === "_shared") {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 const SUPPORTED_FUNCTION_EXTENSIONS = new Set([

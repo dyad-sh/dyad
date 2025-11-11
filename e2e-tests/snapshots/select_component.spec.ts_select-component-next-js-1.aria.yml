@@ -5,4 +5,4 @@
 - alert
 - button "Open Next.js Dev Tools":
   - img
-- text: h1 src\app\page.tsx
+- text: h1 src/app/page.tsx

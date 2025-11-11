@@ -1,4 +1,2 @@
-h1
-src/pages/Index.tsx:9
 a
 src/components/made-with-dyad.tsx:4

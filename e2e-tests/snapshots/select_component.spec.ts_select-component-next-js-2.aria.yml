@@ -1,4 +1,7 @@
-- img
-- text: h1 src\app\page.tsx:7
-- button "Deselect component":
+- main:
+  - heading "Blank page" [level=1]
+- link "Made with Dyad":
+  - /url: https://www.dyad.sh/
+- alert
+- button "Open Next.js Dev Tools":
   - img

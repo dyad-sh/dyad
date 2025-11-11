@@ -1071,7 +1071,7 @@ export function registerAppHandlers() {
       }
 
       if (app.supabaseProjectId) {
-        if (isServerFunction(filePath)) {
+        if (isServerFunction(filePath) && !isSupabaseSharedFile(filePath)) {
           try {
             await deploySupabaseFunctions({
               supabaseProjectId: app.supabaseProjectId,

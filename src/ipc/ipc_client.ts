@@ -48,6 +48,7 @@ import type {
   VercelDeployment,
   GetVercelDeploymentsParams,
   DisconnectVercelProjectParams,
+  SecurityReviewResult,
   IsVercelProjectAvailableParams,
   SaveVercelAccessTokenParams,
   VercelProject,
@@ -444,12 +445,14 @@ export class IpcClient {
               attachments: fileDataArray,
             })
             .catch((err) => {
+              console.error("Error streaming message:", err);
               showError(err);
               onError(String(err));
               this.chatStreams.delete(chatId);
             });
         })
         .catch((err) => {
+          console.error("Error streaming message:", err);
           showError(err);
           onError(String(err));
           this.chatStreams.delete(chatId);
@@ -464,6 +467,7 @@ export class IpcClient {
           selectedComponent,
         })
         .catch((err) => {
+          console.error("Error streaming message:", err);
           showError(err);
           onError(String(err));
           this.chatStreams.delete(chatId);
@@ -474,12 +478,6 @@ export class IpcClient {
   // Method to cancel an ongoing stream
   public cancelChatStream(chatId: number): void {
     this.ipcRenderer.invoke("chat:cancel", chatId);
-    const callbacks = this.chatStreams.get(chatId);
-    if (callbacks) {
-      this.chatStreams.delete(chatId);
-    } else {
-      console.error("Tried canceling chat that doesn't exist");
-    }
   }
 
   // Create a new chat for an app
@@ -1195,6 +1193,12 @@ export class IpcClient {
     path: string;
   }): Promise<{ exists: boolean }> {
     return this.ipcRenderer.invoke("check-ai-rules", params);
+  }
+
+  public async getLatestSecurityReview(
+    appId: number,
+  ): Promise<SecurityReviewResult> {
+    return this.ipcRenderer.invoke("get-latest-security-review", appId);
   }
 
   public async importApp(params: ImportAppParams): Promise<ImportAppResult> {

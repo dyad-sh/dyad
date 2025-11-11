@@ -30,7 +30,10 @@ import {
   extractCodebase,
   readFileWithCache,
 } from "../../utils/codebase";
-import { processFullResponseActions } from "../processors/response_processor";
+import {
+  dryRunSearchReplace,
+  processFullResponseActions,
+} from "../processors/response_processor";
 import { streamTestResponse } from "./testing_chat_handlers";
 import { getTestResponse } from "./testing_chat_handlers";
 import { getModelClient, ModelClient } from "../utils/get_model_client";
@@ -40,6 +43,7 @@ import {
   getSupabaseClientCode,
 } from "../../supabase_admin/supabase_context";
 import { SUMMARIZE_CHAT_SYSTEM_PROMPT } from "../../prompts/summarize_chat_system_prompt";
+import { SECURITY_REVIEW_SYSTEM_PROMPT } from "../../prompts/security_review_prompt";
 import fs from "node:fs";
 import * as path from "path";
 import * as os from "os";
@@ -75,6 +79,13 @@ import { inArray } from "drizzle-orm";
 import { replacePromptReference } from "../utils/replacePromptReference";
 import { mcpManager } from "../utils/mcp_manager";
 import z from "zod";
+import { isTurboEditsV2Enabled } from "@/lib/schemas";
+import { AI_STREAMING_ERROR_MESSAGE_PREFIX } from "@/shared/texts";
+import { getCurrentCommitHash } from "../utils/git_utils";
+import {
+  processChatMessagesWithVersionedFiles as getVersionedFiles,
+  VersionedFiles as VersionedFiles,
+} from "../utils/versioned_codebase_context";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
@@ -401,6 +412,9 @@ ${componentSnippet}
           role: "assistant",
           content: "", // Start with empty content
           requestId: dyadRequestId,
+          sourceCommitHash: await getCurrentCommitHash({
+            path: getDyadAppPath(chat.app.path),
+          }),
         })
         .returning();
 
@@ -517,12 +531,20 @@ ${componentSnippet}
         const messageHistory = updatedChat.messages.map((message) => ({
           role: message.role as "user" | "assistant" | "system",
           content: message.content,
+          sourceCommitHash: message.sourceCommitHash,
         }));
 
+        // For Dyad Pro + Deep Context, we set to 200 chat turns (+1)
+        // this is to enable more cache hits. Practically, users should
+        // rarely go over this limit because they will hit the model's
+        // context window limit.
+        //
         // Limit chat history based on maxChatTurnsInContext setting
         // We add 1 because the current prompt counts as a turn.
         const maxChatTurns =
-          (settings.maxChatTurnsInContext || MAX_CHAT_TURNS_IN_CONTEXT) + 1;
+          isEngineEnabled && settings.proSmartContextOption === "deep"
+            ? 201
+            : (settings.maxChatTurnsInContext || MAX_CHAT_TURNS_IN_CONTEXT) + 1;
 
         // If we need to limit the context, we take only the most recent turns
         let limitedMessageHistory = messageHistory;
@@ -563,6 +585,7 @@ ${componentSnippet}
             settings.selectedChatMode === "agent"
               ? "build"
               : settings.selectedChatMode,
+          enableTurboEditsV2: isTurboEditsV2Enabled(settings),
         });
 
         // Add information about mentioned apps if any
@@ -573,6 +596,29 @@ ${componentSnippet}
 
           systemPrompt += `\n\n# Referenced Apps\nThe user has mentioned the following apps in their prompt: ${mentionedAppsList}. Their codebases have been included in the context for your reference. When referring to these apps, you can understand their structure and code to provide better assistance, however you should NOT edit the files in these referenced apps. The referenced apps are NOT part of the current app and are READ-ONLY.`;
         }
+
+        const isSecurityReviewIntent =
+          req.prompt.startsWith("/security-review");
+        if (isSecurityReviewIntent) {
+          systemPrompt = SECURITY_REVIEW_SYSTEM_PROMPT;
+          try {
+            const appPath = getDyadAppPath(updatedChat.app.path);
+            const rulesPath = path.join(appPath, "SECURITY_RULES.md");
+            let securityRules = "";
+
+            await fs.promises.access(rulesPath);
+            securityRules = await fs.promises.readFile(rulesPath, "utf8");
+
+            if (securityRules && securityRules.trim().length > 0) {
+              systemPrompt +=
+                "\n\n# Project-specific security rules:\n" + securityRules;
+            }
+          } catch (error) {
+            // Best-effort: if reading rules fails, continue without them
+            logger.info("Failed to read security rules", error);
+          }
+        }
+
         if (
           updatedChat.app?.supabaseProjectId &&
           settings.supabase?.accessToken?.value
@@ -586,7 +632,9 @@ ${componentSnippet}
             }));
         } else if (
           // Neon projects don't need Supabase.
-          !updatedChat.app?.neonProjectId
+          !updatedChat.app?.neonProjectId &&
+          // If in security review mode, we don't need to mention supabase is available.
+          !isSecurityReviewIntent
         ) {
           systemPrompt += "\n\n" + SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT;
         }
@@ -681,6 +729,11 @@ This conversation includes one or more image attachments. When the user uploads 
             settings.selectedChatMode === "ask"
               ? removeDyadTags(removeNonEssentialTags(msg.content))
               : removeNonEssentialTags(msg.content),
+          providerOptions: {
+            "dyad-engine": {
+              sourceCommitHash: msg.sourceCommitHash,
+            },
+          },
         }));
 
         let chatMessages: ModelMessage[] = [
@@ -744,12 +797,22 @@ This conversation includes one or more image attachments. When the user uploads 
           } else {
             logger.log("sending AI request");
           }
+          let versionedFiles: VersionedFiles | undefined;
+          if (isEngineEnabled && settings.proSmartContextOption === "deep") {
+            versionedFiles = await getVersionedFiles({
+              files,
+              chatMessages,
+              appPath,
+            });
+          }
           // Build provider options with correct Google/Vertex thinking config gating
           const providerOptions: Record<string, any> = {
             "dyad-engine": {
+              dyadAppId: updatedChat.app.id,
               dyadRequestId,
               dyadDisableFiles,
-              dyadFiles: files,
+              dyadFiles: versionedFiles ? undefined : files,
+              dyadVersionedFiles: versionedFiles,
               dyadMentionedApps: mentionedAppsCodebases.map(
                 ({ files, appName }) => ({
                   appName,
@@ -810,7 +873,6 @@ This conversation includes one or more image attachments. When the user uploads 
             tools,
             messages: chatMessages.filter((m) => m.content),
             onError: (error: any) => {
-              logger.error("Error streaming text:", error);
               let errorMessage = (error as any)?.error?.message;
               const responseBody = error?.error?.responseBody;
               if (errorMessage && responseBody) {
@@ -820,9 +882,13 @@ This conversation includes one or more image attachments. When the user uploads 
               const requestIdPrefix = isEngineEnabled
                 ? `[Request ID: ${dyadRequestId}] `
                 : "";
+              logger.error(
+                `AI stream text error for request: ${requestIdPrefix} errorMessage=${errorMessage} error=`,
+                error,
+              );
               event.sender.send("chat:response:error", {
                 chatId: req.chatId,
-                error: `Sorry, there was an error from the AI: ${requestIdPrefix}${message}`,
+                error: `${AI_STREAMING_ERROR_MESSAGE_PREFIX}${requestIdPrefix}${message}`,
               });
               // Clean up the abort controller
               activeStreams.delete(req.chatId);
@@ -898,6 +964,7 @@ This conversation includes one or more image attachments. When the user uploads 
             systemPromptOverride: constructSystemPrompt({
               aiRules: await readAiRules(getDyadAppPath(updatedChat.app.path)),
               chatMode: "agent",
+              enableTurboEditsV2: false,
             }),
             files: files,
             dyadDisableFiles: true,
@@ -938,6 +1005,87 @@ This conversation includes one or more image attachments. When the user uploads 
             processResponseChunkUpdate,
           });
           fullResponse = result.fullResponse;
+
+          if (
+            settings.selectedChatMode !== "ask" &&
+            isTurboEditsV2Enabled(settings)
+          ) {
+            let issues = await dryRunSearchReplace({
+              fullResponse,
+              appPath: getDyadAppPath(updatedChat.app.path),
+            });
+
+            let searchReplaceFixAttempts = 0;
+            const originalFullResponse = fullResponse;
+            const previousAttempts: ModelMessage[] = [];
+            while (
+              issues.length > 0 &&
+              searchReplaceFixAttempts < 2 &&
+              !abortController.signal.aborted
+            ) {
+              logger.warn(
+                `Detected search-replace issues (attempt #${searchReplaceFixAttempts + 1}): ${issues.map((i) => i.error).join(", ")}`,
+              );
+              const formattedSearchReplaceIssues = issues
+                .map(({ filePath, error }) => {
+                  return `File path: ${filePath}\nError: ${error}`;
+                })
+                .join("\n\n");
+
+              fullResponse += `<dyad-output type="warning" message="Could not apply Turbo Edits properly for some of the files; re-generating code...">${formattedSearchReplaceIssues}</dyad-output>`;
+              await processResponseChunkUpdate({
+                fullResponse,
+              });
+
+              logger.info(
+                `Attempting to fix search-replace issues, attempt #${searchReplaceFixAttempts + 1}`,
+              );
+
+              const fixSearchReplacePrompt =
+                searchReplaceFixAttempts === 0
+                  ? `There was an issue with the following \`dyad-search-replace\` tags. Make sure you use \`dyad-read\` to read the latest version of the file and then trying to do search & replace again.`
+                  : `There was an issue with the following \`dyad-search-replace\` tags. Please fix the errors by generating the code changes using \`dyad-write\` tags instead.`;
+              searchReplaceFixAttempts++;
+              const userPrompt = {
+                role: "user",
+                content: `${fixSearchReplacePrompt}
+                
+${formattedSearchReplaceIssues}`,
+              } as const;
+
+              const { fullStream: fixSearchReplaceStream } =
+                await simpleStreamText({
+                  // Build messages: reuse chat history and original full response, then ask to fix search-replace issues.
+                  chatMessages: [
+                    ...chatMessages,
+                    { role: "assistant", content: originalFullResponse },
+                    ...previousAttempts,
+                    userPrompt,
+                  ],
+                  modelClient,
+                  files: files,
+                });
+              previousAttempts.push(userPrompt);
+              const result = await processStreamChunks({
+                fullStream: fixSearchReplaceStream,
+                fullResponse,
+                abortController,
+                chatId: req.chatId,
+                processResponseChunkUpdate,
+              });
+              fullResponse = result.fullResponse;
+              previousAttempts.push({
+                role: "assistant",
+                content: removeNonEssentialTags(result.incrementalResponse),
+              });
+
+              // Re-check for issues after the fix attempt
+              issues = await dryRunSearchReplace({
+                fullResponse: result.incrementalResponse,
+                appPath: getDyadAppPath(updatedChat.app.path),
+              });
+            }
+          }
 
           if (
             !abortController.signal.aborted &&

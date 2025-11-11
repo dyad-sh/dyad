@@ -72,6 +72,9 @@ export const messages = sqliteTable("messages", {
   approvalState: text("approval_state", {
     enum: ["approved", "rejected"],
   }),
+  // The commit hash of the codebase at the time the message was created
+  sourceCommitHash: text("source_commit_hash"),
+  // The commit hash of the codebase at the time the message was sent
   commitHash: text("commit_hash"),
   requestId: text("request_id"),
   createdAt: integer("created_at", { mode: "timestamp" })

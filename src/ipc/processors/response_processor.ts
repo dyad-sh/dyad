@@ -28,7 +28,9 @@ import {
   getDyadDeleteTags,
   getDyadAddDependencyTags,
   getDyadExecuteSqlTags,
+  getDyadSearchReplaceTags,
 } from "../utils/dyad_tag_parser";
+import { applySearchReplace } from "../../pro/main/ipc/processors/search_replace_processor";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 
 import { FileUploadsState } from "../utils/file_uploads_state";
@@ -41,6 +43,46 @@ interface Output {
 }
 
 const readFile = fs.promises.readFile;
+
+export async function dryRunSearchReplace({
+  fullResponse,
+  appPath,
+}: {
+  fullResponse: string;
+  appPath: string;
+}) {
+  const issues: { filePath: string; error: string }[] = [];
+  const dyadSearchReplaceTags = getDyadSearchReplaceTags(fullResponse);
+  for (const tag of dyadSearchReplaceTags) {
+    const filePath = tag.path;
+    const fullFilePath = safeJoin(appPath, filePath);
+    try {
+      if (!fs.existsSync(fullFilePath)) {
+        issues.push({
+          filePath,
+          error: `Search-replace target file does not exist: ${filePath}`,
+        });
+        continue;
+      }
+
+      const original = await readFile(fullFilePath, "utf8");
+      const result = applySearchReplace(original, tag.content);
+      if (!result.success || typeof result.content !== "string") {
+        issues.push({
+          filePath,
+          error: "Unable to apply search-replace to file",
+        });
+        continue;
+      }
+    } catch (error) {
+      issues.push({
+        filePath,
+        error: error?.toString() ?? "Unknown error",
+      });
+    }
+  }
+  return issues;
+}
 
 export async function processFullResponseActions(
   fullResponse: string,
@@ -302,6 +344,53 @@ export async function processFullResponseActions(
             error: error,
           });
         }
+      }
+    }
+
+    // Process all search-replace edits
+    const dyadSearchReplaceTags = getDyadSearchReplaceTags(fullResponse);
+    for (const tag of dyadSearchReplaceTags) {
+      const filePath = tag.path;
+      const fullFilePath = safeJoin(appPath, filePath);
+      try {
+        if (!fs.existsSync(fullFilePath)) {
+          // Do not show warning to user because we already attempt to do a <dyad-write> tag to fix it.
+          logger.warn(`Search-replace target file does not exist: ${filePath}`);
+          continue;
+        }
+        const original = await readFile(fullFilePath, "utf8");
+        const result = applySearchReplace(original, tag.content);
+        if (!result.success || typeof result.content !== "string") {
+          // Do not show warning to user because we already attempt to do a <dyad-write> and/or a subsequent <dyad-search-replace> tag to fix it.
+          logger.warn(
+            `Failed to apply search-replace to ${filePath}: ${result.error ?? "unknown"}`,
+          );
+          continue;
+        }
+        // Write modified content
+        fs.writeFileSync(fullFilePath, result.content);
+        writtenFiles.push(filePath);
+
+        // If server function, redeploy
+        if (isServerFunction(filePath)) {
+          try {
+            await deploySupabaseFunctions({
+              supabaseProjectId: chatWithApp.app.supabaseProjectId!,
+              functionName: path.basename(path.dirname(filePath)),
+              content: result.content,
+            });
+          } catch (error) {
+            errors.push({
+              message: `Failed to deploy Supabase function after search-replace: ${filePath}`,
+              error: error,
+            });
+          }
+        }
+      } catch (error) {
+        errors.push({
+          message: `Error applying search-replace to ${filePath}`,
+          error: error,
+        });
       }
     }
 

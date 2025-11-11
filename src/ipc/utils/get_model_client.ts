@@ -89,7 +89,8 @@ export async function getModelClient(
           enableLazyEdits:
             settings.selectedChatMode === "ask"
               ? false
-              : settings.enableProLazyEditsMode,
+              : settings.enableProLazyEditsMode &&
+                settings.proLazyEditsMode !== "v2",
           enableSmartFilesContext,
           // Keep in sync with getCurrentValue in ProModeSelector.tsx
           smartContextMode: settings.proSmartContextOption ?? "balanced",

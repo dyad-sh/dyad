@@ -38,6 +38,13 @@ interface CreateOrEditPromptDialogProps {
     content: string;
   }) => Promise<any>;
   trigger?: React.ReactNode;
+  prefillData?: {
+    title: string;
+    description: string;
+    content: string;
+  };
+  isOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export function CreateOrEditPromptDialog({
@@ -46,8 +53,14 @@ export function CreateOrEditPromptDialog({
   onCreatePrompt,
   onUpdatePrompt,
   trigger,
+  prefillData,
+  isOpen,
+  onOpenChange,
 }: CreateOrEditPromptDialogProps) {
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = isOpen !== undefined ? isOpen : internalOpen;
+  const setOpen = onOpenChange || setInternalOpen;
+
   const [draft, setDraft] = useState({
     title: "",
     description: "",
@@ -74,7 +87,7 @@ export function CreateOrEditPromptDialog({
     }
   };
 
-  // Initialize draft with prompt data when editing
+  // Initialize draft with prompt data when editing or prefill data
   useEffect(() => {
     if (mode === "edit" && prompt) {
       setDraft({
@@ -82,10 +95,16 @@ export function CreateOrEditPromptDialog({
         description: prompt.description || "",
         content: prompt.content,
       });
+    } else if (prefillData) {
+      setDraft({
+        title: prefillData.title,
+        description: prefillData.description,
+        content: prefillData.content,
+      });
     } else {
       setDraft({ title: "", description: "", content: "" });
     }
-  }, [mode, prompt, open]);
+  }, [mode, prompt, prefillData, open]);
 
   // Auto-resize textarea when content changes
   useEffect(() => {
@@ -106,6 +125,12 @@ export function CreateOrEditPromptDialog({
         title: prompt.title,
         description: prompt.description || "",
         content: prompt.content,
+      });
+    } else if (prefillData) {
+      setDraft({
+        title: prefillData.title,
+        description: prefillData.description,
+        content: prefillData.content,
       });
     } else {
       setDraft({ title: "", description: "", content: "" });
@@ -222,14 +247,30 @@ export function CreateOrEditPromptDialog({
 // Backward compatibility wrapper for create mode
 export function CreatePromptDialog({
   onCreatePrompt,
+  prefillData,
+  isOpen,
+  onOpenChange,
 }: {
   onCreatePrompt: (prompt: {
     title: string;
     description?: string;
     content: string;
   }) => Promise<any>;
+  prefillData?: {
+    title: string;
+    description: string;
+    content: string;
+  };
+  isOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   return (
-    <CreateOrEditPromptDialog mode="create" onCreatePrompt={onCreatePrompt} />
+    <CreateOrEditPromptDialog
+      mode="create"
+      onCreatePrompt={onCreatePrompt}
+      prefillData={prefillData}
+      isOpen={isOpen}
+      onOpenChange={onOpenChange}
+    />
   );
 }

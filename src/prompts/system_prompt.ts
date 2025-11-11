@@ -1,6 +1,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import log from "electron-log";
+import { TURBO_EDITS_V2_SYSTEM_PROMPT } from "../pro/main/prompts/turbo_edits_v2_prompt";
 
 const logger = log.scope("system_prompt");
 
@@ -505,24 +506,36 @@ When tools are not used, simply state: **"Ok, looks like I don't need any tools,
 export const constructSystemPrompt = ({
   aiRules,
   chatMode = "build",
+  enableTurboEditsV2,
 }: {
   aiRules: string | undefined;
   chatMode?: "build" | "ask" | "agent";
+  enableTurboEditsV2: boolean;
 }) => {
-  const systemPrompt = getSystemPromptForChatMode(chatMode);
+  const systemPrompt = getSystemPromptForChatMode({
+    chatMode,
+    enableTurboEditsV2,
+  });
   return systemPrompt.replace("[[AI_RULES]]", aiRules ?? DEFAULT_AI_RULES);
 };
 
-export const getSystemPromptForChatMode = (
-  chatMode: "build" | "ask" | "agent",
-) => {
+export const getSystemPromptForChatMode = ({
+  chatMode,
+  enableTurboEditsV2,
+}: {
+  chatMode: "build" | "ask" | "agent";
+  enableTurboEditsV2: boolean;
+}) => {
   if (chatMode === "agent") {
     return AGENT_MODE_SYSTEM_PROMPT;
   }
   if (chatMode === "ask") {
     return ASK_MODE_SYSTEM_PROMPT;
   }
-  return BUILD_SYSTEM_PROMPT;
+  return (
+    BUILD_SYSTEM_PROMPT +
+    (enableTurboEditsV2 ? TURBO_EDITS_V2_SYSTEM_PROMPT : "")
+  );
 };
 
 export const readAiRules = async (dyadAppPath: string) => {

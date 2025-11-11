@@ -127,6 +127,42 @@ export default Index;
       </dyad-write>
       `;
     }
+    if (
+      lastMessage &&
+      typeof lastMessage.content === "string" &&
+      lastMessage.content.startsWith(
+        "There was an issue with the following `dyad-search-replace` tags.",
+      )
+    ) {
+      if (lastMessage.content.includes("Make sure you use `dyad-read`")) {
+        // Fix errors in create-ts-errors.md and introduce a new error
+        messageContent =
+          `
+<dyad-read path="src/pages/Index.tsx"></dyad-read>
+
+<dyad-search-replace path="src/pages/Index.tsx">
+<<<<<<< SEARCH
+        // STILL Intentionally DO NOT MATCH ANYTHING TO TRIGGER FALLBACK
+        <h1 className="text-4xl font-bold mb-4">Welcome to Your Blank App</h1>
+=======
+        <h1 className="text-4xl font-bold mb-4">Welcome to the UPDATED App</h1>
+>>>>>>> REPLACE
+</dyad-search-replace>
+` +
+          "\n\n" +
+          generateDump(req);
+      } else {
+        // Fix errors in create-ts-errors.md and introduce a new error
+        messageContent =
+          `
+<dyad-write path="src/pages/Index.tsx" description="Rewrite file.">
+// FILE IS REPLACED WITH FALLBACK WRITE.
+</dyad-write>` +
+          "\n\n" +
+          generateDump(req);
+      }
+    }
+
     console.error("LASTMESSAGE", lastMessage);
     // Check if the last message is "[dump]" to write messages to file and return path
     if (
@@ -139,6 +175,27 @@ export default Index;
         : lastMessage.content.includes("[dump]"))
     ) {
       messageContent = generateDump(req);
+    }
+
+    if (
+      lastMessage &&
+      typeof lastMessage.content === "string" &&
+      lastMessage.content.startsWith("/security-review")
+    ) {
+      messageContent = fs.readFileSync(
+        path.join(
+          __dirname,
+          "..",
+          "..",
+          "..",
+          "e2e-tests",
+          "fixtures",
+          "security-review",
+          "findings.md",
+        ),
+        "utf-8",
+      );
+      messageContent += "\n\n" + generateDump(req);
     }
 
     if (lastMessage && lastMessage.content === "[increment]") {
@@ -319,7 +376,7 @@ export default Index;
 
     // Stream each character with a delay
     let index = 0;
-    const batchSize = 8;
+    const batchSize = 32;
 
     // Send role first
     res.write(createStreamChunk("", "assistant"));

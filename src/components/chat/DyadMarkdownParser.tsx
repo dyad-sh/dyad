@@ -8,6 +8,7 @@ import { DyadAddDependency } from "./DyadAddDependency";
 import { DyadExecuteSql } from "./DyadExecuteSql";
 import { DyadAddIntegration } from "./DyadAddIntegration";
 import { DyadEdit } from "./DyadEdit";
+import { DyadSearchReplace } from "./DyadSearchReplace";
 import { DyadCodebaseContext } from "./DyadCodebaseContext";
 import { DyadThink } from "./DyadThink";
 import { CodeHighlight } from "./CodeHighlight";
@@ -21,6 +22,9 @@ import { DyadMcpToolCall } from "./DyadMcpToolCall";
 import { DyadMcpToolResult } from "./DyadMcpToolResult";
 import { DyadWebSearchResult } from "./DyadWebSearchResult";
 import { DyadWebSearch } from "./DyadWebSearch";
+import { DyadWebCrawl } from "./DyadWebCrawl";
+import { DyadCodeSearchResult } from "./DyadCodeSearchResult";
+import { DyadCodeSearch } from "./DyadCodeSearch";
 import { DyadRead } from "./DyadRead";
 import { mapActionToButton } from "./ChatInput";
 import { SuggestedAction } from "@/lib/schemas";
@@ -129,9 +133,11 @@ function preprocessUnclosedTags(content: string): {
     "dyad-problem-report",
     "dyad-chat-summary",
     "dyad-edit",
+    "dyad-search-replace",
     "dyad-codebase-context",
     "dyad-web-search-result",
     "dyad-web-search",
+    "dyad-web-crawl",
     "dyad-read",
     "think",
     "dyad-command",
@@ -201,9 +207,13 @@ function parseCustomTags(content: string): ContentPiece[] {
     "dyad-problem-report",
     "dyad-chat-summary",
     "dyad-edit",
+    "dyad-search-replace",
     "dyad-codebase-context",
     "dyad-web-search-result",
     "dyad-web-search",
+    "dyad-web-crawl",
+    "dyad-code-search-result",
+    "dyad-code-search",
     "dyad-read",
     "think",
     "dyad-command",
@@ -315,6 +325,36 @@ function renderCustomTag(
         >
           {content}
         </DyadWebSearch>
+      );
+    case "dyad-web-crawl":
+      return (
+        <DyadWebCrawl
+          node={{
+            properties: {},
+          }}
+        >
+          {content}
+        </DyadWebCrawl>
+      );
+    case "dyad-code-search":
+      return (
+        <DyadCodeSearch
+          node={{
+            properties: {},
+          }}
+        >
+          {content}
+        </DyadCodeSearch>
+      );
+    case "dyad-code-search-result":
+      return (
+        <DyadCodeSearchResult
+          node={{
+            properties: {},
+          }}
+        >
+          {content}
+        </DyadCodeSearchResult>
       );
     case "dyad-web-search-result":
       return (
@@ -435,6 +475,21 @@ function renderCustomTag(
         >
           {content}
         </DyadEdit>
+      );
+
+    case "dyad-search-replace":
+      return (
+        <DyadSearchReplace
+          node={{
+            properties: {
+              path: attributes.path || "",
+              description: attributes.description || "",
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadSearchReplace>
       );
 
     case "dyad-codebase-context":

@@ -211,6 +211,9 @@ export type ContextPathResults = {
 export const ReleaseChannelSchema = z.enum(["stable", "beta"]);
 export type ReleaseChannel = z.infer<typeof ReleaseChannelSchema>;
 
+export const ZoomLevelSchema = z.enum(["90", "100", "110", "125", "150"]);
+export type ZoomLevel = z.infer<typeof ZoomLevelSchema>;
+
 /**
  * Zod schema for user settings
  */
@@ -232,13 +235,17 @@ export const UserSettingsSchema = z.object({
   maxChatTurnsInContext: z.number().optional(),
   thinkingBudget: z.enum(["low", "medium", "high"]).optional(),
   enableProLazyEditsMode: z.boolean().optional(),
+  proLazyEditsMode: z.enum(["off", "v1", "v2"]).optional(),
   enableProSmartFilesContextMode: z.boolean().optional(),
   enableProWebSearch: z.boolean().optional(),
-  proSmartContextOption: z.enum(["balanced", "conservative"]).optional(),
+  proSmartContextOption: z
+    .enum(["balanced", "conservative", "deep"])
+    .optional(),
   selectedTemplateId: z.string(),
   enableSupabaseWriteSqlMigration: z.boolean().optional(),
   selectedChatMode: ChatModeSchema.optional(),
   acceptedCommunityCode: z.boolean().optional(),
+  zoomLevel: ZoomLevelSchema.optional(),
 
   enableAutoFixProblems: z.boolean().optional(),
   enableNativeGit: z.boolean().optional(),
@@ -271,6 +278,14 @@ export function isDyadProEnabled(settings: UserSettings): boolean {
 
 export function hasDyadProKey(settings: UserSettings): boolean {
   return !!settings.providerSettings?.auto?.apiKey?.value;
+}
+
+export function isTurboEditsV2Enabled(settings: UserSettings): boolean {
+  return Boolean(
+    isDyadProEnabled(settings) &&
+      settings.enableProLazyEditsMode === true &&
+      settings.proLazyEditsMode === "v2",
+  );
 }
 
 // Define interfaces for the props

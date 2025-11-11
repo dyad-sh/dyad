@@ -291,14 +291,14 @@ export async function deploySupabaseFunctions({
 
   // ————————————————————————————————————————————————————————————————
   // (1) In-memory import rewrite (deploy-only)
-  // Convert "../shared/..." and "./shared/..." to a bare specifier "shared/..."
+  // Convert "../_shared/..." and "./_shared/..." to a bare specifier "_shared/..."
   // This keeps local code unchanged but makes it work reliably in Deno with an import map.
  const rewriteImports = (content: string) =>
   content
-    // Replace ANY number of "../" segments before "shared/" with "./"
-    .replace(/(\.\.\/)+shared\//g, "./shared/")
-    // Normalize accidental "././shared/" to a single "./shared/"
-    .replace(/(\.\/)+shared\//g, "./shared/");
+    // Replace ANY number of "../" segments before "_shared/" with "./"
+    .replace(/(\.\.\/)+_shared\//g, "./_shared/")
+    // Normalize accidental "././_shared/" to a single "./_shared/"
+    .replace(/(\.\/)+_shared\//g, "./_shared/");
 
 
 
@@ -329,28 +329,28 @@ export async function deploySupabaseFunctions({
 
   // ————————————————————————————————————————————————————————————————
   // (2) Create a fresh import map beside the entrypoint
-  // We point the bare specifier "shared/" to a path *relative to the entrypoint directory*.
+  // We point the bare specifier "_shared/" to a path *relative to the entrypoint directory*.
   const entrypointPath = functionFiles.entrypointPath; // e.g., "functions/random-demo/index.ts"
   const entryDir = path.posix.dirname(entrypointPath);
   const importMapRelPath = path.posix.join(entryDir, "import_map.json");
 
-  // IMPORTANT: We want "shared/" to resolve to the *sibling* shared folder (if you keep structure)
+  // IMPORTANT: We want "_shared/" to resolve to the *sibling* shared folder (if you keep structure)
   // Example layout:
-  //   shared/util.ts
+  //   functions/_shared/util.ts
   //   functions/random-demo/index.ts
   //
-  // From entryDir = "functions/random-demo", the relative path to shared is "../shared/"
-  // But since we *upload* both "shared/..." and "functions/random-demo/...", the runtime sees both at /tmp/...,
-  // and "./" here refers to the entryDir. We want the specifier "shared/" to resolve correctly regardless.
+  // From entryDir = "functions/random-demo", the relative path to shared is "../_shared/"
+  // But since we *upload* both "_shared/..." and "functions/random-demo/...", the runtime sees both at /tmp/...,
+  // and "./" here refers to the entryDir. We want the specifier "_shared/" to resolve correctly regardless.
   //
   // Two robust choices:
-  //  A) Map "shared/" -> "../shared/" (for sibling folder)
-  //  B) If you upload a nested "functions/random-demo/shared/...", use "./shared/"
+  //  A) Map "_shared/" -> "../_shared/" (for sibling folder)
+  //  B) If you upload a nested "functions/random-demo/_shared/...", use "./_shared/"
   //
   // Choose A (sibling) for your described structure:
   const importMap = {
     imports: {
-      "shared/": "../shared/",
+      "_shared/": "../_shared/",
     },
   };
 
@@ -503,7 +503,12 @@ async function collectFunctionFiles({
 }
 
 async function getSharedFiles(appPath: string): Promise<CachedSharedFiles> {
-  const sharedDirectory = path.join(appPath, "supabase", "shared");
+  const sharedDirectory = path.join(
+    appPath,
+    "supabase",
+    "functions",
+    "_shared",
+  );
 
   try {
     const sharedStats = await fsPromises.stat(sharedDirectory);
@@ -517,7 +522,7 @@ async function getSharedFiles(appPath: string): Promise<CachedSharedFiles> {
     throw error;
   }
 
-  const statEntries = await listFilesWithStats(sharedDirectory, "shared");
+  const statEntries = await listFilesWithStats(sharedDirectory, "_shared");
   const signature = buildSignature(statEntries);
 
   const cached = sharedFilesCache.get(sharedDirectory);

@@ -50,6 +50,8 @@ import { normalizePath } from "../../../shared/normalizePath";
 import {
   getSupabaseFunctionName,
   isServerFunction,
+  isSupabaseSharedFile,
+  listSupabaseFunctionTargets,
 } from "@/supabase_admin/supabase_utils";
 import { getVercelTeamSlug } from "../utils/vercel_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
@@ -1068,19 +1070,51 @@ export function registerAppHandlers() {
         throw new Error(`Failed to write file: ${error.message}`);
       }
 
-      if (isServerFunction(filePath) && app.supabaseProjectId) {
-        try {
-          await deploySupabaseFunctions({
-            supabaseProjectId: app.supabaseProjectId,
-            functionName: getSupabaseFunctionName(filePath),
-            appPath,
-            functionPath: fullPath,
-          });
-        } catch (error) {
-          logger.error(`Error deploying Supabase function ${filePath}:`, error);
-          return {
-            warning: `File saved, but failed to deploy Supabase function: ${filePath}: ${error}`,
-          };
+      if (app.supabaseProjectId) {
+        if (isServerFunction(filePath)) {
+          try {
+            await deploySupabaseFunctions({
+              supabaseProjectId: app.supabaseProjectId,
+              functionName: getSupabaseFunctionName(filePath),
+              appPath,
+              functionPath: fullPath,
+            });
+          } catch (error) {
+            logger.error(
+              `Error deploying Supabase function ${filePath}:`,
+              error,
+            );
+            return {
+              warning: `File saved, but failed to deploy Supabase function: ${filePath}: ${error}`,
+            };
+          }
+        } else if (isSupabaseSharedFile(filePath)) {
+          try {
+            const functionTargets = await listSupabaseFunctionTargets(appPath);
+
+            if (functionTargets.length === 0) {
+              logger.info(
+                `No Supabase functions found to redeploy after updating shared module ${filePath}.`,
+              );
+            }
+
+            for (const target of functionTargets) {
+              await deploySupabaseFunctions({
+                supabaseProjectId: app.supabaseProjectId,
+                functionName: target.name,
+                appPath,
+                functionPath: target.fullPath,
+              });
+            }
+          } catch (error) {
+            logger.error(
+              `Error redeploying Supabase functions after updating shared module ${filePath}:`,
+              error,
+            );
+            return {
+              warning: `File saved, but failed to redeploy Supabase functions after updating shared module ${filePath}: ${error}`,
+            };
+          }
         }
       }
       return {};

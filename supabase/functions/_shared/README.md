@@ -5,7 +5,7 @@ Store reusable utilities for Supabase Edge Functions in this directory. Each fil
 Import helpers from functions using relative paths, for example:
 
 ```ts
-import { exampleHelper } from "../shared/exampleHelper.ts";
+import { exampleHelper } from "../_shared/exampleHelper.ts";
 ```
 
 Avoid importing client-side application code into shared modules. Everything in this directory must be compatible with the Deno runtime used by Supabase Edge Functions.

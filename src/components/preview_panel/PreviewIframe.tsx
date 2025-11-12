@@ -55,6 +55,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useRunApp } from "@/hooks/useRunApp";
 import { useShortcut } from "@/hooks/useShortcut";
 import { cn } from "@/lib/utils";
+import { normalizePath } from "../../../shared/normalizePath";
 
 interface ErrorBannerProps {
   error: { message: string; source: "preview-app" | "dyad-app" } | undefined;
@@ -780,7 +781,7 @@ function parseComponentSelection(data: any): ComponentSelection | null {
   return {
     id,
     name,
-    relativePath,
+    relativePath: normalizePath(relativePath),
     lineNumber,
     columnNumber,
   };

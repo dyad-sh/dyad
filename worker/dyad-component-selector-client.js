@@ -109,7 +109,7 @@
     if (file) {
       const fileEl = document.createElement("span");
       css(fileEl, { fontSize: "10px", opacity: ".8" });
-      fileEl.textContent = file;
+      fileEl.textContent = file.replace(/\\/g, "/");
       hoverLabel.appendChild(fileEl);
     }
 
@@ -217,7 +217,7 @@
     if (file) {
       const fileEl = document.createElement("span");
       css(fileEl, { fontSize: "10px", opacity: ".8" });
-      fileEl.textContent = file;
+      fileEl.textContent = file.replace(/\\/g, "/");
       label.appendChild(fileEl);
     }
 

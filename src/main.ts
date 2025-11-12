@@ -41,6 +41,11 @@ registerIpcHandlers();
 if (started) {
   app.quit();
 }
+// Set up Dugite git path for development
+if (!app.isPackaged) {
+  const gitPath = path.join(app.getAppPath(), "node_modules/dugite/git");
+  process.env.LOCAL_GIT_DIRECTORY = gitPath;
+}
 
 // https://www.electronjs.org/docs/latest/tutorial/launch-app-from-url-in-another-app#main-process-mainjs
 if (process.defaultApp) {

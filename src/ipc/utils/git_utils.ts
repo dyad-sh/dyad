@@ -1,31 +1,12 @@
 import { getGitAuthor } from "./git_author";
 import git from "isomorphic-git";
+import { exec } from "dugite";
 import fs from "node:fs";
 import { promises as fsPromises } from "node:fs";
 import pathModule from "node:path";
-import { exec } from "node:child_process";
-import { promisify } from "node:util";
 import { readSettings } from "../../main/settings";
 import log from "electron-log";
 const logger = log.scope("git_utils");
-const execAsync = promisify(exec);
-
-async function verboseExecAsync(
-  command: string,
-): Promise<{ stdout: string; stderr: string }> {
-  try {
-    return await execAsync(command);
-  } catch (error: any) {
-    let errorMessage = `Error: ${error.message}`;
-    if (error.stdout) {
-      errorMessage += `\nStdout: ${error.stdout}`;
-    }
-    if (error.stderr) {
-      errorMessage += `\nStderr: ${error.stderr}`;
-    }
-    throw new Error(errorMessage);
-  }
-}
 
 export async function getCurrentCommitHash({
   path,
@@ -50,14 +31,15 @@ export async function gitCommit({
 }): Promise<string> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
-    let command = `git -C "${path}" commit -m "${message.replace(/"/g, '\\"')}"`;
+    // Perform the commit using dugite
+    const args = ["commit", "-m", message.replace(/"/g, '\\"').trim()];
     if (amend) {
-      command += " --amend";
+      args.push("--amend");
     }
-
-    await verboseExecAsync(command);
-    const { stdout } = await execAsync(`git -C "${path}" rev-parse HEAD`);
-    return stdout.trim();
+    await exec(args, path);
+    // Get the new commit hash
+    const result = await exec(["rev-parse", "HEAD"], path);
+    return result.stdout.trim();
   } else {
     return git.commit({
       fs: fs,
@@ -78,7 +60,7 @@ export async function gitCheckout({
 }): Promise<void> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
-    await execAsync(`git -C "${path}" checkout "${ref.replace(/"/g, '\\"')}"`);
+    await exec(["checkout", ref.replace(/"/g, '\\"').trim()], path);
     return;
   } else {
     return git.checkout({ fs, dir: path, ref });
@@ -95,9 +77,8 @@ export async function gitStageToRevert({
   const settings = readSettings();
   if (settings.enableNativeGit) {
     // Get the current HEAD commit hash
-    const { stdout: currentHead } = await execAsync(
-      `git -C "${path}" rev-parse HEAD`,
-    );
+    const { stdout: currentHead } = await exec(["rev-parse", "HEAD"], path);
+
     const currentCommit = currentHead.trim();
 
     // If we're already at the target commit, nothing to do
@@ -106,20 +87,18 @@ export async function gitStageToRevert({
     }
 
     // Safety: refuse to run if the work-tree isn't clean.
-    const { stdout: wtStatus } = await execAsync(
-      `git -C "${path}" status --porcelain`,
-    );
+    const { stdout: wtStatus } = await exec(["status", "--porcelain"], path);
     if (wtStatus.trim() !== "") {
       throw new Error("Cannot revert: working tree has uncommitted changes.");
     }
 
     // Reset the working directory and index to match the target commit state
     // This effectively undoes all changes since the target commit
-    await execAsync(`git -C "${path}" reset --hard "${targetOid}"`);
+    await exec(["reset", "--hard", targetOid], path);
 
     // Reset back to the original HEAD but keep the working directory as it is
     // This stages all the changes needed to revert to the target state
-    await execAsync(`git -C "${path}" reset --soft "${currentCommit}"`);
+    await exec(["reset", "--soft", currentCommit], path);
   } else {
     // Get status matrix comparing the target commit (previousVersionId as HEAD) with current working directory
     const matrix = await git.statusMatrix({
@@ -173,7 +152,7 @@ export async function gitStageToRevert({
 export async function gitAddAll({ path }: { path: string }): Promise<void> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
-    await execAsync(`git -C "${path}" add .`);
+    await exec(["add", "."], path);
     return;
   } else {
     return git.add({ fs, dir: path, filepath: "." });
@@ -192,8 +171,9 @@ export async function getFileAtCommit({
   const settings = readSettings();
   if (settings.enableNativeGit) {
     try {
-      const { stdout } = await execAsync(
-        `git -C "${path}" show "${commitHash}:${filePath}"`,
+      const { stdout } = await exec(
+        ["show", `${commitHash}:${filePath}`],
+        path,
       );
       return stdout;
     } catch (error: any) {

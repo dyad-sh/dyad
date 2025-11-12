@@ -377,7 +377,8 @@ export async function processFullResponseActions(
             await deploySupabaseFunctions({
               supabaseProjectId: chatWithApp.app.supabaseProjectId!,
               functionName: path.basename(path.dirname(filePath)),
-              content: result.content,
+              appPath,
+              functionPath: filePath,
             });
           } catch (error) {
             errors.push({

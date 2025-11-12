@@ -289,19 +289,9 @@ export async function deploySupabaseFunctions({
     relativePath: f.relativePath,
   }));
 
-  // ————————————————————————————————————————————————————————————————
-  // (1) In-memory import rewrite (deploy-only)
-  // Convert "../_shared/..." and "./_shared/..." to a bare specifier "_shared/..."
-  // This keeps local code unchanged but makes it work reliably in Deno with an import map.
  const rewriteImports = (content: string) =>
   content
-    // Replace ANY number of "../" segments before "_shared/" with "./"
-    .replace(/(\.\.\/)+_shared\//g, "./_shared/")
-    // Normalize accidental "././_shared/" to a single "./_shared/"
-    .replace(/(\.\/)+_shared\//g, "./_shared/");
-
-
-
+  
   filesToUpload = filesToUpload.map(f => {
     const isJSorTS =
       f.relativePath.endsWith(".ts") ||
@@ -386,6 +376,8 @@ export async function deploySupabaseFunctions({
   if (response.status !== 201) {
     const text = await response.text();
     logger.error(`Supabase response: ${response.status} ${text}`);
+    console.log("SUPABASE ERROR");
+    console.log(text);
     throw await createResponseError(response, "create function");
   }
 

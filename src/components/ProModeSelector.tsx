@@ -32,18 +32,16 @@ export function ProModeSelector() {
     });
   };
 
-  const handleSmartContextChange = (
-    newValue: "off" | "conservative" | "balanced",
-  ) => {
+  const handleSmartContextChange = (newValue: "off" | "deep" | "balanced") => {
     if (newValue === "off") {
       updateSettings({
         enableProSmartFilesContextMode: false,
         proSmartContextOption: undefined,
       });
-    } else if (newValue === "conservative") {
+    } else if (newValue === "deep") {
       updateSettings({
         enableProSmartFilesContextMode: true,
-        proSmartContextOption: "conservative",
+        proSmartContextOption: "deep",
       });
     } else if (newValue === "balanced") {
       updateSettings({
@@ -90,16 +88,23 @@ export function ProModeSelector() {
           </div>
           {!hasProKey && (
             <div className="text-sm text-center text-muted-foreground">
-              <a
-                className="inline-flex items-center justify-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                onClick={() => {
-                  IpcClient.getInstance().openExternalUrl(
-                    "https://dyad.sh/pro#ai",
-                  );
-                }}
-              >
-                Unlock Pro modes
-              </a>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <a
+                    className="inline-flex items-center justify-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
+                    onClick={() => {
+                      IpcClient.getInstance().openExternalUrl(
+                        "https://dyad.sh/pro#ai",
+                      );
+                    }}
+                  >
+                    Unlock Pro modes
+                  </a>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Visit dyad.sh/pro to unlock Pro features
+                </TooltipContent>
+              </Tooltip>
             </div>
           )}
           <div className="flex flex-col gap-5">
@@ -239,33 +244,52 @@ function TurboEditsSelector({
         className="inline-flex rounded-md border border-input"
         data-testid="turbo-edits-selector"
       >
-        <Button
-          variant={currentValue === "off" ? "default" : "ghost"}
-          size="sm"
-          onClick={() => onValueChange("off")}
-          disabled={!isTogglable}
-          className="rounded-r-none border-r border-input h-8 px-3 text-xs flex-shrink-0"
-        >
-          Off
-        </Button>
-        <Button
-          variant={currentValue === "v1" ? "default" : "ghost"}
-          size="sm"
-          onClick={() => onValueChange("v1")}
-          disabled={!isTogglable}
-          className="rounded-none border-r border-input h-8 px-3 text-xs flex-shrink-0"
-        >
-          Classic
-        </Button>
-        <Button
-          variant={currentValue === "v2" ? "default" : "ghost"}
-          size="sm"
-          onClick={() => onValueChange("v2")}
-          disabled={!isTogglable}
-          className="rounded-l-none h-8 px-3 text-xs flex-shrink-0"
-        >
-          Search & replace
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={currentValue === "off" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => onValueChange("off")}
+              disabled={!isTogglable}
+              className="rounded-r-none border-r border-input h-8 px-3 text-xs flex-shrink-0"
+            >
+              Off
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Disable Turbo Edits</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={currentValue === "v1" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => onValueChange("v1")}
+              disabled={!isTogglable}
+              className="rounded-none border-r border-input h-8 px-3 text-xs flex-shrink-0"
+            >
+              Classic
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            Uses a smaller model to complete edits
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={currentValue === "v2" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => onValueChange("v2")}
+              disabled={!isTogglable}
+              className="rounded-l-none h-8 px-3 text-xs flex-shrink-0"
+            >
+              Search & replace
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            Find and replaces specific text blocks
+          </TooltipContent>
+        </Tooltip>
       </div>
     </div>
   );
@@ -278,18 +302,18 @@ function SmartContextSelector({
 }: {
   isTogglable: boolean;
   settings: UserSettings | null;
-  onValueChange: (value: "off" | "conservative" | "balanced") => void;
+  onValueChange: (value: "off" | "balanced" | "deep") => void;
 }) {
   // Determine current value based on settings
-  const getCurrentValue = (): "off" | "conservative" | "balanced" => {
+  const getCurrentValue = (): "off" | "conservative" | "balanced" | "deep" => {
     if (!settings?.enableProSmartFilesContextMode) {
       return "off";
     }
+    if (settings?.proSmartContextOption === "deep") {
+      return "deep";
+    }
     if (settings?.proSmartContextOption === "balanced") {
       return "balanced";
-    }
-    if (settings?.proSmartContextOption === "conservative") {
-      return "conservative";
     }
     // Keep in sync with getModelClient in get_model_client.ts
     // If enabled but no option set (undefined/falsey), it's balanced
@@ -320,33 +344,53 @@ function SmartContextSelector({
         className="inline-flex rounded-md border border-input"
         data-testid="smart-context-selector"
       >
-        <Button
-          variant={currentValue === "off" ? "default" : "ghost"}
-          size="sm"
-          onClick={() => onValueChange("off")}
-          disabled={!isTogglable}
-          className="rounded-r-none border-r border-input h-8 px-3 text-xs flex-shrink-0"
-        >
-          Off
-        </Button>
-        <Button
-          variant={currentValue === "conservative" ? "default" : "ghost"}
-          size="sm"
-          onClick={() => onValueChange("conservative")}
-          disabled={!isTogglable}
-          className="rounded-none border-r border-input h-8 px-3 text-xs flex-shrink-0"
-        >
-          Conservative
-        </Button>
-        <Button
-          variant={currentValue === "balanced" ? "default" : "ghost"}
-          size="sm"
-          onClick={() => onValueChange("balanced")}
-          disabled={!isTogglable}
-          className="rounded-l-none h-8 px-3 text-xs flex-shrink-0"
-        >
-          Balanced
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={currentValue === "off" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => onValueChange("off")}
+              disabled={!isTogglable}
+              className="rounded-r-none border-r border-input h-8 px-3 text-xs flex-shrink-0"
+            >
+              Off
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Disable Smart Context</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={currentValue === "balanced" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => onValueChange("balanced")}
+              disabled={!isTogglable}
+              className="rounded-none border-r border-input h-8 px-3 text-xs flex-shrink-0"
+            >
+              Balanced
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            Selects most relevant files with balanced context size
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={currentValue === "deep" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => onValueChange("deep")}
+              disabled={!isTogglable}
+              className="rounded-l-none h-8 px-3 text-xs flex-shrink-0"
+            >
+              Deep
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <b>Experimental:</b> Keeps full conversation history for maximum
+            context and cache-optimized to control costs
+          </TooltipContent>
+        </Tooltip>
       </div>
     </div>
   );

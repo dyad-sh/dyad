@@ -389,7 +389,6 @@ ${componentSnippet}
 \`\`\`
 `;
         }
-        console.log(userPrompt);
       }
 
       await db

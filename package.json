@@ -40,6 +40,14 @@
     "e2e": "playwright test",
     "e2e:shard": "playwright test --shard"
   },
+  "build": {
+    "extraResources": [
+      {
+        "from": "node_modules/dugite/git",
+        "to": "git"
+      }
+    ]
+  },
   "keywords": [],
   "author": {
     "name": "Will Chen",
@@ -134,6 +142,7 @@
     "date-fns": "^4.1.0",
     "dotenv": "^16.4.7",
     "drizzle-orm": "^0.41.0",
+    "dugite": "^3.0.0",
     "electron-log": "^5.3.3",
     "electron-playwright-helpers": "^1.7.1",
     "electron-squirrel-startup": "^1.0.1",

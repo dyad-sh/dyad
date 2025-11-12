@@ -359,7 +359,7 @@ export function registerChatStreamHandlers() {
               path.join(getDyadAppPath(chat.app.path), component.relativePath),
               "utf8",
             );
-            const lines = componentFileContent.split("\n");
+            const lines = componentFileContent.split(/\r?\n/);
             const selectedIndex = component.lineNumber - 1;
 
             // Let's get one line before and three after for context.

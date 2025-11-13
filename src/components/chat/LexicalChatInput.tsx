@@ -90,7 +90,13 @@ function CustomMenu({ loading: _loading, ...props }: any) {
 }
 
 // Plugin to handle Enter key
-function EnterKeyPlugin({ onSubmit }: { onSubmit: () => void }) {
+function EnterKeyPlugin({
+  onSubmit,
+  disableSendButton,
+}: {
+  onSubmit: () => void;
+  disableSendButton: boolean;
+}) {
   const [editor] = useLexicalComposerContext();
 
   useEffect(() => {
@@ -109,7 +115,7 @@ function EnterKeyPlugin({ onSubmit }: { onSubmit: () => void }) {
           return false;
         }
 
-        if (!event.shiftKey) {
+        if (!event.shiftKey && !disableSendButton) {
           event.preventDefault();
           onSubmit();
           return true;
@@ -231,6 +237,7 @@ interface LexicalChatInputProps {
   placeholder?: string;
   disabled?: boolean;
   excludeCurrentApp: boolean;
+  disableSendButton: boolean;
 }
 
 function onError(error: Error) {
@@ -245,6 +252,7 @@ export function LexicalChatInput({
   excludeCurrentApp,
   placeholder = "Ask Dyad to build...",
   disabled = false,
+  disableSendButton,
 }: LexicalChatInputProps) {
   const { apps } = useLoadApps();
   const { prompts } = usePrompts();
@@ -402,7 +410,10 @@ export function LexicalChatInput({
         />
         <OnChangePlugin onChange={handleEditorChange} />
         <HistoryPlugin />
-        <EnterKeyPlugin onSubmit={handleSubmit} />
+        <EnterKeyPlugin
+          onSubmit={handleSubmit}
+          disableSendButton={disableSendButton}
+        />
         <ExternalValueSyncPlugin
           value={value}
           promptsById={Object.fromEntries(

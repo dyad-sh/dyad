@@ -159,6 +159,61 @@ export async function gitAddAll({ path }: { path: string }): Promise<void> {
   }
 }
 
+export async function gitAdd({
+  path,
+  filepath,
+}: {
+  path: string;
+  filepath: string;
+}): Promise<void> {
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    await exec(["add", filepath], path);
+  } else {
+    await git.add({
+      fs,
+      dir: path,
+      filepath,
+    });
+  }
+}
+
+export async function gitRemove({
+  path,
+  filepath,
+}: {
+  path: string;
+  filepath: string;
+}): Promise<void> {
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    await exec(["rm", "-f", filepath], path);
+  } else {
+    await git.remove({
+      fs,
+      dir: path,
+      filepath,
+    });
+  }
+}
+
+export async function gitStatus({ path }: { path: string }): Promise<string[]> {
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    const result = await exec(["status", "--porcelain"], path);
+    return result.stdout
+      .toString()
+      .split("\n")
+      .filter((line) => line.trim() !== "")
+      .map((line) => line.slice(3).trim());
+  } else {
+    const statusMatrix = await git.statusMatrix({ fs, dir: path });
+    return statusMatrix
+      .filter((row) => row[1] !== 1 || row[2] !== 1 || row[3] !== 1)
+      .map((row) => row[0]);
+  }
+}
+
 export async function getFileAtCommit({
   path,
   filePath,

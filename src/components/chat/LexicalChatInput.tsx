@@ -124,7 +124,7 @@ function EnterKeyPlugin({
       },
       COMMAND_PRIORITY_HIGH, // Use higher priority to catch before mentions plugin
     );
-  }, [editor, onSubmit]);
+  }, [editor, onSubmit, disableSendButton]);
 
   return null;
 }

@@ -1,7 +1,7 @@
 {
   "name": "dyad",
   "productName": "dyad",
-  "version": "0.27.0",
+  "version": "0.27.1",
   "description": "Free, local, open-source AI app builder",
   "main": ".vite/build/main.js",
   "repository": {
@@ -95,7 +95,7 @@
     "@ai-sdk/provider-utils": "^3.0.3",
     "@ai-sdk/xai": "^2.0.16",
     "@biomejs/biome": "^1.9.4",
-    "@dyad-sh/supabase-management-js": "v1.0.0",
+    "@dyad-sh/supabase-management-js": "v1.0.1",
     "@lexical/react": "^0.33.1",
     "@modelcontextprotocol/sdk": "^1.17.5",
     "@monaco-editor/react": "^4.7.0-rc.0",

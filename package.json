@@ -1,7 +1,7 @@
 {
   "name": "dyad",
   "productName": "dyad",
-  "version": "0.27.0-beta.1",
+  "version": "0.27.0-beta.2",
   "description": "Free, local, open-source AI app builder",
   "main": ".vite/build/main.js",
   "repository": {
@@ -140,6 +140,7 @@
     "electron-playwright-helpers": "^1.7.1",
     "electron-squirrel-startup": "^1.0.1",
     "esbuild-register": "^3.6.0",
+    "fastest-levenshtein": "^1.0.16",
     "fix-path": "^4.0.0",
     "framer-motion": "^12.6.3",
     "geist": "^1.3.1",

@@ -86,6 +86,7 @@ export function HomeChatInput({
               placeholder="Ask Dyad to build..."
               disabled={isStreaming}
               excludeCurrentApp={false}
+              disableSendButton={false}
             />
 
             {/* File attachment dropdown */}

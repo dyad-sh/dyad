@@ -81,6 +81,11 @@ import { mcpManager } from "../utils/mcp_manager";
 import z from "zod";
 import { isTurboEditsV2Enabled } from "@/lib/schemas";
 import { AI_STREAMING_ERROR_MESSAGE_PREFIX } from "@/shared/texts";
+import { getCurrentCommitHash } from "../utils/git_utils";
+import {
+  processChatMessagesWithVersionedFiles as getVersionedFiles,
+  VersionedFiles as VersionedFiles,
+} from "../utils/versioned_codebase_context";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
@@ -414,6 +419,9 @@ ${componentSnippet}
           role: "assistant",
           content: "", // Start with empty content
           requestId: dyadRequestId,
+          sourceCommitHash: await getCurrentCommitHash({
+            path: getDyadAppPath(chat.app.path),
+          }),
         })
         .returning();
 
@@ -537,12 +545,20 @@ ${componentSnippet}
         const messageHistory = updatedChat.messages.map((message) => ({
           role: message.role as "user" | "assistant" | "system",
           content: message.content,
+          sourceCommitHash: message.sourceCommitHash,
         }));
 
+        // For Dyad Pro + Deep Context, we set to 200 chat turns (+1)
+        // this is to enable more cache hits. Practically, users should
+        // rarely go over this limit because they will hit the model's
+        // context window limit.
+        //
         // Limit chat history based on maxChatTurnsInContext setting
         // We add 1 because the current prompt counts as a turn.
         const maxChatTurns =
-          (settings.maxChatTurnsInContext || MAX_CHAT_TURNS_IN_CONTEXT) + 1;
+          isEngineEnabled && settings.proSmartContextOption === "deep"
+            ? 201
+            : (settings.maxChatTurnsInContext || MAX_CHAT_TURNS_IN_CONTEXT) + 1;
 
         // If we need to limit the context, we take only the most recent turns
         let limitedMessageHistory = messageHistory;
@@ -727,6 +743,11 @@ This conversation includes one or more image attachments. When the user uploads 
             settings.selectedChatMode === "ask"
               ? removeDyadTags(removeNonEssentialTags(msg.content))
               : removeNonEssentialTags(msg.content),
+          providerOptions: {
+            "dyad-engine": {
+              sourceCommitHash: msg.sourceCommitHash,
+            },
+          },
         }));
 
         let chatMessages: ModelMessage[] = [
@@ -790,12 +811,22 @@ This conversation includes one or more image attachments. When the user uploads 
           } else {
             logger.log("sending AI request");
           }
+          let versionedFiles: VersionedFiles | undefined;
+          if (isEngineEnabled && settings.proSmartContextOption === "deep") {
+            versionedFiles = await getVersionedFiles({
+              files,
+              chatMessages,
+              appPath,
+            });
+          }
           // Build provider options with correct Google/Vertex thinking config gating
           const providerOptions: Record<string, any> = {
             "dyad-engine": {
+              dyadAppId: updatedChat.app.id,
               dyadRequestId,
               dyadDisableFiles,
-              dyadFiles: files,
+              dyadFiles: versionedFiles ? undefined : files,
+              dyadVersionedFiles: versionedFiles,
               dyadMentionedApps: mentionedAppsCodebases.map(
                 ({ files, appName }) => ({
                   appName,
@@ -993,21 +1024,48 @@ This conversation includes one or more image attachments. When the user uploads 
             settings.selectedChatMode !== "ask" &&
             isTurboEditsV2Enabled(settings)
           ) {
-            const issues = await dryRunSearchReplace({
+            let issues = await dryRunSearchReplace({
               fullResponse,
               appPath: getDyadAppPath(updatedChat.app.path),
             });
-            if (issues.length > 0) {
+
+            let searchReplaceFixAttempts = 0;
+            const originalFullResponse = fullResponse;
+            const previousAttempts: ModelMessage[] = [];
+            while (
+              issues.length > 0 &&
+              searchReplaceFixAttempts < 2 &&
+              !abortController.signal.aborted
+            ) {
               logger.warn(
-                `Detected search-replace issues: ${issues.map((i) => i.error).join(", ")}`,
+                `Detected search-replace issues (attempt #${searchReplaceFixAttempts + 1}): ${issues.map((i) => i.error).join(", ")}`,
               );
               const formattedSearchReplaceIssues = issues
                 .map(({ filePath, error }) => {
                   return `File path: ${filePath}\nError: ${error}`;
                 })
                 .join("\n\n");
-              const originalFullResponse = fullResponse;
+
               fullResponse += `<dyad-output type="warning" message="Could not apply Turbo Edits properly for some of the files; re-generating code...">${formattedSearchReplaceIssues}</dyad-output>`;
+              await processResponseChunkUpdate({
+                fullResponse,
+              });
+
+              logger.info(
+                `Attempting to fix search-replace issues, attempt #${searchReplaceFixAttempts + 1}`,
+              );
+
+              const fixSearchReplacePrompt =
+                searchReplaceFixAttempts === 0
+                  ? `There was an issue with the following \`dyad-search-replace\` tags. Make sure you use \`dyad-read\` to read the latest version of the file and then trying to do search & replace again.`
+                  : `There was an issue with the following \`dyad-search-replace\` tags. Please fix the errors by generating the code changes using \`dyad-write\` tags instead.`;
+              searchReplaceFixAttempts++;
+              const userPrompt = {
+                role: "user",
+                content: `${fixSearchReplacePrompt}
+                
+${formattedSearchReplaceIssues}`,
+              } as const;
 
               const { fullStream: fixSearchReplaceStream } =
                 await simpleStreamText({
@@ -1015,16 +1073,13 @@ This conversation includes one or more image attachments. When the user uploads 
                   chatMessages: [
                     ...chatMessages,
                     { role: "assistant", content: originalFullResponse },
-                    {
-                      role: "user",
-                      content: `There was an issue with the following \`dyad-search-replace\` tags. Please fix them by generating the code changes using \`dyad-write\` tags instead.
-                      
-${formattedSearchReplaceIssues}`,
-                    },
+                    ...previousAttempts,
+                    userPrompt,
                   ],
                   modelClient,
                   files: files,
                 });
+              previousAttempts.push(userPrompt);
               const result = await processStreamChunks({
                 fullStream: fixSearchReplaceStream,
                 fullResponse,
@@ -1033,6 +1088,16 @@ ${formattedSearchReplaceIssues}`,
                 processResponseChunkUpdate,
               });
               fullResponse = result.fullResponse;
+              previousAttempts.push({
+                role: "assistant",
+                content: removeNonEssentialTags(result.incrementalResponse),
+              });
+
+              // Re-check for issues after the fix attempt
+              issues = await dryRunSearchReplace({
+                fullResponse: result.incrementalResponse,
+                appPath: getDyadAppPath(updatedChat.app.path),
+              });
             }
           }
 

@@ -35,7 +35,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useStreamChat } from "@/hooks/useStreamChat";
-import { selectedComponentPreviewAtom } from "@/atoms/previewAtoms";
+import {
+  selectedComponentsPreviewAtom,
+  previewIframeRefAtom,
+} from "@/atoms/previewAtoms";
 import { ComponentSelection } from "@/ipc/ipc_types";
 import {
   Tooltip,
@@ -52,6 +55,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useRunApp } from "@/hooks/useRunApp";
 import { useShortcut } from "@/hooks/useShortcut";
 import { cn } from "@/lib/utils";
+import { normalizePath } from "../../../shared/normalizePath";
 
 interface ErrorBannerProps {
   error: { message: string; source: "preview-app" | "dyad-app" } | undefined;
@@ -169,9 +173,10 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const [canGoForward, setCanGoForward] = useState(false);
   const [navigationHistory, setNavigationHistory] = useState<string[]>([]);
   const [currentHistoryPosition, setCurrentHistoryPosition] = useState(0);
-  const [selectedComponentPreview, setSelectedComponentPreview] = useAtom(
-    selectedComponentPreviewAtom,
+  const [selectedComponentsPreview, setSelectedComponentsPreview] = useAtom(
+    selectedComponentsPreviewAtom,
   );
+  const setPreviewIframeRef = useSetAtom(previewIframeRefAtom);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isPicking, setIsPicking] = useState(false);
 
@@ -189,9 +194,14 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   //detect if the user is using Mac
   const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
 
+  // Update iframe ref atom
+  useEffect(() => {
+    setPreviewIframeRef(iframeRef.current);
+  }, [iframeRef.current, setPreviewIframeRef]);
+
   // Deactivate component selector when selection is cleared
   useEffect(() => {
-    if (!selectedComponentPreview) {
+    if (!selectedComponentsPreview || selectedComponentsPreview.length === 0) {
       if (iframeRef.current?.contentWindow) {
         iframeRef.current.contentWindow.postMessage(
           { type: "deactivate-dyad-component-selector" },
@@ -200,7 +210,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       }
       setIsPicking(false);
     }
-  }, [selectedComponentPreview]);
+  }, [selectedComponentsPreview]);
 
   // Add message listener for iframe errors and navigation events
   useEffect(() => {
@@ -217,8 +227,37 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
       if (event.data?.type === "dyad-component-selected") {
         console.log("Component picked:", event.data);
-        setSelectedComponentPreview(parseComponentSelection(event.data));
-        setIsPicking(false);
+
+        // Parse the single selected component
+        const component = event.data.component
+          ? parseComponentSelection({
+              type: "dyad-component-selected",
+              id: event.data.component.id,
+              name: event.data.component.name,
+            })
+          : null;
+
+        if (!component) return;
+
+        // Add to existing components, avoiding duplicates by id
+        setSelectedComponentsPreview((prev) => {
+          // Check if this component is already selected
+          if (prev.some((c) => c.id === component.id)) {
+            return prev;
+          }
+          return [...prev, component];
+        });
+
+        return;
+      }
+
+      if (event.data?.type === "dyad-component-deselected") {
+        const componentId = event.data.componentId;
+        if (componentId) {
+          setSelectedComponentsPreview((prev) =>
+            prev.filter((c) => c.id !== componentId),
+          );
+        }
         return;
       }
 
@@ -306,7 +345,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     errorMessage,
     setErrorMessage,
     setIsComponentSelectorInitialized,
-    setSelectedComponentPreview,
+    setSelectedComponentsPreview,
   ]);
 
   useEffect(() => {
@@ -742,7 +781,7 @@ function parseComponentSelection(data: any): ComponentSelection | null {
   return {
     id,
     name,
-    relativePath,
+    relativePath: normalizePath(relativePath),
     lineNumber,
     columnNumber,
   };

@@ -69,14 +69,14 @@ export function useStreamChat({
       chatId,
       redo,
       attachments,
-      selectedComponent,
+      selectedComponents,
       onSettled,
     }: {
       prompt: string;
       chatId: number;
       redo?: boolean;
       attachments?: FileAttachment[];
-      selectedComponent?: ComponentSelection | null;
+      selectedComponents?: ComponentSelection[];
       onSettled?: () => void;
     }) => {
       if (
@@ -106,7 +106,7 @@ export function useStreamChat({
       let hasIncrementedStreamCount = false;
       try {
         IpcClient.getInstance().streamMessage(prompt, {
-          selectedComponent: selectedComponent ?? null,
+          selectedComponents: selectedComponents ?? [],
           chatId,
           redo,
           attachments,

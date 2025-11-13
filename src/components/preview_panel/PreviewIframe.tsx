@@ -36,7 +36,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import {
-  selectedComponentPreviewAtom,
+  selectedComponentsPreviewAtom,
   previewIframeRefAtom,
 } from "@/atoms/previewAtoms";
 import { ComponentSelection } from "@/ipc/ipc_types";
@@ -173,8 +173,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const [canGoForward, setCanGoForward] = useState(false);
   const [navigationHistory, setNavigationHistory] = useState<string[]>([]);
   const [currentHistoryPosition, setCurrentHistoryPosition] = useState(0);
-  const [selectedComponentPreview, setSelectedComponentPreview] = useAtom(
-    selectedComponentPreviewAtom,
+  const [selectedComponentsPreview, setSelectedComponentsPreview] = useAtom(
+    selectedComponentsPreviewAtom,
   );
   const setPreviewIframeRef = useSetAtom(previewIframeRefAtom);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -201,7 +201,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
   // Deactivate component selector when selection is cleared
   useEffect(() => {
-    if (!selectedComponentPreview || selectedComponentPreview.length === 0) {
+    if (!selectedComponentsPreview || selectedComponentsPreview.length === 0) {
       if (iframeRef.current?.contentWindow) {
         iframeRef.current.contentWindow.postMessage(
           { type: "deactivate-dyad-component-selector" },
@@ -210,7 +210,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       }
       setIsPicking(false);
     }
-  }, [selectedComponentPreview]);
+  }, [selectedComponentsPreview]);
 
   // Add message listener for iframe errors and navigation events
   useEffect(() => {
@@ -240,7 +240,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         if (!component) return;
 
         // Add to existing components, avoiding duplicates by id
-        setSelectedComponentPreview((prev) => {
+        setSelectedComponentsPreview((prev) => {
           // Check if this component is already selected
           if (prev.some((c) => c.id === component.id)) {
             return prev;
@@ -254,7 +254,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       if (event.data?.type === "dyad-component-deselected") {
         const componentId = event.data.componentId;
         if (componentId) {
-          setSelectedComponentPreview((prev) =>
+          setSelectedComponentsPreview((prev) =>
             prev.filter((c) => c.id !== componentId),
           );
         }
@@ -345,7 +345,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     errorMessage,
     setErrorMessage,
     setIsComponentSelectorInitialized,
-    setSelectedComponentPreview,
+    setSelectedComponentsPreview,
   ]);
 
   useEffect(() => {

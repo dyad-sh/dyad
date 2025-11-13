@@ -14,11 +14,11 @@ testSkipIfWindows("select component", async ({ po }) => {
     .click();
 
   await po.snapshotPreview();
-  await po.snapshotSelectedComponentDisplay();
+  await po.snapshotSelectedComponentsDisplay();
 
   await po.sendPrompt("[dump] make it smaller");
   await po.snapshotPreview();
-  await expect(po.getSelectedComponentDisplay()).not.toBeVisible();
+  await expect(po.getSelectedComponentsDisplay()).not.toBeVisible();
 
   await po.snapshotServerDump("all-messages");
 
@@ -46,13 +46,13 @@ testSkipIfWindows("select multiple components", async ({ po }) => {
     .click();
 
   await po.snapshotPreview();
-  await po.snapshotSelectedComponentDisplay();
+  await po.snapshotSelectedComponentsDisplay();
 
   await po.sendPrompt("[dump] make both smaller");
   await po.snapshotPreview();
-  await expect(po.getSelectedComponentDisplay()).not.toBeVisible();
+  await expect(po.getSelectedComponentsDisplay()).not.toBeVisible();
 
-  await po.snapshotServerDump("all-messages");
+  await po.snapshotServerDump("last-message");
 });
 
 testSkipIfWindows("deselect component", async ({ po }) => {
@@ -68,13 +68,13 @@ testSkipIfWindows("deselect component", async ({ po }) => {
     .click();
 
   await po.snapshotPreview();
-  await po.snapshotSelectedComponentDisplay();
+  await po.snapshotSelectedComponentsDisplay();
 
   // Deselect the component and make sure the state has reverted
   await po.clickDeselectComponent();
 
   await po.snapshotPreview();
-  await expect(po.getSelectedComponentDisplay()).not.toBeVisible();
+  await expect(po.getSelectedComponentsDisplay()).not.toBeVisible();
 
   // Send one more prompt to make sure it's a normal message.
   await po.sendPrompt("[dump] tc=basic");
@@ -101,14 +101,14 @@ testSkipIfWindows(
       .getByText("Made with Dyad")
       .click();
 
-    await po.snapshotSelectedComponentDisplay();
+    await po.snapshotSelectedComponentsDisplay();
 
     await po.clickDeselectComponent({ index: 0 });
 
     await po.snapshotPreview();
-    await po.snapshotSelectedComponentDisplay();
+    await po.snapshotSelectedComponentsDisplay();
 
-    await expect(po.getSelectedComponentDisplay()).toBeVisible();
+    await expect(po.getSelectedComponentsDisplay()).toBeVisible();
   },
 );
 

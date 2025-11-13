@@ -62,10 +62,10 @@ import { showError, showExtraFilesToast } from "@/lib/toast";
 import { ChatInputControls } from "../ChatInputControls";
 import { ChatErrorBox } from "./ChatErrorBox";
 import {
-  selectedComponentPreviewAtom,
+  selectedComponentsPreviewAtom,
   previewIframeRefAtom,
 } from "@/atoms/previewAtoms";
-import { SelectedComponentDisplay } from "./SelectedComponentDisplay";
+import { SelectedComponentsDisplay } from "./SelectedComponentDisplay";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
 import { LexicalChatInput } from "./LexicalChatInput";
 import { useChatModeToggle } from "@/hooks/useChatModeToggle";
@@ -87,8 +87,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const [showTokenBar, setShowTokenBar] = useAtom(showTokenBarAtom);
-  const [selectedComponent, setSelectedComponent] = useAtom(
-    selectedComponentPreviewAtom,
+  const [selectedComponents, setSelectedComponents] = useAtom(
+    selectedComponentsPreviewAtom,
   );
   const previewIframeRef = useAtomValue(previewIframeRefAtom);
   const { checkProblems } = useCheckProblems(appId);
@@ -155,10 +155,10 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
     // Use all selected components for multi-component editing
     const componentsToSend =
-      selectedComponent && selectedComponent.length > 0
-        ? selectedComponent
+      selectedComponents && selectedComponents.length > 0
+        ? selectedComponents
         : [];
-    setSelectedComponent([]);
+    setSelectedComponents([]);
 
     // Clear overlays in the preview iframe
     if (previewIframeRef?.contentWindow) {
@@ -306,7 +306,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               />
             )}
 
-          <SelectedComponentDisplay />
+          <SelectedComponentsDisplay />
 
           {/* Use the AttachmentsList component */}
           <AttachmentsList

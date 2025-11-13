@@ -387,7 +387,6 @@ export class IpcClient {
   public streamMessage(
     prompt: string,
     options: {
-      selectedComponent: ComponentSelection | null;
       selectedComponents?: ComponentSelection[];
       chatId: number;
       redo?: boolean;
@@ -402,7 +401,6 @@ export class IpcClient {
       chatId,
       redo,
       attachments,
-      selectedComponent,
       selectedComponents,
       onUpdate,
       onEnd,
@@ -443,7 +441,6 @@ export class IpcClient {
               prompt,
               chatId,
               redo,
-              selectedComponent,
               selectedComponents,
               attachments: fileDataArray,
             })
@@ -467,7 +464,6 @@ export class IpcClient {
           prompt,
           chatId,
           redo,
-          selectedComponent,
           selectedComponents,
         })
         .catch((err) => {

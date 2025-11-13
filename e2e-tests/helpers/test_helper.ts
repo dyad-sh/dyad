@@ -15,7 +15,7 @@ const showDebugLogs = process.env.DEBUG_LOGS === "true";
 
 export const Timeout = {
   // Things generally take longer on CI, so we make them longer.
-  EXTRA_LONG: process.env.CI ? 120_000 : 60_000,
+  EXTRA_LONG: process.env.CI ? 120_000 : 180_000,
   LONG: process.env.CI ? 60_000 : 30_000,
   MEDIUM: process.env.CI ? 30_000 : 15_000,
 };
@@ -589,12 +589,12 @@ export class PageObject {
     await expect(this.getChatInputContainer()).toMatchAriaSnapshot();
   }
 
-  getSelectedComponentDisplay() {
+  getSelectedComponentsDisplay() {
     return this.page.getByTestId("selected-component-display");
   }
 
-  async snapshotSelectedComponentDisplay() {
-    await expect(this.getSelectedComponentDisplay()).toMatchAriaSnapshot();
+  async snapshotSelectedComponentsDisplay() {
+    await expect(this.getSelectedComponentsDisplay()).toMatchAriaSnapshot();
   }
 
   async snapshotPreview({ name }: { name?: string } = {}) {

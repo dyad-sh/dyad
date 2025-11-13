@@ -1,13 +1,13 @@
 import {
-  selectedComponentPreviewAtom,
+  selectedComponentsPreviewAtom,
   previewIframeRefAtom,
 } from "@/atoms/previewAtoms";
 import { useAtom, useAtomValue } from "jotai";
 import { Code2, X } from "lucide-react";
 
-export function SelectedComponentDisplay() {
+export function SelectedComponentsDisplay() {
   const [selectedComponents, setSelectedComponents] = useAtom(
-    selectedComponentPreviewAtom,
+    selectedComponentsPreviewAtom,
   );
   const previewIframeRef = useAtomValue(previewIframeRefAtom);
 

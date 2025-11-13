@@ -262,6 +262,19 @@
     }
   }
 
+  function onMouseLeave(e) {
+    if (!e.relatedTarget) {
+      if (hoverOverlay) {
+        hoverOverlay.style.display = "none";
+        requestAnimationFrame(updateAllOverlayPositions);
+      }
+      currentHoveredElement = null;
+      if (state.type === "inspecting") {
+        state.element = null;
+      }
+    }
+  }
+
   function onClick(e) {
     if (state.type !== "inspecting" || !state.element) return;
     e.preventDefault();
@@ -364,6 +377,8 @@
 
   // Always listen for mouse move to show/hide labels on selected overlays
   window.addEventListener("mousemove", onMouseMove, true);
+
+  document.addEventListener("mouseleave", onMouseLeave, true);
 
   // Update overlay positions on window resize
   window.addEventListener("resize", updateAllOverlayPositions);

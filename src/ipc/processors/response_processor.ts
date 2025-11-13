@@ -17,6 +17,8 @@ import {
 import {
   getSupabaseFunctionName,
   isServerFunction,
+  isSupabaseSharedFile,
+  listSupabaseFunctionTargets,
 } from "../../supabase_admin/supabase_utils";
 import { UserSettings } from "../../lib/schemas";
 import { gitCommit } from "../utils/git_utils";
@@ -36,6 +38,36 @@ import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils"
 import { FileUploadsState } from "../utils/file_uploads_state";
 
 const logger = log.scope("response_processor");
+
+async function redeployAllSupabaseFunctions({
+  appPath,
+  supabaseProjectId,
+}: {
+  appPath: string;
+  supabaseProjectId: string;
+}) {
+  const functionTargets = await listSupabaseFunctionTargets(appPath);
+
+  if (functionTargets.length === 0) {
+    logger.info(
+      "No Supabase functions found to redeploy after shared module update.",
+    );
+    return;
+  }
+
+  logger.info(
+    `Redeploying ${functionTargets.length} Supabase function(s) after shared module update.`,
+  );
+
+  for (const target of functionTargets) {
+    await deploySupabaseFunctions({
+      supabaseProjectId,
+      functionName: target.name,
+      appPath,
+      functionPath: target.fullPath,
+    });
+  }
+}
 
 interface Output {
   message: string;
@@ -280,6 +312,18 @@ export async function processFullResponseActions(
             error: error,
           });
         }
+      } else if (isSupabaseSharedFile(filePath)) {
+        try {
+          await redeployAllSupabaseFunctions({
+            appPath,
+            supabaseProjectId: chatWithApp.app.supabaseProjectId!,
+          });
+        } catch (error) {
+          errors.push({
+            message: `Failed to redeploy Supabase functions after deleting shared module: ${filePath}`,
+            error: error,
+          });
+        }
       }
     }
 
@@ -344,6 +388,21 @@ export async function processFullResponseActions(
             error: error,
           });
         }
+      } else if (
+        isSupabaseSharedFile(tag.from) ||
+        isSupabaseSharedFile(tag.to)
+      ) {
+        try {
+          await redeployAllSupabaseFunctions({
+            appPath,
+            supabaseProjectId: chatWithApp.app.supabaseProjectId!,
+          });
+        } catch (error) {
+          errors.push({
+            message: `Failed to redeploy Supabase functions after renaming shared module ${tag.from} to ${tag.to}`,
+            error: error,
+          });
+        }
       }
     }
 
@@ -383,6 +442,18 @@ export async function processFullResponseActions(
           } catch (error) {
             errors.push({
               message: `Failed to deploy Supabase function after search-replace: ${filePath}`,
+              error: error,
+            });
+          }
+        } else if (isSupabaseSharedFile(filePath)) {
+          try {
+            await redeployAllSupabaseFunctions({
+              appPath,
+              supabaseProjectId: chatWithApp.app.supabaseProjectId!,
+            });
+          } catch (error) {
+            errors.push({
+              message: `Failed to redeploy Supabase functions after search-replace updated shared module: ${filePath}`,
               error: error,
             });
           }
@@ -444,6 +515,18 @@ export async function processFullResponseActions(
         } catch (error) {
           errors.push({
             message: `Failed to deploy Supabase function: ${filePath}`,
+            error: error,
+          });
+        }
+      } else if (isSupabaseSharedFile(filePath)) {
+        try {
+          await redeployAllSupabaseFunctions({
+            appPath,
+            supabaseProjectId: chatWithApp.app.supabaseProjectId!,
+          });
+        } catch (error) {
+          errors.push({
+            message: `Failed to redeploy Supabase functions after writing shared module: ${filePath}`,
             error: error,
           });
         }

@@ -275,23 +275,23 @@ export async function deploySupabaseFunctions({
     `Deploying Supabase function: ${functionName} to project: ${supabaseProjectId}`,
   );
 
+  // 1) Collect function files
   const functionFiles = await collectFunctionFiles({
     appPath,
     functionPath,
     functionName,
   });
 
+  // 2) Collect shared files (preserve your local structure)
   const sharedFiles = await getSharedFiles(appPath);
 
-  // Preserve your current structure (no "source/" prefixing)
-  let filesToUpload = [...functionFiles.files, ...sharedFiles.files].map(f => ({
-    ...f,
-    relativePath: f.relativePath,
-  }));
+  // 3) Combined files (before rewriting)
+  let filesToUpload = [...functionFiles.files, ...sharedFiles.files];
 
- const rewriteImports = (content: string) =>
-  content
-  
+  // ─────────────────────────────────────────────────────────────────────
+  // 4) Rewrite imports if needed (your current passthrough is kept intact)
+  const rewriteImports = (content: string) => content;
+
   filesToUpload = filesToUpload.map(f => {
     const isJSorTS =
       f.relativePath.endsWith(".ts") ||
@@ -304,33 +304,46 @@ export async function deploySupabaseFunctions({
 
     const originalBuf: Buffer =
       (f as any).content ?? (f as any).buffer ?? (f as any).data ?? Buffer.from([]);
-
     const rewritten = rewriteImports(originalBuf.toString("utf8"));
-    if (rewritten === originalBuf.toString("utf8")) return f; // no change
+
+    if (rewritten === originalBuf.toString("utf8")) return f;
 
     return {
       ...f,
-      // Safe in-memory change for deploy only:
       content: Buffer.from(rewritten, "utf8"),
       buffer: undefined,
       data: undefined,
     };
   });
 
-  // ————————————————————————————————————————————————————————————————
-  // (2) Create a fresh import map beside the entrypoint
-  // We point the bare specifier "_shared/" to a path *relative to the entrypoint directory*.
-  const entrypointPath = functionFiles.entrypointPath; // e.g., "functions/random-demo/index.ts"
+  // ─────────────────────────────────────────────────────────────────────
+  // 5) Create an import map *next to* your function entrypoint
+  const entrypointPath = functionFiles.entrypointPath; // e.g. "functions/my-fn/index.ts"
   const entryDir = path.posix.dirname(entrypointPath);
+
   const importMapRelPath = path.posix.join(entryDir, "import_map.json");
 
+  const importMapObject = {
+    imports: {
+      // This resolves "../_shared" exactly like your local dev environment
+      "_shared/": "../_shared/"
+    }
+  };
 
-  // ————————————————————————————————————————————————————————————————
-  // (3) Build multipart form
+  // Add the import map file into the upload list
+  filesToUpload.push({
+    relativePath: importMapRelPath,
+    content: Buffer.from(JSON.stringify(importMapObject, null, 2)),
+    date: new Date(), // <-- required by ZipFileEntry
+  });
+
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 6) Prepare multipart form-data
   const supabase = await getSupabaseClient();
   const formData = new FormData();
 
-  // Metadata: include the newly created import_map path
+  // Metadata: instruct Supabase to use our import map
   const metadata = {
     entrypoint_path: entrypointPath,
     name: functionName,
@@ -353,13 +366,15 @@ export async function deploySupabaseFunctions({
   for (const f of filesToUpload) {
     const buf: Buffer =
       (f as any).content ?? (f as any).buffer ?? (f as any).data ?? Buffer.from([]);
-    const mime = guessMime(f.relativePath);
 
-    // Use a Uint8Array to avoid TS union issues (ArrayBuffer | SharedArrayBuffer)
+    const mime = guessMime(f.relativePath);
     const blob = new Blob([new Uint8Array(buf)], { type: mime });
+
     formData.append("file", blob, f.relativePath);
   }
 
+  // ─────────────────────────────────────────────────────────────────────
+  // 7) Perform the deploy request
   const response = await fetch(
     `https://api.supabase.com/v1/projects/${encodeURIComponent(
       supabaseProjectId,
@@ -384,9 +399,9 @@ export async function deploySupabaseFunctions({
   logger.info(
     `Deployed Supabase function: ${functionName} to project: ${supabaseProjectId}`,
   );
+
   await response.json();
 }
-
 
 async function collectFunctionFiles({
   appPath,
@@ -617,43 +632,6 @@ function stripSupabaseFunctionsPrefix(
   }
 
   return normalized || path.posix.basename(relativePath);
-}
-
-function toDosDateTime(date: Date): { dosDate: number; dosTime: number } {
-  let year = date.getFullYear();
-  if (year < 1980) {
-    year = 1980;
-  }
-  const month = date.getMonth() + 1;
-  const day = date.getDate();
-  const hours = date.getHours();
-  const minutes = date.getMinutes();
-  const seconds = Math.floor(date.getSeconds() / 2);
-
-  const dosDate = ((year - 1980) << 9) | (month << 5) | day;
-  const dosTime = (hours << 11) | (minutes << 5) | seconds;
-
-  return { dosDate, dosTime };
-}
-
-const CRC32_TABLE = (() => {
-  const table = new Uint32Array(256);
-  for (let i = 0; i < 256; i++) {
-    let c = i;
-    for (let j = 0; j < 8; j++) {
-      c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    }
-    table[i] = c >>> 0;
-  }
-  return table;
-})();
-
-function crc32(buffer: Buffer): number {
-  let crc = 0 ^ -1;
-  for (let i = 0; i < buffer.length; i++) {
-    crc = (crc >>> 8) ^ CRC32_TABLE[(crc ^ buffer[i]) & 0xff];
-  }
-  return (crc ^ -1) >>> 0;
 }
 
 async function createResponseError(response: Response, action: string) {

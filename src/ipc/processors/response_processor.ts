@@ -4,8 +4,6 @@ import { and, eq } from "drizzle-orm";
 import fs from "node:fs";
 import { getDyadAppPath } from "../../paths/paths";
 import path from "node:path";
-import git from "isomorphic-git";
-import { exec } from "dugite";
 import { safeJoin } from "../utils/path_utils";
 
 import log from "electron-log";
@@ -17,7 +15,13 @@ import {
 } from "../../supabase_admin/supabase_management_client";
 import { isServerFunction } from "../../supabase_admin/supabase_utils";
 import { UserSettings } from "../../lib/schemas";
-import { gitCommit } from "../utils/git_utils";
+import {
+  gitCommit,
+  gitAdd,
+  gitRemove,
+  gitAddAll,
+  gitStatus,
+} from "../utils/git_utils";
 import { readSettings } from "@/main/settings";
 import { writeMigrationFile } from "../utils/file_utils";
 import {
@@ -265,16 +269,7 @@ export async function processFullResponseActions(
 
         // Remove the file from git
         try {
-          const settings = readSettings();
-          if (settings.enableNativeGit) {
-            await exec(["rm", "-f", filePath], appPath);
-          } else {
-            await git.remove({
-              fs,
-              dir: appPath,
-              filepath: filePath,
-            });
-          }
+          await gitRemove({ path: appPath, filepath: filePath });
         } catch (error) {
           logger.warn(`Failed to git remove deleted file ${filePath}:`, error);
           // Continue even if remove fails as the file was still deleted
@@ -313,26 +308,9 @@ export async function processFullResponseActions(
         renamedFiles.push(tag.to);
 
         // Add the new file and remove the old one from git
-        const settings = readSettings();
-        if (settings.enableNativeGit) {
-          await exec(["add", tag.to], appPath);
-        } else {
-          await git.add({
-            fs,
-            dir: appPath,
-            filepath: tag.to,
-          });
-        }
+        await gitAdd({ path: appPath, filepath: tag.to });
         try {
-          if (settings.enableNativeGit) {
-            await exec(["rm", "-f", tag.from], appPath);
-          } else {
-            await git.remove({
-              fs,
-              dir: appPath,
-              filepath: tag.from,
-            });
-          }
+          await gitRemove({ path: appPath, filepath: tag.from });
         } catch (error) {
           logger.warn(`Failed to git remove old file ${tag.from}:`, error);
           // Continue even if remove fails as the file was still renamed
@@ -481,18 +459,9 @@ export async function processFullResponseActions(
     let extraFilesError: string | undefined;
 
     if (hasChanges) {
-      const settings = readSettings();
       // Stage all written files
       for (const file of writtenFiles) {
-        if (settings.enableNativeGit) {
-          await exec(["add", file], appPath);
-        } else {
-          await git.add({
-            fs,
-            dir: appPath,
-            filepath: file,
-          });
-        }
+        await gitAdd({ path: appPath, filepath: file });
       }
 
       // Create commit with details of all changes
@@ -521,33 +490,11 @@ export async function processFullResponseActions(
       logger.log(`Successfully committed changes: ${changes.join(", ")}`);
 
       // Check for any uncommitted changes after the commit
-      if (settings.enableNativeGit) {
-        // 🔹 Dugite version
-        const result = await exec(["status", "--porcelain"], appPath);
-        uncommittedFiles = result.stdout
-          .toString()
-          .split("\n")
-          .filter((line) => line.trim() !== "")
-          .map((line) => line.slice(3).trim());
-      } else {
-        //isomorphic-git version
-        const statusMatrix = await git.statusMatrix({ fs, dir: appPath });
-        uncommittedFiles = statusMatrix
-          .filter((row) => row[1] !== 1 || row[2] !== 1 || row[3] !== 1)
-          .map((row) => row[0]); // Get just the file paths
-      }
+      uncommittedFiles = await gitStatus({ path: appPath });
 
       if (uncommittedFiles.length > 0) {
         // Stage all changes
-        if (settings.enableNativeGit) {
-          await exec(["add", "."], appPath);
-        } else {
-          await git.add({
-            fs,
-            dir: appPath,
-            filepath: ".",
-          });
-        }
+        await gitAddAll({ path: appPath });
         try {
           commitHash = await gitCommit({
             path: appPath,

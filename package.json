@@ -34,6 +34,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage",
     "extract-codebase": "ts-node scripts/extract-codebase.ts",
     "init-precommit": "husky",
     "pre:e2e": "cross-env E2E_TEST_BUILD=true npm run package",
@@ -57,7 +58,7 @@
     "@electron-forge/plugin-vite": "^7.8.0",
     "@electron-forge/publisher-github": "^7.8.0",
     "@electron/fuses": "^1.8.0",
-    "@playwright/test": "^1.52.0",
+    "@playwright/test": "^1.55.1",
     "@testing-library/react": "^16.3.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/fs-extra": "^11.0.4",
@@ -69,6 +70,7 @@
     "@typescript-eslint/eslint-plugin": "^5.62.0",
     "@typescript-eslint/parser": "^5.62.0",
     "@vitest/ui": "^3.1.1",
+    "@vitest/coverage-v8": "^3.1.1",
     "cross-env": "^7.0.3",
     "drizzle-kit": "^0.30.6",
     "electron": "38.2.2",
@@ -126,7 +128,7 @@
     "@types/uuid": "^10.0.0",
     "@vercel/sdk": "^1.10.0",
     "@vitejs/plugin-react": "^4.3.4",
-    "ai": "^5.0.15",
+    "ai": "^5.0.52",
     "better-sqlite3": "^12.4.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -176,6 +178,9 @@
   "overrides": {
     "@vercel/sdk": {
       "@modelcontextprotocol/sdk": "$@modelcontextprotocol/sdk"
-    }
+    },
+    "axios": "^1.11.1",
+    "tar-fs": "^3.0.6",
+    "esbuild": "^0.24.3"
   }
 }

@@ -153,7 +153,7 @@ testSkipIfWindows("select component next.js", async ({ po }) => {
     .click();
 
   await po.snapshotPreview();
-  await po.snapshotSelectedComponentDisplay();
+  await po.snapshotSelectedComponentsDisplay();
 
   await po.sendPrompt("[dump] make it smaller");
   await po.snapshotPreview();

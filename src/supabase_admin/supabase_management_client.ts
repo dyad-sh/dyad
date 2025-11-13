@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { withLock } from "../ipc/utils/lock_utils";
 import { readSettings, writeSettings } from "../main/settings";
 import {
@@ -7,7 +9,42 @@ import {
 import log from "electron-log";
 import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
 
+const fsPromises = fs.promises;
+
 const logger = log.scope("supabase_management_client");
+
+interface ZipFileEntry {
+  relativePath: string;
+  content: Buffer;
+  date: Date;
+}
+
+interface FileStatEntry {
+  absolutePath: string;
+  relativePath: string;
+  mtimeMs: number;
+  size: number;
+}
+
+interface CachedSharedFiles {
+  signature: string;
+  files: ZipFileEntry[];
+}
+
+interface CachedFunctionZip {
+  signature: string;
+  buffer: Buffer;
+}
+
+interface FunctionFilesResult {
+  files: ZipFileEntry[];
+  signature: string;
+  entrypointPath: string;
+  cacheKey: string;
+}
+
+const sharedFilesCache = new Map<string, CachedSharedFiles>();
+const functionZipCache = new Map<string, CachedFunctionZip>();
 
 /**
  * Checks if the Supabase access token is expired or about to expire
@@ -226,30 +263,122 @@ export async function listSupabaseBranches({
 export async function deploySupabaseFunctions({
   supabaseProjectId,
   functionName,
-  content,
+  appPath,
+  functionPath,
 }: {
   supabaseProjectId: string;
   functionName: string;
-  content: string;
+  appPath: string;
+  functionPath: string;
 }): Promise<void> {
   logger.info(
     `Deploying Supabase function: ${functionName} to project: ${supabaseProjectId}`,
   );
+
+  // 1) Collect function files
+  const functionFiles = await collectFunctionFiles({
+    appPath,
+    functionPath,
+    functionName,
+  });
+
+  // 2) Collect shared files (preserve your local structure)
+  const sharedFiles = await getSharedFiles(appPath);
+
+  // 3) Combined files (before rewriting)
+  let filesToUpload = [...functionFiles.files, ...sharedFiles.files];
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 4) Rewrite imports if needed (your current passthrough is kept intact)
+  const rewriteImports = (content: string) => content;
+
+  filesToUpload = filesToUpload.map(f => {
+    const isJSorTS =
+      f.relativePath.endsWith(".ts") ||
+      f.relativePath.endsWith(".js") ||
+      f.relativePath.endsWith(".mjs") ||
+      f.relativePath.endsWith(".tsx") ||
+      f.relativePath.endsWith(".jsx");
+
+    if (!isJSorTS) return f;
+
+    const originalBuf: Buffer =
+      (f as any).content ?? (f as any).buffer ?? (f as any).data ?? Buffer.from([]);
+    const rewritten = rewriteImports(originalBuf.toString("utf8"));
+
+    if (rewritten === originalBuf.toString("utf8")) return f;
+
+    return {
+      ...f,
+      content: Buffer.from(rewritten, "utf8"),
+      buffer: undefined,
+      data: undefined,
+    };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 5) Create an import map *next to* your function entrypoint
+  const entrypointPath = functionFiles.entrypointPath; // e.g. "functions/my-fn/index.ts"
+  const entryDir = path.posix.dirname(entrypointPath);
+
+  const importMapRelPath = path.posix.join(entryDir, "import_map.json");
+
+  const importMapObject = {
+    imports: {
+      // This resolves "../_shared" exactly like your local dev environment
+      "_shared/": "../_shared/"
+    }
+  };
+
+  // Add the import map file into the upload list
+  filesToUpload.push({
+    relativePath: importMapRelPath,
+    content: Buffer.from(JSON.stringify(importMapObject, null, 2)),
+    date: new Date(), // <-- required by ZipFileEntry
+  });
+
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 6) Prepare multipart form-data
   const supabase = await getSupabaseClient();
   const formData = new FormData();
-  formData.append(
-    "metadata",
-    JSON.stringify({
-      entrypoint_path: "index.ts",
-      name: functionName,
-      // See: https://github.com/dyad-sh/dyad/issues/1010
-      verify_jwt: false,
-    }),
-  );
-  formData.append("file", new Blob([content]), "index.ts");
 
+  // Metadata: instruct Supabase to use our import map
+  const metadata = {
+    entrypoint_path: entrypointPath,
+    name: functionName,
+    verify_jwt: false,
+    import_map: importMapRelPath,
+  };
+
+  formData.append("metadata", JSON.stringify(metadata));
+
+  const guessMime = (p: string) => {
+    if (p.endsWith(".json")) return "application/json";
+    if (p.endsWith(".ts")) return "application/typescript";
+    if (p.endsWith(".mjs")) return "application/javascript";
+    if (p.endsWith(".js")) return "application/javascript";
+    if (p.endsWith(".wasm")) return "application/wasm";
+    if (p.endsWith(".map")) return "application/json";
+    return "application/octet-stream";
+  };
+
+  for (const f of filesToUpload) {
+    const buf: Buffer =
+      (f as any).content ?? (f as any).buffer ?? (f as any).data ?? Buffer.from([]);
+
+    const mime = guessMime(f.relativePath);
+    const blob = new Blob([new Uint8Array(buf)], { type: mime });
+
+    formData.append("file", blob, f.relativePath);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // 7) Perform the deploy request
   const response = await fetch(
-    `https://api.supabase.com/v1/projects/${supabaseProjectId}/functions/deploy?slug=${functionName}`,
+    `https://api.supabase.com/v1/projects/${encodeURIComponent(
+      supabaseProjectId,
+    )}/functions/deploy?slug=${encodeURIComponent(functionName)}`,
     {
       method: "POST",
       headers: {
@@ -260,13 +389,249 @@ export async function deploySupabaseFunctions({
   );
 
   if (response.status !== 201) {
+    const text = await response.text();
+    logger.error(`Supabase response: ${response.status} ${text}`);
+    console.log("SUPABASE ERROR");
+    console.log(text);
     throw await createResponseError(response, "create function");
   }
 
   logger.info(
     `Deployed Supabase function: ${functionName} to project: ${supabaseProjectId}`,
   );
-  return response.json();
+
+  await response.json();
+}
+
+async function collectFunctionFiles({
+  appPath,
+  functionPath,
+  functionName,
+}: {
+  appPath: string;
+  functionPath: string;
+  functionName: string;
+}): Promise<FunctionFilesResult> {
+  const normalizedFunctionPath = path.resolve(functionPath);
+  const stats = await fsPromises.stat(normalizedFunctionPath);
+
+  let functionDirectory: string | null = null;
+
+  if (stats.isDirectory()) {
+    functionDirectory = normalizedFunctionPath;
+  } else {
+    functionDirectory = findFunctionDirectory(normalizedFunctionPath, functionName);
+
+    if (!functionDirectory) {
+      const relativeFilePath = toPosixPath(
+        path.relative(appPath, normalizedFunctionPath),
+      );
+      const zipRelativePath = stripSupabaseFunctionsPrefix(
+        relativeFilePath,
+        functionName,
+      );
+      const content = await fsPromises.readFile(normalizedFunctionPath);
+      return {
+        files: [
+          {
+            relativePath: zipRelativePath,
+            content,
+            date: stats.mtime,
+          },
+        ],
+        signature: buildSignature([
+          {
+            absolutePath: normalizedFunctionPath,
+            relativePath: zipRelativePath,
+            mtimeMs: stats.mtimeMs,
+            size: stats.size,
+          },
+        ]),
+        entrypointPath: zipRelativePath,
+        cacheKey: normalizedFunctionPath,
+      };
+    }
+  }
+
+  if (!functionDirectory) {
+    throw new Error(
+      `Unable to locate directory for Supabase function ${functionName}`,
+    );
+  }
+
+  const indexPath = path.join(functionDirectory, "index.ts");
+
+  try {
+    await fsPromises.access(indexPath);
+  } catch {
+    throw new Error(
+      `Supabase function ${functionName} is missing an index.ts entrypoint`,
+    );
+  }
+
+  const statEntries = await listFilesWithStats(functionDirectory, "");
+  const signature = buildSignature(statEntries);
+  const files = await loadZipEntries(statEntries);
+
+  return {
+    files,
+    signature,
+    entrypointPath: toPosixPath(path.relative(functionDirectory, indexPath)),
+    cacheKey: functionDirectory,
+  };
+}
+
+async function getSharedFiles(appPath: string): Promise<CachedSharedFiles> {
+  const sharedDirectory = path.join(
+    appPath,
+    "supabase",
+    "functions",
+    "_shared",
+  );
+
+  try {
+    const sharedStats = await fsPromises.stat(sharedDirectory);
+    if (!sharedStats.isDirectory()) {
+      return { signature: "", files: [] };
+    }
+  } catch (error: any) {
+    if (error && error.code === "ENOENT") {
+      return { signature: "", files: [] };
+    }
+    throw error;
+  }
+
+  const statEntries = await listFilesWithStats(sharedDirectory, "_shared");
+  const signature = buildSignature(statEntries);
+
+  const cached = sharedFilesCache.get(sharedDirectory);
+  if (cached && cached.signature === signature) {
+    return cached;
+  }
+
+  const files = await loadZipEntries(statEntries);
+  const result = { signature, files };
+  sharedFilesCache.set(sharedDirectory, result);
+  return result;
+}
+
+async function listFilesWithStats(
+  directory: string,
+  prefix: string,
+): Promise<FileStatEntry[]> {
+  const dirents = await fsPromises.readdir(directory, { withFileTypes: true });
+  dirents.sort((a, b) => a.name.localeCompare(b.name));
+  const entries: FileStatEntry[] = [];
+
+  for (const dirent of dirents) {
+    const absolutePath = path.join(directory, dirent.name);
+    const relativePath = path.posix.join(prefix, dirent.name);
+
+    if (dirent.isDirectory()) {
+      const nestedEntries = await listFilesWithStats(absolutePath, relativePath);
+      entries.push(...nestedEntries);
+    } else if (dirent.isFile() || dirent.isSymbolicLink()) {
+      const stat = await fsPromises.stat(absolutePath);
+      entries.push({
+        absolutePath,
+        relativePath,
+        mtimeMs: stat.mtimeMs,
+        size: stat.size,
+      });
+    }
+  }
+
+  return entries;
+}
+
+function buildSignature(entries: FileStatEntry[]): string {
+  return entries
+    .map(
+      (entry) =>
+        `${entry.relativePath}:${entry.mtimeMs.toString(16)}:${entry.size.toString(16)}`,
+    )
+    .sort()
+    .join("|");
+}
+
+async function loadZipEntries(entries: FileStatEntry[]): Promise<ZipFileEntry[]> {
+  const files: ZipFileEntry[] = [];
+
+  for (const entry of entries) {
+    const content = await fsPromises.readFile(entry.absolutePath);
+    files.push({
+      relativePath: toPosixPath(entry.relativePath),
+      content,
+      date: new Date(entry.mtimeMs),
+    });
+  }
+
+  return files;
+}
+
+function toPosixPath(filePath: string): string {
+  return filePath.split(path.sep).join(path.posix.sep);
+}
+
+function findFunctionDirectory(
+  filePath: string,
+  functionName: string,
+): string | null {
+  let currentDir = path.dirname(filePath);
+
+  while (true) {
+    const parentDir = path.dirname(currentDir);
+    const normalized = toPosixPath(currentDir);
+
+    if (normalized.endsWith(`/supabase/functions/${functionName}`)) {
+      return currentDir;
+    }
+
+    if (!normalized.includes("/supabase/functions/")) {
+      break;
+    }
+
+    if (currentDir === parentDir) {
+      break;
+    }
+
+    currentDir = parentDir;
+  }
+
+  return null;
+}
+
+function stripSupabaseFunctionsPrefix(
+  relativePath: string,
+  functionName: string,
+): string {
+  const normalized = toPosixPath(relativePath).replace(/^\//, "");
+  const slugPrefix = `supabase/functions/${functionName}/`;
+
+  if (normalized.startsWith(slugPrefix)) {
+    const remainder = normalized.slice(slugPrefix.length);
+    return remainder || "index.ts";
+  }
+
+  const slugFilePrefix = `supabase/functions/${functionName}`;
+
+  if (normalized.startsWith(slugFilePrefix)) {
+    const remainder = normalized.slice(slugFilePrefix.length);
+    if (remainder.startsWith("/")) {
+      const trimmed = remainder.slice(1);
+      return trimmed || "index.ts";
+    }
+    const combined = `${functionName}${remainder}`;
+    return combined || "index.ts";
+  }
+
+  const basePrefix = "supabase/functions/";
+  if (normalized.startsWith(basePrefix)) {
+    const withoutBase = normalized.slice(basePrefix.length);
+    return withoutBase || path.posix.basename(normalized);
+  }
+
+  return normalized || path.posix.basename(relativePath);
 }
 
 async function createResponseError(response: Response, action: string) {

@@ -201,19 +201,14 @@ export function registerDebugHandlers() {
     const win = BrowserWindow.getFocusedWindow();
     if (!win) throw new Error("No focused window to capture");
 
-    try {
-      // Capture the window’s current contents as a NativeImage
-      const image = await win.capturePage();
-      // Validate image
-      if (!image || image.isEmpty()) {
-        throw new Error("Failed to capture screenshot");
-      }
-      // Write the image to the clipboard
-      clipboard.writeImage(image);
-    } catch (err) {
-      console.error("Error taking screenshot:", err);
-      throw err;
+    // Capture the window's current contents as a NativeImage
+    const image = await win.capturePage();
+    // Validate image
+    if (!image || image.isEmpty()) {
+      throw new Error("Failed to capture screenshot");
     }
+    // Write the image to the clipboard
+    clipboard.writeImage(image);
   });
 }
 

@@ -19,15 +19,19 @@ export function BugScreenshotDialog({
   isLoading,
 }: BugScreenshotDialogProps) {
   const [isScreenshotSuccessOpen, setIsScreenshotSuccessOpen] = useState(false);
+  const [screenshotError, setScreenshotError] = useState<string | null>(null);
+
   const handleReportBugWithScreenshot = async () => {
+    setScreenshotError(null);
     onClose();
     setTimeout(async () => {
       try {
         await IpcClient.getInstance().takeScreenshot();
         setIsScreenshotSuccessOpen(true);
       } catch (error) {
-        console.error("Couldn't take a screenshot", error);
-        await handleReportBug();
+        setScreenshotError(
+          error instanceof Error ? error.message : "Failed to take screenshot",
+        );
       }
     }, 200); // Small delay for dialog to close
   };
@@ -69,6 +73,11 @@ export function BugScreenshotDialog({
               We'll still try to respond but might not be able to help as much.
             </p>
           </div>
+          {screenshotError && (
+            <p className="text-sm text-destructive px-2">
+              Failed to take screenshot: {screenshotError}
+            </p>
+          )}
         </div>
       </DialogContent>
       <ScreenshotSuccessDialog

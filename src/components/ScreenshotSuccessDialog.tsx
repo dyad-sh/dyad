@@ -1,10 +1,5 @@
 import { DialogTitle } from "@radix-ui/react-dialog";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-} from "./ui/dialog";
+import { Dialog, DialogContent, DialogHeader } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { BugIcon } from "lucide-react";
 
@@ -29,18 +24,17 @@ export function ScreenshotSuccessDialog({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Screenshot captured and ready</DialogTitle>
+          <DialogTitle>
+            Screenshot captured to clipboard! Please paste in GitHub issue.
+          </DialogTitle>
         </DialogHeader>
-        <DialogDescription className="">
-          Screenshot saved to clipboard. Paste it in GitHub.
-        </DialogDescription>
         <Button
           variant="default"
           onClick={handleSubmit}
           className="w-full py-6 border-primary/50 shadow-sm shadow-primary/10 transition-all hover:shadow-md hover:shadow-primary/15"
         >
           <BugIcon className="mr-2 h-5 w-5" />{" "}
-          {isLoading ? "Preparing Report..." : "Proceed to the github issue"}
+          {isLoading ? "Preparing Report..." : "Create GitHub issue"}
         </Button>
       </DialogContent>
     </Dialog>

@@ -363,7 +363,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                           <p className="text-sm font-medium mb-1">
                             Selected folder:
                           </p>
-                          <p className="text-xs sm:text-sm text-muted-foreground break-words overflow-wrap-anywhere">
+                          <p className="text-xs sm:text-sm text-muted-foreground break-words">
                             {selectedPath}
                           </p>
                         </div>

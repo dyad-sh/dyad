@@ -10,14 +10,22 @@ const logger = log.scope("git_utils");
 
 export async function getCurrentCommitHash({
   path,
+  ref = "HEAD",
 }: {
   path: string;
+  ref?: string;
 }): Promise<string> {
-  return await git.resolveRef({
-    fs,
-    dir: path,
-    ref: "HEAD",
-  });
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    const result = await exec(["rev-parse", ref], path);
+    return result.stdout.trim();
+  } else {
+    return await git.resolveRef({
+      fs,
+      dir: path,
+      ref,
+    });
+  }
 }
 
 export async function gitCommit({

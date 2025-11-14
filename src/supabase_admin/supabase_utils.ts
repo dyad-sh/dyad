@@ -43,66 +43,37 @@ export async function deployAllSupabaseFunctions({
       `Found ${functionDirs.length} functions to deploy in ${functionsDir}`,
     );
 
-    // Deploy functions in batches of 5
-    const BATCH_SIZE = 5;
-    for (let i = 0; i < functionDirs.length; i += BATCH_SIZE) {
-      const batch = functionDirs.slice(i, i + BATCH_SIZE);
-      const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
-      const totalBatches = Math.ceil(functionDirs.length / BATCH_SIZE);
+    // Deploy each function
+    for (const functionDir of functionDirs) {
+      const functionName = functionDir.name;
+      const indexPath = path.join(functionsDir, functionName, "index.ts");
 
-      logger.info(
-        `Deploying batch ${batchNumber}/${totalBatches} (${batch.length} functions)`,
-      );
-
-      // Deploy all functions in this batch in parallel
-      const deploymentPromises = batch.map(async (functionDir) => {
-        const functionName = functionDir.name;
-        const indexPath = path.join(functionsDir, functionName, "index.ts");
-
-        // Check if index.ts exists
-        try {
-          await fs.access(indexPath);
-        } catch {
-          logger.warn(
-            `Skipping ${functionName}: index.ts not found at ${indexPath}`,
-          );
-          return { functionName, skipped: true };
-        }
-
-        try {
-          const content = await fs.readFile(indexPath, "utf-8");
-          logger.info(`Deploying function: ${functionName}`);
-
-          await deploySupabaseFunctions({
-            supabaseProjectId,
-            functionName,
-            content,
-          });
-
-          logger.info(`Successfully deployed function: ${functionName}`);
-          return { functionName, success: true };
-        } catch (error: any) {
-          const errorMessage = `Failed to deploy ${functionName}: ${error.message}`;
-          logger.error(errorMessage, error);
-          return { functionName, error: errorMessage };
-        }
-      });
-
-      // Wait for all deployments in this batch to complete
-      const results = await Promise.allSettled(deploymentPromises);
-
-      // Collect errors from this batch
-      for (const result of results) {
-        if (result.status === "fulfilled" && result.value.error) {
-          errors.push(result.value.error);
-        } else if (result.status === "rejected") {
-          const errorMessage = `Unexpected error deploying function: ${result.reason}`;
-          logger.error(errorMessage);
-          errors.push(errorMessage);
-        }
+      // Check if index.ts exists
+      try {
+        await fs.access(indexPath);
+      } catch {
+        logger.warn(
+          `Skipping ${functionName}: index.ts not found at ${indexPath}`,
+        );
+        continue;
       }
 
-      logger.info(`Completed batch ${batchNumber}/${totalBatches}`);
+      try {
+        const content = await fs.readFile(indexPath, "utf-8");
+        logger.info(`Deploying function: ${functionName}`);
+
+        await deploySupabaseFunctions({
+          supabaseProjectId,
+          functionName,
+          content,
+        });
+
+        logger.info(`Successfully deployed function: ${functionName}`);
+      } catch (error: any) {
+        const errorMessage = `Failed to deploy ${functionName}: ${error.message}`;
+        logger.error(errorMessage, error);
+        errors.push(errorMessage);
+      }
     }
   } catch (error: any) {
     const errorMessage = `Error reading functions directory: ${error.message}`;

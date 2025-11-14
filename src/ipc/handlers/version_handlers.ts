@@ -158,7 +158,7 @@ export function registerVersionHandlers() {
     ): Promise<RevertVersionResponse> => {
       return withLock(appId, async () => {
         let successMessage = "Restored version";
-        let warningMessage: string | undefined = undefined;
+        let warningMessage = "";
         const app = await db.query.apps.findFirst({
           where: eq(apps.id, appId),
         });
@@ -324,7 +324,7 @@ export function registerVersionHandlers() {
             });
 
             if (deployErrors.length > 0) {
-              warningMessage = `Some Supabase functions failed to deploy after revert: ${deployErrors.join(", ")}`;
+              warningMessage += `Some Supabase functions failed to deploy after revert: ${deployErrors.join(", ")}`;
               logger.warn(warningMessage);
               // Note: We don't fail the revert operation if function deployment fails
               // The code has been successfully reverted, but functions may be out of sync
@@ -334,7 +334,7 @@ export function registerVersionHandlers() {
               );
             }
           } catch (error) {
-            warningMessage = `Error re-deploying Supabase edge functions after revert: ${error}`;
+            warningMessage += `Error re-deploying Supabase edge functions after revert: ${error}`;
             logger.warn(warningMessage);
             // Continue with the revert operation even if function deployment fails
           }

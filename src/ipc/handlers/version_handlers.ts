@@ -15,6 +15,7 @@ import { withLock } from "../utils/lock_utils";
 import log from "electron-log";
 import { createLoggedHandler } from "./safe_handle";
 import { gitCheckout, gitCommit, gitStageToRevert } from "../utils/git_utils";
+import { deployAllSupabaseFunctions } from "../../supabase_admin/supabase_utils";
 
 import {
   getNeonClient,
@@ -310,6 +311,33 @@ export function registerVersionHandlers() {
             neonDevelopmentBranchId: app.neonDevelopmentBranchId,
             appPath: app.path,
           });
+        }
+        // Re-deploy all Supabase edge functions after reverting
+        if (app.supabaseProjectId) {
+          try {
+            logger.info(
+              `Re-deploying all Supabase edge functions for app ${appId} after revert`,
+            );
+            const deployErrors = await deployAllSupabaseFunctions({
+              appPath,
+              supabaseProjectId: app.supabaseProjectId,
+            });
+
+            if (deployErrors.length > 0) {
+              warningMessage = `Some Supabase functions failed to deploy after revert: ${deployErrors.join(", ")}`;
+              logger.warn(warningMessage);
+              // Note: We don't fail the revert operation if function deployment fails
+              // The code has been successfully reverted, but functions may be out of sync
+            } else {
+              logger.info(
+                `Successfully re-deployed all Supabase edge functions for app ${appId}`,
+              );
+            }
+          } catch (error) {
+            warningMessage = `Error re-deploying Supabase edge functions after revert: ${error}`;
+            logger.warn(warningMessage);
+            // Continue with the revert operation even if function deployment fails
+          }
         }
         if (warningMessage) {
           return { warningMessage };

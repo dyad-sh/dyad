@@ -1,12 +1,165 @@
 /* eslint-disable no-irregular-whitespace */
 
 import { parseSearchReplaceBlocks } from "@/pro/shared/search_replace_parser";
+import { distance } from "fastest-levenshtein";
+import { normalizeString } from "@/utils/text_normalization";
+
+// Minimum similarity threshold for fuzzy matching (0 to 1, where 1 is exact match)
+const FUZZY_MATCH_THRESHOLD = 0.9;
+
+// Early termination threshold - stop searching if we find a match this good
+const EARLY_STOP_THRESHOLD = 0.95;
+
+// Maximum time to spend on fuzzy matching (in milliseconds)
+const MAX_FUZZY_SEARCH_TIME_MS = 10_000; // 10 seconds
 
 function unescapeMarkers(content: string): string {
   return content
     .replace(/^\\<<<<<<</gm, "<<<<<<<")
     .replace(/^\\=======/gm, "=======")
     .replace(/^\\>>>>>>>/gm, ">>>>>>>");
+}
+
+/**
+ * Calculate similarity between two strings using Levenshtein distance
+ * Returns a value between 0 and 1, where 1 is an exact match
+ */
+function getSimilarity(original: string, search: string): number {
+  // Empty searches are no longer supported
+  if (search === "") {
+    return 0;
+  }
+
+  // Use the normalizeString utility to handle smart quotes and other special characters
+  const normalizedOriginal = normalizeString(original);
+  const normalizedSearch = normalizeString(search);
+
+  if (normalizedOriginal === normalizedSearch) {
+    return 1;
+  }
+
+  // Calculate Levenshtein distance using fastest-levenshtein's distance function
+  const dist = distance(normalizedOriginal, normalizedSearch);
+
+  // Calculate similarity ratio (0 to 1, where 1 is an exact match)
+  const maxLength = Math.max(
+    normalizedOriginal.length,
+    normalizedSearch.length,
+  );
+  return 1 - dist / maxLength;
+}
+
+/**
+ * Quick scoring function that counts how many lines exactly match.
+ * This is much faster than Levenshtein and serves as a good pre-filter.
+ */
+function quickScoreByExactLines(
+  targetLines: string[],
+  searchLines: string[],
+  startIdx: number,
+): number {
+  let exactMatches = 0;
+
+  for (let i = 0; i < searchLines.length; i++) {
+    if (startIdx + i >= targetLines.length) break;
+
+    if (
+      normalizeString(targetLines[startIdx + i]) ===
+      normalizeString(searchLines[i])
+    ) {
+      exactMatches++;
+    }
+  }
+
+  return exactMatches / searchLines.length;
+}
+
+/**
+ * Fast fuzzy search using a two-pass approach:
+ * 1. Quick pre-filter pass: Count exact line matches (fast)
+ * 2. Detailed pass: Only compute Levenshtein on promising candidates (expensive)
+ *
+ * The key insight: If two blocks are similar enough for fuzzy matching (e.g., 90%),
+ * then likely at least 60% of their lines will match exactly.
+ */
+function fastFuzzySearch(
+  lines: string[],
+  searchChunk: string,
+  startIndex: number,
+  endIndex: number,
+) {
+  const searchLines = searchChunk.split(/\r?\n/);
+  const searchLen = searchLines.length;
+
+  // Track start time for timeout
+  const startTime = performance.now();
+
+  // Quick threshold: require at least 60% exact line matches to be a candidate
+  const QUICK_THRESHOLD = 0.6;
+
+  // First pass: find candidates with high exact line match ratio (very fast)
+  const candidates: Array<{ index: number; quickScore: number }> = [];
+
+  for (let i = startIndex; i <= endIndex - searchLen; i++) {
+    // Check time limit
+    const elapsed = performance.now() - startTime;
+    if (elapsed > MAX_FUZZY_SEARCH_TIME_MS) {
+      console.warn(
+        `Fast fuzzy search timed out during pre-filter after ${(elapsed / 1000).toFixed(1)}s`,
+      );
+      break;
+    }
+
+    const quickScore = quickScoreByExactLines(lines, searchLines, i);
+
+    if (quickScore >= QUICK_THRESHOLD) {
+      candidates.push({ index: i, quickScore });
+    }
+  }
+
+  // Sort candidates by quick score (best first)
+  candidates.sort((a, b) => b.quickScore - a.quickScore);
+
+  // Second pass: only compute expensive Levenshtein on top candidates
+  let bestScore = 0;
+  let bestMatchIndex = -1;
+
+  const MAX_CANDIDATES_TO_CHECK = 10; // Only check top 10 candidates
+
+  for (
+    let i = 0;
+    i < Math.min(candidates.length, MAX_CANDIDATES_TO_CHECK);
+    i++
+  ) {
+    const candidate = candidates[i];
+
+    // Check time limit
+    const elapsed = performance.now() - startTime;
+    if (elapsed > MAX_FUZZY_SEARCH_TIME_MS) {
+      console.warn(
+        `Fast fuzzy search timed out during detailed pass after ${(elapsed / 1000).toFixed(1)}s. Best match: ${(bestScore * 100).toFixed(1)}%`,
+      );
+      break;
+    }
+
+    const originalChunk = lines
+      .slice(candidate.index, candidate.index + searchLen)
+      .join("\n");
+
+    const similarity = getSimilarity(originalChunk, searchChunk);
+
+    if (similarity > bestScore) {
+      bestScore = similarity;
+      bestMatchIndex = candidate.index;
+
+      // Early exit if we found a very good match
+      if (bestScore >= EARLY_STOP_THRESHOLD) {
+        return { bestScore, bestMatchIndex };
+      }
+    }
+  }
+
+  return { bestScore, bestMatchIndex };
 }
 
 export function applySearchReplace(
@@ -113,14 +266,29 @@ export function applySearchReplace(
         };
       }
 
-      if (candidates.length === 0) {
+      if (candidates.length === 1) {
+        matchIndex = candidates[0];
+      }
+    }
+
+    // If still no match, try fuzzy matching with Levenshtein distance
+    if (matchIndex === -1) {
+      const searchChunk = searchLines.join("\n");
+      const { bestScore, bestMatchIndex } = fastFuzzySearch(
+        resultLines,
+        searchChunk,
+        0,
+        resultLines.length,
+      );
+
+      if (bestScore >= FUZZY_MATCH_THRESHOLD) {
+        matchIndex = bestMatchIndex;
+      } else {
         return {
           success: false,
-          error: "Search block did not match any content in the target file",
+          error: `Search block did not match any content in the target file. Best fuzzy match had similarity of ${(bestScore * 100).toFixed(1)}% (threshold: ${(FUZZY_MATCH_THRESHOLD * 100).toFixed(1)}%)`,
         };
       }
-
-      matchIndex = candidates[0];
     }
 
     const matchedLines = resultLines.slice(

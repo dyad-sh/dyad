@@ -20,11 +20,13 @@ import {
   Info,
   ChevronDown,
   Pencil,
+  Wrench,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { showError } from "@/lib/toast";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import type { SecurityFinding, SecurityReviewResult } from "@/ipc/ipc_types";
 import { useState, useEffect } from "react";
 import { VanillaMarkdownParser } from "@/components/chat/DyadMarkdownParser";
@@ -202,12 +204,36 @@ function SecurityHeader({
   onRun,
   data,
   onOpenEditRules,
+  selectedCount,
+  onFixSelected,
+  isFixingSelected,
 }: {
   isRunning: boolean;
   onRun: () => void;
   data?: SecurityReviewResult | undefined;
   onOpenEditRules: () => void;
+  selectedCount: number;
+  onFixSelected: () => void;
+  isFixingSelected: boolean;
 }) {
+  const [isButtonVisible, setIsButtonVisible] = useState(false);
+  const [shouldRender, setShouldRender] = useState(false);
+
+  useEffect(() => {
+    if (selectedCount > 0) {
+      // Show immediately
+      setShouldRender(true);
+      // Trigger animation after render
+      setTimeout(() => setIsButtonVisible(true), 10);
+    } else {
+      // Trigger exit animation
+      setIsButtonVisible(false);
+      // Hide after animation completes
+      const timer = setTimeout(() => setShouldRender(false), 300);
+      return () => clearTimeout(timer);
+    }
+  }, [selectedCount]);
+
   return (
     <div className="sticky top-0 z-10 bg-background pt-3 pb-3 space-y-2">
       <div className="flex items-center justify-between gap-2">
@@ -235,12 +261,59 @@ function SecurityHeader({
           </div>
           {data && data.findings.length > 0 && <ReviewSummary data={data} />}
         </div>
-        <div className="flex flex-col items-center gap-2">
+        <div className="flex flex-col items-end gap-2">
           <Button variant="outline" onClick={onOpenEditRules}>
             <Pencil className="w-4 h-4" />
             Edit Security Rules
           </Button>
-          <RunReviewButton isRunning={isRunning} onRun={onRun} />
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={onFixSelected}
+              className="gap-2 transition-all duration-300"
+              disabled={isFixingSelected}
+              style={{
+                visibility: shouldRender ? "visible" : "hidden",
+                opacity: isButtonVisible ? 1 : 0,
+                transform: isButtonVisible
+                  ? "translateY(0)"
+                  : "translateY(-8px)",
+                pointerEvents: shouldRender ? "auto" : "none",
+              }}
+            >
+              {isFixingSelected ? (
+                <>
+                  <svg
+                    className="w-4 h-4 animate-spin"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="m4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 0 1 4 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    />
+                  </svg>
+                  Fixing {selectedCount} Issue{selectedCount !== 1 ? "s" : ""}
+                  ...
+                </>
+              ) : (
+                <>
+                  <Wrench className="w-4 h-4" />
+                  Fix {selectedCount} Issue{selectedCount !== 1 ? "s" : ""}
+                </>
+              )}
+            </Button>
+            <RunReviewButton isRunning={isRunning} onRun={onRun} />
+          </div>
         </div>
       </div>
     </div>
@@ -390,12 +463,28 @@ function FindingsTable({
   onOpenDetails,
   onFix,
   fixingFindingKey,
+  selectedFindings,
+  onToggleSelection,
+  onToggleSelectAll,
 }: {
   findings: SecurityFinding[];
   onOpenDetails: (finding: SecurityFinding) => void;
   onFix: (finding: SecurityFinding) => void;
   fixingFindingKey?: string | null;
+  selectedFindings: Set<string>;
+  onToggleSelection: (findingKey: string) => void;
+  onToggleSelectAll: () => void;
 }) {
+  const sortedFindings = [...findings].sort(
+    (a, b) => getSeverityOrder(a.level) - getSeverityOrder(b.level),
+  );
+
+  const allSelected =
+    sortedFindings.length > 0 &&
+    sortedFindings.every((finding) =>
+      selectedFindings.has(createFindingKey(finding)),
+    );
+
   return (
     <div
       className="border rounded-lg overflow-hidden"
@@ -404,6 +493,13 @@ function FindingsTable({
       <table className="w-full">
         <thead className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700">
           <tr>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider w-12">
+              <Checkbox
+                checked={allSelected}
+                onCheckedChange={onToggleSelectAll}
+                aria-label="Select all issues"
+              />
+            </th>
             <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider w-24">
               Level
             </th>
@@ -416,102 +512,107 @@ function FindingsTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-          {[...findings]
-            .sort(
-              (a, b) => getSeverityOrder(a.level) - getSeverityOrder(b.level),
-            )
-            .map((finding, index) => {
-              const isLongDescription =
-                finding.description.length > DESCRIPTION_PREVIEW_LENGTH;
-              const displayDescription = isLongDescription
-                ? finding.description.substring(0, DESCRIPTION_PREVIEW_LENGTH) +
-                  "..."
-                : finding.description;
-              const findingKey = createFindingKey(finding);
-              const isFixing = fixingFindingKey === findingKey;
+          {sortedFindings.map((finding, index) => {
+            const isLongDescription =
+              finding.description.length > DESCRIPTION_PREVIEW_LENGTH;
+            const displayDescription = isLongDescription
+              ? finding.description.substring(0, DESCRIPTION_PREVIEW_LENGTH) +
+                "..."
+              : finding.description;
+            const findingKey = createFindingKey(finding);
+            const isFixing = fixingFindingKey === findingKey;
+            const isSelected = selectedFindings.has(findingKey);
 
-              return (
-                <tr
-                  key={index}
-                  className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors"
-                >
-                  <td className="px-4 py-4 align-top">
-                    <SeverityBadge level={finding.level} />
-                  </td>
-                  <td className="px-4 py-4">
-                    <div
-                      className="space-y-2 cursor-pointer"
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => onOpenDetails(finding)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          onOpenDetails(finding);
-                        }
-                      }}
-                    >
-                      <div className="font-medium text-gray-900 dark:text-gray-100">
-                        {finding.title}
-                      </div>
-                      <div className="text-sm text-gray-700 dark:text-gray-300 prose prose-sm dark:prose-invert max-w-none">
-                        <VanillaMarkdownParser content={displayDescription} />
-                      </div>
-                      {isLongDescription && (
-                        <Button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onOpenDetails(finding);
-                          }}
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 px-2 py-0 gap-1"
-                        >
-                          <ChevronDown className="w-3 h-3" />
-                          Show more
-                        </Button>
-                      )}
+            return (
+              <tr
+                key={index}
+                className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors"
+              >
+                <td className="px-4 py-4 align-top">
+                  <Checkbox
+                    checked={isSelected}
+                    onCheckedChange={() => onToggleSelection(findingKey)}
+                    aria-label={`Select ${finding.title}`}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </td>
+                <td className="px-4 py-4 align-top">
+                  <SeverityBadge level={finding.level} />
+                </td>
+                <td className="px-4 py-4">
+                  <div
+                    className="space-y-2 cursor-pointer"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => onOpenDetails(finding)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onOpenDetails(finding);
+                      }
+                    }}
+                  >
+                    <div className="font-medium text-gray-900 dark:text-gray-100">
+                      {finding.title}
                     </div>
-                  </td>
-                  <td className="px-4 py-4 align-top text-right">
-                    <Button
-                      onClick={() => onFix(finding)}
-                      size="sm"
-                      variant="default"
-                      className="gap-2"
-                      disabled={isFixing}
-                    >
-                      {isFixing ? (
-                        <>
-                          <svg
-                            className="w-4 h-4 animate-spin"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                          >
-                            <circle
-                              className="opacity-25"
-                              cx="12"
-                              cy="12"
-                              r="10"
-                              stroke="currentColor"
-                              strokeWidth="4"
-                            />
-                            <path
-                              className="opacity-75"
-                              fill="currentColor"
-                              d="m4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 0 1 4 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                            />
-                          </svg>
-                          Fixing Issue...
-                        </>
-                      ) : (
-                        <>Fix Issue</>
-                      )}
-                    </Button>
-                  </td>
-                </tr>
-              );
-            })}
+                    <div className="text-sm text-gray-700 dark:text-gray-300 prose prose-sm dark:prose-invert max-w-none">
+                      <VanillaMarkdownParser content={displayDescription} />
+                    </div>
+                    {isLongDescription && (
+                      <Button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenDetails(finding);
+                        }}
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 px-2 py-0 gap-1"
+                      >
+                        <ChevronDown className="w-3 h-3" />
+                        Show more
+                      </Button>
+                    )}
+                  </div>
+                </td>
+                <td className="px-4 py-4 align-top text-right">
+                  <Button
+                    onClick={() => onFix(finding)}
+                    size="sm"
+                    variant="default"
+                    className="gap-2"
+                    disabled={isFixing}
+                  >
+                    {isFixing ? (
+                      <>
+                        <svg
+                          className="w-4 h-4 animate-spin"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                        >
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                          />
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="m4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 0 1 4 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                          />
+                        </svg>
+                        Fixing Issue...
+                      </>
+                    ) : (
+                      <>Fix Issue</>
+                    )}
+                  </Button>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -607,6 +708,10 @@ export const SecurityPanel = () => {
   const [rulesContent, setRulesContent] = useState("");
   const [fixingFindingKey, setFixingFindingKey] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [selectedFindings, setSelectedFindings] = useState<Set<string>>(
+    new Set(),
+  );
+  const [isFixingSelected, setIsFixingSelected] = useState(false);
 
   const {
     content: fetchedRules,
@@ -622,6 +727,11 @@ export const SecurityPanel = () => {
       setRulesContent(fetchedRules);
     }
   }, [fetchedRules]);
+
+  // Clear selections when data changes (e.g., after a new review)
+  useEffect(() => {
+    setSelectedFindings(new Set());
+  }, [data]);
 
   const handleSaveRules = async () => {
     if (!selectedAppId) {
@@ -725,6 +835,82 @@ ${finding.description}`;
     }
   };
 
+  const handleToggleSelection = (findingKey: string) => {
+    setSelectedFindings((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(findingKey)) {
+        newSet.delete(findingKey);
+      } else {
+        newSet.add(findingKey);
+      }
+      return newSet;
+    });
+  };
+
+  const handleToggleSelectAll = () => {
+    if (!data?.findings) return;
+
+    const sortedFindings = [...data.findings].sort(
+      (a, b) => getSeverityOrder(a.level) - getSeverityOrder(b.level),
+    );
+
+    const allKeys = sortedFindings.map((finding) => createFindingKey(finding));
+    const allSelected = allKeys.every((key) => selectedFindings.has(key));
+
+    if (allSelected) {
+      setSelectedFindings(new Set());
+    } else {
+      setSelectedFindings(new Set(allKeys));
+    }
+  };
+
+  const handleFixSelected = async () => {
+    if (!selectedAppId || selectedFindings.size === 0 || !data?.findings) {
+      showError("No issues selected");
+      return;
+    }
+
+    try {
+      setIsFixingSelected(true);
+
+      // Get the selected findings
+      const findingsToFix = data.findings.filter((finding) =>
+        selectedFindings.has(createFindingKey(finding)),
+      );
+
+      // Create a new chat
+      const chatId = await IpcClient.getInstance().createChat(selectedAppId);
+
+      // Navigate to the new chat
+      setSelectedChatId(chatId);
+      await navigate({ to: "/chat", search: { id: chatId } });
+
+      // Build a comprehensive prompt for all selected issues
+      const issuesList = findingsToFix
+        .map(
+          (finding, index) =>
+            `${index + 1}. **${finding.title}** (${finding.level} severity)\n${finding.description}`,
+        )
+        .join("\n\n");
+
+      const prompt = `Please fix the following ${findingsToFix.length} security issue${findingsToFix.length !== 1 ? "s" : ""} in a simple and effective way:
+
+${issuesList}`;
+
+      await streamMessage({
+        prompt,
+        chatId,
+        onSettled: () => {
+          setIsFixingSelected(false);
+          setSelectedFindings(new Set());
+        },
+      });
+    } catch (err) {
+      showError(`Failed to create fix chat: ${err}`);
+      setIsFixingSelected(false);
+    }
+  };
+
   if (isLoading) {
     return <LoadingView />;
   }
@@ -746,6 +932,9 @@ ${finding.description}`;
               refetchRules();
             }
           }}
+          selectedCount={selectedFindings.size}
+          onFixSelected={handleFixSelected}
+          isFixingSelected={isFixingSelected}
         />
 
         {isRunningReview ? (
@@ -761,6 +950,9 @@ ${finding.description}`;
             onOpenDetails={openFindingDetails}
             onFix={handleFixIssue}
             fixingFindingKey={fixingFindingKey}
+            selectedFindings={selectedFindings}
+            onToggleSelection={handleToggleSelection}
+            onToggleSelectAll={handleToggleSelectAll}
           />
         ) : (
           <NoIssuesCard data={data} />

@@ -1,11 +1,15 @@
 - table:
   - rowgroup:
-    - row "Level Issue Action":
+    - row "Select all issues Level Issue Action":
+      - cell "Select all issues":
+        - checkbox "Select all issues"
       - cell "Level"
       - cell "Issue"
       - cell "Action"
   - rowgroup:
-    - 'row "critical SQL Injection in User Lookup What: User input flows directly into database queries without validation, allowing attackers to execute arbitrary SQL commands Risk: An attac... Show more Fix Issue"':
+    - 'row "Select SQL Injection in User Lookup critical SQL Injection in User Lookup What: User input flows directly into database queries without validation, allowing attackers to execute arbitrary SQL commands Risk: An attac... Show more Fix Issue"':
+      - cell "Select SQL Injection in User Lookup":
+        - checkbox "Select SQL Injection in User Lookup"
       - cell "critical":
         - img
       - 'cell "SQL Injection in User Lookup What: User input flows directly into database queries without validation, allowing attackers to execute arbitrary SQL commands Risk: An attac... Show more"':
@@ -20,7 +24,9 @@
             - img
       - cell "Fix Issue":
         - button "Fix Issue"
-    - 'row "critical Hardcoded AWS Credentials in Source Code What: AWS access keys are stored directly in the codebase and committed to version control, exposing full cloud infrastructure access Risk: A... Show more Fix Issue"':
+    - 'row "Select Hardcoded AWS Credentials in Source Code critical Hardcoded AWS Credentials in Source Code What: AWS access keys are stored directly in the codebase and committed to version control, exposing full cloud infrastructure access Risk: A... Show more Fix Issue"':
+      - cell "Select Hardcoded AWS Credentials in Source Code":
+        - checkbox "Select Hardcoded AWS Credentials in Source Code"
       - cell "critical":
         - img
       - 'cell "Hardcoded AWS Credentials in Source Code What: AWS access keys are stored directly in the codebase and committed to version control, exposing full cloud infrastructure access Risk: A... Show more"':
@@ -35,7 +41,9 @@
             - img
       - cell "Fix Issue":
         - button "Fix Issue"
-    - 'row "high Missing Authentication on Admin Endpoints What: Administrative API endpoints can be accessed without authentication, relying only on URL obscurity Risk: An attacker who discovers thes... Show more Fix Issue"':
+    - 'row "Select Missing Authentication on Admin Endpoints high Missing Authentication on Admin Endpoints What: Administrative API endpoints can be accessed without authentication, relying only on URL obscurity Risk: An attacker who discovers thes... Show more Fix Issue"':
+      - cell "Select Missing Authentication on Admin Endpoints":
+        - checkbox "Select Missing Authentication on Admin Endpoints"
       - cell "high":
         - img
       - 'cell "Missing Authentication on Admin Endpoints What: Administrative API endpoints can be accessed without authentication, relying only on URL obscurity Risk: An attacker who discovers thes... Show more"':
@@ -50,7 +58,9 @@
             - img
       - cell "Fix Issue":
         - button "Fix Issue"
-    - 'row "high JWT Secret Using Default Value What: The application uses a hardcoded default JWT secret (\"your-secret-key\") for signing authentication tokens Risk: Attackers can forge val... Show more Fix Issue"':
+    - 'row "Select JWT Secret Using Default Value high JWT Secret Using Default Value What: The application uses a hardcoded default JWT secret (\"your-secret-key\") for signing authentication tokens Risk: Attackers can forge val... Show more Fix Issue"':
+      - cell "Select JWT Secret Using Default Value":
+        - checkbox "Select JWT Secret Using Default Value"
       - cell "high":
         - img
       - 'cell "JWT Secret Using Default Value What: The application uses a hardcoded default JWT secret (\"your-secret-key\") for signing authentication tokens Risk: Attackers can forge val... Show more"':
@@ -65,7 +75,9 @@
             - img
       - cell "Fix Issue":
         - button "Fix Issue"
-    - 'row "medium Unvalidated File Upload Extensions What: The file upload endpoint accepts any file type without validating extensions or content, only checking file size Risk: An attacker coul... Show more Fix Issue"':
+    - 'row "Select Unvalidated File Upload Extensions medium Unvalidated File Upload Extensions What: The file upload endpoint accepts any file type without validating extensions or content, only checking file size Risk: An attacker coul... Show more Fix Issue"':
+      - cell "Select Unvalidated File Upload Extensions":
+        - checkbox "Select Unvalidated File Upload Extensions"
       - cell "medium":
         - img
       - 'cell "Unvalidated File Upload Extensions What: The file upload endpoint accepts any file type without validating extensions or content, only checking file size Risk: An attacker coul... Show more"':
@@ -80,7 +92,9 @@
             - img
       - cell "Fix Issue":
         - button "Fix Issue"
-    - 'row "medium Missing CSRF Protection on State-Changing Operations What: POST, PUT, and DELETE endpoints don''t implement CSRF tokens, making them vulnerable to cross-site request forgery attacks Risk: An atta... Show more Fix Issue"':
+    - 'row "Select Missing CSRF Protection on State-Changing Operations medium Missing CSRF Protection on State-Changing Operations What: POST, PUT, and DELETE endpoints don''t implement CSRF tokens, making them vulnerable to cross-site request forgery attacks Risk: An atta... Show more Fix Issue"':
+      - cell "Select Missing CSRF Protection on State-Changing Operations":
+        - checkbox "Select Missing CSRF Protection on State-Changing Operations"
       - cell "medium":
         - img
       - 'cell "Missing CSRF Protection on State-Changing Operations What: POST, PUT, and DELETE endpoints don''t implement CSRF tokens, making them vulnerable to cross-site request forgery attacks Risk: An atta... Show more"':
@@ -95,7 +109,9 @@
             - img
       - cell "Fix Issue":
         - button "Fix Issue"
-    - 'row "low Verbose Error Messages Expose Stack Traces What: Production error responses include full stack traces and internal file paths that are sent to end users Risk: Attackers can use this in... Show more Fix Issue"':
+    - 'row "Select Verbose Error Messages Expose Stack Traces low Verbose Error Messages Expose Stack Traces What: Production error responses include full stack traces and internal file paths that are sent to end users Risk: Attackers can use this in... Show more Fix Issue"':
+      - cell "Select Verbose Error Messages Expose Stack Traces":
+        - checkbox "Select Verbose Error Messages Expose Stack Traces"
       - cell "low":
         - img
       - 'cell "Verbose Error Messages Expose Stack Traces What: Production error responses include full stack traces and internal file paths that are sent to end users Risk: Attackers can use this in... Show more"':
@@ -110,7 +126,9 @@
             - img
       - cell "Fix Issue":
         - button "Fix Issue"
-    - 'row "low Missing Security Headers What: The application doesn''t set recommended security headers like `X-Frame-Options`, `X-Content-Type-Options`, and `Strict-Transport-Security` ... Show more Fix Issue"':
+    - 'row "Select Missing Security Headers low Missing Security Headers What: The application doesn''t set recommended security headers like `X-Frame-Options`, `X-Content-Type-Options`, and `Strict-Transport-Security` ... Show more Fix Issue"':
+      - cell "Select Missing Security Headers":
+        - checkbox "Select Missing Security Headers"
       - cell "low":
         - img
       - 'cell "Missing Security Headers What: The application doesn''t set recommended security headers like `X-Frame-Options`, `X-Content-Type-Options`, and `Strict-Transport-Security` ... Show more"':

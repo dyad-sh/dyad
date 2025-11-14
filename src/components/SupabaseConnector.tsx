@@ -229,7 +229,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                       <SelectTrigger id="project-select">
                         <SelectValue placeholder="Select a project" />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="no-app-region-drag">
                         {projects.map((project) => (
                           <SelectItem key={project.id} value={project.id}>
                             {project.name || project.id}

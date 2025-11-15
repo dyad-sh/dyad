@@ -6,10 +6,12 @@ import { Toaster } from "sonner";
 import { TitleBar } from "./TitleBar";
 import { useEffect, type ReactNode } from "react";
 import { useRunApp } from "@/hooks/useRunApp";
-import { useAtomValue } from "jotai";
-import { previewModeAtom } from "@/atoms/appAtoms";
+import { useAtomValue, useSetAtom } from "jotai";
+import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useSettings } from "@/hooks/useSettings";
 import type { ZoomLevel } from "@/lib/schemas";
+import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
+import { chatInputValueAtom } from "@/atoms/chatAtoms";
 
 const DEFAULT_ZOOM_LEVEL: ZoomLevel = "100";
 
@@ -17,6 +19,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   const { refreshAppIframe } = useRunApp();
   const previewMode = useAtomValue(previewModeAtom);
   const { settings } = useSettings();
+  const setSelectedComponentsPreview = useSetAtom(
+    selectedComponentsPreviewAtom,
+  );
+  const setChatInput = useSetAtom(chatInputValueAtom);
+  const selectedAppId = useAtomValue(selectedAppIdAtom);
 
   useEffect(() => {
     const zoomLevel = settings?.zoomLevel ?? DEFAULT_ZOOM_LEVEL;
@@ -62,6 +69,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [refreshAppIframe, previewMode]);
+
+  useEffect(() => {
+    setChatInput("");
+    setSelectedComponentsPreview([]);
+  }, [selectedAppId]);
 
   return (
     <>

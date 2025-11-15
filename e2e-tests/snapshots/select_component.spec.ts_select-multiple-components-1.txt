@@ -1,0 +1,27 @@
+===
+role: user
+message: [dump] make both smaller
+
+Selected components:
+
+1. Component: h1 (file: src/pages/Index.tsx)
+
+Snippet:
+```
+      <div className="text-center">
+        <h1 className="text-4xl font-bold mb-4">Welcome to Your Blank App</h1> // <-- EDIT HERE
+        <p className="text-xl text-gray-600">
+          Start building your amazing project here!
+        </p>
+```
+
+2. Component: a (file: src/components/made-with-dyad.tsx)
+
+Snippet:
+```
+    <div className="p-4 text-center">
+      <a // <-- EDIT HERE
+        href="https://www.dyad.sh/"
+        target="_blank"
+        rel="noopener noreferrer"
+```

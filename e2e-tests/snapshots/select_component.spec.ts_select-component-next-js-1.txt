@@ -151,7 +151,9 @@ message: This is a simple basic response
 role: user
 message: [dump] make it smaller
 
-Selected component: h1 (file: src/app/page.tsx)
+Selected components:
+
+Component: h1 (file: src/app/page.tsx)
 
 Snippet:
 ```

@@ -414,7 +414,8 @@
       ],
       "enable_lazy_edits": true,
       "enable_smart_files_context": true,
-      "smart_context_mode": "balanced"
+      "smart_context_mode": "balanced",
+      "app_id": 1
     }
   },
   "headers": {

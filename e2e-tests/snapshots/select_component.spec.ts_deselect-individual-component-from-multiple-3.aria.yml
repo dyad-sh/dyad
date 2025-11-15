@@ -1,0 +1,6 @@
+- text: Selected Components (1)
+- button "Clear all"
+- img
+- text: a src/components/made-with-dyad.tsx:4
+- button "Deselect component":
+  - img

@@ -51,6 +51,7 @@ import { isServerFunction } from "@/supabase_admin/supabase_utils";
 import { getVercelTeamSlug } from "../utils/vercel_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import { AppSearchResult } from "@/lib/schemas";
+import { validateShellCommand } from "../utils/command_validator";
 
 const DEFAULT_COMMAND =
   "(pnpm install && pnpm run dev --port 32100) || (npm install --legacy-peer-deps && npm run dev -- --port 32100)";
@@ -1543,9 +1544,18 @@ function getCommand({
   startCommand?: string | null;
 }) {
   const hasCustomCommands = !!installCommand?.trim() && !!startCommand?.trim();
-  return hasCustomCommands
-    ? `${installCommand!.trim()} && ${startCommand!.trim()}`
-    : DEFAULT_COMMAND;
+
+  if (hasCustomCommands) {
+    // Validate both commands before executing to prevent command injection
+    const validatedInstall = validateShellCommand(
+      installCommand,
+      "install command",
+    );
+    const validatedStart = validateShellCommand(startCommand, "start command");
+    return `${validatedInstall} && ${validatedStart}`;
+  }
+
+  return DEFAULT_COMMAND;
 }
 
 async function cleanUpPort(port: number) {

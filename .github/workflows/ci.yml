@@ -54,11 +54,18 @@ jobs:
         # Only run on shard 1 to avoid redundant execution
         if: contains(matrix.os.name, 'macos') && matrix.shard == 1
         run: npm run ts
-      - name: Unit tests
+      - name: Unit tests with coverage
         # do not run this on windows (it's redunant)
         # Only run on shard 1 to avoid redundant execution
         if: contains(matrix.os.name, 'macos') && matrix.shard == 1
-        run: npm run test
+        run: npm run test:coverage
+      - name: Upload coverage reports
+        if: contains(matrix.os.name, 'macos') && matrix.shard == 1
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 7
       - name: Setup pnpm
         uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
         with:

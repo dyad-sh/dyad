@@ -1,5 +1,6 @@
 import { ChildProcess, spawn } from "node:child_process";
 import treeKill from "tree-kill";
+import { sanitizeContainerName, validateVolumeName } from "./command_validator";
 
 // Define a type for the value stored in runningApps
 export interface RunningAppInfo {
@@ -88,7 +89,9 @@ export function killProcess(process: ChildProcess): Promise<void> {
  */
 export function stopDockerContainer(containerName: string): Promise<void> {
   return new Promise<void>((resolve) => {
-    const stop = spawn("docker", ["stop", containerName], { stdio: "pipe" });
+    // Sanitize container name to prevent command injection
+    const sanitizedName = sanitizeContainerName(containerName);
+    const stop = spawn("docker", ["stop", sanitizedName], { stdio: "pipe" });
     stop.on("close", () => resolve());
     stop.on("error", () => resolve());
   });
@@ -101,8 +104,10 @@ export function stopDockerContainer(containerName: string): Promise<void> {
 export function removeDockerVolumesForApp(appId: number): Promise<void> {
   return new Promise<void>((resolve) => {
     const pnpmVolume = `dyad-pnpm-${appId}`;
+    // Validate volume name to prevent injection attacks
+    const validatedVolume = validateVolumeName(pnpmVolume);
 
-    const rm = spawn("docker", ["volume", "rm", "-f", pnpmVolume], {
+    const rm = spawn("docker", ["volume", "rm", "-f", validatedVolume], {
       stdio: "pipe",
     });
     rm.on("close", () => resolve());

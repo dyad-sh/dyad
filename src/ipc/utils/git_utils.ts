@@ -186,6 +186,25 @@ export async function gitAdd({
   }
 }
 
+export async function gitInit({
+  path,
+  ref = "main",
+}: {
+  path: string;
+  ref?: string;
+}): Promise<void> {
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    await exec(["init", "-b", ref], path);
+  } else {
+    await git.init({
+      fs,
+      dir: path,
+      defaultBranch: ref,
+    });
+  }
+}
+
 export async function gitRemove({
   path,
   filepath,

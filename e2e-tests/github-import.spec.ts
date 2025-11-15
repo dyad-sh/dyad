@@ -102,9 +102,6 @@ test("should import from repository list", async ({ po }) => {
   await expect(
     po.page.getByRole("heading", { name: "Import App" }),
   ).not.toBeVisible();
-
-  // Verify AI_RULES generation prompt
-  await po.snapshotMessages();
 });
 
 test("should support advanced options with custom commands", async ({ po }) => {

@@ -513,6 +513,15 @@ export interface GithubRepository {
   full_name: string;
   private: boolean;
 }
+export type GitCommit = {
+  oid: string;
+  commit: {
+    message: string;
+    author: {
+      timestamp: number;
+    };
+  };
+};
 export type CloneRepoReturnType =
   | {
       app: App;

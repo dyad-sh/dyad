@@ -351,29 +351,24 @@ export async function gitClone({
   url: string;
   accessToken?: string;
   singleBranch?: boolean;
-  depth?: number | null; // null = full clone
+  depth?: number | null;
 }): Promise<void> {
   const settings = readSettings();
-  // Build authenticated URL for GitHub if accessToken is provided
-  const finalUrl = accessToken
-    ? url.replace("https://", `https://${accessToken}:x-oauth-basic@`)
-    : url;
-
   if (settings.enableNativeGit) {
     // Dugite version (real Git)
-
+    // Build authenticated URL if accessToken is provided and URL doesn't already have auth
+    const finalUrl =
+      accessToken && !url.includes("@")
+        ? url.replace("https://", `https://${accessToken}:x-oauth-basic@`)
+        : url;
     const args = ["clone"];
-    // Include depth only if provided (depth=null means full clone)
     if (depth && depth > 0) {
       args.push("--depth", String(depth));
     }
-
-    // singleBranch: false → do not include --single-branch
     if (singleBranch) {
       args.push("--single-branch");
     }
     args.push(finalUrl, path);
-
     const result = await exec(args, ".");
 
     if (result.exitCode !== 0) {
@@ -381,11 +376,13 @@ export async function gitClone({
     }
   } else {
     // isomorphic-git version
+    // Strip any embedded auth from URL since isomorphic-git uses onAuth
+    const cleanUrl = url.replace(/https:\/\/[^@]+@/, "https://");
     await git.clone({
       fs,
       http,
       dir: path,
-      url,
+      url: cleanUrl,
       onAuth: accessToken
         ? () => ({
             username: accessToken,
@@ -393,7 +390,7 @@ export async function gitClone({
           })
         : undefined,
       singleBranch,
-      depth: depth ?? undefined, // null => undefined => full clone
+      depth: depth ?? undefined,
     });
   }
 }
@@ -409,10 +406,29 @@ export async function gitSetRemoteUrl({
 
   if (settings.enableNativeGit) {
     // Dugite version
-    const result = await exec(["config", "remote.origin.url", remoteUrl], path);
+    try {
+      // First check if remote exists
+      const checkResult = await exec(["remote", "get-url", "origin"], path);
 
-    if (result.exitCode !== 0) {
-      throw new Error(result.stderr.toString());
+      if (checkResult.exitCode === 0) {
+        // Remote exists, update it
+        const result = await exec(
+          ["remote", "set-url", "origin", remoteUrl],
+          path,
+        );
+        if (result.exitCode !== 0) {
+          throw new Error(
+            `Failed to set remote URL: ${result.stderr.toString()}`,
+          );
+        }
+      } else {
+        throw new Error(
+          `Remote does not exist: ${checkResult.stderr.toString()}`,
+        );
+      }
+    } catch (error: any) {
+      logger.error("Error setting remote URL:", error);
+      throw new Error(`Error setting remote URL: ${error.message}`);
     }
   } else {
     //isomorphic-git version
@@ -430,40 +446,34 @@ export async function gitPush({
   branch,
   accessToken,
   force,
-  remoteUrl,
 }: {
   path: string;
   branch: string;
   accessToken: string;
   force?: boolean;
-  remoteUrl: string; // The repo URL without auth
 }): Promise<void> {
   const settings = readSettings();
 
   if (settings.enableNativeGit) {
-    //  Dugite version
+    // Dugite version
+    try {
+      // Push using the configured origin remote (which already has auth in URL)
+      const args = ["push", "origin", `main:${branch}`];
+      if (force) {
+        args.push("--force");
+      }
+      const result = await exec(args, path);
 
-    // Build authenticated remote URL
-    const authedUrl = remoteUrl.replace(
-      "https://",
-      `https://${accessToken}:x-oauth-basic@`,
-    );
-
-    // git push origin main:<branch>
-    const args = [
-      "push",
-      authedUrl,
-      `main:${branch}`,
-      ...(force ? ["--force"] : []),
-    ];
-
-    const result = await exec(args, path);
-
-    if (result.exitCode !== 0) {
-      throw new Error(result.stderr.toString());
+      if (result.exitCode !== 0) {
+        const errorMsg = result.stderr.toString() || result.stdout.toString();
+        throw new Error(`Git push failed: ${errorMsg}`);
+      }
+    } catch (error: any) {
+      logger.error("Error during git push:", error);
+      throw new Error(`Git push failed: ${error.message}`);
     }
   } else {
-    //  isomorphic-git version
+    // isomorphic-git version
     await git.push({
       fs,
       http,

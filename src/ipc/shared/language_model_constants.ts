@@ -20,6 +20,32 @@ export interface ModelOption {
 
 export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
   openai: [
+    // https://platform.openai.com/docs/models/gpt-5.1-codex
+    {
+      name: "gpt-5.1-codex",
+      displayName: "GPT 5.1 Codex",
+      description: "OpenAI's latest model optimized for coding",
+      // Technically it's 128k but OpenAI errors if you set max_tokens instead of max_completion_tokens
+      maxOutputTokens: undefined,
+      contextWindow: 400_000,
+      // Requires temperature to be default value (1)
+      temperature: 1,
+      dollarSigns: 3,
+    },
+    // https://platform.openai.com/docs/models/gpt-5.1
+    {
+      name: "gpt-5.1",
+      displayName: "GPT 5.1",
+      description:
+        "OpenAI's flagship model- smarter, faster, and more conversational",
+      // Technically it's 128k but OpenAI errors if you set max_tokens instead of max_completion_tokens
+      maxOutputTokens: undefined,
+      contextWindow: 400_000,
+      // Requires temperature to be default value (1)
+      temperature: 1,
+      dollarSigns: 3,
+    },
+
     // https://platform.openai.com/docs/models/gpt-5-codex
     {
       name: "gpt-5-codex",

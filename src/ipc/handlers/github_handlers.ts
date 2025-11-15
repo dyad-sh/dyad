@@ -585,7 +585,6 @@ async function handlePushToGithub(
       branch,
       accessToken,
       force,
-      remoteUrl, // e.g. "https://github.com/org/repo.git"
     });
     return { success: true };
   } catch (err: any) {

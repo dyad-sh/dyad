@@ -22,11 +22,43 @@ No sign-up required. Just download and go.
 
 Join our growing community of AI app builders on **Reddit**: [r/dyadbuilders](https://www.reddit.com/r/dyadbuilders/) - share your projects and get help from the community!
 
+## 💻 Development Setup
+
+Want to contribute or run Dyad from source? We've made it easy!
+
+### Quick Start
+
+```bash
+# Clone the repository
+git clone https://github.com/dyad-sh/dyad.git
+cd dyad
+
+# Run automated setup (Unix/macOS/Linux)
+./scripts/bootstrap.sh
+
+# Or on Windows (PowerShell)
+.\scripts\bootstrap.ps1
+
+# Start development
+npm start
+```
+
+For detailed setup instructions, troubleshooting, and platform-specific notes, see **[SETUP.md](./SETUP.md)**.
+
+### Useful Commands
+
+```bash
+npm start              # Start development server
+npm test               # Run unit tests
+npm run health-check   # Verify your environment
+npm run validate       # Check system requirements
+```
+
 ## 🛠️ Contributing
 
 **Dyad** is open-source (Apache 2.0 licensed).
 
-If you're interested in contributing to dyad, please read our [contributing](./CONTRIBUTING.md) doc.
+If you're interested in contributing to dyad, please read our [contributing guide](./CONTRIBUTING.md) and [setup documentation](./SETUP.md).
 
 ## License
 

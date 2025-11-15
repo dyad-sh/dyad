@@ -283,3 +283,58 @@ export async function getFileAtCommit({
     }
   }
 }
+
+export async function gitListBranches({
+  path,
+}: {
+  path: string;
+}): Promise<string[]> {
+  const settings = readSettings();
+
+  if (settings.enableNativeGit) {
+    const result = await exec(["branch", "--list"], path);
+
+    if (result.exitCode !== 0) {
+      throw new Error(result.stderr.toString());
+    }
+    // Parse output:
+    // e.g. "* main\n  feature/login"
+    return result.stdout
+      .toString()
+      .split("\n")
+      .map((line) => line.replace("*", "").trim())
+      .filter((line) => line.length > 0);
+  } else {
+    return await git.listBranches({
+      fs,
+      dir: path,
+    });
+  }
+}
+
+export async function gitRenameBranch({
+  path,
+  oldBranch,
+  newBranch,
+}: {
+  path: string;
+  oldBranch: string;
+  newBranch: string;
+}): Promise<void> {
+  const settings = readSettings();
+
+  if (settings.enableNativeGit) {
+    // git branch -m oldBranch newBranch
+    const result = await exec(["branch", "-m", oldBranch, newBranch], path);
+    if (result.exitCode !== 0) {
+      throw new Error(result.stderr.toString());
+    }
+  } else {
+    await git.renameBranch({
+      fs,
+      dir: path,
+      oldref: oldBranch,
+      ref: newBranch,
+    });
+  }
+}

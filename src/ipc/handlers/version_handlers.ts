@@ -6,11 +6,11 @@ import type {
   BranchResult,
   RevertVersionParams,
   RevertVersionResponse,
+  GitCommit,
 } from "../ipc_types";
 import fs from "node:fs";
 import path from "node:path";
 import { getDyadAppPath } from "../../paths/paths";
-import { type ReadCommitResult } from "isomorphic-git";
 import { withLock } from "../utils/lock_utils";
 import log from "electron-log";
 import { createLoggedHandler } from "./safe_handle";
@@ -110,7 +110,7 @@ export function registerVersionHandlers() {
       });
     }
 
-    return commits.map((commit: ReadCommitResult) => {
+    return commits.map((commit: GitCommit) => {
       const snapshotInfo = snapshotMap.get(commit.oid);
       return {
         oid: commit.oid,

@@ -508,18 +508,47 @@ export async function gitLog({
 }: {
   path: string;
   depth?: number;
-}): Promise<Array<{ oid: string }>> {
+}): Promise<
+  Array<{
+    oid: string;
+    commit: { message: string; author: { timestamp: number } };
+  }>
+> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
-    const result = await exec(
-      ["log", "--format=%H", "-n", depth.toString()],
-      path,
-    );
-    return result.stdout
-      .trim()
-      .split("\n")
-      .filter((line) => line.trim() !== "")
-      .map((oid) => ({ oid }));
+    try {
+      // Format: %H = commit hash, %s = subject, %at = author timestamp
+      const result = await exec(
+        ["log", "--format=%H%n%s%n%at%n---END---", "-n", depth.toString()],
+        path,
+      );
+      const output = result.stdout.trim();
+      if (!output) {
+        return [];
+      }
+      const commits = output
+        .split("---END---\n")
+        .filter((block) => block.trim());
+      return commits.map((block) => {
+        const lines = block.trim().split("\n");
+        const oid = lines[0];
+        const message = lines[1] || "";
+        const timestamp = parseInt(lines[2] || "0", 10);
+
+        return {
+          oid,
+          commit: {
+            message,
+            author: {
+              timestamp,
+            },
+          },
+        };
+      });
+    } catch (error) {
+      logger.warn(`Git log failed: ${error}`);
+      return [];
+    }
   } else {
     return await git.log({
       fs,

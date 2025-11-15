@@ -1,5 +1,6 @@
 import { getGitAuthor } from "./git_author";
 import git from "isomorphic-git";
+import http from "isomorphic-git/http/node";
 import { exec } from "dugite";
 import fs from "node:fs";
 import { promises as fsPromises } from "node:fs";
@@ -335,6 +336,38 @@ export async function gitRenameBranch({
       dir: path,
       oldref: oldBranch,
       ref: newBranch,
+    });
+  }
+}
+
+export async function gitClone({
+  path,
+  url,
+}: {
+  path: string;
+  url: string;
+}): Promise<void> {
+  const settings = readSettings();
+
+  if (settings.enableNativeGit) {
+    //  Dugite version: real Git clone
+    const result = await exec(
+      ["clone", "--depth", "1", "--single-branch", url, path],
+      ".",
+    );
+
+    if (result.exitCode !== 0) {
+      throw new Error(result.stderr.toString());
+    }
+  } else {
+    //  isomorphic-git version (JS-based fallback)
+    await git.clone({
+      fs,
+      http,
+      dir: path,
+      url,
+      singleBranch: true,
+      depth: 1,
     });
   }
 }

@@ -1,7 +1,6 @@
-import fs from "node:fs";
 import fsAsync from "node:fs/promises";
 import path from "node:path";
-import { isIgnored } from "isomorphic-git";
+import { gitIsIgnored } from "../ipc/utils/git_utils";
 import log from "electron-log";
 import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
 import { glob } from "glob";
@@ -176,9 +175,8 @@ async function isGitIgnored(
     }
 
     const relativePath = path.relative(baseDir, filePath);
-    const result = await isIgnored({
-      fs,
-      dir: baseDir,
+    const result = await gitIsIgnored({
+      path: baseDir,
       filepath: relativePath,
     });
 

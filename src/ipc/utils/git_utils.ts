@@ -343,31 +343,220 @@ export async function gitRenameBranch({
 export async function gitClone({
   path,
   url,
+  accessToken,
+  singleBranch = true,
+  depth = 1,
 }: {
   path: string;
   url: string;
+  accessToken?: string;
+  singleBranch?: boolean;
+  depth?: number | null; // null = full clone
 }): Promise<void> {
   const settings = readSettings();
+  // Build authenticated URL for GitHub if accessToken is provided
+  const finalUrl = accessToken
+    ? url.replace("https://", `https://${accessToken}:x-oauth-basic@`)
+    : url;
 
   if (settings.enableNativeGit) {
-    //  Dugite version: real Git clone
-    const result = await exec(
-      ["clone", "--depth", "1", "--single-branch", url, path],
-      ".",
-    );
+    // Dugite version (real Git)
+
+    const args = ["clone"];
+    // Include depth only if provided (depth=null means full clone)
+    if (depth && depth > 0) {
+      args.push("--depth", String(depth));
+    }
+
+    // singleBranch: false → do not include --single-branch
+    if (singleBranch) {
+      args.push("--single-branch");
+    }
+    args.push(finalUrl, path);
+
+    const result = await exec(args, ".");
 
     if (result.exitCode !== 0) {
       throw new Error(result.stderr.toString());
     }
   } else {
-    //  isomorphic-git version (JS-based fallback)
+    // isomorphic-git version
     await git.clone({
       fs,
       http,
       dir: path,
       url,
-      singleBranch: true,
-      depth: 1,
+      onAuth: accessToken
+        ? () => ({
+            username: accessToken,
+            password: "x-oauth-basic",
+          })
+        : undefined,
+      singleBranch,
+      depth: depth ?? undefined, // null => undefined => full clone
+    });
+  }
+}
+
+export async function gitSetRemoteUrl({
+  path,
+  remoteUrl,
+}: {
+  path: string;
+  remoteUrl: string;
+}): Promise<void> {
+  const settings = readSettings();
+
+  if (settings.enableNativeGit) {
+    // Dugite version
+    const result = await exec(["config", "remote.origin.url", remoteUrl], path);
+
+    if (result.exitCode !== 0) {
+      throw new Error(result.stderr.toString());
+    }
+  } else {
+    //isomorphic-git version
+    await git.setConfig({
+      fs,
+      dir: path,
+      path: "remote.origin.url",
+      value: remoteUrl,
+    });
+  }
+}
+
+export async function gitPush({
+  path,
+  branch,
+  accessToken,
+  force,
+  remoteUrl,
+}: {
+  path: string;
+  branch: string;
+  accessToken: string;
+  force?: boolean;
+  remoteUrl: string; // The repo URL without auth
+}): Promise<void> {
+  const settings = readSettings();
+
+  if (settings.enableNativeGit) {
+    //  Dugite version
+
+    // Build authenticated remote URL
+    const authedUrl = remoteUrl.replace(
+      "https://",
+      `https://${accessToken}:x-oauth-basic@`,
+    );
+
+    // git push origin main:<branch>
+    const args = [
+      "push",
+      authedUrl,
+      `main:${branch}`,
+      ...(force ? ["--force"] : []),
+    ];
+
+    const result = await exec(args, path);
+
+    if (result.exitCode !== 0) {
+      throw new Error(result.stderr.toString());
+    }
+  } else {
+    //  isomorphic-git version
+    await git.push({
+      fs,
+      http,
+      dir: path,
+      remote: "origin",
+      ref: "main",
+      remoteRef: branch,
+      onAuth: () => ({
+        username: accessToken,
+        password: "x-oauth-basic",
+      }),
+      force: !!force,
+    });
+  }
+}
+
+export async function gitCurrentBranch({
+  path,
+}: {
+  path: string;
+}): Promise<string | null> {
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    // Dugite version
+    const result = await exec(["branch", "--show-current"], path);
+    const branch = result.stdout.trim() || null;
+    return branch;
+  } else {
+    // isomorphic-git version returns string | undefined
+    const branch = await git.currentBranch({
+      fs,
+      dir: path,
+      fullname: false,
+    });
+    return branch ?? null;
+  }
+}
+
+export async function gitLog({
+  path,
+  depth = 100_000,
+}: {
+  path: string;
+  depth?: number;
+}): Promise<Array<{ oid: string }>> {
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    const result = await exec(
+      ["log", "--format=%H", "-n", depth.toString()],
+      path,
+    );
+    return result.stdout
+      .trim()
+      .split("\n")
+      .filter((line) => line.trim() !== "")
+      .map((oid) => ({ oid }));
+  } else {
+    return await git.log({
+      fs,
+      dir: path,
+      depth,
+    });
+  }
+}
+
+export async function gitIsIgnored({
+  path,
+  filepath,
+}: {
+  path: string; // baseDir
+  filepath: string; // relativePath
+}): Promise<boolean> {
+  const settings = readSettings();
+
+  if (settings.enableNativeGit) {
+    // Dugite version
+    // git check-ignore file
+    const result = await exec(["check-ignore", filepath], path);
+
+    // If exitCode == 0 → file is ignored
+    if (result.exitCode === 0) return true;
+
+    // If exitCode == 1 → not ignored
+    if (result.exitCode === 1) return false;
+
+    // Other exit codes are actual errors
+    throw new Error(result.stderr.toString());
+  } else {
+    // isomorphic-git version
+    return await git.isIgnored({
+      fs,
+      dir: path,
+      filepath,
     });
   }
 }

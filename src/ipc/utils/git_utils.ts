@@ -8,14 +8,26 @@ import pathModule from "node:path";
 import { readSettings } from "../../main/settings";
 import log from "electron-log";
 const logger = log.scope("git_utils");
+import type {
+  GitBaseParams,
+  GitFileParams,
+  GitCheckoutParams,
+  GitBranchRenameParams,
+  GitCloneParams,
+  GitCommitParams,
+  GitLogParams,
+  GitCommit,
+  GitFileAtCommitParams,
+  GitSetRemoteUrlParams,
+  GitStageToRevertParams,
+  GitInitParams,
+  GitPushParams,
+} from "../ipc_types";
 
 export async function getCurrentCommitHash({
   path,
   ref = "HEAD",
-}: {
-  path: string;
-  ref?: string;
-}): Promise<string> {
+}: GitInitParams): Promise<string> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
     const result = await exec(["rev-parse", ref], path);
@@ -33,11 +45,7 @@ export async function gitCommit({
   path,
   message,
   amend,
-}: {
-  path: string;
-  message: string;
-  amend?: boolean;
-}): Promise<string> {
+}: GitCommitParams): Promise<string> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
     // Perform the commit using dugite
@@ -63,10 +71,7 @@ export async function gitCommit({
 export async function gitCheckout({
   path,
   ref,
-}: {
-  path: string;
-  ref: string;
-}): Promise<void> {
+}: GitCheckoutParams): Promise<void> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
     await exec(["checkout", ref.replace(/"/g, '\\"').trim()], path);
@@ -79,10 +84,7 @@ export async function gitCheckout({
 export async function gitStageToRevert({
   path,
   targetOid,
-}: {
-  path: string;
-  targetOid: string;
-}): Promise<void> {
+}: GitStageToRevertParams): Promise<void> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
     // Get the current HEAD commit hash
@@ -158,7 +160,7 @@ export async function gitStageToRevert({
   }
 }
 
-export async function gitAddAll({ path }: { path: string }): Promise<void> {
+export async function gitAddAll({ path }: GitBaseParams): Promise<void> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
     await exec(["add", "."], path);
@@ -168,13 +170,7 @@ export async function gitAddAll({ path }: { path: string }): Promise<void> {
   }
 }
 
-export async function gitAdd({
-  path,
-  filepath,
-}: {
-  path: string;
-  filepath: string;
-}): Promise<void> {
+export async function gitAdd({ path, filepath }: GitFileParams): Promise<void> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
     await exec(["add", filepath], path);
@@ -190,10 +186,7 @@ export async function gitAdd({
 export async function gitInit({
   path,
   ref = "main",
-}: {
-  path: string;
-  ref?: string;
-}): Promise<void> {
+}: GitInitParams): Promise<void> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
     await exec(["init", "-b", ref], path);
@@ -209,10 +202,7 @@ export async function gitInit({
 export async function gitRemove({
   path,
   filepath,
-}: {
-  path: string;
-  filepath: string;
-}): Promise<void> {
+}: GitFileParams): Promise<void> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
     await exec(["rm", "-f", filepath], path);
@@ -225,7 +215,7 @@ export async function gitRemove({
   }
 }
 
-export async function gitStatus({ path }: { path: string }): Promise<string[]> {
+export async function gitStatus({ path }: GitBaseParams): Promise<string[]> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
     const result = await exec(["status", "--porcelain"], path);
@@ -246,11 +236,7 @@ export async function getFileAtCommit({
   path,
   filePath,
   commitHash,
-}: {
-  path: string;
-  filePath: string;
-  commitHash: string;
-}): Promise<string | null> {
+}: GitFileAtCommitParams): Promise<string | null> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
     try {
@@ -287,9 +273,7 @@ export async function getFileAtCommit({
 
 export async function gitListBranches({
   path,
-}: {
-  path: string;
-}): Promise<string[]> {
+}: GitBaseParams): Promise<string[]> {
   const settings = readSettings();
 
   if (settings.enableNativeGit) {
@@ -317,11 +301,7 @@ export async function gitRenameBranch({
   path,
   oldBranch,
   newBranch,
-}: {
-  path: string;
-  oldBranch: string;
-  newBranch: string;
-}): Promise<void> {
+}: GitBranchRenameParams): Promise<void> {
   const settings = readSettings();
 
   if (settings.enableNativeGit) {
@@ -346,13 +326,7 @@ export async function gitClone({
   accessToken,
   singleBranch = true,
   depth = 1,
-}: {
-  path: string;
-  url: string;
-  accessToken?: string;
-  singleBranch?: boolean;
-  depth?: number | null;
-}): Promise<void> {
+}: GitCloneParams): Promise<void> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
     // Dugite version (real Git)
@@ -398,10 +372,7 @@ export async function gitClone({
 export async function gitSetRemoteUrl({
   path,
   remoteUrl,
-}: {
-  path: string;
-  remoteUrl: string;
-}): Promise<void> {
+}: GitSetRemoteUrlParams): Promise<void> {
   const settings = readSettings();
 
   if (settings.enableNativeGit) {
@@ -446,12 +417,7 @@ export async function gitPush({
   branch,
   accessToken,
   force,
-}: {
-  path: string;
-  branch: string;
-  accessToken: string;
-  force?: boolean;
-}): Promise<void> {
+}: GitPushParams): Promise<void> {
   const settings = readSettings();
 
   if (settings.enableNativeGit) {
@@ -492,9 +458,7 @@ export async function gitPush({
 
 export async function gitCurrentBranch({
   path,
-}: {
-  path: string;
-}): Promise<string | null> {
+}: GitBaseParams): Promise<string | null> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
     // Dugite version
@@ -515,15 +479,7 @@ export async function gitCurrentBranch({
 export async function gitLog({
   path,
   depth = 100_000,
-}: {
-  path: string;
-  depth?: number;
-}): Promise<
-  Array<{
-    oid: string;
-    commit: { message: string; author: { timestamp: number } };
-  }>
-> {
+}: GitLogParams): Promise<GitCommit[]> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
     try {
@@ -571,10 +527,7 @@ export async function gitLog({
 export async function gitIsIgnored({
   path,
   filepath,
-}: {
-  path: string; // baseDir
-  filepath: string; // relativePath
-}): Promise<boolean> {
+}: GitFileParams): Promise<boolean> {
   const settings = readSettings();
 
   if (settings.enableNativeGit) {

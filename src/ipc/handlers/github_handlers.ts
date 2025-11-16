@@ -664,8 +664,11 @@ async function handleCloneRepoFromUrl(
     }
 
     const appPath = getDyadAppPath(finalAppName);
-    if (!fs.existsSync(appPath)) {
-      fs.mkdirSync(appPath, { recursive: true });
+    // Ensure the app directory exists if native git is disabled
+    if (!settings.enableNativeGit) {
+      if (!fs.existsSync(appPath)) {
+        fs.mkdirSync(appPath, { recursive: true });
+      }
     }
     // Use authenticated URL if token exists, otherwise use public HTTPS URL
     const cloneUrl = accessToken

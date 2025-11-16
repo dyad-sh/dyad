@@ -49,7 +49,7 @@ export async function gitCommit({
   const settings = readSettings();
   if (settings.enableNativeGit) {
     // Perform the commit using dugite
-    const args = ["commit", "-m", message.replace(/"/g, '\\"').trim()];
+    const args = ["commit", "-m", message];
     if (amend) {
       args.push("--amend");
     }
@@ -74,7 +74,7 @@ export async function gitCheckout({
 }: GitCheckoutParams): Promise<void> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
-    await exec(["checkout", ref.replace(/"/g, '\\"').trim()], path);
+    await exec(["checkout", ref], path);
     return;
   } else {
     return git.checkout({ fs, dir: path, ref });
@@ -173,7 +173,7 @@ export async function gitAddAll({ path }: GitBaseParams): Promise<void> {
 export async function gitAdd({ path, filepath }: GitFileParams): Promise<void> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
-    await exec(["add", filepath], path);
+    await exec(["add", "--", filepath], path);
   } else {
     await git.add({
       fs,

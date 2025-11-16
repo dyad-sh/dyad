@@ -543,7 +543,7 @@ export interface GitBranchRenameParams extends GitBaseParams {
 export interface GitCloneParams {
   path: string; // destination
   url: string;
-  depth?: number;
+  depth?: number | null;
   singleBranch?: boolean;
   accessToken?: string;
 }

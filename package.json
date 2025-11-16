@@ -40,14 +40,6 @@
     "e2e": "playwright test",
     "e2e:shard": "playwright test --shard"
   },
-  "build": {
-    "extraResources": [
-      {
-        "from": "node_modules/dugite/git",
-        "to": "git"
-      }
-    ]
-  },
   "keywords": [],
   "author": {
     "name": "Will Chen",

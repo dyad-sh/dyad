@@ -138,6 +138,18 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     },
   ],
   google: [
+    // https://ai.google.dev/gemini-api/docs/models#gemini-3-pro
+    {
+      name: "gemini-3-pro-preview",
+      displayName: "Gemini 3 Pro (Preview)",
+      description: "Google's latest Gemini model",
+      // See Flash 2.5 comment below (go 1 below just to be safe, even though it seems OK now).
+      maxOutputTokens: 65_536 - 1,
+      // Gemini context window = input token + output token
+      contextWindow: 1_048_576,
+      temperature: 1.0,
+      dollarSigns: 4,
+    },
     // https://ai.google.dev/gemini-api/docs/models#gemini-2.5-pro-preview-03-25
     {
       name: "gemini-2.5-pro",

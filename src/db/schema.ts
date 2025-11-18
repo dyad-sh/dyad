@@ -1,5 +1,11 @@
 import { sql } from "drizzle-orm";
-import { integer, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
+import {
+  AnySQLiteColumn,
+  integer,
+  sqliteTable,
+  text,
+  unique,
+} from "drizzle-orm/sqlite-core";
 import { relations } from "drizzle-orm";
 
 export const prompts = sqliteTable("prompts", {
@@ -72,6 +78,13 @@ export const messages = sqliteTable("messages", {
   approvalState: text("approval_state", {
     enum: ["approved", "rejected"],
   }),
+  parentMessageId: integer("parent_message_id").references(
+    (): AnySQLiteColumn => messages.id,
+    {
+      onDelete: "set null",
+    },
+  ),
+  conversationStep: integer("conversation_step"),
   // The commit hash of the codebase at the time the message was created
   sourceCommitHash: text("source_commit_hash"),
   // The commit hash of the codebase at the time the message was sent
@@ -118,11 +131,17 @@ export const chatsRelations = relations(chats, ({ many, one }) => ({
   }),
 }));
 
-export const messagesRelations = relations(messages, ({ one }) => ({
+export const messagesRelations = relations(messages, ({ one, many }) => ({
   chat: one(chats, {
     fields: [messages.chatId],
     references: [chats.id],
   }),
+  parent: one(messages, {
+    fields: [messages.parentMessageId],
+    references: [messages.id],
+    relationName: "messageParent",
+  }),
+  children: many(messages, { relationName: "messageParent" }),
 }));
 
 export const language_model_providers = sqliteTable(

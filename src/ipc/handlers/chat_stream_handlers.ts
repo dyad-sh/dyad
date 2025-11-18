@@ -13,7 +13,7 @@ import {
 
 import { db } from "../../db";
 import { chats, messages } from "../../db/schema";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import {
   constructSystemPrompt,
   readAiRules,
@@ -123,6 +123,64 @@ function escapeXml(unsafe: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+type DbMessage = typeof messages.$inferSelect;
+
+async function getNextConversationStep(chatId: number): Promise<number> {
+  const [result] = await db
+    .select({
+      maxStep: sql<number | null>`max(${messages.conversationStep})`,
+      userCount: sql<number>`sum(case when ${messages.role} = 'user' then 1 else 0 end)`,
+    })
+    .from(messages)
+    .where(eq(messages.chatId, chatId));
+
+  const fallbackValue =
+    result?.maxStep ?? (result?.userCount ? Number(result.userCount) : 0);
+  return (fallbackValue ?? 0) + 1;
+}
+
+function buildMessageHistory(
+  dbMessages: DbMessage[],
+  selectedMessageIds?: number[],
+  appendedMessages: DbMessage[] = [],
+): Array<{
+  role: "user" | "assistant" | "system";
+  content: string;
+  sourceCommitHash: string | null;
+}> {
+  if (selectedMessageIds && selectedMessageIds.length > 0) {
+    const messageMap = new Map<number, DbMessage>();
+    for (const message of dbMessages) {
+      messageMap.set(message.id, message);
+    }
+
+    const orderedMessages = selectedMessageIds
+      .map((id) => messageMap.get(id))
+      .filter((message): message is DbMessage => Boolean(message));
+
+    const appended = appendedMessages.filter((message) =>
+      orderedMessages.every((existing) => existing.id !== message.id),
+    );
+
+    return [...orderedMessages, ...appended].map((message) => ({
+      role: message.role as "user" | "assistant" | "system",
+      content: message.content,
+      sourceCommitHash: message.sourceCommitHash,
+    }));
+  }
+
+  const orderedMessages = [...dbMessages];
+  const appended = appendedMessages.filter((message) =>
+    orderedMessages.every((existing) => existing.id !== message.id),
+  );
+
+  return [...orderedMessages, ...appended].map((message) => ({
+    role: message.role as "user" | "assistant" | "system",
+    content: message.content,
+    sourceCommitHash: message.sourceCommitHash,
+  }));
 }
 
 // Safely parse an MCP tool key that combines server and tool names.
@@ -396,12 +454,18 @@ ${componentSnippet}
         }
       }
 
-      await db
+      const conversationStep =
+        req.branch?.conversationStep ??
+        (await getNextConversationStep(req.chatId));
+
+      const [insertedUserMessage] = await db
         .insert(messages)
         .values({
           chatId: req.chatId,
           role: "user",
           content: userPrompt,
+          parentMessageId: req.branch?.parentUserMessageId ?? null,
+          conversationStep,
         })
         .returning();
       const settings = readSettings();
@@ -422,6 +486,8 @@ ${componentSnippet}
           sourceCommitHash: await getCurrentCommitHash({
             path: getDyadAppPath(chat.app.path),
           }),
+          parentMessageId: req.branch?.parentAssistantMessageId ?? null,
+          conversationStep,
         })
         .returning();
 
@@ -542,11 +608,11 @@ ${componentSnippet}
         );
 
         // Prepare message history for the AI
-        const messageHistory = updatedChat.messages.map((message) => ({
-          role: message.role as "user" | "assistant" | "system",
-          content: message.content,
-          sourceCommitHash: message.sourceCommitHash,
-        }));
+        const messageHistory = buildMessageHistory(
+          updatedChat.messages,
+          req.branch?.selectedMessageIds,
+          [insertedUserMessage, placeholderAssistantMessage],
+        );
 
         // For Dyad Pro + Deep Context, we set to 200 chat turns (+1)
         // this is to enable more cache hits. Practically, users should

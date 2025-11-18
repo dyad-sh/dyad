@@ -12,6 +12,10 @@ import {
   GitCommit,
   Copy,
   Check,
+  ChevronLeft,
+  ChevronRight,
+  Pencil,
+  Loader2,
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 import { useVersions } from "@/hooks/useVersions";
@@ -25,13 +29,28 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "../ui/tooltip";
+import { Button } from "../ui/button";
+import { showError } from "@/lib/toast";
+
+interface VersionControls {
+  totalVersions: number;
+  currentIndex: number;
+  onSelectIndex?: (index: number) => void;
+}
 
 interface ChatMessageProps {
   message: Message;
   isLastMessage: boolean;
+  versionControls?: VersionControls;
+  onEditMessage?: (newContent: string) => Promise<void>;
 }
 
-const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
+const ChatMessage = ({
+  message,
+  isLastMessage,
+  versionControls,
+  onEditMessage,
+}: ChatMessageProps) => {
   const { isStreaming } = useStreamChat();
   const appId = useAtomValue(selectedAppIdAtom);
   const { versions: liveVersions } = useVersions(appId);
@@ -69,6 +88,39 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
     };
   }, []);
 
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedContent, setEditedContent] = useState(message.content);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  useEffect(() => {
+    if (!isEditing) {
+      setEditedContent(message.content);
+    }
+  }, [message.content, isEditing]);
+
+  const handleSaveEdit = async () => {
+    if (!onEditMessage) {
+      return;
+    }
+    if (!editedContent.trim()) {
+      showError("Message cannot be empty");
+      return;
+    }
+    if (editedContent.trim() === message.content.trim()) {
+      setIsEditing(false);
+      return;
+    }
+    try {
+      setIsSavingEdit(true);
+      await onEditMessage(editedContent);
+      setIsEditing(false);
+    } catch (error) {
+      showError(error);
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
   // Format the message timestamp
   const formatTimestamp = (timestamp: string | Date) => {
     const now = new Date();
@@ -94,10 +146,96 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
             message.role === "assistant" ? "" : "ml-24 bg-(--sidebar-accent)"
           }`}
         >
-          {message.role === "assistant" &&
-          !message.content &&
-          isStreaming &&
-          isLastMessage ? (
+          {message.role === "user" && (versionControls || onEditMessage) && (
+            <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+              {versionControls && versionControls.totalVersions > 1 && (
+                <div className="flex items-center space-x-1">
+                  <button
+                    className="p-1 rounded hover:bg-(--background-darkest) disabled:opacity-30"
+                    onClick={() =>
+                      versionControls.onSelectIndex?.(
+                        versionControls.currentIndex - 1,
+                      )
+                    }
+                    disabled={
+                      versionControls.currentIndex === 0 ||
+                      !versionControls.onSelectIndex
+                    }
+                    aria-label="Previous version"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <span>
+                    Version {versionControls.currentIndex + 1}/
+                    {versionControls.totalVersions}
+                  </span>
+                  <button
+                    className="p-1 rounded hover:bg-(--background-darkest) disabled:opacity-30"
+                    onClick={() =>
+                      versionControls.onSelectIndex?.(
+                        versionControls.currentIndex + 1,
+                      )
+                    }
+                    disabled={
+                      versionControls.currentIndex >=
+                        versionControls.totalVersions - 1 ||
+                      !versionControls.onSelectIndex
+                    }
+                    aria-label="Next version"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
+              {onEditMessage && !isEditing && (
+                <button
+                  className="flex items-center space-x-1 text-(--sidebar-accent-fg) hover:underline disabled:opacity-50"
+                  onClick={() => setIsEditing(true)}
+                  disabled={isStreaming}
+                >
+                  <Pencil className="h-3 w-3" />
+                  <span>Edit</span>
+                </button>
+              )}
+            </div>
+          )}
+          {isEditing ? (
+            <div>
+              <textarea
+                className="w-full rounded border border-border bg-background p-2 text-sm focus:outline-none focus:ring-2 focus:ring-(--sidebar-accent-fg)"
+                rows={6}
+                value={editedContent}
+                onChange={(event) => setEditedContent(event.target.value)}
+              />
+              <div className="mt-2 flex justify-end gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setIsEditing(false);
+                    setEditedContent(message.content);
+                  }}
+                  disabled={isSavingEdit}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleSaveEdit}
+                  disabled={isSavingEdit || !editedContent.trim()}
+                >
+                  {isSavingEdit ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    "Save"
+                  )}
+                </Button>
+              </div>
+            </div>
+          ) : message.role === "assistant" &&
+            !message.content &&
+            isStreaming &&
+            isLastMessage ? (
             <div className="flex h-6 items-center space-x-2 p-2">
               <motion.div
                 className="h-3 w-3 rounded-full bg-(--primary) dark:bg-blue-500"

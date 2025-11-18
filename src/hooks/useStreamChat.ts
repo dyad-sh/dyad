@@ -3,6 +3,7 @@ import type {
   ComponentSelection,
   Message,
   FileAttachment,
+  ChatStreamParams,
 } from "@/ipc/ipc_types";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
@@ -70,6 +71,7 @@ export function useStreamChat({
       redo,
       attachments,
       selectedComponents,
+      branch,
       onSettled,
     }: {
       prompt: string;
@@ -77,6 +79,7 @@ export function useStreamChat({
       redo?: boolean;
       attachments?: FileAttachment[];
       selectedComponents?: ComponentSelection[];
+      branch?: ChatStreamParams["branch"];
       onSettled?: () => void;
     }) => {
       if (
@@ -110,6 +113,7 @@ export function useStreamChat({
           chatId,
           redo,
           attachments,
+          branch,
           onUpdate: (updatedMessages: Message[]) => {
             if (!hasIncrementedStreamCount) {
               setStreamCountById((prev) => {

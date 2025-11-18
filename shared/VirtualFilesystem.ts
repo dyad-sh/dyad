@@ -44,7 +44,7 @@ export abstract class BaseVirtualFileSystem {
     // e.g. foo.txt and Foo.txt are treated as different files by the VFS
     // even though Windows treats them as the same file.
     //
-    // This should be a pretty rare occurence and it's not worth the extra
+    // This should be a pretty rare occurrence and it's not worth the extra
     // complexity to handle it.
     return normalized;
   }

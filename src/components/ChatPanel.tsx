@@ -171,6 +171,13 @@ export function ChatPanel({
         if (existingIndex === undefined || existingIndex > lastIndex) {
           perChatSelections.set(step.stepKey, lastIndex);
           changed = true;
+        } else if (
+          totalVersions >= 2 &&
+          existingIndex === totalVersions - 2 &&
+          existingIndex === lastIndex - 1
+        ) {
+          perChatSelections.set(step.stepKey, lastIndex);
+          changed = true;
         }
       }
 

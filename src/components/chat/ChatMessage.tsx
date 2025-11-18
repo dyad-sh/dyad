@@ -30,6 +30,7 @@ import {
   TooltipTrigger,
 } from "../ui/tooltip";
 import { Button } from "../ui/button";
+import { Textarea } from "../ui/textarea";
 import { showError } from "@/lib/toast";
 
 interface VersionControls {
@@ -146,69 +147,16 @@ const ChatMessage = ({
             message.role === "assistant" ? "" : "ml-24 bg-(--sidebar-accent)"
           }`}
         >
-          {message.role === "user" && (versionControls || onEditMessage) && (
-            <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-              {versionControls && versionControls.totalVersions > 1 && (
-                <div className="flex items-center space-x-1">
-                  <button
-                    className="p-1 rounded hover:bg-(--background-darkest) disabled:opacity-30"
-                    onClick={() =>
-                      versionControls.onSelectIndex?.(
-                        versionControls.currentIndex - 1,
-                      )
-                    }
-                    disabled={
-                      versionControls.currentIndex === 0 ||
-                      !versionControls.onSelectIndex
-                    }
-                    aria-label="Previous version"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </button>
-                  <span>
-                    Version {versionControls.currentIndex + 1}/
-                    {versionControls.totalVersions}
-                  </span>
-                  <button
-                    className="p-1 rounded hover:bg-(--background-darkest) disabled:opacity-30"
-                    onClick={() =>
-                      versionControls.onSelectIndex?.(
-                        versionControls.currentIndex + 1,
-                      )
-                    }
-                    disabled={
-                      versionControls.currentIndex >=
-                        versionControls.totalVersions - 1 ||
-                      !versionControls.onSelectIndex
-                    }
-                    aria-label="Next version"
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </button>
-                </div>
-              )}
-              {onEditMessage && !isEditing && (
-                <button
-                  className="flex items-center space-x-1 text-(--sidebar-accent-fg) hover:underline disabled:opacity-50"
-                  onClick={() => setIsEditing(true)}
-                  disabled={isStreaming}
-                >
-                  <Pencil className="h-3 w-3" />
-                  <span>Edit</span>
-                </button>
-              )}
-            </div>
-          )}
           {isEditing ? (
-            <div>
-              <textarea
-                className="w-full rounded border border-border bg-background p-2 text-sm focus:outline-none focus:ring-2 focus:ring-(--sidebar-accent-fg)"
-                rows={6}
+            <div className="flex flex-col gap-2">
+              <Textarea
+                className="w-full p-2 border rounded-md"
                 value={editedContent}
                 onChange={(event) => setEditedContent(event.target.value)}
               />
-              <div className="mt-2 flex justify-end gap-2">
+              <div className="flex justify-end gap-2">
                 <Button
+                  className="px-2 py-1"
                   size="sm"
                   variant="ghost"
                   onClick={() => {
@@ -220,6 +168,7 @@ const ChatMessage = ({
                   Cancel
                 </Button>
                 <Button
+                  className="px-2 py-1"
                   size="sm"
                   onClick={handleSaveEdit}
                   disabled={isSavingEdit || !editedContent.trim()}
@@ -291,6 +240,7 @@ const ChatMessage = ({
               )}
             </div>
           )}
+
           {(message.role === "assistant" && message.content && !isStreaming) ||
           message.approvalState ? (
             <div
@@ -346,6 +296,86 @@ const ChatMessage = ({
             </div>
           ) : null}
         </div>
+
+        {!isEditing &&
+          message.role === "user" &&
+          (versionControls || onEditMessage) && (
+            <div className="flex items-center justify-end space-x-2 text-xs mt-1">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={handleCopyFormatted}
+                      className="flex items-center space-x-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
+                    >
+                      {copied ? (
+                        <Check className="h-4 w-4 text-green-500" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>{copied ? "Copied!" : "Copy"}</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              {onEditMessage && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        className="flex items-center space-x-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
+                        onClick={() => setIsEditing(true)}
+                        disabled={isStreaming}
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Edit Message</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+              {versionControls && versionControls.totalVersions > 1 && (
+                <div className="flex items-center space-x-1">
+                  <button
+                    className="p-1 rounded hover:bg-(--background-darkest) disabled:opacity-30"
+                    onClick={() =>
+                      versionControls.onSelectIndex?.(
+                        versionControls.currentIndex - 1,
+                      )
+                    }
+                    disabled={
+                      versionControls.currentIndex === 0 ||
+                      !versionControls.onSelectIndex
+                    }
+                    aria-label="Previous version"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <span>
+                    {versionControls.currentIndex + 1}/
+                    {versionControls.totalVersions}
+                  </span>
+                  <button
+                    className="p-1 rounded hover:bg-(--background-darkest) disabled:opacity-30"
+                    onClick={() =>
+                      versionControls.onSelectIndex?.(
+                        versionControls.currentIndex + 1,
+                      )
+                    }
+                    disabled={
+                      versionControls.currentIndex >=
+                        versionControls.totalVersions - 1 ||
+                      !versionControls.onSelectIndex
+                    }
+                    aria-label="Next version"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         {/* Timestamp and commit info for assistant messages - only visible on hover */}
         {message.role === "assistant" && message.createdAt && (
           <div className="mt-1 flex flex-wrap items-center justify-start space-x-2 text-xs text-gray-500 dark:text-gray-400 ">
@@ -376,7 +406,7 @@ const ChatMessage = ({
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <button
+                    <Button
                       onClick={() => {
                         if (!message.requestId) return;
                         navigator.clipboard
@@ -396,6 +426,8 @@ const ChatMessage = ({
                           });
                       }}
                       className="flex items-center space-x-1 px-1 py-0.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
+                      variant="ghost"
+                      size="sm"
                     >
                       {copiedRequestId ? (
                         <Check className="h-3 w-3 text-green-500" />
@@ -405,7 +437,7 @@ const ChatMessage = ({
                       <span className="text-xs">
                         {copiedRequestId ? "Copied" : "Request ID"}
                       </span>
-                    </button>
+                    </Button>
                   </TooltipTrigger>
                   <TooltipContent>
                     {copiedRequestId

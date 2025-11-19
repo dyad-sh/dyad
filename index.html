@@ -2,6 +2,10 @@
 <html>
   <head>
     <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' http://localhost:*; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://us-assets.i.posthog.com http://localhost:*; style-src 'self' 'unsafe-inline' http://localhost:*; img-src 'self' data: https: blob: http://localhost:*; connect-src 'self' https://us.i.posthog.com https://us-assets.i.posthog.com https://*.posthog.com http://localhost:* ws: wss:; font-src 'self' data: http://localhost:*; frame-src 'self' http://localhost:* https:; child-src 'self' http://localhost:* https:;"
+    />
     <title>Dyad</title>
     <link href="/src/styles/globals.css" rel="stylesheet" />
   </head>

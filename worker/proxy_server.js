@@ -193,7 +193,15 @@ const server = http.createServer((clientReq, clientRes) => {
 
     if (!inject) {
       clientRes.writeHead(upRes.statusCode, upRes.headers);
-      return void upRes.pipe(clientRes);
+      upRes.pipe(clientRes);
+      upRes.on("error", () => {
+        // Silently handle upstream response errors
+        if (!clientRes.headersSent) {
+          clientRes.writeHead(502);
+        }
+        clientRes.end();
+      });
+      return;
     }
 
     const chunks = [];
@@ -212,19 +220,38 @@ const server = http.createServer((clientReq, clientRes) => {
         // Also, remove ETag as content has changed
         delete hdrs["etag"];
 
-        clientRes.writeHead(upRes.statusCode, hdrs);
+        if (!clientRes.headersSent) {
+          clientRes.writeHead(upRes.statusCode, hdrs);
+        }
         clientRes.end(patched);
       } catch (e) {
-        clientRes.writeHead(500, { "content-type": "text/plain" });
+        if (!clientRes.headersSent) {
+          clientRes.writeHead(500, { "content-type": "text/plain" });
+        }
         clientRes.end("Injection failed: " + e.message);
       }
+    });
+    upRes.on("error", () => {
+      // Silently handle upstream response errors
+      if (!clientRes.headersSent) {
+        clientRes.writeHead(502);
+      }
+      clientRes.end();
     });
   });
 
   clientReq.pipe(upReq);
+  clientReq.on("error", () => {
+    // Silently handle client request errors
+    upReq.destroy();
+  });
   upReq.on("error", (e) => {
-    clientRes.writeHead(502, { "content-type": "text/plain" });
-    clientRes.end("Upstream error: " + e.message);
+    if (!clientRes.headersSent) {
+      clientRes.writeHead(502, { "content-type": "text/plain" });
+      clientRes.end("Upstream error: " + e.message);
+    } else {
+      clientRes.end();
+    }
   });
 });
 
@@ -233,6 +260,11 @@ const server = http.createServer((clientReq, clientRes) => {
 /* ----------------------------------------------------------------------- */
 
 server.on("upgrade", (req, socket, _head) => {
+  // Add error handler immediately to prevent crashes
+  socket.on("error", () => {
+    socket.destroy();
+  });
+
   let target;
   try {
     target = buildTargetURL(req);
@@ -264,6 +296,14 @@ server.on("upgrade", (req, socket, _head) => {
     );
     if (upHead && upHead.length) socket.write(upHead);
 
+    // Handle errors on both sockets to prevent EPIPE
+    socket.on("error", () => {
+      upSocket.destroy();
+    });
+    upSocket.on("error", () => {
+      socket.destroy();
+    });
+
     upSocket.pipe(socket).pipe(upSocket);
   });
 
@@ -272,6 +312,18 @@ server.on("upgrade", (req, socket, _head) => {
 });
 
 /* ----------------------------------------------------------------------- */
+
+// Add global error handler to prevent crashes
+server.on("error", (err) => {
+  parentPort?.postMessage(`[proxy-worker] Server error: ${err.message}`);
+});
+
+// Handle client connection errors
+server.on("clientError", (err, socket) => {
+  if (socket.writable) {
+    socket.end("HTTP/1.1 400 Bad Request\r\n\r\n");
+  }
+});
 
 server.listen(LISTEN_PORT, LISTEN_HOST, () => {
   parentPort?.postMessage(

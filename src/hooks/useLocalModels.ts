@@ -26,7 +26,7 @@ export function useLocalModels() {
 
       return modelList;
     } catch (error) {
-      console.error("Error loading local Ollama models:", error);
+      // Silently handle error - Ollama service may not be running
       setError(error instanceof Error ? error : new Error(String(error)));
       return [];
     } finally {

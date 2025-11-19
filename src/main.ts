@@ -31,6 +31,12 @@ dotenv.config();
 // Register IPC handlers before app is ready
 registerIpcHandlers();
 
+// Increase Chromium memory limits to prevent tile memory errors
+app.commandLine.appendSwitch("max-old-space-size", "4096");
+app.commandLine.appendSwitch("renderer-process-limit", "100");
+app.commandLine.appendSwitch("disable-gpu-vsync");
+app.commandLine.appendSwitch("ignore-gpu-blacklist");
+
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
   app.quit();
@@ -159,10 +165,10 @@ const createWindow = () => {
       path.join(__dirname, "../renderer/main_window/index.html"),
     );
   }
-  if (process.env.NODE_ENV === "development") {
-    // Open the DevTools.
-    mainWindow.webContents.openDevTools();
-  }
+  // DevTools disabled to reduce memory consumption
+  // if (process.env.NODE_ENV === "development") {
+  //   mainWindow.webContents.openDevTools();
+  // }
 };
 
 const gotTheLock = app.requestSingleInstanceLock();

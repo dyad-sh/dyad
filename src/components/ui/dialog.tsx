@@ -52,6 +52,15 @@ function DialogContent({
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean;
 }) {
+  // Generate a unique ID for aria-describedby if not provided
+  const descriptionId = React.useId();
+  const hasDescription = React.Children.toArray(children).some(
+    (child) =>
+      React.isValidElement(child) &&
+      typeof child.type !== "string" &&
+      child.type === DialogDescription
+  );
+
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />
@@ -61,9 +70,15 @@ function DialogContent({
           "bg-white/5 backdrop-blur-md border-white/15 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-3 rounded-lg border p-4 shadow-xl duration-200 sm:max-w-lg text-white",
           className,
         )}
+        aria-describedby={props["aria-describedby"] ?? (hasDescription ? undefined : descriptionId)}
         {...props}
       >
         {children}
+        {!hasDescription && !props["aria-describedby"] && (
+          <DialogPrimitive.Description id={descriptionId} className="sr-only">
+            Dialog content
+          </DialogPrimitive.Description>
+        )}
         {showCloseButton !== false && (
           <DialogPrimitive.Close className="ring-offset-background focus:ring-ring data-[state=open]:bg-white/10 data-[state=open]:text-white/70 absolute top-3 right-3 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3 hover:bg-white/10 p-1">
             <XIcon />

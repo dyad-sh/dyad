@@ -11,8 +11,8 @@ export default function LibraryPage() {
     usePrompts();
 
   return (
-    <div className="min-h-screen px-8 py-6">
-      <div className="max-w-6xl mx-auto">
+    <div className="h-screen overflow-y-auto px-8 py-6">
+      <div className="max-w-6xl mx-auto pb-8">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-3xl font-bold mr-4">Library: Prompts</h1>
           <CreatePromptDialog onCreatePrompt={createPrompt} />

@@ -58,7 +58,7 @@ const posthogClient = posthog.init(
   {
     api_host: "https://us.i.posthog.com",
     // @ts-ignore
-    debug: import.meta.env.MODE === "development",
+    debug: false, // Disabled to reduce console noise
     autocapture: false,
     capture_exceptions: true,
     capture_pageview: false,

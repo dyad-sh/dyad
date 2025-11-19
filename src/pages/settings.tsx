@@ -51,8 +51,8 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="min-h-screen px-8 py-4">
-      <div className="max-w-5xl mx-auto">
+    <div className="h-screen overflow-y-auto px-8 py-4">
+      <div className="max-w-5xl mx-auto pb-8">
         <Button
           onClick={() => router.history.back()}
           variant="outline"

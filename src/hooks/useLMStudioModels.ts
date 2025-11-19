@@ -26,7 +26,7 @@ export function useLocalLMSModels() {
 
       return modelList;
     } catch (error) {
-      console.error("Error loading local LMStudio models:", error);
+      // Silently handle error - LMStudio service may not be running
       setError(error instanceof Error ? error : new Error(String(error)));
       return [];
     } finally {

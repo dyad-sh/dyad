@@ -171,8 +171,8 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   // --- Loading State for Providers ---
   if (providersLoading) {
     return (
-      <div className="min-h-screen px-8 py-4">
-        <div className="max-w-4xl mx-auto">
+      <div className="h-screen overflow-y-auto px-8 py-4">
+        <div className="max-w-4xl mx-auto pb-8">
           <Skeleton className="h-8 w-24 mb-4" />
           <Skeleton className="h-10 w-1/2 mb-6" />
           <Skeleton className="h-10 w-48 mb-4" />
@@ -187,8 +187,8 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   // --- Error State for Providers ---
   if (providersError) {
     return (
-      <div className="min-h-screen px-8 py-4">
-        <div className="max-w-4xl mx-auto">
+      <div className="h-screen overflow-y-auto px-8 py-4">
+        <div className="max-w-4xl mx-auto pb-8">
           <Button
             onClick={() => router.history.back()}
             variant="outline"
@@ -216,8 +216,8 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   // Handle case where provider is not found (e.g., invalid ID in URL)
   if (!providerData && !isDyad) {
     return (
-      <div className="min-h-screen px-8 py-4">
-        <div className="max-w-4xl mx-auto">
+      <div className="h-screen overflow-y-auto px-8 py-4">
+        <div className="max-w-4xl mx-auto pb-8">
           <Button
             onClick={() => router.history.back()}
             variant="outline"
@@ -243,8 +243,8 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   }
 
   return (
-    <div className="min-h-screen px-8 py-4">
-      <div className="max-w-4xl mx-auto">
+    <div className="h-screen overflow-y-auto px-8 py-4">
+      <div className="max-w-4xl mx-auto pb-8">
         <ProviderSettingsHeader
           providerDisplayName={providerDisplayName}
           isConfigured={isConfigured}

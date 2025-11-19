@@ -1,10 +1,14 @@
 import { db } from "../../db";
 import { mcpServers } from "../../db/schema";
-import { experimental_createMCPClient, experimental_MCPClient } from "ai";
+// TODO: Fix MCP client imports - experimental_createMCPClient removed from "ai" package
+// import { experimental_createMCPClient, experimental_MCPClient } from "ai";
 import { eq } from "drizzle-orm";
 
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+
+// Temporary type until MCP client API is fixed
+type experimental_MCPClient = any;
 
 class McpManager {
   private static _instance: McpManager;
@@ -40,11 +44,13 @@ class McpManager {
     } else {
       throw new Error(`Unsupported MCP transport: ${s.transport}`);
     }
-    const client = await experimental_createMCPClient({
-      transport,
-    });
-    this.clients.set(serverId, client);
-    return client;
+    // TODO: Fix this once MCP client API is restored
+    throw new Error("MCP client functionality temporarily disabled due to API changes");
+    // const client = await experimental_createMCPClient({
+    //   transport,
+    // });
+    // this.clients.set(serverId, client);
+    // return client;
   }
 
   dispose(serverId: number) {

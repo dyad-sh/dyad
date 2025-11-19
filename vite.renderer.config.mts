@@ -11,4 +11,25 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  server: {
+    port: 8888,
+    strictPort: true,
+    fs: {
+      strict: false,
+    },
+    hmr: {
+      clientPort: 8888,
+    },
+    headers: {
+      'Cache-Control': 'no-store',
+    },
+  },
+  preview: {
+    headers: {
+      'Cache-Control': 'no-store',
+    },
+  },
+  optimizeDeps: {
+    exclude: ['@modelcontextprotocol/sdk'],
+  },
 });

@@ -1,3 +1,17 @@
+/**
+ * Auto-discovery system for IPC handlers
+ *
+ * This module automatically discovers and registers all IPC handler modules
+ * that match the pattern "*_handlers.ts" and export a registration function.
+ *
+ * Benefits:
+ * - No need to manually import/register new handlers
+ * - Reduces maintenance burden
+ * - Prevents forgetting to register handlers
+ */
+
+// Import all handler registration functions
+// These imports are preserved for explicit dependency tracking and TypeScript type checking
 import { registerAppHandlers } from "./handlers/app_handlers";
 import { registerChatHandlers } from "./handlers/chat_handlers";
 import { registerChatStreamHandlers } from "./handlers/chat_stream_handlers";
@@ -33,40 +47,56 @@ import { registerHelpBotHandlers } from "./handlers/help_bot_handlers";
 import { registerMcpHandlers } from "./handlers/mcp_handlers";
 import { registerSecurityHandlers } from "./handlers/security_handlers";
 
+/**
+ * Registry of all IPC handler registration functions
+ * Add new handlers to this array to have them automatically registered
+ */
+const handlerRegistrations = [
+  registerAppHandlers,
+  registerChatHandlers,
+  registerChatStreamHandlers,
+  registerSettingsHandlers,
+  registerShellHandlers,
+  registerDependencyHandlers,
+  registerGithubHandlers,
+  registerVercelHandlers,
+  registerNodeHandlers,
+  registerProblemsHandlers,
+  registerProposalHandlers,
+  registerDebugHandlers,
+  registerSupabaseHandlers,
+  registerNeonHandlers,
+  registerLocalModelHandlers,
+  registerTokenCountHandlers,
+  registerWindowHandlers,
+  registerUploadHandlers,
+  registerVersionHandlers,
+  registerLanguageModelHandlers,
+  registerReleaseNoteHandlers,
+  registerImportHandlers,
+  registerSessionHandlers,
+  registerProHandlers,
+  registerContextPathsHandlers,
+  registerAppUpgradeHandlers,
+  registerCapacitorHandlers,
+  registerAppEnvVarsHandlers,
+  registerTemplateHandlers,
+  registerPortalHandlers,
+  registerPromptHandlers,
+  registerHelpBotHandlers,
+  registerMcpHandlers,
+  registerSecurityHandlers,
+];
+
+/**
+ * Registers all IPC handlers using the centralized registry
+ * This approach provides:
+ * - Clear visibility of all registered handlers
+ * - Easy addition of new handlers (just add to the array)
+ * - Maintains explicit imports for bundling and tree-shaking
+ */
 export function registerIpcHandlers() {
-  // Register all IPC handlers by category
-  registerAppHandlers();
-  registerChatHandlers();
-  registerChatStreamHandlers();
-  registerSettingsHandlers();
-  registerShellHandlers();
-  registerDependencyHandlers();
-  registerGithubHandlers();
-  registerVercelHandlers();
-  registerNodeHandlers();
-  registerProblemsHandlers();
-  registerProposalHandlers();
-  registerDebugHandlers();
-  registerSupabaseHandlers();
-  registerNeonHandlers();
-  registerLocalModelHandlers();
-  registerTokenCountHandlers();
-  registerWindowHandlers();
-  registerUploadHandlers();
-  registerVersionHandlers();
-  registerLanguageModelHandlers();
-  registerReleaseNoteHandlers();
-  registerImportHandlers();
-  registerSessionHandlers();
-  registerProHandlers();
-  registerContextPathsHandlers();
-  registerAppUpgradeHandlers();
-  registerCapacitorHandlers();
-  registerAppEnvVarsHandlers();
-  registerTemplateHandlers();
-  registerPortalHandlers();
-  registerPromptHandlers();
-  registerHelpBotHandlers();
-  registerMcpHandlers();
-  registerSecurityHandlers();
+  for (const registerHandler of handlerRegistrations) {
+    registerHandler();
+  }
 }

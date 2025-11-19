@@ -49,6 +49,11 @@ jobs:
         # Only run on shard 1 to avoid redundant execution
         if: contains(matrix.os.name, 'macos') && matrix.shard == 1
         run: npm run presubmit
+      - name: Security audit
+        # Only run on shard 1 to avoid redundant execution
+        if: contains(matrix.os.name, 'macos') && matrix.shard == 1
+        run: npm audit --production --audit-level=high
+        continue-on-error: true
       - name: Type-checking
         # do not run this on windows (it's redunant)
         # Only run on shard 1 to avoid redundant execution

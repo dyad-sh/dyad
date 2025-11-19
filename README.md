@@ -22,6 +22,16 @@ No sign-up required. Just download and go.
 
 Join our growing community of AI app builders on **Reddit**: [r/dyadbuilders](https://www.reddit.com/r/dyadbuilders/) - share your projects and get help from the community!
 
+## 📚 Documentation
+
+- **[Architecture](./docs/architecture.md)** - System design and technical architecture
+- **[IPC API](./docs/IPC_API.md)** - Inter-process communication API reference
+- **[Performance](./docs/PERFORMANCE.md)** - Optimization guide and best practices
+- **[Troubleshooting](./docs/TROUBLESHOOTING.md)** - Common issues and solutions
+- **[Migrations](./docs/MIGRATIONS.md)** - Version upgrade guide
+- **[Security](./SECURITY.md)** - Security policy and reporting
+- **[Contributing](./CONTRIBUTING.md)** - How to contribute to Dyad
+
 ## 🛠️ Contributing
 
 **Dyad** is open-source (Apache 2.0 licensed).

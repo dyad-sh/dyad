@@ -74,7 +74,17 @@ export async function getSupabaseContext({
   const secrets = await supabase.getSecrets(supabaseProjectId);
   const secretNames = secrets?.map((secret) => secret.name);
 
-  // TODO: include EDGE FUNCTIONS and SECRETS!
+  // Get edge functions
+  let edgeFunctions: Array<{ name: string; version: number }> = [];
+  try {
+    const functions = await supabase.getFunctions(supabaseProjectId);
+    edgeFunctions = functions?.map((f: any) => ({
+      name: f.name,
+      version: f.version,
+    })) || [];
+  } catch (error) {
+    // If getFunctions fails, continue without edge functions
+  }
 
   const context = `
   # Supabase Context
@@ -87,6 +97,9 @@ export async function getSupabaseContext({
 
   ## Secret names (environmental variables)
   ${JSON.stringify(secretNames)}
+
+  ## Edge Functions
+  ${JSON.stringify(edgeFunctions)}
 
   ## Schema
   ${JSON.stringify(schema)}

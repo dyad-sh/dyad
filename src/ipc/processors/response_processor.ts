@@ -209,7 +209,6 @@ export async function processFullResponseActions(
       logger.log(`Executed ${dyadExecuteSqlQueries.length} SQL queries`);
     }
 
-    // TODO: Handle add dependency tags
     if (dyadAddDependencyPackages.length > 0) {
       try {
         await executeAddDependency({

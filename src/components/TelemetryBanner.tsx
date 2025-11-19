@@ -9,9 +9,6 @@ const hideBannerAtom = atom(false);
 export function PrivacyBanner() {
   const [hideBanner, setHideBanner] = useAtom(hideBannerAtom);
   const { settings, updateSettings } = useSettings();
-  // TODO: Implement state management for banner visibility and user choice
-  // TODO: Implement functionality for Accept, Reject, Ask me later buttons
-  // TODO: Add state to hide/show banner based on user choice
   if (hideBanner) {
     return null;
   }

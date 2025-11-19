@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { integer, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable, text, unique, index } from "drizzle-orm/sqlite-core";
 import { relations } from "drizzle-orm";
 
 export const prompts = sqliteTable("prompts", {
@@ -60,7 +60,9 @@ export const chats = sqliteTable("chats", {
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),
-});
+}, (table) => [
+  index("chats_app_id_idx").on(table.appId),
+]);
 
 export const messages = sqliteTable("messages", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -77,7 +79,10 @@ export const messages = sqliteTable("messages", {
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),
-});
+}, (table) => [
+  index("messages_chat_id_idx").on(table.chatId),
+  index("messages_request_id_idx").on(table.requestId),
+]);
 
 export const versions = sqliteTable(
   "versions",
@@ -98,6 +103,7 @@ export const versions = sqliteTable(
   (table) => [
     // Unique constraint to prevent duplicate versions
     unique("versions_app_commit_unique").on(table.appId, table.commitHash),
+    index("versions_app_id_idx").on(table.appId),
   ],
 );
 
@@ -156,7 +162,9 @@ export const language_models = sqliteTable("language_models", {
   updatedAt: integer("updated_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),
-});
+}, (table) => [
+  index("language_models_custom_provider_id_idx").on(table.customProviderId),
+]);
 
 // Define relations for new tables
 export const languageModelProvidersRelations = relations(
@@ -220,5 +228,8 @@ export const mcpToolConsents = sqliteTable(
       .notNull()
       .default(sql`(unixepoch())`),
   },
-  (table) => [unique("uniq_mcp_consent").on(table.serverId, table.toolName)],
+  (table) => [
+    unique("uniq_mcp_consent").on(table.serverId, table.toolName),
+    index("mcp_tool_consents_server_id_idx").on(table.serverId),
+  ],
 );

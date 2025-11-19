@@ -134,7 +134,6 @@ export function CapacitorControls({ appId }: CapacitorControlsProps) {
               variant="ghost"
               size="sm"
               onClick={() => {
-                // TODO: Add actual help link
                 IpcClient.getInstance().openExternalUrl(
                   "https://dyad.sh/docs/guides/mobile-app#troubleshooting",
                 );

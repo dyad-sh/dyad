@@ -34,6 +34,34 @@ export function VisualEditingSidebar({
     height: "",
   });
 
+  // Unified function to send style modifications
+  const sendStyleModification = (styles: {
+    margin?: { left?: string; right?: string; top?: string; bottom?: string };
+    padding?: { left?: string; right?: string; top?: string; bottom?: string };
+    dimensions?: { width?: string; height?: string };
+  }) => {
+    if (!iframeRef.current?.contentWindow || !selectedComponent) return;
+
+    iframeRef.current.contentWindow.postMessage(
+      {
+        type: "modify-dyad-component-styles",
+        data: {
+          elementId: selectedComponent.id,
+          styles,
+        },
+      },
+      "*",
+    );
+
+    // Update overlay positions after style change
+    iframeRef.current.contentWindow.postMessage(
+      {
+        type: "update-dyad-overlay-positions",
+      },
+      "*",
+    );
+  };
+
   // Function to get current styles from selected element
   const getCurrentElementStyles = () => {
     if (!iframeRef.current?.contentWindow || !selectedComponent) return;
@@ -88,34 +116,14 @@ export function VisualEditingSidebar({
   const handleMarginChange = (axis: "x" | "y", value: string) => {
     setCurrentMargin((prev) => ({ ...prev, [axis]: value }));
 
-    if (iframeRef.current?.contentWindow && value) {
-      // Auto-append 'px' if not present and value is numeric
+    if (value) {
       const processedValue = /^\d+$/.test(value) ? `${value}px` : value;
-
-      // Convert x/y to left/right or top/bottom
       const marginData =
         axis === "x"
           ? { left: processedValue, right: processedValue }
           : { top: processedValue, bottom: processedValue };
 
-      iframeRef.current.contentWindow.postMessage(
-        {
-          type: "modify-dyad-component-margin",
-          data: {
-            elementId: selectedComponent?.id,
-            margin: marginData,
-          },
-        },
-        "*",
-      );
-
-      // Update overlay positions after style change
-      iframeRef.current.contentWindow.postMessage(
-        {
-          type: "update-dyad-overlay-positions",
-        },
-        "*",
-      );
+      sendStyleModification({ margin: marginData });
     }
   };
 
@@ -123,34 +131,14 @@ export function VisualEditingSidebar({
   const handlePaddingChange = (axis: "x" | "y", value: string) => {
     setCurrentPadding((prev) => ({ ...prev, [axis]: value }));
 
-    if (iframeRef.current?.contentWindow && value) {
-      // Auto-append 'px' if not present and value is numeric
+    if (value) {
       const processedValue = /^\d+$/.test(value) ? `${value}px` : value;
-
-      // Convert x/y to left/right or top/bottom
       const paddingData =
         axis === "x"
           ? { left: processedValue, right: processedValue }
           : { top: processedValue, bottom: processedValue };
 
-      iframeRef.current.contentWindow.postMessage(
-        {
-          type: "modify-dyad-component-padding",
-          data: {
-            elementId: selectedComponent?.id,
-            padding: paddingData,
-          },
-        },
-        "*",
-      );
-
-      // Update overlay positions after style change
-      iframeRef.current.contentWindow.postMessage(
-        {
-          type: "update-dyad-overlay-positions",
-        },
-        "*",
-      );
+      sendStyleModification({ padding: paddingData });
     }
   };
 
@@ -161,31 +149,13 @@ export function VisualEditingSidebar({
   ) => {
     setCurrentDimensions((prev) => ({ ...prev, [property]: value }));
 
-    if (iframeRef.current?.contentWindow && value) {
-      // Auto-append 'px' if not present, value is numeric, and doesn't contain % or other units
+    if (value) {
       const processedValue =
         /^\d+$/.test(value) && !/%|auto|inherit|initial|unset/.test(value)
           ? `${value}px`
           : value;
 
-      iframeRef.current.contentWindow.postMessage(
-        {
-          type: "modify-dyad-component-dimension",
-          data: {
-            elementId: selectedComponent?.id,
-            dimensions: { [property]: processedValue },
-          },
-        },
-        "*",
-      );
-
-      // Update overlay positions after style change
-      iframeRef.current.contentWindow.postMessage(
-        {
-          type: "update-dyad-overlay-positions",
-        },
-        "*",
-      );
+      sendStyleModification({ dimensions: { [property]: processedValue } });
     }
   };
 

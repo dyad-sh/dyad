@@ -19,37 +19,39 @@
     return element;
   }
 
-  function applyStyle(element, property, value) {
-    if (!element || !property) return;
+  function applyStyles(element, styles) {
+    if (!element || !styles) return;
 
     console.debug(
-      `[Dyad Visual Editor] Applying ${property}:`,
-      value,
+      `[Dyad Visual Editor] Applying styles:`,
+      styles,
       "to element:",
       element,
     );
 
-    if (typeof value === "object") {
-      const sides = ["top", "right", "bottom", "left"];
-      sides.forEach((side) => {
-        if (value[side] !== undefined) {
-          const cssProperty =
-            property === "margin"
-              ? `margin${side.charAt(0).toUpperCase() + side.slice(1)}`
-              : property === "padding"
-                ? `padding${side.charAt(0).toUpperCase() + side.slice(1)}`
-                : "";
-          if (cssProperty) {
-            element.style[cssProperty] = value[side];
-          }
-        }
-      });
-    } else {
-      const cssProperty =
-        property === "width" ? "width" : property === "height" ? "height" : "";
-
-      if (cssProperty) {
+    // Apply margin
+    if (styles.margin) {
+      Object.entries(styles.margin).forEach(([side, value]) => {
+        const cssProperty = `margin${side.charAt(0).toUpperCase() + side.slice(1)}`;
         element.style[cssProperty] = value;
+      });
+    }
+
+    // Apply padding
+    if (styles.padding) {
+      Object.entries(styles.padding).forEach(([side, value]) => {
+        const cssProperty = `padding${side.charAt(0).toUpperCase() + side.slice(1)}`;
+        element.style[cssProperty] = value;
+      });
+    }
+
+    // Apply dimensions
+    if (styles.dimensions) {
+      if (styles.dimensions.width !== undefined) {
+        element.style.width = styles.dimensions.width;
+      }
+      if (styles.dimensions.height !== undefined) {
+        element.style.height = styles.dimensions.height;
       }
     }
   }
@@ -61,63 +63,40 @@
     const element = findElementByDyadId(elementId);
     if (element) {
       const computedStyle = window.getComputedStyle(element);
-      const margin = {
-        top: computedStyle.marginTop,
-        right: computedStyle.marginRight,
-        bottom: computedStyle.marginBottom,
-        left: computedStyle.marginLeft,
-      };
-      const padding = {
-        top: computedStyle.paddingTop,
-        right: computedStyle.paddingRight,
-        bottom: computedStyle.paddingBottom,
-        left: computedStyle.paddingLeft,
-      };
-      const dimensions = {
-        width: computedStyle.width,
-        height: computedStyle.height,
+      const styles = {
+        margin: {
+          top: computedStyle.marginTop,
+          right: computedStyle.marginRight,
+          bottom: computedStyle.marginBottom,
+          left: computedStyle.marginLeft,
+        },
+        padding: {
+          top: computedStyle.paddingTop,
+          right: computedStyle.paddingRight,
+          bottom: computedStyle.paddingBottom,
+          left: computedStyle.paddingLeft,
+        },
+        dimensions: {
+          width: computedStyle.width,
+          height: computedStyle.height,
+        },
       };
 
       window.parent.postMessage(
         {
           type: "dyad-component-styles",
-          data: { margin, padding, dimensions },
+          data: styles,
         },
         "*",
       );
     }
   }
 
-  function handleModifyMargin(data) {
-    const { elementId, margin } = data;
-    console.log("margin");
-    console.log(elementId);
-    const element = findElementByDyadId(elementId);
-    console.log("element", element);
-    if (element) {
-      console.log("element found");
-      applyStyle(element, "margin", margin);
-    }
-  }
-
-  function handleModifyPadding(data) {
-    const { elementId, padding } = data;
+  function handleModifyStyles(data) {
+    const { elementId, styles } = data;
     const element = findElementByDyadId(elementId);
     if (element) {
-      applyStyle(element, "padding", padding);
-    }
-  }
-
-  function handleModifyDimension(data) {
-    const { elementId, dimensions } = data;
-    const element = findElementByDyadId(elementId);
-    if (element) {
-      if (dimensions.width !== undefined) {
-        applyStyle(element, "width", dimensions.width);
-      }
-      if (dimensions.height !== undefined) {
-        applyStyle(element, "height", dimensions.height);
-      }
+      applyStyles(element, styles);
     }
   }
 
@@ -132,14 +111,8 @@
       case "get-dyad-component-styles":
         handleGetStyles(data);
         break;
-      case "modify-dyad-component-margin":
-        handleModifyMargin(data);
-        break;
-      case "modify-dyad-component-padding":
-        handleModifyPadding(data);
-        break;
-      case "modify-dyad-component-dimension":
-        handleModifyDimension(data);
+      case "modify-dyad-component-styles":
+        handleModifyStyles(data);
         break;
     }
   });

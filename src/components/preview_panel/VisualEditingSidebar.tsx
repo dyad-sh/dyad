@@ -14,17 +14,21 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ComponentSelection } from "@/ipc/ipc_types";
+import { useSetAtom } from "jotai";
+import { pendingVisualChangesAtom } from "@/atoms/previewAtoms";
 
 interface VisualEditingSidebarProps {
   selectedComponent: ComponentSelection | null;
   onClose: () => void;
   iframeRef: React.RefObject<HTMLIFrameElement | null>;
+  appId: number;
 }
 
 export function VisualEditingSidebar({
   selectedComponent,
   onClose,
   iframeRef,
+  appId,
 }: VisualEditingSidebarProps) {
   // Visual editing current values state - using x/y axis instead of individual sides
   const [currentMargin, setCurrentMargin] = useState({ x: "", y: "" });
@@ -33,6 +37,7 @@ export function VisualEditingSidebar({
     width: "",
     height: "",
   });
+  const setPendingChanges = useSetAtom(pendingVisualChangesAtom);
 
   // Unified function to send style modifications
   const sendStyleModification = (styles: {
@@ -60,6 +65,36 @@ export function VisualEditingSidebar({
       },
       "*",
     );
+
+    // Track changes in pending state - only store properties that were actually modified
+    setPendingChanges((prev) => {
+      const updated = new Map(prev);
+      const existing = updated.get(selectedComponent.id);
+      const newStyles: any = { ...existing?.styles };
+
+      if (styles.margin) {
+        newStyles.margin = { ...existing?.styles?.margin, ...styles.margin };
+      }
+      if (styles.padding) {
+        newStyles.padding = { ...existing?.styles?.padding, ...styles.padding };
+      }
+      if (styles.dimensions) {
+        newStyles.dimensions = {
+          ...existing?.styles?.dimensions,
+          ...styles.dimensions,
+        };
+      }
+
+      updated.set(selectedComponent.id, {
+        componentId: selectedComponent.id,
+        componentName: selectedComponent.name,
+        relativePath: selectedComponent.relativePath,
+        lineNumber: selectedComponent.lineNumber,
+        appId,
+        styles: newStyles,
+      });
+      return updated;
+    });
   };
 
   // Function to get current styles from selected element

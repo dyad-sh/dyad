@@ -59,6 +59,7 @@ import { useShortcut } from "@/hooks/useShortcut";
 import { cn } from "@/lib/utils";
 import { normalizePath } from "../../../shared/normalizePath";
 import { VisualEditingSidebar } from "./VisualEditingSidebar";
+import { VisualEditingChangesDialog } from "./VisualEditingChangesDialog";
 
 interface ErrorBannerProps {
   error: { message: string; source: "preview-app" | "dyad-app" } | undefined;
@@ -825,13 +826,20 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
             />
             {/* Visual Editing Sidebar */}
-            {visualEditingSelectedComponent && (
+            {visualEditingSelectedComponent && selectedAppId && (
               <VisualEditingSidebar
                 selectedComponent={visualEditingSelectedComponent}
                 iframeRef={iframeRef}
                 onClose={() => setVisualEditingSelectedComponent(null)}
+                appId={selectedAppId}
               />
             )}
+            <VisualEditingChangesDialog
+              onSave={() => {
+                setIsVisualEditingMode(false);
+                setVisualEditingSelectedComponent(null);
+              }}
+            />
           </div>
         )}
       </div>

@@ -7,3 +7,20 @@ export const visualEditingSelectedComponentAtom =
   atom<ComponentSelection | null>(null);
 
 export const previewIframeRefAtom = atom<HTMLIFrameElement | null>(null);
+
+export interface PendingStyleChange {
+  componentId: string;
+  componentName: string;
+  relativePath: string;
+  lineNumber: number;
+  appId: number;
+  styles: {
+    margin?: { left?: string; right?: string; top?: string; bottom?: string };
+    padding?: { left?: string; right?: string; top?: string; bottom?: string };
+    dimensions?: { width?: string; height?: string };
+  };
+}
+
+export const pendingVisualChangesAtom = atom<Map<string, PendingStyleChange>>(
+  new Map(),
+);

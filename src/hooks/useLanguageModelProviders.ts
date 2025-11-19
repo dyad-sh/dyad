@@ -61,7 +61,18 @@ export function useLanguageModelProviders() {
   };
 
   const isAnyProviderSetup = () => {
-    return cloudProviders.some((provider) => isProviderSetup(provider));
+    // Check hardcoded cloud providers
+    if (cloudProviders.some((provider) => isProviderSetup(provider))) {
+      return true;
+    }
+
+    // Check custom providers
+    const customProviders = queryResult.data?.filter(
+      (provider) => provider.type === "custom",
+    );
+    return (
+      customProviders?.some((provider) => isProviderSetup(provider.id)) ?? false
+    );
   };
 
   return {

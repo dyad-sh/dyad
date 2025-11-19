@@ -61,8 +61,11 @@ import { FileAttachmentDropdown } from "./FileAttachmentDropdown";
 import { showError, showExtraFilesToast } from "@/lib/toast";
 import { ChatInputControls } from "../ChatInputControls";
 import { ChatErrorBox } from "./ChatErrorBox";
-import { selectedComponentPreviewAtom } from "@/atoms/previewAtoms";
-import { SelectedComponentDisplay } from "./SelectedComponentDisplay";
+import {
+  selectedComponentsPreviewAtom,
+  previewIframeRefAtom,
+} from "@/atoms/previewAtoms";
+import { SelectedComponentsDisplay } from "./SelectedComponentDisplay";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
 import { LexicalChatInput } from "./LexicalChatInput";
 import { useChatModeToggle } from "@/hooks/useChatModeToggle";
@@ -84,9 +87,10 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const [showTokenBar, setShowTokenBar] = useAtom(showTokenBarAtom);
-  const [selectedComponent, setSelectedComponent] = useAtom(
-    selectedComponentPreviewAtom,
+  const [selectedComponents, setSelectedComponents] = useAtom(
+    selectedComponentsPreviewAtom,
   );
+  const previewIframeRef = useAtomValue(previewIframeRefAtom);
   const { checkProblems } = useCheckProblems(appId);
   // Use the attachments hook
   const {
@@ -148,7 +152,21 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
     const currentInput = inputValue;
     setInputValue("");
-    setSelectedComponent(null);
+
+    // Use all selected components for multi-component editing
+    const componentsToSend =
+      selectedComponents && selectedComponents.length > 0
+        ? selectedComponents
+        : [];
+    setSelectedComponents([]);
+
+    // Clear overlays in the preview iframe
+    if (previewIframeRef?.contentWindow) {
+      previewIframeRef.contentWindow.postMessage(
+        { type: "clear-dyad-component-overlays" },
+        "*",
+      );
+    }
 
     // Send message with attachments and clear them after sending
     await streamMessage({
@@ -156,7 +174,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       chatId,
       attachments,
       redo: false,
-      selectedComponent,
+      selectedComponents: componentsToSend,
     });
     clearAttachments();
     posthog.capture("chat:submit");
@@ -288,7 +306,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               />
             )}
 
-          <SelectedComponentDisplay />
+          <SelectedComponentsDisplay />
 
           {/* Use the AttachmentsList component */}
           <AttachmentsList

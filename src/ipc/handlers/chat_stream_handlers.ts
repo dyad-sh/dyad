@@ -80,6 +80,12 @@ import { replacePromptReference } from "../utils/replacePromptReference";
 import { mcpManager } from "../utils/mcp_manager";
 import z from "zod";
 import { isTurboEditsV2Enabled } from "@/lib/schemas";
+import { AI_STREAMING_ERROR_MESSAGE_PREFIX } from "@/shared/texts";
+import { getCurrentCommitHash } from "../utils/git_utils";
+import {
+  processChatMessagesWithVersionedFiles as getVersionedFiles,
+  VersionedFiles as VersionedFiles,
+} from "../utils/versioned_codebase_context";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
@@ -345,44 +351,51 @@ export function registerChatStreamHandlers() {
       } catch (e) {
         logger.error("Failed to inline referenced prompts:", e);
       }
-      if (req.selectedComponent) {
-        let componentSnippet = "[component snippet not available]";
-        try {
-          const componentFileContent = await readFile(
-            path.join(
-              getDyadAppPath(chat.app.path),
-              req.selectedComponent.relativePath,
-            ),
-            "utf8",
-          );
-          const lines = componentFileContent.split("\n");
-          const selectedIndex = req.selectedComponent.lineNumber - 1;
 
-          // Let's get one line before and three after for context.
-          const startIndex = Math.max(0, selectedIndex - 1);
-          const endIndex = Math.min(lines.length, selectedIndex + 4);
+      const componentsToProcess = req.selectedComponents || [];
 
-          const snippetLines = lines.slice(startIndex, endIndex);
-          const selectedLineInSnippetIndex = selectedIndex - startIndex;
+      if (componentsToProcess.length > 0) {
+        userPrompt += "\n\nSelected components:\n";
 
-          if (snippetLines[selectedLineInSnippetIndex]) {
-            snippetLines[selectedLineInSnippetIndex] =
-              `${snippetLines[selectedLineInSnippetIndex]} // <-- EDIT HERE`;
+        for (const component of componentsToProcess) {
+          let componentSnippet = "[component snippet not available]";
+          try {
+            const componentFileContent = await readFile(
+              path.join(getDyadAppPath(chat.app.path), component.relativePath),
+              "utf8",
+            );
+            const lines = componentFileContent.split(/\r?\n/);
+            const selectedIndex = component.lineNumber - 1;
+
+            // Let's get one line before and three after for context.
+            const startIndex = Math.max(0, selectedIndex - 1);
+            const endIndex = Math.min(lines.length, selectedIndex + 4);
+
+            const snippetLines = lines.slice(startIndex, endIndex);
+            const selectedLineInSnippetIndex = selectedIndex - startIndex;
+
+            if (snippetLines[selectedLineInSnippetIndex]) {
+              snippetLines[selectedLineInSnippetIndex] =
+                `${snippetLines[selectedLineInSnippetIndex]} // <-- EDIT HERE`;
+            }
+
+            componentSnippet = snippetLines.join("\n");
+          } catch (err) {
+            logger.error(
+              `Error reading selected component file content: ${err}`,
+            );
           }
 
-          componentSnippet = snippetLines.join("\n");
-        } catch (err) {
-          logger.error(`Error reading selected component file content: ${err}`);
-        }
-
-        userPrompt += `\n\nSelected component: ${req.selectedComponent.name} (file: ${req.selectedComponent.relativePath})
+          userPrompt += `\n${componentsToProcess.length > 1 ? `${componentsToProcess.indexOf(component) + 1}. ` : ""}Component: ${component.name} (file: ${component.relativePath})
 
 Snippet:
 \`\`\`
 ${componentSnippet}
 \`\`\`
 `;
+        }
       }
+
       await db
         .insert(messages)
         .values({
@@ -406,6 +419,9 @@ ${componentSnippet}
           role: "assistant",
           content: "", // Start with empty content
           requestId: dyadRequestId,
+          sourceCommitHash: await getCurrentCommitHash({
+            path: getDyadAppPath(chat.app.path),
+          }),
         })
         .returning();
 
@@ -451,18 +467,18 @@ ${componentSnippet}
 
         const appPath = getDyadAppPath(updatedChat.app.path);
         // When we don't have smart context enabled, we
-        // only include the selected component's file for codebase context.
+        // only include the selected components' files for codebase context.
         //
-        // If we have selected component and smart context is enabled,
+        // If we have selected components and smart context is enabled,
         // we handle this specially below.
         const chatContext =
-          req.selectedComponent && !isSmartContextEnabled
+          req.selectedComponents &&
+          req.selectedComponents.length > 0 &&
+          !isSmartContextEnabled
             ? {
-                contextPaths: [
-                  {
-                    globPath: req.selectedComponent.relativePath,
-                  },
-                ],
+                contextPaths: req.selectedComponents.map((component) => ({
+                  globPath: component.relativePath,
+                })),
                 smartContextAutoIncludes: [],
               }
             : validateChatContext(updatedChat.app.chatContext);
@@ -473,12 +489,19 @@ ${componentSnippet}
           chatContext,
         });
 
-        // For smart context and selected component, we will mark the selected component's file as focused.
+        // For smart context and selected components, we will mark the selected components' files as focused.
         // This means that we don't do the regular smart context handling, but we'll allow fetching
         // additional files through <dyad-read> as needed.
-        if (isSmartContextEnabled && req.selectedComponent) {
+        if (
+          isSmartContextEnabled &&
+          req.selectedComponents &&
+          req.selectedComponents.length > 0
+        ) {
+          const selectedPaths = new Set(
+            req.selectedComponents.map((component) => component.relativePath),
+          );
           for (const file of files) {
-            if (file.path === req.selectedComponent.relativePath) {
+            if (selectedPaths.has(file.path)) {
               file.focused = true;
             }
           }
@@ -522,12 +545,20 @@ ${componentSnippet}
         const messageHistory = updatedChat.messages.map((message) => ({
           role: message.role as "user" | "assistant" | "system",
           content: message.content,
+          sourceCommitHash: message.sourceCommitHash,
         }));
 
+        // For Dyad Pro + Deep Context, we set to 200 chat turns (+1)
+        // this is to enable more cache hits. Practically, users should
+        // rarely go over this limit because they will hit the model's
+        // context window limit.
+        //
         // Limit chat history based on maxChatTurnsInContext setting
         // We add 1 because the current prompt counts as a turn.
         const maxChatTurns =
-          (settings.maxChatTurnsInContext || MAX_CHAT_TURNS_IN_CONTEXT) + 1;
+          isEngineEnabled && settings.proSmartContextOption === "deep"
+            ? 201
+            : (settings.maxChatTurnsInContext || MAX_CHAT_TURNS_IN_CONTEXT) + 1;
 
         // If we need to limit the context, we take only the most recent turns
         let limitedMessageHistory = messageHistory;
@@ -712,6 +743,11 @@ This conversation includes one or more image attachments. When the user uploads 
             settings.selectedChatMode === "ask"
               ? removeDyadTags(removeNonEssentialTags(msg.content))
               : removeNonEssentialTags(msg.content),
+          providerOptions: {
+            "dyad-engine": {
+              sourceCommitHash: msg.sourceCommitHash,
+            },
+          },
         }));
 
         let chatMessages: ModelMessage[] = [
@@ -775,12 +811,22 @@ This conversation includes one or more image attachments. When the user uploads 
           } else {
             logger.log("sending AI request");
           }
+          let versionedFiles: VersionedFiles | undefined;
+          if (isEngineEnabled && settings.proSmartContextOption === "deep") {
+            versionedFiles = await getVersionedFiles({
+              files,
+              chatMessages,
+              appPath,
+            });
+          }
           // Build provider options with correct Google/Vertex thinking config gating
           const providerOptions: Record<string, any> = {
             "dyad-engine": {
+              dyadAppId: updatedChat.app.id,
               dyadRequestId,
               dyadDisableFiles,
-              dyadFiles: files,
+              dyadFiles: versionedFiles ? undefined : files,
+              dyadVersionedFiles: versionedFiles,
               dyadMentionedApps: mentionedAppsCodebases.map(
                 ({ files, appName }) => ({
                   appName,
@@ -841,7 +887,6 @@ This conversation includes one or more image attachments. When the user uploads 
             tools,
             messages: chatMessages.filter((m) => m.content),
             onError: (error: any) => {
-              logger.error("Error streaming text:", error);
               let errorMessage = (error as any)?.error?.message;
               const responseBody = error?.error?.responseBody;
               if (errorMessage && responseBody) {
@@ -851,9 +896,13 @@ This conversation includes one or more image attachments. When the user uploads 
               const requestIdPrefix = isEngineEnabled
                 ? `[Request ID: ${dyadRequestId}] `
                 : "";
+              logger.error(
+                `AI stream text error for request: ${requestIdPrefix} errorMessage=${errorMessage} error=`,
+                error,
+              );
               event.sender.send("chat:response:error", {
                 chatId: req.chatId,
-                error: `Sorry, there was an error from the AI: ${requestIdPrefix}${message}`,
+                error: `${AI_STREAMING_ERROR_MESSAGE_PREFIX}${requestIdPrefix}${message}`,
               });
               // Clean up the abort controller
               activeStreams.delete(req.chatId);
@@ -975,21 +1024,48 @@ This conversation includes one or more image attachments. When the user uploads 
             settings.selectedChatMode !== "ask" &&
             isTurboEditsV2Enabled(settings)
           ) {
-            const issues = await dryRunSearchReplace({
+            let issues = await dryRunSearchReplace({
               fullResponse,
               appPath: getDyadAppPath(updatedChat.app.path),
             });
-            if (issues.length > 0) {
+
+            let searchReplaceFixAttempts = 0;
+            const originalFullResponse = fullResponse;
+            const previousAttempts: ModelMessage[] = [];
+            while (
+              issues.length > 0 &&
+              searchReplaceFixAttempts < 2 &&
+              !abortController.signal.aborted
+            ) {
               logger.warn(
-                `Detected search-replace issues: ${issues.map((i) => i.error).join(", ")}`,
+                `Detected search-replace issues (attempt #${searchReplaceFixAttempts + 1}): ${issues.map((i) => i.error).join(", ")}`,
               );
               const formattedSearchReplaceIssues = issues
                 .map(({ filePath, error }) => {
                   return `File path: ${filePath}\nError: ${error}`;
                 })
                 .join("\n\n");
-              const originalFullResponse = fullResponse;
+
               fullResponse += `<dyad-output type="warning" message="Could not apply Turbo Edits properly for some of the files; re-generating code...">${formattedSearchReplaceIssues}</dyad-output>`;
+              await processResponseChunkUpdate({
+                fullResponse,
+              });
+
+              logger.info(
+                `Attempting to fix search-replace issues, attempt #${searchReplaceFixAttempts + 1}`,
+              );
+
+              const fixSearchReplacePrompt =
+                searchReplaceFixAttempts === 0
+                  ? `There was an issue with the following \`dyad-search-replace\` tags. Make sure you use \`dyad-read\` to read the latest version of the file and then trying to do search & replace again.`
+                  : `There was an issue with the following \`dyad-search-replace\` tags. Please fix the errors by generating the code changes using \`dyad-write\` tags instead.`;
+              searchReplaceFixAttempts++;
+              const userPrompt = {
+                role: "user",
+                content: `${fixSearchReplacePrompt}
+                
+${formattedSearchReplaceIssues}`,
+              } as const;
 
               const { fullStream: fixSearchReplaceStream } =
                 await simpleStreamText({
@@ -997,16 +1073,13 @@ This conversation includes one or more image attachments. When the user uploads 
                   chatMessages: [
                     ...chatMessages,
                     { role: "assistant", content: originalFullResponse },
-                    {
-                      role: "user",
-                      content: `There was an issue with the following \`dyad-search-replace\` tags. Please fix them by generating the code changes using \`dyad-write\` tags instead.
-                      
-${formattedSearchReplaceIssues}`,
-                    },
+                    ...previousAttempts,
+                    userPrompt,
                   ],
                   modelClient,
                   files: files,
                 });
+              previousAttempts.push(userPrompt);
               const result = await processStreamChunks({
                 fullStream: fixSearchReplaceStream,
                 fullResponse,
@@ -1015,6 +1088,16 @@ ${formattedSearchReplaceIssues}`,
                 processResponseChunkUpdate,
               });
               fullResponse = result.fullResponse;
+              previousAttempts.push({
+                role: "assistant",
+                content: removeNonEssentialTags(result.incrementalResponse),
+              });
+
+              // Re-check for issues after the fix attempt
+              issues = await dryRunSearchReplace({
+                fullResponse: result.incrementalResponse,
+                appPath: getDyadAppPath(updatedChat.app.path),
+              });
             }
           }
 

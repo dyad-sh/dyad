@@ -367,7 +367,7 @@ export async function processFullResponseActions(
         const original = await readFile(fullFilePath, "utf8");
         const result = applySearchReplace(original, tag.content);
         if (!result.success || typeof result.content !== "string") {
-          // Do not show warning to user because we already attempt to do a <dyad-write> tag to fix it.
+          // Do not show warning to user because we already attempt to do a <dyad-write> and/or a subsequent <dyad-search-replace> tag to fix it.
           logger.warn(
             `Failed to apply search-replace to ${filePath}: ${result.error ?? "unknown"}`,
           );

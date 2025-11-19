@@ -71,7 +71,7 @@ class ProModesDialog {
     public close: () => Promise<void>,
   ) {}
 
-  async setSmartContextMode(mode: "balanced" | "off" | "conservative") {
+  async setSmartContextMode(mode: "balanced" | "off" | "deep") {
     await this.page
       .getByTestId("smart-context-selector")
       .getByRole("button", {
@@ -522,8 +522,15 @@ export class PageObject {
       .click({ timeout: Timeout.EXTRA_LONG });
   }
 
-  async clickDeselectComponent() {
-    await this.page.getByRole("button", { name: "Deselect component" }).click();
+  async clickDeselectComponent(options?: { index?: number }) {
+    const buttons = this.page.getByRole("button", {
+      name: "Deselect component",
+    });
+    if (options?.index !== undefined) {
+      await buttons.nth(options.index).click();
+    } else {
+      await buttons.first().click();
+    }
   }
 
   async clickPreviewMoreOptions() {
@@ -582,12 +589,12 @@ export class PageObject {
     await expect(this.getChatInputContainer()).toMatchAriaSnapshot();
   }
 
-  getSelectedComponentDisplay() {
+  getSelectedComponentsDisplay() {
     return this.page.getByTestId("selected-component-display");
   }
 
-  async snapshotSelectedComponentDisplay() {
-    await expect(this.getSelectedComponentDisplay()).toMatchAriaSnapshot();
+  async snapshotSelectedComponentsDisplay() {
+    await expect(this.getSelectedComponentsDisplay()).toMatchAriaSnapshot();
   }
 
   async snapshotPreview({ name }: { name?: string } = {}) {

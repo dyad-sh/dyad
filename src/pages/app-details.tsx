@@ -299,13 +299,13 @@ export default function AppDetailsPage() {
             <span className="block text-gray-500 dark:text-gray-400 mb-0.5 text-xs">
               Created
             </span>
-            <span>{new Date().toLocaleString()}</span>
+            <span>{selectedApp.createdAt.toString()}</span>
           </div>
           <div>
             <span className="block text-gray-500 dark:text-gray-400 mb-0.5 text-xs">
               Last Updated
             </span>
-            <span>{new Date().toLocaleString()}</span>
+            <span>{selectedApp.updatedAt.toString()}</span>
           </div>
           <div className="col-span-2">
             <span className="block text-gray-500 dark:text-gray-400 mb-0.5 text-xs">

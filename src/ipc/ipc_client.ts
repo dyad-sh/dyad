@@ -387,7 +387,7 @@ export class IpcClient {
   public streamMessage(
     prompt: string,
     options: {
-      selectedComponent: ComponentSelection | null;
+      selectedComponents?: ComponentSelection[];
       chatId: number;
       redo?: boolean;
       attachments?: FileAttachment[];
@@ -401,7 +401,7 @@ export class IpcClient {
       chatId,
       redo,
       attachments,
-      selectedComponent,
+      selectedComponents,
       onUpdate,
       onEnd,
       onError,
@@ -441,16 +441,18 @@ export class IpcClient {
               prompt,
               chatId,
               redo,
-              selectedComponent,
+              selectedComponents,
               attachments: fileDataArray,
             })
             .catch((err) => {
+              console.error("Error streaming message:", err);
               showError(err);
               onError(String(err));
               this.chatStreams.delete(chatId);
             });
         })
         .catch((err) => {
+          console.error("Error streaming message:", err);
           showError(err);
           onError(String(err));
           this.chatStreams.delete(chatId);
@@ -462,9 +464,10 @@ export class IpcClient {
           prompt,
           chatId,
           redo,
-          selectedComponent,
+          selectedComponents,
         })
         .catch((err) => {
+          console.error("Error streaming message:", err);
           showError(err);
           onError(String(err));
           this.chatStreams.delete(chatId);
@@ -475,12 +478,6 @@ export class IpcClient {
   // Method to cancel an ongoing stream
   public cancelChatStream(chatId: number): void {
     this.ipcRenderer.invoke("chat:cancel", chatId);
-    const callbacks = this.chatStreams.get(chatId);
-    if (callbacks) {
-      this.chatStreams.delete(chatId);
-    } else {
-      console.error("Tried canceling chat that doesn't exist");
-    }
   }
 
   // Create a new chat for an app
@@ -1321,6 +1318,10 @@ export class IpcClient {
         showError(err);
         options.onError(String(err));
       });
+  }
+
+  public async takeScreenshot(): Promise<void> {
+    await this.ipcRenderer.invoke("take-screenshot");
   }
 
   public cancelHelpChat(sessionId: string): void {

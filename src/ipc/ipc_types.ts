@@ -41,7 +41,7 @@ export interface ChatStreamParams {
     data: string; // Base64 encoded file data
     attachmentType: "upload-to-codebase" | "chat-context"; // FileAttachment type
   }>;
-  selectedComponent: ComponentSelection | null;
+  selectedComponents?: ComponentSelection[];
 }
 
 export interface ChatResponseEnd {

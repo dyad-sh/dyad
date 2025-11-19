@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog } from "electron";
+import { app, BrowserWindow, dialog, Menu } from "electron";
 import * as path from "node:path";
 import { registerIpcHandlers } from "./ipc/ipc_host";
 import dotenv from "dotenv";
@@ -18,6 +18,12 @@ import { BackupManager } from "./backup_manager";
 import { getDatabasePath, initializeDatabase } from "./db";
 import { UserSettings } from "./lib/schemas";
 import { handleNeonOAuthReturn } from "./neon_admin/neon_return_handler";
+import {
+  AddMcpServerConfigSchema,
+  AddMcpServerPayload,
+  AddPromptDataSchema,
+  AddPromptPayload,
+} from "./ipc/deep_link_data";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -169,6 +175,66 @@ const createWindow = () => {
   // if (process.env.NODE_ENV === "development") {
   //   mainWindow.webContents.openDevTools();
   // }
+
+  // Enable native context menu on right-click
+  mainWindow.webContents.on("context-menu", (event, params) => {
+    // Prevent any default behavior and show our own menu
+    event.preventDefault();
+
+    const template: Electron.MenuItemConstructorOptions[] = [];
+    if (params.isEditable) {
+      template.push(
+        { role: "undo" },
+        { role: "redo" },
+        { type: "separator" },
+        { role: "cut" },
+        { role: "copy" },
+        { role: "paste" },
+        { role: "delete" },
+      );
+      if (params.misspelledWord) {
+        const suggestions: Electron.MenuItemConstructorOptions[] =
+          params.dictionarySuggestions.slice(0, 5).map((suggestion) => ({
+            label: suggestion,
+            click: () => {
+              try {
+                mainWindow?.webContents.replaceMisspelling(suggestion);
+              } catch (error) {
+                logger.error("Failed to replace misspelling:", error);
+              }
+            },
+          }));
+        template.push(
+          { type: "separator" },
+          {
+            type: "submenu",
+            label: `Correct "${params.misspelledWord}"`,
+            submenu: suggestions,
+          },
+        );
+      }
+      template.push({ type: "separator" }, { role: "selectAll" });
+    } else {
+      if (params.selectionText && params.selectionText.length > 0) {
+        template.push({ role: "copy" });
+      }
+      template.push({ role: "selectAll" });
+    }
+
+    if (process.env.NODE_ENV === "development") {
+      template.push(
+        { type: "separator" },
+        {
+          label: "Inspect Element",
+          click: () =>
+            mainWindow?.webContents.inspectElement(params.x, params.y),
+        },
+      );
+    }
+
+    const menu = Menu.buildFromTemplate(template);
+    menu.popup({ window: mainWindow! });
+  });
 };
 
 const gotTheLock = app.requestSingleInstanceLock();
@@ -267,6 +333,62 @@ function handleDeepLinkReturn(url: string) {
     mainWindow?.webContents.send("deep-link-received", {
       type: parsed.hostname,
     });
+    return;
+  }
+  // dyad://add-mcp-server?name=Chrome%20DevTools&config=eyJjb21tYW5kIjpudWxsLCJ0eXBlIjoic3RkaW8ifQ%3D%3D
+  if (parsed.hostname === "add-mcp-server") {
+    const name = parsed.searchParams.get("name");
+    const config = parsed.searchParams.get("config");
+    if (!name || !config) {
+      dialog.showErrorBox("Invalid URL", "Expected name and config");
+      return;
+    }
+
+    try {
+      const decodedConfigJson = atob(config);
+      const decodedConfig = JSON.parse(decodedConfigJson);
+      const parsedConfig = AddMcpServerConfigSchema.parse(decodedConfig);
+
+      mainWindow?.webContents.send("deep-link-received", {
+        type: parsed.hostname,
+        payload: {
+          name,
+          config: parsedConfig,
+        } as AddMcpServerPayload,
+      });
+    } catch (error) {
+      logger.error("Failed to parse add-mcp-server deep link:", error);
+      dialog.showErrorBox(
+        "Invalid MCP Server Configuration",
+        "The deep link contains malformed configuration data. Please check the URL and try again.",
+      );
+    }
+    return;
+  }
+  // dyad://add-prompt?data=<base64-encoded-json>
+  if (parsed.hostname === "add-prompt") {
+    const data = parsed.searchParams.get("data");
+    if (!data) {
+      dialog.showErrorBox("Invalid URL", "Expected data parameter");
+      return;
+    }
+
+    try {
+      const decodedJson = atob(data);
+      const decoded = JSON.parse(decodedJson);
+      const parsedData = AddPromptDataSchema.parse(decoded);
+
+      mainWindow?.webContents.send("deep-link-received", {
+        type: parsed.hostname,
+        payload: parsedData as AddPromptPayload,
+      });
+    } catch (error) {
+      logger.error("Failed to parse add-prompt deep link:", error);
+      dialog.showErrorBox(
+        "Invalid Prompt Data",
+        "The deep link contains malformed data. Please check the URL and try again.",
+      );
+    }
     return;
   }
   dialog.showErrorBox("Invalid deep link URL", url);

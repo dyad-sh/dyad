@@ -26,6 +26,7 @@ import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useSettings } from "@/hooks/useSettings";
 import { PriceBadge } from "@/components/PriceBadge";
 import { TURBO_MODELS } from "@/ipc/shared/language_model_constants";
+import { cn } from "@/lib/utils";
 
 export function ModelPicker() {
   const { settings, updateSettings } = useSettings();
@@ -112,7 +113,7 @@ export function ModelPicker() {
           if (
             settings &&
             !isDyadProEnabled(settings) &&
-            model.apiName === "turbo"
+            ["turbo", "value"].includes(model.apiName)
           ) {
             return false;
           }
@@ -137,8 +138,6 @@ export function ModelPicker() {
     return null;
   }
   const selectedModel = settings?.selectedModel;
-  const isSmartAutoEnabled =
-    settings.enableProSmartFilesContextMode && isDyadProEnabled(settings);
   const modelDisplayName = getModelDisplayName();
   // Split providers into primary and secondary groups (excluding auto)
   const providerEntries =
@@ -223,20 +222,16 @@ export function ModelPicker() {
                       >
                         <div className="flex justify-between items-start w-full">
                           <span className="flex flex-col items-start">
-                            <span>
-                              {isSmartAutoEnabled && model.apiName === "auto"
-                                ? "Smart Auto"
-                                : model.displayName}
-                            </span>
+                            <span>{model.displayName}</span>
                           </span>
                           <div className="flex items-center gap-1.5">
-                            {isSmartAutoEnabled && (
-                              <span className="text-[10px] bg-gradient-to-r from-indigo-600 via-indigo-500 to-indigo-600 bg-[length:200%_100%] animate-[shimmer_5s_ease-in-out_infinite] text-white px-1.5 py-0.5 rounded-full font-medium">
-                                Pro only
-                              </span>
-                            )}
                             {model.tag && (
-                              <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">
+                              <span
+                                className={cn(
+                                  "text-[11px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium",
+                                  model.tagColor,
+                                )}
+                              >
                                 {model.tag}
                               </span>
                             )}
@@ -245,15 +240,7 @@ export function ModelPicker() {
                       </DropdownMenuItem>
                     </TooltipTrigger>
                     <TooltipContent side="right">
-                      {isSmartAutoEnabled && model.apiName === "auto" ? (
-                        <p>
-                          <strong>Smart Auto</strong> uses a cheaper model for
-                          easier tasks
-                          <br /> and a flagship model for harder tasks
-                        </p>
-                      ) : (
-                        model.description
-                      )}
+                      {model.description}
                     </TooltipContent>
                   </Tooltip>
                 ))}

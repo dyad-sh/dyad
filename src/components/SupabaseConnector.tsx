@@ -40,22 +40,25 @@ import { useTheme } from "@/contexts/ThemeContext";
 export function SupabaseConnector({ appId }: { appId: number }) {
   const { settings, refreshSettings } = useSettings();
   const { app, refreshApp } = useLoadApp(appId);
-  const { lastDeepLink } = useDeepLink();
+  const { lastDeepLink, clearLastDeepLink } = useDeepLink();
   const { isDarkMode } = useTheme();
   useEffect(() => {
     const handleDeepLink = async () => {
       if (lastDeepLink?.type === "supabase-oauth-return") {
         await refreshSettings();
         await refreshApp();
+        clearLastDeepLink();
       }
     };
     handleDeepLink();
-  }, [lastDeepLink]);
+  }, [lastDeepLink?.timestamp]);
   const {
     projects,
     loading,
     error,
     loadProjects,
+    branches,
+    loadBranches,
     setAppProject,
     unsetAppProject,
   } = useSupabase();
@@ -70,13 +73,21 @@ export function SupabaseConnector({ appId }: { appId: number }) {
 
   const handleProjectSelect = async (projectId: string) => {
     try {
-      await setAppProject(projectId, appId);
+      await setAppProject({ projectId, appId });
       toast.success("Project connected to app successfully");
       await refreshApp();
     } catch (error) {
       toast.error("Failed to connect project to app: " + error);
     }
   };
+
+  const projectIdForBranches =
+    app?.supabaseParentProjectId || app?.supabaseProjectId;
+  useEffect(() => {
+    if (projectIdForBranches) {
+      loadBranches(projectIdForBranches);
+    }
+  }, [projectIdForBranches, loadBranches]);
 
   const handleUnsetProject = async () => {
     try {
@@ -122,9 +133,56 @@ export function SupabaseConnector({ appId }: { appId: number }) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button variant="destructive" onClick={handleUnsetProject}>
-              Disconnect Project
-            </Button>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="supabase-branch-select">Database Branch</Label>
+                <Select
+                  value={app.supabaseProjectId || ""}
+                  onValueChange={async (supabaseBranchProjectId) => {
+                    try {
+                      const branch = branches.find(
+                        (b) => b.projectRef === supabaseBranchProjectId,
+                      );
+                      if (!branch) {
+                        throw new Error("Branch not found");
+                      }
+                      await setAppProject({
+                        projectId: branch.projectRef,
+                        parentProjectId: branch.parentProjectRef,
+                        appId,
+                      });
+                      toast.success("Branch selected");
+                      await refreshApp();
+                    } catch (error) {
+                      toast.error("Failed to set branch: " + error);
+                    }
+                  }}
+                  disabled={loading}
+                >
+                  <SelectTrigger
+                    id="supabase-branch-select"
+                    data-testid="supabase-branch-select"
+                  >
+                    <SelectValue placeholder="Select a branch" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {branches.map((branch) => (
+                      <SelectItem
+                        key={branch.projectRef}
+                        value={branch.projectRef}
+                      >
+                        {branch.name}
+                        {branch.isDefault && " (Default)"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Button variant="destructive" onClick={handleUnsetProject}>
+                Disconnect Project
+              </Button>
+            </div>
           </CardContent>
         </Card>
       );

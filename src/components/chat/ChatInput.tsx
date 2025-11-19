@@ -24,7 +24,7 @@ import { useSettings } from "@/hooks/useSettings";
 import { IpcClient } from "@/ipc/ipc_client";
 import {
   chatInputValueAtom,
-  chatMessagesAtom,
+  chatMessagesByIdAtom,
   selectedChatIdAtom,
 } from "@/atoms/chatAtoms";
 import { atom, useAtom, useSetAtom, useAtomValue } from "jotai";
@@ -39,7 +39,7 @@ import {
   FileChange,
   SqlQuery,
 } from "@/lib/schemas";
-import type { Message } from "@/ipc/ipc_types";
+
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import { useRunApp } from "@/hooks/useRunApp";
 import { AutoApproveSwitch } from "../AutoApproveSwitch";
@@ -60,12 +60,15 @@ import { DragDropOverlay } from "./DragDropOverlay";
 import { FileAttachmentDropdown } from "./FileAttachmentDropdown";
 import { showError, showExtraFilesToast } from "@/lib/toast";
 import { ChatInputControls } from "../ChatInputControls";
-import { McpToolsPicker } from "../McpToolsPicker";
 import { ChatErrorBox } from "./ChatErrorBox";
-import { selectedComponentPreviewAtom } from "@/atoms/previewAtoms";
-import { SelectedComponentDisplay } from "./SelectedComponentDisplay";
+import {
+  selectedComponentsPreviewAtom,
+  previewIframeRefAtom,
+} from "@/atoms/previewAtoms";
+import { SelectedComponentsDisplay } from "./SelectedComponentDisplay";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
 import { LexicalChatInput } from "./LexicalChatInput";
+import { useChatModeToggle } from "@/hooks/useChatModeToggle";
 
 const showTokenBarAtom = atom(false);
 
@@ -80,12 +83,14 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const [showError, setShowError] = useState(true);
   const [isApproving, setIsApproving] = useState(false); // State for approving
   const [isRejecting, setIsRejecting] = useState(false); // State for rejecting
-  const [, setMessages] = useAtom<Message[]>(chatMessagesAtom);
+  const messagesById = useAtomValue(chatMessagesByIdAtom);
+  const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const [showTokenBar, setShowTokenBar] = useAtom(showTokenBarAtom);
-  const [selectedComponent, setSelectedComponent] = useAtom(
-    selectedComponentPreviewAtom,
+  const [selectedComponents, setSelectedComponents] = useAtom(
+    selectedComponentsPreviewAtom,
   );
+  const previewIframeRef = useAtomValue(previewIframeRefAtom);
   const { checkProblems } = useCheckProblems(appId);
   // Use the attachments hook
   const {
@@ -108,6 +113,15 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     refreshProposal,
   } = useProposal(chatId);
   const { proposal, messageId } = proposalResult ?? {};
+  useChatModeToggle();
+
+  const lastMessage = (chatId ? (messagesById.get(chatId) ?? []) : []).at(-1);
+  const disableSendButton =
+    lastMessage?.role === "assistant" &&
+    !lastMessage.approvalState &&
+    !!proposal &&
+    proposal.type === "code-proposal" &&
+    messageId === lastMessage.id;
 
   useEffect(() => {
     if (error) {
@@ -117,12 +131,15 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
   const fetchChatMessages = useCallback(async () => {
     if (!chatId) {
-      setMessages([]);
       return;
     }
     const chat = await IpcClient.getInstance().getChat(chatId);
-    setMessages(chat.messages);
-  }, [chatId, setMessages]);
+    setMessagesById((prev) => {
+      const next = new Map(prev);
+      next.set(chatId, chat.messages);
+      return next;
+    });
+  }, [chatId, setMessagesById]);
 
   const handleSubmit = async () => {
     if (
@@ -135,7 +152,21 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
     const currentInput = inputValue;
     setInputValue("");
-    setSelectedComponent(null);
+
+    // Use all selected components for multi-component editing
+    const componentsToSend =
+      selectedComponents && selectedComponents.length > 0
+        ? selectedComponents
+        : [];
+    setSelectedComponents([]);
+
+    // Clear overlays in the preview iframe
+    if (previewIframeRef?.contentWindow) {
+      previewIframeRef.contentWindow.postMessage(
+        { type: "clear-dyad-component-overlays" },
+        "*",
+      );
+    }
 
     // Send message with attachments and clear them after sending
     await streamMessage({
@@ -143,7 +174,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       chatId,
       attachments,
       redo: false,
-      selectedComponent,
+      selectedComponents: componentsToSend,
     });
     clearAttachments();
     posthog.capture("chat:submit");
@@ -215,7 +246,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       setError((err as Error)?.message || "An error occurred while rejecting");
     } finally {
       setIsRejecting(false);
-
       // Keep same as handleApprove
       refreshProposal();
       fetchChatMessages();
@@ -246,10 +276,10 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           Error loading proposal: {proposalError}
         </div>
       )}
-      <div className="p-3 md:p-4 lg:p-6" data-testid="chat-input-container">
+      <div className="p-4" data-testid="chat-input-container">
         <div
-          className={`relative flex flex-col space-y-2 border border-border dark:border-white/15 rounded-xl bg-muted dark:bg-white/5 backdrop-blur-md shadow-lg min-h-[70px] transition-all hover:bg-muted/80 dark:hover:bg-white/[0.07] hover:border-border dark:hover:border-white/20 ${
-            isDraggingOver ? "ring-2 ring-primary border-primary bg-muted dark:bg-white/10" : ""
+          className={`relative flex flex-col border border-border rounded-lg bg-(--background-lighter) shadow-sm ${
+            isDraggingOver ? "ring-2 ring-blue-500 border-blue-500" : ""
           }`}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -276,7 +306,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               />
             )}
 
-          <SelectedComponentDisplay />
+          <SelectedComponentsDisplay />
 
           {/* Use the AttachmentsList component */}
           <AttachmentsList
@@ -287,74 +317,68 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           {/* Use the DragDropOverlay component */}
           <DragDropOverlay isDraggingOver={isDraggingOver} />
 
-          <div className="flex items-start gap-2 p-2">
-            <div className="flex-1 min-w-0">
-              <LexicalChatInput
-                value={inputValue}
-                onChange={setInputValue}
-                onSubmit={handleSubmit}
-                onPaste={handlePaste}
-                placeholder="Ask Dyad to build..."
-                excludeCurrentApp={true}
-              />
-            </div>
+          <div className="flex items-start space-x-2 ">
+            <LexicalChatInput
+              value={inputValue}
+              onChange={setInputValue}
+              onSubmit={handleSubmit}
+              onPaste={handlePaste}
+              placeholder="Ask Dyad to build..."
+              excludeCurrentApp={true}
+            />
 
-            <div className="flex items-center gap-1 mt-1.5 flex-shrink-0">
-              {/* File attachment dropdown moved here */}
+            {isStreaming ? (
+              <button
+                onClick={handleCancel}
+                className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg"
+                title="Cancel generation"
+              >
+                <StopCircleIcon size={20} />
+              </button>
+            ) : (
+              <button
+                onClick={handleSubmit}
+                disabled={
+                  (!inputValue.trim() && attachments.length === 0) ||
+                  disableSendButton
+                }
+                className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
+                title="Send message"
+              >
+                <SendHorizontalIcon size={20} />
+              </button>
+            )}
+          </div>
+          <div className="pl-2 pr-1 flex items-center justify-between pb-2">
+            <div className="flex items-center">
+              <ChatInputControls showContextFilesPicker={true} />
+              {/* File attachment dropdown */}
               <FileAttachmentDropdown
                 onFileSelect={handleFileSelect}
                 disabled={isStreaming}
               />
-
-              {/* Tools button */}
-              {settings?.selectedChatMode === "agent" && (
-                <McpToolsPicker />
-              )}
-
-              {isStreaming ? (
-                <button
-                  onClick={handleCancel}
-                  className="p-2 hover:bg-muted dark:hover:bg-accent/50 text-foreground rounded-lg transition-colors"
-                  title="Cancel generation"
-                >
-                  <StopCircleIcon size={16} />
-                </button>
-              ) : (
-                <button
-                  onClick={handleSubmit}
-                  disabled={!inputValue.trim() && attachments.length === 0}
-                  className="p-2 hover:bg-muted dark:hover:bg-accent/50 text-foreground rounded-lg disabled:opacity-50 transition-colors"
-                  title="Send message"
-                >
-                  <SendHorizontalIcon size={16} />
-                </button>
-              )}
             </div>
-          </div>
-          <div className="px-2 pb-2 flex items-center gap-2">
-            <ChatInputControls showContextFilesPicker={true} />
 
-            <div className="ml-auto">
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      onClick={() => setShowTokenBar(!showTokenBar)}
-                      variant="ghost"
-                      className={`has-[>svg]:px-1.5 h-7 ${
-                        showTokenBar ? "bg-muted/50" : ""
-                      }`}
-                      size="sm"
-                    >
-                      <ChartColumnIncreasing size={12} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    {showTokenBar ? "Hide token usage" : "Show token usage"}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    onClick={() => setShowTokenBar(!showTokenBar)}
+                    variant="ghost"
+                    className={`has-[>svg]:px-2 ${
+                      showTokenBar ? "text-purple-500 bg-purple-100" : ""
+                    }`}
+                    size="sm"
+                    data-testid="token-bar-toggle"
+                  >
+                    <ChartColumnIncreasing size={14} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {showTokenBar ? "Hide token usage" : "Show token usage"}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
           {/* TokenBar is only displayed when showTokenBar is true */}
           {showTokenBar && <TokenBar chatId={chatId} />}
@@ -555,7 +579,7 @@ function KeepGoingButton() {
   );
 }
 
-function mapActionToButton(action: SuggestedAction) {
+export function mapActionToButton(action: SuggestedAction) {
   switch (action.id) {
     case "summarize-in-new-chat":
       return <SummarizeInNewChatButton />;

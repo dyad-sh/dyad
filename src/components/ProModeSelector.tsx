@@ -25,24 +25,23 @@ export function ProModeSelector() {
     });
   };
 
-  const toggleLazyEdits = () => {
+  const handleTurboEditsChange = (newValue: "off" | "v1" | "v2") => {
     updateSettings({
-      enableProLazyEditsMode: !settings?.enableProLazyEditsMode,
+      enableProLazyEditsMode: newValue !== "off",
+      proLazyEditsMode: newValue,
     });
   };
 
-  const handleSmartContextChange = (
-    newValue: "off" | "conservative" | "balanced",
-  ) => {
+  const handleSmartContextChange = (newValue: "off" | "deep" | "balanced") => {
     if (newValue === "off") {
       updateSettings({
         enableProSmartFilesContextMode: false,
         proSmartContextOption: undefined,
       });
-    } else if (newValue === "conservative") {
+    } else if (newValue === "deep") {
       updateSettings({
         enableProSmartFilesContextMode: true,
-        proSmartContextOption: "conservative",
+        proSmartContextOption: "deep",
       });
     } else if (newValue === "balanced") {
       updateSettings({
@@ -69,30 +68,49 @@ export function ProModeSelector() {
             <Button
               variant="outline"
               size="sm"
-              className="has-[>svg]:px-2 flex items-center gap-1.5 h-7 border-border/50 hover:bg-muted/50 font-normal transition-all"
+              className="has-[>svg]:px-1.5 flex items-center gap-1.5 h-8 border-primary/50 hover:bg-primary/10 font-medium shadow-sm shadow-primary/10 transition-all hover:shadow-md hover:shadow-primary/15"
             >
-              <Sparkles className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-foreground font-normal text-xs">Pro</span>
+              <Sparkles className="h-4 w-4 text-primary" />
+              <span className="text-primary font-medium text-xs-sm">Pro</span>
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>
         <TooltipContent>Configure Dyad Pro settings</TooltipContent>
       </Tooltip>
-      <PopoverContent className="w-64 p-3">
-        <div className="space-y-3">
+      <PopoverContent className="w-80 border-primary/20">
+        <div className="space-y-4">
           <div className="space-y-1">
-            <h4 className="text-xs font-medium flex items-center gap-1">
-              <Sparkles className="h-3.5 w-3.5 text-white/70" />
-              <span className="text-white">Dyad Pro</span>
+            <h4 className="font-medium flex items-center gap-1.5">
+              <Sparkles className="h-4 w-4 text-primary" />
+              <span className="text-primary font-medium">Dyad Pro</span>
             </h4>
-            <div className="h-px bg-white/10" />
+            <div className="h-px bg-gradient-to-r from-primary/50 via-primary/20 to-transparent" />
           </div>
-          {/* Unlock Pro modes button removed for self-hosting */}
-          <div className="flex flex-col gap-3">
+          {!hasProKey && (
+            <div className="text-sm text-center text-muted-foreground">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <a
+                    className="inline-flex items-center justify-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
+                    onClick={() => {
+                      IpcClient.getInstance().openExternalUrl(
+                        "https://dyad.sh/pro#ai",
+                      );
+                    }}
+                  >
+                    Unlock Pro modes
+                  </a>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Visit dyad.sh/pro to unlock Pro features
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          )}
+          <div className="flex flex-col gap-5">
             <SelectorRow
               id="pro-enabled"
               label="Enable Dyad Pro"
-              description="Use Dyad Pro AI credits"
               tooltip="Uses Dyad Pro AI credits for the main AI model and Pro modes."
               isTogglable={hasProKey}
               settingEnabled={Boolean(settings?.enableDyadPro)}
@@ -100,21 +118,17 @@ export function ProModeSelector() {
             />
             <SelectorRow
               id="web-search"
-              label="Web Search"
-              description="Search the web for information"
-              tooltip="Uses the web to search for information"
+              label="Web Access"
+              tooltip="Allows Dyad to access the web (e.g. search for information)"
               isTogglable={proModeTogglable}
               settingEnabled={Boolean(settings?.enableProWebSearch)}
               toggle={toggleWebSearch}
             />
-            <SelectorRow
-              id="lazy-edits"
-              label="Turbo Edits"
-              description="Makes file edits faster and cheaper"
-              tooltip="Uses a faster, cheaper model to generate full file updates."
+
+            <TurboEditsSelector
               isTogglable={proModeTogglable}
-              settingEnabled={Boolean(settings?.enableProLazyEditsMode)}
-              toggle={toggleLazyEdits}
+              settings={settings}
+              onValueChange={handleTurboEditsChange}
             />
             <SmartContextSelector
               isTogglable={proModeTogglable}
@@ -131,7 +145,6 @@ export function ProModeSelector() {
 function SelectorRow({
   id,
   label,
-  description,
   tooltip,
   isTogglable,
   settingEnabled,
@@ -139,38 +152,30 @@ function SelectorRow({
 }: {
   id: string;
   label: string;
-  description: string;
   tooltip: string;
   isTogglable: boolean;
   settingEnabled: boolean;
   toggle: () => void;
 }) {
   return (
-    <div className="flex items-center justify-between gap-2">
-      <div className="space-y-0.5 flex-1">
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-1.5">
         <Label
           htmlFor={id}
-          className={`text-xs ${!isTogglable ? "text-white/30" : "text-white/90"}`}
+          className={!isTogglable ? "text-muted-foreground/50" : ""}
         >
           {label}
         </Label>
-        <div className="flex items-center gap-1">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Info
-                className={`h-3 w-3 cursor-help ${!isTogglable ? "text-white/30" : "text-white/50"}`}
-              />
-            </TooltipTrigger>
-            <TooltipContent side="right" className="max-w-60">
-              {tooltip}
-            </TooltipContent>
-          </Tooltip>
-          <p
-            className={`text-[10px] ${!isTogglable ? "text-white/30" : "text-white/50"} max-w-44`}
-          >
-            {description}
-          </p>
-        </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Info
+              className={`h-4 w-4 cursor-help ${!isTogglable ? "text-muted-foreground/50" : "text-muted-foreground"}`}
+            />
+          </TooltipTrigger>
+          <TooltipContent side="right" className="max-w-72">
+            {tooltip}
+          </TooltipContent>
+        </Tooltip>
       </div>
       <Switch
         id={id}
@@ -182,6 +187,114 @@ function SelectorRow({
   );
 }
 
+function TurboEditsSelector({
+  isTogglable,
+  settings,
+  onValueChange,
+}: {
+  isTogglable: boolean;
+  settings: UserSettings | null;
+  onValueChange: (value: "off" | "v1" | "v2") => void;
+}) {
+  // Determine current value based on settings
+  const getCurrentValue = (): "off" | "v1" | "v2" => {
+    if (!settings?.enableProLazyEditsMode) {
+      return "off";
+    }
+    if (settings?.proLazyEditsMode === "v1") {
+      return "v1";
+    }
+    if (settings?.proLazyEditsMode === "v2") {
+      return "v2";
+    }
+    // Keep in sync with getModelClient in get_model_client.ts
+    // If enabled but no option set (undefined/falsey), it's v1
+    return "v1";
+  };
+
+  const currentValue = getCurrentValue();
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-1.5">
+        <Label className={!isTogglable ? "text-muted-foreground/50" : ""}>
+          Turbo Edits
+        </Label>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Info
+              className={`h-4 w-4 cursor-help ${!isTogglable ? "text-muted-foreground/50" : "text-muted-foreground"}`}
+            />
+          </TooltipTrigger>
+          <TooltipContent side="right" className="max-w-72">
+            Edits files efficiently without full rewrites.
+            <br />
+            <ul className="list-disc ml-4">
+              <li>
+                <b>Classic:</b> Uses a smaller model to complete edits.
+              </li>
+              <li>
+                <b>Search & replace:</b> Find and replaces specific text blocks.
+              </li>
+            </ul>
+          </TooltipContent>
+        </Tooltip>
+      </div>
+      <div
+        className="inline-flex rounded-md border border-input"
+        data-testid="turbo-edits-selector"
+      >
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={currentValue === "off" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => onValueChange("off")}
+              disabled={!isTogglable}
+              className="rounded-r-none border-r border-input h-8 px-3 text-xs flex-shrink-0"
+            >
+              Off
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Disable Turbo Edits</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={currentValue === "v1" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => onValueChange("v1")}
+              disabled={!isTogglable}
+              className="rounded-none border-r border-input h-8 px-3 text-xs flex-shrink-0"
+            >
+              Classic
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            Uses a smaller model to complete edits
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={currentValue === "v2" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => onValueChange("v2")}
+              disabled={!isTogglable}
+              className="rounded-l-none h-8 px-3 text-xs flex-shrink-0"
+            >
+              Search & replace
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            Find and replaces specific text blocks
+          </TooltipContent>
+        </Tooltip>
+      </div>
+    </div>
+  );
+}
+
 function SmartContextSelector({
   isTogglable,
   settings,
@@ -189,18 +302,18 @@ function SmartContextSelector({
 }: {
   isTogglable: boolean;
   settings: UserSettings | null;
-  onValueChange: (value: "off" | "conservative" | "balanced") => void;
+  onValueChange: (value: "off" | "balanced" | "deep") => void;
 }) {
   // Determine current value based on settings
-  const getCurrentValue = (): "off" | "conservative" | "balanced" => {
+  const getCurrentValue = (): "off" | "conservative" | "balanced" | "deep" => {
     if (!settings?.enableProSmartFilesContextMode) {
       return "off";
     }
+    if (settings?.proSmartContextOption === "deep") {
+      return "deep";
+    }
     if (settings?.proSmartContextOption === "balanced") {
       return "balanced";
-    }
-    if (settings?.proSmartContextOption === "conservative") {
-      return "conservative";
     }
     // Keep in sync with getModelClient in get_model_client.ts
     // If enabled but no option set (undefined/falsey), it's balanced
@@ -211,56 +324,73 @@ function SmartContextSelector({
 
   return (
     <div className="space-y-2">
-      <div className="space-y-0.5">
-        <Label className={`text-xs ${!isTogglable ? "text-white/30" : "text-white/90"}`}>
+      <div className="flex items-center gap-1.5">
+        <Label className={!isTogglable ? "text-muted-foreground/50" : ""}>
           Smart Context
         </Label>
-        <div className="flex items-center gap-1">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Info
-                className={`h-3 w-3 cursor-help ${!isTogglable ? "text-white/30" : "text-white/50"}`}
-              />
-            </TooltipTrigger>
-            <TooltipContent side="right" className="max-w-60">
-              Improve efficiency and save credits working on large codebases.
-            </TooltipContent>
-          </Tooltip>
-          <p
-            className={`text-[10px] ${!isTogglable ? "text-white/30" : "text-white/50"}`}
-          >
-            Optimizes your AI's code context
-          </p>
-        </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Info
+              className={`h-4 w-4 cursor-help ${!isTogglable ? "text-muted-foreground/50" : "text-muted-foreground"}`}
+            />
+          </TooltipTrigger>
+          <TooltipContent side="right" className="max-w-72">
+            Selects the most relevant files as context to save credits working
+            on large codebases.
+          </TooltipContent>
+        </Tooltip>
       </div>
-      <div className="inline-flex rounded-md border border-white/15">
-        <Button
-          variant={currentValue === "off" ? "default" : "ghost"}
-          size="sm"
-          onClick={() => onValueChange("off")}
-          disabled={!isTogglable}
-          className="rounded-r-none border-r border-white/15 h-6 px-2 text-[10px] flex-shrink-0 bg-transparent hover:bg-white/10"
-        >
-          Off
-        </Button>
-        <Button
-          variant={currentValue === "conservative" ? "default" : "ghost"}
-          size="sm"
-          onClick={() => onValueChange("conservative")}
-          disabled={!isTogglable}
-          className="rounded-none border-r border-white/15 h-6 px-2 text-[10px] flex-shrink-0 bg-transparent hover:bg-white/10"
-        >
-          Conservative
-        </Button>
-        <Button
-          variant={currentValue === "balanced" ? "default" : "ghost"}
-          size="sm"
-          onClick={() => onValueChange("balanced")}
-          disabled={!isTogglable}
-          className="rounded-l-none h-6 px-2 text-[10px] flex-shrink-0 bg-transparent hover:bg-white/10"
-        >
-          Balanced
-        </Button>
+      <div
+        className="inline-flex rounded-md border border-input"
+        data-testid="smart-context-selector"
+      >
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={currentValue === "off" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => onValueChange("off")}
+              disabled={!isTogglable}
+              className="rounded-r-none border-r border-input h-8 px-3 text-xs flex-shrink-0"
+            >
+              Off
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Disable Smart Context</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={currentValue === "balanced" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => onValueChange("balanced")}
+              disabled={!isTogglable}
+              className="rounded-none border-r border-input h-8 px-3 text-xs flex-shrink-0"
+            >
+              Balanced
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            Selects most relevant files with balanced context size
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={currentValue === "deep" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => onValueChange("deep")}
+              disabled={!isTogglable}
+              className="rounded-l-none h-8 px-3 text-xs flex-shrink-0"
+            >
+              Deep
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <b>Experimental:</b> Keeps full conversation history for maximum
+            context and cache-optimized to control costs
+          </TooltipContent>
+        </Tooltip>
       </div>
     </div>
   );

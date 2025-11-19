@@ -1,7 +1,7 @@
 {
   "body": {
-    "model": "gemini/gemini-2.5-pro",
-    "max_tokens": 65535,
+    "model": "dyad/auto",
+    "max_tokens": 32000,
     "temperature": 0,
     "messages": [
       {
@@ -10,7 +10,23 @@
       },
       {
         "role": "user",
-        "content": "[dump] tc=turbo-edits"
+        "content": "tc=turbo-edits-v2-trigger-fallback"
+      },
+      {
+        "role": "assistant",
+        "content": "Example with turbo edit v2\n<dyad-search-replace path=\"src/pages/Index.tsx\">\n<<<<<<< SEARCH\n        // Intentionally DO NOT MATCH ANYTHING TO TRIGGER FALLBACK\n        <h1 className=\"text-4xl font-bold mb-4\">Welcome to Your Blank App</h1>\n=======\n        <h1 className=\"text-4xl font-bold mb-4\">Welcome to the UPDATED App</h1>\n>>>>>>> REPLACE\n</dyad-search-replace>\nEnd of turbo edit\n"
+      },
+      {
+        "role": "user",
+        "content": "There was an issue with the following `dyad-search-replace` tags. Make sure you use `dyad-read` to read the latest version of the file and then trying to do search & replace again.\n                \nFile path: src/pages/Index.tsx\nError: Unable to apply search-replace to file"
+      },
+      {
+        "role": "assistant",
+        "content": "<dyad-read path=\"src/pages/Index.tsx\"></dyad-read>\n\n<dyad-search-replace path=\"src/pages/Index.tsx\">\n<<<<<<< SEARCH\n        // STILL Intentionally DO NOT MATCH ANYTHING TO TRIGGER FALLBACK\n        <h1 className=\"text-4xl font-bold mb-4\">Welcome to Your Blank App</h1>\n=======\n        <h1 className=\"text-4xl font-bold mb-4\">Welcome to the UPDATED App</h1>\n>>>>>>> REPLACE\n</dyad-search-replace>\n\n\n[[dyad-dump-path=*]]"
+      },
+      {
+        "role": "user",
+        "content": "There was an issue with the following `dyad-search-replace` tags. Please fix the errors by generating the code changes using `dyad-write` tags instead.\n                \nFile path: src/pages/Index.tsx\nError: Unable to apply search-replace to file"
       }
     ],
     "stream": true,
@@ -412,9 +428,10 @@
           "force": false
         }
       ],
-      "enable_lazy_edits": true,
+      "enable_lazy_edits": false,
       "enable_smart_files_context": true,
-      "smart_context_mode": "conservative"
+      "smart_context_mode": "balanced",
+      "app_id": 1
     }
   },
   "headers": {

@@ -3,12 +3,14 @@
 // https://github.com/jjleng/code-panda/blob/61f1fa514c647de1a8d2ad7f85102d49c6db2086/LICENSE
 
 export const SUPABASE_SCHEMA_QUERY = `
-          WITH table_info AS (
+        WITH table_info AS (
             SELECT
                 tables.table_name,
-                pd.description as table_description
+                pd.description as table_description,
+                cls.relrowsecurity as rls_enabled
             FROM information_schema.tables tables
             LEFT JOIN pg_stat_user_tables psut ON tables.table_name = psut.relname
+            LEFT JOIN pg_class cls ON psut.relid = cls.oid
             LEFT JOIN pg_description pd ON psut.relid = pd.objoid AND pd.objsubid = 0
             WHERE tables.table_schema = 'public'
         ),
@@ -33,6 +35,7 @@ export const SUPABASE_SCHEMA_QUERY = `
                 jsonb_build_object(
                     'name', ti.table_name::text,
                     'description', ti.table_description::text,
+                    'rls_enabled', ti.rls_enabled,
                     'columns', COALESCE(ci.columns, '[]'::jsonb)
                 )::text as data
             FROM table_info ti
@@ -52,7 +55,8 @@ export const SUPABASE_SCHEMA_QUERY = `
                         ELSE pol.polcmd::text
                     END,
                     'permissive', pol.polpermissive,
-                    'definition', pg_get_expr(pol.polqual, pol.polrelid)::text
+                    'using_clause', pg_get_expr(pol.polqual, pol.polrelid)::text,
+                    'with_check_clause', pg_get_expr(pol.polwithcheck, pol.polrelid)::text
                 )::text as data
             FROM pg_policy pol
             JOIN pg_class cls ON pol.polrelid = cls.oid
@@ -103,5 +107,4 @@ export const SUPABASE_SCHEMA_QUERY = `
             UNION ALL SELECT * FROM triggers_result
         ) combined_results
         ORDER BY result_type;
-
 `;

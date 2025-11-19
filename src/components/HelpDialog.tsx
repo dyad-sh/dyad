@@ -25,6 +25,7 @@ import { ChatLogsData } from "@/ipc/ipc_types";
 import { showError } from "@/lib/toast";
 import { HelpBotDialog } from "./HelpBotDialog";
 import { useSettings } from "@/hooks/useSettings";
+import { BugScreenshotDialog } from "./BugScreenshotDialog";
 
 interface HelpDialogProps {
   isOpen: boolean;
@@ -39,6 +40,7 @@ export function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
   const [uploadComplete, setUploadComplete] = useState(false);
   const [sessionId, setSessionId] = useState("");
   const [isHelpBotOpen, setIsHelpBotOpen] = useState(false);
+  const [isBugScreenshotOpen, setIsBugScreenshotOpen] = useState(false);
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { settings } = useSettings();
 
@@ -91,6 +93,9 @@ Issues that do not meet these requirements will be closed and may need to be res
 ## Actual Behavior (required)
 <!-- What actually happened? -->
 
+## Screenshot (Optional)
+<!-- Screenshot of the bug -->
+
 ## System Information
 - Dyad Version: ${debugInfo.dyadVersion}
 - Platform: ${debugInfo.platform}
@@ -110,7 +115,11 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
       // Create the GitHub issue URL with the pre-filled body
       const encodedBody = encodeURIComponent(issueBody);
       const encodedTitle = encodeURIComponent("[bug] <WRITE TITLE HERE>");
-      const githubIssueUrl = `https://github.com/dyad-sh/dyad/issues/new?title=${encodedTitle}&labels=bug,filed-from-app&body=${encodedBody}`;
+      const labels = ["bug"];
+      if (isDyadProUser) {
+        labels.push("pro");
+      }
+      const githubIssueUrl = `https://github.com/dyad-sh/dyad/issues/new?title=${encodedTitle}&labels=${labels}&body=${encodedBody}`;
 
       // Open the pre-filled GitHub issue page
       IpcClient.getInstance().openExternalUrl(githubIssueUrl);
@@ -230,7 +239,11 @@ Session ID: ${sessionId}
 
     const encodedBody = encodeURIComponent(issueBody);
     const encodedTitle = encodeURIComponent("[session report] <add title>");
-    const githubIssueUrl = `https://github.com/dyad-sh/dyad/issues/new?title=${encodedTitle}&labels=support&body=${encodedBody}`;
+    const labels = ["support"];
+    if (isDyadProUser) {
+      labels.push("pro");
+    }
+    const githubIssueUrl = `https://github.com/dyad-sh/dyad/issues/new?title=${encodedTitle}&labels=${labels}&body=${encodedBody}`;
 
     IpcClient.getInstance().openExternalUrl(githubIssueUrl);
     handleClose();
@@ -419,7 +432,10 @@ Session ID: ${sessionId}
           <div className="flex flex-col space-y-2">
             <Button
               variant="outline"
-              onClick={handleReportBug}
+              onClick={() => {
+                handleClose();
+                setIsBugScreenshotOpen(true);
+              }}
               disabled={isLoading}
               className="w-full py-6 bg-(--background-lightest)"
             >
@@ -451,6 +467,12 @@ Session ID: ${sessionId}
       <HelpBotDialog
         isOpen={isHelpBotOpen}
         onClose={() => setIsHelpBotOpen(false)}
+      />
+      <BugScreenshotDialog
+        isOpen={isBugScreenshotOpen}
+        onClose={() => setIsBugScreenshotOpen(false)}
+        handleReportBug={handleReportBug}
+        isLoading={isLoading}
       />
     </Dialog>
   );

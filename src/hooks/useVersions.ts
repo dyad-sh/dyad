@@ -1,9 +1,9 @@
 import { useEffect } from "react";
-import { useAtom, useAtomValue } from "jotai";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { versionsListAtom } from "@/atoms/appAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
 
-import { chatMessagesAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { chatMessagesByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { RevertVersionResponse, Version } from "@/ipc/ipc_types";
 import { toast } from "sonner";
@@ -11,7 +11,7 @@ import { toast } from "sonner";
 export function useVersions(appId: number | null) {
   const [, setVersionsAtom] = useAtom(versionsListAtom);
   const selectedChatId = useAtomValue(selectedChatIdAtom);
-  const [, setMessages] = useAtom(chatMessagesAtom);
+  const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const queryClient = useQueryClient();
 
   const {
@@ -67,7 +67,11 @@ export function useVersions(appId: number | null) {
       });
       if (selectedChatId) {
         const chat = await IpcClient.getInstance().getChat(selectedChatId);
-        setMessages(chat.messages);
+        setMessagesById((prev) => {
+          const next = new Map(prev);
+          next.set(selectedChatId, chat.messages);
+          return next;
+        });
       }
       await queryClient.invalidateQueries({
         queryKey: ["problems", appId],

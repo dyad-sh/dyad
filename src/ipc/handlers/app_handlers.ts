@@ -152,12 +152,43 @@ async function executeAppLocalNode({
   if (!spawnedProcess.pid) {
     // Attempt to capture any immediate errors if possible
     let errorOutput = "";
-    spawnedProcess.stderr?.on("data", (data) => (errorOutput += data));
-    await new Promise((resolve) => spawnedProcess.on("error", resolve)); // Wait for error event
-    throw new Error(
-      `Failed to spawn process for app ${appId}. Error: ${
-        errorOutput || "Unknown spawn error"
+    let spawnErr: any | null = null;
+    spawnedProcess.stderr?.on(
+      "data",
+      (data) => (errorOutput += data.toString()),
+    );
+    await new Promise<void>((resolve) => {
+      spawnedProcess.once("error", (err) => {
+        spawnErr = err;
+        resolve();
+      });
+    }); // Wait for error event
+
+    const details = [
+      spawnErr?.message ? `message=${spawnErr.message}` : null,
+      spawnErr?.code ? `code=${spawnErr.code}` : null,
+      spawnErr?.errno ? `errno=${spawnErr.errno}` : null,
+      spawnErr?.syscall ? `syscall=${spawnErr.syscall}` : null,
+      spawnErr?.path ? `path=${spawnErr.path}` : null,
+      spawnErr?.spawnargs
+        ? `spawnargs=${JSON.stringify(spawnErr.spawnargs)}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(", ");
+
+    logger.error(
+      `Failed to spawn process for app ${appId}. Command="${command}", CWD="${appPath}", ${details}\nSTDERR:\n${
+        errorOutput || "(empty)"
       }`,
+    );
+
+    throw new Error(
+      `Failed to spawn process for app ${appId}.
+Error output:
+${errorOutput || "(empty)"}
+Details: ${details || "n/a"}
+`,
     );
   }
 
@@ -409,12 +440,39 @@ RUN npm install -g pnpm
   if (!process.pid) {
     // Attempt to capture any immediate errors if possible
     let errorOutput = "";
-    process.stderr?.on("data", (data) => (errorOutput += data));
-    await new Promise((resolve) => process.on("error", resolve)); // Wait for error event
-    throw new Error(
-      `Failed to spawn Docker container for app ${appId}. Error: ${
-        errorOutput || "Unknown spawn error"
+    let spawnErr: any = null;
+    process.stderr?.on("data", (data) => (errorOutput += data.toString()));
+    await new Promise<void>((resolve) => {
+      process.once("error", (err) => {
+        spawnErr = err;
+        resolve();
+      });
+    }); // Wait for error event
+
+    const details = [
+      spawnErr?.message ? `message=${spawnErr.message}` : null,
+      spawnErr?.code ? `code=${spawnErr.code}` : null,
+      spawnErr?.errno ? `errno=${spawnErr.errno}` : null,
+      spawnErr?.syscall ? `syscall=${spawnErr.syscall}` : null,
+      spawnErr?.path ? `path=${spawnErr.path}` : null,
+      spawnErr?.spawnargs
+        ? `spawnargs=${JSON.stringify(spawnErr.spawnargs)}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(", ");
+
+    logger.error(
+      `Failed to spawn Docker container for app ${appId}. ${details}\nSTDERR:\n${
+        errorOutput || "(empty)"
       }`,
+    );
+
+    throw new Error(
+      `Failed to spawn Docker container for app ${appId}.
+Details: ${details || "n/a"}
+STDERR:
+${errorOutput || "(empty)"}`,
     );
   }
 
@@ -666,7 +724,9 @@ export function registerAppHandlers() {
     let supabaseProjectName: string | null = null;
     const settings = readSettings();
     if (app.supabaseProjectId && settings.supabase?.accessToken?.value) {
-      supabaseProjectName = await getSupabaseProjectName(app.supabaseProjectId);
+      supabaseProjectName = await getSupabaseProjectName(
+        app.supabaseParentProjectId || app.supabaseProjectId,
+      );
     }
 
     let vercelTeamSlug: string | null = null;
@@ -1070,6 +1130,53 @@ export function registerAppHandlers() {
           throw new Error(
             `App deleted from database, but failed to delete app files. Please delete app files from ${appPath} manually.\n\nError: ${error.message}`,
           );
+        }
+      });
+    },
+  );
+
+  ipcMain.handle(
+    "add-to-favorite",
+    async (
+      _,
+      { appId }: { appId: number },
+    ): Promise<{ isFavorite: boolean }> => {
+      return withLock(appId, async () => {
+        try {
+          // Fetch the current isFavorite value
+          const result = await db
+            .select({ isFavorite: apps.isFavorite })
+            .from(apps)
+            .where(eq(apps.id, appId))
+            .limit(1);
+
+          if (result.length === 0) {
+            throw new Error(`App with ID ${appId} not found.`);
+          }
+
+          const currentIsFavorite = result[0].isFavorite;
+
+          // Toggle the isFavorite value
+          const updated = await db
+            .update(apps)
+            .set({ isFavorite: !currentIsFavorite })
+            .where(eq(apps.id, appId))
+            .returning({ isFavorite: apps.isFavorite });
+
+          if (updated.length === 0) {
+            throw new Error(
+              `Failed to update favorite status for app ID ${appId}.`,
+            );
+          }
+
+          // Return the updated isFavorite value
+          return { isFavorite: updated[0].isFavorite };
+        } catch (error: any) {
+          logger.error(
+            `Error in add-to-favorite handler for app ID ${appId}:`,
+            error,
+          );
+          throw new Error(`Failed to toggle favorite status: ${error.message}`);
         }
       });
     },

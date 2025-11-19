@@ -8,11 +8,12 @@ import { DyadAddDependency } from "./DyadAddDependency";
 import { DyadExecuteSql } from "./DyadExecuteSql";
 import { DyadAddIntegration } from "./DyadAddIntegration";
 import { DyadEdit } from "./DyadEdit";
+import { DyadSearchReplace } from "./DyadSearchReplace";
 import { DyadCodebaseContext } from "./DyadCodebaseContext";
 import { DyadThink } from "./DyadThink";
 import { CodeHighlight } from "./CodeHighlight";
 import { useAtomValue } from "jotai";
-import { isStreamingAtom } from "@/atoms/chatAtoms";
+import { isStreamingByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { CustomTagState } from "./stateTypes";
 import { DyadOutput } from "./DyadOutput";
 import { DyadProblemSummary } from "./DyadProblemSummary";
@@ -21,7 +22,12 @@ import { DyadMcpToolCall } from "./DyadMcpToolCall";
 import { DyadMcpToolResult } from "./DyadMcpToolResult";
 import { DyadWebSearchResult } from "./DyadWebSearchResult";
 import { DyadWebSearch } from "./DyadWebSearch";
+import { DyadWebCrawl } from "./DyadWebCrawl";
+import { DyadCodeSearchResult } from "./DyadCodeSearchResult";
+import { DyadCodeSearch } from "./DyadCodeSearch";
 import { DyadRead } from "./DyadRead";
+import { mapActionToButton } from "./ChatInput";
+import { SuggestedAction } from "@/lib/schemas";
 
 interface DyadMarkdownParserProps {
   content: string;
@@ -77,7 +83,8 @@ export const VanillaMarkdownParser = ({ content }: { content: string }) => {
 export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
   content,
 }) => {
-  const isStreaming = useAtomValue(isStreamingAtom);
+  const chatId = useAtomValue(selectedChatIdAtom);
+  const isStreaming = useAtomValue(isStreamingByIdAtom).get(chatId!) ?? false;
   // Extract content pieces (markdown and custom tags)
   const contentPieces = useMemo(() => {
     return parseCustomTags(content);
@@ -126,9 +133,11 @@ function preprocessUnclosedTags(content: string): {
     "dyad-problem-report",
     "dyad-chat-summary",
     "dyad-edit",
+    "dyad-search-replace",
     "dyad-codebase-context",
     "dyad-web-search-result",
     "dyad-web-search",
+    "dyad-web-crawl",
     "dyad-read",
     "think",
     "dyad-command",
@@ -198,9 +207,13 @@ function parseCustomTags(content: string): ContentPiece[] {
     "dyad-problem-report",
     "dyad-chat-summary",
     "dyad-edit",
+    "dyad-search-replace",
     "dyad-codebase-context",
     "dyad-web-search-result",
     "dyad-web-search",
+    "dyad-web-crawl",
+    "dyad-code-search-result",
+    "dyad-code-search",
     "dyad-read",
     "think",
     "dyad-command",
@@ -312,6 +325,36 @@ function renderCustomTag(
         >
           {content}
         </DyadWebSearch>
+      );
+    case "dyad-web-crawl":
+      return (
+        <DyadWebCrawl
+          node={{
+            properties: {},
+          }}
+        >
+          {content}
+        </DyadWebCrawl>
+      );
+    case "dyad-code-search":
+      return (
+        <DyadCodeSearch
+          node={{
+            properties: {},
+          }}
+        >
+          {content}
+        </DyadCodeSearch>
+      );
+    case "dyad-code-search-result":
+      return (
+        <DyadCodeSearchResult
+          node={{
+            properties: {},
+          }}
+        >
+          {content}
+        </DyadCodeSearchResult>
       );
     case "dyad-web-search-result":
       return (
@@ -434,6 +477,21 @@ function renderCustomTag(
         </DyadEdit>
       );
 
+    case "dyad-search-replace":
+      return (
+        <DyadSearchReplace
+          node={{
+            properties: {
+              path: attributes.path || "",
+              description: attributes.description || "",
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadSearchReplace>
+      );
+
     case "dyad-codebase-context":
       return (
         <DyadCodebaseContext
@@ -498,7 +556,12 @@ function renderCustomTag(
       return null;
 
     case "dyad-command":
-      // Don't render anything for dyad-command
+      if (attributes.type) {
+        const action = {
+          id: attributes.type,
+        } as SuggestedAction;
+        return <>{mapActionToButton(action)}</>;
+      }
       return null;
 
     default:

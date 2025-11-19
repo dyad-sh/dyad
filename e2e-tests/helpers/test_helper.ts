@@ -71,16 +71,25 @@ class ProModesDialog {
     public close: () => Promise<void>,
   ) {}
 
-  async setSmartContextMode(mode: "balanced" | "off" | "conservative") {
+  async setSmartContextMode(mode: "balanced" | "off" | "deep") {
     await this.page
+      .getByTestId("smart-context-selector")
       .getByRole("button", {
         name: mode.charAt(0).toUpperCase() + mode.slice(1),
       })
       .click();
   }
 
-  async toggleTurboEdits() {
-    await this.page.getByRole("switch", { name: "Turbo Edits" }).click();
+  async setTurboEditsMode(mode: "off" | "classic" | "search-replace") {
+    await this.page
+      .getByTestId("turbo-edits-selector")
+      .getByRole("button", {
+        name:
+          mode === "search-replace"
+            ? "Search & replace"
+            : mode.charAt(0).toUpperCase() + mode.slice(1),
+      })
+      .click();
   }
 }
 
@@ -362,7 +371,7 @@ export class PageObject {
     await expect(this.page.getByRole("dialog")).toMatchAriaSnapshot();
   }
 
-  async snapshotAppFiles({ name }: { name: string }) {
+  async snapshotAppFiles({ name, files }: { name: string; files?: string[] }) {
     const currentAppName = await this.getCurrentAppName();
     if (!currentAppName) {
       throw new Error("No app selected");
@@ -374,10 +383,17 @@ export class PageObject {
     }
 
     await expect(() => {
-      const filesData = generateAppFilesSnapshotData(appPath, appPath);
+      let filesData = generateAppFilesSnapshotData(appPath, appPath);
 
       // Sort by relative path to ensure deterministic output
       filesData.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+      if (files) {
+        filesData = filesData.filter((file) =>
+          files.some(
+            (f) => normalizePath(f) === normalizePath(file.relativePath),
+          ),
+        );
+      }
 
       const snapshotContent = filesData
         .map(
@@ -400,7 +416,8 @@ export class PageObject {
 
   async snapshotMessages({
     replaceDumpPath = false,
-  }: { replaceDumpPath?: boolean } = {}) {
+    timeout,
+  }: { replaceDumpPath?: boolean; timeout?: number } = {}) {
     if (replaceDumpPath) {
       // Update page so that "[[dyad-dump-path=*]]" is replaced with a placeholder path
       // which is stable across runs.
@@ -417,7 +434,9 @@ export class PageObject {
         );
       });
     }
-    await expect(this.page.getByTestId("messages-list")).toMatchAriaSnapshot();
+    await expect(this.page.getByTestId("messages-list")).toMatchAriaSnapshot({
+      timeout,
+    });
   }
 
   async approveProposal() {
@@ -457,8 +476,20 @@ export class PageObject {
   // Preview panel
   ////////////////////////////////
 
-  async selectPreviewMode(mode: "code" | "problems" | "preview" | "configure") {
+  async selectPreviewMode(
+    mode: "code" | "problems" | "preview" | "configure" | "security",
+  ) {
     await this.page.getByTestId(`${mode}-mode-button`).click();
+  }
+
+  async clickChatActivityButton() {
+    await this.page.getByTestId("chat-activity-button").click();
+  }
+
+  async snapshotChatActivityList() {
+    await expect(
+      this.page.getByTestId("chat-activity-list"),
+    ).toMatchAriaSnapshot();
   }
 
   async clickRecheckProblems() {
@@ -491,8 +522,15 @@ export class PageObject {
       .click({ timeout: Timeout.EXTRA_LONG });
   }
 
-  async clickDeselectComponent() {
-    await this.page.getByRole("button", { name: "Deselect component" }).click();
+  async clickDeselectComponent(options?: { index?: number }) {
+    const buttons = this.page.getByRole("button", {
+      name: "Deselect component",
+    });
+    if (options?.index !== undefined) {
+      await buttons.nth(options.index).click();
+    } else {
+      await buttons.first().click();
+    }
   }
 
   async clickPreviewMoreOptions() {
@@ -551,12 +589,12 @@ export class PageObject {
     await expect(this.getChatInputContainer()).toMatchAriaSnapshot();
   }
 
-  getSelectedComponentDisplay() {
+  getSelectedComponentsDisplay() {
     return this.page.getByTestId("selected-component-display");
   }
 
-  async snapshotSelectedComponentDisplay() {
-    await expect(this.getSelectedComponentDisplay()).toMatchAriaSnapshot();
+  async snapshotSelectedComponentsDisplay() {
+    await expect(this.getSelectedComponentsDisplay()).toMatchAriaSnapshot();
   }
 
   async snapshotPreview({ name }: { name?: string } = {}) {
@@ -565,6 +603,12 @@ export class PageObject {
       name,
       timeout: Timeout.LONG,
     });
+  }
+
+  async snapshotSecurityFindingsTable() {
+    await expect(
+      this.page.getByTestId("security-findings-table"),
+    ).toMatchAriaSnapshot();
   }
 
   async snapshotServerDump(
@@ -763,9 +807,7 @@ export class PageObject {
   }
 
   async setUpTestModel() {
-    await this.page
-      .getByRole("heading", { name: "test-provider Needs Setup" })
-      .click();
+    await this.page.getByRole("heading", { name: "test-provider" }).click();
     await this.page.getByRole("button", { name: "Add Custom Model" }).click();
     await this.page
       .getByRole("textbox", { name: "Model ID*" })
@@ -1220,4 +1262,8 @@ function prettifyDump(
       return `===\nrole: ${message.role}\nmessage: ${content}`;
     })
     .join("\n\n");
+}
+
+function normalizePath(path: string): string {
+  return path.replace(/\\/g, "/");
 }

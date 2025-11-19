@@ -48,6 +48,7 @@ import type {
   VercelDeployment,
   GetVercelDeploymentsParams,
   DisconnectVercelProjectParams,
+  SecurityReviewResult,
   IsVercelProjectAvailableParams,
   SaveVercelAccessTokenParams,
   VercelProject,
@@ -65,6 +66,10 @@ import type {
   UpdatePromptParamsDto,
   McpServerUpdate,
   CreateMcpServer,
+  CloneRepoParams,
+  SupabaseBranch,
+  SetSupabaseAppProjectParams,
+  SelectNodeFolderResult,
 } from "./ipc_types";
 import type { Template } from "../shared/templates";
 import type {
@@ -74,6 +79,7 @@ import type {
   ProposalResult,
 } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
+import { DeepLinkData } from "./deep_link_data";
 
 export interface ChatStreamCallbacks {
   onUpdate: (messages: Message[]) => void;
@@ -97,10 +103,6 @@ export interface GitHubDeviceFlowSuccessData {
 
 export interface GitHubDeviceFlowErrorData {
   error: string;
-}
-
-export interface DeepLinkData {
-  type: string;
 }
 
 interface DeleteCustomModelParams {
@@ -189,15 +191,27 @@ export class IpcClient {
       }
     });
 
-    this.ipcRenderer.on("chat:response:error", (error) => {
+    this.ipcRenderer.on("chat:response:error", (payload) => {
       console.debug("chat:response:error");
-      if (typeof error === "string") {
-        for (const [chatId, callbacks] of this.chatStreams.entries()) {
+      if (
+        payload &&
+        typeof payload === "object" &&
+        "chatId" in payload &&
+        "error" in payload
+      ) {
+        const { chatId, error } = payload as { chatId: number; error: string };
+        const callbacks = this.chatStreams.get(chatId);
+        if (callbacks) {
           callbacks.onError(error);
           this.chatStreams.delete(chatId);
+        } else {
+          console.warn(
+            `[IPC] No callbacks found for chat ${chatId} on error`,
+            this.chatStreams,
+          );
         }
       } else {
-        console.error("[IPC] Invalid error data received:", error);
+        console.error("[IPC] Invalid error data received:", payload);
       }
     });
 
@@ -272,6 +286,20 @@ export class IpcClient {
 
   public async getApp(appId: number): Promise<App> {
     return this.ipcRenderer.invoke("get-app", appId);
+  }
+
+  public async addAppToFavorite(
+    appId: number,
+  ): Promise<{ isFavorite: boolean }> {
+    try {
+      const result = await this.ipcRenderer.invoke("add-to-favorite", {
+        appId,
+      });
+      return result;
+    } catch (error) {
+      showError(error);
+      throw error;
+    }
   }
 
   public async getAppEnvVars(
@@ -359,7 +387,7 @@ export class IpcClient {
   public streamMessage(
     prompt: string,
     options: {
-      selectedComponent: ComponentSelection | null;
+      selectedComponents?: ComponentSelection[];
       chatId: number;
       redo?: boolean;
       attachments?: FileAttachment[];
@@ -373,7 +401,7 @@ export class IpcClient {
       chatId,
       redo,
       attachments,
-      selectedComponent,
+      selectedComponents,
       onUpdate,
       onEnd,
       onError,
@@ -413,16 +441,18 @@ export class IpcClient {
               prompt,
               chatId,
               redo,
-              selectedComponent,
+              selectedComponents,
               attachments: fileDataArray,
             })
             .catch((err) => {
+              console.error("Error streaming message:", err);
               showError(err);
               onError(String(err));
               this.chatStreams.delete(chatId);
             });
         })
         .catch((err) => {
+          console.error("Error streaming message:", err);
           showError(err);
           onError(String(err));
           this.chatStreams.delete(chatId);
@@ -434,9 +464,10 @@ export class IpcClient {
           prompt,
           chatId,
           redo,
-          selectedComponent,
+          selectedComponents,
         })
         .catch((err) => {
+          console.error("Error streaming message:", err);
           showError(err);
           onError(String(err));
           this.chatStreams.delete(chatId);
@@ -447,12 +478,6 @@ export class IpcClient {
   // Method to cancel an ongoing stream
   public cancelChatStream(chatId: number): void {
     this.ipcRenderer.invoke("chat:cancel", chatId);
-    const callbacks = this.chatStreams.get(chatId);
-    if (callbacks) {
-      this.chatStreams.delete(chatId);
-    } else {
-      console.error("Tried canceling chat that doesn't exist");
-    }
   }
 
   // Create a new chat for an app
@@ -934,14 +959,16 @@ export class IpcClient {
     return this.ipcRenderer.invoke("supabase:list-projects");
   }
 
+  public async listSupabaseBranches(params: {
+    projectId: string;
+  }): Promise<SupabaseBranch[]> {
+    return this.ipcRenderer.invoke("supabase:list-branches", params);
+  }
+
   public async setSupabaseAppProject(
-    project: string,
-    app: number,
+    params: SetSupabaseAppProjectParams,
   ): Promise<void> {
-    await this.ipcRenderer.invoke("supabase:set-app-project", {
-      project,
-      app,
-    });
+    await this.ipcRenderer.invoke("supabase:set-app-project", params);
   }
 
   public async unsetSupabaseAppProject(app: number): Promise<void> {
@@ -1152,10 +1179,26 @@ export class IpcClient {
     return this.ipcRenderer.invoke("select-app-folder");
   }
 
+  // Add these methods to IpcClient class
+
+  public async selectNodeFolder(): Promise<SelectNodeFolderResult> {
+    return this.ipcRenderer.invoke("select-node-folder");
+  }
+
+  public async getNodePath(): Promise<string | null> {
+    return this.ipcRenderer.invoke("get-node-path");
+  }
+
   public async checkAiRules(params: {
     path: string;
   }): Promise<{ exists: boolean }> {
     return this.ipcRenderer.invoke("check-ai-rules", params);
+  }
+
+  public async getLatestSecurityReview(
+    appId: number,
+  ): Promise<SecurityReviewResult> {
+    return this.ipcRenderer.invoke("get-latest-security-review", appId);
   }
 
   public async importApp(params: ImportAppParams): Promise<ImportAppResult> {
@@ -1251,6 +1294,11 @@ export class IpcClient {
   public async deletePrompt(id: number): Promise<void> {
     await this.ipcRenderer.invoke("prompts:delete", id);
   }
+  public async cloneRepoFromUrl(
+    params: CloneRepoParams,
+  ): Promise<{ app: App; hasAiRules: boolean } | { error: string }> {
+    return this.ipcRenderer.invoke("github:clone-repo-from-url", params);
+  }
 
   // --- Help bot ---
   public startHelpChat(
@@ -1270,6 +1318,10 @@ export class IpcClient {
         showError(err);
         options.onError(String(err));
       });
+  }
+
+  public async takeScreenshot(): Promise<void> {
+    await this.ipcRenderer.invoke("take-screenshot");
   }
 
   public cancelHelpChat(sessionId: string): void {

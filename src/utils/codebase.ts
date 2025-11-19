@@ -56,7 +56,15 @@ const ALLOWED_EXTENSIONS = [
 // be conservative and never include these directories.
 //
 // ex: https://github.com/dyad-sh/dyad/issues/727
-const EXCLUDED_DIRS = ["node_modules", ".git", "dist", "build", ".next"];
+const EXCLUDED_DIRS = [
+  "node_modules",
+  ".git",
+  "dist",
+  "build",
+  ".next",
+  ".venv",
+  "venv",
+];
 
 // Files to always exclude
 const EXCLUDED_FILES = ["pnpm-lock.yaml", "package-lock.json"];
@@ -403,11 +411,19 @@ ${content}
   }
 }
 
-export type CodebaseFile = {
+export interface BaseFile {
   path: string;
-  content: string;
+  focused?: boolean;
   force?: boolean;
-};
+}
+
+export interface CodebaseFile extends BaseFile {
+  content: string;
+}
+
+export interface CodebaseFileReference extends BaseFile {
+  fileId: string;
+}
 
 /**
  * Extract and format codebase files as a string to be included in prompts

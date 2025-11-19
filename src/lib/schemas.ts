@@ -98,6 +98,11 @@ export const RegularProviderSettingSchema = z.object({
   apiKey: SecretSchema.optional(),
 });
 
+export const AzureProviderSettingSchema = z.object({
+  apiKey: SecretSchema.optional(),
+  resourceName: z.string().optional(),
+});
+
 export const VertexProviderSettingSchema = z.object({
   // We make this undefined so that it makes existing callsites easier.
   apiKey: z.undefined(),
@@ -109,8 +114,16 @@ export const VertexProviderSettingSchema = z.object({
 export const ProviderSettingSchema = z.union([
   // Must use more specific type first!
   // Zod uses the first type that matches.
-  VertexProviderSettingSchema,
-  RegularProviderSettingSchema,
+  //
+  // We use passthrough as a hack because Azure and Vertex
+  // will match together since their required fields overlap.
+  //
+  // In addition, there may be future provider settings that
+  // we may want to preserve (e.g. user downgrades to older version)
+  // so doing passthrough keeps these extra fields.
+  AzureProviderSettingSchema.passthrough(),
+  VertexProviderSettingSchema.passthrough(),
+  RegularProviderSettingSchema.passthrough(),
 ]);
 
 /**
@@ -120,6 +133,7 @@ export type ProviderSetting = z.infer<typeof ProviderSettingSchema>;
 export type RegularProviderSetting = z.infer<
   typeof RegularProviderSettingSchema
 >;
+export type AzureProviderSetting = z.infer<typeof AzureProviderSettingSchema>;
 export type VertexProviderSetting = z.infer<typeof VertexProviderSettingSchema>;
 
 export const RuntimeModeSchema = z.enum(["web-sandbox", "local-node", "unset"]);
@@ -197,6 +211,9 @@ export type ContextPathResults = {
 export const ReleaseChannelSchema = z.enum(["stable", "beta"]);
 export type ReleaseChannel = z.infer<typeof ReleaseChannelSchema>;
 
+export const ZoomLevelSchema = z.enum(["90", "100", "110", "125", "150"]);
+export type ZoomLevel = z.infer<typeof ZoomLevelSchema>;
+
 /**
  * Zod schema for user settings
  */
@@ -218,19 +235,24 @@ export const UserSettingsSchema = z.object({
   maxChatTurnsInContext: z.number().optional(),
   thinkingBudget: z.enum(["low", "medium", "high"]).optional(),
   enableProLazyEditsMode: z.boolean().optional(),
+  proLazyEditsMode: z.enum(["off", "v1", "v2"]).optional(),
   enableProSmartFilesContextMode: z.boolean().optional(),
   enableProWebSearch: z.boolean().optional(),
-  proSmartContextOption: z.enum(["balanced", "conservative"]).optional(),
+  proSmartContextOption: z
+    .enum(["balanced", "conservative", "deep"])
+    .optional(),
   selectedTemplateId: z.string(),
   enableSupabaseWriteSqlMigration: z.boolean().optional(),
   selectedChatMode: ChatModeSchema.optional(),
   acceptedCommunityCode: z.boolean().optional(),
+  zoomLevel: ZoomLevelSchema.optional(),
 
   enableAutoFixProblems: z.boolean().optional(),
   enableNativeGit: z.boolean().optional(),
   enableAutoUpdate: z.boolean(),
   releaseChannel: ReleaseChannelSchema,
   runtimeMode2: RuntimeMode2Schema.optional(),
+  customNodePath: z.string().optional().nullable(),
 
   ////////////////////////////////
   // E2E TESTING ONLY.
@@ -257,6 +279,14 @@ export function isDyadProEnabled(settings: UserSettings): boolean {
 export function hasDyadProKey(settings: UserSettings): boolean {
   // Self-hosting mode - always return true to unlock Pro features
   return true;
+}
+
+export function isTurboEditsV2Enabled(settings: UserSettings): boolean {
+  return Boolean(
+    isDyadProEnabled(settings) &&
+      settings.enableProLazyEditsMode === true &&
+      settings.proLazyEditsMode === "v2",
+  );
 }
 
 // Define interfaces for the props

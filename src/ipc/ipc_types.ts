@@ -9,6 +9,18 @@ export interface AppOutput {
   appId: number;
 }
 
+export interface SecurityFinding {
+  title: string;
+  level: "critical" | "high" | "medium" | "low";
+  description: string;
+}
+
+export interface SecurityReviewResult {
+  findings: SecurityFinding[];
+  timestamp: string;
+  chatId: number;
+}
+
 export interface RespondToAppInputParams {
   appId: number;
   response: string;
@@ -29,7 +41,7 @@ export interface ChatStreamParams {
     data: string; // Base64 encoded file data
     attachmentType: "upload-to-codebase" | "chat-context"; // FileAttachment type
   }>;
-  selectedComponent: ComponentSelection | null;
+  selectedComponents?: ComponentSelection[];
 }
 
 export interface ChatResponseEnd {
@@ -68,6 +80,7 @@ export interface Message {
   commitHash?: string | null;
   dbTimestamp?: string | null;
   createdAt?: Date | string;
+  requestId?: string | null;
 }
 
 export interface Chat {
@@ -89,6 +102,7 @@ export interface App {
   githubRepo: string | null;
   githubBranch: string | null;
   supabaseProjectId: string | null;
+  supabaseParentProjectId: string | null;
   supabaseProjectName: string | null;
   neonProjectId: string | null;
   neonDevelopmentBranchId: string | null;
@@ -99,6 +113,7 @@ export interface App {
   vercelDeploymentUrl: string | null;
   installCommand: string | null;
   startCommand: string | null;
+  isFavorite: boolean;
 }
 
 export interface Version {
@@ -186,6 +201,7 @@ export type LanguageModel =
       displayName: string;
       description: string;
       tag?: string;
+      tagColor?: string;
       maxOutputTokens?: number;
       contextWindow?: number;
       temperature?: number;
@@ -197,6 +213,7 @@ export type LanguageModel =
       displayName: string;
       description: string;
       tag?: string;
+      tagColor?: string;
       maxOutputTokens?: number;
       contextWindow?: number;
       temperature?: number;
@@ -483,4 +500,47 @@ export interface McpToolConsent {
   toolName: string;
   consent: McpToolConsentType;
   updatedAt: number;
+}
+export interface CloneRepoParams {
+  url: string;
+  installCommand?: string;
+  startCommand?: string;
+  appName: string;
+}
+
+export interface GithubRepository {
+  name: string;
+  full_name: string;
+  private: boolean;
+}
+export type CloneRepoReturnType =
+  | {
+      app: App;
+      hasAiRules: boolean;
+    }
+  | {
+      error: string;
+    };
+
+export interface SupabaseBranch {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  projectRef: string;
+  parentProjectRef: string;
+}
+
+export interface SetSupabaseAppProjectParams {
+  projectId: string;
+  parentProjectId?: string;
+  appId: number;
+}
+export interface SetNodePathParams {
+  nodePath: string;
+}
+
+export interface SelectNodeFolderResult {
+  path: string | null;
+  canceled?: boolean;
+  selectedPath: string | null;
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { ProviderSettingsGrid } from "@/components/ProviderSettings";
 import ConfirmationDialog from "@/components/ConfirmationDialog";
@@ -24,7 +24,11 @@ import { AutoUpdateSwitch } from "@/components/AutoUpdateSwitch";
 import { ReleaseChannelSelector } from "@/components/ReleaseChannelSelector";
 import { NeonIntegration } from "@/components/NeonIntegration";
 import { RuntimeModeSelector } from "@/components/RuntimeModeSelector";
+import { NodePathSelector } from "@/components/NodePathSelector";
 import { ToolsMcpSettings } from "@/components/settings/ToolsMcpSettings";
+import { ZoomSelector } from "@/components/ZoomSelector";
+import { useSetAtom } from "jotai";
+import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
 
 export default function SettingsPage() {
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
@@ -32,6 +36,11 @@ export default function SettingsPage() {
   const appVersion = useAppVersion();
   const { settings, updateSettings } = useSettings();
   const router = useRouter();
+  const setActiveSettingsSection = useSetAtom(activeSettingsSectionAtom);
+
+  useEffect(() => {
+    setActiveSettingsSection("general-settings");
+  }, [setActiveSettingsSection]);
 
   const handleResetEverything = async () => {
     setIsResetting(true);
@@ -257,6 +266,10 @@ export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
         </div>
       </div>
 
+      <div className="mt-4">
+        <ZoomSelector />
+      </div>
+
       <div className="space-y-1 mt-4">
         <AutoUpdateSwitch />
         <div className="text-sm text-muted-foreground">
@@ -271,6 +284,9 @@ export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
 
       <div className="mt-4">
         <RuntimeModeSelector />
+      </div>
+      <div className="mt-4">
+        <NodePathSelector />
       </div>
 
       <div className="flex items-center text-sm text-muted-foreground mt-4">

@@ -19,6 +19,10 @@ import {
   ChevronRight,
   MousePointerClick,
   Power,
+  MonitorSmartphone,
+  Monitor,
+  Tablet,
+  Smartphone,
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
@@ -31,7 +35,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useStreamChat } from "@/hooks/useStreamChat";
-import { selectedComponentPreviewAtom } from "@/atoms/previewAtoms";
+import {
+  selectedComponentsPreviewAtom,
+  previewIframeRefAtom,
+} from "@/atoms/previewAtoms";
 import { ComponentSelection } from "@/ipc/ipc_types";
 import {
   Tooltip,
@@ -39,11 +46,19 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useRunApp } from "@/hooks/useRunApp";
 import { useShortcut } from "@/hooks/useShortcut";
+import { cn } from "@/lib/utils";
+import { normalizePath } from "../../../shared/normalizePath";
 
 interface ErrorBannerProps {
-  error: string | undefined;
+  error: { message: string; source: "preview-app" | "dyad-app" } | undefined;
   onDismiss: () => void;
   onAIFix: () => void;
 }
@@ -52,12 +67,12 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
   const [isCollapsed, setIsCollapsed] = useState(true);
   const { isStreaming } = useStreamChat();
   if (!error) return null;
-  const isDockerError = error.includes("Cannot connect to the Docker");
+  const isDockerError = error.message.includes("Cannot connect to the Docker");
 
   const getTruncatedError = () => {
-    const firstLine = error.split("\n")[0];
+    const firstLine = error.message.split("\n")[0];
     const snippetLength = 250;
-    const snippet = error.substring(0, snippetLength);
+    const snippet = error.message.substring(0, snippetLength);
     return firstLine.length < snippet.length
       ? firstLine
       : snippet + (snippet.length === snippetLength ? "..." : "");
@@ -76,8 +91,20 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
         <X size={14} className="text-red-500 dark:text-red-400" />
       </button>
 
+      {/* Add a little chip that says "Internal error" if source is "dyad-app" */}
+      {error.source === "dyad-app" && (
+        <div className="absolute top-1 right-1 p-1 bg-red-100 dark:bg-red-900 rounded-md text-xs font-medium text-red-700 dark:text-red-300">
+          Internal Dyad error
+        </div>
+      )}
+
       {/* Error message in the middle */}
-      <div className="px-6 py-1 text-sm">
+      <div
+        className={cn(
+          "px-6 py-1 text-sm",
+          error.source === "dyad-app" && "pt-6",
+        )}
+      >
         <div
           className="text-red-700 dark:text-red-300 text-wrap font-mono whitespace-pre-wrap break-words text-xs cursor-pointer flex gap-1 items-start"
           onClick={() => setIsCollapsed(!isCollapsed)}
@@ -88,7 +115,7 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
               isCollapsed ? "" : "rotate-90"
             }`}
           />
-          {isCollapsed ? getTruncatedError() : error}
+          {isCollapsed ? getTruncatedError() : error.message}
         </div>
       </div>
 
@@ -102,13 +129,15 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
             <span className="font-medium">Tip: </span>
             {isDockerError
               ? "Make sure Docker Desktop is running and try restarting the app."
-              : "Check if restarting the app fixes the error."}
+              : error.source === "dyad-app"
+                ? "Try restarting the Dyad app or restarting your computer to see if that fixes the error."
+                : "Check if restarting the app fixes the error."}
           </span>
         </div>
       </div>
 
       {/* AI Fix button at the bottom */}
-      {!isDockerError && (
+      {!isDockerError && error.source === "preview-app" && (
         <div className="mt-2 flex justify-end">
           <button
             disabled={isStreaming}
@@ -144,18 +173,35 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const [canGoForward, setCanGoForward] = useState(false);
   const [navigationHistory, setNavigationHistory] = useState<string[]>([]);
   const [currentHistoryPosition, setCurrentHistoryPosition] = useState(0);
-  const [selectedComponentPreview, setSelectedComponentPreview] = useAtom(
-    selectedComponentPreviewAtom,
+  const [selectedComponentsPreview, setSelectedComponentsPreview] = useAtom(
+    selectedComponentsPreviewAtom,
   );
+  const setPreviewIframeRef = useSetAtom(previewIframeRefAtom);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isPicking, setIsPicking] = useState(false);
+
+  // Device mode state
+  type DeviceMode = "desktop" | "tablet" | "mobile";
+  const [deviceMode, setDeviceMode] = useState<DeviceMode>("desktop");
+  const [isDevicePopoverOpen, setIsDevicePopoverOpen] = useState(false);
+
+  // Device configurations
+  const deviceWidthConfig = {
+    tablet: 768,
+    mobile: 375,
+  };
 
   //detect if the user is using Mac
   const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
 
+  // Update iframe ref atom
+  useEffect(() => {
+    setPreviewIframeRef(iframeRef.current);
+  }, [iframeRef.current, setPreviewIframeRef]);
+
   // Deactivate component selector when selection is cleared
   useEffect(() => {
-    if (!selectedComponentPreview) {
+    if (!selectedComponentsPreview || selectedComponentsPreview.length === 0) {
       if (iframeRef.current?.contentWindow) {
         iframeRef.current.contentWindow.postMessage(
           { type: "deactivate-dyad-component-selector" },
@@ -164,7 +210,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       }
       setIsPicking(false);
     }
-  }, [selectedComponentPreview]);
+  }, [selectedComponentsPreview]);
 
   // Add message listener for iframe errors and navigation events
   useEffect(() => {
@@ -181,8 +227,37 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
       if (event.data?.type === "dyad-component-selected") {
         console.log("Component picked:", event.data);
-        setSelectedComponentPreview(parseComponentSelection(event.data));
-        setIsPicking(false);
+
+        // Parse the single selected component
+        const component = event.data.component
+          ? parseComponentSelection({
+              type: "dyad-component-selected",
+              id: event.data.component.id,
+              name: event.data.component.name,
+            })
+          : null;
+
+        if (!component) return;
+
+        // Add to existing components, avoiding duplicates by id
+        setSelectedComponentsPreview((prev) => {
+          // Check if this component is already selected
+          if (prev.some((c) => c.id === component.id)) {
+            return prev;
+          }
+          return [...prev, component];
+        });
+
+        return;
+      }
+
+      if (event.data?.type === "dyad-component-deselected") {
+        const componentId = event.data.componentId;
+        if (componentId) {
+          setSelectedComponentsPreview((prev) =>
+            prev.filter((c) => c.id !== componentId),
+          );
+        }
         return;
       }
 
@@ -217,7 +292,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           payload?.message || payload?.reason
         }\nStack trace: ${stack}`;
         console.error("Iframe error:", errorMessage);
-        setErrorMessage(errorMessage);
+        setErrorMessage({ message: errorMessage, source: "preview-app" });
         setAppOutput((prev) => [
           ...prev,
           {
@@ -230,7 +305,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       } else if (type === "build-error-report") {
         console.debug(`Build error report: ${payload}`);
         const errorMessage = `${payload?.message} from file ${payload?.file}.\n\nSource code:\n${payload?.frame}`;
-        setErrorMessage(errorMessage);
+        setErrorMessage({ message: errorMessage, source: "preview-app" });
         setAppOutput((prev) => [
           ...prev,
           {
@@ -270,7 +345,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     errorMessage,
     setErrorMessage,
     setIsComponentSelectorInitialized,
-    setSelectedComponentPreview,
+    setSelectedComponentsPreview,
   ]);
 
   useEffect(() => {
@@ -389,13 +464,13 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   if (loading) {
     return (
       <div className="flex flex-col h-full relative">
-        <div className="absolute inset-0 flex flex-col items-center justify-center space-y-4 bg-muted">
+        <div className="absolute inset-0 flex flex-col items-center justify-center space-y-4 bg-gray-50 dark:bg-gray-950">
           <div className="relative w-5 h-5 animate-spin">
             <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-2 h-2 bg-primary rounded-full"></div>
             <div className="absolute bottom-0 left-0 w-2 h-2 bg-primary rounded-full opacity-80"></div>
             <div className="absolute bottom-0 right-0 w-2 h-2 bg-primary rounded-full opacity-60"></div>
           </div>
-          <p className="text-muted-foreground">
+          <p className="text-gray-600 dark:text-gray-300">
             Preparing app preview...
           </p>
         </div>
@@ -406,7 +481,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   // Display message if no app is selected
   if (selectedAppId === null) {
     return (
-      <div className="p-4 text-muted-foreground">
+      <div className="p-4 text-gray-500 dark:text-gray-400">
         Select an app to see the preview.
       </div>
     );
@@ -451,7 +526,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             </Tooltip>
           </TooltipProvider>
           <button
-            className="p-1 rounded hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed text-muted-foreground"
+            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
             disabled={!canGoBack || loading || !selectedAppId}
             onClick={handleNavigateBack}
             data-testid="preview-navigate-back-button"
@@ -459,7 +534,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             <ArrowLeft size={16} />
           </button>
           <button
-            className="p-1 rounded hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed text-muted-foreground"
+            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
             disabled={!canGoForward || loading || !selectedAppId}
             onClick={handleNavigateForward}
             data-testid="preview-navigate-forward-button"
@@ -468,7 +543,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           </button>
           <button
             onClick={handleReload}
-            className="p-1 rounded hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed text-muted-foreground"
+            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
             disabled={loading || !selectedAppId}
             data-testid="preview-refresh-button"
           >
@@ -480,7 +555,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         <div className="relative flex-grow min-w-20">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <div className="flex items-center justify-between px-3 py-1 bg-muted rounded text-sm text-foreground cursor-pointer w-full min-w-0">
+              <div className="flex items-center justify-between px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded text-sm text-gray-700 dark:text-gray-200 cursor-pointer w-full min-w-0">
                 <span className="truncate flex-1 mr-2 min-w-0">
                   {navigationHistory[currentHistoryPosition]
                     ? new URL(navigationHistory[currentHistoryPosition])
@@ -499,7 +574,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                     className="flex justify-between"
                   >
                     <span>{route.label}</span>
-                    <span className="text-muted-foreground text-xs">
+                    <span className="text-gray-500 dark:text-gray-400 text-xs">
                       {route.path}
                     </span>
                   </DropdownMenuItem>
@@ -528,10 +603,89 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 IpcClient.getInstance().openExternalUrl(originalUrl);
               }
             }}
-            className="p-1 rounded hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed text-muted-foreground"
+            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
           >
             <ExternalLink size={16} />
           </button>
+
+          {/* Device Mode Button */}
+          <Popover open={isDevicePopoverOpen} modal={false}>
+            <PopoverTrigger asChild>
+              <button
+                data-testid="device-mode-button"
+                onClick={() => {
+                  // Toggle popover open/close
+                  if (isDevicePopoverOpen) setDeviceMode("desktop");
+                  setIsDevicePopoverOpen(!isDevicePopoverOpen);
+                }}
+                className={cn(
+                  "p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 dark:text-gray-300",
+                  deviceMode !== "desktop" && "bg-gray-200 dark:bg-gray-700",
+                )}
+                title="Device Mode"
+              >
+                <MonitorSmartphone size={16} />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              className="w-auto p-2"
+              onOpenAutoFocus={(e) => e.preventDefault()}
+              onInteractOutside={(e) => e.preventDefault()}
+            >
+              <TooltipProvider>
+                <ToggleGroup
+                  type="single"
+                  value={deviceMode}
+                  onValueChange={(value) => {
+                    if (value) {
+                      setDeviceMode(value as DeviceMode);
+                      setIsDevicePopoverOpen(false);
+                    }
+                  }}
+                  variant="outline"
+                >
+                  {/* Tooltips placed inside items instead of wrapping 
+                  to avoid asChild prop merging that breaks highlighting */}
+                  <ToggleGroupItem value="desktop" aria-label="Desktop view">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="flex items-center justify-center">
+                          <Monitor size={16} />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Desktop</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="tablet" aria-label="Tablet view">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="flex items-center justify-center">
+                          <Tablet size={16} className="scale-x-130" />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Tablet</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="mobile" aria-label="Mobile view">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="flex items-center justify-center">
+                          <Smartphone size={16} />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Mobile</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </ToggleGroupItem>
+                </ToggleGroup>
+              </TooltipProvider>
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
 
@@ -542,7 +696,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           onAIFix={() => {
             if (selectedChatId) {
               streamMessage({
-                prompt: `Fix error: ${errorMessage}`,
+                prompt: `Fix error: ${errorMessage?.message}`,
                 chatId: selectedChatId,
               });
             }
@@ -550,26 +704,38 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         />
 
         {!appUrl ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center space-y-4 bg-muted">
-            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-            <p className="text-muted-foreground">
+          <div className="absolute inset-0 flex flex-col items-center justify-center space-y-4 bg-gray-50 dark:bg-gray-950">
+            <Loader2 className="w-8 h-8 animate-spin text-gray-400 dark:text-gray-500" />
+            <p className="text-gray-600 dark:text-gray-300">
               Starting your app server...
             </p>
           </div>
         ) : (
-          <iframe
-            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-downloads"
-            data-testid="preview-iframe-element"
-            onLoad={() => {
-              setErrorMessage(undefined);
-            }}
-            ref={iframeRef}
-            key={reloadKey}
-            title={`Preview for App ${selectedAppId}`}
-            className="w-full h-full border-none bg-background"
-            src={appUrl}
-            allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
-          />
+          <div
+            className={cn(
+              "w-full h-full",
+              deviceMode !== "desktop" && "flex justify-center",
+            )}
+          >
+            <iframe
+              sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-downloads"
+              data-testid="preview-iframe-element"
+              onLoad={() => {
+                setErrorMessage(undefined);
+              }}
+              ref={iframeRef}
+              key={reloadKey}
+              title={`Preview for App ${selectedAppId}`}
+              className="w-full h-full border-none bg-white dark:bg-gray-950"
+              style={
+                deviceMode == "desktop"
+                  ? {}
+                  : { width: `${deviceWidthConfig[deviceMode]}px` }
+              }
+              src={appUrl}
+              allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
+            />
+          </div>
         )}
       </div>
     </div>
@@ -615,7 +781,7 @@ function parseComponentSelection(data: any): ComponentSelection | null {
   return {
     id,
     name,
-    relativePath,
+    relativePath: normalizePath(relativePath),
     lineNumber,
     columnNumber,
   };

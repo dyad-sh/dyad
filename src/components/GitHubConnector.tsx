@@ -53,7 +53,7 @@ interface ConnectedGitHubConnectorProps {
   onAutoSyncComplete?: () => void;
 }
 
-interface UnconnectedGitHubConnectorProps {
+export interface UnconnectedGitHubConnectorProps {
   appId: number | null;
   folderName: string;
   settings: any;
@@ -287,7 +287,7 @@ function ConnectedGitHubConnector({
   );
 }
 
-function UnconnectedGitHubConnector({
+export function UnconnectedGitHubConnector({
   appId,
   folderName,
   settings,
@@ -342,7 +342,6 @@ function UnconnectedGitHubConnector({
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleConnectToGithub = async () => {
-    if (!appId) return;
     setIsConnectingToGithub(true);
     setGithubError(null);
     setGithubUserCode(null);
@@ -354,8 +353,6 @@ function UnconnectedGitHubConnector({
   };
 
   useEffect(() => {
-    if (!appId) return; // Don't set up listeners if appId is null initially
-
     const cleanupFunctions: (() => void)[] = [];
 
     // Listener for updates (user code, verification uri, status messages)
@@ -420,7 +417,7 @@ function UnconnectedGitHubConnector({
       setIsConnectingToGithub(false);
       setGithubStatusMessage(null);
     };
-  }, [appId]); // Re-run effect if appId changes
+  }, []); // Re-run effect if appId changes
 
   // Load available repos when GitHub is connected
   useEffect(() => {
@@ -562,7 +559,7 @@ function UnconnectedGitHubConnector({
           className="cursor-pointer w-full py-5 flex justify-center items-center gap-2"
           size="lg"
           variant="outline"
-          disabled={isConnectingToGithub || !appId} // Also disable if appId is null
+          disabled={isConnectingToGithub} // Also disable if appId is null
         >
           Connect to GitHub
           <Github className="h-5 w-5" />

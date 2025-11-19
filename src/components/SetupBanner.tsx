@@ -8,7 +8,7 @@ import {
   XCircle,
   Loader2,
   Settings,
-  GlobeIcon,
+  Folder,
 } from "lucide-react";
 import { providerSettingsRoute } from "@/routes/settings/providers/$provider";
 
@@ -30,6 +30,9 @@ import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useScrollAndNavigateTo } from "@/hooks/useScrollAndNavigateTo";
 // @ts-ignore
 import logo from "../../assets/logo.svg";
+import { OnboardingBanner } from "./home/OnboardingBanner";
+import { showError } from "@/lib/toast";
+import { useSettings } from "@/hooks/useSettings";
 
 type NodeInstallStep =
   | "install"
@@ -40,6 +43,7 @@ type NodeInstallStep =
 export function SetupBanner() {
   const posthog = usePostHog();
   const navigate = useNavigate();
+  const [isOnboardingVisible, setIsOnboardingVisible] = useState(true);
   const { isAnyProviderSetup, isLoading: loading } =
     useLanguageModelProviders();
   const [nodeSystemInfo, setNodeSystemInfo] = useState<NodeSystemInfo | null>(
@@ -59,6 +63,32 @@ export function SetupBanner() {
       setNodeCheckError(true);
     }
   }, [setNodeSystemInfo, setNodeCheckError]);
+  const [showManualConfig, setShowManualConfig] = useState(false);
+  const [isSelectingPath, setIsSelectingPath] = useState(false);
+  const { updateSettings } = useSettings();
+
+  // Add handler for manual path selection
+  const handleManualNodeConfig = useCallback(async () => {
+    setIsSelectingPath(true);
+    try {
+      const result = await IpcClient.getInstance().selectNodeFolder();
+      if (result.path) {
+        await updateSettings({ customNodePath: result.path });
+        await IpcClient.getInstance().reloadEnvPath();
+        await checkNode();
+        setNodeInstallStep("finished-checking");
+        setShowManualConfig(false);
+      } else if (result.path === null && result.canceled === false) {
+        showError(
+          `Could not find Node.js at the path "${result.selectedPath}"`,
+        );
+      }
+    } catch (error) {
+      showError("Error setting Node.js path:" + error);
+    } finally {
+      setIsSelectingPath(false);
+    }
+  }, [checkNode]);
 
   useEffect(() => {
     checkNode();
@@ -123,19 +153,9 @@ export function SetupBanner() {
 
   if (itemsNeedAction.length === 0) {
     return (
-      <div className="text-center mb-8">
-        <div className="relative">
-          <h1 className="text-7xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-gray-900 to-gray-600 dark:from-gray-100 dark:to-gray-400 tracking-tight transition-all duration-300 hover:scale-105 cursor-default drop-shadow-sm hover:drop-shadow-md">
-            Just do it!
-          </h1>
-          <div className="absolute inset-0 text-7xl font-bold tracking-tight animate-title-shimmer bg-clip-text text-transparent pointer-events-none mix-blend-overlay">
-            Just do it!
-          </div>
-        </div>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-          To vibe coder for vibe coders
-        </p>
-      </div>
+      <h1 className="text-center text-5xl font-bold mb-8 bg-clip-text text-transparent bg-gradient-to-r from-gray-900 to-gray-600 dark:from-gray-100 dark:to-gray-400 tracking-tight">
+        Build your dream app
+      </h1>
     );
   }
 
@@ -157,7 +177,13 @@ export function SetupBanner() {
 
   return (
     <>
-      <p className="text-xl text-zinc-700 dark:text-zinc-300 p-4">Setup Dyad</p>
+      <p className="text-xl font-medium text-zinc-700 dark:text-zinc-300 p-4">
+        Setup Dyad
+      </p>
+      <OnboardingBanner
+        isVisible={isOnboardingVisible}
+        setIsVisible={setIsOnboardingVisible}
+      />
       <div className={bannerClasses}>
         <Accordion
           type="multiple"
@@ -225,6 +251,38 @@ export function SetupBanner() {
                     handleNodeInstallClick={handleNodeInstallClick}
                     finishNodeInstall={finishNodeInstall}
                   />
+
+                  <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                    <button
+                      onClick={() => setShowManualConfig(!showManualConfig)}
+                      className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                    >
+                      Node.js already installed? Configure path manually →
+                    </button>
+
+                    {showManualConfig && (
+                      <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                        <Button
+                          onClick={handleManualNodeConfig}
+                          disabled={isSelectingPath}
+                          variant="outline"
+                          size="sm"
+                        >
+                          {isSelectingPath ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Selecting...
+                            </>
+                          ) : (
+                            <>
+                              <Folder className="mr-2 h-4 w-4" />
+                              Browse for Node.js folder
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
               <NodeJsHelpCallout />
@@ -248,49 +306,53 @@ export function SetupBanner() {
                 <div className="flex items-center gap-3">
                   {getStatusIcon(isAnyProviderSetup())}
                   <span className="font-medium text-sm">
-                    2. Setup AI Model Access
+                    2. Setup AI Access
                   </span>
                 </div>
               </div>
             </AccordionTrigger>
             <AccordionContent className="px-4 pt-2 pb-4 bg-white dark:bg-zinc-900 border-t border-inherit">
-              <p className="text-sm mb-3">
-                Connect your preferred AI provider to start generating code.
+              <p className="text-[15px] mb-3">
+                Not sure what to do? Watch the Get Started video above ☝️
               </p>
-              <SetupProviderCard
-                variant="google"
-                onClick={handleGoogleSetupClick}
-                tabIndex={isNodeSetupComplete ? 0 : -1}
-                leadingIcon={
-                  <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                }
-                title="Setup Google Gemini API Key"
-                subtitle={
-                  <>
-                    <GiftIcon className="w-3 h-3" />
-                    Use Google Gemini for free
-                  </>
-                }
-              />
+              <div className="flex gap-2">
+                <SetupProviderCard
+                  className="flex-1"
+                  variant="google"
+                  onClick={handleGoogleSetupClick}
+                  tabIndex={isNodeSetupComplete ? 0 : -1}
+                  leadingIcon={
+                    <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  }
+                  title="Setup Google Gemini API Key"
+                  chip={<>Free</>}
+                />
+
+                <SetupProviderCard
+                  className="flex-1"
+                  variant="openrouter"
+                  onClick={handleOpenRouterSetupClick}
+                  tabIndex={isNodeSetupComplete ? 0 : -1}
+                  leadingIcon={
+                    <Sparkles className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+                  }
+                  title="Setup OpenRouter API Key"
+                  chip={<>Free</>}
+                />
+              </div>
 
               <SetupProviderCard
                 className="mt-2"
-                variant="openrouter"
-                onClick={handleOpenRouterSetupClick}
+                variant="dyad"
+                onClick={handleDyadProSetupClick}
                 tabIndex={isNodeSetupComplete ? 0 : -1}
                 leadingIcon={
-                  <Sparkles className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+                  <img src={logo} alt="Dyad Logo" className="w-6 h-6 mr-0.5" />
                 }
-                title="Setup OpenRouter API Key"
-                subtitle={
-                  <>
-                    <GiftIcon className="w-3 h-3" />
-                    Free models available
-                  </>
-                }
+                title="Setup Dyad Pro"
+                subtitle="Access all AI models with one plan"
+                chip={<>Recommended</>}
               />
-
-              {/* Dyad Pro setup card removed for self-hosting */}
 
               <div
                 className="mt-2 p-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800/70 transition-colors"
@@ -304,11 +366,11 @@ export function SetupBanner() {
                       <Settings className="w-4 h-4 text-gray-600 dark:text-gray-400" />
                     </div>
                     <div>
-                      <h4 className="font-medium text-sm text-gray-800 dark:text-gray-300">
+                      <h4 className="font-medium text-[15px] text-gray-800 dark:text-gray-300">
                         Setup other AI providers
                       </h4>
                       <p className="text-xs text-gray-600 dark:text-gray-400">
-                        OpenAI, Anthropic, OpenRouter and more
+                        OpenAI, Anthropic and more
                       </p>
                     </div>
                   </div>
@@ -415,7 +477,7 @@ export const OpenRouterSetupBanner = ({
         <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />
       }
       title="Setup OpenRouter API Key"
-      subtitle={
+      chip={
         <>
           <GiftIcon className="w-3 h-3" />
           Free models available

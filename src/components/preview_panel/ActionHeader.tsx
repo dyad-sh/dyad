@@ -11,7 +11,9 @@ import {
   AlertTriangle,
   Wrench,
   Globe,
+  Shield,
 } from "lucide-react";
+import { ChatActivityButton } from "@/components/chat/ChatActivity";
 import { motion } from "framer-motion";
 import { useEffect, useRef, useState, useCallback } from "react";
 
@@ -38,13 +40,11 @@ export type PreviewMode =
   | "code"
   | "problems"
   | "configure"
-  | "publish";
-
-const BUTTON_CLASS_NAME =
-  "no-app-region-drag cursor-pointer relative flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-normal z-10 hover:bg-white/5 transition-all duration-200";
+  | "publish"
+  | "security";
 
 // Preview Header component with preview mode toggle
-export const PreviewHeader = () => {
+export const ActionHeader = () => {
   const [previewMode, setPreviewMode] = useAtom(previewModeAtom);
   const [isPreviewOpen, setIsPreviewOpen] = useAtom(isPreviewOpenAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
@@ -53,12 +53,13 @@ export const PreviewHeader = () => {
   const problemsRef = useRef<HTMLButtonElement>(null);
   const configureRef = useRef<HTMLButtonElement>(null);
   const publishRef = useRef<HTMLButtonElement>(null);
+  const securityRef = useRef<HTMLButtonElement>(null);
   const [indicatorStyle, setIndicatorStyle] = useState({ left: 0, width: 0 });
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const { problemReport } = useCheckProblems(selectedAppId);
   const { restartApp, refreshAppIframe } = useRunApp();
 
-  const isCompact = windowWidth < 860;
+  const isCompact = windowWidth < 888;
 
   // Track window width
   useEffect(() => {
@@ -138,6 +139,9 @@ export const PreviewHeader = () => {
         case "publish":
           targetRef = publishRef;
           break;
+        case "security":
+          targetRef = securityRef;
+          break;
         default:
           return;
       }
@@ -176,12 +180,14 @@ export const PreviewHeader = () => {
       <button
         data-testid={testId}
         ref={ref}
-        className={BUTTON_CLASS_NAME}
+        className="no-app-region-drag cursor-pointer relative flex items-center gap-0.5 px-2 py-0.5 rounded-md text-xs font-medium z-10 hover:bg-[var(--background)] flex-col"
         onClick={() => selectPanel(mode)}
       >
         {icon}
-        {!isCompact && <span>{text}</span>}
-        {badge}
+        <span>
+          {!isCompact && <span>{text}</span>}
+          {badge}
+        </span>
       </button>
     );
 
@@ -198,13 +204,14 @@ export const PreviewHeader = () => {
 
     return buttonContent;
   };
+  const iconSize = 15;
 
   return (
     <TooltipProvider>
-      <div className="flex items-center justify-between px-2 py-2">
-        <div className="relative flex rounded-lg p-0.5 gap-0.5 bg-black/5 dark:bg-white/5">
+      <div className="flex items-center justify-between px-1 py-2 mt-1 border-b border-border">
+        <div className="relative flex rounded-md p-0.5 gap-0.5">
           <motion.div
-            className="absolute top-0.5 bottom-0.5 bg-white/15 dark:bg-white/10 shadow-sm rounded-md backdrop-blur-sm"
+            className="absolute top-0.5 bottom-0.5 bg-[var(--background-lightest)] shadow rounded-md"
             animate={{
               left: indicatorStyle.left,
               width: indicatorStyle.width,
@@ -219,14 +226,14 @@ export const PreviewHeader = () => {
           {renderButton(
             "preview",
             previewRef,
-            <Eye size={14} />,
+            <Eye size={iconSize} />,
             "Preview",
             "preview-mode-button",
           )}
           {renderButton(
             "problems",
             problemsRef,
-            <AlertTriangle size={14} />,
+            <AlertTriangle size={iconSize} />,
             "Problems",
             "problems-mode-button",
             displayCount && (
@@ -238,37 +245,46 @@ export const PreviewHeader = () => {
           {renderButton(
             "code",
             codeRef,
-            <Code size={14} />,
+            <Code size={iconSize} />,
             "Code",
             "code-mode-button",
           )}
           {renderButton(
             "configure",
             configureRef,
-            <Wrench size={14} />,
+            <Wrench size={iconSize} />,
             "Configure",
             "configure-mode-button",
           )}
           {renderButton(
+            "security",
+            securityRef,
+            <Shield size={iconSize} />,
+            "Security",
+            "security-mode-button",
+          )}
+          {renderButton(
             "publish",
             publishRef,
-            <Globe size={14} />,
+            <Globe size={iconSize} />,
             "Publish",
             "publish-mode-button",
           )}
         </div>
-        <div className="flex items-center">
+        {/* Chat activity bell */}
+        <div className="flex items-center gap-1">
+          <ChatActivityButton />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
                 data-testid="preview-more-options-button"
-                className="no-app-region-drag flex items-center justify-center p-1.5 rounded-md text-sm hover:bg-white/5 transition-all duration-200"
+                className="no-app-region-drag flex items-center justify-center p-1.5 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
                 title="More options"
               >
-                <MoreVertical size={14} />
+                <MoreVertical size={16} />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-60 bg-card/80 backdrop-blur-sm border-border/50">
+            <DropdownMenuContent align="end" className="w-60">
               <DropdownMenuItem onClick={onCleanRestart}>
                 <Cog size={16} />
                 <div className="flex flex-col">

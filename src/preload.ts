@@ -1,7 +1,7 @@
 // See the Electron documentation for details on how to use preload scripts:
 // https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
 
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webFrame } from "electron";
 
 // Whitelist of valid channels
 const validInvokeChannels = [
@@ -51,6 +51,7 @@ const validInvokeChannels = [
   "reset-all",
   "nodejs-status",
   "install-node",
+  "select-node-folder",
   "github:start-flow",
   "github:list-repos",
   "github:get-repo-branches",
@@ -76,6 +77,7 @@ const validInvokeChannels = [
   "reject-proposal",
   "get-system-debug-info",
   "supabase:list-projects",
+  "supabase:list-branches",
   "supabase:set-app-project",
   "supabase:unset-app-project",
   "local-models:list-ollama",
@@ -119,6 +121,8 @@ const validInvokeChannels = [
   "mcp:set-tool-consent",
   // MCP consent response from renderer to main
   "mcp:tool-consent-response",
+  // Help
+  "take-screenshot",
   // Help bot
   "help:chat:start",
   "help:chat:cancel",
@@ -127,6 +131,10 @@ const validInvokeChannels = [
   "prompts:create",
   "prompts:update",
   "prompts:delete",
+  // adding app to favorite
+  "add-to-favorite",
+  "github:clone-repo-from-url",
+  "get-latest-security-review",
   // Test-only channels
   // These should ALWAYS be guarded with IS_TEST_BUILD in the main process.
   // We can't detect with IS_TEST_BUILD in the preload script because
@@ -194,5 +202,11 @@ contextBridge.exposeInMainWorld("electron", {
         ipcRenderer.removeListener(channel, listener);
       }
     },
+  },
+  webFrame: {
+    setZoomFactor: (factor: number) => {
+      webFrame.setZoomFactor(factor);
+    },
+    getZoomFactor: () => webFrame.getZoomFactor(),
   },
 });

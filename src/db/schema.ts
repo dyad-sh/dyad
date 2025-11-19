@@ -29,6 +29,12 @@ export const apps = sqliteTable("apps", {
   githubRepo: text("github_repo"),
   githubBranch: text("github_branch"),
   supabaseProjectId: text("supabase_project_id"),
+  // If supabaseProjectId is a branch, then the parent project id set.
+  // This is because there's no way to retrieve ALL the branches for ALL projects
+  // in a single API call
+  // This is only used for display purposes but is NOT used for any actual
+  // supabase management logic.
+  supabaseParentProjectId: text("supabase_parent_project_id"),
   neonProjectId: text("neon_project_id"),
   neonDevelopmentBranchId: text("neon_development_branch_id"),
   neonPreviewBranchId: text("neon_preview_branch_id"),
@@ -39,6 +45,9 @@ export const apps = sqliteTable("apps", {
   installCommand: text("install_command"),
   startCommand: text("start_command"),
   chatContext: text("chat_context", { mode: "json" }),
+  isFavorite: integer("is_favorite", { mode: "boolean" })
+    .notNull()
+    .default(sql`0`),
 });
 
 export const chats = sqliteTable("chats", {
@@ -63,7 +72,11 @@ export const messages = sqliteTable("messages", {
   approvalState: text("approval_state", {
     enum: ["approved", "rejected"],
   }),
+  // The commit hash of the codebase at the time the message was created
+  sourceCommitHash: text("source_commit_hash"),
+  // The commit hash of the codebase at the time the message was sent
   commitHash: text("commit_hash"),
+  requestId: text("request_id"),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),

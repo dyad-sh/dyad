@@ -13,17 +13,68 @@ export interface ModelOption {
   dollarSigns?: number;
   temperature?: number;
   tag?: string;
+  tagColor?: string;
   maxOutputTokens?: number;
   contextWindow?: number;
 }
 
 export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
   openai: [
+    // https://platform.openai.com/docs/models/gpt-5.1
+    {
+      name: "gpt-5.1",
+      displayName: "GPT 5.1",
+      description:
+        "OpenAI's flagship model- smarter, faster, and more conversational",
+      // Technically it's 128k but OpenAI errors if you set max_tokens instead of max_completion_tokens
+      maxOutputTokens: undefined,
+      contextWindow: 400_000,
+      // Requires temperature to be default value (1)
+      temperature: 1,
+      dollarSigns: 3,
+    },
+    // https://platform.openai.com/docs/models/gpt-5.1-codex
+    {
+      name: "gpt-5.1-codex",
+      displayName: "GPT 5.1 Codex",
+      description: "OpenAI's advanced coding workflows",
+      // Technically it's 128k but OpenAI errors if you set max_tokens instead of max_completion_tokens
+      maxOutputTokens: undefined,
+      contextWindow: 400_000,
+      // Requires temperature to be default value (1)
+      temperature: 1,
+      dollarSigns: 3,
+    },
+    // https://platform.openai.com/docs/models/gpt-5.1-codex-mini
+    {
+      name: "gpt-5.1-codex-mini",
+      displayName: "GPT 5.1 Codex Mini",
+      description: "OpenAI's compact and efficient coding model",
+      // Technically it's 128k but OpenAI errors if you set max_tokens instead of max_completion_tokens
+      maxOutputTokens: undefined,
+      contextWindow: 400_000,
+      // Requires temperature to be default value (1)
+      temperature: 1,
+      dollarSigns: 2,
+    },
+
     // https://platform.openai.com/docs/models/gpt-5
     {
       name: "gpt-5",
       displayName: "GPT 5",
       description: "OpenAI's flagship model",
+      // Technically it's 128k but OpenAI errors if you set max_tokens instead of max_completion_tokens
+      maxOutputTokens: undefined,
+      contextWindow: 400_000,
+      // Requires temperature to be default value (1)
+      temperature: 1,
+      dollarSigns: 3,
+    },
+    // https://platform.openai.com/docs/models/gpt-5-codex
+    {
+      name: "gpt-5-codex",
+      displayName: "GPT 5 Codex",
+      description: "OpenAI's flagship model optimized for coding",
       // Technically it's 128k but OpenAI errors if you set max_tokens instead of max_completion_tokens
       maxOutputTokens: undefined,
       contextWindow: 400_000,
@@ -72,11 +123,22 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
   // https://docs.anthropic.com/en/docs/about-claude/models/all-models#model-comparison-table
   anthropic: [
     {
+      name: "claude-sonnet-4-5-20250929",
+      displayName: "Claude 4.5 Sonnet",
+      description:
+        "Anthropic's best model for coding (note: >200k tokens is very expensive!)",
+      // Set to 32k since context window is 1M tokens
+      maxOutputTokens: 32_000,
+      contextWindow: 1_000_000,
+      temperature: 0,
+      dollarSigns: 5,
+    },
+    {
       name: "claude-sonnet-4-20250514",
       displayName: "Claude 4 Sonnet",
       description: "Excellent coder (note: >200k tokens is very expensive!)",
-      // See comment below for Claude 3.7 Sonnet for why we set this to 16k
-      maxOutputTokens: 16_000,
+      // Set to 32k since context window is 1M tokens
+      maxOutputTokens: 32_000,
       contextWindow: 1_000_000,
       temperature: 0,
       dollarSigns: 5,
@@ -114,6 +176,18 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     },
   ],
   google: [
+    // https://ai.google.dev/gemini-api/docs/models#gemini-3-pro
+    {
+      name: "gemini-3-pro-preview",
+      displayName: "Gemini 3 Pro (Preview)",
+      description: "Google's latest Gemini model",
+      // See Flash 2.5 comment below (go 1 below just to be safe, even though it seems OK now).
+      maxOutputTokens: 65_536 - 1,
+      // Gemini context window = input token + output token
+      contextWindow: 1_048_576,
+      temperature: 1.0,
+      dollarSigns: 4,
+    },
     // https://ai.google.dev/gemini-api/docs/models#gemini-2.5-pro-preview-03-25
     {
       name: "gemini-2.5-pro",
@@ -128,7 +202,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     },
     // https://ai.google.dev/gemini-api/docs/models#gemini-2.5-flash-preview
     {
-      name: "gemini-2.5-flash",
+      name: "gemini-flash-latest",
       displayName: "Gemini 2.5 Flash",
       description: "Google's Gemini 2.5 Flash model (free tier available)",
       // Weirdly for Vertex AI, the output token limit is *exclusive* of the stated limit.
@@ -151,7 +225,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     },
     // Vertex Gemini 2.5 Flash
     {
-      name: "gemini-2.5-flash",
+      name: "gemini-flash-latest",
       displayName: "Gemini 2.5 Flash",
       description: "Vertex Gemini 2.5 Flash",
       maxOutputTokens: 65_536 - 1,
@@ -187,6 +261,15 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       contextWindow: 128_000,
       temperature: 0,
       dollarSigns: 0,
+    },
+    {
+      name: "z-ai/glm-4.6",
+      displayName: "GLM 4.6",
+      description: "Z-AI's best coding model",
+      maxOutputTokens: 32_000,
+      contextWindow: 200_000,
+      temperature: 0,
+      dollarSigns: 2,
     },
     {
       name: "qwen/qwen3-coder",
@@ -249,40 +332,92 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       maxOutputTokens: 32_000,
       contextWindow: 256_000,
       temperature: 0,
+      tag: "Fast",
+      tagColor: "bg-rose-800 text-white",
+    },
+    {
+      name: "value",
+      displayName: "Super Value (Pro)",
+      description: "Uses the most cost-effective models available",
+      maxOutputTokens: 32_000,
+      contextWindow: 256_000,
+      temperature: 0,
+      tag: "Budget",
+      tagColor: "bg-emerald-700 text-white",
     },
   ],
   azure: [
     {
+      name: "gpt-5.1",
+      displayName: "GPT-5.1",
+      description: "Azure OpenAI GPT-5.1 model",
+      // See OpenAI comment above
+      // maxOutputTokens: 128_000,
+      contextWindow: 400_000,
+      temperature: 1,
+    },
+    {
+      name: "gpt-5.1-codex",
+      displayName: "GPT-5.1 Codex",
+      description: "Azure OpenAI GPT-5.1 Codex model",
+      // See OpenAI comment above
+      // maxOutputTokens: 128_000,
+      contextWindow: 400_000,
+      temperature: 1,
+    },
+    {
+      name: "gpt-5.1-codex-mini",
+      displayName: "GPT-5.1 Codex Mini",
+      description: "Azure OpenAI GPT-5.1 Codex Mini model",
+      // See OpenAI comment above
+      // maxOutputTokens: 128_000,
+      contextWindow: 400_000,
+      temperature: 1,
+    },
+    {
+      name: "gpt-5-codex",
+      displayName: "GPT-5 Codex",
+      description: "Azure OpenAI GPT-5 Codex model",
+      // See OpenAI comment above
+      // maxOutputTokens: 128_000,
+      contextWindow: 400_000,
+      temperature: 1,
+    },
+    {
       name: "gpt-5",
       displayName: "GPT-5",
       description: "Azure OpenAI GPT-5 model with reasoning capabilities",
-      maxOutputTokens: 128_000,
+      // See OpenAI comment above
+      // maxOutputTokens: 128_000,
       contextWindow: 400_000,
-      temperature: 0,
+      temperature: 1,
     },
     {
       name: "gpt-5-mini",
       displayName: "GPT-5 Mini",
       description: "Azure OpenAI GPT-5 Mini model",
-      maxOutputTokens: 128_000,
+      // See OpenAI comment above
+      // maxOutputTokens: 128_000,
       contextWindow: 400_000,
-      temperature: 0,
+      temperature: 1,
     },
     {
       name: "gpt-5-nano",
       displayName: "GPT-5 Nano",
       description: "Azure OpenAI GPT-5 Nano model",
-      maxOutputTokens: 128_000,
+      // See OpenAI comment above
+      // maxOutputTokens: 128_000,
       contextWindow: 400_000,
-      temperature: 0,
+      temperature: 1,
     },
     {
       name: "gpt-5-chat",
       displayName: "GPT-5 Chat",
       description: "Azure OpenAI GPT-5 Chat model",
-      maxOutputTokens: 16_384,
+      // See OpenAI comment above
+      // maxOutputTokens: 16_384,
       contextWindow: 128_000,
-      temperature: 0,
+      temperature: 1,
     },
   ],
   xai: [
@@ -317,10 +452,19 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
   ],
   bedrock: [
     {
+      name: "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+      displayName: "Claude 4.5 Sonnet",
+      description:
+        "Anthropic's best model for coding (note: >200k tokens is very expensive!)",
+      maxOutputTokens: 32_000,
+      contextWindow: 1_000_000,
+      temperature: 0,
+    },
+    {
       name: "us.anthropic.claude-sonnet-4-20250514-v1:0",
       displayName: "Claude 4 Sonnet",
       description: "Excellent coder (note: >200k tokens is very expensive!)",
-      maxOutputTokens: 16_000,
+      maxOutputTokens: 32_000,
       contextWindow: 1_000_000,
       temperature: 0,
     },
@@ -345,13 +489,13 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
 
 export const TURBO_MODELS: LanguageModel[] = [
   {
-    apiName: "qwen3-coder:turbo",
-    displayName: "Qwen3 Coder",
-    description: "Qwen's best coding model (very fast)",
+    apiName: "glm-4.6:turbo",
+    displayName: "GLM 4.6",
+    description: "Strong coding model (very fast)",
     maxOutputTokens: 32_000,
     contextWindow: 131_000,
     temperature: 0,
-    dollarSigns: 2,
+    dollarSigns: 3,
     type: "cloud",
   },
   {

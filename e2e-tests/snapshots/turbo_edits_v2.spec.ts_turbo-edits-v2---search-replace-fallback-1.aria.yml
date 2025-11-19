@@ -1,0 +1,25 @@
+- paragraph: tc=turbo-edits-v2-trigger-fallback
+- paragraph: Example with turbo edit v2
+- img
+- text: Search & Replace Index.tsx
+- img
+- text: src/pages/Index.tsx
+- paragraph: End of turbo edit
+- img
+- text: Warning Could not apply Turbo Edits properly for some of the files; re-generating code......
+- img
+- img
+- text: Index.tsx
+- button "Edit":
+  - img
+- img
+- text: "src/pages/Index.tsx Summary: Rewrite file."
+- paragraph: "[[dyad-dump-path=*]]"
+- button:
+  - img
+- img
+- text: less than a minute ago
+- button "Request ID":
+  - img
+- button "Retry":
+  - img

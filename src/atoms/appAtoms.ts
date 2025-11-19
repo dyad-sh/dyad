@@ -18,7 +18,7 @@ export const appsListAtom = atom<App[]>([]);
 export const appBasePathAtom = atom<string>("");
 export const versionsListAtom = atom<Version[]>([]);
 export const previewModeAtom = atom<
-  "preview" | "code" | "problems" | "configure" | "publish"
+  "preview" | "code" | "problems" | "configure" | "publish" | "security"
 >("preview");
 export const selectedVersionIdAtom = atom<string | null>(null);
 type AppOutputUpdate =
@@ -102,4 +102,6 @@ export const envVarsAtom = atom<Record<string, string | undefined>>({});
 
 export const previewPanelKeyAtom = atom<number>(0);
 
-export const previewErrorMessageAtom = atom<string | undefined>(undefined);
+export const previewErrorMessageAtom = atom<
+  { message: string; source: "preview-app" | "dyad-app" } | undefined
+>(undefined);

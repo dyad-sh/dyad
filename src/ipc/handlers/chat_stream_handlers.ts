@@ -25,8 +25,15 @@ import {
 import { getDyadAppPath } from "../../paths/paths";
 import { readSettings } from "../../main/settings";
 import type { ChatResponseEnd, ChatStreamParams } from "../ipc_types";
-import { extractCodebase, readFileWithCache } from "../../utils/codebase";
-import { processFullResponseActions } from "../processors/response_processor";
+import {
+  CodebaseFile,
+  extractCodebase,
+  readFileWithCache,
+} from "../../utils/codebase";
+import {
+  dryRunSearchReplace,
+  processFullResponseActions,
+} from "../processors/response_processor";
 import { streamTestResponse } from "./testing_chat_handlers";
 import { getTestResponse } from "./testing_chat_handlers";
 import { getModelClient, ModelClient } from "../utils/get_model_client";
@@ -36,6 +43,7 @@ import {
   getSupabaseClientCode,
 } from "../../supabase_admin/supabase_context";
 import { SUMMARIZE_CHAT_SYSTEM_PROMPT } from "../../prompts/summarize_chat_system_prompt";
+import { SECURITY_REVIEW_SYSTEM_PROMPT } from "../../prompts/security_review_prompt";
 import fs from "node:fs";
 import * as path from "path";
 import * as os from "os";
@@ -71,6 +79,13 @@ import { inArray } from "drizzle-orm";
 import { replacePromptReference } from "../utils/replacePromptReference";
 import { mcpManager } from "../utils/mcp_manager";
 import z from "zod";
+import { isTurboEditsV2Enabled } from "@/lib/schemas";
+import { AI_STREAMING_ERROR_MESSAGE_PREFIX } from "@/shared/texts";
+import { getCurrentCommitHash } from "../utils/git_utils";
+import {
+  processChatMessagesWithVersionedFiles as getVersionedFiles,
+  VersionedFiles as VersionedFiles,
+} from "../utils/versioned_codebase_context";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
@@ -206,8 +221,7 @@ export function registerChatStreamHandlers() {
   ipcMain.handle("chat:stream", async (event, req: ChatStreamParams) => {
     try {
       const fileUploadsState = FileUploadsState.getInstance();
-      fileUploadsState.initialize({ chatId: req.chatId });
-
+      let dyadRequestId: string | undefined;
       // Create an AbortController for this stream
       const abortController = new AbortController();
       activeStreams.set(req.chatId, abortController);
@@ -288,10 +302,13 @@ export function registerChatStreamHandlers() {
             // For upload-to-codebase, create a unique file ID and store the mapping
             const fileId = `DYAD_ATTACHMENT_${index}`;
 
-            fileUploadsState.addFileUpload(fileId, {
-              filePath,
-              originalName: attachment.name,
-            });
+            fileUploadsState.addFileUpload(
+              { chatId: req.chatId, fileId },
+              {
+                filePath,
+                originalName: attachment.name,
+              },
+            );
 
             // Add instruction for AI to use dyad-write tag
             attachmentInfo += `\n\nFile to upload to codebase: ${attachment.name} (file id: ${fileId})\n`;
@@ -334,44 +351,51 @@ export function registerChatStreamHandlers() {
       } catch (e) {
         logger.error("Failed to inline referenced prompts:", e);
       }
-      if (req.selectedComponent) {
-        let componentSnippet = "[component snippet not available]";
-        try {
-          const componentFileContent = await readFile(
-            path.join(
-              getDyadAppPath(chat.app.path),
-              req.selectedComponent.relativePath,
-            ),
-            "utf8",
-          );
-          const lines = componentFileContent.split("\n");
-          const selectedIndex = req.selectedComponent.lineNumber - 1;
 
-          // Let's get one line before and three after for context.
-          const startIndex = Math.max(0, selectedIndex - 1);
-          const endIndex = Math.min(lines.length, selectedIndex + 4);
+      const componentsToProcess = req.selectedComponents || [];
 
-          const snippetLines = lines.slice(startIndex, endIndex);
-          const selectedLineInSnippetIndex = selectedIndex - startIndex;
+      if (componentsToProcess.length > 0) {
+        userPrompt += "\n\nSelected components:\n";
 
-          if (snippetLines[selectedLineInSnippetIndex]) {
-            snippetLines[selectedLineInSnippetIndex] =
-              `${snippetLines[selectedLineInSnippetIndex]} // <-- EDIT HERE`;
+        for (const component of componentsToProcess) {
+          let componentSnippet = "[component snippet not available]";
+          try {
+            const componentFileContent = await readFile(
+              path.join(getDyadAppPath(chat.app.path), component.relativePath),
+              "utf8",
+            );
+            const lines = componentFileContent.split(/\r?\n/);
+            const selectedIndex = component.lineNumber - 1;
+
+            // Let's get one line before and three after for context.
+            const startIndex = Math.max(0, selectedIndex - 1);
+            const endIndex = Math.min(lines.length, selectedIndex + 4);
+
+            const snippetLines = lines.slice(startIndex, endIndex);
+            const selectedLineInSnippetIndex = selectedIndex - startIndex;
+
+            if (snippetLines[selectedLineInSnippetIndex]) {
+              snippetLines[selectedLineInSnippetIndex] =
+                `${snippetLines[selectedLineInSnippetIndex]} // <-- EDIT HERE`;
+            }
+
+            componentSnippet = snippetLines.join("\n");
+          } catch (err) {
+            logger.error(
+              `Error reading selected component file content: ${err}`,
+            );
           }
 
-          componentSnippet = snippetLines.join("\n");
-        } catch (err) {
-          logger.error(`Error reading selected component file content: ${err}`);
-        }
-
-        userPrompt += `\n\nSelected component: ${req.selectedComponent.name} (file: ${req.selectedComponent.relativePath})
+          userPrompt += `\n${componentsToProcess.length > 1 ? `${componentsToProcess.indexOf(component) + 1}. ` : ""}Component: ${component.name} (file: ${component.relativePath})
 
 Snippet:
 \`\`\`
 ${componentSnippet}
 \`\`\`
 `;
+        }
       }
+
       await db
         .insert(messages)
         .values({
@@ -380,6 +404,12 @@ ${componentSnippet}
           content: userPrompt,
         })
         .returning();
+      const settings = readSettings();
+      // Only Dyad Pro requests have request ids.
+      if (settings.enableDyadPro) {
+        // Generate requestId early so it can be saved with the message
+        dyadRequestId = uuidv4();
+      }
 
       // Add a placeholder assistant message immediately
       const [placeholderAssistantMessage] = await db
@@ -388,6 +418,10 @@ ${componentSnippet}
           chatId: req.chatId,
           role: "assistant",
           content: "", // Start with empty content
+          requestId: dyadRequestId,
+          sourceCommitHash: await getCurrentCommitHash({
+            path: getDyadAppPath(chat.app.path),
+          }),
         })
         .returning();
 
@@ -428,28 +462,53 @@ ${componentSnippet}
         );
       } else {
         // Normal AI processing for non-test prompts
-        const settings = readSettings();
+        const { modelClient, isEngineEnabled, isSmartContextEnabled } =
+          await getModelClient(settings.selectedModel, settings);
 
         const appPath = getDyadAppPath(updatedChat.app.path);
-        const chatContext = req.selectedComponent
-          ? {
-              contextPaths: [
-                {
-                  globPath: req.selectedComponent.relativePath,
-                },
-              ],
-              smartContextAutoIncludes: [],
-            }
-          : validateChatContext(updatedChat.app.chatContext);
-
-        // Parse app mentions from the prompt
-        const mentionedAppNames = parseAppMentions(req.prompt);
+        // When we don't have smart context enabled, we
+        // only include the selected components' files for codebase context.
+        //
+        // If we have selected components and smart context is enabled,
+        // we handle this specially below.
+        const chatContext =
+          req.selectedComponents &&
+          req.selectedComponents.length > 0 &&
+          !isSmartContextEnabled
+            ? {
+                contextPaths: req.selectedComponents.map((component) => ({
+                  globPath: component.relativePath,
+                })),
+                smartContextAutoIncludes: [],
+              }
+            : validateChatContext(updatedChat.app.chatContext);
 
         // Extract codebase for current app
         const { formattedOutput: codebaseInfo, files } = await extractCodebase({
           appPath,
           chatContext,
         });
+
+        // For smart context and selected components, we will mark the selected components' files as focused.
+        // This means that we don't do the regular smart context handling, but we'll allow fetching
+        // additional files through <dyad-read> as needed.
+        if (
+          isSmartContextEnabled &&
+          req.selectedComponents &&
+          req.selectedComponents.length > 0
+        ) {
+          const selectedPaths = new Set(
+            req.selectedComponents.map((component) => component.relativePath),
+          );
+          for (const file of files) {
+            if (selectedPaths.has(file.path)) {
+              file.focused = true;
+            }
+          }
+        }
+
+        // Parse app mentions from the prompt
+        const mentionedAppNames = parseAppMentions(req.prompt);
 
         // Extract codebases for mentioned apps
         const mentionedAppsCodebases = await extractMentionedAppsCodebases(
@@ -481,22 +540,25 @@ ${componentSnippet}
           "estimated tokens",
           codebaseInfo.length / 4,
         );
-        const { modelClient, isEngineEnabled } = await getModelClient(
-          settings.selectedModel,
-          settings,
-          files,
-        );
 
         // Prepare message history for the AI
         const messageHistory = updatedChat.messages.map((message) => ({
           role: message.role as "user" | "assistant" | "system",
           content: message.content,
+          sourceCommitHash: message.sourceCommitHash,
         }));
 
+        // For Dyad Pro + Deep Context, we set to 200 chat turns (+1)
+        // this is to enable more cache hits. Practically, users should
+        // rarely go over this limit because they will hit the model's
+        // context window limit.
+        //
         // Limit chat history based on maxChatTurnsInContext setting
         // We add 1 because the current prompt counts as a turn.
         const maxChatTurns =
-          (settings.maxChatTurnsInContext || MAX_CHAT_TURNS_IN_CONTEXT) + 1;
+          isEngineEnabled && settings.proSmartContextOption === "deep"
+            ? 201
+            : (settings.maxChatTurnsInContext || MAX_CHAT_TURNS_IN_CONTEXT) + 1;
 
         // If we need to limit the context, we take only the most recent turns
         let limitedMessageHistory = messageHistory;
@@ -537,6 +599,7 @@ ${componentSnippet}
             settings.selectedChatMode === "agent"
               ? "build"
               : settings.selectedChatMode,
+          enableTurboEditsV2: isTurboEditsV2Enabled(settings),
         });
 
         // Add information about mentioned apps if any
@@ -547,6 +610,29 @@ ${componentSnippet}
 
           systemPrompt += `\n\n# Referenced Apps\nThe user has mentioned the following apps in their prompt: ${mentionedAppsList}. Their codebases have been included in the context for your reference. When referring to these apps, you can understand their structure and code to provide better assistance, however you should NOT edit the files in these referenced apps. The referenced apps are NOT part of the current app and are READ-ONLY.`;
         }
+
+        const isSecurityReviewIntent =
+          req.prompt.startsWith("/security-review");
+        if (isSecurityReviewIntent) {
+          systemPrompt = SECURITY_REVIEW_SYSTEM_PROMPT;
+          try {
+            const appPath = getDyadAppPath(updatedChat.app.path);
+            const rulesPath = path.join(appPath, "SECURITY_RULES.md");
+            let securityRules = "";
+
+            await fs.promises.access(rulesPath);
+            securityRules = await fs.promises.readFile(rulesPath, "utf8");
+
+            if (securityRules && securityRules.trim().length > 0) {
+              systemPrompt +=
+                "\n\n# Project-specific security rules:\n" + securityRules;
+            }
+          } catch (error) {
+            // Best-effort: if reading rules fails, continue without them
+            logger.info("Failed to read security rules", error);
+          }
+        }
+
         if (
           updatedChat.app?.supabaseProjectId &&
           settings.supabase?.accessToken?.value
@@ -560,7 +646,9 @@ ${componentSnippet}
             }));
         } else if (
           // Neon projects don't need Supabase.
-          !updatedChat.app?.neonProjectId
+          !updatedChat.app?.neonProjectId &&
+          // If in security review mode, we don't need to mention supabase is available.
+          !isSecurityReviewIntent
         ) {
           systemPrompt += "\n\n" + SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT;
         }
@@ -630,18 +718,21 @@ This conversation includes one or more image attachments. When the user uploads 
               },
             ] as const);
 
-        const otherCodebasePrefix = otherAppsCodebaseInfo
-          ? ([
-              {
-                role: "user",
-                content: createOtherAppsCodebasePrompt(otherAppsCodebaseInfo),
-              },
-              {
-                role: "assistant",
-                content: "OK.",
-              },
-            ] as const)
-          : [];
+        // If engine is enabled, we will send the other apps codebase info to the engine
+        // and process it with smart context.
+        const otherCodebasePrefix =
+          otherAppsCodebaseInfo && !isEngineEnabled
+            ? ([
+                {
+                  role: "user",
+                  content: createOtherAppsCodebasePrompt(otherAppsCodebaseInfo),
+                },
+                {
+                  role: "assistant",
+                  content: "OK.",
+                },
+              ] as const)
+            : [];
 
         const limitedHistoryChatMessages = limitedMessageHistory.map((msg) => ({
           role: msg.role as "user" | "assistant" | "system",
@@ -652,6 +743,11 @@ This conversation includes one or more image attachments. When the user uploads 
             settings.selectedChatMode === "ask"
               ? removeDyadTags(removeNonEssentialTags(msg.content))
               : removeNonEssentialTags(msg.content),
+          providerOptions: {
+            "dyad-engine": {
+              sourceCommitHash: msg.sourceCommitHash,
+            },
+          },
         }));
 
         let chatMessages: ModelMessage[] = [
@@ -692,21 +788,21 @@ This conversation includes one or more image attachments. When the user uploads 
             } satisfies ModelMessage,
           ];
         }
-
         const simpleStreamText = async ({
           chatMessages,
           modelClient,
           tools,
           systemPromptOverride = systemPrompt,
           dyadDisableFiles = false,
+          files,
         }: {
           chatMessages: ModelMessage[];
           modelClient: ModelClient;
+          files: CodebaseFile[];
           tools?: ToolSet;
           systemPromptOverride?: string;
           dyadDisableFiles?: boolean;
         }) => {
-          const dyadRequestId = uuidv4();
           if (isEngineEnabled) {
             logger.log(
               "sending AI request to engine with request id:",
@@ -715,11 +811,28 @@ This conversation includes one or more image attachments. When the user uploads 
           } else {
             logger.log("sending AI request");
           }
+          let versionedFiles: VersionedFiles | undefined;
+          if (isEngineEnabled && settings.proSmartContextOption === "deep") {
+            versionedFiles = await getVersionedFiles({
+              files,
+              chatMessages,
+              appPath,
+            });
+          }
           // Build provider options with correct Google/Vertex thinking config gating
           const providerOptions: Record<string, any> = {
             "dyad-engine": {
+              dyadAppId: updatedChat.app.id,
               dyadRequestId,
               dyadDisableFiles,
+              dyadFiles: versionedFiles ? undefined : files,
+              dyadVersionedFiles: versionedFiles,
+              dyadMentionedApps: mentionedAppsCodebases.map(
+                ({ files, appName }) => ({
+                  appName,
+                  files,
+                }),
+              ),
             },
             "dyad-gateway": getExtraProviderOptions(
               modelClient.builtinProviderId,
@@ -768,13 +881,12 @@ This conversation includes one or more image attachments. When the user uploads 
             temperature: await getTemperature(settings.selectedModel),
             maxRetries: 2,
             model: modelClient.model,
-            stopWhen: [stepCountIs(3), hasToolCall("edit-code")],
+            stopWhen: [stepCountIs(20), hasToolCall("edit-code")],
             providerOptions,
             system: systemPromptOverride,
             tools,
             messages: chatMessages.filter((m) => m.content),
             onError: (error: any) => {
-              logger.error("Error streaming text:", error);
               let errorMessage = (error as any)?.error?.message;
               const responseBody = error?.error?.responseBody;
               if (errorMessage && responseBody) {
@@ -784,16 +896,22 @@ This conversation includes one or more image attachments. When the user uploads 
               const requestIdPrefix = isEngineEnabled
                 ? `[Request ID: ${dyadRequestId}] `
                 : "";
-              event.sender.send(
-                "chat:response:error",
-                `Sorry, there was an error from the AI: ${requestIdPrefix}${message}`,
+              logger.error(
+                `AI stream text error for request: ${requestIdPrefix} errorMessage=${errorMessage} error=`,
+                error,
               );
+              event.sender.send("chat:response:error", {
+                chatId: req.chatId,
+                error: `${AI_STREAMING_ERROR_MESSAGE_PREFIX}${requestIdPrefix}${message}`,
+              });
               // Clean up the abort controller
               activeStreams.delete(req.chatId);
             },
             abortSignal: abortController.signal,
           });
         };
+
+        let lastDbSaveAt = 0;
 
         const processResponseChunkUpdate = async ({
           fullResponse,
@@ -814,6 +932,16 @@ This conversation includes one or more image attachments. When the user uploads 
           }
           // Store the current partial response
           partialResponses.set(req.chatId, fullResponse);
+          // Save to DB (in case user is switching chats during the stream)
+          const now = Date.now();
+          if (now - lastDbSaveAt >= 150) {
+            await db
+              .update(messages)
+              .set({ content: fullResponse })
+              .where(eq(messages.id, placeholderAssistantMessage.id));
+
+            lastDbSaveAt = now;
+          }
 
           // Update the placeholder assistant message content in the messages array
           const currentMessages = [...updatedChat.messages];
@@ -850,7 +978,9 @@ This conversation includes one or more image attachments. When the user uploads 
             systemPromptOverride: constructSystemPrompt({
               aiRules: await readAiRules(getDyadAppPath(updatedChat.app.path)),
               chatMode: "agent",
+              enableTurboEditsV2: false,
             }),
+            files: files,
             dyadDisableFiles: true,
           });
 
@@ -876,6 +1006,7 @@ This conversation includes one or more image attachments. When the user uploads 
         const { fullStream } = await simpleStreamText({
           chatMessages,
           modelClient,
+          files: files,
         });
 
         // Process the stream as before
@@ -888,6 +1019,87 @@ This conversation includes one or more image attachments. When the user uploads 
             processResponseChunkUpdate,
           });
           fullResponse = result.fullResponse;
+
+          if (
+            settings.selectedChatMode !== "ask" &&
+            isTurboEditsV2Enabled(settings)
+          ) {
+            let issues = await dryRunSearchReplace({
+              fullResponse,
+              appPath: getDyadAppPath(updatedChat.app.path),
+            });
+
+            let searchReplaceFixAttempts = 0;
+            const originalFullResponse = fullResponse;
+            const previousAttempts: ModelMessage[] = [];
+            while (
+              issues.length > 0 &&
+              searchReplaceFixAttempts < 2 &&
+              !abortController.signal.aborted
+            ) {
+              logger.warn(
+                `Detected search-replace issues (attempt #${searchReplaceFixAttempts + 1}): ${issues.map((i) => i.error).join(", ")}`,
+              );
+              const formattedSearchReplaceIssues = issues
+                .map(({ filePath, error }) => {
+                  return `File path: ${filePath}\nError: ${error}`;
+                })
+                .join("\n\n");
+
+              fullResponse += `<dyad-output type="warning" message="Could not apply Turbo Edits properly for some of the files; re-generating code...">${formattedSearchReplaceIssues}</dyad-output>`;
+              await processResponseChunkUpdate({
+                fullResponse,
+              });
+
+              logger.info(
+                `Attempting to fix search-replace issues, attempt #${searchReplaceFixAttempts + 1}`,
+              );
+
+              const fixSearchReplacePrompt =
+                searchReplaceFixAttempts === 0
+                  ? `There was an issue with the following \`dyad-search-replace\` tags. Make sure you use \`dyad-read\` to read the latest version of the file and then trying to do search & replace again.`
+                  : `There was an issue with the following \`dyad-search-replace\` tags. Please fix the errors by generating the code changes using \`dyad-write\` tags instead.`;
+              searchReplaceFixAttempts++;
+              const userPrompt = {
+                role: "user",
+                content: `${fixSearchReplacePrompt}
+                
+${formattedSearchReplaceIssues}`,
+              } as const;
+
+              const { fullStream: fixSearchReplaceStream } =
+                await simpleStreamText({
+                  // Build messages: reuse chat history and original full response, then ask to fix search-replace issues.
+                  chatMessages: [
+                    ...chatMessages,
+                    { role: "assistant", content: originalFullResponse },
+                    ...previousAttempts,
+                    userPrompt,
+                  ],
+                  modelClient,
+                  files: files,
+                });
+              previousAttempts.push(userPrompt);
+              const result = await processStreamChunks({
+                fullStream: fixSearchReplaceStream,
+                fullResponse,
+                abortController,
+                chatId: req.chatId,
+                processResponseChunkUpdate,
+              });
+              fullResponse = result.fullResponse;
+              previousAttempts.push({
+                role: "assistant",
+                content: removeNonEssentialTags(result.incrementalResponse),
+              });
+
+              // Re-check for issues after the fix attempt
+              issues = await dryRunSearchReplace({
+                fullResponse: result.incrementalResponse,
+                appPath: getDyadAppPath(updatedChat.app.path),
+              });
+            }
+          }
 
           if (
             !abortController.signal.aborted &&
@@ -912,6 +1124,7 @@ This conversation includes one or more image attachments. When the user uploads 
                   { role: "assistant", content: fullResponse },
                 ],
                 modelClient,
+                files: files,
               });
               for await (const part of contStream) {
                 // If the stream was aborted, exit early
@@ -993,11 +1206,11 @@ ${problemReport.problems
                 const { modelClient } = await getModelClient(
                   settings.selectedModel,
                   settings,
-                  files,
                 );
 
                 const { fullStream } = await simpleStreamText({
                   modelClient,
+                  files: files,
                   chatMessages: [
                     ...chatMessages.map((msg, index) => {
                       if (
@@ -1134,11 +1347,10 @@ ${problemReport.problems
           });
 
           if (status.error) {
-            safeSend(
-              event.sender,
-              "chat:response:error",
-              `Sorry, there was an error applying the AI's changes: ${status.error}`,
-            );
+            safeSend(event.sender, "chat:response:error", {
+              chatId: req.chatId,
+              error: `Sorry, there was an error applying the AI's changes: ${status.error}`,
+            });
           }
 
           // Signal that the stream has completed
@@ -1181,15 +1393,14 @@ ${problemReport.problems
       return req.chatId;
     } catch (error) {
       logger.error("Error calling LLM:", error);
-      safeSend(
-        event.sender,
-        "chat:response:error",
-        `Sorry, there was an error processing your request: ${error}`,
-      );
+      safeSend(event.sender, "chat:response:error", {
+        chatId: req.chatId,
+        error: `Sorry, there was an error processing your request: ${error}`,
+      });
       // Clean up the abort controller
       activeStreams.delete(req.chatId);
       // Clean up file uploads state on error
-      FileUploadsState.getInstance().clear();
+      FileUploadsState.getInstance().clear(req.chatId);
       return "error";
     }
   });
@@ -1212,6 +1423,11 @@ ${problemReport.problems
       chatId,
       updatedFiles: false,
     } satisfies ChatResponseEnd);
+
+    // Clean up uploads state for this chat
+    try {
+      FileUploadsState.getInstance().clear(chatId);
+    } catch {}
 
     return true;
   });

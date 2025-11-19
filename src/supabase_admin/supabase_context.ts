@@ -78,7 +78,7 @@ export async function getSupabaseContext({
   let edgeFunctions: Array<{ name: string; version: number }> = [];
   try {
     const functions = await supabase.getFunctions(supabaseProjectId);
-    edgeFunctions = functions?.map((f: any) => ({
+    edgeFunctions = functions?.map((f: SupabaseFunction) => ({
       name: f.name,
       version: f.version,
     })) || [];

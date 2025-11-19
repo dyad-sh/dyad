@@ -38,7 +38,7 @@ export default defineConfig({
             }
 
             // AI SDK and related
-            if (id.includes("@ai-sdk") || id.includes("ai")) {
+            if (/node_modules\/(@ai-sdk|ai)\//.test(id)) {
               return "vendor-ai";
             }
 

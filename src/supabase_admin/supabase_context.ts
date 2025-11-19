@@ -83,6 +83,7 @@ export async function getSupabaseContext({
       version: f.version,
     })) || [];
   } catch (error) {
+    console.error('Failed to fetch edge functions:', error);
     // If getFunctions fails, continue without edge functions
   }
 

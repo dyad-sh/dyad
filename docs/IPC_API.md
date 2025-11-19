@@ -5,7 +5,7 @@ This document describes the Inter-Process Communication (IPC) API used in Dyad f
 ## Overview
 
 Dyad uses Electron's IPC mechanism with a security-first approach:
-- **Whitelist-based**: Only 141 explicitly defined channels are allowed
+- **Whitelist-based**: Only explicitly defined channels are allowed
 - **Type-safe**: TypeScript interfaces ensure type safety
 - **Centralized**: All handlers are registered through a single entry point
 - **Logged**: All IPC calls are logged for debugging

@@ -1320,6 +1320,10 @@ export class IpcClient {
       });
   }
 
+  public async takeScreenshot(): Promise<void> {
+    await this.ipcRenderer.invoke("take-screenshot");
+  }
+
   public cancelHelpChat(sessionId: string): void {
     this.ipcRenderer.invoke("help:chat:cancel", sessionId).catch(() => {});
   }

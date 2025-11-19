@@ -408,9 +408,9 @@ function getRegularModelClient(
       const provider = createOpenAICompatible({
         name: "solmover",
         baseURL: "https://49c5eafe-4c4e-4951-bdb0-aa2b2af9ee8c.app.gra.ai.cloud.ovh.net/v1",
-        apiKey: apiKey || "3Na6Bbq6RyyHiFE50WhSBPQGYE6c8iVGmWlmjxzs2sMENew798ajXM3rEcp/FUfh",
+        apiKey: apiKey,
         headers: {
-          "Authorization": `Bearer ${apiKey || "3Na6Bbq6RyyHiFE50WhSBPQGYE6c8iVGmWlmjxzs2sMENew798ajXM3rEcp/FUfh"}`,
+          "Authorization": `Bearer ${apiKey}`,
         },
       });
       return {

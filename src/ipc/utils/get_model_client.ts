@@ -407,7 +407,7 @@ function getRegularModelClient(
       // Ollama exposes OpenAI-compatible API at /v1/chat/completions
       const provider = createOpenAICompatible({
         name: "solmover",
-        baseURL: "https://49c5eafe-4c4e-4951-bdb0-aa2b2af9ee8c.app.gra.ai.cloud.ovh.net/v1",
+        baseURL: "https://3de3ed54-8b53-47d3-8ad3-2d8bb0befb9a.app.gra.ai.cloud.ovh.net/v1",
         apiKey: apiKey,
         headers: {
           "Authorization": `Bearer ${apiKey}`,

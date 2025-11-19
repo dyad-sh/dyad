@@ -85,6 +85,7 @@ export async function getSupabaseContext({
   } catch (error) {
     console.error('Failed to fetch edge functions:', error);
     // If getFunctions fails, continue without edge functions
+    console.warn("Failed to fetch edge functions:", error);
   }
 
   const context = `

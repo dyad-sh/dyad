@@ -308,6 +308,11 @@ console.log(JSON.stringify(messages, null, 2));
 
 ⚠️ = Experimental support
 
+> **Note:** Linux support is experimental and may have the following limitations:
+> - Some features (such as system tray integration and notifications) may not work reliably.
+> - There may be issues with certain desktop environments or distributions.
+> - Performance and stability are not guaranteed; production use is not recommended.
+> - Please report any Linux-specific issues to help improve support.
 ## Emergency Procedures
 
 ### Complete Reset

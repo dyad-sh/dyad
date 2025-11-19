@@ -43,7 +43,7 @@ export const DyadThink: React.FC<DyadThinkProps> = ({ children, node }) => {
 
   return (
     <div
-      className={`relative bg-muted dark:bg-white/5 backdrop-blur-md hover:bg-muted/80 dark:hover:bg-white/10 rounded-lg px-3 py-2 border my-2 cursor-pointer transition-all ${
+      className={`relative bg-muted dark:bg-white/5 backdrop-blur-md hover:bg-muted/80 dark:hover:bg-white/10 rounded-lg px-3 py-2.5 border my-2 cursor-pointer transition-all min-h-[42px] ${
         inProgress ? "border-purple-500/50" : "border-border dark:border-white/10"
       }`}
       onClick={() => setIsExpanded(!isExpanded)}
@@ -59,7 +59,7 @@ export const DyadThink: React.FC<DyadThinkProps> = ({ children, node }) => {
     >
       {/* Top-left label badge */}
       <div
-        className="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold text-purple-400 bg-purple-500/10 backdrop-blur-sm border border-purple-500/20"
+        className="absolute top-2.5 left-3 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold text-purple-400 bg-purple-500/10 backdrop-blur-sm border border-purple-500/20"
         style={{ zIndex: 1 }}
       >
         <Brain size={12} className="text-purple-400" />
@@ -70,17 +70,18 @@ export const DyadThink: React.FC<DyadThinkProps> = ({ children, node }) => {
       </div>
 
       {/* Indicator icon */}
-      <div className="absolute top-2 right-2 p-1 text-muted-foreground dark:text-white/40">
+      <div className="absolute top-2.5 right-3 p-1 text-muted-foreground dark:text-white/40">
         {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
       </div>
 
       {/* Main content with smooth transition */}
       <div
-        className="pt-6 overflow-hidden transition-all duration-300 ease-in-out"
+        className="overflow-hidden transition-all duration-300 ease-in-out"
         style={{
           maxHeight: isExpanded ? "none" : "0px",
           opacity: isExpanded ? 1 : 0,
-          marginBottom: isExpanded ? "0" : "-6px", // Compensate for padding
+          paddingTop: isExpanded ? "20px" : "0px",
+          marginBottom: isExpanded ? "0" : "0",
         }}
       >
         <div className="px-0 text-xs text-muted-foreground dark:text-white/70">

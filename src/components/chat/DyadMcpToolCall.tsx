@@ -30,12 +30,12 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
 
   return (
     <div
-      className="relative bg-white/5 backdrop-blur-md hover:bg-white/10 rounded-lg px-3 py-2 border border-white/10 my-2 cursor-pointer transition-all"
+      className="relative bg-white/5 backdrop-blur-md hover:bg-white/10 rounded-lg px-3 py-2.5 border border-white/10 my-2 cursor-pointer transition-all min-h-[42px]"
       onClick={() => setExpanded((v) => !v)}
     >
       {/* Top-left label badge */}
       <div
-        className="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold text-blue-400 bg-blue-500/10 backdrop-blur-sm border border-blue-500/20"
+        className="absolute top-2.5 left-3 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold text-blue-400 bg-blue-500/10 backdrop-blur-sm border border-blue-500/20"
         style={{ zIndex: 1 }}
       >
         <Wrench size={12} className="text-blue-400" />
@@ -43,19 +43,19 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
       </div>
 
       {/* Right chevron */}
-      <div className="absolute top-2 right-2 p-1 text-white/40">
+      <div className="absolute top-2.5 right-3 p-1 text-white/40">
         {expanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
       </div>
 
       {/* Header content */}
-      <div className="flex items-start gap-2 pl-20 pr-8 py-0.5">
+      <div className="flex items-center gap-2 pl-24 pr-10 min-h-[26px]">
         {serverName ? (
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
+          <span className="text-[10px] px-2 py-1 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-medium">
             {serverName}
           </span>
         ) : null}
         {toolName ? (
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 text-white/60 border border-white/10">
+          <span className="text-[10px] px-2 py-1 rounded-full bg-white/5 text-white/60 border border-white/10 font-medium">
             {toolName}
           </span>
         ) : null}
@@ -64,7 +64,7 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
 
       {/* JSON content */}
       {expanded ? (
-        <div className="mt-2 pr-4 pb-2">
+        <div className="mt-3 pr-4 pb-1">
           <CodeHighlight className="language-json">{prettyJson}</CodeHighlight>
         </div>
       ) : null}

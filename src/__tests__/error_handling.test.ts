@@ -5,7 +5,7 @@ describe("Error Handling", () => {
   describe("Path Traversal Prevention", () => {
     it("should prevent path traversal with ..", () => {
       expect(() => safeJoin("/base", "../etc/passwd")).toThrow(
-        "Invalid path"
++        /Unsafe path/
       );
     });
 

@@ -1514,6 +1514,14 @@ export class IpcClient {
     return this.ipcRenderer.invoke("sui-deploy", params);
   }
 
+  public async suiTest(appPath: string): Promise<{
+    success: boolean;
+    output: string;
+    error?: string;
+  }> {
+    return this.ipcRenderer.invoke("sui-test", { appPath });
+  }
+
   public async getSuiAddress(): Promise<{ address: string | null }> {
     return this.ipcRenderer.invoke("sui-get-address");
   }

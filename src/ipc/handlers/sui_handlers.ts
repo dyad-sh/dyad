@@ -267,6 +267,16 @@ export interface SuiDeployResult {
   error?: string;
 }
 
+export interface SuiTestParams {
+  appPath: string;
+}
+
+export interface SuiTestResult {
+  success: boolean;
+  output: string;
+  error?: string;
+}
+
 function formatDeployOutput(
   packageId: string | undefined,
   transactionDigest: string | undefined,
@@ -598,6 +608,81 @@ export function registerSuiHandlers() {
 
         suiProcess.on("error", (err) => {
           logger.error("Failed to start sui process:", err);
+          resolve({
+            success: false,
+            output: "Failed to start sui CLI. Make sure sui is installed and in PATH.",
+            error: err.message,
+          });
+        });
+      });
+    }
+  );
+
+  /**
+   * Run tests for a Move package using sui move test
+   */
+  handle(
+    "sui-test",
+    async (_, params: SuiTestParams): Promise<SuiTestResult> => {
+      const appPath = getDyadAppPath(params.appPath);
+
+      // Find the Move package directory dynamically
+      const movePath = findMovePackageDir(appPath);
+
+      if (!movePath) {
+        return {
+          success: false,
+          output: "No Move package found in src/ directory",
+          error: "Could not find a directory with Move.toml or .move files",
+        };
+      }
+
+      const packageName = path.basename(movePath);
+      logger.info(`Running tests for Move package at: ${movePath} (${packageName})`);
+
+      return new Promise((resolve) => {
+        let stdout = "";
+        let stderr = "";
+
+        const suiProcess = spawn("sui", ["move", "test"], {
+          cwd: movePath,
+          shell: true,
+        });
+
+        suiProcess.stdout.on("data", (data) => {
+          const output = data.toString();
+          stdout += output;
+          logger.info(`[sui test stdout]: ${output}`);
+        });
+
+        suiProcess.stderr.on("data", (data) => {
+          const output = data.toString();
+          stderr += output;
+          logger.warn(`[sui test stderr]: ${output}`);
+        });
+
+        suiProcess.on("close", (code) => {
+          if (code === 0) {
+            logger.info("Move tests completed successfully");
+            const cleanOutput = stripAnsiCodes(stdout);
+            resolve({
+              success: true,
+              output: "✅ Tests passed!\n\n" + cleanOutput,
+            });
+          } else {
+            logger.error(`Move tests failed with code ${code}`);
+            const combinedOutput = [stderr, stdout].filter(s => s.trim()).join('\n\n');
+            const cleanOutput = stripAnsiCodes(combinedOutput || "Tests failed");
+            resolve({
+              success: false,
+              output: "❌ Tests failed:\n\n" + cleanOutput,
+              error: cleanOutput,
+            });
+          }
+        });
+
+        suiProcess.on("error", (err) => {
+          logger.error("Failed to start sui test process:", err);
           resolve({
             success: false,
             output: "Failed to start sui CLI. Make sure sui is installed and in PATH.",

@@ -15,7 +15,8 @@ import {
   RefreshCw,
   FileCode,
   Sparkles,
-  Settings
+  Settings,
+  FlaskConical
 } from "lucide-react";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { IpcClient } from "@/ipc/ipc_client";
@@ -35,6 +36,7 @@ export interface ContractViewProps {
 
 type CompileStatus = "idle" | "compiling" | "success" | "error";
 type DeployStatus = "idle" | "deploying" | "success" | "error";
+type TestStatus = "idle" | "testing" | "success" | "error";
 
 export const ContractView = ({ loading, app }: ContractViewProps) => {
   const selectedFile = useAtomValue(selectedFileAtom);
@@ -44,11 +46,15 @@ export const ContractView = ({ loading, app }: ContractViewProps) => {
   const { streamMessage } = useStreamChat();
   const [compileStatus, setCompileStatus] = useState<CompileStatus>("idle");
   const [deployStatus, setDeployStatus] = useState<DeployStatus>("idle");
+  const [testStatus, setTestStatus] = useState<TestStatus>("idle");
   const [compileOutput, setCompileOutput] = useState("");
   const [deployOutput, setDeployOutput] = useState("");
+  const [testOutput, setTestOutput] = useState("");
   const [suiAddress, setSuiAddress] = useState<string | null>(null);
   const [rawCompileError, setRawCompileError] = useState("");
+  const [rawTestError, setRawTestError] = useState("");
   const [showSetup, setShowSetup] = useState(false);
+  const [lastFailedAction, setLastFailedAction] = useState<"compile" | "test" | null>(null);
 
   // Get Sui address on mount
   useEffect(() => {
@@ -90,17 +96,20 @@ export const ContractView = ({ loading, app }: ContractViewProps) => {
         setCompileStatus("success");
         setCompileOutput(result.output);
         setRawCompileError("");
+        setLastFailedAction(null);
       } else {
         setCompileStatus("error");
         // Use the truncated formatted output for UI display
         setCompileOutput(result.output);
         // Store full formatted error for AI fix prompt (all errors, not truncated)
         setRawCompileError(result.fullError || result.error || "");
+        setLastFailedAction("compile");
       }
     } catch (error) {
       setCompileStatus("error");
       setCompileOutput(`✗ Compilation failed:\n${error}`);
       setRawCompileError(String(error));
+      setLastFailedAction("compile");
     }
   };
 
@@ -118,7 +127,34 @@ Please fix these compilation errors in the contract. Make sure to:
 2. Update the Move.toml file if needed (e.g., add missing dependencies)
 3. Fix any syntax errors, type mismatches, or missing imports
 4. Ensure the code follows Sui Move 2024 edition standards
-5. Maintain the original functionality while fixing the errors`;
+5. Maintain the original functionality while fixing the errors
+
+Make only the code changes and give no further tips and actions, only a brief summary.`;
+
+    streamMessage({
+      prompt: fixPrompt,
+      chatId: selectedChatId,
+    });
+  };
+
+  const handleFixTestErrors = () => {
+    if (!selectedChatId || !rawTestError) return;
+
+    const fixPrompt = `The Move smart contract tests failed with the following output:
+
+\`\`\`
+${rawTestError}
+\`\`\`
+
+Please fix the test failures. Make sure to:
+1. Analyze the test failure messages and identify the root cause
+2. Fix any issues in the test code or the contract code being tested
+3. Update test assertions if the contract behavior has changed intentionally
+4. Ensure all test helper functions and test scenarios are correct
+5. Make sure the tests follow Sui Move testing best practices
+6. Maintain the original test coverage while fixing the failures
+
+Make only the code changes and give no further tips and actions, only a brief summary.`;
 
     streamMessage({
       prompt: fixPrompt,
@@ -147,6 +183,37 @@ Please fix these compilation errors in the contract. Make sure to:
     } catch (error) {
       setDeployStatus("error");
       setDeployOutput(`✗ Deployment failed:\n${error}`);
+    }
+  };
+
+  const handleTest = async () => {
+    if (!app?.path) return;
+
+    setTestStatus("testing");
+    setTestOutput("");
+    setRawTestError("");
+
+    try {
+      const result = await IpcClient.getInstance().suiTest(app.path);
+
+      if (result.success) {
+        setTestStatus("success");
+        setTestOutput(result.output);
+        setRawTestError("");
+        setLastFailedAction(null);
+      } else {
+        setTestStatus("error");
+        setTestOutput(result.output);
+        // Store raw error for AI fix prompt
+        setRawTestError(result.error || result.output);
+        setLastFailedAction("test");
+      }
+    } catch (error) {
+      setTestStatus("error");
+      const errorOutput = `✗ Tests failed:\n${error}`;
+      setTestOutput(errorOutput);
+      setRawTestError(String(error));
+      setLastFailedAction("test");
     }
   };
 
@@ -225,8 +292,8 @@ Please fix these compilation errors in the contract. Make sure to:
             )}
           </Button>
 
-          {/* Fix with AI button - only show when there are compilation errors */}
-          {compileStatus === "error" && rawCompileError && (
+          {/* Fix with AI button - only show when compilation errors are the last failure */}
+          {compileStatus === "error" && rawCompileError && lastFailedAction === "compile" && (
             <Button
               onClick={handleFixErrors}
               variant="secondary"
@@ -237,6 +304,51 @@ Please fix these compilation errors in the contract. Make sure to:
             >
               <Sparkles className="w-4 h-4" />
               Fix with AI
+            </Button>
+          )}
+
+          <Button
+            onClick={handleTest}
+            variant="outline"
+            size="sm"
+            disabled={testStatus === "testing" || moveFiles.length === 0}
+            className="gap-2"
+          >
+            {testStatus === "testing" ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Testing...
+              </>
+            ) : testStatus === "success" ? (
+              <>
+                <CheckCircle2 className="w-4 h-4 text-green-600" />
+                Passed
+              </>
+            ) : testStatus === "error" ? (
+              <>
+                <XCircle className="w-4 h-4 text-red-600" />
+                Failed
+              </>
+            ) : (
+              <>
+                <FlaskConical className="w-4 h-4" />
+                Test
+              </>
+            )}
+          </Button>
+
+          {/* Fix Tests with AI button - only show when test errors are the last failure */}
+          {testStatus === "error" && rawTestError && lastFailedAction === "test" && (
+            <Button
+              onClick={handleFixTestErrors}
+              variant="secondary"
+              size="sm"
+              disabled={!selectedChatId}
+              className="gap-2 bg-orange-600 hover:bg-orange-700 text-white"
+              title={!selectedChatId ? "No chat selected" : "Ask AI to fix test failures"}
+            >
+              <Sparkles className="w-4 h-4" />
+              Fix Tests
             </Button>
           )}
 
@@ -304,19 +416,19 @@ Please fix these compilation errors in the contract. Make sure to:
             )}
           </div>
 
-          {/* Compile/Deploy Output */}
-          {(compileOutput || deployOutput) && (
+          {/* Compile/Test/Deploy Output */}
+          {(compileOutput || testOutput || deployOutput) && (
             <div className="border-t bg-muted/50 p-4 max-h-96 overflow-auto">
               <div className="space-y-2">
                 {/* Output header */}
                 <div className="flex items-center gap-2 pb-2 border-b border-border/50">
                   <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    {deployOutput ? "Deployment Output" : "Compilation Output"}
+                    {deployOutput ? "Deployment Output" : testOutput ? "Test Output" : "Compilation Output"}
                   </span>
                 </div>
                 {/* Output content */}
                 <div className="font-mono text-xs whitespace-pre-wrap leading-relaxed">
-                  {deployOutput || compileOutput}
+                  {deployOutput || testOutput || compileOutput}
                 </div>
               </div>
             </div>

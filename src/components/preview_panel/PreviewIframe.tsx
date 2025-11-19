@@ -23,6 +23,7 @@ import {
   Monitor,
   Tablet,
   Smartphone,
+  PenTool,
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
@@ -37,6 +38,7 @@ import {
 import { useStreamChat } from "@/hooks/useStreamChat";
 import {
   selectedComponentsPreviewAtom,
+  visualEditingSelectedComponentAtom,
   previewIframeRefAtom,
 } from "@/atoms/previewAtoms";
 import { ComponentSelection } from "@/ipc/ipc_types";
@@ -56,6 +58,7 @@ import { useRunApp } from "@/hooks/useRunApp";
 import { useShortcut } from "@/hooks/useShortcut";
 import { cn } from "@/lib/utils";
 import { normalizePath } from "../../../shared/normalizePath";
+import { VisualEditingSidebar } from "./VisualEditingSidebar";
 
 interface ErrorBannerProps {
   error: { message: string; source: "preview-app" | "dyad-app" } | undefined;
@@ -176,9 +179,33 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const [selectedComponentsPreview, setSelectedComponentsPreview] = useAtom(
     selectedComponentsPreviewAtom,
   );
+  const [visualEditingSelectedComponent, setVisualEditingSelectedComponent] =
+    useAtom(visualEditingSelectedComponentAtom);
   const setPreviewIframeRef = useSetAtom(previewIframeRefAtom);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isPicking, setIsPicking] = useState(false);
+  const [isVisualEditingMode, setIsVisualEditingMode] = useState(false);
+
+  // Function to get current styles from selected element
+  const getCurrentElementStyles = () => {
+    if (!iframeRef.current?.contentWindow || !visualEditingSelectedComponent)
+      return;
+
+    try {
+      // Send message to iframe to get current styles
+      iframeRef.current.contentWindow.postMessage(
+        {
+          type: "get-dyad-component-styles",
+          data: {
+            elementId: visualEditingSelectedComponent.id,
+          },
+        },
+        "*",
+      );
+    } catch (error) {
+      console.error("Failed to get element styles:", error);
+    }
+  };
 
   // Device mode state
   type DeviceMode = "desktop" | "tablet" | "mobile";
@@ -239,20 +266,26 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
         if (!component) return;
 
-        // Add to existing components, avoiding duplicates by id
-        setSelectedComponentsPreview((prev) => {
-          // Check if this component is already selected
-          if (prev.some((c) => c.id === component.id)) {
-            return prev;
-          }
-          return [...prev, component];
-        });
+        if (isVisualEditingMode) {
+          setVisualEditingSelectedComponent(component);
+        } else {
+          setSelectedComponentsPreview((prev) => {
+            if (prev.some((c) => c.id === component.id)) {
+              return prev;
+            }
+            return [...prev, component];
+          });
+        }
 
         return;
       }
 
       if (event.data?.type === "dyad-component-deselected") {
         const componentId = event.data.componentId;
+        if (isVisualEditingMode) {
+          setVisualEditingSelectedComponent(null);
+          return;
+        }
         if (componentId) {
           setSelectedComponentsPreview((prev) =>
             prev.filter((c) => c.id !== componentId),
@@ -346,6 +379,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     setErrorMessage,
     setIsComponentSelectorInitialized,
     setSelectedComponentsPreview,
+    isVisualEditingMode,
+    setVisualEditingSelectedComponent,
   ]);
 
   useEffect(() => {
@@ -364,6 +399,13 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     }
   }, [appUrl]);
 
+  // Get current styles when component is selected for visual editing
+  useEffect(() => {
+    if (visualEditingSelectedComponent) {
+      getCurrentElementStyles();
+    }
+  }, [visualEditingSelectedComponent]);
+
   // Function to activate component selector in the iframe
   const handleActivateComponentSelector = () => {
     if (iframeRef.current?.contentWindow) {
@@ -377,6 +419,31 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         },
         "*",
       );
+    }
+  };
+
+  // Function to activate visual editing mode
+  const handleActivateVisualEditing = () => {
+    if (iframeRef.current?.contentWindow) {
+      const newIsVisualEditing = !isVisualEditingMode;
+      setIsVisualEditingMode(newIsVisualEditing);
+
+      if (newIsVisualEditing) {
+        iframeRef.current.contentWindow.postMessage(
+          {
+            type: "activate-dyad-visual-editing",
+          },
+          "*",
+        );
+      } else {
+        setVisualEditingSelectedComponent(null);
+        iframeRef.current.contentWindow.postMessage(
+          {
+            type: "deactivate-dyad-visual-editing",
+          },
+          "*",
+        );
+      }
     }
   };
 
@@ -686,6 +753,28 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               </TooltipProvider>
             </PopoverContent>
           </Popover>
+
+          {/* Visual Editing Button */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={handleActivateVisualEditing}
+                  className={cn(
+                    "p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 dark:text-gray-300",
+                    isVisualEditingMode &&
+                      "bg-[#7f22fe] text-white hover:bg-[#7f22fe]/80",
+                  )}
+                  title="Visual Editing Mode"
+                >
+                  <PenTool size={16} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Visual Editing Mode</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
       </div>
 
@@ -735,6 +824,14 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               src={appUrl}
               allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
             />
+            {/* Visual Editing Sidebar */}
+            {visualEditingSelectedComponent && (
+              <VisualEditingSidebar
+                selectedComponent={visualEditingSelectedComponent}
+                iframeRef={iframeRef}
+                onClose={() => setVisualEditingSelectedComponent(null)}
+              />
+            )}
           </div>
         )}
       </div>

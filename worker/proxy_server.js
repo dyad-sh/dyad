@@ -38,6 +38,7 @@ let rememberedOrigin = null; // e.g. "http://localhost:5173"
 let stacktraceJsContent = null;
 let dyadShimContent = null;
 let dyadComponentSelectorClientContent = null;
+let dyadVisualEditorClientContent = null;
 try {
   const stackTraceLibPath = path.join(
     __dirname,
@@ -83,6 +84,24 @@ try {
   );
 }
 
+try {
+  const dyadVisualEditorClientPath = path.join(
+    __dirname,
+    "dyad-visual-editor-client.js",
+  );
+  dyadVisualEditorClientContent = fs.readFileSync(
+    dyadVisualEditorClientPath,
+    "utf-8",
+  );
+  parentPort?.postMessage(
+    "[proxy-worker] dyad-visual-editor-client.js loaded.",
+  );
+} catch (error) {
+  parentPort?.postMessage(
+    `[proxy-worker] Failed to read dyad-visual-editor-client.js: ${error.message}`,
+  );
+}
+
 /* ---------------------- helper: need to inject? ------------------------ */
 function needsInjection(pathname) {
   // Inject for routes without a file extension (e.g., "/foo", "/foo/bar", "/")
@@ -122,6 +141,13 @@ function injectHTML(buf) {
   } else {
     scripts.push(
       '<script>console.warn("[proxy-worker] dyad component selector client was not injected.");</script>',
+    );
+  }
+  if (dyadVisualEditorClientContent) {
+    scripts.push(`<script>${dyadVisualEditorClientContent}</script>`);
+  } else {
+    scripts.push(
+      '<script>console.warn("[proxy-worker] dyad visual editor client was not injected.");</script>',
     );
   }
   const allScripts = scripts.join("\n");

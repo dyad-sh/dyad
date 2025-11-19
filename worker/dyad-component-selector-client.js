@@ -4,6 +4,7 @@
   let hoverOverlay = null;
   let hoverLabel = null;
   let currentHoveredElement = null;
+  let isVisualEditingMode = false;
   //detect if the user is using Mac
   const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
 
@@ -279,7 +280,6 @@
     if (state.type !== "inspecting" || !state.element) return;
     e.preventDefault();
     e.stopPropagation();
-
     const selectedItem = overlays.find((item) => item.el === e.target);
     if (selectedItem) {
       removeOverlayById(state.element.dataset.dyadId);
@@ -287,6 +287,26 @@
         {
           type: "dyad-component-deselected",
           componentId: state.element.dataset.dyadId,
+        },
+        "*",
+      );
+      return;
+    }
+
+    if (isVisualEditingMode) {
+      // In visual editing mode, clear all overlays and select only one component
+      clearOverlays();
+
+      updateOverlay(state.element, true);
+      requestAnimationFrame(updateAllOverlayPositions);
+
+      window.parent.postMessage(
+        {
+          type: "dyad-component-selected",
+          component: {
+            id: state.element.dataset.dyadId,
+            name: state.element.dataset.dyadName,
+          },
         },
         "*",
       );
@@ -364,7 +384,19 @@
     if (e.source !== window.parent) return;
     if (e.data.type === "activate-dyad-component-selector") activate();
     if (e.data.type === "deactivate-dyad-component-selector") deactivate();
+    if (e.data.type === "activate-dyad-visual-editing") {
+      isVisualEditingMode = true;
+      activate();
+    }
+    if (e.data.type === "deactivate-dyad-visual-editing") {
+      isVisualEditingMode = false;
+      deactivate();
+      clearOverlays();
+    }
     if (e.data.type === "clear-dyad-component-overlays") clearOverlays();
+    if (e.data.type === "update-dyad-overlay-positions") {
+      updateAllOverlayPositions();
+    }
     if (e.data.type === "remove-dyad-component-overlay") {
       if (e.data.componentId) {
         removeOverlayById(e.data.componentId);

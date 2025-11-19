@@ -250,6 +250,7 @@ export type AgentToolConsent = z.infer<typeof AgentToolConsentSchema>;
  */
 export const UserSettingsSchema = z.object({
   selectedModel: LargeLanguageModelSchema,
+  translateModel: LargeLanguageModelSchema.optional(), // Model for contract translation (defaults to SolMover)
   providerSettings: z.record(z.string(), ProviderSettingSchema),
   agentToolConsents: z.record(z.string(), AgentToolConsentSchema).optional(),
   githubUser: GithubUserSchema.optional(),

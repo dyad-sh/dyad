@@ -551,6 +551,7 @@ ${componentSnippet}
           "estimated tokens",
           codebaseInfo.length / 4,
         );
+
         // Prepare message history for the AI
         const messageHistory = updatedChat.messages.map((message) => ({
           role: message.role as "user" | "assistant" | "system",

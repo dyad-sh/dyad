@@ -20,30 +20,6 @@ export interface ModelOption {
 
 export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
   openai: [
-    // https://platform.openai.com/docs/models/gpt-5.1-codex-mini
-    {
-      name: "gpt-5.1-codex-mini",
-      displayName: "GPT 5.1 Codex Mini",
-      description: "OpenAI's compact and efficient coding model",
-      // Technically it's 128k but OpenAI errors if you set max_tokens instead of max_completion_tokens
-      maxOutputTokens: undefined,
-      contextWindow: 400_000,
-      // Requires temperature to be default value (1)
-      temperature: 1,
-      dollarSigns: 2,
-    },
-    // https://platform.openai.com/docs/models/gpt-5.1-codex
-    {
-      name: "gpt-5.1-codex",
-      displayName: "GPT 5.1 Codex",
-      description: "OpenAI's advanced coding workflows",
-      // Technically it's 128k but OpenAI errors if you set max_tokens instead of max_completion_tokens
-      maxOutputTokens: undefined,
-      contextWindow: 400_000,
-      // Requires temperature to be default value (1)
-      temperature: 1,
-      dollarSigns: 3,
-    },
     // https://platform.openai.com/docs/models/gpt-5.1
     {
       name: "gpt-5.1",
@@ -57,12 +33,11 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       temperature: 1,
       dollarSigns: 3,
     },
-
-    // https://platform.openai.com/docs/models/gpt-5-codex
+    // https://platform.openai.com/docs/models/gpt-5.1-codex
     {
-      name: "gpt-5-codex",
-      displayName: "GPT 5 Codex",
-      description: "OpenAI's flagship model optimized for coding",
+      name: "gpt-5.1-codex",
+      displayName: "GPT 5.1 Codex",
+      description: "OpenAI's advanced coding workflows",
       // Technically it's 128k but OpenAI errors if you set max_tokens instead of max_completion_tokens
       maxOutputTokens: undefined,
       contextWindow: 400_000,
@@ -70,11 +45,36 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       temperature: 1,
       dollarSigns: 3,
     },
+    // https://platform.openai.com/docs/models/gpt-5.1-codex-mini
+    {
+      name: "gpt-5.1-codex-mini",
+      displayName: "GPT 5.1 Codex Mini",
+      description: "OpenAI's compact and efficient coding model",
+      // Technically it's 128k but OpenAI errors if you set max_tokens instead of max_completion_tokens
+      maxOutputTokens: undefined,
+      contextWindow: 400_000,
+      // Requires temperature to be default value (1)
+      temperature: 1,
+      dollarSigns: 2,
+    },
+
     // https://platform.openai.com/docs/models/gpt-5
     {
       name: "gpt-5",
       displayName: "GPT 5",
       description: "OpenAI's flagship model",
+      // Technically it's 128k but OpenAI errors if you set max_tokens instead of max_completion_tokens
+      maxOutputTokens: undefined,
+      contextWindow: 400_000,
+      // Requires temperature to be default value (1)
+      temperature: 1,
+      dollarSigns: 3,
+    },
+    // https://platform.openai.com/docs/models/gpt-5-codex
+    {
+      name: "gpt-5-codex",
+      displayName: "GPT 5 Codex",
+      description: "OpenAI's flagship model optimized for coding",
       // Technically it's 128k but OpenAI errors if you set max_tokens instead of max_completion_tokens
       maxOutputTokens: undefined,
       contextWindow: 400_000,
@@ -336,9 +336,9 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
   ],
   azure: [
     {
-      name: "gpt-5.1-codex-mini",
-      displayName: "GPT-5.1 Codex Mini",
-      description: "Azure OpenAI GPT-5.1 Codex Mini model",
+      name: "gpt-5.1",
+      displayName: "GPT-5.1",
+      description: "Azure OpenAI GPT-5.1 model",
       // See OpenAI comment above
       // maxOutputTokens: 128_000,
       contextWindow: 400_000,
@@ -354,9 +354,9 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       temperature: 1,
     },
     {
-      name: "gpt-5.1",
-      displayName: "GPT-5.1",
-      description: "Azure OpenAI GPT-5.1 model",
+      name: "gpt-5.1-codex-mini",
+      displayName: "GPT-5.1 Codex Mini",
+      description: "Azure OpenAI GPT-5.1 Codex Mini model",
       // See OpenAI comment above
       // maxOutputTokens: 128_000,
       contextWindow: 400_000,

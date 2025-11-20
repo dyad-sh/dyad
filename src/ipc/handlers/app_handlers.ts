@@ -1202,6 +1202,20 @@ export function registerAppHandlers() {
           throw new Error("App not found");
         }
 
+        const pathChanged = appPath !== app.path;
+
+        if (pathChanged) {
+          const invalidChars = /[<>:"|?*\/\\]/;
+          const hasInvalidChars =
+            invalidChars.test(appPath) || /[\x00-\x1f]/.test(appPath);
+
+          if (hasInvalidChars) {
+            throw new Error(
+              `App path "${appPath}" contains characters that are not allowed in folder names: < > : " | ? * / \\ or control characters. Please use a different path.`,
+            );
+          }
+        }
+
         // Check for conflicts with existing apps
         const nameConflict = await db.query.apps.findFirst({
           where: eq(apps.name, appName),

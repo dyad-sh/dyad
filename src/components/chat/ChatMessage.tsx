@@ -150,6 +150,7 @@ const ChatMessage = ({
           {isEditing ? (
             <div className="flex flex-col gap-2">
               <Textarea
+                data-testid="chat-message-edit-textarea"
                 className="w-full p-2 border rounded-md"
                 value={editedContent}
                 onChange={(event) => setEditedContent(event.target.value)}

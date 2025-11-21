@@ -1,7 +1,22 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle2, Copy, ExternalLink, Loader2, Terminal, Wallet, Droplet, RefreshCw } from "lucide-react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  CheckCircle2,
+  Copy,
+  ExternalLink,
+  Loader2,
+  Terminal,
+  Wallet,
+  Droplet,
+  RefreshCw,
+} from "lucide-react";
 import { IpcClient } from "@/ipc/ipc_client";
 
 interface SuiSetupProps {
@@ -12,7 +27,7 @@ type SetupStep = "env" | "address" | "faucet" | "complete";
 
 export const SuiSetup = ({ suiAddress }: SuiSetupProps) => {
   const [currentStep, setCurrentStep] = useState<SetupStep>(
-    suiAddress ? "complete" : "env"
+    suiAddress ? "complete" : "env",
   );
   const [isCheckingEnv, setIsCheckingEnv] = useState(false);
   const [isCheckingAddress, setIsCheckingAddress] = useState(false);
@@ -79,7 +94,8 @@ export const SuiSetup = ({ suiAddress }: SuiSetupProps) => {
       description: "Create or import a wallet address",
       icon: <Wallet className="w-5 h-5" />,
       command: "sui client active-address",
-      helpText: "If you don't have an address, run: sui client new-address ed25519",
+      helpText:
+        "If you don't have an address, run: sui client new-address ed25519",
       action: checkAddress,
       actionLabel: "Verify Address",
       isLoading: isCheckingAddress,
@@ -121,7 +137,9 @@ export const SuiSetup = ({ suiAddress }: SuiSetupProps) => {
               className="h-8 px-2"
               title="Refresh Balance"
             >
-              <RefreshCw className={`w-4 h-4 ${isLoadingBalance ? 'animate-spin' : ''}`} />
+              <RefreshCw
+                className={`w-4 h-4 ${isLoadingBalance ? "animate-spin" : ""}`}
+              />
             </Button>
           </div>
           <CardDescription className="text-green-700 dark:text-green-300">
@@ -200,8 +218,8 @@ export const SuiSetup = ({ suiAddress }: SuiSetupProps) => {
                 step.completed
                   ? "border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20"
                   : isActive
-                  ? "border-primary bg-primary/5"
-                  : "border-border bg-muted/30 opacity-60"
+                    ? "border-primary bg-primary/5"
+                    : "border-border bg-muted/30 opacity-60"
               }`}
             >
               <div className="flex items-start gap-3">
@@ -210,8 +228,8 @@ export const SuiSetup = ({ suiAddress }: SuiSetupProps) => {
                     step.completed
                       ? "bg-green-600 text-white"
                       : isActive
-                      ? "bg-primary text-white"
-                      : "bg-muted text-muted-foreground"
+                        ? "bg-primary text-white"
+                        : "bg-muted text-muted-foreground"
                   }`}
                 >
                   {step.completed ? (

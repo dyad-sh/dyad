@@ -49,7 +49,7 @@ export function SetupBanner() {
   const { isAnyProviderSetup, isLoading: loading } =
     useLanguageModelProviders();
 
-  const [homeMode] = useAtom(homeModeAtom);  
+  const [homeMode] = useAtom(homeModeAtom);
   const [nodeSystemInfo, setNodeSystemInfo] = useState<NodeSystemInfo | null>(
     null,
   );
@@ -154,7 +154,8 @@ export function SetupBanner() {
   if (!isAnyProviderSetup() && !loading) {
     itemsNeedAction.push("ai-setup");
   }
-  const bannerTitle = homeMode === "generate" ? "Build your dream app" : "Translate your code";
+  const bannerTitle =
+    homeMode === "generate" ? "Build your dream app" : "Translate your code";
 
   if (itemsNeedAction.length === 0) {
     return (
@@ -163,7 +164,7 @@ export function SetupBanner() {
       </h1>
     );
   }
-  
+
   const bannerClasses = cn(
     "w-full mb-6 border rounded-xl shadow-sm overflow-hidden",
     "border-zinc-200 dark:border-zinc-700",
@@ -352,7 +353,11 @@ export function SetupBanner() {
                 onClick={handleDyadProSetupClick}
                 tabIndex={isNodeSetupComplete ? 0 : -1}
                 leadingIcon={
-                  <img src={logo} alt="Shinsō Logo" className="w-6 h-6 mr-0.5" />
+                  <img
+                    src={logo}
+                    alt="Shinsō Logo"
+                    className="w-6 h-6 mr-0.5"
+                  />
                 }
                 title="Setup Shinsō Pro"
                 subtitle="Access all AI models with one plan"

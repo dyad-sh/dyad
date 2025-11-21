@@ -156,7 +156,8 @@ const getProposalHandler = async (
         const proposalWriteFiles = getShinsoWriteTags(messageContent);
         const proposalRenameFiles = getShinsoRenameTags(messageContent);
         const proposalDeleteFiles = getShinsoDeleteTags(messageContent);
-        const proposalExecuteSqlQueries = getShinsoExecuteSqlTags(messageContent);
+        const proposalExecuteSqlQueries =
+          getShinsoExecuteSqlTags(messageContent);
         const packagesAdded = getShinsoAddDependencyTags(messageContent);
         const proposalSearchReplaceFiles =
           getDyadSearchReplaceTags(messageContent);

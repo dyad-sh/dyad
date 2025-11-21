@@ -102,14 +102,14 @@ body[data-scroll-locked] .app-region-drag {
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: #3F2F7D;
+  --primary: #3f2f7d;
   /* Main brand color - Shinso purple */
   --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
   --muted-foreground: oklch(0.556 0 0);
-  --accent: #51FEF1;
+  --accent: #51fef1;
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.577 0.245 27.325);
@@ -161,7 +161,7 @@ body[data-scroll-locked] .app-region-drag {
   --popover-foreground: #ffffff;
 
   /* Primary accent - Shinso purple */
-  --primary: #3F2F7D;
+  --primary: #3f2f7d;
   --primary-foreground: #ffffff;
 
   /* Secondary with purple tint */
@@ -173,7 +173,7 @@ body[data-scroll-locked] .app-region-drag {
   --muted-foreground: #a0a0a0;
 
   /* Accent - keeping the cyan */
-  --accent: #51FEF1;
+  --accent: #51fef1;
   --accent-foreground: #000000;
 
   /* Destructive */
@@ -183,7 +183,7 @@ body[data-scroll-locked] .app-region-drag {
   /* Borders with purple tint */
   --border: #2a2035;
   --input: #1a1520;
-  --ring: #3F2F7D;
+  --ring: #3f2f7d;
 
   /* Charts */
   --chart-1: oklch(0.488 0.243 264.376);
@@ -195,12 +195,12 @@ body[data-scroll-locked] .app-region-drag {
   /* Sidebar - black with purple accents */
   --sidebar: #000000;
   --sidebar-foreground: #ffffff;
-  --sidebar-primary: #3F2F7D;
+  --sidebar-primary: #3f2f7d;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #1a1520;
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: #1a1520;
-  --sidebar-ring: #3F2F7D;
+  --sidebar-ring: #3f2f7d;
 }
 
 @theme inline {

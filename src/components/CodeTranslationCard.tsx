@@ -23,12 +23,8 @@ export function CodeTranslationCard({ onTranslate }: CodeTranslationCardProps) {
   const [solidityCode, setSolidityCode] = useState("");
   const [projectName, setProjectName] = useState("");
   const [isTranslating, setIsTranslating] = useState(false);
-  const {
-    attachments,
-    handleFileSelect,
-    removeAttachment,
-    clearAttachments,
-  } = useAttachments();
+  const { attachments, handleFileSelect, removeAttachment, clearAttachments } =
+    useAttachments();
 
   const handleTranslate = async () => {
     if (!solidityCode.trim() && attachments.length === 0) return;
@@ -128,14 +124,11 @@ export function CodeTranslationCard({ onTranslate }: CodeTranslationCardProps) {
         </div>
 
         <div className="text-xs text-muted-foreground space-y-1">
+          <p>• Supports Solidity versions 0.6.0 - 0.8.x</p>
+          <p>• Upload .sol files or paste code directly</p>
           <p>
-            • Supports Solidity versions 0.6.0 - 0.8.x
-          </p>
-          <p>
-            • Upload .sol files or paste code directly
-          </p>
-          <p>
-            • Translation preserves contract logic and adds Sui Move safety features
+            • Translation preserves contract logic and adds Sui Move safety
+            features
           </p>
         </div>
       </CardContent>

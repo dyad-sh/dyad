@@ -82,7 +82,9 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
           // Contract translation card with icon header
           <div
             className={`relative bg-black border-2 border-primary/20 h-52 flex items-center justify-center transition-all duration-300 ${
-              isSelected ? "border-primary shadow-lg shadow-primary/20" : "group-hover:border-primary/40 group-hover:bg-primary/5"
+              isSelected
+                ? "border-primary shadow-lg shadow-primary/20"
+                : "group-hover:border-primary/40 group-hover:bg-primary/5"
             }`}
           >
             <div className="text-8xl opacity-90 group-hover:opacity-100 transition-opacity duration-300">

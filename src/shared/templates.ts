@@ -67,7 +67,8 @@ export const contractTranslationTemplates: Template[] = [
     imageUrl: "",
     isOfficial: true,
     isContractTranslation: true,
-    contractSourceUrl: "https://raw.githubusercontent.com/OpenZeppelin/openzeppelin-contracts/v5.1.0/contracts/token/ERC20/ERC20.sol",
+    contractSourceUrl:
+      "https://raw.githubusercontent.com/OpenZeppelin/openzeppelin-contracts/v5.1.0/contracts/token/ERC20/ERC20.sol",
     contractIcon: "💰",
   },
   {
@@ -77,7 +78,8 @@ export const contractTranslationTemplates: Template[] = [
     imageUrl: "",
     isOfficial: true,
     isContractTranslation: true,
-    contractSourceUrl: "https://raw.githubusercontent.com/OpenZeppelin/openzeppelin-contracts/v5.1.0/contracts/token/ERC721/ERC721.sol",
+    contractSourceUrl:
+      "https://raw.githubusercontent.com/OpenZeppelin/openzeppelin-contracts/v5.1.0/contracts/token/ERC721/ERC721.sol",
     contractIcon: "🖼️",
   },
   {
@@ -87,7 +89,8 @@ export const contractTranslationTemplates: Template[] = [
     imageUrl: "",
     isOfficial: true,
     isContractTranslation: true,
-    contractSourceUrl: "https://raw.githubusercontent.com/OpenZeppelin/openzeppelin-contracts/v5.1.0/contracts/token/ERC1155/ERC1155.sol",
+    contractSourceUrl:
+      "https://raw.githubusercontent.com/OpenZeppelin/openzeppelin-contracts/v5.1.0/contracts/token/ERC1155/ERC1155.sol",
     contractIcon: "🎨",
   },
 ];

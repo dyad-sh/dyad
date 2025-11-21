@@ -7,7 +7,13 @@ export const selectedAppIdAtom = atom<number | null>(null);
 export const appsListAtom = atom<App[]>([]);
 export const versionsListAtom = atom<Version[]>([]);
 export const previewModeAtom = atom<
-  "preview" | "code" | "problems" | "configure" | "publish" | "contract" | "security"
+  | "preview"
+  | "code"
+  | "problems"
+  | "configure"
+  | "publish"
+  | "contract"
+  | "security"
 >("preview");
 export const selectedVersionIdAtom = atom<string | null>(null);
 

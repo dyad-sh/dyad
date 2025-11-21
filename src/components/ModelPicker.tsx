@@ -103,7 +103,6 @@ export function ModelPicker() {
 
   // Get display name for the selected model
   const getModelDisplayName = () => {
-    
     if (selectedModel.provider === "ollama") {
       return (
         ollamaModels.find(
@@ -196,7 +195,8 @@ export function ModelPicker() {
   const selectedModel = settings?.selectedModel;
   const modelDisplayName = getModelDisplayName();
   const actualModelDisplayName = getActualModelDisplayName();
-  const isUsingDifferentModel = isContractProject && actualModelDisplayName !== modelDisplayName;
+  const isUsingDifferentModel =
+    isContractProject && actualModelDisplayName !== modelDisplayName;
   // Split providers into primary and secondary groups (excluding auto)
   const providerEntries =
     !loading && modelsByProviders
@@ -228,14 +228,18 @@ export function ModelPicker() {
               size="sm"
               className={cn(
                 "flex items-center gap-2 h-8 max-w-[160px] px-1.5 text-xs-sm",
-                isUsingDifferentModel && "border-purple-500/50"
+                isUsingDifferentModel && "border-purple-500/50",
               )}
             >
               <span className="truncate">
                 {isUsingDifferentModel ? (
                   <>
-                    <span className="text-xs text-muted-foreground">Using:</span>{" "}
-                    <span className="text-purple-600 dark:text-purple-400">{actualModelDisplayName}</span>
+                    <span className="text-xs text-muted-foreground">
+                      Using:
+                    </span>{" "}
+                    <span className="text-purple-600 dark:text-purple-400">
+                      {actualModelDisplayName}
+                    </span>
                   </>
                 ) : modelDisplayName === "Auto" ? (
                   <>
@@ -254,7 +258,9 @@ export function ModelPicker() {
         <TooltipContent>
           {isUsingDifferentModel ? (
             <div className="text-sm">
-              <p><strong>Contract Project</strong></p>
+              <p>
+                <strong>Contract Project</strong>
+              </p>
               <p>Using: {actualModelDisplayName}</p>
               <p className="text-xs text-muted-foreground mt-1">
                 (Default: {actualModelDisplayName})

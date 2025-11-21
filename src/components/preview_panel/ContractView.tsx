@@ -16,7 +16,7 @@ import {
   FileCode,
   Sparkles,
   Settings,
-  FlaskConical
+  FlaskConical,
 } from "lucide-react";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { IpcClient } from "@/ipc/ipc_client";
@@ -54,7 +54,9 @@ export const ContractView = ({ loading, app }: ContractViewProps) => {
   const [rawCompileError, setRawCompileError] = useState("");
   const [rawTestError, setRawTestError] = useState("");
   const [showSetup, setShowSetup] = useState(false);
-  const [lastFailedAction, setLastFailedAction] = useState<"compile" | "test" | null>(null);
+  const [lastFailedAction, setLastFailedAction] = useState<
+    "compile" | "test" | null
+  >(null);
 
   // Get Sui address on mount
   useEffect(() => {
@@ -73,7 +75,7 @@ export const ContractView = ({ loading, app }: ContractViewProps) => {
   useEffect(() => {
     if (!app?.files || loading) return;
 
-    const moveFiles = app.files.filter(f => f.endsWith('.move'));
+    const moveFiles = app.files.filter((f) => f.endsWith(".move"));
 
     // If there are Move files and no file is currently selected, select the first one
     if (moveFiles.length > 0 && !selectedFile) {
@@ -228,7 +230,7 @@ Make only the code changes and give no further tips and actions, only a brief su
   }
 
   // Find Move files
-  const moveFiles = app.files?.filter(f => f.endsWith('.move')) || [];
+  const moveFiles = app.files?.filter((f) => f.endsWith(".move")) || [];
 
   return (
     <div className="flex flex-col h-full bg-background">
@@ -238,7 +240,7 @@ Make only the code changes and give no further tips and actions, only a brief su
           <FileCode className="w-4 h-4 text-primary" />
           <span className="text-sm font-medium">Smart Contract</span>
           <span className="text-xs text-muted-foreground">
-            {moveFiles.length} Move file{moveFiles.length !== 1 ? 's' : ''}
+            {moveFiles.length} Move file{moveFiles.length !== 1 ? "s" : ""}
           </span>
         </div>
 
@@ -293,19 +295,23 @@ Make only the code changes and give no further tips and actions, only a brief su
           </Button>
 
           {/* Fix with AI button - only show when compilation errors are the last failure */}
-          {compileStatus === "error" && rawCompileError && lastFailedAction === "compile" && (
-            <Button
-              onClick={handleFixErrors}
-              variant="secondary"
-              size="sm"
-              disabled={!selectedChatId}
-              className="gap-2 bg-purple-600 hover:bg-purple-700 text-white"
-              title={!selectedChatId ? "No chat selected" : "Ask AI to fix errors"}
-            >
-              <Sparkles className="w-4 h-4" />
-              Fix with AI
-            </Button>
-          )}
+          {compileStatus === "error" &&
+            rawCompileError &&
+            lastFailedAction === "compile" && (
+              <Button
+                onClick={handleFixErrors}
+                variant="secondary"
+                size="sm"
+                disabled={!selectedChatId}
+                className="gap-2 bg-purple-600 hover:bg-purple-700 text-white"
+                title={
+                  !selectedChatId ? "No chat selected" : "Ask AI to fix errors"
+                }
+              >
+                <Sparkles className="w-4 h-4" />
+                Fix with AI
+              </Button>
+            )}
 
           <Button
             onClick={handleTest}
@@ -338,27 +344,32 @@ Make only the code changes and give no further tips and actions, only a brief su
           </Button>
 
           {/* Fix Tests with AI button - only show when test errors are the last failure */}
-          {testStatus === "error" && rawTestError && lastFailedAction === "test" && (
-            <Button
-              onClick={handleFixTestErrors}
-              variant="secondary"
-              size="sm"
-              disabled={!selectedChatId}
-              className="gap-2 bg-orange-600 hover:bg-orange-700 text-white"
-              title={!selectedChatId ? "No chat selected" : "Ask AI to fix test failures"}
-            >
-              <Sparkles className="w-4 h-4" />
-              Fix Tests
-            </Button>
-          )}
+          {testStatus === "error" &&
+            rawTestError &&
+            lastFailedAction === "test" && (
+              <Button
+                onClick={handleFixTestErrors}
+                variant="secondary"
+                size="sm"
+                disabled={!selectedChatId}
+                className="gap-2 bg-orange-600 hover:bg-orange-700 text-white"
+                title={
+                  !selectedChatId
+                    ? "No chat selected"
+                    : "Ask AI to fix test failures"
+                }
+              >
+                <Sparkles className="w-4 h-4" />
+                Fix Tests
+              </Button>
+            )}
 
           <Button
             onClick={handleDeploy}
             variant="default"
             size="sm"
             disabled={
-              compileStatus !== "success" ||
-              deployStatus === "deploying"
+              compileStatus !== "success" || deployStatus === "deploying"
             }
             className="gap-2"
           >
@@ -423,7 +434,11 @@ Make only the code changes and give no further tips and actions, only a brief su
                 {/* Output header */}
                 <div className="flex items-center gap-2 pb-2 border-b border-border/50">
                   <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    {deployOutput ? "Deployment Output" : testOutput ? "Test Output" : "Compilation Output"}
+                    {deployOutput
+                      ? "Deployment Output"
+                      : testOutput
+                        ? "Test Output"
+                        : "Compilation Output"}
                   </span>
                 </div>
                 {/* Output content */}
@@ -440,7 +455,8 @@ Make only the code changes and give no further tips and actions, only a brief su
       {moveFiles.length === 0 && (
         <div className="p-4 border-t bg-yellow-50 dark:bg-yellow-900/20 text-sm">
           <p className="text-yellow-800 dark:text-yellow-200">
-            ⚠️ No Move files detected. Make sure your contract files have the .move extension.
+            ⚠️ No Move files detected. Make sure your contract files have the
+            .move extension.
           </p>
         </div>
       )}

@@ -111,7 +111,6 @@ export function ProModeSelector() {
             <SelectorRow
               id="pro-enabled"
               label="Enable Shinso pro"
-              description="Use Shinso pro AI credits"
               tooltip="Uses Shinso pro AI credits for the main AI model and Pro modes."
               isTogglable={hasProKey}
               settingEnabled={Boolean(settings?.enableDyadPro)}

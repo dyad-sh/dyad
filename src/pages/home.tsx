@@ -31,7 +31,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ForceCloseDialog } from "@/components/ForceCloseDialog";
 
 import type { FileAttachment } from "@/ipc/ipc_types";
-import { NEON_TEMPLATE_IDS, contractTranslationTemplates } from "@/shared/templates";
+import {
+  NEON_TEMPLATE_IDS,
+  contractTranslationTemplates,
+} from "@/shared/templates";
 import { neonTemplateHook } from "@/client_logic/template_hook";
 import { ProBanner } from "@/components/ProBanner";
 import { CodeTranslationCard } from "@/components/CodeTranslationCard";
@@ -77,7 +80,9 @@ export default function HomePage() {
 
   const [mode] = useAtom(homeModeAtom);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string | undefined>();
+  const [selectedTemplateId, setSelectedTemplateId] = useState<
+    string | undefined
+  >();
   useEffect(() => {
     const updateLastVersionLaunched = async () => {
       if (
@@ -141,7 +146,11 @@ export default function HomePage() {
     }
   }, [appId, navigate]);
 
-  const handleTranslate = async (code: string, attachments: any[], projectName: string) => {
+  const handleTranslate = async (
+    code: string,
+    attachments: any[],
+    projectName: string,
+  ) => {
     // Create a specialized prompt for smart contract translation
     const translationPrompt = `${SMART_CONTRACT_TRANSLATION_PROMPT}
 
@@ -157,18 +166,20 @@ Please translate this Solidity contract to Sui Move following the guidelines abo
 
     // Extract contract name from code if no project name provided
     const extractedName = code.match(/contract\s+(\w+)/)?.[1]?.toLowerCase();
-    const finalName = projectName.trim() || (extractedName ? `${extractedName}-move` : 'translated-move');
+    const finalName =
+      projectName.trim() ||
+      (extractedName ? `${extractedName}-move` : "translated-move");
 
-    console.log('handleTranslate - projectName:', projectName);
-    console.log('handleTranslate - extractedName:', extractedName);
-    console.log('handleTranslate - finalName:', finalName);
+    console.log("handleTranslate - projectName:", projectName);
+    console.log("handleTranslate - extractedName:", extractedName);
+    console.log("handleTranslate - finalName:", finalName);
 
     // Submit immediately with the translation prompt passed directly
     await handleSubmit({
       attachments,
       customName: finalName,
       isContractProject: true,
-      prompt: translationPrompt
+      prompt: translationPrompt,
     });
   };
 
@@ -185,9 +196,12 @@ Please translate this Solidity contract to Sui Move following the guidelines abo
       // Use custom name if provided, otherwise generate cute name
       const appName = options?.customName || generateCuteAppName();
 
-      console.log('handleSubmit - options:', options);
-      console.log('handleSubmit - appName:', appName);
-      console.log('handleSubmit - isContractProject:', options?.isContractProject);
+      console.log("handleSubmit - options:", options);
+      console.log("handleSubmit - appName:", appName);
+      console.log(
+        "handleSubmit - isContractProject:",
+        options?.isContractProject,
+      );
 
       const result = await IpcClient.getInstance().createApp({
         name: appName,
@@ -288,7 +302,9 @@ Please translate this Solidity contract to Sui Move following the guidelines abo
                                group"
                   >
                     <div className="absolute inset-0 bg-primary/5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200"></div>
-                    <div className="relative text-4xl">{template.contractIcon}</div>
+                    <div className="relative text-4xl">
+                      {template.contractIcon}
+                    </div>
                     <div className="relative text-center">
                       <div className="font-semibold text-white mb-1">
                         {template.title}
@@ -405,7 +421,9 @@ Please translate this Solidity contract to Sui Move following the guidelines abo
       <CreateAppDialog
         open={isCreateDialogOpen}
         onOpenChange={setIsCreateDialogOpen}
-        template={contractTranslationTemplates.find((t) => t.id === selectedTemplateId)}
+        template={contractTranslationTemplates.find(
+          (t) => t.id === selectedTemplateId,
+        )}
       />
     </div>
   );

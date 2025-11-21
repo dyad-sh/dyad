@@ -87,7 +87,9 @@ vi.mock("../db", () => ({
 
 describe("getShinsoAddDependencyTags", () => {
   it("should return an empty array when no dyad-add-dependency tags are found", () => {
-    const result = getShinsoAddDependencyTags("No dyad-add-dependency tags here");
+    const result = getShinsoAddDependencyTags(
+      "No dyad-add-dependency tags here",
+    );
     expect(result).toEqual([]);
   });
 

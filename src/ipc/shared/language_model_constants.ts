@@ -561,7 +561,8 @@ export const CLOUD_PROVIDERS: Record<
   solmover: {
     displayName: "SolMover",
     hasFreeTier: false,
-    websiteUrl: "https://3de3ed54-8b53-47d3-8ad3-2d8bb0befb9a.app.gra.ai.cloud.ovh.net/",
+    websiteUrl:
+      "https://3de3ed54-8b53-47d3-8ad3-2d8bb0befb9a.app.gra.ai.cloud.ovh.net/",
     gatewayPrefix: "",
     secondary: false,
   },

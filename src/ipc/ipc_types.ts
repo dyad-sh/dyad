@@ -507,7 +507,7 @@ export interface McpServer {
   updatedAt: number;
 }
 
-export type CreateMcpServer = Omit<McpServer, "id" | "createdAt" | "updatedAt">
+export type CreateMcpServer = Omit<McpServer, "id" | "createdAt" | "updatedAt">;
 export type McpServerUpdate = Partial<McpServer> & Pick<McpServer, "id">;
 export type McpToolConsentType = "ask" | "always" | "denied";
 

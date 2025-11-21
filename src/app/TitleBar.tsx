@@ -112,7 +112,10 @@ export const TitleBar = () => {
         <div className="flex-1"></div>
 
         {/* Mode Toggle - Always visible */}
-        <div className="absolute left-1/2 transform -translate-x-1/2 inline-flex items-center rounded-full p-0.5 bg-gray-100 dark:bg-black border border-gray-200 dark:border-[#2a2035] no-app-region-drag z-50" style={{ pointerEvents: 'auto' }}>
+        <div
+          className="absolute left-1/2 transform -translate-x-1/2 inline-flex items-center rounded-full p-0.5 bg-gray-100 dark:bg-black border border-gray-200 dark:border-[#2a2035] no-app-region-drag z-50"
+          style={{ pointerEvents: "auto" }}
+        >
           <button
             type="button"
             onClick={(e) => {
@@ -124,7 +127,7 @@ export const TitleBar = () => {
                 ? "bg-primary text-white shadow-sm shadow-primary/20"
                 : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
             }`}
-            style={{ cursor: 'pointer', pointerEvents: 'auto' }}
+            style={{ cursor: "pointer", pointerEvents: "auto" }}
           >
             ✨ Generate
           </button>
@@ -139,7 +142,7 @@ export const TitleBar = () => {
                 ? "bg-primary text-white shadow-sm shadow-primary/20"
                 : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
             }`}
-            style={{ cursor: 'pointer', pointerEvents: 'auto' }}
+            style={{ cursor: "pointer", pointerEvents: "auto" }}
           >
             🔄 Translate
           </button>

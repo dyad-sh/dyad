@@ -610,7 +610,9 @@ export function registerAppHandlers() {
       } else {
         // For contract projects, create a minimal structure with just src directory
         await fsPromises.mkdir(fullAppPath, { recursive: true });
-        await fsPromises.mkdir(path.join(fullAppPath, "src"), { recursive: true });
+        await fsPromises.mkdir(path.join(fullAppPath, "src"), {
+          recursive: true,
+        });
 
         // Create a README for contract projects
         const readmeContent = `# ${params.name}
@@ -641,7 +643,7 @@ sui move test
         await fsPromises.writeFile(
           path.join(fullAppPath, "README.md"),
           readmeContent,
-          "utf-8"
+          "utf-8",
         );
       }
 

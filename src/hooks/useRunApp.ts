@@ -103,7 +103,8 @@ export function useRunApp() {
           setAppOutput((prev) => [
             ...prev,
             {
-              message: "Contract project loaded. Use the Contract panel to compile and deploy.",
+              message:
+                "Contract project loaded. Use the Contract panel to compile and deploy.",
               type: "stdout",
               appId,
               timestamp: Date.now(),
@@ -207,7 +208,8 @@ export function useRunApp() {
           setAppOutput((prev) => [
             ...prev,
             {
-              message: "Contract projects don't have a dev server to restart. Use the Contract panel to compile and deploy.",
+              message:
+                "Contract projects don't have a dev server to restart. Use the Contract panel to compile and deploy.",
               type: "stdout",
               appId,
               timestamp: Date.now(),

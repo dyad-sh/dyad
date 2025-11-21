@@ -11,7 +11,10 @@
     "baseUrl": ".",
     "outDir": "dist",
     "moduleResolution": "bundler",
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "paths": {
+      "@/*": ["./src/*"]
+    }
 
     // /* Bundler mode */
     // // "moduleResolution": "bundler",

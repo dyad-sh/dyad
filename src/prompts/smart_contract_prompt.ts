@@ -167,7 +167,8 @@ When translating a contract:
 **File Structure Requirements:**
 - Always create Move.toml at: src/<package_name>/Move.toml
 - Place all .move files at: src/<package_name>/sources/<module_name>.move
-- The package name should match the contract type (e.g., erc20, erc721, erc1155, etc.)
+- The package name MUST match the specific contract being translated (e.g., if translating a Counter contract, use "counter" as the package name; if translating an ERC20 contract, use "erc20_token", etc.)
+- ONLY create files for the contract being translated - do NOT create additional example packages
 - NEVER forget the src/<package_name>/ prefix on ALL file paths
 
 Always prioritize correctness and safety over feature parity. If a Solidity pattern doesn't translate cleanly to Move, explain the recommended Sui-native approach.

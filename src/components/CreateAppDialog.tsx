@@ -88,7 +88,9 @@ export function CreateAppDialog({
           const response = await fetch(template.contractSourceUrl);
 
           if (!response.ok) {
-            throw new Error(`Failed to fetch contract: ${response.status} ${response.statusText}`);
+            throw new Error(
+              `Failed to fetch contract: ${response.status} ${response.statusText}`,
+            );
           }
 
           const solidityCode = await response.text();
@@ -117,7 +119,9 @@ Please create a complete Move package with:
           console.log("Translation stream started successfully");
         } catch (error) {
           console.error("Failed to fetch or send Solidity contract:", error);
-          showError(`Failed to initiate contract translation: ${error instanceof Error ? error.message : String(error)}`);
+          showError(
+            `Failed to initiate contract translation: ${error instanceof Error ? error.message : String(error)}`,
+          );
         }
       }
     } catch (error) {
@@ -141,8 +145,7 @@ Please create a complete Move package with:
           <DialogDescription>
             {isContractProject
               ? `Translate the ${template?.title} to Sui Move.`
-              : `Create a new ${entityName.toLowerCase()} using the ${template?.title} template.`
-            }
+              : `Create a new ${entityName.toLowerCase()} using the ${template?.title} template.`}
           </DialogDescription>
         </DialogHeader>
 

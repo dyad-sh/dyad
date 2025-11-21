@@ -1526,7 +1526,10 @@ export class IpcClient {
     return this.ipcRenderer.invoke("sui-get-address");
   }
 
-  public async getSuiBalance(): Promise<{ balance: string | null; formattedBalance: string | null }> {
+  public async getSuiBalance(): Promise<{
+    balance: string | null;
+    formattedBalance: string | null;
+  }> {
     return this.ipcRenderer.invoke("sui-get-balance");
   }
 }

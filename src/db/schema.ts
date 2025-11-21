@@ -1,4 +1,4 @@
-import { sql , relations } from "drizzle-orm";
+import { sql, relations } from "drizzle-orm";
 import { integer, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
 import type { ModelMessage } from "ai";
 
@@ -57,7 +57,9 @@ export const apps = sqliteTable("apps", {
   isFavorite: integer("is_favorite", { mode: "boolean" })
     .notNull()
     .default(sql`0`),
-  isContractProject: integer("is_contract_project", { mode: "boolean" }).default(false),
+  isContractProject: integer("is_contract_project", {
+    mode: "boolean",
+  }).default(false),
 });
 
 export const chats = sqliteTable("chats", {

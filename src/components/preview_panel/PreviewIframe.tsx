@@ -23,7 +23,6 @@ import {
   Monitor,
   Tablet,
   Smartphone,
-  PenTool,
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
@@ -185,7 +184,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const setPreviewIframeRef = useSetAtom(previewIframeRefAtom);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isPicking, setIsPicking] = useState(false);
-  const [isVisualEditingMode, setIsVisualEditingMode] = useState(false);
 
   // Function to get current styles from selected element
   const getCurrentElementStyles = () => {
@@ -267,29 +265,29 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
         if (!component) return;
 
-        if (isVisualEditingMode) {
-          setVisualEditingSelectedComponent(component);
-        } else {
-          setSelectedComponentsPreview((prev) => {
-            if (prev.some((c) => c.id === component.id)) {
-              return prev;
-            }
-            return [...prev, component];
-          });
-        }
+        // Set as the highlighted component for visual editing
+        setVisualEditingSelectedComponent(component);
+
+        // Add to selected components if not already there
+        setSelectedComponentsPreview((prev) => {
+          const exists = prev.some((c) => c.id === component.id);
+          if (exists) {
+            return prev;
+          }
+          return [...prev, component];
+        });
 
         return;
       }
 
       if (event.data?.type === "dyad-component-deselected") {
         const componentId = event.data.componentId;
-        if (isVisualEditingMode) {
-          setVisualEditingSelectedComponent(null);
-          return;
-        }
         if (componentId) {
           setSelectedComponentsPreview((prev) =>
             prev.filter((c) => c.id !== componentId),
+          );
+          setVisualEditingSelectedComponent((prev) =>
+            prev?.id === componentId ? null : prev,
           );
         }
         return;
@@ -380,7 +378,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     setErrorMessage,
     setIsComponentSelectorInitialized,
     setSelectedComponentsPreview,
-    isVisualEditingMode,
     setVisualEditingSelectedComponent,
   ]);
 
@@ -420,31 +417,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         },
         "*",
       );
-    }
-  };
-
-  // Function to activate visual editing mode
-  const handleActivateVisualEditing = () => {
-    if (iframeRef.current?.contentWindow) {
-      const newIsVisualEditing = !isVisualEditingMode;
-      setIsVisualEditingMode(newIsVisualEditing);
-
-      if (newIsVisualEditing) {
-        iframeRef.current.contentWindow.postMessage(
-          {
-            type: "activate-dyad-visual-editing",
-          },
-          "*",
-        );
-      } else {
-        setVisualEditingSelectedComponent(null);
-        iframeRef.current.contentWindow.postMessage(
-          {
-            type: "deactivate-dyad-visual-editing",
-          },
-          "*",
-        );
-      }
     }
   };
 
@@ -754,28 +726,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               </TooltipProvider>
             </PopoverContent>
           </Popover>
-
-          {/* Visual Editing Button */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={handleActivateVisualEditing}
-                  className={cn(
-                    "p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 dark:text-gray-300",
-                    isVisualEditingMode &&
-                      "bg-[#7f22fe] text-white hover:bg-[#7f22fe]/80",
-                  )}
-                  title="Visual Editing Mode"
-                >
-                  <PenTool size={16} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Visual Editing Mode</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
         </div>
       </div>
 
@@ -836,7 +786,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             )}
             <VisualEditingChangesDialog
               onSave={() => {
-                setIsVisualEditingMode(false);
                 setVisualEditingSelectedComponent(null);
               }}
             />

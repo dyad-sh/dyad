@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, Move, Maximize2 } from "lucide-react";
+import { X, Move, Maximize2, Minus } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -15,7 +15,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ComponentSelection } from "@/ipc/ipc_types";
 import { useSetAtom } from "jotai";
-import { pendingVisualChangesAtom } from "@/atoms/previewAtoms";
+import {
+  pendingVisualChangesAtom,
+  selectedComponentsPreviewAtom,
+} from "@/atoms/previewAtoms";
 
 interface VisualEditingSidebarProps {
   selectedComponent: ComponentSelection | null;
@@ -38,6 +41,33 @@ export function VisualEditingSidebar({
     height: "",
   });
   const setPendingChanges = useSetAtom(pendingVisualChangesAtom);
+  const setSelectedComponentsPreview = useSetAtom(
+    selectedComponentsPreviewAtom,
+  );
+
+  // Handle deselecting the current component
+  const handleDeselectComponent = () => {
+    if (!selectedComponent) return;
+
+    // Remove from selected components atom
+    setSelectedComponentsPreview((prev) =>
+      prev.filter((c) => c.id !== selectedComponent.id),
+    );
+
+    // Send message to iframe to remove overlay
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage(
+        {
+          type: "remove-dyad-component-overlay",
+          componentId: selectedComponent.id,
+        },
+        "*",
+      );
+    }
+
+    // Close the sidebar
+    onClose();
+  };
 
   // Unified function to send style modifications
   const sendStyleModification = (styles: {
@@ -211,6 +241,23 @@ export function VisualEditingSidebar({
           </TooltipTrigger>
           <TooltipContent side="left">
             <p>Close</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+
+      {/* Deselect button */}
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={handleDeselectComponent}
+              className="p-1 rounded hover:bg-red-200 dark:hover:bg-red-900 text-red-600 dark:text-red-400"
+            >
+              <Minus size={16} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="left">
+            <p>Deselect Component</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>

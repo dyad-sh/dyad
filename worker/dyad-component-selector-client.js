@@ -4,7 +4,7 @@
   let hoverOverlay = null;
   let hoverLabel = null;
   let currentHoveredElement = null;
-  let isVisualEditingMode = false;
+  let highlightedComponentId = null;
   //detect if the user is using Mac
   const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
 
@@ -52,7 +52,7 @@
     return { overlay, label };
   }
 
-  function updateOverlay(el, isSelected = false) {
+  function updateOverlay(el, isSelected = false, isHighlighted = false) {
     // If no element, hide hover overlay
     if (!el) {
       if (hoverOverlay) hoverOverlay.style.display = "none";
@@ -68,14 +68,19 @@
       overlays.push({ overlay, label, el });
 
       const rect = el.getBoundingClientRect();
+      const borderColor = isHighlighted ? "#00ff00" : "#7f22fe";
+      const backgroundColor = isHighlighted
+        ? "rgba(0, 255, 0, 0.05)"
+        : "rgba(127, 34, 254, 0.05)";
+
       css(overlay, {
         top: `${rect.top + window.scrollY}px`,
         left: `${rect.left + window.scrollX}px`,
         width: `${rect.width}px`,
         height: `${rect.height}px`,
         display: "block",
-        border: "3px solid #7f22fe",
-        background: "rgba(127, 34, 254, 0.05)",
+        border: `3px solid ${borderColor}`,
+        background: backgroundColor,
       });
 
       css(label, { display: "none" });
@@ -157,6 +162,7 @@
     }
 
     currentHoveredElement = null;
+    highlightedComponentId = null;
   }
 
   function removeOverlayById(componentId) {
@@ -167,6 +173,10 @@
       const { overlay } = overlays[index];
       overlay.remove();
       overlays.splice(index, 1);
+
+      if (highlightedComponentId === componentId) {
+        highlightedComponentId = null;
+      }
     }
   }
 
@@ -280,48 +290,59 @@
     if (state.type !== "inspecting" || !state.element) return;
     e.preventDefault();
     e.stopPropagation();
-    const selectedItem = overlays.find((item) => item.el === e.target);
-    if (selectedItem) {
-      removeOverlayById(state.element.dataset.dyadId);
+
+    const clickedComponentId = state.element.dataset.dyadId;
+    const selectedItem = overlays.find((item) => item.el === state.element);
+
+    // If clicking on the currently highlighted component, deselect it
+    if (selectedItem && highlightedComponentId === clickedComponentId) {
+      removeOverlayById(clickedComponentId);
+      requestAnimationFrame(updateAllOverlayPositions);
+      highlightedComponentId = null;
       window.parent.postMessage(
         {
           type: "dyad-component-deselected",
-          componentId: state.element.dataset.dyadId,
+          componentId: clickedComponentId,
         },
         "*",
       );
       return;
     }
 
-    if (isVisualEditingMode) {
-      // In visual editing mode, clear all overlays and select only one component
-      clearOverlays();
+    // Update only the previously highlighted and newly highlighted components
+    if (
+      highlightedComponentId &&
+      highlightedComponentId !== clickedComponentId
+    ) {
+      const previousItem = overlays.find(
+        (item) => item.el.dataset.dyadId === highlightedComponentId,
+      );
+      if (previousItem) {
+        css(previousItem.overlay, {
+          border: `3px solid #7f22fe`,
+          background: "rgba(127, 34, 254, 0.05)",
+        });
+      }
+    }
 
-      updateOverlay(state.element, true);
+    highlightedComponentId = clickedComponentId;
+
+    if (selectedItem) {
+      // Update the newly highlighted component
+      css(selectedItem.overlay, {
+        border: `3px solid #00ff00`,
+        background: "rgba(0, 255, 0, 0.05)",
+      });
+    } else {
+      updateOverlay(state.element, true, overlays.length);
       requestAnimationFrame(updateAllOverlayPositions);
-
-      window.parent.postMessage(
-        {
-          type: "dyad-component-selected",
-          component: {
-            id: state.element.dataset.dyadId,
-            name: state.element.dataset.dyadName,
-          },
-        },
-        "*",
-      );
-      return;
     }
-
-    updateOverlay(state.element, true);
-
-    requestAnimationFrame(updateAllOverlayPositions);
 
     window.parent.postMessage(
       {
         type: "dyad-component-selected",
         component: {
-          id: state.element.dataset.dyadId,
+          id: clickedComponentId,
           name: state.element.dataset.dyadName,
         },
       },
@@ -385,11 +406,9 @@
     if (e.data.type === "activate-dyad-component-selector") activate();
     if (e.data.type === "deactivate-dyad-component-selector") deactivate();
     if (e.data.type === "activate-dyad-visual-editing") {
-      isVisualEditingMode = true;
       activate();
     }
     if (e.data.type === "deactivate-dyad-visual-editing") {
-      isVisualEditingMode = false;
       deactivate();
       clearOverlays();
     }
@@ -397,7 +416,10 @@
     if (e.data.type === "update-dyad-overlay-positions") {
       updateAllOverlayPositions();
     }
-    if (e.data.type === "remove-dyad-component-overlay") {
+    if (
+      e.data.type === "remove-dyad-component-overlay" ||
+      e.data.type === "deselect-dyad-component"
+    ) {
       if (e.data.componentId) {
         removeOverlayById(e.data.componentId);
       }

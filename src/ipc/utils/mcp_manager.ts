@@ -3,6 +3,7 @@ import { mcpServers } from "../../db/schema";
 import { createMCPClient, type MCPClient } from "@ai-sdk/mcp";
 import { eq } from "drizzle-orm";
 
+import { Client } from "@modelcontextprotocol/sdk/client";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 

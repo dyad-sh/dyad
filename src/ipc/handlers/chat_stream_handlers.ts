@@ -531,10 +531,58 @@ ${componentSnippet}
         let otherAppsCodebaseInfo = "";
         if (mentionedAppsCodebases.length > 0) {
           const mentionedAppsSection = mentionedAppsCodebases
-            .map(
-              ({ appName, codebaseInfo }) =>
-                `\n\n=== Referenced App: ${appName} ===\n${codebaseInfo}`,
-            )
+            .map(({ appName, codebaseInfo, isContractProject, deploymentInfo }) => {
+              let section = `\n\n=== Referenced App: ${appName} ===`;
+
+              // Add deployment info for deployed contract projects
+              if (isContractProject && deploymentInfo) {
+                section += `\n\n--- Smart Contract Deployment Information ---`;
+                section += `\nBlockchain: ${deploymentInfo.chain}`;
+                section += `\nNetwork: ${deploymentInfo.network}`;
+                section += `\nContract Address/Package ID: ${deploymentInfo.address}`;
+
+                if (deploymentInfo.deploymentData) {
+                  section += `\n\nDeployment Data:`;
+                  section += `\n${JSON.stringify(deploymentInfo.deploymentData, null, 2)}`;
+                }
+
+                if (deploymentInfo.deployedAt) {
+                  section += `\n\nDeployed At: ${new Date(deploymentInfo.deployedAt).toISOString()}`;
+                }
+
+                section += `\n\n=== CRITICAL INSTRUCTIONS FOR CONTRACT INTEGRATION ===`;
+                section += `\n\n1. ANALYZE THE CONTRACT STRUCTURE:`;
+                section += `\n   - Carefully read the contract source code below`;
+                section += `\n   - Identify all public entry functions and their parameters`;
+                section += `\n   - Note the struct definitions and their fields`;
+                section += `\n   - Understand how objects are created, read, and modified`;
+
+                section += `\n\n2. USE CORRECT OBJECT REFERENCES:`;
+                section += `\n   - Use the packageId from deployment data: ${deploymentInfo.address}`;
+                if (deploymentInfo.deploymentData?.createdObjects?.length > 0) {
+                  section += `\n   - Use the following created object IDs:`;
+                  deploymentInfo.deploymentData.createdObjects.forEach((obj: any, idx: number) => {
+                    section += `\n     ${idx + 1}. ${obj.objectType}: ${obj.objectId}`;
+                  });
+                }
+
+                section += `\n\n3. IMPLEMENT PROPER OBJECT INTERACTIONS:`;
+                section += `\n   - For reading: Use the correct view/query functions`;
+                section += `\n   - For mutations: Use proper transaction blocks with correct function signatures`;
+                section += `\n   - Pass object IDs as arguments where the contract expects object references`;
+                section += `\n   - Handle shared vs owned objects correctly based on contract design`;
+
+                section += `\n\n4. TYPE SAFETY:`;
+                section += `\n   - Match function parameter types exactly as defined in the contract`;
+                section += `\n   - Use the correct module path: ${deploymentInfo.address}::module_name::function_name`;
+                section += `\n   - Ensure all type arguments are properly specified`;
+
+                section += `\n\n--- End Deployment Information ---\n`;
+              }
+
+              section += `\n${codebaseInfo}`;
+              return section;
+            })
             .join("");
 
           otherAppsCodebaseInfo = mentionedAppsSection;

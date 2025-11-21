@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "05c9447b-a34e-4465-a1e0-d23d0603f64c",
-  "prevId": "c0a49147-ac92-4046-afe8-42f20df9314b",
+  "id": "774d799e-b926-4b2e-8c75-77535fd1e844",
+  "prevId": "05c9447b-a34e-4465-a1e0-d23d0603f64c",
   "tables": {
     "apps": {
       "name": "apps",
@@ -164,6 +164,41 @@
           "notNull": false,
           "autoincrement": false,
           "default": false
+        },
+        "deployment_chain": {
+          "name": "deployment_chain",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "deployment_address": {
+          "name": "deployment_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "deployment_network": {
+          "name": "deployment_network",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "deployment_data": {
+          "name": "deployment_data",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "deployed_at": {
+          "name": "deployed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {},

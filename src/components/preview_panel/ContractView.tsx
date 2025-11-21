@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 import { selectedFileAtom } from "@/atoms/viewAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { homeModeAtom } from "@/atoms/appAtoms";
 import { Button } from "@/components/ui/button";
 import {
   Code2,
@@ -17,10 +18,12 @@ import {
   Sparkles,
   Settings,
   FlaskConical,
+  Zap,
 } from "lucide-react";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { IpcClient } from "@/ipc/ipc_client";
 import { useStreamChat } from "@/hooks/useStreamChat";
+import { useNavigate } from "@tanstack/react-router";
 
 interface App {
   id?: number;
@@ -44,6 +47,8 @@ export const ContractView = ({ loading, app }: ContractViewProps) => {
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { refreshApp } = useLoadApp(app?.id ?? null);
   const { streamMessage } = useStreamChat();
+  const navigate = useNavigate();
+  const setHomeMode = useSetAtom(homeModeAtom);
   const [compileStatus, setCompileStatus] = useState<CompileStatus>("idle");
   const [deployStatus, setDeployStatus] = useState<DeployStatus>("idle");
   const [testStatus, setTestStatus] = useState<TestStatus>("idle");
@@ -57,6 +62,9 @@ export const ContractView = ({ loading, app }: ContractViewProps) => {
   const [lastFailedAction, setLastFailedAction] = useState<
     "compile" | "test" | null
   >(null);
+  const [deployedPackageId, setDeployedPackageId] = useState<string | null>(
+    null,
+  );
 
   // Get Sui address on mount
   useEffect(() => {
@@ -178,6 +186,26 @@ Make only the code changes and give no further tips and actions, only a brief su
       if (result.success) {
         setDeployStatus("success");
         setDeployOutput(result.output);
+
+        // Save deployment info to database
+        if (result.packageId && app.id) {
+          setDeployedPackageId(result.packageId);
+          try {
+            await IpcClient.getInstance().saveContractDeployment({
+              appId: app.id,
+              chain: "sui",
+              address: result.packageId,
+              network: "testnet", // TODO: Make this dynamic based on sui config
+              deploymentData: {
+                transactionDigest: result.transactionDigest,
+                packageId: result.packageId,
+                createdObjects: result.createdObjects || [],
+              },
+            });
+          } catch (saveError) {
+            console.error("Failed to save deployment info:", saveError);
+          }
+        }
       } else {
         setDeployStatus("error");
         setDeployOutput(result.error || result.output);
@@ -217,6 +245,14 @@ Make only the code changes and give no further tips and actions, only a brief su
       setRawTestError(String(error));
       setLastFailedAction("test");
     }
+  };
+
+  const handleBuildDapp = () => {
+    // Switch to Generate mode
+    setHomeMode("generate");
+    // Navigate to home page with the contract pre-mentioned
+    navigate({ to: "/" });
+    // The user can then type their dApp request and the @ mention will auto-suggest the deployed contract
   };
 
   if (loading) {
@@ -395,6 +431,19 @@ Make only the code changes and give no further tips and actions, only a brief su
               </>
             )}
           </Button>
+
+          {/* Build dApp button - only show after successful deployment */}
+          {deployStatus === "success" && deployedPackageId && (
+            <Button
+              onClick={handleBuildDapp}
+              variant="default"
+              size="sm"
+              className="gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+            >
+              <Zap className="w-4 h-4" />
+              Build dApp
+            </Button>
+          )}
         </div>
       </div>
 

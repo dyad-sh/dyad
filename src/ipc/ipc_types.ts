@@ -122,6 +122,12 @@ export interface App {
   isFavorite: boolean;
   resolvedPath?: string;
   isContractProject?: boolean | null;
+  // Smart contract deployment info (blockchain-agnostic)
+  deploymentChain?: string | null; // sui, ethereum, solana, etc.
+  deploymentAddress?: string | null; // Contract address or package ID
+  deploymentNetwork?: string | null; // testnet, devnet, mainnet, etc.
+  deploymentData?: Record<string, any> | null; // Chain-specific deployment data
+  deployedAt?: Date | null; // Deployment timestamp
 }
 
 export interface Version {

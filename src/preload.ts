@@ -152,6 +152,8 @@ const validInvokeChannels = [
   "sui-test",
   "sui-get-address",
   "sui-get-balance",
+
+  "save-contract-deployment",
   // Test-only channels
   // These should ALWAYS be guarded with IS_TEST_BUILD in the main process.
   // We can't detect with IS_TEST_BUILD in the preload script because

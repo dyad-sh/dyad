@@ -5,6 +5,7 @@ import { copyDirectoryRecursive } from "../utils/file_utils";
 import { gitClone, getCurrentCommitHash } from "../utils/git_utils";
 import { readSettings } from "@/main/settings";
 import { getTemplateOrThrow } from "../utils/template_utils";
+import { DEFAULT_TEMPLATE_ID, contractTranslationTemplates } from "../../shared/templates";
 import log from "electron-log";
 
 const logger = log.scope("createFromTemplate");
@@ -15,7 +16,13 @@ export async function createFromTemplate({
   fullAppPath: string;
 }) {
   const settings = readSettings();
-  const templateId = settings.selectedTemplateId;
+  let templateId = settings.selectedTemplateId;
+
+  // If no template selected, or if it's a contract template (which only applies to Translate mode),
+  // use the default app template
+  if (!templateId || contractTranslationTemplates.some(t => t.id === templateId)) {
+    templateId = DEFAULT_TEMPLATE_ID;
+  }
 
   if (templateId === "react") {
     await copyDirectoryRecursive(

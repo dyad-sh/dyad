@@ -60,6 +60,12 @@ export const apps = sqliteTable("apps", {
   isContractProject: integer("is_contract_project", {
     mode: "boolean",
   }).default(false),
+  // Smart contract deployment info (blockchain-agnostic)
+  deploymentChain: text("deployment_chain"), // sui, ethereum, solana, etc.
+  deploymentAddress: text("deployment_address"), // Contract address or package ID
+  deploymentNetwork: text("deployment_network"), // testnet, devnet, mainnet, etc.
+  deploymentData: text("deployment_data", { mode: "json" }).$type<Record<string, any>>(), // Chain-specific deployment data
+  deployedAt: integer("deployed_at", { mode: "timestamp" }), // Deployment timestamp
 });
 
 export const chats = sqliteTable("chats", {

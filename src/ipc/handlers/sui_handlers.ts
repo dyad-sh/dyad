@@ -4,6 +4,9 @@ import fs from "fs";
 import log from "electron-log";
 import { createLoggedHandler } from "./safe_handle";
 import { getDyadAppPath } from "../../paths/paths";
+import { db } from "../../db";
+import { apps } from "../../db/schema";
+import { eq } from "drizzle-orm";
 
 const logger = log.scope("sui_handlers");
 const handle = createLoggedHandler(logger);
@@ -282,6 +285,11 @@ export interface SuiDeployResult {
   success: boolean;
   packageId?: string;
   transactionDigest?: string;
+  createdObjects?: Array<{
+    objectId: string;
+    objectType: string;
+    owner?: string;
+  }>;
   output: string;
   error?: string;
 }
@@ -593,20 +601,44 @@ export function registerSuiHandlers() {
           if (code === 0) {
             logger.info("Move package deployed successfully");
 
-            // Try to parse JSON output to extract package ID and transaction digest
+            // Try to parse JSON output to extract package ID, transaction digest, and created objects
             let packageId: string | undefined;
             let transactionDigest: string | undefined;
+            let createdObjects: Array<{
+              objectId: string;
+              objectType: string;
+              owner?: string;
+            }> = [];
 
             try {
               const jsonOutput = JSON.parse(stdout);
               transactionDigest = jsonOutput.digest;
 
-              // Extract package ID from created objects
-              const createdObjects = jsonOutput.objectChanges?.filter(
+              // Extract package ID from published objects
+              const publishedObjects = jsonOutput.objectChanges?.filter(
                 (obj: any) => obj.type === "published",
               );
-              if (createdObjects && createdObjects.length > 0) {
-                packageId = createdObjects[0].packageId;
+              if (publishedObjects && publishedObjects.length > 0) {
+                packageId = publishedObjects[0].packageId;
+              }
+
+              // Extract created objects (shared objects, owned objects, etc.)
+              const newObjects = jsonOutput.objectChanges?.filter(
+                (obj: any) => obj.type === "created",
+              );
+              if (newObjects && newObjects.length > 0) {
+                createdObjects = newObjects.map((obj: any) => ({
+                  objectId: obj.objectId,
+                  objectType: obj.objectType || "unknown",
+                  owner:
+                    obj.owner?.Shared ||
+                    obj.owner?.AddressOwner ||
+                    obj.owner?.ObjectOwner ||
+                    "unknown",
+                }));
+                logger.info(
+                  `Extracted ${createdObjects.length} created objects from deployment`,
+                );
               }
             } catch (e) {
               logger.warn("Could not parse JSON output from sui publish");
@@ -617,16 +649,29 @@ export function registerSuiHandlers() {
               transactionDigest,
               stdout,
             );
+
+            // Add created objects to output
+            let objectsInfo = "";
+            if (createdObjects.length > 0) {
+              objectsInfo = "\n\nCreated Objects:\n";
+              createdObjects.forEach((obj, idx) => {
+                objectsInfo += `${idx + 1}. Object ID: ${obj.objectId}\n`;
+                objectsInfo += `   Type: ${obj.objectType}\n`;
+                objectsInfo += `   Owner: ${obj.owner}\n\n`;
+              });
+            }
+
             // Note: Assuming testnet for explorer URL (most common for development)
             const explorerUrl = transactionDigest
-              ? `\n\nView on Sui Explorer (testnet):\nhttps://suiscan.xyz/testnet/tx/${transactionDigest}`
+              ? `\nView on Sui Explorer (testnet):\nhttps://suiscan.xyz/testnet/tx/${transactionDigest}`
               : "";
 
             resolve({
               success: true,
               packageId,
               transactionDigest,
-              output: formattedOutput + explorerUrl,
+              createdObjects,
+              output: formattedOutput + objectsInfo + explorerUrl,
             });
           } else {
             logger.error(`Move deployment failed with code ${code}`);
@@ -872,6 +917,48 @@ export function registerSuiHandlers() {
           resolve({ balance: null, formattedBalance: null });
         });
       });
+    },
+  );
+
+  /**
+   * Save contract deployment information to database
+   */
+  handle(
+    "save-contract-deployment",
+    async (
+      _,
+      params: {
+        appId: number;
+        chain: string;
+        address: string;
+        network: string;
+        deploymentData?: Record<string, any>;
+      },
+    ): Promise<{ success: boolean; error?: string }> => {
+      try {
+        const { appId, chain, address, network, deploymentData } = params;
+
+        await db
+          .update(apps)
+          .set({
+            deploymentChain: chain,
+            deploymentAddress: address,
+            deploymentNetwork: network,
+            deploymentData: deploymentData || null,
+            deployedAt: new Date(),
+          })
+          .where(eq(apps.id, appId));
+
+        logger.info(`Saved deployment info for app ${appId}: ${chain} - ${address}`);
+
+        return { success: true };
+      } catch (error) {
+        logger.error("Failed to save deployment info:", error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
     },
   );
 }

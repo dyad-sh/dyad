@@ -47,6 +47,11 @@ const ALLOWED_EXTENSIONS = [
   ".py",
   // https://github.com/dyad-sh/dyad/issues/1221
   ".php",
+  // Smart contract languages
+  ".move", // Move language (Sui, Aptos)
+  ".sol", // Solidity (Ethereum)
+  ".rs", // Rust (Solana, Sui)
+  ".toml", // Config files for Move projects (Move.toml)
 ];
 
 // Directories to always exclude

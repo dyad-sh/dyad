@@ -54,6 +54,20 @@
         element.style.height = styles.dimensions.height;
       }
     }
+
+    // Apply border
+    if (styles.border) {
+      if (styles.border.width !== undefined) {
+        element.style.borderWidth = styles.border.width;
+        element.style.borderStyle = "solid";
+      }
+      if (styles.border.radius !== undefined) {
+        element.style.borderRadius = styles.border.radius;
+      }
+      if (styles.border.color !== undefined) {
+        element.style.borderColor = styles.border.color;
+      }
+    }
   }
 
   /* ---------- message handlers ------------------------------------------ */
@@ -79,6 +93,11 @@
         dimensions: {
           width: computedStyle.width,
           height: computedStyle.height,
+        },
+        border: {
+          width: computedStyle.borderWidth,
+          radius: computedStyle.borderRadius,
+          color: computedStyle.borderColor,
         },
       };
 

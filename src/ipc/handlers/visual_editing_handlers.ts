@@ -16,6 +16,7 @@ interface StyleChange {
     margin?: Record<string, string>;
     padding?: Record<string, string>;
     dimensions?: Record<string, string>;
+    border?: Record<string, string>;
   };
 }
 
@@ -94,6 +95,16 @@ const stylesToTailwind = (styles: StyleChange["styles"]): string[] => {
       classes.push(`h-[${styles.dimensions.height}]`);
   }
 
+  // Convert border
+  if (styles.border) {
+    if (styles.border.width !== undefined)
+      classes.push(`border-[${styles.border.width}]`);
+    if (styles.border.radius !== undefined)
+      classes.push(`rounded-[${styles.border.radius}]`);
+    if (styles.border.color !== undefined)
+      classes.push(`border-[${styles.border.color}]`);
+  }
+
   return classes;
 };
 
@@ -167,12 +178,10 @@ export function registerVisualEditingHandlers() {
             ),
           );
 
-          fileChanges
-            .get(change.relativePath)!
-            .set(change.lineNumber, {
-              classes: tailwindClasses,
-              prefixes: changePrefixes,
-            });
+          fileChanges.get(change.relativePath)!.set(change.lineNumber, {
+            classes: tailwindClasses,
+            prefixes: changePrefixes,
+          });
         }
 
         // Apply changes to each file

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, Move, Maximize2 } from "lucide-react";
+import { X, Move, Maximize2, Square } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -41,6 +41,11 @@ export function VisualEditingToolbar({
     width: "",
     height: "",
   });
+  const [currentBorder, setCurrentBorder] = useState({
+    width: "",
+    radius: "",
+    color: "#000000",
+  });
   const setPendingChanges = useSetAtom(pendingVisualChangesAtom);
   const setSelectedComponentsPreview = useSetAtom(
     selectedComponentsPreviewAtom,
@@ -79,6 +84,7 @@ export function VisualEditingToolbar({
     margin?: { left?: string; right?: string; top?: string; bottom?: string };
     padding?: { left?: string; right?: string; top?: string; bottom?: string };
     dimensions?: { width?: string; height?: string };
+    border?: { width?: string; radius?: string; color?: string };
   }) => {
     if (!iframeRef.current?.contentWindow || !selectedComponent) return;
 
@@ -118,6 +124,9 @@ export function VisualEditingToolbar({
           ...existing?.styles?.dimensions,
           ...styles.dimensions,
         };
+      }
+      if (styles.border) {
+        newStyles.border = { ...existing?.styles?.border, ...styles.border };
       }
 
       updated.set(selectedComponent.id, {
@@ -163,7 +172,7 @@ export function VisualEditingToolbar({
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === "dyad-component-styles") {
-        const { margin, padding, dimensions } = event.data.data;
+        const { margin, padding, dimensions, border } = event.data.data;
 
         // Convert individual sides to x/y axis values
         // For x/y, we use the value if left/right or top/bottom are the same, otherwise leave empty
@@ -172,9 +181,27 @@ export function VisualEditingToolbar({
         const paddingX = padding?.left === padding?.right ? padding.left : "";
         const paddingY = padding?.top === padding?.bottom ? padding.top : "";
 
+        // Convert RGB color to hex for color picker compatibility
+        const convertRgbToHex = (rgb: string): string => {
+          if (!rgb || rgb.startsWith("#")) return rgb || "#000000";
+          const rgbMatch = rgb.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+          if (rgbMatch) {
+            const r = parseInt(rgbMatch[1]).toString(16).padStart(2, "0");
+            const g = parseInt(rgbMatch[2]).toString(16).padStart(2, "0");
+            const b = parseInt(rgbMatch[3]).toString(16).padStart(2, "0");
+            return `#${r}${g}${b}`;
+          }
+          return rgb || "#000000";
+        };
+
         setCurrentMargin({ x: marginX, y: marginY });
         setCurrentPadding({ x: paddingX, y: paddingY });
         setCurrentDimensions(dimensions || { width: "", height: "" });
+        setCurrentBorder({
+          width: border?.width || "",
+          radius: border?.radius || "",
+          color: convertRgbToHex(border?.color),
+        });
       }
     };
 
@@ -226,6 +253,37 @@ export function VisualEditingToolbar({
           : value;
 
       sendStyleModification({ dimensions: { [property]: processedValue } });
+    }
+  };
+
+  // Handle border changes
+  const handleBorderChange = (
+    property: "width" | "radius" | "color",
+    value: string,
+  ) => {
+    const newBorder = { ...currentBorder, [property]: value };
+    setCurrentBorder(newBorder);
+
+    if (value) {
+      let processedValue = value;
+      if (property !== "color" && /^\d+$/.test(value)) {
+        processedValue = `${value}px`;
+      }
+
+      // Always send both width and color together to maintain consistency
+      if (property === "width" || property === "color") {
+        sendStyleModification({
+          border: {
+            width:
+              property === "width"
+                ? processedValue
+                : currentBorder.width || "0px",
+            color: property === "color" ? processedValue : currentBorder.color,
+          },
+        });
+      } else {
+        sendStyleModification({ border: { [property]: processedValue } });
+      }
     }
   };
 
@@ -448,6 +506,91 @@ export function VisualEditingToolbar({
                   step="1"
                   min="0"
                 />
+              </div>
+            </div>
+          </div>
+        </PopoverContent>
+      </Popover>
+
+      {/* Border Control */}
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
+            style={{ color: "#7f22fe" }}
+          >
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Square size={16} />
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <p>Border</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </button>
+        </PopoverTrigger>
+        <PopoverContent side="bottom" className="w-64">
+          <div className="space-y-3">
+            <h4 className="font-medium text-sm" style={{ color: "#7f22fe" }}>
+              Border
+            </h4>
+            <div className="space-y-2">
+              <div>
+                <Label htmlFor="border-width" className="text-xs">
+                  Width
+                </Label>
+                <Input
+                  id="border-width"
+                  type="number"
+                  placeholder="1"
+                  className="mt-1 h-8 text-xs"
+                  value={currentBorder.width.replace(/[^\d.-]/g, "") || ""}
+                  onChange={(e) => handleBorderChange("width", e.target.value)}
+                  step="1"
+                  min="0"
+                />
+              </div>
+              <div>
+                <Label htmlFor="border-radius" className="text-xs">
+                  Radius
+                </Label>
+                <Input
+                  id="border-radius"
+                  type="number"
+                  placeholder="4"
+                  className="mt-1 h-8 text-xs"
+                  value={currentBorder.radius.replace(/[^\d.-]/g, "") || ""}
+                  onChange={(e) => handleBorderChange("radius", e.target.value)}
+                  step="1"
+                  min="0"
+                />
+              </div>
+              <div>
+                <Label htmlFor="border-color" className="text-xs">
+                  Color
+                </Label>
+                <div className="flex gap-2 mt-1">
+                  <Input
+                    id="border-color"
+                    type="color"
+                    className="h-8 w-12 p-1 cursor-pointer"
+                    value={currentBorder.color}
+                    onChange={(e) =>
+                      handleBorderChange("color", e.target.value)
+                    }
+                  />
+                  <Input
+                    type="text"
+                    placeholder="#000000"
+                    className="h-8 text-xs flex-1"
+                    value={currentBorder.color}
+                    onChange={(e) =>
+                      handleBorderChange("color", e.target.value)
+                    }
+                  />
+                </div>
               </div>
             </div>
           </div>

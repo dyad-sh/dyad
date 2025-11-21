@@ -800,7 +800,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               <VisualEditingToolbar
                 selectedComponent={visualEditingSelectedComponent}
                 iframeRef={iframeRef}
-                onClose={() => setVisualEditingSelectedComponent(null)}
                 appId={selectedAppId}
               />
             )}

@@ -7,11 +7,11 @@ import { useState } from "react";
 import { showError, showSuccess } from "@/lib/toast";
 
 interface VisualEditingChangesDialogProps {
-  onSave?: () => void;
+  onReset?: () => void;
 }
 
 export function VisualEditingChangesDialog({
-  onSave,
+  onReset,
 }: VisualEditingChangesDialogProps) {
   const [pendingChanges, setPendingChanges] = useAtom(pendingVisualChangesAtom);
   const [isSaving, setIsSaving] = useState(false);
@@ -26,7 +26,7 @@ export function VisualEditingChangesDialog({
       );
       setPendingChanges(new Map());
       showSuccess("Visual changes saved to source files");
-      onSave?.();
+      onReset?.();
     } catch (error) {
       console.error("Failed to save visual editing changes:", error);
       showError(`Failed to save changes: ${error}`);
@@ -37,6 +37,7 @@ export function VisualEditingChangesDialog({
 
   const handleDiscard = () => {
     setPendingChanges(new Map());
+    onReset?.();
   };
 
   return (

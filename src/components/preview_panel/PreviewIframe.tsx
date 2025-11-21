@@ -804,8 +804,21 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               />
             )}
             <VisualEditingChangesDialog
-              onSave={() => {
+              onReset={() => {
+                // Exit component selection mode and visual editing
+                setSelectedComponentsPreview([]);
                 setVisualEditingSelectedComponent(null);
+                setCurrentComponentCoordinates(null);
+                setIsPicking(false);
+                handleReload();
+
+                // Deactivate component selector in iframe
+                if (iframeRef.current?.contentWindow) {
+                  iframeRef.current.contentWindow.postMessage(
+                    { type: "deactivate-dyad-component-selector" },
+                    "*",
+                  );
+                }
               }}
             />
           </div>

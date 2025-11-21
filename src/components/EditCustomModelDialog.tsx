@@ -91,8 +91,7 @@ export function EditCustomModelDialog({
       // Then create the new model
       await ipcClient.createCustomLanguageModel(newParams);
     },
-    onSuccess: () => {
-      showSuccess("Custom model updated successfully!");
+    onSuccess: async () => {
       if (
         settings?.selectedModel?.name === model?.apiName &&
         settings?.selectedModel?.provider === providerId
@@ -101,8 +100,14 @@ export function EditCustomModelDialog({
           ...settings.selectedModel,
           name: apiName,
         };
-        updateSettings({ selectedModel: newModel });
+        try {
+          await updateSettings({ selectedModel: newModel });
+        } catch {
+          showError("Failed to update settings");
+          return; // stop closing dialog
+        }
       }
+      showSuccess("Custom model updated successfully!");
       onSuccess();
       onClose();
     },

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, Move, Maximize2, Minus } from "lucide-react";
+import { X, Move, Maximize2 } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -19,18 +19,17 @@ import {
   pendingVisualChangesAtom,
   selectedComponentsPreviewAtom,
   currentComponentCoordinatesAtom,
+  visualEditingSelectedComponentAtom,
 } from "@/atoms/previewAtoms";
 
 interface VisualEditingToolbarProps {
   selectedComponent: ComponentSelection | null;
-  onClose: () => void;
   iframeRef: React.RefObject<HTMLIFrameElement | null>;
   appId: number;
 }
 
 export function VisualEditingToolbar({
   selectedComponent,
-  onClose,
   iframeRef,
   appId,
 }: VisualEditingToolbarProps) {
@@ -46,6 +45,9 @@ export function VisualEditingToolbar({
   const setSelectedComponentsPreview = useSetAtom(
     selectedComponentsPreviewAtom,
   );
+  const setVisualEditingSelectedComponent = useSetAtom(
+    visualEditingSelectedComponentAtom,
+  );
 
   // Handle deselecting the current component
   const handleDeselectComponent = () => {
@@ -56,6 +58,7 @@ export function VisualEditingToolbar({
       prev.filter((c) => c.id !== selectedComponent.id),
     );
 
+    setVisualEditingSelectedComponent(null);
     // Send message to iframe to remove overlay
     if (iframeRef.current?.contentWindow) {
       iframeRef.current.contentWindow.postMessage(
@@ -240,23 +243,6 @@ export function VisualEditingToolbar({
         left: `${toolbarLeft}px`,
       }}
     >
-      {/* Close button */}
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              onClick={onClose}
-              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 dark:text-gray-300"
-            >
-              <X size={16} />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="left">
-            <p>Close</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-
       {/* Deselect button */}
       <TooltipProvider>
         <Tooltip>
@@ -265,10 +251,10 @@ export function VisualEditingToolbar({
               onClick={handleDeselectComponent}
               className="p-1 rounded hover:bg-red-200 dark:hover:bg-red-900 text-red-600 dark:text-red-400"
             >
-              <Minus size={16} />
+              <X size={16} />
             </button>
           </TooltipTrigger>
-          <TooltipContent side="left">
+          <TooltipContent side="bottom">
             <p>Deselect Component</p>
           </TooltipContent>
         </Tooltip>
@@ -286,14 +272,14 @@ export function VisualEditingToolbar({
                 <TooltipTrigger asChild>
                   <Move size={16} />
                 </TooltipTrigger>
-                <TooltipContent side="left">
+                <TooltipContent side="bottom">
                   <p>Margin</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           </button>
         </PopoverTrigger>
-        <PopoverContent side="left" className="w-64">
+        <PopoverContent side="bottom" className="w-64">
           <div className="space-y-3">
             <h4 className="font-medium text-sm" style={{ color: "#7f22fe" }}>
               Margin
@@ -356,14 +342,14 @@ export function VisualEditingToolbar({
                     <rect x="7" y="7" width="10" height="10" rx="1" />
                   </svg>
                 </TooltipTrigger>
-                <TooltipContent side="left">
+                <TooltipContent side="bottom">
                   <p>Padding</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           </button>
         </PopoverTrigger>
-        <PopoverContent side="left" className="w-64">
+        <PopoverContent side="bottom" className="w-64">
           <div className="space-y-3">
             <h4 className="font-medium text-sm" style={{ color: "#7f22fe" }}>
               Padding
@@ -416,14 +402,14 @@ export function VisualEditingToolbar({
                 <TooltipTrigger asChild>
                   <Maximize2 size={16} />
                 </TooltipTrigger>
-                <TooltipContent side="left">
+                <TooltipContent side="bottom">
                   <p>Dimensions</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           </button>
         </PopoverTrigger>
-        <PopoverContent side="left" className="w-64">
+        <PopoverContent side="bottom" className="w-64">
           <div className="space-y-3">
             <h4 className="font-medium text-sm" style={{ color: "#7f22fe" }}>
               Dimensions

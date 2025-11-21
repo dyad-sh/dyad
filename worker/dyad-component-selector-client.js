@@ -149,6 +149,28 @@
         height: `${rect.height}px`,
       });
     }
+
+    // Send updated coordinates for highlighted component to parent
+    if (highlightedComponentId) {
+      const highlightedItem = overlays.find(
+        ({ el }) => el.dataset.dyadId === highlightedComponentId,
+      );
+      if (highlightedItem) {
+        const rect = highlightedItem.el.getBoundingClientRect();
+        window.parent.postMessage(
+          {
+            type: "dyad-component-coordinates-updated",
+            coordinates: {
+              top: rect.top,
+              left: rect.left,
+              width: rect.width,
+              height: rect.height,
+            },
+          },
+          "*",
+        );
+      }
+    }
   }
 
   function clearOverlays() {
@@ -254,8 +276,11 @@
 
     currentHoveredElement = el;
 
-    // If hovering over a selected component, show its label
-    if (hoveredItem) {
+    // If hovering over a selected component, show its label only if it's not highlighted
+    if (
+      hoveredItem &&
+      hoveredItem.el.dataset.dyadId !== highlightedComponentId
+    ) {
       updateSelectedOverlayLabel(hoveredItem, true);
       if (hoverOverlay) hoverOverlay.style.display = "none";
     }
@@ -338,12 +363,19 @@
       requestAnimationFrame(updateAllOverlayPositions);
     }
 
+    const rect = state.element.getBoundingClientRect();
     window.parent.postMessage(
       {
         type: "dyad-component-selected",
         component: {
           id: clickedComponentId,
           name: state.element.dataset.dyadName,
+        },
+        coordinates: {
+          top: rect.top,
+          left: rect.left,
+          width: rect.width,
+          height: rect.height,
         },
       },
       "*",
@@ -434,8 +466,9 @@
 
   document.addEventListener("mouseleave", onMouseLeave, true);
 
-  // Update overlay positions on window resize
+  // Update overlay positions on window resize and scroll
   window.addEventListener("resize", updateAllOverlayPositions);
+  window.addEventListener("scroll", updateAllOverlayPositions, true);
 
   function initializeComponentSelector() {
     if (!document.body) {

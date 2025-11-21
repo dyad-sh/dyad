@@ -97,6 +97,22 @@
     const element = findElementByDyadId(elementId);
     if (element) {
       applyStyles(element, styles);
+
+      // Send updated coordinates after style change
+
+      const rect = element.getBoundingClientRect();
+      window.parent.postMessage(
+        {
+          type: "dyad-component-coordinates-updated",
+          coordinates: {
+            top: rect.top,
+            left: rect.left,
+            width: rect.width,
+            height: rect.height,
+          },
+        },
+        "*",
+      );
     }
   }
 

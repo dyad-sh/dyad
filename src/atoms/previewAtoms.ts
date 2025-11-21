@@ -6,6 +6,13 @@ export const selectedComponentsPreviewAtom = atom<ComponentSelection[]>([]);
 export const visualEditingSelectedComponentAtom =
   atom<ComponentSelection | null>(null);
 
+export const currentComponentCoordinatesAtom = atom<{
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+} | null>(null);
+
 export const previewIframeRefAtom = atom<HTMLIFrameElement | null>(null);
 
 export interface PendingStyleChange {

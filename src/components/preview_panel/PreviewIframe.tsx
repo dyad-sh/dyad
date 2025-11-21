@@ -38,6 +38,7 @@ import { useStreamChat } from "@/hooks/useStreamChat";
 import {
   selectedComponentsPreviewAtom,
   visualEditingSelectedComponentAtom,
+  currentComponentCoordinatesAtom,
   previewIframeRefAtom,
 } from "@/atoms/previewAtoms";
 import { ComponentSelection } from "@/ipc/ipc_types";
@@ -57,7 +58,7 @@ import { useRunApp } from "@/hooks/useRunApp";
 import { useShortcut } from "@/hooks/useShortcut";
 import { cn } from "@/lib/utils";
 import { normalizePath } from "../../../shared/normalizePath";
-import { VisualEditingSidebar } from "./VisualEditingSidebar";
+import { VisualEditingToolbar } from "./VisualEditingToolbar";
 import { VisualEditingChangesDialog } from "./VisualEditingChangesDialog";
 
 interface ErrorBannerProps {
@@ -181,6 +182,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   );
   const [visualEditingSelectedComponent, setVisualEditingSelectedComponent] =
     useAtom(visualEditingSelectedComponentAtom);
+  const setCurrentComponentCoordinates = useSetAtom(
+    currentComponentCoordinatesAtom,
+  );
   const setPreviewIframeRef = useSetAtom(previewIframeRefAtom);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isPicking, setIsPicking] = useState(false);
@@ -265,6 +269,11 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
         if (!component) return;
 
+        // Store the coordinates
+        if (event.data.coordinates) {
+          setCurrentComponentCoordinates(event.data.coordinates);
+        }
+
         // Set as the highlighted component for visual editing
         setVisualEditingSelectedComponent(component);
 
@@ -286,9 +295,20 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           setSelectedComponentsPreview((prev) =>
             prev.filter((c) => c.id !== componentId),
           );
-          setVisualEditingSelectedComponent((prev) =>
-            prev?.id === componentId ? null : prev,
-          );
+          setVisualEditingSelectedComponent((prev) => {
+            const shouldClear = prev?.id === componentId;
+            if (shouldClear) {
+              setCurrentComponentCoordinates(null);
+            }
+            return shouldClear ? null : prev;
+          });
+        }
+        return;
+      }
+
+      if (event.data?.type === "dyad-component-coordinates-updated") {
+        if (event.data.coordinates) {
+          setCurrentComponentCoordinates(event.data.coordinates);
         }
         return;
       }
@@ -775,9 +795,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               src={appUrl}
               allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
             />
-            {/* Visual Editing Sidebar */}
+            {/* Visual Editing Toolbar */}
             {visualEditingSelectedComponent && selectedAppId && (
-              <VisualEditingSidebar
+              <VisualEditingToolbar
                 selectedComponent={visualEditingSelectedComponent}
                 iframeRef={iframeRef}
                 onClose={() => setVisualEditingSelectedComponent(null)}

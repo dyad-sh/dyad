@@ -17,6 +17,7 @@ interface StyleChange {
     padding?: Record<string, string>;
     dimensions?: Record<string, string>;
     border?: Record<string, string>;
+    backgroundColor?: string;
   };
 }
 
@@ -103,6 +104,11 @@ const stylesToTailwind = (styles: StyleChange["styles"]): string[] => {
       classes.push(`rounded-[${styles.border.radius}]`);
     if (styles.border.color !== undefined)
       classes.push(`border-[${styles.border.color}]`);
+  }
+
+  // Convert background color
+  if (styles.backgroundColor !== undefined) {
+    classes.push(`bg-[${styles.backgroundColor}]`);
   }
 
   return classes;

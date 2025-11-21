@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, Move, Maximize2, Square } from "lucide-react";
+import { X, Move, Maximize2, Square, Palette } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -46,6 +46,8 @@ export function VisualEditingToolbar({
     radius: "",
     color: "#000000",
   });
+  const [currentBackgroundColor, setCurrentBackgroundColor] =
+    useState("#ffffff");
   const setPendingChanges = useSetAtom(pendingVisualChangesAtom);
   const setSelectedComponentsPreview = useSetAtom(
     selectedComponentsPreviewAtom,
@@ -85,6 +87,7 @@ export function VisualEditingToolbar({
     padding?: { left?: string; right?: string; top?: string; bottom?: string };
     dimensions?: { width?: string; height?: string };
     border?: { width?: string; radius?: string; color?: string };
+    backgroundColor?: string;
   }) => {
     if (!iframeRef.current?.contentWindow || !selectedComponent) return;
 
@@ -127,6 +130,9 @@ export function VisualEditingToolbar({
       }
       if (styles.border) {
         newStyles.border = { ...existing?.styles?.border, ...styles.border };
+      }
+      if (styles.backgroundColor) {
+        newStyles.backgroundColor = styles.backgroundColor;
       }
 
       updated.set(selectedComponent.id, {
@@ -172,7 +178,8 @@ export function VisualEditingToolbar({
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === "dyad-component-styles") {
-        const { margin, padding, dimensions, border } = event.data.data;
+        const { margin, padding, dimensions, border, backgroundColor } =
+          event.data.data;
 
         // Convert individual sides to x/y axis values
         // For x/y, we use the value if left/right or top/bottom are the same, otherwise leave empty
@@ -202,6 +209,9 @@ export function VisualEditingToolbar({
           radius: border?.radius || "",
           color: convertRgbToHex(border?.color),
         });
+        setCurrentBackgroundColor(
+          convertRgbToHex(backgroundColor) || "#ffffff",
+        );
       }
     };
 
@@ -284,6 +294,14 @@ export function VisualEditingToolbar({
       } else {
         sendStyleModification({ border: { [property]: processedValue } });
       }
+    }
+  };
+
+  // Handle background color changes
+  const handleBackgroundColorChange = (value: string) => {
+    setCurrentBackgroundColor(value);
+    if (value) {
+      sendStyleModification({ backgroundColor: value });
     }
   };
 
@@ -591,6 +609,55 @@ export function VisualEditingToolbar({
                     }
                   />
                 </div>
+              </div>
+            </div>
+          </div>
+        </PopoverContent>
+      </Popover>
+
+      {/* Background Color Control */}
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
+            style={{ color: "#7f22fe" }}
+          >
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Palette size={16} />
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <p>Background</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </button>
+        </PopoverTrigger>
+        <PopoverContent side="bottom" className="w-64">
+          <div className="space-y-3">
+            <h4 className="font-medium text-sm" style={{ color: "#7f22fe" }}>
+              Background Color
+            </h4>
+            <div>
+              <Label htmlFor="bg-color" className="text-xs">
+                Color
+              </Label>
+              <div className="flex gap-2 mt-1">
+                <Input
+                  id="bg-color"
+                  type="color"
+                  className="h-8 w-12 p-1 cursor-pointer"
+                  value={currentBackgroundColor}
+                  onChange={(e) => handleBackgroundColorChange(e.target.value)}
+                />
+                <Input
+                  type="text"
+                  placeholder="#ffffff"
+                  className="h-8 text-xs flex-1"
+                  value={currentBackgroundColor}
+                  onChange={(e) => handleBackgroundColorChange(e.target.value)}
+                />
               </div>
             </div>
           </div>

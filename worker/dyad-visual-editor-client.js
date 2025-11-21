@@ -68,6 +68,11 @@
         element.style.borderColor = styles.border.color;
       }
     }
+
+    // Apply background color
+    if (styles.backgroundColor !== undefined) {
+      element.style.backgroundColor = styles.backgroundColor;
+    }
   }
 
   /* ---------- message handlers ------------------------------------------ */
@@ -99,6 +104,7 @@
           radius: computedStyle.borderRadius,
           color: computedStyle.borderColor,
         },
+        backgroundColor: computedStyle.backgroundColor,
       };
 
       window.parent.postMessage(

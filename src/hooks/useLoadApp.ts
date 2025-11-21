@@ -1,12 +1,16 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useQuery, QueryClient } from "@tanstack/react-query";
 import { IpcClient } from "@/ipc/ipc_client";
-import { useAtom } from "jotai";
-import { currentAppAtom } from "@/atoms/appAtoms";
+import { useAtom, useSetAtom } from "jotai";
+import { currentAppAtom, homeModeAtom } from "@/atoms/appAtoms";
 import { App } from "@/ipc/ipc_types";
+import { useLocation } from "@tanstack/react-router";
 
 export function useLoadApp(appId: number | null) {
   const [, setApp] = useAtom(currentAppAtom);
+  const setHomeMode = useSetAtom(homeModeAtom);
+  const previousAppIdRef = useRef<number | null>(null);
+  const location = useLocation();
 
   const {
     data: appData,
@@ -33,8 +37,20 @@ export function useLoadApp(appId: number | null) {
       setApp(null);
     } else if (appData !== undefined) {
       setApp(appData);
+      // Only auto-switch to translate mode when:
+      // 1. We're on the chat page (actually working on the project)
+      // 2. Switching TO a contract project (not if we're already viewing it)
+      if (
+        location.pathname === "/chat" &&
+        appData &&
+        appData.isContractProject &&
+        previousAppIdRef.current !== appId
+      ) {
+        setHomeMode("translate");
+      }
+      previousAppIdRef.current = appId;
     }
-  }, [appId, appData, setApp]);
+  }, [appId, appData, setApp, setHomeMode, location.pathname]);
 
   return { app: appData, loading, error, refreshApp };
 }

@@ -18,7 +18,8 @@ import {
   SendHorizontalIcon,
 } from "lucide-react";
 import type React from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { Message } from "@/ipc/ipc_types";
 
 import { useSettings } from "@/hooks/useSettings";
 import { IpcClient } from "@/ipc/ipc_client";
@@ -26,6 +27,7 @@ import {
   chatInputValueAtom,
   chatMessagesByIdAtom,
   selectedChatIdAtom,
+  chatVisibleMessageIdsAtom,
 } from "@/atoms/chatAtoms";
 import { atom, useAtom, useSetAtom, useAtomValue } from "jotai";
 import { useStreamChat } from "@/hooks/useStreamChat";
@@ -84,6 +86,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const [isApproving, setIsApproving] = useState(false); // State for approving
   const [isRejecting, setIsRejecting] = useState(false); // State for rejecting
   const messagesById = useAtomValue(chatMessagesByIdAtom);
+  const visibleMessageIdsByChat = useAtomValue(chatVisibleMessageIdsAtom);
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const [showTokenBar, setShowTokenBar] = useAtom(showTokenBarAtom);
@@ -115,7 +118,21 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const { proposal, messageId } = proposalResult ?? {};
   useChatModeToggle();
 
-  const lastMessage = (chatId ? (messagesById.get(chatId) ?? []) : []).at(-1);
+  const visibleMessages = useMemo(() => {
+    if (!chatId) {
+      return [] as Message[];
+    }
+    const rawMessages = messagesById.get(chatId) ?? [];
+    const selectedIds =
+      visibleMessageIdsByChat.get(chatId) ?? rawMessages.map((m) => m.id);
+    const messageMap = new Map<number, Message>();
+    rawMessages.forEach((message) => messageMap.set(message.id, message));
+    return selectedIds
+      .map((id) => messageMap.get(id))
+      .filter((message): message is Message => Boolean(message));
+  }, [chatId, messagesById, visibleMessageIdsByChat]);
+
+  const lastMessage = visibleMessages.at(-1);
   const disableSendButton =
     lastMessage?.role === "assistant" &&
     !lastMessage.approvalState &&
@@ -128,6 +145,16 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       setShowError(true);
     }
   }, [error]);
+
+  const getCurrentBranchContext = useCallback(() => {
+    if (!chatId) {
+      return undefined;
+    }
+    const rawMessages = messagesById.get(chatId) ?? [];
+    const selectedIds =
+      visibleMessageIdsByChat.get(chatId) ?? rawMessages.map((m) => m.id);
+    return selectedIds.length ? { selectedMessageIds: selectedIds } : undefined;
+  }, [chatId, messagesById, visibleMessageIdsByChat]);
 
   const fetchChatMessages = useCallback(async () => {
     if (!chatId) {
@@ -169,12 +196,14 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     }
 
     // Send message with attachments and clear them after sending
+    const branch = getCurrentBranchContext();
     await streamMessage({
       prompt: currentInput,
       chatId,
       attachments,
       redo: false,
       selectedComponents: componentsToSend,
+      branch,
     });
     clearAttachments();
     posthog.capture("chat:submit");
@@ -452,16 +481,21 @@ function SummarizeInNewChatButton() {
 
 function RefactorFileButton({ path }: { path: string }) {
   const chatId = useAtomValue(selectedChatIdAtom);
+  const visibleMessageIdsByChat = useAtomValue(chatVisibleMessageIdsAtom);
   const { streamMessage } = useStreamChat();
   const onClick = () => {
     if (!chatId) {
       console.error("No chat id found");
       return;
     }
+    const selectedIds = visibleMessageIdsByChat.get(chatId) ?? [];
     streamMessage({
       prompt: `Refactor ${path} and make it more modular`,
       chatId,
       redo: false,
+      branch: selectedIds.length
+        ? { selectedMessageIds: selectedIds }
+        : undefined,
     });
   };
   return (
@@ -478,16 +512,21 @@ function RefactorFileButton({ path }: { path: string }) {
 
 function WriteCodeProperlyButton() {
   const chatId = useAtomValue(selectedChatIdAtom);
+  const visibleMessageIdsByChat = useAtomValue(chatVisibleMessageIdsAtom);
   const { streamMessage } = useStreamChat();
   const onClick = () => {
     if (!chatId) {
       console.error("No chat id found");
       return;
     }
+    const selectedIds = visibleMessageIdsByChat.get(chatId) ?? [];
     streamMessage({
       prompt: `Write the code in the previous message in the correct format using \`<dyad-write>\` tags!`,
       chatId,
       redo: false,
+      branch: selectedIds.length
+        ? { selectedMessageIds: selectedIds }
+        : undefined,
     });
   };
   return (
@@ -563,14 +602,19 @@ function RefreshButton() {
 function KeepGoingButton() {
   const { streamMessage } = useStreamChat();
   const chatId = useAtomValue(selectedChatIdAtom);
+  const visibleMessageIdsByChat = useAtomValue(chatVisibleMessageIdsAtom);
   const onClick = () => {
     if (!chatId) {
       console.error("No chat id found");
       return;
     }
+    const selectedIds = visibleMessageIdsByChat.get(chatId) ?? [];
     streamMessage({
       prompt: "Keep going",
       chatId,
+      branch: selectedIds.length
+        ? { selectedMessageIds: selectedIds }
+        : undefined,
     });
   };
   return (

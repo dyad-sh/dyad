@@ -1,11 +1,15 @@
 import type React from "react";
 import type { Message } from "@/ipc/ipc_types";
-import { forwardRef, useState } from "react";
+import { forwardRef, useCallback, useState } from "react";
 import ChatMessage from "./ChatMessage";
 import { OpenRouterSetupBanner, SetupBanner } from "../SetupBanner";
 
 import { useStreamChat } from "@/hooks/useStreamChat";
-import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import {
+  selectedChatIdAtom,
+  chatMessagesByIdAtom,
+  chatVisibleMessageIdsAtom,
+} from "@/atoms/chatAtoms";
 import { useAtomValue, useSetAtom } from "jotai";
 import { Loader2, RefreshCw, Undo } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,19 +17,31 @@ import { useVersions } from "@/hooks/useVersions";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { showError, showWarning } from "@/lib/toast";
 import { IpcClient } from "@/ipc/ipc_client";
-import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useSettings } from "@/hooks/useSettings";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { PromoMessage } from "./PromoMessage";
+import type { MessageVersionMeta } from "@/lib/chat_branching";
 
 interface MessagesListProps {
   messages: Message[];
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
+  versionMetaByMessageId?: Map<number, MessageVersionMeta>;
+  onSelectVersion?: (stepKey: string, index: number) => void;
+  chatId?: number;
 }
 
 export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
-  function MessagesList({ messages, messagesEndRef }, ref) {
+  function MessagesList(
+    {
+      messages,
+      messagesEndRef,
+      versionMetaByMessageId,
+      onSelectVersion,
+      chatId,
+    },
+    ref,
+  ) {
     const appId = useAtomValue(selectedAppIdAtom);
     const { versions, revertVersion } = useVersions(appId);
     const { streamMessage, isStreaming } = useStreamChat();
@@ -35,7 +51,42 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
     const [isUndoLoading, setIsUndoLoading] = useState(false);
     const [isRetryLoading, setIsRetryLoading] = useState(false);
     const selectedChatId = useAtomValue(selectedChatIdAtom);
+    const visibleMessageIdsByChat = useAtomValue(chatVisibleMessageIdsAtom);
+    const activeChatId = chatId ?? selectedChatId;
     const { userBudget } = useUserBudgetInfo();
+
+    const handleEditMessage = useCallback(
+      async ({
+        message,
+        newContent,
+        conversationStep,
+        assistantMessageId,
+      }: {
+        message: Message;
+        newContent: string;
+        conversationStep?: number;
+        assistantMessageId?: number | null;
+      }) => {
+        if (!activeChatId) {
+          throw new Error("No chat selected");
+        }
+        if (typeof conversationStep !== "number") {
+          throw new Error("Unable to edit this message");
+        }
+        const selectedIds = visibleMessageIdsByChat.get(activeChatId) ?? [];
+        await streamMessage({
+          prompt: newContent,
+          chatId: activeChatId,
+          branch: {
+            conversationStep,
+            parentUserMessageId: message.id,
+            parentAssistantMessageId: assistantMessageId ?? undefined,
+            selectedMessageIds: selectedIds,
+          },
+        });
+      },
+      [activeChatId, streamMessage, visibleMessageIdsByChat],
+    );
 
     const renderSetupBanner = () => {
       const selectedModel = settings?.selectedModel;
@@ -59,13 +110,45 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         data-testid="messages-list"
       >
         {messages.length > 0
-          ? messages.map((message, index) => (
-              <ChatMessage
-                key={index}
-                message={message}
-                isLastMessage={index === messages.length - 1}
-              />
-            ))
+          ? messages.map((message, index) => {
+              const versionMeta = versionMetaByMessageId?.get(message.id);
+              const versionControls =
+                versionMeta && onSelectVersion
+                  ? {
+                      totalVersions: versionMeta.totalVersions,
+                      currentIndex: versionMeta.currentIndex,
+                      onSelectIndex: (nextIndex: number) => {
+                        const clamped = Math.max(
+                          0,
+                          Math.min(nextIndex, versionMeta.totalVersions - 1),
+                        );
+                        onSelectVersion(versionMeta.stepKey, clamped);
+                      },
+                    }
+                  : undefined;
+
+              const onEditMessageHandler =
+                versionMeta && message.role === "user"
+                  ? (editedContent: string) =>
+                      handleEditMessage({
+                        message,
+                        newContent: editedContent,
+                        conversationStep: versionMeta.conversationStep,
+                        assistantMessageId:
+                          versionMeta.assistantMessageId ?? undefined,
+                      })
+                  : undefined;
+
+              return (
+                <ChatMessage
+                  key={index}
+                  message={message}
+                  isLastMessage={index === messages.length - 1}
+                  versionControls={versionControls}
+                  onEditMessage={onEditMessageHandler}
+                />
+              );
+            })
           : !renderSetupBanner() && (
               <div className="flex flex-col items-center justify-center h-full max-w-2xl mx-auto">
                 <div className="flex flex-1 items-center justify-center text-gray-500">
@@ -83,7 +166,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
                   size="sm"
                   disabled={isUndoLoading}
                   onClick={async () => {
-                    if (!selectedChatId || !appId) {
+                    if (!activeChatId || !appId) {
                       console.error("No chat selected or app ID not available");
                       return;
                     }
@@ -104,29 +187,27 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
                             versionId: previousAssistantMessage.commitHash,
                           });
                           const chat =
-                            await IpcClient.getInstance().getChat(
-                              selectedChatId,
-                            );
+                            await IpcClient.getInstance().getChat(activeChatId);
                           setMessagesById((prev) => {
                             const next = new Map(prev);
-                            next.set(selectedChatId, chat.messages);
+                            next.set(activeChatId, chat.messages);
                             return next;
                           });
                         }
                       } else {
                         const chat =
-                          await IpcClient.getInstance().getChat(selectedChatId);
+                          await IpcClient.getInstance().getChat(activeChatId);
                         if (chat.initialCommitHash) {
                           await revertVersion({
                             versionId: chat.initialCommitHash,
                           });
                           try {
                             await IpcClient.getInstance().deleteMessages(
-                              selectedChatId,
+                              activeChatId,
                             );
                             setMessagesById((prev) => {
                               const next = new Map(prev);
-                              next.set(selectedChatId, []);
+                              next.set(activeChatId, []);
                               return next;
                             });
                           } catch (err) {
@@ -160,7 +241,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
                 size="sm"
                 disabled={isRetryLoading}
                 onClick={async () => {
-                  if (!selectedChatId) {
+                  if (!activeChatId) {
                     console.error("No chat selected");
                     return;
                   }
@@ -190,7 +271,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
                         shouldRedo = false;
                       } else {
                         const chat =
-                          await IpcClient.getInstance().getChat(selectedChatId);
+                          await IpcClient.getInstance().getChat(activeChatId);
                         if (chat.initialCommitHash) {
                           console.debug(
                             "Reverting to initial commit hash",
@@ -221,7 +302,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
 
                     streamMessage({
                       prompt: lastUserMessage.content,
-                      chatId: selectedChatId,
+                      chatId: activeChatId,
                       redo,
                     });
                   } catch (error) {
@@ -248,7 +329,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
           !userBudget &&
           messages.length > 0 && (
             <PromoMessage
-              seed={messages.length * (appId ?? 1) * (selectedChatId ?? 1)}
+              seed={messages.length * (appId ?? 1) * (activeChatId ?? 1)}
             />
           )}
         <div ref={messagesEndRef} />

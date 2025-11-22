@@ -70,6 +70,7 @@ import type {
   SupabaseBranch,
   SetSupabaseAppProjectParams,
   SelectNodeFolderResult,
+  ChatStreamParams,
 } from "./ipc_types";
 import type { Template } from "../shared/templates";
 import type {
@@ -391,6 +392,7 @@ export class IpcClient {
       chatId: number;
       redo?: boolean;
       attachments?: FileAttachment[];
+      branch?: ChatStreamParams["branch"];
       onUpdate: (messages: Message[]) => void;
       onEnd: (response: ChatResponseEnd) => void;
       onError: (error: string) => void;
@@ -402,6 +404,7 @@ export class IpcClient {
       redo,
       attachments,
       selectedComponents,
+      branch,
       onUpdate,
       onEnd,
       onError,
@@ -442,6 +445,7 @@ export class IpcClient {
               chatId,
               redo,
               selectedComponents,
+              branch,
               attachments: fileDataArray,
             })
             .catch((err) => {
@@ -465,6 +469,7 @@ export class IpcClient {
           chatId,
           redo,
           selectedComponents,
+          branch,
         })
         .catch((err) => {
           console.error("Error streaming message:", err);

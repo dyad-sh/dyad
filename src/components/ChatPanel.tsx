@@ -1,9 +1,11 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 import {
   chatMessagesByIdAtom,
   chatStreamCountByIdAtom,
   isStreamingByIdAtom,
+  chatBranchSelectionsAtom,
+  chatVisibleMessageIdsAtom,
 } from "../atoms/chatAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
 
@@ -14,6 +16,10 @@ import { VersionPane } from "./chat/VersionPane";
 import { ChatError } from "./chat/ChatError";
 import { Button } from "@/components/ui/button";
 import { ArrowDown } from "lucide-react";
+import {
+  deriveConversationSteps,
+  MessageVersionMeta,
+} from "@/lib/chat_branching";
 
 interface ChatPanelProps {
   chatId?: number;
@@ -28,6 +34,9 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const messagesById = useAtomValue(chatMessagesByIdAtom);
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
+  const branchSelectionsByChat = useAtomValue(chatBranchSelectionsAtom);
+  const setBranchSelections = useSetAtom(chatBranchSelectionsAtom);
+  const setVisibleMessageIds = useSetAtom(chatVisibleMessageIdsAtom);
   const [isVersionPaneOpen, setIsVersionPaneOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const streamCountById = useAtomValue(chatStreamCountByIdAtom);
@@ -132,8 +141,165 @@ export function ChatPanel({
     fetchChatMessages();
   }, [fetchChatMessages]);
 
-  const messages = chatId ? (messagesById.get(chatId) ?? []) : [];
+  const rawMessages = chatId ? (messagesById.get(chatId) ?? []) : [];
   const isStreaming = chatId ? (isStreamingById.get(chatId) ?? false) : false;
+
+  useEffect(() => {
+    if (!chatId) return;
+    const steps = deriveConversationSteps(rawMessages);
+    setBranchSelections((prev) => {
+      const next = new Map(prev);
+      const perChatSelections = new Map(next.get(chatId) ?? new Map());
+      let changed = false;
+      const validStepKeys = new Set<string>();
+
+      for (const step of steps) {
+        validStepKeys.add(step.stepKey);
+        const totalVersions = Math.max(
+          step.userVersions.length,
+          step.assistantVersions.length,
+        );
+        if (totalVersions === 0) {
+          if (perChatSelections.has(step.stepKey)) {
+            perChatSelections.delete(step.stepKey);
+            changed = true;
+          }
+          continue;
+        }
+        const lastIndex = totalVersions - 1;
+        const existingIndex = perChatSelections.get(step.stepKey);
+        if (existingIndex === undefined || existingIndex > lastIndex) {
+          perChatSelections.set(step.stepKey, lastIndex);
+          changed = true;
+        } else if (
+          totalVersions >= 2 &&
+          existingIndex === totalVersions - 2 &&
+          existingIndex === lastIndex - 1
+        ) {
+          perChatSelections.set(step.stepKey, lastIndex);
+          changed = true;
+        }
+      }
+
+      for (const key of perChatSelections.keys()) {
+        if (!validStepKeys.has(key)) {
+          perChatSelections.delete(key);
+          changed = true;
+        }
+      }
+
+      if (!changed) {
+        return prev;
+      }
+
+      next.set(chatId, perChatSelections);
+      return next;
+    });
+  }, [chatId, rawMessages, setBranchSelections]);
+
+  const { visibleMessages, versionMetaByMessageId, visibleMessageIds } =
+    useMemo(() => {
+      if (!chatId) {
+        return {
+          visibleMessages: rawMessages,
+          versionMetaByMessageId: new Map<number, MessageVersionMeta>(),
+          visibleMessageIds: rawMessages.map((message) => message.id),
+        };
+      }
+
+      const selectionByStep = branchSelectionsByChat.get(chatId) ?? new Map();
+      const steps = deriveConversationSteps(rawMessages);
+      const versionMeta = new Map<number, MessageVersionMeta>();
+      const orderedMessages: typeof rawMessages = [];
+      const ids: number[] = [];
+
+      for (const step of steps) {
+        const totalVersions = Math.max(
+          step.userVersions.length,
+          step.assistantVersions.length,
+        );
+        if (totalVersions === 0) {
+          continue;
+        }
+
+        const selectedIndex = Math.min(
+          selectionByStep.get(step.stepKey) ?? totalVersions - 1,
+          totalVersions - 1,
+        );
+
+        const selectedUser =
+          step.userVersions[selectedIndex] ??
+          step.userVersions[step.userVersions.length - 1];
+        const selectedAssistant =
+          step.assistantVersions[selectedIndex] ??
+          step.assistantVersions[step.assistantVersions.length - 1];
+
+        if (selectedUser) {
+          orderedMessages.push(selectedUser);
+          ids.push(selectedUser.id);
+          versionMeta.set(selectedUser.id, {
+            stepKey: step.stepKey,
+            totalVersions,
+            currentIndex: selectedIndex,
+            conversationStep: selectedUser.conversationStep ?? step.stepNumber,
+            assistantMessageId: selectedAssistant?.id ?? null,
+          });
+        }
+
+        if (selectedAssistant) {
+          orderedMessages.push(selectedAssistant);
+          ids.push(selectedAssistant.id);
+          versionMeta.set(selectedAssistant.id, {
+            stepKey: step.stepKey,
+            totalVersions,
+            currentIndex: selectedIndex,
+            conversationStep:
+              selectedAssistant.conversationStep ?? step.stepNumber,
+            assistantMessageId: selectedAssistant.id,
+          });
+        }
+      }
+
+      return {
+        visibleMessages: orderedMessages,
+        versionMetaByMessageId: versionMeta,
+        visibleMessageIds: ids,
+      };
+    }, [chatId, rawMessages, branchSelectionsByChat]);
+
+  useEffect(() => {
+    if (!chatId) return;
+    setVisibleMessageIds((prev) => {
+      const prevIds = prev.get(chatId);
+      const isSame =
+        prevIds &&
+        prevIds.length === visibleMessageIds.length &&
+        prevIds.every((id, index) => id === visibleMessageIds[index]);
+      if (isSame) {
+        return prev;
+      }
+      const next = new Map(prev);
+      next.set(chatId, visibleMessageIds);
+      return next;
+    });
+  }, [chatId, visibleMessageIds, setVisibleMessageIds]);
+
+  const handleSelectVersion = useCallback(
+    (stepKey: string, targetIndex: number) => {
+      if (!chatId) return;
+      setBranchSelections((prev) => {
+        const next = new Map(prev);
+        const perChat = new Map(next.get(chatId) ?? new Map());
+        if (perChat.get(stepKey) === targetIndex) {
+          return prev;
+        }
+        perChat.set(stepKey, targetIndex);
+        next.set(chatId, perChat);
+        return next;
+      });
+    },
+    [chatId, setBranchSelections],
+  );
 
   // Auto-scroll effect when messages change during streaming
   useEffect(() => {
@@ -141,7 +307,7 @@ export function ChatPanel({
       !isUserScrolling &&
       isStreaming &&
       messagesContainerRef.current &&
-      messages.length > 0
+      visibleMessages.length > 0
     ) {
       // Only auto-scroll if user is close to bottom
       if (isNearBottom(280)) {
@@ -150,7 +316,7 @@ export function ChatPanel({
         });
       }
     }
-  }, [messages, isUserScrolling, isStreaming]);
+  }, [visibleMessages, isUserScrolling, isStreaming]);
 
   return (
     <div className="flex flex-col h-full">
@@ -165,8 +331,11 @@ export function ChatPanel({
           <div className="flex-1 flex flex-col min-w-0">
             <div className="flex-1 relative overflow-hidden">
               <MessagesList
-                messages={messages}
+                messages={visibleMessages}
                 messagesEndRef={messagesEndRef}
+                versionMetaByMessageId={versionMetaByMessageId}
+                onSelectVersion={handleSelectVersion}
+                chatId={chatId}
                 ref={messagesContainerRef}
               />
 

@@ -20,3 +20,9 @@ export const chatsLoadingAtom = atom<boolean>(false);
 // Used for scrolling to the bottom of the chat messages (per chat)
 export const chatStreamCountByIdAtom = atom<Map<number, number>>(new Map());
 export const recentStreamChatIdsAtom = atom<Set<number>>(new Set<number>());
+
+export const chatBranchSelectionsAtom = atom<Map<number, Map<string, number>>>(
+  new Map(),
+);
+
+export const chatVisibleMessageIdsAtom = atom<Map<number, number[]>>(new Map());

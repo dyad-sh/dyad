@@ -12,6 +12,10 @@ import {
   GitCommit,
   Copy,
   Check,
+  ChevronLeft,
+  ChevronRight,
+  Pencil,
+  Loader2,
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 import { useVersions } from "@/hooks/useVersions";
@@ -25,13 +29,29 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "../ui/tooltip";
+import { Button } from "../ui/button";
+import { Textarea } from "../ui/textarea";
+import { showError } from "@/lib/toast";
+
+interface VersionControls {
+  totalVersions: number;
+  currentIndex: number;
+  onSelectIndex?: (index: number) => void;
+}
 
 interface ChatMessageProps {
   message: Message;
   isLastMessage: boolean;
+  versionControls?: VersionControls;
+  onEditMessage?: (newContent: string) => Promise<void>;
 }
 
-const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
+const ChatMessage = ({
+  message,
+  isLastMessage,
+  versionControls,
+  onEditMessage,
+}: ChatMessageProps) => {
   const { isStreaming } = useStreamChat();
   const appId = useAtomValue(selectedAppIdAtom);
   const { versions: liveVersions } = useVersions(appId);
@@ -69,6 +89,39 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
     };
   }, []);
 
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedContent, setEditedContent] = useState(message.content);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  useEffect(() => {
+    if (!isEditing) {
+      setEditedContent(message.content);
+    }
+  }, [message.content, isEditing]);
+
+  const handleSaveEdit = async () => {
+    if (!onEditMessage) {
+      return;
+    }
+    if (!editedContent.trim()) {
+      showError("Message cannot be empty");
+      return;
+    }
+    if (editedContent.trim() === message.content.trim()) {
+      setIsEditing(false);
+      return;
+    }
+    try {
+      setIsSavingEdit(true);
+      await onEditMessage(editedContent);
+      setIsEditing(false);
+    } catch (error) {
+      showError(error);
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
   // Format the message timestamp
   const formatTimestamp = (timestamp: string | Date) => {
     const now = new Date();
@@ -94,10 +147,45 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
             message.role === "assistant" ? "" : "ml-24 bg-(--sidebar-accent)"
           }`}
         >
-          {message.role === "assistant" &&
-          !message.content &&
-          isStreaming &&
-          isLastMessage ? (
+          {isEditing ? (
+            <div className="flex flex-col gap-2">
+              <Textarea
+                data-testid="chat-message-edit-textarea"
+                className="w-full p-2 border rounded-md"
+                value={editedContent}
+                onChange={(event) => setEditedContent(event.target.value)}
+              />
+              <div className="flex justify-end gap-2">
+                <Button
+                  className="px-2 py-1"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setIsEditing(false);
+                    setEditedContent(message.content);
+                  }}
+                  disabled={isSavingEdit}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  className="px-2 py-1"
+                  size="sm"
+                  onClick={handleSaveEdit}
+                  disabled={isSavingEdit || !editedContent.trim()}
+                >
+                  {isSavingEdit ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    "Save"
+                  )}
+                </Button>
+              </div>
+            </div>
+          ) : message.role === "assistant" &&
+            !message.content &&
+            isStreaming &&
+            isLastMessage ? (
             <div className="flex h-6 items-center space-x-2 p-2">
               <motion.div
                 className="h-3 w-3 rounded-full bg-(--primary) dark:bg-blue-500"
@@ -153,6 +241,7 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
               )}
             </div>
           )}
+
           {(message.role === "assistant" && message.content && !isStreaming) ||
           message.approvalState ? (
             <div
@@ -208,6 +297,86 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
             </div>
           ) : null}
         </div>
+
+        {!isEditing &&
+          message.role === "user" &&
+          (versionControls || onEditMessage) && (
+            <div className="flex items-center justify-end space-x-2 text-xs mt-1">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={handleCopyFormatted}
+                      className="flex items-center space-x-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
+                    >
+                      {copied ? (
+                        <Check className="h-4 w-4 text-green-500" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>{copied ? "Copied!" : "Copy"}</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              {onEditMessage && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        className="flex items-center space-x-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
+                        onClick={() => setIsEditing(true)}
+                        disabled={isStreaming}
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Edit Message</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+              {versionControls && versionControls.totalVersions > 1 && (
+                <div className="flex items-center space-x-1">
+                  <button
+                    className="p-1 rounded hover:bg-(--background-darkest) disabled:opacity-30"
+                    onClick={() =>
+                      versionControls.onSelectIndex?.(
+                        versionControls.currentIndex - 1,
+                      )
+                    }
+                    disabled={
+                      versionControls.currentIndex === 0 ||
+                      !versionControls.onSelectIndex
+                    }
+                    aria-label="Previous version"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <span>
+                    {versionControls.currentIndex + 1}/
+                    {versionControls.totalVersions}
+                  </span>
+                  <button
+                    className="p-1 rounded hover:bg-(--background-darkest) disabled:opacity-30"
+                    onClick={() =>
+                      versionControls.onSelectIndex?.(
+                        versionControls.currentIndex + 1,
+                      )
+                    }
+                    disabled={
+                      versionControls.currentIndex >=
+                        versionControls.totalVersions - 1 ||
+                      !versionControls.onSelectIndex
+                    }
+                    aria-label="Next version"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         {/* Timestamp and commit info for assistant messages - only visible on hover */}
         {message.role === "assistant" && message.createdAt && (
           <div className="mt-1 flex flex-wrap items-center justify-start space-x-2 text-xs text-gray-500 dark:text-gray-400 ">
@@ -238,7 +407,7 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <button
+                    <Button
                       onClick={() => {
                         if (!message.requestId) return;
                         navigator.clipboard
@@ -258,6 +427,8 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
                           });
                       }}
                       className="flex items-center space-x-1 px-1 py-0.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
+                      variant="ghost"
+                      size="sm"
                     >
                       {copiedRequestId ? (
                         <Check className="h-3 w-3 text-green-500" />
@@ -267,7 +438,7 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
                       <span className="text-xs">
                         {copiedRequestId ? "Copied" : "Request ID"}
                       </span>
-                    </button>
+                    </Button>
                   </TooltipTrigger>
                   <TooltipContent>
                     {copiedRequestId

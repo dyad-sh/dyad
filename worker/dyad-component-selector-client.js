@@ -5,6 +5,7 @@
   let hoverLabel = null;
   let currentHoveredElement = null;
   let highlightedComponentId = null;
+  let componentCoordinates = null; // Store the last selected component's coordinates
   //detect if the user is using Mac
   const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
 
@@ -202,6 +203,45 @@
     }
   }
 
+  // Helper function to check if mouse is over the toolbar
+  function isMouseOverToolbar(mouseX, mouseY) {
+    if (!componentCoordinates) return false;
+
+    // Toolbar is positioned at bottom of component: top = coordinates.top + coordinates.height + 4px
+    const toolbarTop =
+      componentCoordinates.top + componentCoordinates.height + 4;
+    const toolbarLeft = componentCoordinates.left;
+    const toolbarHeight = 60;
+    // Add some padding to the width since we don't know exact width
+    const toolbarWidth = componentCoordinates.width || 400;
+
+    return (
+      mouseY >= toolbarTop &&
+      mouseY <= toolbarTop + toolbarHeight &&
+      mouseX >= toolbarLeft &&
+      mouseX <= toolbarLeft + toolbarWidth
+    );
+  }
+
+  // Helper function to check if the highlighted component is inside another selected component
+  function isHighlightedComponentChildOfSelected() {
+    if (!highlightedComponentId) return null;
+
+    const highlightedItem = overlays.find(
+      ({ el }) => el.dataset.dyadId === highlightedComponentId,
+    );
+    if (!highlightedItem) return null;
+
+    // Check if any other selected component contains the highlighted element
+    for (const item of overlays) {
+      if (item.el === highlightedItem.el) continue; // Skip the highlighted component itself
+      if (item.el.contains(highlightedItem.el)) {
+        return item; // Return the parent component
+      }
+    }
+    return null;
+  }
+
   // Helper function to show/hide and populate label for a selected overlay
   function updateSelectedOverlayLabel(item, show) {
     const { label, el } = item;
@@ -260,10 +300,42 @@
 
   /* ---------- event handlers -------------------------------------------- */
   function onMouseMove(e) {
+    // Check if mouse is over toolbar - if so, hide the label and treat as if mouse left component
+    if (isMouseOverToolbar(e.clientX, e.clientY)) {
+      if (currentHoveredElement) {
+        const previousItem = overlays.find(
+          (item) => item.el === currentHoveredElement,
+        );
+        if (previousItem) {
+          updateSelectedOverlayLabel(previousItem, false);
+        }
+        currentHoveredElement = null;
+      }
+      return;
+    }
+
     let el = e.target;
     while (el && !el.dataset.dyadId) el = el.parentElement;
 
     const hoveredItem = overlays.find((item) => item.el === el);
+
+    // Check if the highlighted component is a child of another selected component
+    const parentOfHighlighted = isHighlightedComponentChildOfSelected();
+
+    // If hovering over the highlighted component and it has a parent, hide the parent's label
+    if (
+      hoveredItem &&
+      hoveredItem.el.dataset.dyadId === highlightedComponentId &&
+      parentOfHighlighted
+    ) {
+      // Hide the parent component's label
+      updateSelectedOverlayLabel(parentOfHighlighted, false);
+      // Also clear currentHoveredElement if it's the parent
+      if (currentHoveredElement === parentOfHighlighted.el) {
+        currentHoveredElement = null;
+      }
+      return;
+    }
 
     if (currentHoveredElement && currentHoveredElement !== el) {
       const previousItem = overlays.find(
@@ -447,6 +519,10 @@
     if (e.data.type === "clear-dyad-component-overlays") clearOverlays();
     if (e.data.type === "update-dyad-overlay-positions") {
       updateAllOverlayPositions();
+    }
+    if (e.data.type === "update-component-coordinates") {
+      // Store component coordinates for toolbar hover detection
+      componentCoordinates = e.data.coordinates;
     }
     if (
       e.data.type === "remove-dyad-component-overlay" ||

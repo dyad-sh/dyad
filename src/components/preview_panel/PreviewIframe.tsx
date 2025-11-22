@@ -428,6 +428,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const handleActivateComponentSelector = () => {
     if (iframeRef.current?.contentWindow) {
       const newIsPicking = !isPicking;
+      if (!newIsPicking) setVisualEditingSelectedComponent(null);
       setIsPicking(newIsPicking);
       iframeRef.current.contentWindow.postMessage(
         {

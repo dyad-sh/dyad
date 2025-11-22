@@ -173,6 +173,19 @@ export function VisualEditingToolbar({
     }
   }, [selectedComponent]);
 
+  // Send component coordinates to iframe for toolbar hover detection
+  useEffect(() => {
+    if (coordinates && iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage(
+        {
+          type: "update-component-coordinates",
+          coordinates,
+        },
+        "*",
+      );
+    }
+  }, [coordinates, iframeRef]);
+
   // Listen for style responses from iframe
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -312,7 +325,7 @@ export function VisualEditingToolbar({
 
   return (
     <div
-      className="absolute bg-[var(--background)] border border-[var(--border)] rounded-md shadow-lg z-50 flex flex-row items-center px-2 py-1 gap-1"
+      className="absolute bg-[var(--background)] border border-[var(--border)] rounded-md shadow-lg z-50 flex flex-row items-center p-2 gap-1"
       style={{
         top: `${toolbarTop}px`,
         left: `${toolbarLeft}px`,

@@ -28,6 +28,7 @@ import { DyadCodeSearch } from "./DyadCodeSearch";
 import { DyadRead } from "./DyadRead";
 import { mapActionToButton } from "./ChatInput";
 import { SuggestedAction } from "@/lib/schemas";
+import { FixAllErrorsButton } from "./FixAllErrorsButton";
 
 interface DyadMarkdownParserProps {
   content: string;
@@ -90,6 +91,34 @@ export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
     return parseCustomTags(content);
   }, [content]);
 
+  // Extract error messages and track positions
+  const { errorMessages, lastErrorIndex, errorCount } = useMemo(() => {
+    const errors: string[] = [];
+    let lastIndex = -1;
+    let count = 0;
+
+    contentPieces.forEach((piece, index) => {
+      if (
+        piece.type === "custom-tag" &&
+        piece.tagInfo.tag === "dyad-output" &&
+        piece.tagInfo.attributes.type === "error"
+      ) {
+        const errorMessage = piece.tagInfo.attributes.message;
+        if (errorMessage?.trim()) {
+          errors.push(errorMessage.trim());
+          count++;
+          lastIndex = index;
+        }
+      }
+    });
+
+    return {
+      errorMessages: errors,
+      lastErrorIndex: lastIndex,
+      errorCount: count,
+    };
+  }, [contentPieces]);
+
   return (
     <>
       {contentPieces.map((piece, index) => (
@@ -106,6 +135,17 @@ export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
                 </ReactMarkdown>
               )
             : renderCustomTag(piece.tagInfo, { isStreaming })}
+          {index === lastErrorIndex &&
+            errorCount > 1 &&
+            !isStreaming &&
+            chatId && (
+              <div className="mt-3 w-full flex">
+                <FixAllErrorsButton
+                  errorMessages={errorMessages}
+                  chatId={chatId}
+                />
+              </div>
+            )}
         </React.Fragment>
       ))}
     </>

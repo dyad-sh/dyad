@@ -1055,6 +1055,18 @@ export class IpcClient {
 
   // --- End GitHub Repo Management ---
 
+  // --- Audio Transcription ---
+  public async transcribeAudio(
+    audioData: string,
+    format: string,
+  ): Promise<string> {
+    return this.ipcRenderer.invoke("chat:transcribe", {
+      audioData,
+      format,
+    });
+  }
+  // --- End Audio Transcription ---
+
   // --- Vercel Token Management ---
   public async saveVercelAccessToken(
     params: SaveVercelAccessTokenParams,

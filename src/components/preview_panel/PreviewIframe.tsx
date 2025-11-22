@@ -37,6 +37,8 @@ import {
 import { useStreamChat } from "@/hooks/useStreamChat";
 import {
   selectedComponentsPreviewAtom,
+  visualEditingSelectedComponentAtom,
+  currentComponentCoordinatesAtom,
   previewIframeRefAtom,
 } from "@/atoms/previewAtoms";
 import { ComponentSelection } from "@/ipc/ipc_types";
@@ -56,6 +58,8 @@ import { useRunApp } from "@/hooks/useRunApp";
 import { useShortcut } from "@/hooks/useShortcut";
 import { cn } from "@/lib/utils";
 import { normalizePath } from "../../../shared/normalizePath";
+import { VisualEditingToolbar } from "./VisualEditingToolbar";
+import { VisualEditingChangesDialog } from "./VisualEditingChangesDialog";
 
 interface ErrorBannerProps {
   error: { message: string; source: "preview-app" | "dyad-app" } | undefined;
@@ -176,9 +180,35 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const [selectedComponentsPreview, setSelectedComponentsPreview] = useAtom(
     selectedComponentsPreviewAtom,
   );
+  const [visualEditingSelectedComponent, setVisualEditingSelectedComponent] =
+    useAtom(visualEditingSelectedComponentAtom);
+  const setCurrentComponentCoordinates = useSetAtom(
+    currentComponentCoordinatesAtom,
+  );
   const setPreviewIframeRef = useSetAtom(previewIframeRefAtom);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isPicking, setIsPicking] = useState(false);
+
+  // Function to get current styles from selected element
+  const getCurrentElementStyles = () => {
+    if (!iframeRef.current?.contentWindow || !visualEditingSelectedComponent)
+      return;
+
+    try {
+      // Send message to iframe to get current styles
+      iframeRef.current.contentWindow.postMessage(
+        {
+          type: "get-dyad-component-styles",
+          data: {
+            elementId: visualEditingSelectedComponent.id,
+          },
+        },
+        "*",
+      );
+    } catch (error) {
+      console.error("Failed to get element styles:", error);
+    }
+  };
 
   // Device mode state
   type DeviceMode = "desktop" | "tablet" | "mobile";
@@ -239,10 +269,18 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
         if (!component) return;
 
-        // Add to existing components, avoiding duplicates by id
+        // Store the coordinates
+        if (event.data.coordinates) {
+          setCurrentComponentCoordinates(event.data.coordinates);
+        }
+
+        // Set as the highlighted component for visual editing
+        setVisualEditingSelectedComponent(component);
+
+        // Add to selected components if not already there
         setSelectedComponentsPreview((prev) => {
-          // Check if this component is already selected
-          if (prev.some((c) => c.id === component.id)) {
+          const exists = prev.some((c) => c.id === component.id);
+          if (exists) {
             return prev;
           }
           return [...prev, component];
@@ -257,6 +295,20 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           setSelectedComponentsPreview((prev) =>
             prev.filter((c) => c.id !== componentId),
           );
+          setVisualEditingSelectedComponent((prev) => {
+            const shouldClear = prev?.id === componentId;
+            if (shouldClear) {
+              setCurrentComponentCoordinates(null);
+            }
+            return shouldClear ? null : prev;
+          });
+        }
+        return;
+      }
+
+      if (event.data?.type === "dyad-component-coordinates-updated") {
+        if (event.data.coordinates) {
+          setCurrentComponentCoordinates(event.data.coordinates);
         }
         return;
       }
@@ -346,6 +398,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     setErrorMessage,
     setIsComponentSelectorInitialized,
     setSelectedComponentsPreview,
+    setVisualEditingSelectedComponent,
   ]);
 
   useEffect(() => {
@@ -363,6 +416,13 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       setCanGoForward(false);
     }
   }, [appUrl]);
+
+  // Get current styles when component is selected for visual editing
+  useEffect(() => {
+    if (visualEditingSelectedComponent) {
+      getCurrentElementStyles();
+    }
+  }, [visualEditingSelectedComponent]);
 
   // Function to activate component selector in the iframe
   const handleActivateComponentSelector = () => {
@@ -734,6 +794,32 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               }
               src={appUrl}
               allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
+            />
+            {/* Visual Editing Toolbar */}
+            {visualEditingSelectedComponent && selectedAppId && (
+              <VisualEditingToolbar
+                selectedComponent={visualEditingSelectedComponent}
+                iframeRef={iframeRef}
+                appId={selectedAppId}
+              />
+            )}
+            <VisualEditingChangesDialog
+              onReset={() => {
+                // Exit component selection mode and visual editing
+                setSelectedComponentsPreview([]);
+                setVisualEditingSelectedComponent(null);
+                setCurrentComponentCoordinates(null);
+                setIsPicking(false);
+                handleReload();
+
+                // Deactivate component selector in iframe
+                if (iframeRef.current?.contentWindow) {
+                  iframeRef.current.contentWindow.postMessage(
+                    { type: "deactivate-dyad-component-selector" },
+                    "*",
+                  );
+                }
+              }}
             />
           </div>
         )}

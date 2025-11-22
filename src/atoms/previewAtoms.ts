@@ -25,6 +25,8 @@ export interface PendingStyleChange {
     margin?: { left?: string; right?: string; top?: string; bottom?: string };
     padding?: { left?: string; right?: string; top?: string; bottom?: string };
     dimensions?: { width?: string; height?: string };
+    border?: { width?: string; radius?: string; color?: string };
+    backgroundColor?: string;
   };
 }
 

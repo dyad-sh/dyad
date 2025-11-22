@@ -77,8 +77,7 @@ export function VisualEditingToolbar({
       );
     }
 
-    // Close the sidebar
-    onClose();
+    setVisualEditingSelectedComponent(null);
   };
 
   // Unified function to send style modifications

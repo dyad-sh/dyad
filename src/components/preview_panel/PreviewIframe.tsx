@@ -40,6 +40,7 @@ import {
   visualEditingSelectedComponentAtom,
   currentComponentCoordinatesAtom,
   previewIframeRefAtom,
+  pendingVisualChangesAtom,
 } from "@/atoms/previewAtoms";
 import { ComponentSelection } from "@/ipc/ipc_types";
 import {
@@ -188,6 +189,61 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const setPreviewIframeRef = useSetAtom(previewIframeRefAtom);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isPicking, setIsPicking] = useState(false);
+  const setPendingChanges = useSetAtom(pendingVisualChangesAtom);
+
+  // AST Analysis State
+  const [isDynamicComponent, setIsDynamicComponent] = useState(false);
+  const [hasStaticText, setHasStaticText] = useState(false);
+
+  const analyzeComponent = async (componentId: string) => {
+    if (!componentId || !selectedAppId) return;
+
+    try {
+      const result = await IpcClient.getInstance().analyzeComponent(
+        selectedAppId,
+        componentId,
+      );
+      setIsDynamicComponent(result.isDynamic);
+      setHasStaticText(result.hasStaticText);
+    } catch (err) {
+      console.error("Failed to analyze component", err);
+      setIsDynamicComponent(false);
+      setHasStaticText(false);
+    }
+  };
+
+  const handleTextUpdated = async (data: any) => {
+    const { componentId, text } = data;
+    if (!componentId || !selectedAppId) return;
+
+    // Parse componentId to extract file path and line number
+    const [filePath, lineStr] = componentId.split(":");
+    const lineNumber = parseInt(lineStr, 10);
+
+    if (!filePath || isNaN(lineNumber)) {
+      console.error("Invalid componentId format:", componentId);
+      return;
+    }
+
+    // Store text change in pending changes
+    setPendingChanges((prev) => {
+      const updated = new Map(prev);
+      const existing = updated.get(componentId);
+
+      updated.set(componentId, {
+        componentId: componentId,
+        componentName:
+          existing?.componentName || visualEditingSelectedComponent?.name || "",
+        relativePath: filePath,
+        lineNumber: lineNumber,
+        appId: selectedAppId,
+        styles: existing?.styles || {},
+        textContent: text,
+      });
+
+      return updated;
+    });
+  };
 
   // Function to get current styles from selected element
   const getCurrentElementStyles = () => {
@@ -255,6 +311,11 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         return;
       }
 
+      if (event.data?.type === "dyad-text-updated") {
+        handleTextUpdated(event.data);
+        return;
+      }
+
       if (event.data?.type === "dyad-component-selected") {
         console.log("Component picked:", event.data);
 
@@ -285,6 +346,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           }
           return [...prev, component];
         });
+
+        // Trigger AST analysis
+        analyzeComponent(component.id);
 
         return;
       }
@@ -802,6 +866,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 selectedComponent={visualEditingSelectedComponent}
                 iframeRef={iframeRef}
                 appId={selectedAppId}
+                isDynamic={isDynamicComponent}
+                hasStaticText={hasStaticText}
               />
             )}
             <VisualEditingChangesDialog

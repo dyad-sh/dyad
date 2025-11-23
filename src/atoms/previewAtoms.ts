@@ -28,6 +28,7 @@ export interface PendingStyleChange {
     border?: { width?: string; radius?: string; color?: string };
     backgroundColor?: string;
   };
+  textContent?: string;
 }
 
 export const pendingVisualChangesAtom = atom<Map<string, PendingStyleChange>>(

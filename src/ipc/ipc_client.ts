@@ -1339,4 +1339,11 @@ export class IpcClient {
   ): Promise<void> {
     await this.ipcRenderer.invoke("applyVisualEditingChanges", changes);
   }
+
+  public async analyzeComponent(
+    appId: number,
+    componentId: string,
+  ): Promise<{ isDynamic: boolean; hasStaticText: boolean }> {
+    return this.ipcRenderer.invoke("analyzeComponent", { appId, componentId });
+  }
 }

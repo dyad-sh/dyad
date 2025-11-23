@@ -393,6 +393,11 @@
 
     // If clicking on the currently highlighted component, deselect it
     if (selectedItem && highlightedComponentId === clickedComponentId) {
+      // Don't deselect if element is being edited
+      if (state.element.contentEditable === "true") {
+        return;
+      }
+
       removeOverlayById(clickedComponentId);
       requestAnimationFrame(updateAllOverlayPositions);
       highlightedComponentId = null;

@@ -141,6 +141,67 @@
     }
   }
 
+  function handleEnableTextEditing(data) {
+    const { componentId } = data;
+    const element = findElementByDyadId(componentId);
+    if (element) {
+      element.contentEditable = "true";
+      element.focus();
+
+      // Select all text
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+
+      // Send updates as user types
+      const onInput = () => {
+        window.parent.postMessage(
+          {
+            type: "dyad-text-updated",
+            componentId,
+            text: element.innerText,
+          },
+          "*",
+        );
+      };
+
+      // Add blur listener to disable contentEditable
+      const onBlur = () => {
+        element.contentEditable = "false";
+        element.removeEventListener("blur", onBlur);
+        element.removeEventListener("input", onInput);
+
+        // Send final updated text to parent
+        window.parent.postMessage(
+          {
+            type: "dyad-text-updated",
+            componentId,
+            text: element.innerText,
+          },
+          "*",
+        );
+      };
+
+      element.addEventListener("input", onInput);
+      element.addEventListener("blur", onBlur);
+
+      // Prevent click from propagating to selector while editing
+      const stopProp = (e) => e.stopPropagation();
+      element.addEventListener("click", stopProp);
+
+      // Remove listener when editing is done (on blur)
+      element.addEventListener(
+        "blur",
+        () => {
+          element.removeEventListener("click", stopProp);
+        },
+        { once: true },
+      );
+    }
+  }
+
   /* ---------- message bridge -------------------------------------------- */
 
   window.addEventListener("message", (e) => {
@@ -154,6 +215,9 @@
         break;
       case "modify-dyad-component-styles":
         handleModifyStyles(data);
+        break;
+      case "enable-dyad-text-editing":
+        handleEnableTextEditing(data);
         break;
     }
   });

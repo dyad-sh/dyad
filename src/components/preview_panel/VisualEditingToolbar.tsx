@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, Move, Maximize2, Square, Palette } from "lucide-react";
+import { X, Move, Maximize2, Square, Palette, PencilLine } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -26,12 +26,16 @@ interface VisualEditingToolbarProps {
   selectedComponent: ComponentSelection | null;
   iframeRef: React.RefObject<HTMLIFrameElement | null>;
   appId: number;
+  isDynamic: boolean;
+  hasStaticText: boolean;
 }
 
 export function VisualEditingToolbar({
   selectedComponent,
   iframeRef,
   appId,
+  isDynamic,
+  hasStaticText,
 }: VisualEditingToolbarProps) {
   const coordinates = useAtomValue(currentComponentCoordinatesAtom);
   // Visual editing current values state - using x/y axis instead of individual sides
@@ -141,6 +145,7 @@ export function VisualEditingToolbar({
         lineNumber: selectedComponent.lineNumber,
         appId,
         styles: newStyles,
+        textContent: existing?.textContent || "",
       });
       return updated;
     });
@@ -337,7 +342,7 @@ export function VisualEditingToolbar({
           <TooltipTrigger asChild>
             <button
               onClick={handleDeselectComponent}
-              className="p-1 rounded hover:bg-red-200 dark:hover:bg-red-900 text-red-600 dark:text-red-400"
+              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-[#7f22fe] dark:text-gray-200"
             >
               <X size={16} />
             </button>
@@ -348,333 +353,385 @@ export function VisualEditingToolbar({
         </Tooltip>
       </TooltipProvider>
 
-      {/* Margin Control */}
-      <Popover>
-        <PopoverTrigger asChild>
-          <button
-            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
-            style={{ color: "#7f22fe" }}
-          >
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Move size={16} />
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  <p>Margin</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </button>
-        </PopoverTrigger>
-        <PopoverContent side="bottom" className="w-64">
-          <div className="space-y-3">
-            <h4 className="font-medium text-sm" style={{ color: "#7f22fe" }}>
-              Margin
-            </h4>
-            <div className="grid grid-cols-1 gap-2">
-              <div>
-                <Label htmlFor="margin-x" className="text-xs">
-                  Horizontal (X)
-                </Label>
-                <Input
-                  id="margin-x"
-                  type="number"
-                  placeholder="10"
-                  className="mt-1 h-8 text-xs"
-                  value={currentMargin.x.replace(/[^\d.-]/g, "") || ""}
-                  onChange={(e) => handleMarginChange("x", e.target.value)}
-                  step="1"
-                />
-              </div>
-              <div>
-                <Label htmlFor="margin-y" className="text-xs">
-                  Vertical (Y)
-                </Label>
-                <Input
-                  id="margin-y"
-                  type="number"
-                  placeholder="10"
-                  className="mt-1 h-8 text-xs"
-                  value={currentMargin.y.replace(/[^\d.-]/g, "") || ""}
-                  onChange={(e) => handleMarginChange("y", e.target.value)}
-                  step="1"
-                />
-              </div>
-            </div>
-          </div>
-        </PopoverContent>
-      </Popover>
-
-      {/* Padding Control */}
-      <Popover>
-        <PopoverTrigger asChild>
-          <button
-            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
-            style={{ color: "#7f22fe" }}
-          >
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <rect x="3" y="3" width="18" height="18" rx="2" />
-                    <rect x="7" y="7" width="10" height="10" rx="1" />
-                  </svg>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  <p>Padding</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </button>
-        </PopoverTrigger>
-        <PopoverContent side="bottom" className="w-64">
-          <div className="space-y-3">
-            <h4 className="font-medium text-sm" style={{ color: "#7f22fe" }}>
-              Padding
-            </h4>
-            <div className="grid grid-cols-1 gap-2">
-              <div>
-                <Label htmlFor="padding-x" className="text-xs">
-                  Horizontal (X)
-                </Label>
-                <Input
-                  id="padding-x"
-                  type="number"
-                  placeholder="10"
-                  className="mt-1 h-8 text-xs"
-                  value={currentPadding.x.replace(/[^\d.-]/g, "") || ""}
-                  onChange={(e) => handlePaddingChange("x", e.target.value)}
-                  step="1"
-                  min="0"
-                />
-              </div>
-              <div>
-                <Label htmlFor="padding-y" className="text-xs">
-                  Vertical (Y)
-                </Label>
-                <Input
-                  id="padding-y"
-                  type="number"
-                  placeholder="10"
-                  className="mt-1 h-8 text-xs"
-                  value={currentPadding.y.replace(/[^\d.-]/g, "") || ""}
-                  onChange={(e) => handlePaddingChange("y", e.target.value)}
-                  step="1"
-                  min="0"
-                />
-              </div>
-            </div>
-          </div>
-        </PopoverContent>
-      </Popover>
-
-      {/* Dimensions Control */}
-      <Popover>
-        <PopoverTrigger asChild>
-          <button
-            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
-            style={{ color: "#7f22fe" }}
-          >
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Maximize2 size={16} />
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  <p>Dimensions</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </button>
-        </PopoverTrigger>
-        <PopoverContent side="bottom" className="w-64">
-          <div className="space-y-3">
-            <h4 className="font-medium text-sm" style={{ color: "#7f22fe" }}>
-              Dimensions
-            </h4>
-            <div className="space-y-2">
-              <div>
-                <Label htmlFor="width" className="text-xs">
-                  Width
-                </Label>
-                <Input
-                  id="width"
-                  type="number"
-                  placeholder="100"
-                  className="mt-1 h-8 text-xs"
-                  value={currentDimensions.width.replace(/[^\d.-]/g, "") || ""}
-                  onChange={(e) =>
-                    handleDimensionChange("width", e.target.value)
-                  }
-                  step="1"
-                  min="0"
-                />
-              </div>
-              <div>
-                <Label htmlFor="height" className="text-xs">
-                  Height
-                </Label>
-                <Input
-                  id="height"
-                  type="number"
-                  placeholder="100"
-                  className="mt-1 h-8 text-xs"
-                  value={currentDimensions.height.replace(/[^\d.-]/g, "") || ""}
-                  onChange={(e) =>
-                    handleDimensionChange("height", e.target.value)
-                  }
-                  step="1"
-                  min="0"
-                />
-              </div>
-            </div>
-          </div>
-        </PopoverContent>
-      </Popover>
-
-      {/* Border Control */}
-      <Popover>
-        <PopoverTrigger asChild>
-          <button
-            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
-            style={{ color: "#7f22fe" }}
-          >
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Square size={16} />
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  <p>Border</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </button>
-        </PopoverTrigger>
-        <PopoverContent side="bottom" className="w-64">
-          <div className="space-y-3">
-            <h4 className="font-medium text-sm" style={{ color: "#7f22fe" }}>
-              Border
-            </h4>
-            <div className="space-y-2">
-              <div>
-                <Label htmlFor="border-width" className="text-xs">
-                  Width
-                </Label>
-                <Input
-                  id="border-width"
-                  type="number"
-                  placeholder="1"
-                  className="mt-1 h-8 text-xs"
-                  value={currentBorder.width.replace(/[^\d.-]/g, "") || ""}
-                  onChange={(e) => handleBorderChange("width", e.target.value)}
-                  step="1"
-                  min="0"
-                />
-              </div>
-              <div>
-                <Label htmlFor="border-radius" className="text-xs">
-                  Radius
-                </Label>
-                <Input
-                  id="border-radius"
-                  type="number"
-                  placeholder="4"
-                  className="mt-1 h-8 text-xs"
-                  value={currentBorder.radius.replace(/[^\d.-]/g, "") || ""}
-                  onChange={(e) => handleBorderChange("radius", e.target.value)}
-                  step="1"
-                  min="0"
-                />
-              </div>
-              <div>
-                <Label htmlFor="border-color" className="text-xs">
-                  Color
-                </Label>
-                <div className="flex gap-2 mt-1">
-                  <Input
-                    id="border-color"
-                    type="color"
-                    className="h-8 w-12 p-1 cursor-pointer"
-                    value={currentBorder.color}
-                    onChange={(e) =>
-                      handleBorderChange("color", e.target.value)
-                    }
-                  />
-                  <Input
-                    type="text"
-                    placeholder="#000000"
-                    className="h-8 text-xs flex-1"
-                    value={currentBorder.color}
-                    onChange={(e) =>
-                      handleBorderChange("color", e.target.value)
-                    }
-                  />
+      {isDynamic ? (
+        <div className="flex items-center px-2 py-1 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 rounded text-xs font-medium">
+          <span>This component is styled dynamically</span>
+        </div>
+      ) : (
+        <>
+          {/* Margin Control */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <button className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-[#7f22fe] dark:text-gray-200">
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Move size={16} />
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      <p>Margin</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </button>
+            </PopoverTrigger>
+            <PopoverContent side="bottom" className="w-64">
+              <div className="space-y-3">
+                <h4
+                  className="font-medium text-sm"
+                  style={{ color: "#7f22fe" }}
+                >
+                  Margin
+                </h4>
+                <div className="grid grid-cols-1 gap-2">
+                  <div>
+                    <Label htmlFor="margin-x" className="text-xs">
+                      Horizontal (X)
+                    </Label>
+                    <Input
+                      id="margin-x"
+                      type="number"
+                      placeholder="10"
+                      className="mt-1 h-8 text-xs"
+                      value={currentMargin.x.replace(/[^\d.-]/g, "") || ""}
+                      onChange={(e) => handleMarginChange("x", e.target.value)}
+                      step="1"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="margin-y" className="text-xs">
+                      Vertical (Y)
+                    </Label>
+                    <Input
+                      id="margin-y"
+                      type="number"
+                      placeholder="10"
+                      className="mt-1 h-8 text-xs"
+                      value={currentMargin.y.replace(/[^\d.-]/g, "") || ""}
+                      onChange={(e) => handleMarginChange("y", e.target.value)}
+                      step="1"
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
-        </PopoverContent>
-      </Popover>
+            </PopoverContent>
+          </Popover>
 
-      {/* Background Color Control */}
-      <Popover>
-        <PopoverTrigger asChild>
-          <button
-            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
-            style={{ color: "#7f22fe" }}
-          >
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Palette size={16} />
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  <p>Background</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </button>
-        </PopoverTrigger>
-        <PopoverContent side="bottom" className="w-64">
-          <div className="space-y-3">
-            <h4 className="font-medium text-sm" style={{ color: "#7f22fe" }}>
-              Background Color
-            </h4>
-            <div>
-              <Label htmlFor="bg-color" className="text-xs">
-                Color
-              </Label>
-              <div className="flex gap-2 mt-1">
-                <Input
-                  id="bg-color"
-                  type="color"
-                  className="h-8 w-12 p-1 cursor-pointer"
-                  value={currentBackgroundColor}
-                  onChange={(e) => handleBackgroundColorChange(e.target.value)}
-                />
-                <Input
-                  type="text"
-                  placeholder="#ffffff"
-                  className="h-8 text-xs flex-1"
-                  value={currentBackgroundColor}
-                  onChange={(e) => handleBackgroundColorChange(e.target.value)}
-                />
+          {/* Padding Control */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <button className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-[#7f22fe] dark:text-gray-200">
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <rect x="3" y="3" width="18" height="18" rx="2" />
+                        <rect x="7" y="7" width="10" height="10" rx="1" />
+                      </svg>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      <p>Padding</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </button>
+            </PopoverTrigger>
+            <PopoverContent side="bottom" className="w-64">
+              <div className="space-y-3">
+                <h4
+                  className="font-medium text-sm"
+                  style={{ color: "#7f22fe" }}
+                >
+                  Padding
+                </h4>
+                <div className="grid grid-cols-1 gap-2">
+                  <div>
+                    <Label htmlFor="padding-x" className="text-xs">
+                      Horizontal (X)
+                    </Label>
+                    <Input
+                      id="padding-x"
+                      type="number"
+                      placeholder="10"
+                      className="mt-1 h-8 text-xs"
+                      value={currentPadding.x.replace(/[^\d.-]/g, "") || ""}
+                      onChange={(e) => handlePaddingChange("x", e.target.value)}
+                      step="1"
+                      min="0"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="padding-y" className="text-xs">
+                      Vertical (Y)
+                    </Label>
+                    <Input
+                      id="padding-y"
+                      type="number"
+                      placeholder="10"
+                      className="mt-1 h-8 text-xs"
+                      value={currentPadding.y.replace(/[^\d.-]/g, "") || ""}
+                      onChange={(e) => handlePaddingChange("y", e.target.value)}
+                      step="1"
+                      min="0"
+                    />
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-        </PopoverContent>
-      </Popover>
+            </PopoverContent>
+          </Popover>
+
+          {/* Dimensions Control */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <button className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-[#7f22fe] dark:text-gray-200">
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Maximize2 size={16} />
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      <p>Dimensions</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </button>
+            </PopoverTrigger>
+            <PopoverContent side="bottom" className="w-64">
+              <div className="space-y-3">
+                <h4
+                  className="font-medium text-sm"
+                  style={{ color: "#7f22fe" }}
+                >
+                  Dimensions
+                </h4>
+                <div className="space-y-2">
+                  <div>
+                    <Label htmlFor="width" className="text-xs">
+                      Width
+                    </Label>
+                    <Input
+                      id="width"
+                      type="number"
+                      placeholder="100"
+                      className="mt-1 h-8 text-xs"
+                      value={
+                        currentDimensions.width.replace(/[^\d.-]/g, "") || ""
+                      }
+                      onChange={(e) =>
+                        handleDimensionChange("width", e.target.value)
+                      }
+                      step="1"
+                      min="0"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="height" className="text-xs">
+                      Height
+                    </Label>
+                    <Input
+                      id="height"
+                      type="number"
+                      placeholder="100"
+                      className="mt-1 h-8 text-xs"
+                      value={
+                        currentDimensions.height.replace(/[^\d.-]/g, "") || ""
+                      }
+                      onChange={(e) =>
+                        handleDimensionChange("height", e.target.value)
+                      }
+                      step="1"
+                      min="0"
+                    />
+                  </div>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          {/* Border Control */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <button className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-[#7f22fe] dark:text-gray-200">
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Square size={16} />
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      <p>Border</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </button>
+            </PopoverTrigger>
+            <PopoverContent side="bottom" className="w-64">
+              <div className="space-y-3">
+                <h4
+                  className="font-medium text-sm"
+                  style={{ color: "#7f22fe" }}
+                >
+                  Border
+                </h4>
+                <div className="space-y-2">
+                  <div>
+                    <Label htmlFor="border-width" className="text-xs">
+                      Width
+                    </Label>
+                    <Input
+                      id="border-width"
+                      type="number"
+                      placeholder="1"
+                      className="mt-1 h-8 text-xs"
+                      value={currentBorder.width.replace(/[^\d.-]/g, "") || ""}
+                      onChange={(e) =>
+                        handleBorderChange("width", e.target.value)
+                      }
+                      step="1"
+                      min="0"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="border-radius" className="text-xs">
+                      Radius
+                    </Label>
+                    <Input
+                      id="border-radius"
+                      type="number"
+                      placeholder="4"
+                      className="mt-1 h-8 text-xs"
+                      value={currentBorder.radius.replace(/[^\d.-]/g, "") || ""}
+                      onChange={(e) =>
+                        handleBorderChange("radius", e.target.value)
+                      }
+                      step="1"
+                      min="0"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="border-color" className="text-xs">
+                      Color
+                    </Label>
+                    <div className="flex gap-2 mt-1">
+                      <Input
+                        id="border-color"
+                        type="color"
+                        className="h-8 w-12 p-1 cursor-pointer"
+                        value={currentBorder.color}
+                        onChange={(e) =>
+                          handleBorderChange("color", e.target.value)
+                        }
+                      />
+                      <Input
+                        type="text"
+                        placeholder="#000000"
+                        className="h-8 text-xs flex-1"
+                        value={currentBorder.color}
+                        onChange={(e) =>
+                          handleBorderChange("color", e.target.value)
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          {/* Background Color Control */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <button className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-[#7f22fe] dark:text-gray-200">
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Palette size={16} />
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      <p>Background</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </button>
+            </PopoverTrigger>
+            <PopoverContent side="bottom" className="w-64">
+              <div className="space-y-3">
+                <h4
+                  className="font-medium text-sm"
+                  style={{ color: "#7f22fe" }}
+                >
+                  Background Color
+                </h4>
+                <div>
+                  <Label htmlFor="bg-color" className="text-xs">
+                    Color
+                  </Label>
+                  <div className="flex gap-2 mt-1">
+                    <Input
+                      id="bg-color"
+                      type="color"
+                      className="h-8 w-12 p-1 cursor-pointer"
+                      value={currentBackgroundColor}
+                      onChange={(e) =>
+                        handleBackgroundColorChange(e.target.value)
+                      }
+                    />
+                    <Input
+                      type="text"
+                      placeholder="#ffffff"
+                      className="h-8 text-xs flex-1"
+                      value={currentBackgroundColor}
+                      onChange={(e) =>
+                        handleBackgroundColorChange(e.target.value)
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+        </>
+      )}
+
+      {hasStaticText && (
+        <button
+          onClick={() => {
+            console.log("Edit Text clicked");
+            if (iframeRef.current?.contentWindow && selectedComponent) {
+              iframeRef.current.contentWindow.postMessage(
+                {
+                  type: "enable-dyad-text-editing",
+                  data: {
+                    componentId: selectedComponent.id,
+                  },
+                },
+                "*",
+              );
+            }
+          }}
+          className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-[#7f22fe] dark:text-gray-200"
+          title="Edit Text"
+        >
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <PencilLine size={16} />
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p>Edit Text</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </button>
+      )}
     </div>
   );
 }

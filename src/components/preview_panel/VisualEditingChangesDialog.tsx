@@ -51,7 +51,7 @@ export function VisualEditingChangesDialog({
           size="sm"
           onClick={handleSave}
           disabled={isSaving}
-          className="bg-[#7f22fe] hover:bg-[#450e91ff]"
+          className="bg-[#7f22fe] hover:bg-[#450e91ff] dark:text-white"
         >
           <Check size={16} className="mr-1" />
           {isSaving ? "Saving..." : "Save Changes"}

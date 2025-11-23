@@ -130,7 +130,7 @@ async function cloneRepo(repoUrl: string): Promise<string> {
 
   logger.info(`Cloning ${repoUrl} to ${cachePath}`);
   try {
-    await gitClone({ path: cachePath, url: repoUrl });
+    await gitClone({ path: cachePath, url: repoUrl, depth: 1 });
     logger.info(`Successfully cloned ${repoUrl} to ${cachePath}`);
   } catch (err) {
     logger.error(`Failed to clone ${repoUrl} to ${cachePath}: `, err);

@@ -22,7 +22,7 @@ import type {
   GitStageToRevertParams,
   GitInitParams,
   GitPushParams,
-} from "../ipc_types";
+} from "../git_types";
 
 export async function getCurrentCommitHash({
   path,
@@ -215,7 +215,9 @@ export async function gitRemove({
   }
 }
 
-export async function gitStatus({ path }: GitBaseParams): Promise<string[]> {
+export async function getGitUncommittedFiles({
+  path,
+}: GitBaseParams): Promise<string[]> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
     const result = await exec(["status", "--porcelain"], path);
@@ -325,7 +327,7 @@ export async function gitClone({
   url,
   accessToken,
   singleBranch = true,
-  depth = 1,
+  depth,
 }: GitCloneParams): Promise<void> {
   const settings = readSettings();
   if (settings.enableNativeGit) {

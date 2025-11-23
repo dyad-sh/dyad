@@ -682,7 +682,6 @@ async function handleCloneRepoFromUrl(
         url: cloneUrl,
         accessToken,
         singleBranch: false,
-        depth: null,
       });
     } catch (cloneErr) {
       logger.error("[GitHub Handler] Clone failed:", cloneErr);

@@ -20,7 +20,7 @@ import {
   gitAdd,
   gitRemove,
   gitAddAll,
-  gitStatus,
+  getGitUncommittedFiles,
 } from "../utils/git_utils";
 import { readSettings } from "@/main/settings";
 import { writeMigrationFile } from "../utils/file_utils";
@@ -490,7 +490,7 @@ export async function processFullResponseActions(
       logger.log(`Successfully committed changes: ${changes.join(", ")}`);
 
       // Check for any uncommitted changes after the commit
-      uncommittedFiles = await gitStatus({ path: appPath });
+      uncommittedFiles = await getGitUncommittedFiles({ path: appPath });
 
       if (uncommittedFiles.length > 0) {
         // Stage all changes

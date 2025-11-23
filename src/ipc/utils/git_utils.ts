@@ -16,13 +16,13 @@ import type {
   GitCloneParams,
   GitCommitParams,
   GitLogParams,
-  GitCommit,
   GitFileAtCommitParams,
   GitSetRemoteUrlParams,
   GitStageToRevertParams,
   GitInitParams,
   GitPushParams,
 } from "../git_types";
+import type { GitCommit } from "../ipc_types";
 
 export async function getCurrentCommitHash({
   path,

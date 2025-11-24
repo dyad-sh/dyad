@@ -396,12 +396,55 @@ ${componentSnippet}
         }
       }
 
-      await db
+      // Determine parent, version, and branch
+      let parentMessageId = req.parentMessageId;
+      let versionNumber = 1;
+      let branchId = uuidv4();
+
+      if (req.editingMessageId) {
+        const originalMessage = await db.query.messages.findFirst({
+          where: eq(messages.id, req.editingMessageId),
+        });
+        if (originalMessage) {
+          parentMessageId = originalMessage.parentMessageId;
+          // Find max version among siblings
+          const siblings = await db.query.messages.findMany({
+            where: and(
+              eq(messages.chatId, req.chatId),
+              originalMessage.parentMessageId
+                ? eq(messages.parentMessageId, originalMessage.parentMessageId)
+                : isNull(messages.parentMessageId),
+              eq(messages.role, "user"),
+            ),
+          });
+          const maxVersion = siblings.reduce(
+            (max, msg) => Math.max(max, msg.versionNumber || 1),
+            0,
+          );
+          versionNumber = maxVersion + 1;
+          branchId = uuidv4();
+        }
+      } else if (!parentMessageId && chat.messages.length > 0) {
+        // Fallback: append to last message if no parent specified
+        const lastMessage = chat.messages[chat.messages.length - 1];
+        parentMessageId = lastMessage.id;
+        branchId = lastMessage.branchId || branchId;
+      } else if (parentMessageId) {
+        const parent = chat.messages.find((m) => m.id === parentMessageId);
+        if (parent) {
+          branchId = parent.branchId || branchId;
+        }
+      }
+
+      const [userMessage] = await db
         .insert(messages)
         .values({
           chatId: req.chatId,
           role: "user",
           content: userPrompt,
+          parentMessageId,
+          versionNumber,
+          branchId,
         })
         .returning();
       const settings = readSettings();
@@ -422,6 +465,9 @@ ${componentSnippet}
           sourceCommitHash: await getCurrentCommitHash({
             path: getDyadAppPath(chat.app.path),
           }),
+          parentMessageId: userMessage.id,
+          versionNumber: 1,
+          branchId,
         })
         .returning();
 

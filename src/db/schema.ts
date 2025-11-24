@@ -77,6 +77,9 @@ export const messages = sqliteTable("messages", {
   // The commit hash of the codebase at the time the message was sent
   commitHash: text("commit_hash"),
   requestId: text("request_id"),
+  parentMessageId: integer("parent_message_id"),
+  versionNumber: integer("version_number").notNull().default(1),
+  branchId: text("branch_id"),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),

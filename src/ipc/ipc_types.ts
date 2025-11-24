@@ -42,6 +42,8 @@ export interface ChatStreamParams {
     attachmentType: "upload-to-codebase" | "chat-context"; // FileAttachment type
   }>;
   selectedComponents?: ComponentSelection[];
+  parentMessageId?: number | null;
+  editingMessageId?: number | null;
 }
 
 export interface ChatResponseEnd {
@@ -81,6 +83,10 @@ export interface Message {
   dbTimestamp?: string | null;
   createdAt?: Date | string;
   requestId?: string | null;
+  parentMessageId?: number | null;
+  versionNumber?: number;
+  chatId?: number;
+  branchId?: string | null;
 }
 
 export interface Chat {

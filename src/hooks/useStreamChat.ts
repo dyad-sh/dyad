@@ -71,6 +71,8 @@ export function useStreamChat({
       attachments,
       selectedComponents,
       onSettled,
+      parentMessageId,
+      editingMessageId,
     }: {
       prompt: string;
       chatId: number;
@@ -78,6 +80,8 @@ export function useStreamChat({
       attachments?: FileAttachment[];
       selectedComponents?: ComponentSelection[];
       onSettled?: () => void;
+      parentMessageId?: number | null;
+      editingMessageId?: number | null;
     }) => {
       if (
         (!prompt.trim() && (!attachments || attachments.length === 0)) ||
@@ -110,6 +114,8 @@ export function useStreamChat({
           chatId,
           redo,
           attachments,
+          parentMessageId,
+          editingMessageId,
           onUpdate: (updatedMessages: Message[]) => {
             if (!hasIncrementedStreamCount) {
               setStreamCountById((prev) => {

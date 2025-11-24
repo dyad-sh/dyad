@@ -1,6 +1,6 @@
 import type React from "react";
 import type { Message } from "@/ipc/ipc_types";
-import { forwardRef, useState } from "react";
+import { forwardRef, useState, useMemo } from "react";
 import ChatMessage from "./ChatMessage";
 import { OpenRouterSetupBanner, SetupBanner } from "../SetupBanner";
 
@@ -25,7 +25,7 @@ interface MessagesListProps {
 }
 
 export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
-  function MessagesList({ messages, messagesEndRef }, ref) {
+  ({ messages, messagesEndRef }, ref) => {
     const appId = useAtomValue(selectedAppIdAtom);
     const { versions, revertVersion } = useVersions(appId);
     const { streamMessage, isStreaming } = useStreamChat();
@@ -36,6 +36,67 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
     const [isRetryLoading, setIsRetryLoading] = useState(false);
     const selectedChatId = useAtomValue(selectedChatIdAtom);
     const { userBudget } = useUserBudgetInfo();
+
+    // Helper to build tree and get visible messages
+    const { tree, rootIds, rootMessages } = useMemo(() => {
+      const tree: Record<number, Message[]> = {}; // parentId -> children
+      const rootMessages: Message[] = [];
+      messages.forEach((msg) => {
+        if (msg.parentMessageId) {
+          if (!tree[msg.parentMessageId]) tree[msg.parentMessageId] = [];
+          tree[msg.parentMessageId].push(msg);
+        } else {
+          rootMessages.push(msg);
+        }
+      });
+      // Sort children by versionNumber or createdAt
+      Object.values(tree).forEach((children) => {
+        children.sort(
+          (a, b) => (a.versionNumber || 0) - (b.versionNumber || 0),
+        );
+      });
+
+      // Sort roots too
+      rootMessages.sort(
+        (a, b) => (a.versionNumber || 0) - (b.versionNumber || 0),
+      );
+      const sortedRootIds = rootMessages.map((m) => m.id);
+
+      return { tree, rootIds: sortedRootIds, rootMessages };
+    }, [messages]);
+
+    const [activeVersionsState, setActiveVersionsState] = useState<
+      Record<number, number>
+    >({});
+
+    const visibleMessages = useMemo(() => {
+      const result: Message[] = [];
+      if (messages.length === 0) return result;
+
+      const traverse = (msgId: number) => {
+        const msg = messages.find((m) => m.id === msgId);
+        if (!msg) return;
+        result.push(msg);
+
+        const children = tree[msgId];
+        if (children && children.length > 0) {
+          const selectedChildId =
+            activeVersionsState[msgId] || children[children.length - 1].id;
+          traverse(selectedChildId);
+        }
+      };
+
+      // Only traverse the active root? Or all roots?
+      // Usually only one root path is active if we branch at root.
+      if (rootIds.length > 0) {
+        const selectedRootId =
+          activeVersionsState[-1] || rootIds[rootIds.length - 1];
+        traverse(selectedRootId);
+      }
+      return result;
+    }, [messages, tree, rootIds, activeVersionsState]);
+
+    const setActiveVersions = setActiveVersionsState;
 
     const renderSetupBanner = () => {
       const selectedModel = settings?.selectedModel;
@@ -58,14 +119,56 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         ref={ref}
         data-testid="messages-list"
       >
-        {messages.length > 0
-          ? messages.map((message, index) => (
-              <ChatMessage
-                key={index}
-                message={message}
-                isLastMessage={index === messages.length - 1}
-              />
-            ))
+        {visibleMessages.length > 0
+          ? visibleMessages.map((message, index) => {
+              const parentId = message.parentMessageId;
+              let versionInfo = undefined;
+
+              // Determine siblings to calculate version info
+              let siblings: Message[] = [];
+              if (parentId) {
+                siblings = tree[parentId] || [];
+              } else {
+                // Roots are siblings
+                siblings = rootMessages;
+              }
+
+              if (siblings.length > 1) {
+                const currentIndex =
+                  siblings.findIndex((m) => m.id === message.id) + 1;
+                versionInfo = {
+                  current: currentIndex,
+                  total: siblings.length,
+                  onNext: () => {
+                    if (currentIndex < siblings.length) {
+                      const nextId = siblings[currentIndex].id;
+                      setActiveVersions((prev) => ({
+                        ...prev,
+                        [parentId || -1]: nextId,
+                      }));
+                    }
+                  },
+                  onPrev: () => {
+                    if (currentIndex > 1) {
+                      const prevId = siblings[currentIndex - 2].id;
+                      setActiveVersions((prev) => ({
+                        ...prev,
+                        [parentId || -1]: prevId,
+                      }));
+                    }
+                  },
+                };
+              }
+
+              return (
+                <ChatMessage
+                  key={index}
+                  message={message}
+                  isLastMessage={index === visibleMessages.length - 1}
+                  versionInfo={versionInfo}
+                />
+              );
+            })
           : !renderSetupBanner() && (
               <div className="flex flex-col items-center justify-center h-full max-w-2xl mx-auto">
                 <div className="flex flex-1 items-center justify-center text-gray-500">

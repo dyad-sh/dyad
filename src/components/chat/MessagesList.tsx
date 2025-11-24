@@ -1,6 +1,6 @@
 import type React from "react";
 import type { Message } from "@/ipc/ipc_types";
-import { forwardRef, useState, useMemo } from "react";
+import { forwardRef, useState, useMemo, useEffect } from "react";
 import ChatMessage from "./ChatMessage";
 import { OpenRouterSetupBanner, SetupBanner } from "../SetupBanner";
 
@@ -36,6 +36,19 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
     const [isRetryLoading, setIsRetryLoading] = useState(false);
     const selectedChatId = useAtomValue(selectedChatIdAtom);
     const { userBudget } = useUserBudgetInfo();
+
+    useEffect(() => {
+      const validIds = new Set(messages.map((m) => m.id));
+      setActiveVersionsState((prev) => {
+        const next: Record<number, number> = {};
+        for (const [parentId, selectedId] of Object.entries(prev)) {
+          if (validIds.has(Number(selectedId))) {
+            next[Number(parentId)] = selectedId;
+          }
+        }
+        return next;
+      });
+    }, [messages]);
 
     // Helper to build tree and get visible messages
     const { tree, rootIds, rootMessages } = useMemo(() => {
@@ -162,7 +175,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
 
               return (
                 <ChatMessage
-                  key={index}
+                  key={message.id}
                   message={message}
                   isLastMessage={index === visibleMessages.length - 1}
                   versionInfo={versionInfo}

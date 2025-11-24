@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, Move, Maximize2, Square, Palette, Type } from "lucide-react";
+import { X, Move, Square, Palette, Type } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { ComponentSelection } from "@/ipc/ipc_types";
 import { useSetAtom, useAtomValue } from "jotai";
@@ -51,10 +51,6 @@ export function VisualEditingToolbar({
   const coordinates = useAtomValue(currentComponentCoordinatesAtom);
   const [currentMargin, setCurrentMargin] = useState({ x: "", y: "" });
   const [currentPadding, setCurrentPadding] = useState({ x: "", y: "" });
-  const [currentDimensions, setCurrentDimensions] = useState({
-    width: "",
-    height: "",
-  });
   const [currentBorder, setCurrentBorder] = useState({
     width: "",
     radius: "",
@@ -97,7 +93,7 @@ export function VisualEditingToolbar({
   const sendStyleModification = (styles: {
     margin?: { left?: string; right?: string; top?: string; bottom?: string };
     padding?: { left?: string; right?: string; top?: string; bottom?: string };
-    dimensions?: { width?: string; height?: string };
+
     border?: { width?: string; radius?: string; color?: string };
     backgroundColor?: string;
     text?: { fontSize?: string; fontWeight?: string; color?: string };
@@ -133,12 +129,7 @@ export function VisualEditingToolbar({
       if (styles.padding) {
         newStyles.padding = { ...existing?.styles?.padding, ...styles.padding };
       }
-      if (styles.dimensions) {
-        newStyles.dimensions = {
-          ...existing?.styles?.dimensions,
-          ...styles.dimensions,
-        };
-      }
+
       if (styles.border) {
         newStyles.border = { ...existing?.styles?.border, ...styles.border };
       }
@@ -201,7 +192,7 @@ export function VisualEditingToolbar({
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === "dyad-component-styles") {
-        const { margin, padding, dimensions, border, backgroundColor, text } =
+        const { margin, padding, border, backgroundColor, text } =
           event.data.data;
 
         const marginX = margin?.left === margin?.right ? margin.left : "";
@@ -211,7 +202,6 @@ export function VisualEditingToolbar({
 
         setCurrentMargin({ x: marginX, y: marginY });
         setCurrentPadding({ x: paddingX, y: paddingY });
-        setCurrentDimensions(dimensions || { width: "", height: "" });
         setCurrentBorder({
           width: border?.width || "",
           radius: border?.radius || "",
@@ -246,22 +236,6 @@ export function VisualEditingToolbar({
           : { top: processedValue, bottom: processedValue };
 
       sendStyleModification({ [type]: data });
-    }
-  };
-
-  const handleDimensionChange = (
-    property: "width" | "height",
-    value: string,
-  ) => {
-    setCurrentDimensions((prev) => ({ ...prev, [property]: value }));
-
-    if (value) {
-      const processedValue =
-        /^\d+$/.test(value) && !/%|auto|inherit|initial|unset/.test(value)
-          ? `${value}px`
-          : value;
-
-      sendStyleModification({ dimensions: { [property]: processedValue } });
     }
   };
 
@@ -401,29 +375,6 @@ export function VisualEditingToolbar({
                 value={currentPadding.y}
                 onChange={(v) => handleSpacingChange("padding", "y", v)}
                 placeholder="10"
-              />
-            </div>
-          </StylePopover>
-
-          <StylePopover
-            icon={<Maximize2 size={16} />}
-            title="Dimensions"
-            tooltip="Dimensions"
-          >
-            <div className="space-y-2">
-              <NumberInput
-                id="width"
-                label="Width"
-                value={currentDimensions.width}
-                onChange={(v) => handleDimensionChange("width", v)}
-                placeholder="100"
-              />
-              <NumberInput
-                id="height"
-                label="Height"
-                value={currentDimensions.height}
-                onChange={(v) => handleDimensionChange("height", v)}
-                placeholder="100"
               />
             </div>
           </StylePopover>

@@ -10,7 +10,6 @@ interface SpacingValues {
 interface StyleObject {
   margin?: Record<string, string>;
   padding?: Record<string, string>;
-  dimensions?: Record<string, string>;
   border?: Record<string, string>;
   backgroundColor?: string;
   text?: Record<string, string>;
@@ -65,25 +64,14 @@ function convertSpacingToTailwind(
 export function stylesToTailwind(styles: StyleObject): string[] {
   const classes: string[] = [];
 
-  // Margin
   if (styles.margin) {
     classes.push(...convertSpacingToTailwind(styles.margin, "m"));
   }
 
-  // Padding
   if (styles.padding) {
     classes.push(...convertSpacingToTailwind(styles.padding, "p"));
   }
 
-  // Dimensions
-  if (styles.dimensions) {
-    if (styles.dimensions.width !== undefined)
-      classes.push(`w-[${styles.dimensions.width}]`);
-    if (styles.dimensions.height !== undefined)
-      classes.push(`h-[${styles.dimensions.height}]`);
-  }
-
-  // Border
   if (styles.border) {
     if (styles.border.width !== undefined)
       classes.push(`border-[${styles.border.width}]`);
@@ -93,12 +81,10 @@ export function stylesToTailwind(styles: StyleObject): string[] {
       classes.push(`border-[${styles.border.color}]`);
   }
 
-  // Background color
   if (styles.backgroundColor !== undefined) {
     classes.push(`bg-[${styles.backgroundColor}]`);
   }
 
-  // Text styles
   if (styles.text) {
     if (styles.text.fontSize !== undefined)
       classes.push(`text-[${styles.text.fontSize}]`);

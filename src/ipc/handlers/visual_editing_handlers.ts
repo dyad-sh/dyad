@@ -22,7 +22,6 @@ interface StyleChange {
   styles: {
     margin?: Record<string, string>;
     padding?: Record<string, string>;
-    dimensions?: Record<string, string>;
     border?: Record<string, string>;
     backgroundColor?: string;
     text?: Record<string, string>;

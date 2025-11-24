@@ -32,7 +32,6 @@
       element,
     );
 
-    // Property mapping for spacing (margin/padding)
     const applySpacing = (type, values) => {
       if (!values) return;
       Object.entries(values).forEach(([side, value]) => {
@@ -44,17 +43,6 @@
     applySpacing("margin", styles.margin);
     applySpacing("padding", styles.padding);
 
-    // Dimensions
-    if (styles.dimensions) {
-      if (styles.dimensions.width !== undefined) {
-        element.style.width = styles.dimensions.width;
-      }
-      if (styles.dimensions.height !== undefined) {
-        element.style.height = styles.dimensions.height;
-      }
-    }
-
-    // Border
     if (styles.border) {
       if (styles.border.width !== undefined) {
         element.style.borderWidth = styles.border.width;
@@ -68,12 +56,10 @@
       }
     }
 
-    // Background color
     if (styles.backgroundColor !== undefined) {
       element.style.backgroundColor = styles.backgroundColor;
     }
 
-    // Text styles
     if (styles.text) {
       const textProps = {
         fontSize: "fontSize",
@@ -107,10 +93,6 @@
           right: computedStyle.paddingRight,
           bottom: computedStyle.paddingBottom,
           left: computedStyle.paddingLeft,
-        },
-        dimensions: {
-          width: computedStyle.width,
-          height: computedStyle.height,
         },
         border: {
           width: computedStyle.borderWidth,

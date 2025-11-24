@@ -1,6 +1,9 @@
 (() => {
   /* ---------- helpers --------------------------------------------------- */
 
+  // Track text editing state globally
+  let textEditingState = new Map(); // componentId -> { originalText, currentText, cleanup }
+
   function findElementByDyadId(dyadId) {
     const escaped = CSS.escape(dyadId);
     const element = document.querySelector(`[data-dyad-id="${escaped}"]`);
@@ -73,6 +76,19 @@
     if (styles.backgroundColor !== undefined) {
       element.style.backgroundColor = styles.backgroundColor;
     }
+
+    // Apply text styles
+    if (styles.text) {
+      if (styles.text.fontSize !== undefined) {
+        element.style.fontSize = styles.text.fontSize;
+      }
+      if (styles.text.fontWeight !== undefined) {
+        element.style.fontWeight = styles.text.fontWeight;
+      }
+      if (styles.text.color !== undefined) {
+        element.style.color = styles.text.color;
+      }
+    }
   }
 
   /* ---------- message handlers ------------------------------------------ */
@@ -105,6 +121,11 @@
           color: computedStyle.borderColor,
         },
         backgroundColor: computedStyle.backgroundColor,
+        text: {
+          fontSize: computedStyle.fontSize,
+          fontWeight: computedStyle.fontWeight,
+          color: computedStyle.color,
+        },
       };
 
       window.parent.postMessage(
@@ -145,6 +166,8 @@
     const { componentId } = data;
     const element = findElementByDyadId(componentId);
     if (element) {
+      const originalText = element.innerText;
+
       element.contentEditable = "true";
       element.focus();
 
@@ -157,49 +180,81 @@
 
       // Send updates as user types
       const onInput = () => {
+        const currentText = element.innerText;
+
+        // Update tracked state
+        const state = textEditingState.get(componentId);
+        if (state) {
+          state.currentText = currentText;
+        }
+
         window.parent.postMessage(
           {
             type: "dyad-text-updated",
             componentId,
-            text: element.innerText,
-          },
-          "*",
-        );
-      };
-
-      // Add blur listener to disable contentEditable
-      const onBlur = () => {
-        element.contentEditable = "false";
-        element.removeEventListener("blur", onBlur);
-        element.removeEventListener("input", onInput);
-
-        // Send final updated text to parent
-        window.parent.postMessage(
-          {
-            type: "dyad-text-updated",
-            componentId,
-            text: element.innerText,
+            text: currentText,
           },
           "*",
         );
       };
 
       element.addEventListener("input", onInput);
-      element.addEventListener("blur", onBlur);
 
       // Prevent click from propagating to selector while editing
       const stopProp = (e) => e.stopPropagation();
       element.addEventListener("click", stopProp);
 
-      // Remove listener when editing is done (on blur)
-      element.addEventListener(
-        "blur",
-        () => {
-          element.removeEventListener("click", stopProp);
-        },
-        { once: true },
-      );
+      // Cleanup function
+      const cleanup = () => {
+        element.contentEditable = "false";
+        element.removeEventListener("input", onInput);
+        element.removeEventListener("click", stopProp);
+
+        // Send final text update
+        const finalText = element.innerText;
+        window.parent.postMessage(
+          {
+            type: "dyad-text-finalized",
+            componentId,
+            text: finalText,
+          },
+          "*",
+        );
+
+        textEditingState.delete(componentId);
+      };
+
+      // Store state
+      textEditingState.set(componentId, {
+        originalText,
+        currentText: originalText,
+        cleanup,
+      });
     }
+  }
+
+  function handleDisableTextEditing(data) {
+    const { componentId } = data;
+    const state = textEditingState.get(componentId);
+    if (state) {
+      state.cleanup();
+    }
+  }
+
+  function handleGetTextContent(data) {
+    const { componentId } = data;
+    const element = findElementByDyadId(componentId);
+    const state = textEditingState.get(componentId);
+
+    window.parent.postMessage(
+      {
+        type: "dyad-text-content-response",
+        componentId,
+        text: state ? state.currentText : element ? element.innerText : null,
+        isEditing: !!state,
+      },
+      "*",
+    );
   }
 
   /* ---------- message bridge -------------------------------------------- */
@@ -218,6 +273,12 @@
         break;
       case "enable-dyad-text-editing":
         handleEnableTextEditing(data);
+        break;
+      case "disable-dyad-text-editing":
+        handleDisableTextEditing(data);
+        break;
+      case "get-dyad-text-content":
+        handleGetTextContent(data);
         break;
     }
   });

@@ -27,6 +27,7 @@ export interface PendingStyleChange {
     dimensions?: { width?: string; height?: string };
     border?: { width?: string; radius?: string; color?: string };
     backgroundColor?: string;
+    text?: { fontSize?: string; fontWeight?: string; color?: string };
   };
   textContent?: string;
 }

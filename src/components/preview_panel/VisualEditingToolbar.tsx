@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, Move, Maximize2, Square, Palette, PencilLine } from "lucide-react";
+import { X, Move, Maximize2, Square, Palette, Type } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -52,6 +52,11 @@ export function VisualEditingToolbar({
   });
   const [currentBackgroundColor, setCurrentBackgroundColor] =
     useState("#ffffff");
+  const [currentTextStyles, setCurrentTextStyles] = useState({
+    fontSize: "",
+    fontWeight: "",
+    color: "#000000",
+  });
   const setPendingChanges = useSetAtom(pendingVisualChangesAtom);
   const setSelectedComponentsPreview = useSetAtom(
     selectedComponentsPreviewAtom,
@@ -91,6 +96,7 @@ export function VisualEditingToolbar({
     dimensions?: { width?: string; height?: string };
     border?: { width?: string; radius?: string; color?: string };
     backgroundColor?: string;
+    text?: { fontSize?: string; fontWeight?: string; color?: string };
   }) => {
     if (!iframeRef.current?.contentWindow || !selectedComponent) return;
 
@@ -136,6 +142,9 @@ export function VisualEditingToolbar({
       }
       if (styles.backgroundColor) {
         newStyles.backgroundColor = styles.backgroundColor;
+      }
+      if (styles.text) {
+        newStyles.text = { ...existing?.styles?.text, ...styles.text };
       }
 
       updated.set(selectedComponent.id, {
@@ -195,7 +204,7 @@ export function VisualEditingToolbar({
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === "dyad-component-styles") {
-        const { margin, padding, dimensions, border, backgroundColor } =
+        const { margin, padding, dimensions, border, backgroundColor, text } =
           event.data.data;
 
         // Convert individual sides to x/y axis values
@@ -229,6 +238,11 @@ export function VisualEditingToolbar({
         setCurrentBackgroundColor(
           convertRgbToHex(backgroundColor) || "#ffffff",
         );
+        setCurrentTextStyles({
+          fontSize: text?.fontSize || "",
+          fontWeight: text?.fontWeight || "",
+          color: convertRgbToHex(text?.color) || "#000000",
+        });
       }
     };
 
@@ -319,6 +333,25 @@ export function VisualEditingToolbar({
     setCurrentBackgroundColor(value);
     if (value) {
       sendStyleModification({ backgroundColor: value });
+    }
+  };
+
+  // Handle text style changes
+  const handleTextStyleChange = (
+    property: "fontSize" | "fontWeight" | "color",
+    value: string,
+  ) => {
+    setCurrentTextStyles((prev) => ({ ...prev, [property]: value }));
+
+    if (value) {
+      let processedValue = value;
+
+      // Add px to fontSize if it's just a number
+      if (property === "fontSize" && /^\d+$/.test(value)) {
+        processedValue = `${value}px`;
+      }
+
+      sendStyleModification({ text: { [property]: processedValue } });
     }
   };
 
@@ -698,39 +731,108 @@ export function VisualEditingToolbar({
               </div>
             </PopoverContent>
           </Popover>
-        </>
-      )}
 
-      {hasStaticText && (
-        <button
-          onClick={() => {
-            console.log("Edit Text clicked");
-            if (iframeRef.current?.contentWindow && selectedComponent) {
-              iframeRef.current.contentWindow.postMessage(
-                {
-                  type: "enable-dyad-text-editing",
-                  data: {
-                    componentId: selectedComponent.id,
-                  },
-                },
-                "*",
-              );
-            }
-          }}
-          className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-[#7f22fe] dark:text-gray-200"
-          title="Edit Text"
-        >
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <PencilLine size={16} />
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                <p>Edit Text</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </button>
+          {/* Text Styling Control - only show if component has static text */}
+          {hasStaticText && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <button className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-[#7f22fe] dark:text-gray-200">
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Type size={16} />
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">
+                        <p>Text Style</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </button>
+              </PopoverTrigger>
+              <PopoverContent side="bottom" className="w-64">
+                <div className="space-y-3">
+                  <h4
+                    className="font-medium text-sm"
+                    style={{ color: "#7f22fe" }}
+                  >
+                    Text Style
+                  </h4>
+                  <div className="space-y-2">
+                    <div>
+                      <Label htmlFor="font-size" className="text-xs">
+                        Font Size
+                      </Label>
+                      <Input
+                        id="font-size"
+                        type="number"
+                        placeholder="16"
+                        className="mt-1 h-8 text-xs"
+                        value={
+                          currentTextStyles.fontSize.replace(/[^\d.-]/g, "") ||
+                          ""
+                        }
+                        onChange={(e) =>
+                          handleTextStyleChange("fontSize", e.target.value)
+                        }
+                        step="1"
+                        min="0"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="font-weight" className="text-xs">
+                        Font Weight
+                      </Label>
+                      <select
+                        id="font-weight"
+                        className="mt-1 h-8 text-xs w-full rounded-md border border-input bg-background px-3 py-2"
+                        value={currentTextStyles.fontWeight}
+                        onChange={(e) =>
+                          handleTextStyleChange("fontWeight", e.target.value)
+                        }
+                      >
+                        <option value="">Default</option>
+                        <option value="100">Thin (100)</option>
+                        <option value="200">Extra Light (200)</option>
+                        <option value="300">Light (300)</option>
+                        <option value="400">Normal (400)</option>
+                        <option value="500">Medium (500)</option>
+                        <option value="600">Semi Bold (600)</option>
+                        <option value="700">Bold (700)</option>
+                        <option value="800">Extra Bold (800)</option>
+                        <option value="900">Black (900)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <Label htmlFor="text-color" className="text-xs">
+                        Text Color
+                      </Label>
+                      <div className="flex gap-2 mt-1">
+                        <Input
+                          id="text-color"
+                          type="color"
+                          className="h-8 w-12 p-1 cursor-pointer"
+                          value={currentTextStyles.color}
+                          onChange={(e) =>
+                            handleTextStyleChange("color", e.target.value)
+                          }
+                        />
+                        <Input
+                          type="text"
+                          placeholder="#000000"
+                          className="h-8 text-xs flex-1"
+                          value={currentTextStyles.color}
+                          onChange={(e) =>
+                            handleTextStyleChange("color", e.target.value)
+                          }
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
+        </>
       )}
     </div>
   );

@@ -21,6 +21,7 @@ interface StyleChange {
     dimensions?: Record<string, string>;
     border?: Record<string, string>;
     backgroundColor?: string;
+    text?: Record<string, string>;
   };
   textContent?: string;
 }
@@ -113,6 +114,16 @@ const stylesToTailwind = (styles: StyleChange["styles"]): string[] => {
   // Convert background color
   if (styles.backgroundColor !== undefined) {
     classes.push(`bg-[${styles.backgroundColor}]`);
+  }
+
+  // Convert text styles
+  if (styles.text) {
+    if (styles.text.fontSize !== undefined)
+      classes.push(`text-[${styles.text.fontSize}]`);
+    if (styles.text.fontWeight !== undefined)
+      classes.push(`font-[${styles.text.fontWeight}]`);
+    if (styles.text.color !== undefined)
+      classes.push(`[color:${styles.text.color}]`);
   }
 
   return classes;

@@ -205,6 +205,19 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       );
       setIsDynamicComponent(result.isDynamic);
       setHasStaticText(result.hasStaticText);
+
+      // Automatically enable text editing if component has static text
+      if (result.hasStaticText && iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage(
+          {
+            type: "enable-dyad-text-editing",
+            data: {
+              componentId: componentId,
+            },
+          },
+          "*",
+        );
+      }
     } catch (err) {
       console.error("Failed to analyze component", err);
       setIsDynamicComponent(false);
@@ -316,6 +329,11 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         return;
       }
 
+      if (event.data?.type === "dyad-text-finalized") {
+        handleTextUpdated(event.data);
+        return;
+      }
+
       if (event.data?.type === "dyad-component-selected") {
         console.log("Component picked:", event.data);
 
@@ -356,6 +374,17 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       if (event.data?.type === "dyad-component-deselected") {
         const componentId = event.data.componentId;
         if (componentId) {
+          // Disable text editing for the deselected component
+          if (iframeRef.current?.contentWindow) {
+            iframeRef.current.contentWindow.postMessage(
+              {
+                type: "disable-dyad-text-editing",
+                data: { componentId },
+              },
+              "*",
+            );
+          }
+
           setSelectedComponentsPreview((prev) =>
             prev.filter((c) => c.id !== componentId),
           );
@@ -871,6 +900,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               />
             )}
             <VisualEditingChangesDialog
+              iframeRef={iframeRef}
               onReset={() => {
                 // Exit component selection mode and visual editing
                 setSelectedComponentsPreview([]);

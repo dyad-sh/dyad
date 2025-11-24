@@ -32,23 +32,19 @@
       element,
     );
 
-    // Apply margin
-    if (styles.margin) {
-      Object.entries(styles.margin).forEach(([side, value]) => {
-        const cssProperty = `margin${side.charAt(0).toUpperCase() + side.slice(1)}`;
+    // Property mapping for spacing (margin/padding)
+    const applySpacing = (type, values) => {
+      if (!values) return;
+      Object.entries(values).forEach(([side, value]) => {
+        const cssProperty = `${type}${side.charAt(0).toUpperCase() + side.slice(1)}`;
         element.style[cssProperty] = value;
       });
-    }
+    };
 
-    // Apply padding
-    if (styles.padding) {
-      Object.entries(styles.padding).forEach(([side, value]) => {
-        const cssProperty = `padding${side.charAt(0).toUpperCase() + side.slice(1)}`;
-        element.style[cssProperty] = value;
-      });
-    }
+    applySpacing("margin", styles.margin);
+    applySpacing("padding", styles.padding);
 
-    // Apply dimensions
+    // Dimensions
     if (styles.dimensions) {
       if (styles.dimensions.width !== undefined) {
         element.style.width = styles.dimensions.width;
@@ -58,7 +54,7 @@
       }
     }
 
-    // Apply border
+    // Border
     if (styles.border) {
       if (styles.border.width !== undefined) {
         element.style.borderWidth = styles.border.width;
@@ -72,22 +68,23 @@
       }
     }
 
-    // Apply background color
+    // Background color
     if (styles.backgroundColor !== undefined) {
       element.style.backgroundColor = styles.backgroundColor;
     }
 
-    // Apply text styles
+    // Text styles
     if (styles.text) {
-      if (styles.text.fontSize !== undefined) {
-        element.style.fontSize = styles.text.fontSize;
-      }
-      if (styles.text.fontWeight !== undefined) {
-        element.style.fontWeight = styles.text.fontWeight;
-      }
-      if (styles.text.color !== undefined) {
-        element.style.color = styles.text.color;
-      }
+      const textProps = {
+        fontSize: "fontSize",
+        fontWeight: "fontWeight",
+        color: "color",
+      };
+      Object.entries(textProps).forEach(([key, cssProp]) => {
+        if (styles.text[key] !== undefined) {
+          element.style[cssProp] = styles.text[key];
+        }
+      });
     }
   }
 

@@ -143,6 +143,14 @@
 
   function handleEnableTextEditing(data) {
     const { componentId } = data;
+
+    // Clean up any existing text editing states first
+    textEditingState.forEach((state, existingId) => {
+      if (existingId !== componentId) {
+        state.cleanup();
+      }
+    });
+
     const element = findElementByDyadId(componentId);
     if (element) {
       const originalText = element.innerText;
@@ -258,6 +266,12 @@
         break;
       case "get-dyad-text-content":
         handleGetTextContent(data);
+        break;
+      case "cleanup-all-text-editing":
+        // Clean up all text editing states
+        textEditingState.forEach((state) => {
+          state.cleanup();
+        });
         break;
     }
   });

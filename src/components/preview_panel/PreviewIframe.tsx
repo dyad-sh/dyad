@@ -306,6 +306,11 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           { type: "deactivate-dyad-component-selector" },
           "*",
         );
+        // Clean up any text editing states
+        iframeRef.current.contentWindow.postMessage(
+          { type: "cleanup-all-text-editing" },
+          "*",
+        );
       }
       setIsPicking(false);
     }
@@ -521,7 +526,14 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const handleActivateComponentSelector = () => {
     if (iframeRef.current?.contentWindow) {
       const newIsPicking = !isPicking;
-      if (!newIsPicking) setVisualEditingSelectedComponent(null);
+      if (!newIsPicking) {
+        setVisualEditingSelectedComponent(null);
+        // Clean up any text editing states when deactivating
+        iframeRef.current.contentWindow.postMessage(
+          { type: "cleanup-all-text-editing" },
+          "*",
+        );
+      }
       setIsPicking(newIsPicking);
       iframeRef.current.contentWindow.postMessage(
         {

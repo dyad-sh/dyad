@@ -641,7 +641,7 @@ export function registerSuiHandlers() {
                 );
               }
             } catch (e) {
-              logger.warn("Could not parse JSON output from sui publish");
+              logger.warn("Could not parse JSON output from sui publish", e);
             }
 
             const formattedOutput = formatDeployOutput(

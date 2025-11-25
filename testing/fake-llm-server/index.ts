@@ -27,8 +27,8 @@ const PORT = 3500;
 // Helper function to create OpenAI-like streaming response chunks
 export function createStreamChunk(
   content: string,
-  role: string = "assistant",
-  isLast: boolean = false,
+  role = "assistant",
+  isLast = false,
   usage?: {
     prompt_tokens: number;
     completion_tokens: number;

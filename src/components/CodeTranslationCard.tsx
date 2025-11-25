@@ -10,7 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { ArrowRight, Upload, Loader2, Code2 } from "lucide-react";
+import { ArrowRight, Loader2, Code2 } from "lucide-react";
 import { FileAttachmentDropdown } from "@/components/chat/FileAttachmentDropdown";
 import { useAttachments } from "@/hooks/useAttachments";
 import { AttachmentsList } from "@/components/chat/AttachmentsList";

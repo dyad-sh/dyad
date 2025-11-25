@@ -1,9 +1,9 @@
 // @ts-ignore
-import openAiLogo from "../../assets/ai-logos/openai-logo.svg";
+
 // @ts-ignore
-import googleLogo from "../../assets/ai-logos/google-logo.svg";
+
 // @ts-ignore
-import anthropicLogo from "../../assets/ai-logos/anthropic-logo.svg";
+
 import { IpcClient } from "@/ipc/ipc_client";
 import { useState } from "react";
 import { KeyRound } from "lucide-react";

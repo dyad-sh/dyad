@@ -64,6 +64,7 @@
       const textProps = {
         fontSize: "fontSize",
         fontWeight: "fontWeight",
+        fontFamily: "fontFamily",
         color: "color",
       };
       Object.entries(textProps).forEach(([key, cssProp]) => {
@@ -103,6 +104,7 @@
         text: {
           fontSize: computedStyle.fontSize,
           fontWeight: computedStyle.fontWeight,
+          fontFamily: computedStyle.fontFamily,
           color: computedStyle.color,
         },
       };

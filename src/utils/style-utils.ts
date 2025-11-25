@@ -8,11 +8,17 @@ interface SpacingValues {
 }
 
 interface StyleObject {
-  margin?: Record<string, string>;
-  padding?: Record<string, string>;
-  border?: Record<string, string>;
+  margin?: { left?: string; right?: string; top?: string; bottom?: string };
+  padding?: { left?: string; right?: string; top?: string; bottom?: string };
+  dimensions?: { width?: string; height?: string };
+  border?: { width?: string; radius?: string; color?: string };
   backgroundColor?: string;
-  text?: Record<string, string>;
+  text?: {
+    fontSize?: string;
+    fontWeight?: string;
+    color?: string;
+    fontFamily?: string;
+  };
 }
 
 /**
@@ -85,6 +91,13 @@ export function stylesToTailwind(styles: StyleObject): string[] {
     classes.push(`bg-[${styles.backgroundColor}]`);
   }
 
+  if (styles.dimensions) {
+    if (styles.dimensions.width !== undefined)
+      classes.push(`w-[${styles.dimensions.width}]`);
+    if (styles.dimensions.height !== undefined)
+      classes.push(`h-[${styles.dimensions.height}]`);
+  }
+
   if (styles.text) {
     if (styles.text.fontSize !== undefined)
       classes.push(`text-[${styles.text.fontSize}]`);
@@ -92,6 +105,11 @@ export function stylesToTailwind(styles: StyleObject): string[] {
       classes.push(`font-[${styles.text.fontWeight}]`);
     if (styles.text.color !== undefined)
       classes.push(`[color:${styles.text.color}]`);
+    if (styles.text.fontFamily !== undefined) {
+      // Replace spaces with underscores for Tailwind arbitrary values
+      const fontFamilyValue = styles.text.fontFamily.replace(/\s/g, "_");
+      classes.push(`font-[${fontFamilyValue}]`);
+    }
   }
 
   return classes;
@@ -126,7 +144,26 @@ export function extractClassPrefixes(classes: string[]): string[] {
   return Array.from(
     new Set(
       classes.map((cls) => {
-        const match = cls.match(/^([a-z]+-)/);
+        // Handle arbitrary properties like [color:...]
+        const arbitraryMatch = cls.match(/^\[([a-z-]+):/);
+        if (arbitraryMatch) {
+          return `[${arbitraryMatch[1]}:`;
+        }
+
+        // Special handling for font-[...] classes
+        // We need to distinguish between font-weight and font-family
+        if (cls.startsWith("font-[")) {
+          const value = cls.match(/^font-\[([^\]]+)\]/);
+          if (value) {
+            // If it's numeric (like 400, 700), it's font-weight
+            // If it contains letters/underscores, it's font-family
+            const isNumeric = /^\d+$/.test(value[1]);
+            return isNumeric ? "font-weight-" : "font-family-";
+          }
+        }
+
+        // Handle regular Tailwind classes
+        const match = cls.match(/^([a-z]+[-])/);
         return match ? match[1] : cls.split("-")[0] + "-";
       }),
     ),

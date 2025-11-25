@@ -33,6 +33,28 @@ const FONT_WEIGHT_OPTIONS = [
   { value: "900", label: "Black (900)" },
 ] as const;
 
+const FONT_FAMILY_OPTIONS = [
+  { value: "", label: "Default" },
+  // Sans-serif (clean, modern)
+  { value: "Arial, sans-serif", label: "Arial" },
+  { value: "Inter, sans-serif", label: "Inter" },
+  { value: "Roboto, sans-serif", label: "Roboto" },
+  // Serif (traditional, elegant)
+  { value: "Georgia, serif", label: "Georgia" },
+  { value: "'Times New Roman', Times, serif", label: "Times New Roman" },
+  { value: "Merriweather, serif", label: "Merriweather" },
+  // Monospace (code, technical)
+  { value: "'Courier New', Courier, monospace", label: "Courier New" },
+  { value: "'Fira Code', monospace", label: "Fira Code" },
+  { value: "Consolas, monospace", label: "Consolas" },
+  // Display/Decorative (bold, distinctive)
+  { value: "Impact, fantasy", label: "Impact" },
+  { value: "'Bebas Neue', cursive", label: "Bebas Neue" },
+  // Cursive/Handwriting (casual, friendly)
+  { value: "'Comic Sans MS', cursive", label: "Comic Sans MS" },
+  { value: "'Brush Script MT', cursive", label: "Brush Script" },
+] as const;
+
 interface VisualEditingToolbarProps {
   selectedComponent: ComponentSelection | null;
   iframeRef: React.RefObject<HTMLIFrameElement | null>;
@@ -61,6 +83,7 @@ export function VisualEditingToolbar({
   const [currentTextStyles, setCurrentTextStyles] = useState({
     fontSize: "",
     fontWeight: "",
+    fontFamily: "",
     color: "#000000",
   });
   const setPendingChanges = useSetAtom(pendingVisualChangesAtom);
@@ -211,6 +234,7 @@ export function VisualEditingToolbar({
         setCurrentTextStyles({
           fontSize: text?.fontSize || "",
           fontWeight: text?.fontWeight || "",
+          fontFamily: text?.fontFamily || "",
           color: rgbToHex(text?.color) || "#000000",
         });
       }
@@ -269,7 +293,7 @@ export function VisualEditingToolbar({
   };
 
   const handleTextStyleChange = (
-    property: "fontSize" | "fontWeight" | "color",
+    property: "fontSize" | "fontWeight" | "fontFamily" | "color",
     value: string,
   ) => {
     setCurrentTextStyles((prev) => ({ ...prev, [property]: value }));
@@ -461,6 +485,25 @@ export function VisualEditingToolbar({
                     }
                   >
                     {FONT_WEIGHT_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <Label htmlFor="font-family" className="text-xs">
+                    Font Family
+                  </Label>
+                  <select
+                    id="font-family"
+                    className="mt-1 h-8 text-xs w-full rounded-md border border-input bg-background px-3 py-2"
+                    value={currentTextStyles.fontFamily}
+                    onChange={(e) =>
+                      handleTextStyleChange("fontFamily", e.target.value)
+                    }
+                  >
+                    {FONT_FAMILY_OPTIONS.map((opt) => (
                       <option key={opt.value} value={opt.value}>
                         {opt.label}
                       </option>

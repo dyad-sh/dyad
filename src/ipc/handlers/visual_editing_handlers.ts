@@ -20,11 +20,17 @@ interface StyleChange {
   lineNumber: number;
   appId: number;
   styles: {
-    margin?: Record<string, string>;
-    padding?: Record<string, string>;
-    border?: Record<string, string>;
+    margin?: { left?: string; right?: string; top?: string; bottom?: string };
+    padding?: { left?: string; right?: string; top?: string; bottom?: string };
+    dimensions?: { width?: string; height?: string };
+    border?: { width?: string; radius?: string; color?: string };
     backgroundColor?: string;
-    text?: Record<string, string>;
+    text?: {
+      fontSize?: string;
+      fontWeight?: string;
+      color?: string;
+      fontFamily?: string;
+    };
   };
   textContent?: string;
 }
@@ -109,11 +115,33 @@ export function registerVisualEditingHandlers() {
                     }
 
                     // Filter out classes with matching prefixes
+                    const shouldRemoveClass = (
+                      cls: string,
+                      prefixes: string[],
+                    ) => {
+                      return prefixes.some((prefix) => {
+                        // Handle font-weight vs font-family distinction
+                        if (prefix === "font-weight-") {
+                          // Remove font-[numeric] classes
+                          const match = cls.match(/^font-\[(\d+)\]$/);
+                          return match !== null;
+                        } else if (prefix === "font-family-") {
+                          // Remove font-[non-numeric] classes
+                          const match = cls.match(/^font-\[([^\]]+)\]$/);
+                          if (match) {
+                            // Check if it's NOT purely numeric (i.e., it's a font-family)
+                            return !/^\d+$/.test(match[1]);
+                          }
+                          return false;
+                        } else {
+                          // For other prefixes, use simple startsWith
+                          return cls.startsWith(prefix);
+                        }
+                      });
+                    };
+
                     const filteredClasses = existingClasses.filter(
-                      (cls) =>
-                        !change.prefixes.some((prefix) =>
-                          cls.startsWith(prefix),
-                        ),
+                      (cls) => !shouldRemoveClass(cls, change.prefixes),
                     );
 
                     // Combine filtered and new classes

@@ -275,7 +275,7 @@ export default function AppDetailsPage() {
         Back
       </Button>
 
-      <div className="w-full max-w-2xl mx-auto mt-10 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm relative">
+      <div className="w-full max-w-2xl mx-auto mt-10 p-4 bg-white dark:bg-card/30 backdrop-blur-sm rounded-lg border border-gray-200 dark:border-border shadow-sm dark:shadow-[0_0_0_1px_rgba(107,79,187,0.1),0_2px_12px_rgba(0,0,0,0.4)] relative">
         <div className="flex items-center mb-3">
           <h2 className="text-2xl font-bold">{selectedApp.name}</h2>
           <Button
@@ -389,7 +389,7 @@ export default function AppDetailsPage() {
             Open in Chat
             <MessageCircle className="h-4 w-4" />
           </Button>
-          <div className="border border-gray-200 rounded-md p-4">
+          <div className="border border-gray-200 dark:border-border rounded-md p-4 dark:bg-card/20 dark:backdrop-blur-sm">
             <GitHubConnector appId={appId} folderName={selectedApp.path} />
           </div>
           {appId && <SupabaseConnector appId={appId} />}

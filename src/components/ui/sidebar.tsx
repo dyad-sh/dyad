@@ -455,13 +455,13 @@ const sidebarMenuButtonVariants = cva(
   // • Changed flex direction to column and centered items.
   // • Enforced a fixed width (w-20) for consistent space.
   // • Removed text-left and gap changes to ensure the text label appears below the icon.
-  "peer/menu-button flex flex-col items-center gap-1 w-16 overflow-hidden p-2 text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground [&>svg]:size-4 [&>svg]:shrink-0 [&>span]:mt-1",
+  "peer/menu-button flex flex-col items-center gap-1 w-16 overflow-hidden p-2 text-sm outline-hidden ring-sidebar-ring transition-all duration-200 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground dark:hover:bg-primary/10 dark:data-[active=true]:bg-primary/20 dark:data-[active=true]:border-l-2 dark:data-[active=true]:border-primary [&>svg]:size-4 [&>svg]:shrink-0 [&>span]:mt-1",
   {
     variants: {
       variant: {
-        default: "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+        default: "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground dark:hover:shadow-[inset_0_0_12px_rgba(107,79,187,0.05)]",
         outline:
-          "bg-background shadow-[0_0_0_1px_hsl(var(--sidebar-border))] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:shadow-[0_0_0_1px_hsl(var(--sidebar-accent))]",
+          "bg-background shadow-[0_0_0_1px_hsl(var(--sidebar-border))] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:shadow-[0_0_0_1px_hsl(var(--sidebar-accent))] dark:shadow-[0_0_0_1px_rgba(107,79,187,0.2)] dark:hover:shadow-[0_0_12px_rgba(107,79,187,0.3)]",
       },
       size: {
         default: "h-8 text-sm",

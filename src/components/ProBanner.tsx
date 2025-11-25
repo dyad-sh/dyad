@@ -74,7 +74,7 @@ export function SetupDyadProButton() {
       }}
     >
       <KeyRound aria-hidden="true" />
-      Already have Dyad Pro? Add your key
+      Already have Shinso Pro? Add your key
     </Button>
   );
 }
@@ -105,7 +105,7 @@ export function AiAccessBanner() {
           <button
             type="button"
             aria-label="Subscribe to Shinso pro"
-            className="inline-flex items-center rounded-md bg-white/90 text-indigo-800 hover:bg-white shadow px-3 py-1.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-white/50"
+            className="inline-flex items-center rounded-md bg-white/90 text-primary hover:bg-accent hover:text-background shadow px-3 py-1.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-accent/50 transition-all duration-200 hover:shadow-lg hover:shadow-accent/25"
           >
             Get Shinsō Pro
           </button>
@@ -148,7 +148,7 @@ export function AiAccessBanner() {
 export function SmartContextBanner() {
   return (
     <div
-      className="w-full py-2 sm:py-2.5 md:py-3 rounded-lg bg-gradient-to-br from-emerald-50 via-emerald-100 to-emerald-200 dark:from-emerald-700 dark:via-emerald-700 dark:to-emerald-900 flex items-center justify-center relative overflow-hidden ring-1 ring-inset ring-emerald-900/10 dark:ring-white/10 shadow-sm cursor-pointer transition-all duration-200 hover:shadow-md hover:-translate-y-[1px]"
+      className="w-full py-2 sm:py-2.5 md:py-3 rounded-lg bg-gradient-to-br from-purple-50 via-purple-100 to-indigo-200 dark:from-primary/40 dark:via-primary/50 dark:to-primary/60 flex items-center justify-center relative overflow-hidden ring-1 ring-inset ring-primary/10 dark:ring-white/10 shadow-sm cursor-pointer transition-all duration-200 hover:shadow-md hover:-translate-y-[1px]"
       onClick={() => {
         IpcClient.getInstance().openExternalUrl(
           "https://www.dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=in-app-banner-smart-context",
@@ -160,23 +160,23 @@ export function SmartContextBanner() {
         aria-hidden="true"
       />
       <div className="absolute inset-0 z-0 pointer-events-none dark:hidden">
-        <div className="absolute -top-10 -left-8 h-44 w-44 rounded-full blur-2xl bg-emerald-200/50" />
-        <div className="absolute -bottom-12 -right-8 h-56 w-56 rounded-full blur-3xl bg-teal-200/50" />
+        <div className="absolute -top-10 -left-8 h-44 w-44 rounded-full blur-2xl bg-purple-200/50" />
+        <div className="absolute -bottom-12 -right-8 h-56 w-56 rounded-full blur-3xl bg-indigo-200/50" />
       </div>
       <div className="relative z-10 px-4 md:px-6 pr-6 md:pr-8">
         <div className="mt-0.5 sm:mt-1 flex items-center gap-2 sm:gap-3 justify-center">
           <div className="flex flex-col items-center text-center">
-            <div className="text-xl font-semibold tracking-tight text-emerald-900 dark:text-emerald-100">
+            <div className="text-xl font-semibold tracking-tight text-primary dark:text-purple-100">
               Up to 5x cheaper
             </div>
-            <div className="text-sm sm:text-base mt-1 text-emerald-700 dark:text-emerald-200/80">
+            <div className="text-sm sm:text-base mt-1 text-primary/80 dark:text-purple-200/80">
               by using Smart Context
             </div>
           </div>
           <button
             type="button"
             aria-label="Get Shinso pro"
-            className="inline-flex items-center rounded-md bg-white/90 text-emerald-800 hover:bg-white shadow px-3 py-1.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-white/50"
+            className="inline-flex items-center rounded-md bg-white/90 text-primary hover:bg-secondary/50 hover:text-foreground hover:border-secondary/50 shadow px-3 py-1.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-accent/50 transition-all duration-200 hover:shadow-lg hover:shadow-accent/25"
           >
             Get Shinso pro
           </button>
@@ -217,7 +217,7 @@ export function TurboBanner() {
           <button
             type="button"
             aria-label="Get Shinso pro"
-            className="inline-flex items-center rounded-md bg-white/90 text-rose-800 hover:bg-white shadow px-3 py-1.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-white/50"
+            className="inline-flex items-center rounded-md bg-white/90 text-primary hover:bg-accent hover:text-background shadow px-3 py-1.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-accent/50 transition-all duration-200 hover:shadow-lg hover:shadow-accent/25"
           >
             Get Shinso pro
           </button>

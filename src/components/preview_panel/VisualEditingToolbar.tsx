@@ -352,14 +352,14 @@ export function VisualEditingToolbar({
             <div className="grid grid-cols-1 gap-2">
               <NumberInput
                 id="margin-x"
-                label="Horizontal (X)"
+                label="Horizontal"
                 value={currentMargin.x}
                 onChange={(v) => handleSpacingChange("margin", "x", v)}
                 placeholder="10"
               />
               <NumberInput
                 id="margin-y"
-                label="Vertical (Y)"
+                label="Vertical"
                 value={currentMargin.y}
                 onChange={(v) => handleSpacingChange("margin", "y", v)}
                 placeholder="10"
@@ -389,14 +389,14 @@ export function VisualEditingToolbar({
             <div className="grid grid-cols-1 gap-2">
               <NumberInput
                 id="padding-x"
-                label="Horizontal (X)"
+                label="Horizontal"
                 value={currentPadding.x}
                 onChange={(v) => handleSpacingChange("padding", "x", v)}
                 placeholder="10"
               />
               <NumberInput
                 id="padding-y"
-                label="Vertical (Y)"
+                label="Vertical"
                 value={currentPadding.y}
                 onChange={(v) => handleSpacingChange("padding", "y", v)}
                 placeholder="10"

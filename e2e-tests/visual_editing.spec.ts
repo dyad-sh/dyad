@@ -25,11 +25,11 @@ testSkipIfWindows("edit style of one selected component", async ({ po }) => {
   await po.page.getByRole("button", { name: "Margin" }).click();
 
   // Edit margin - set horizontal margin
-  const marginXInput = po.page.getByLabel("Horizontal (X)");
+  const marginXInput = po.page.getByLabel("Horizontal");
   await marginXInput.fill("20");
 
   // Edit margin - set vertical margin
-  const marginYInput = po.page.getByLabel("Vertical (Y)");
+  const marginYInput = po.page.getByLabel("Vertical");
   await marginYInput.fill("10");
 
   // Close the popover by clicking outside or pressing escape
@@ -77,10 +77,10 @@ testSkipIfWindows(
     await po.page.getByRole("button", { name: "Margin" }).click();
 
     // Edit margin for the first component
-    const marginXInput = po.page.getByLabel("Horizontal (X)");
+    const marginXInput = po.page.getByLabel("Horizontal");
     await marginXInput.fill("15");
 
-    const marginYInput = po.page.getByLabel("Vertical (Y)");
+    const marginYInput = po.page.getByLabel("Vertical");
     await marginYInput.fill("15");
 
     // Close the popover
@@ -103,10 +103,10 @@ testSkipIfWindows(
     await po.page.getByRole("button", { name: "Margin" }).click();
 
     // Edit margin for second component
-    const marginXInput2 = po.page.getByLabel("Horizontal (X)");
+    const marginXInput2 = po.page.getByLabel("Horizontal");
     await marginXInput2.fill("25");
 
-    const marginYInput2 = po.page.getByLabel("Vertical (Y)");
+    const marginYInput2 = po.page.getByLabel("Vertical");
     await marginYInput2.fill("25");
 
     // Close the popover
@@ -158,14 +158,13 @@ testSkipIfWindows("edit text of the selected component", async ({ po }) => {
     name: "Welcome to Your Blank App",
   });
 
-  // Double-click to enable editing (or click if contentEditable is already set)
   await heading.dblclick();
 
   // Wait a bit for contentEditable to be enabled
   await po.page.waitForTimeout(300);
 
   // Clear the existing text and type new text
-  await heading.press("Control+A");
+  await heading.press("Meta+A");
   await heading.type("Hello from E2E Test");
 
   // Click outside to finish editing
@@ -216,10 +215,10 @@ testSkipIfWindows("discard changes", async ({ po }) => {
   await po.page.getByRole("button", { name: "Margin" }).click();
 
   // Edit margin
-  const marginXInput = po.page.getByLabel("Horizontal (X)");
+  const marginXInput = po.page.getByLabel("Horizontal");
   await marginXInput.fill("30");
 
-  const marginYInput = po.page.getByLabel("Vertical (Y)");
+  const marginYInput = po.page.getByLabel("Vertical");
   await marginYInput.fill("30");
 
   // Close the popover

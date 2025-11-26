@@ -293,6 +293,16 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   //detect if the user is using Mac
   const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
 
+  // Reset visual editing state when app changes or component unmounts
+  useEffect(() => {
+    return () => {
+      // Cleanup on unmount or when app changes
+      setVisualEditingSelectedComponent(null);
+      setPendingChanges(new Map());
+      setCurrentComponentCoordinates(null);
+    };
+  }, [selectedAppId]);
+
   // Update iframe ref atom
   useEffect(() => {
     setPreviewIframeRef(iframeRef.current);
@@ -597,6 +607,10 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const handleReload = () => {
     setReloadKey((prevKey) => prevKey + 1);
     setErrorMessage(undefined);
+    // Reset visual editing state
+    setVisualEditingSelectedComponent(null);
+    setPendingChanges(new Map());
+    setCurrentComponentCoordinates(null);
     // Optionally, add logic here if you need to explicitly stop/start the app again
     // For now, just changing the key should remount the iframe
     console.debug("Reloading iframe preview for app", selectedAppId);

@@ -29,7 +29,10 @@ export function StylePopover({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-[#7f22fe] dark:text-gray-200">
+        <button
+          className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-[#7f22fe] dark:text-gray-200"
+          aria-label={tooltip}
+        >
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>{icon}</TooltipTrigger>

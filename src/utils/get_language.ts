@@ -21,6 +21,10 @@ const getLanguage = (filePath: string) => {
     php: "php",
     swift: "swift",
     kt: "kotlin",
+    // Blockchain languages
+    move: "move", // Sui Move
+    sol: "sol", // Solidity (Monaco built-in)
+    toml: "toml", // Move.toml files
     // Add more as needed
   };
 

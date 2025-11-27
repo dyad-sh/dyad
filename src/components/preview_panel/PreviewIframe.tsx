@@ -23,6 +23,7 @@ import {
   Monitor,
   Tablet,
   Smartphone,
+  Pen,
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
@@ -38,6 +39,8 @@ import { useStreamChat } from "@/hooks/useStreamChat";
 import {
   selectedComponentsPreviewAtom,
   previewIframeRefAtom,
+  annotatorModeAtom,
+  screenshotDataUrlAtom,
 } from "@/atoms/previewAtoms";
 import { ComponentSelection } from "@/ipc/ipc_types";
 import {
@@ -56,6 +59,9 @@ import { useRunApp } from "@/hooks/useRunApp";
 import { useShortcut } from "@/hooks/useShortcut";
 import { cn } from "@/lib/utils";
 import { normalizePath } from "../../../shared/normalizePath";
+import { showError } from "@/lib/toast";
+import { Annotator } from "./Annotator";
+import { useAttachments } from "@/hooks/useAttachments";
 
 interface ErrorBannerProps {
   error: { message: string; source: "preview-app" | "dyad-app" } | undefined;
@@ -179,6 +185,12 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const setPreviewIframeRef = useSetAtom(previewIframeRefAtom);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isPicking, setIsPicking] = useState(false);
+  const [annotatorMode, setAnnotatorMode] = useAtom(annotatorModeAtom);
+  const [screenshotDataUrl, setScreenshotDataUrl] = useAtom(
+    screenshotDataUrlAtom,
+  );
+
+  const { addAttachments } = useAttachments();
 
   // Device mode state
   type DeviceMode = "desktop" | "tablet" | "mobile";
@@ -194,6 +206,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   //detect if the user is using Mac
   const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
 
+  useEffect(() => {
+    setAnnotatorMode(false);
+  }, []);
   // Update iframe ref atom
   useEffect(() => {
     setPreviewIframeRef(iframeRef.current);
@@ -257,6 +272,16 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           setSelectedComponentsPreview((prev) =>
             prev.filter((c) => c.id !== componentId),
           );
+        }
+        return;
+      }
+
+      if (event.data?.type === "dyad-screenshot-response") {
+        if (event.data.success && event.data.dataUrl) {
+          setScreenshotDataUrl(event.data.dataUrl);
+          setAnnotatorMode(true);
+        } else {
+          showError("Failed to capture screenshot");
         }
         return;
       }
@@ -374,6 +399,22 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           type: newIsPicking
             ? "activate-dyad-component-selector"
             : "deactivate-dyad-component-selector",
+        },
+        "*",
+      );
+    }
+  };
+
+  // Function to handle annotator button click
+  const handleAnnotatorClick = () => {
+    if (annotatorMode) {
+      setAnnotatorMode(false);
+      return;
+    }
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage(
+        {
+          type: "dyad-take-screenshot",
         },
         "*",
       );
@@ -522,6 +563,31 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                     : "Select component"}
                 </p>
                 <p>{isMac ? "⌘ + ⇧ + C" : "Ctrl + ⇧ + C"}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={handleAnnotatorClick}
+                  className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
+                    annotatorMode
+                      ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
+                      : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
+                  }`}
+                  disabled={loading || !selectedAppId || isPicking}
+                  data-testid="preview-annotator-button"
+                >
+                  <Pen size={16} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>
+                  {annotatorMode
+                    ? "Annotator mode active"
+                    : "Activate annotator"}
+                </p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -717,24 +783,41 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               deviceMode !== "desktop" && "flex justify-center",
             )}
           >
-            <iframe
-              sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-downloads"
-              data-testid="preview-iframe-element"
-              onLoad={() => {
-                setErrorMessage(undefined);
-              }}
-              ref={iframeRef}
-              key={reloadKey}
-              title={`Preview for App ${selectedAppId}`}
-              className="w-full h-full border-none bg-white dark:bg-gray-950"
-              style={
-                deviceMode == "desktop"
-                  ? {}
-                  : { width: `${deviceWidthConfig[deviceMode]}px` }
-              }
-              src={appUrl}
-              allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
-            />
+            {annotatorMode && screenshotDataUrl ? (
+              <div
+                className="w-full h-full bg-white dark:bg-gray-950"
+                style={
+                  deviceMode == "desktop"
+                    ? {}
+                    : { width: `${deviceWidthConfig[deviceMode]}px` }
+                }
+              >
+                <Annotator
+                  screenshotUrl={screenshotDataUrl}
+                  onSubmit={addAttachments}
+                  handleAnnotatorClick={handleAnnotatorClick}
+                />
+              </div>
+            ) : (
+              <iframe
+                sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-downloads"
+                data-testid="preview-iframe-element"
+                onLoad={() => {
+                  setErrorMessage(undefined);
+                }}
+                ref={iframeRef}
+                key={reloadKey}
+                title={`Preview for App ${selectedAppId}`}
+                className="w-full h-full border-none bg-white dark:bg-gray-950"
+                style={
+                  deviceMode == "desktop"
+                    ? {}
+                    : { width: `${deviceWidthConfig[deviceMode]}px` }
+                }
+                src={appUrl}
+                allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
+              />
+            )}
           </div>
         )}
       </div>

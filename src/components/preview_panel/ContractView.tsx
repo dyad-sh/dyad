@@ -20,6 +20,13 @@ import {
   FlaskConical,
   Zap,
 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { IpcClient } from "@/ipc/ipc_client";
 import { useStreamChat } from "@/hooks/useStreamChat";
@@ -40,6 +47,29 @@ export interface ContractViewProps {
 type CompileStatus = "idle" | "compiling" | "success" | "error";
 type DeployStatus = "idle" | "deploying" | "success" | "error";
 type TestStatus = "idle" | "testing" | "success" | "error";
+type BlockchainType = "sui" | "solana" | "unknown";
+
+/**
+ * Detect blockchain type based on project files
+ */
+function detectBlockchainType(files: string[] | undefined): BlockchainType {
+  if (!files) return "unknown";
+
+  const hasAnchorToml = files.some((f) => f.includes("Anchor.toml"));
+  const hasCargoToml = files.some((f) => f.includes("Cargo.toml") && f.includes("programs/"));
+  const hasMoveToml = files.some((f) => f.includes("Move.toml"));
+  const hasMoveFiles = files.some((f) => f.endsWith(".move"));
+
+  if (hasAnchorToml || hasCargoToml) {
+    return "solana";
+  }
+
+  if (hasMoveToml || hasMoveFiles) {
+    return "sui";
+  }
+
+  return "unknown";
+}
 
 export const ContractView = ({ loading, app }: ContractViewProps) => {
   const selectedFile = useAtomValue(selectedFileAtom);
@@ -65,32 +95,46 @@ export const ContractView = ({ loading, app }: ContractViewProps) => {
   const [deployedPackageId, setDeployedPackageId] = useState<string | null>(
     null,
   );
+  const [network, setNetwork] = useState<string>("devnet");
 
-  // Get Sui address on mount
+  // Detect blockchain type
+  const blockchainType = detectBlockchainType(app?.files);
+
+  // Get wallet address on mount
   useEffect(() => {
-    const loadSuiAddress = async () => {
+    const loadWalletAddress = async () => {
       try {
-        const result = await IpcClient.getInstance().getSuiAddress();
-        setSuiAddress(result.address);
+        let result;
+        if (blockchainType === "sui") {
+          result = await IpcClient.getInstance().getSuiAddress();
+        } else if (blockchainType === "solana") {
+          result = await IpcClient.getInstance().getSolanaAddress();
+        }
+        setSuiAddress(result?.address || null);
       } catch (error) {
-        console.error("Failed to get Sui address:", error);
+        console.error("Failed to get wallet address:", error);
       }
     };
-    loadSuiAddress();
-  }, []);
+    loadWalletAddress();
+  }, [blockchainType]);
 
-  // Auto-select the first .move file when app loads or files change
+  // Auto-select the first contract file when app loads or files change
   useEffect(() => {
     if (!app?.files || loading) return;
 
-    const moveFiles = app.files.filter((f) => f.endsWith(".move"));
-
-    // If there are Move files and no file is currently selected, select the first one
-    if (moveFiles.length > 0 && !selectedFile) {
-      setSelectedFile({ path: moveFiles[0] });
-      console.log("Auto-selected Move file:", moveFiles[0]);
+    let contractFiles: string[] = [];
+    if (blockchainType === "sui") {
+      contractFiles = app.files.filter((f) => f.endsWith(".move"));
+    } else if (blockchainType === "solana") {
+      contractFiles = app.files.filter((f) => f.endsWith(".rs") && f.includes("/src/"));
     }
-  }, [app?.files, loading, selectedFile, setSelectedFile]);
+
+    // If there are contract files and no file is currently selected, select the first one
+    if (contractFiles.length > 0 && !selectedFile) {
+      setSelectedFile({ path: contractFiles[0] });
+      console.log("Auto-selected contract file:", contractFiles[0]);
+    }
+  }, [app?.files, loading, selectedFile, setSelectedFile, blockchainType]);
 
   const handleCompile = async () => {
     if (!app?.path) return;
@@ -100,7 +144,14 @@ export const ContractView = ({ loading, app }: ContractViewProps) => {
     setRawCompileError("");
 
     try {
-      const result = await IpcClient.getInstance().suiCompile(app.path);
+      let result;
+      if (blockchainType === "sui") {
+        result = await IpcClient.getInstance().suiCompile(app.path);
+      } else if (blockchainType === "solana") {
+        result = await IpcClient.getInstance().solanaCompile(app.path);
+      } else {
+        throw new Error("Unknown blockchain type");
+      }
 
       if (result.success) {
         setCompileStatus("success");
@@ -126,7 +177,10 @@ export const ContractView = ({ loading, app }: ContractViewProps) => {
   const handleFixErrors = () => {
     if (!selectedChatId || !rawCompileError) return;
 
-    const fixPrompt = `The Move smart contract failed to compile with the following errors:
+    const chainName = blockchainType === "sui" ? "Sui Move" : blockchainType === "solana" ? "Solana/Anchor" : "smart contract";
+    const configFile = blockchainType === "sui" ? "Move.toml" : blockchainType === "solana" ? "Cargo.toml/Anchor.toml" : "config";
+
+    const fixPrompt = `The ${chainName} smart contract failed to compile with the following errors:
 
 \`\`\`
 ${rawCompileError}
@@ -134,9 +188,9 @@ ${rawCompileError}
 
 Please fix these compilation errors in the contract. Make sure to:
 1. Address all the error messages shown above
-2. Update the Move.toml file if needed (e.g., add missing dependencies)
+2. Update the ${configFile} file if needed (e.g., add missing dependencies)
 3. Fix any syntax errors, type mismatches, or missing imports
-4. Ensure the code follows Sui Move 2024 edition standards
+4. Ensure the code follows best practices for ${chainName}
 5. Maintain the original functionality while fixing the errors
 
 Make only the code changes and give no further tips and actions, only a brief summary.`;
@@ -179,28 +233,39 @@ Make only the code changes and give no further tips and actions, only a brief su
     setDeployOutput("");
 
     try {
-      const result = await IpcClient.getInstance().suiDeploy({
-        appPath: app.path,
-      });
+      let result;
+      if (blockchainType === "sui") {
+        result = await IpcClient.getInstance().suiDeploy({
+          appPath: app.path,
+        });
+      } else if (blockchainType === "solana") {
+        result = await IpcClient.getInstance().solanaDeploy({
+          appPath: app.path,
+          network: network as "localnet" | "devnet" | "testnet" | "mainnet-beta",
+        });
+      } else {
+        throw new Error("Unknown blockchain type");
+      }
 
       if (result.success) {
         setDeployStatus("success");
         setDeployOutput(result.output);
 
         // Save deployment info to database
-        if (result.packageId && app.id) {
-          setDeployedPackageId(result.packageId);
+        const deployedAddr =
+          blockchainType === "sui"
+            ? (result as any).packageId
+            : (result as any).programId;
+
+        if (deployedAddr && app.id) {
+          setDeployedPackageId(deployedAddr);
           try {
             await IpcClient.getInstance().saveContractDeployment({
               appId: app.id,
-              chain: "sui",
-              address: result.packageId,
-              network: "testnet", // TODO: Make this dynamic based on sui config
-              deploymentData: {
-                transactionDigest: result.transactionDigest,
-                packageId: result.packageId,
-                createdObjects: result.createdObjects || [],
-              },
+              chain: blockchainType,
+              address: deployedAddr,
+              network: blockchainType === "sui" ? "testnet" : network,
+              deploymentData: result,
             });
           } catch (saveError) {
             console.error("Failed to save deployment info:", saveError);
@@ -208,7 +273,7 @@ Make only the code changes and give no further tips and actions, only a brief su
         }
       } else {
         setDeployStatus("error");
-        setDeployOutput(result.error || result.output);
+        setDeployOutput((result as any).error || result.output);
       }
     } catch (error) {
       setDeployStatus("error");
@@ -224,7 +289,14 @@ Make only the code changes and give no further tips and actions, only a brief su
     setRawTestError("");
 
     try {
-      const result = await IpcClient.getInstance().suiTest(app.path);
+      let result;
+      if (blockchainType === "sui") {
+        result = await IpcClient.getInstance().suiTest(app.path);
+      } else if (blockchainType === "solana") {
+        result = await IpcClient.getInstance().solanaTest(app.path);
+      } else {
+        throw new Error("Unknown blockchain type");
+      }
 
       if (result.success) {
         setTestStatus("success");
@@ -265,8 +337,18 @@ Make only the code changes and give no further tips and actions, only a brief su
     );
   }
 
-  // Find Move files
-  const moveFiles = app.files?.filter((f) => f.endsWith(".move")) || [];
+  // Find contract files based on blockchain type
+  const contractFiles =
+    blockchainType === "sui"
+      ? app.files?.filter((f) => f.endsWith(".move")) || []
+      : blockchainType === "solana"
+        ? app.files?.filter(
+            (f) =>
+              f.endsWith(".rs") &&
+              (f.includes("/programs/") || f.includes("/src/")) &&
+              f.endsWith("lib.rs")
+          ) || []
+        : [];
 
   return (
     <div className="flex flex-col h-full bg-background">
@@ -275,17 +357,54 @@ Make only the code changes and give no further tips and actions, only a brief su
         <div className="flex items-center gap-2">
           <FileCode className="w-4 h-4 text-primary" />
           <span className="text-sm font-medium">Smart Contract</span>
+          {blockchainType === "sui" && (
+            <span className="text-xs px-2 py-1 rounded-md bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 font-medium">
+              🌊 Sui Move
+            </span>
+          )}
+          {blockchainType === "solana" && (
+            <span className="text-xs px-2 py-1 rounded-md bg-purple-100 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400 font-medium">
+              ◎ Solana
+            </span>
+          )}
           <span className="text-xs text-muted-foreground">
-            {moveFiles.length} Move file{moveFiles.length !== 1 ? "s" : ""}
+            {contractFiles.length}{" "}
+            {blockchainType === "sui"
+              ? "Move"
+              : blockchainType === "solana"
+                ? "Rust"
+                : "contract"}{" "}
+            file{contractFiles.length !== 1 ? "s" : ""}
           </span>
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Network selector for Solana */}
+          {blockchainType === "solana" && (
+            <Select value={network} onValueChange={setNetwork}>
+              <SelectTrigger className="w-32 h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="localnet">Localnet</SelectItem>
+                <SelectItem value="devnet">Devnet</SelectItem>
+                <SelectItem value="testnet">Testnet</SelectItem>
+                <SelectItem value="mainnet-beta">Mainnet</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+
           <Button
             onClick={() => setShowSetup(!showSetup)}
             variant={showSetup ? "default" : "ghost"}
             size="sm"
-            title="Sui Deployment Setup"
+            title={
+              blockchainType === "sui"
+                ? "Sui Deployment Setup"
+                : blockchainType === "solana"
+                  ? "Solana Wallet Setup"
+                  : "Deployment Setup"
+            }
           >
             <Settings className="w-4 h-4" />
           </Button>
@@ -304,7 +423,9 @@ Make only the code changes and give no further tips and actions, only a brief su
             onClick={handleCompile}
             variant="outline"
             size="sm"
-            disabled={compileStatus === "compiling" || moveFiles.length === 0}
+            disabled={
+              compileStatus === "compiling" || contractFiles.length === 0
+            }
             className="gap-2"
           >
             {compileStatus === "compiling" ? (
@@ -353,7 +474,7 @@ Make only the code changes and give no further tips and actions, only a brief su
             onClick={handleTest}
             variant="outline"
             size="sm"
-            disabled={testStatus === "testing" || moveFiles.length === 0}
+            disabled={testStatus === "testing" || contractFiles.length === 0}
             className="gap-2"
           >
             {testStatus === "testing" ? (
@@ -427,7 +548,11 @@ Make only the code changes and give no further tips and actions, only a brief su
             ) : (
               <>
                 <Rocket className="w-4 h-4" />
-                Deploy to Sui
+                {blockchainType === "sui"
+                  ? "Deploy to Sui"
+                  : blockchainType === "solana"
+                    ? "Deploy to Solana"
+                    : "Deploy"}
               </>
             )}
           </Button>
@@ -447,10 +572,10 @@ Make only the code changes and give no further tips and actions, only a brief su
         </div>
       </div>
 
-      {/* Sui Setup Panel */}
+      {/* Wallet Setup Panel */}
       {showSetup && (
         <div className="border-b p-4 bg-muted/30">
-          <SuiSetup suiAddress={suiAddress} />
+          <SuiSetup suiAddress={suiAddress} blockchainType={blockchainType} />
         </div>
       )}
 
@@ -470,7 +595,15 @@ Make only the code changes and give no further tips and actions, only a brief su
               <div className="flex items-center justify-center h-full text-gray-500">
                 <div className="text-center">
                   <FileCode className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                  <p>Select a Move file to view</p>
+                  <p>
+                    Select a{" "}
+                    {blockchainType === "sui"
+                      ? "Move"
+                      : blockchainType === "solana"
+                        ? "Rust"
+                        : "contract"}{" "}
+                    file to view
+                  </p>
                 </div>
               </div>
             )}
@@ -501,11 +634,16 @@ Make only the code changes and give no further tips and actions, only a brief su
       </div>
 
       {/* Help Text */}
-      {moveFiles.length === 0 && (
+      {contractFiles.length === 0 && blockchainType !== "unknown" && (
         <div className="p-4 border-t bg-yellow-50 dark:bg-yellow-900/20 text-sm">
           <p className="text-yellow-800 dark:text-yellow-200">
-            ⚠️ No Move files detected. Make sure your contract files have the
-            .move extension.
+            ⚠️ No{" "}
+            {blockchainType === "sui"
+              ? "Move files (.move)"
+              : blockchainType === "solana"
+                ? "Rust program files (.rs in programs/*/src/)"
+                : "contract files"}{" "}
+            detected. Make sure your contract files are in the correct location.
           </p>
         </div>
       )}

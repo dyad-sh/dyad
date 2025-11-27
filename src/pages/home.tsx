@@ -37,8 +37,9 @@ import {
 } from "@/shared/templates";
 import { neonTemplateHook } from "@/client_logic/template_hook";
 import { ProBanner } from "@/components/ProBanner";
-import { CodeTranslationCard } from "@/components/CodeTranslationCard";
-import { SMART_CONTRACT_TRANSLATION_PROMPT } from "@/prompts/smart_contract_prompt";
+import { MultiChainTranslationCard } from "@/components/MultiChainTranslationCard";
+import { generateTranslationPrompt } from "@/prompts/translation_prompts";
+import { BLOCKCHAIN_LANGUAGES } from "@/lib/blockchain_languages_registry";
 import { CreateAppDialog } from "@/components/CreateAppDialog";
 
 // Adding an export for attachments
@@ -47,6 +48,7 @@ export interface HomeSubmitOptions {
   customName?: string;
   isContractProject?: boolean;
   prompt?: string;
+  existingAppId?: number; // For pre-created apps (e.g., Solana scaffold)
 }
 
 export default function HomePage() {
@@ -150,36 +152,105 @@ export default function HomePage() {
     code: string,
     attachments: any[],
     projectName: string,
+    sourceLanguage: string,
+    targetLanguage: string,
   ) => {
-    // Create a specialized prompt for smart contract translation
-    const translationPrompt = `${SMART_CONTRACT_TRANSLATION_PROMPT}
+    // Extract contract name based on source language
+    let extractedName: string | undefined;
+    if (sourceLanguage === "solidity" || sourceLanguage === "vyper") {
+      // Solidity/Vyper: contract ContractName
+      extractedName = code.match(/contract\s+(\w+)/)?.[1]?.toLowerCase();
+    } else if (sourceLanguage === "sui_move" || sourceLanguage === "aptos_move") {
+      // Move: module package::module_name
+      extractedName = code.match(/module\s+\w+::(\w+)/)?.[1]?.toLowerCase();
+    } else if (sourceLanguage === "solana_rust") {
+      // Rust: Look for program name in lib.rs
+      extractedName = code.match(/declare_id!\("([^"]+)"\)/)?.[1]?.split("::")[0]?.toLowerCase();
+    }
+
+    // Generate final name with target language suffix
+    const targetSuffix = targetLanguage.replace(/_/g, "-");
+    const finalName =
+      projectName.trim() ||
+      (extractedName ? `${extractedName}-${targetSuffix}` : `translated-${targetSuffix}`);
+
+    console.log("handleTranslate - sourceLanguage:", sourceLanguage);
+    console.log("handleTranslate - targetLanguage:", targetLanguage);
+    console.log("handleTranslate - projectName:", projectName);
+    console.log("handleTranslate - extractedName:", extractedName);
+    console.log("handleTranslate - finalName:", finalName);
+
+    // If target is Solana, scaffold the Anchor project first
+    let solanaAppId: number | undefined;
+    if (targetLanguage === "solana_rust") {
+      try {
+        setIsLoading(true);
+        console.log("Scaffolding Anchor project:", finalName);
+
+        const result = await IpcClient.getInstance().solanaInitProject({
+          projectName: finalName,
+          parentPath: "src",
+        });
+
+        if (!result.success) {
+          console.error("Failed to scaffold Anchor project:", result.error);
+          // Show error to user
+          return;
+        }
+
+        console.log("Anchor project scaffolded successfully with app ID:", result.appId);
+        solanaAppId = result.appId;
+      } catch (error) {
+        console.error("Error scaffolding Anchor project:", error);
+        // Show error to user
+        return;
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    // Get the dynamic translation prompt for this language pair
+    const basePrompt = generateTranslationPrompt(sourceLanguage, targetLanguage);
+
+    // For Solana, add specific file path instruction
+    const solanaPathInstruction = targetLanguage === "solana_rust"
+      ? `\n\n**IMPORTANT**: The Anchor project has been initialized at \`src/${finalName}/\`.
+
+Write the translated contract to:
+\`\`\`
+src/${finalName}/programs/${finalName}/src/lib.rs
+\`\`\`
+
+Use this exact path in your <dyad-write> tag.`
+      : "";
+
+    // Create the complete translation prompt with the user's code
+    const translationPrompt = `${basePrompt}
 
 ---
 
 ## Contract to Translate:
 
+**Project Name:** ${finalName}${solanaPathInstruction}
+
 ${code}
 
 ---
 
-Please translate this Solidity contract to Sui Move following the guidelines above. Provide a complete, working Move module with inline comments explaining key decisions.`;
+Please translate this ${BLOCKCHAIN_LANGUAGES[sourceLanguage]?.displayName || sourceLanguage} contract to ${BLOCKCHAIN_LANGUAGES[targetLanguage]?.displayName || targetLanguage} following the guidelines above. Provide a complete, working implementation with inline comments explaining key translation decisions.`;
 
-    // Extract contract name from code if no project name provided
-    const extractedName = code.match(/contract\s+(\w+)/)?.[1]?.toLowerCase();
-    const finalName =
-      projectName.trim() ||
-      (extractedName ? `${extractedName}-move` : "translated-move");
-
-    console.log("handleTranslate - projectName:", projectName);
-    console.log("handleTranslate - extractedName:", extractedName);
-    console.log("handleTranslate - finalName:", finalName);
+    // For Solana, use the full path since anchor init creates it in src/
+    const appPath = targetLanguage === "solana_rust"
+      ? `src/${finalName}`
+      : finalName;
 
     // Submit immediately with the translation prompt passed directly
     await handleSubmit({
       attachments,
-      customName: finalName,
+      customName: appPath,
       isContractProject: true,
       prompt: translationPrompt,
+      existingAppId: solanaAppId, // Pass the app ID from scaffold
     });
   };
 
@@ -202,25 +273,40 @@ Please translate this Solidity contract to Sui Move following the guidelines abo
         "handleSubmit - isContractProject:",
         options?.isContractProject,
       );
+      console.log("handleSubmit - existingAppId:", options?.existingAppId);
 
-      const result = await IpcClient.getInstance().createApp({
-        name: appName,
-        isContractProject: options?.isContractProject,
-      });
-      if (
-        settings?.selectedTemplateId &&
-        NEON_TEMPLATE_IDS.has(settings.selectedTemplateId)
-      ) {
-        await neonTemplateHook({
-          appId: result.app.id,
-          appName: result.app.name,
+      let appId: number;
+      let chatId: number;
+
+      // If app already exists (e.g., Solana scaffold), use it
+      if (options?.existingAppId) {
+        appId = options.existingAppId;
+        chatId = await IpcClient.getInstance().createChat(appId);
+        console.log("Using existing app:", appId, "with new chat:", chatId);
+      } else {
+        // Create new app and chat
+        const result = await IpcClient.getInstance().createApp({
+          name: appName,
+          isContractProject: options?.isContractProject,
         });
+        appId = result.app.id;
+        chatId = result.chatId;
+
+        if (
+          settings?.selectedTemplateId &&
+          NEON_TEMPLATE_IDS.has(settings.selectedTemplateId)
+        ) {
+          await neonTemplateHook({
+            appId: result.app.id,
+            appName: result.app.name,
+          });
+        }
       }
 
       // Stream the message with attachments
       streamMessage({
         prompt: prompt,
-        chatId: result.chatId,
+        chatId: chatId,
         attachments,
       });
       await new Promise((resolve) =>
@@ -228,14 +314,14 @@ Please translate this Solidity contract to Sui Move following the guidelines abo
       );
 
       setInputValue("");
-      setSelectedAppId(result.app.id);
+      setSelectedAppId(appId);
       setIsPreviewOpen(false);
       await refreshApps(); // Ensure refreshApps is awaited if it's async
-      await invalidateAppQuery(queryClient, { appId: result.app.id });
+      await invalidateAppQuery(queryClient, { appId: appId });
       posthog.capture("home:chat-submit");
-      navigate({ to: "/chat", search: { id: result.chatId } });
+      navigate({ to: "/chat", search: { id: chatId } });
     } catch (error) {
-      console.error("Failed to create chat:", error);
+      console.error("Failed to create app/chat:", error);
       showError("Failed to create app. " + (error as any).toString());
       setIsLoading(false); // Ensure loading state is reset on error
     }
@@ -278,7 +364,7 @@ Please translate this Solidity contract to Sui Move following the guidelines abo
         {mode === "translate" ? (
           /* Code Translation Section */
           <>
-            <CodeTranslationCard onTranslate={handleTranslate} />
+            <MultiChainTranslationCard onTranslate={handleTranslate} />
 
             {/* ERC Template Quick Access */}
             <div className="mt-8">

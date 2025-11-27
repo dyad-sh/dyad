@@ -152,6 +152,13 @@ const validInvokeChannels = [
   "sui-test",
   "sui-get-address",
   "sui-get-balance",
+  // Solana
+  "solana-compile",
+  "solana-deploy",
+  "solana-test",
+  "solana-get-address",
+  "solana-get-balance",
+  "solana-init-project",
 
   "save-contract-deployment",
   // Test-only channels

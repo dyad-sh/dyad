@@ -248,9 +248,30 @@ export type AgentToolConsent = z.infer<typeof AgentToolConsentSchema>;
 /**
  * Zod schema for user settings
  */
+// Blockchain language schemas
+export const BlockchainLanguageIdSchema = z.enum([
+  "solidity",
+  "sui_move",
+  "aptos_move",
+  "solana_rust",
+  "cairo",
+  "vyper",
+  "cosmwasm_rust",
+]);
+export type BlockchainLanguageId = z.infer<typeof BlockchainLanguageIdSchema>;
+
+export const TranslationPreferencesSchema = z.object({
+  defaultSourceLanguage: BlockchainLanguageIdSchema.optional(),
+  defaultTargetLanguage: BlockchainLanguageIdSchema.optional(),
+  lastUsedSourceLanguage: BlockchainLanguageIdSchema.optional(),
+  lastUsedTargetLanguage: BlockchainLanguageIdSchema.optional(),
+});
+export type TranslationPreferences = z.infer<typeof TranslationPreferencesSchema>;
+
 export const UserSettingsSchema = z.object({
   selectedModel: LargeLanguageModelSchema,
   translateModel: LargeLanguageModelSchema.optional(), // Model for contract translation (defaults to SolMover)
+  translationPreferences: TranslationPreferencesSchema.optional(), // Language pair preferences
   providerSettings: z.record(z.string(), ProviderSettingSchema),
   agentToolConsents: z.record(z.string(), AgentToolConsentSchema).optional(),
   githubUser: GithubUserSchema.optional(),

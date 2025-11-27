@@ -21,11 +21,16 @@ import { IpcClient } from "@/ipc/ipc_client";
 
 interface SuiSetupProps {
   suiAddress: string | null;
+  blockchainType?: "sui" | "solana" | "unknown";
 }
 
 type SetupStep = "env" | "address" | "faucet" | "complete";
 
-export const SuiSetup = ({ suiAddress }: SuiSetupProps) => {
+export const SuiSetup = ({
+  suiAddress,
+  blockchainType = "sui",
+}: SuiSetupProps) => {
+  const isSolana = blockchainType === "solana";
   const [currentStep, setCurrentStep] = useState<SetupStep>(
     suiAddress ? "complete" : "env",
   );
@@ -44,7 +49,9 @@ export const SuiSetup = ({ suiAddress }: SuiSetupProps) => {
   const loadBalance = async () => {
     setIsLoadingBalance(true);
     try {
-      const result = await IpcClient.getInstance().getSuiBalance();
+      const result = isSolana
+        ? await IpcClient.getInstance().getSolanaBalance()
+        : await IpcClient.getInstance().getSuiBalance();
       setBalance(result.formattedBalance);
     } catch (error) {
       console.error("Failed to load balance:", error);
@@ -76,47 +83,85 @@ export const SuiSetup = ({ suiAddress }: SuiSetupProps) => {
     }, 1000);
   };
 
-  const steps = [
-    {
-      id: "env" as SetupStep,
-      title: "1. Configure Network",
-      description: "Set your Sui CLI to use testnet",
-      icon: <Terminal className="w-5 h-5" />,
-      command: "sui client switch --env testnet",
-      action: checkEnvironment,
-      actionLabel: "Verify Configuration",
-      isLoading: isCheckingEnv,
-      completed: currentStep !== "env",
-    },
-    {
-      id: "address" as SetupStep,
-      title: "2. Set Up Wallet",
-      description: "Create or import a wallet address",
-      icon: <Wallet className="w-5 h-5" />,
-      command: "sui client active-address",
-      helpText:
-        "If you don't have an address, run: sui client new-address ed25519",
-      action: checkAddress,
-      actionLabel: "Verify Address",
-      isLoading: isCheckingAddress,
-      completed: currentStep === "faucet" || currentStep === "complete",
-    },
-    {
-      id: "faucet" as SetupStep,
-      title: "3. Get Testnet Tokens",
-      description: "Request SUI tokens from the faucet",
-      icon: <Droplet className="w-5 h-5" />,
-      command: "sui client faucet",
-      helpText: "Or visit the web faucet",
-      externalLink: {
-        url: "https://faucet.sui.io/",
-        label: "Open Sui Faucet",
-      },
-      action: () => setCurrentStep("complete"),
-      actionLabel: "I've Got Tokens",
-      completed: currentStep === "complete",
-    },
-  ];
+  const steps = isSolana
+    ? [
+        {
+          id: "env" as SetupStep,
+          title: "1. Configure Network",
+          description: "Set your Solana CLI to use devnet",
+          icon: <Terminal className="w-5 h-5" />,
+          command: "solana config set --url devnet",
+          action: checkEnvironment,
+          actionLabel: "Verify Configuration",
+          isLoading: isCheckingEnv,
+          completed: currentStep !== "env",
+        },
+        {
+          id: "address" as SetupStep,
+          title: "2. Set Up Wallet",
+          description: "Create or set a keypair",
+          icon: <Wallet className="w-5 h-5" />,
+          command: "solana address",
+          helpText:
+            "If you don't have a keypair, run: solana-keygen new --outfile ~/.config/solana/id.json",
+          action: checkAddress,
+          actionLabel: "Verify Address",
+          isLoading: isCheckingAddress,
+          completed: currentStep === "faucet" || currentStep === "complete",
+        },
+        {
+          id: "faucet" as SetupStep,
+          title: "3. Get Devnet Tokens",
+          description: "Request SOL tokens from the faucet",
+          icon: <Droplet className="w-5 h-5" />,
+          command: "solana airdrop 2",
+          helpText: "Request 2 SOL to your wallet",
+          action: () => setCurrentStep("complete"),
+          actionLabel: "I've Got Tokens",
+          completed: currentStep === "complete",
+        },
+      ]
+    : [
+        {
+          id: "env" as SetupStep,
+          title: "1. Configure Network",
+          description: "Set your Sui CLI to use testnet",
+          icon: <Terminal className="w-5 h-5" />,
+          command: "sui client switch --env testnet",
+          action: checkEnvironment,
+          actionLabel: "Verify Configuration",
+          isLoading: isCheckingEnv,
+          completed: currentStep !== "env",
+        },
+        {
+          id: "address" as SetupStep,
+          title: "2. Set Up Wallet",
+          description: "Create or import a wallet address",
+          icon: <Wallet className="w-5 h-5" />,
+          command: "sui client active-address",
+          helpText:
+            "If you don't have an address, run: sui client new-address ed25519",
+          action: checkAddress,
+          actionLabel: "Verify Address",
+          isLoading: isCheckingAddress,
+          completed: currentStep === "faucet" || currentStep === "complete",
+        },
+        {
+          id: "faucet" as SetupStep,
+          title: "3. Get Testnet Tokens",
+          description: "Request SUI tokens from the faucet",
+          icon: <Droplet className="w-5 h-5" />,
+          command: "sui client faucet",
+          helpText: "Or visit the web faucet",
+          externalLink: {
+            url: "https://faucet.sui.io/",
+            label: "Open Sui Faucet",
+          },
+          action: () => setCurrentStep("complete"),
+          actionLabel: "I've Got Tokens",
+          completed: currentStep === "complete",
+        },
+      ];
 
   if (currentStep === "complete" && suiAddress) {
     return (
@@ -126,7 +171,7 @@ export const SuiSetup = ({ suiAddress }: SuiSetupProps) => {
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />
               <CardTitle className="text-green-900 dark:text-green-100">
-                Sui CLI Ready
+                {isSolana ? "Solana CLI Ready" : "Sui CLI Ready"}
               </CardTitle>
             </div>
             <Button
@@ -150,7 +195,9 @@ export const SuiSetup = ({ suiAddress }: SuiSetupProps) => {
           <div className="space-y-3">
             {/* Balance Display */}
             <div className="text-sm">
-              <span className="font-medium">Testnet Balance:</span>
+              <span className="font-medium">
+                {isSolana ? "Devnet" : "Testnet"} Balance:
+              </span>
               <div className="mt-1 flex items-center gap-2">
                 {isLoadingBalance ? (
                   <div className="flex items-center gap-2 text-muted-foreground">
@@ -160,7 +207,7 @@ export const SuiSetup = ({ suiAddress }: SuiSetupProps) => {
                 ) : balance !== null ? (
                   <div className="flex items-center gap-2">
                     <span className="text-2xl font-bold text-green-700 dark:text-green-300">
-                      {balance} SUI
+                      {balance} {isSolana ? "SOL" : "SUI"}
                     </span>
                     {parseFloat(balance) < 0.1 && (
                       <span className="text-xs text-orange-600 dark:text-orange-400">
@@ -202,9 +249,13 @@ export const SuiSetup = ({ suiAddress }: SuiSetupProps) => {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Sui Deployment Setup</CardTitle>
+        <CardTitle>
+          {isSolana ? "Solana Deployment Setup" : "Sui Deployment Setup"}
+        </CardTitle>
         <CardDescription>
-          Configure your local Sui CLI to deploy smart contracts to testnet
+          {isSolana
+            ? "Configure your local Solana CLI to deploy programs to devnet"
+            : "Configure your local Sui CLI to deploy smart contracts to testnet"}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -310,8 +361,10 @@ export const SuiSetup = ({ suiAddress }: SuiSetupProps) => {
         <div className="pt-4 border-t">
           <p className="text-xs text-muted-foreground">
             💡 <strong>Tip:</strong> Run these commands in your terminal to
-            configure the Sui CLI. Once complete, you'll be able to deploy your
-            Move contracts directly from this panel.
+            configure the {isSolana ? "Solana" : "Sui"} CLI. Once complete,
+            you'll be able to deploy your{" "}
+            {isSolana ? "Anchor programs" : "Move contracts"} directly from this
+            panel.
           </p>
         </div>
       </CardContent>

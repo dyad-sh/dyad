@@ -1547,4 +1547,53 @@ export class IpcClient {
   }): Promise<{ success: boolean; error?: string }> {
     return this.ipcRenderer.invoke("save-contract-deployment", params);
   }
+
+  // Solana/Anchor compilation and deployment
+  public async solanaCompile(appPath: string): Promise<{
+    success: boolean;
+    output: string;
+    error?: string;
+    fullError?: string;
+  }> {
+    return this.ipcRenderer.invoke("solana-compile", { appPath });
+  }
+
+  public async solanaDeploy(params: {
+    appPath: string;
+    network?: "localnet" | "devnet" | "testnet" | "mainnet-beta";
+  }): Promise<{
+    success: boolean;
+    programId?: string;
+    transactionSignature?: string;
+    output: string;
+    error?: string;
+  }> {
+    return this.ipcRenderer.invoke("solana-deploy", params);
+  }
+
+  public async solanaTest(appPath: string): Promise<{
+    success: boolean;
+    output: string;
+    error?: string;
+  }> {
+    return this.ipcRenderer.invoke("solana-test", { appPath });
+  }
+
+  public async getSolanaAddress(): Promise<{ address: string | null }> {
+    return this.ipcRenderer.invoke("solana-get-address");
+  }
+
+  public async getSolanaBalance(): Promise<{
+    balance: string | null;
+    formattedBalance: string | null;
+  }> {
+    return this.ipcRenderer.invoke("solana-get-balance");
+  }
+
+  public async solanaInitProject(params: {
+    projectName: string;
+    parentPath: string;
+  }): Promise<{ success: boolean; output: string; error?: string; appId?: number }> {
+    return this.ipcRenderer.invoke("solana-init-project", params);
+  }
 }

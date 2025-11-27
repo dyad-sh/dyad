@@ -129,7 +129,7 @@ export const TitleBar = () => {
             }`}
             style={{ cursor: "pointer", pointerEvents: "auto" }}
           >
-            ✨ Generate
+            ✨ App
           </button>
           <button
             type="button"
@@ -144,7 +144,7 @@ export const TitleBar = () => {
             }`}
             style={{ cursor: "pointer", pointerEvents: "auto" }}
           >
-            🔄 Translate
+            🔄 Contract
           </button>
         </div>
 

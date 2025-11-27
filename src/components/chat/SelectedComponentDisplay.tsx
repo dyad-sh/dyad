@@ -35,7 +35,7 @@ export function SelectedComponentsDisplay() {
 
   const handleClearAll = () => {
     setSelectedComponents([]);
-
+    setVisualEditingSelectedComponent(null);
     if (previewIframeRef?.contentWindow) {
       previewIframeRef.contentWindow.postMessage(
         { type: "clear-dyad-component-overlays" },

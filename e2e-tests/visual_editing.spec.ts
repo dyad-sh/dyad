@@ -24,6 +24,11 @@ testSkipIfWindows("edit style of one selected component", async ({ po }) => {
   // Click on margin button to open the margin popover
   await po.page.getByRole("button", { name: "Margin" }).click();
 
+  // Wait for the margin inputs to be visible in the popover
+  await expect(po.page.getByLabel("Horizontal")).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
+
   // Edit margin - set horizontal margin
   const marginXInput = po.page.getByLabel("Horizontal");
   await marginXInput.fill("20");
@@ -76,6 +81,11 @@ testSkipIfWindows(
     // Click on margin button to open the margin popover
     await po.page.getByRole("button", { name: "Margin" }).click();
 
+    // Wait for the margin inputs to be visible in the popover
+    await expect(po.page.getByLabel("Horizontal")).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+
     // Edit margin for the first component
     const marginXInput = po.page.getByLabel("Horizontal");
     await marginXInput.fill("15");
@@ -101,6 +111,11 @@ testSkipIfWindows(
 
     // Click on margin button again for the second component
     await po.page.getByRole("button", { name: "Margin" }).click();
+
+    // Wait for the margin inputs to be visible in the popover
+    await expect(po.page.getByLabel("Horizontal")).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
 
     // Edit margin for second component
     const marginXInput2 = po.page.getByLabel("Horizontal");
@@ -213,6 +228,11 @@ testSkipIfWindows("discard changes", async ({ po }) => {
 
   // Click on margin button to open the margin popover
   await po.page.getByRole("button", { name: "Margin" }).click();
+
+  // Wait for the margin inputs to be visible in the popover
+  await expect(po.page.getByLabel("Horizontal")).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
 
   // Edit margin
   const marginXInput = po.page.getByLabel("Horizontal");

@@ -137,10 +137,10 @@ export function MultiChainTranslationCard({
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Language Selection */}
-        <div className="grid grid-cols-1 md:grid-cols-[1fr,auto,1fr] gap-3 items-end">
+        <div className="grid grid-cols-3 md:grid-cols-[1fr,auto,1fr] gap-3 items-center">
           {/* Source Language */}
           <div className="space-y-2">
-            <Label htmlFor="source-language">From</Label>
+            {/* <Label htmlFor="source-language">From</Label> */}
             <Select value={sourceLanguage} onValueChange={handleSourceChange}>
               <SelectTrigger id="source-language">
                 <SelectValue />
@@ -162,7 +162,7 @@ export function MultiChainTranslationCard({
           </div>
 
           {/* Swap Button */}
-          <div className="pb-2">
+          <div className="flex items-center justify-center">
             <Button
               variant="ghost"
               size="icon"
@@ -180,7 +180,7 @@ export function MultiChainTranslationCard({
 
           {/* Target Language */}
           <div className="space-y-2">
-            <Label htmlFor="target-language">To</Label>
+            {/* <Label htmlFor="target-language">To</Label> */}
             <Select value={targetLanguage} onValueChange={setTargetLanguage}>
               <SelectTrigger id="target-language">
                 <SelectValue />

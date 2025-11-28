@@ -85,7 +85,7 @@ export const BLOCKCHAIN_LANGUAGES: Record<string, BlockchainLanguage> = {
   solana_rust: {
     id: "solana_rust",
     name: "solana_rust",
-    displayName: "Solana (Rust/Anchor)",
+    displayName: "Rust/Anchor",
     fileExtension: ".rs",
     monacoLanguageId: "rust",
     description: "Rust-based programs for Solana (often using Anchor framework)",

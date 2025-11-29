@@ -352,7 +352,8 @@
     // If hovering over a selected component, show its label only if it's not highlighted
     if (
       hoveredItem &&
-      hoveredItem.el.dataset.dyadId !== highlightedComponentId
+      hoveredItem.el.dataset.dyadId !== highlightedComponentId &&
+      multiSelectorEnabled
     ) {
       updateSelectedOverlayLabel(hoveredItem, true);
       if (hoverOverlay) hoverOverlay.style.display = "none";

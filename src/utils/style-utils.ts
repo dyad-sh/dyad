@@ -162,6 +162,22 @@ export function extractClassPrefixes(classes: string[]): string[] {
           }
         }
 
+        // Special handling for text-size classes (text-xs, text-sm, text-3xl, etc.)
+        // to avoid removing text-center, text-left, text-color classes
+        if (cls.startsWith("text-")) {
+          // Check if it's a font-size class (ends with size suffix like xs, sm, lg, xl, 2xl, etc.)
+          const sizeMatch = cls.match(
+            /^text-(xs|sm|base|lg|xl|2xl|3xl|4xl|5xl|6xl|7xl|8xl|9xl)$/,
+          );
+          if (sizeMatch) {
+            return "text-size-"; // Use a specific prefix for font-size
+          }
+          // For arbitrary text sizes like text-[44px]
+          if (cls.match(/^text-\[[\d.]+[a-z]+\]$/)) {
+            return "text-size-";
+          }
+        }
+
         // Handle regular Tailwind classes
         const match = cls.match(/^([a-z]+[-])/);
         return match ? match[1] : cls.split("-")[0] + "-";

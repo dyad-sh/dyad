@@ -135,6 +135,16 @@ export function registerVisualEditingHandlers() {
                             return !/^\d+$/.test(match[1]);
                           }
                           return false;
+                        } else if (prefix === "text-size-") {
+                          // Remove only text-size classes (text-xs, text-3xl, text-[44px], etc.)
+                          // but NOT text-center, text-left, text-red-500, etc.
+                          const sizeMatch = cls.match(
+                            /^text-(xs|sm|base|lg|xl|2xl|3xl|4xl|5xl|6xl|7xl|8xl|9xl)$/,
+                          );
+                          if (sizeMatch) return true;
+                          // Also match arbitrary text sizes like text-[44px]
+                          if (cls.match(/^text-\[[\d.]+[a-z]+\]$/)) return true;
+                          return false;
                         } else {
                           // For other prefixes, use simple startsWith
                           return cls.startsWith(prefix);

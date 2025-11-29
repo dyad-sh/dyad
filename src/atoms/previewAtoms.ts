@@ -6,6 +6,8 @@ export const selectedComponentsPreviewAtom = atom<ComponentSelection[]>([]);
 export const visualEditingSelectedComponentAtom =
   atom<ComponentSelection | null>(null);
 
+export const multiSelectorEnabledAtom = atom<boolean>(true);
+
 export const currentComponentCoordinatesAtom = atom<{
   top: number;
   left: number;

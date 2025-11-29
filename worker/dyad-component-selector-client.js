@@ -6,6 +6,7 @@
   let currentHoveredElement = null;
   let highlightedComponentId = null;
   let componentCoordinates = null; // Store the last selected component's coordinates
+  let multiSelectorEnabled = true;
   //detect if the user is using Mac
   const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
 
@@ -392,8 +393,10 @@
     const selectedItem = overlays.find((item) => item.el === state.element);
 
     // If clicking on the currently highlighted component, deselect it
-    if (selectedItem && highlightedComponentId === clickedComponentId) {
-      // Don't deselect if element is being edited
+    if (
+      selectedItem &&
+      (highlightedComponentId === clickedComponentId || !multiSelectorEnabled)
+    ) {
       if (state.element.contentEditable === "true") {
         return;
       }
@@ -411,31 +414,41 @@
       return;
     }
 
-    // Update only the previously highlighted and newly highlighted components
-    if (
-      highlightedComponentId &&
-      highlightedComponentId !== clickedComponentId
-    ) {
-      const previousItem = overlays.find(
-        (item) => item.el.dataset.dyadId === highlightedComponentId,
-      );
-      if (previousItem) {
-        css(previousItem.overlay, {
-          border: `3px solid #7f22fe`,
-          background: "rgba(127, 34, 254, 0.05)",
-        });
-      }
+    if (!multiSelectorEnabled) {
+      clearOverlays();
     }
 
-    highlightedComponentId = clickedComponentId;
+    // Update only the previously highlighted and newly highlighted components
+    // Only highlight if multi-selector is enabled
+    if (multiSelectorEnabled) {
+      if (
+        highlightedComponentId &&
+        highlightedComponentId !== clickedComponentId
+      ) {
+        const previousItem = overlays.find(
+          (item) => item.el.dataset.dyadId === highlightedComponentId,
+        );
+        if (previousItem) {
+          css(previousItem.overlay, {
+            border: `3px solid #7f22fe`,
+            background: "rgba(127, 34, 254, 0.05)",
+          });
+        }
+      }
 
-    if (selectedItem) {
-      // Update the newly highlighted component
-      css(selectedItem.overlay, {
-        border: `3px solid #00ff00`,
-        background: "rgba(0, 255, 0, 0.05)",
-      });
+      highlightedComponentId = clickedComponentId;
+
+      if (selectedItem) {
+        css(selectedItem.overlay, {
+          border: `3px solid #00ff00`,
+          background: "rgba(0, 255, 0, 0.05)",
+        });
+      }
     } else {
+      highlightedComponentId = null;
+    }
+
+    if (!selectedItem) {
       updateOverlay(state.element, true, overlays.length);
       requestAnimationFrame(updateAllOverlayPositions);
     }
@@ -536,6 +549,13 @@
       if (e.data.componentId) {
         removeOverlayById(e.data.componentId);
       }
+    }
+    if (e.data.type === "enable-multi-selector") {
+      multiSelectorEnabled = true;
+    }
+    if (e.data.type === "disable-multi-selector") {
+      multiSelectorEnabled = false;
+      highlightedComponentId = null;
     }
   });
 

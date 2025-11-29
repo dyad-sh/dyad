@@ -131,6 +131,7 @@ const validInvokeChannels = [
   "prompts:create",
   "prompts:update",
   "prompts:delete",
+  "chat:transcribe",
   // adding app to favorite
   "add-to-favorite",
   "github:clone-repo-from-url",

@@ -69,6 +69,9 @@ import { SelectedComponentsDisplay } from "./SelectedComponentDisplay";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
 import { LexicalChatInput } from "./LexicalChatInput";
 import { useChatModeToggle } from "@/hooks/useChatModeToggle";
+import { useVoiceInput } from "@/hooks/useAudioRecorder";
+import { VoiceWaveform } from "./VoiceWaveform";
+import { VoiceInputButton } from "./VoiceInputButton";
 
 const showTokenBarAtom = atom(false);
 
@@ -114,6 +117,15 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   } = useProposal(chatId);
   const { proposal, messageId } = proposalResult ?? {};
   useChatModeToggle();
+
+  const { isTranscribing, isRecording, analyser, handleMicClick } =
+    useVoiceInput({
+      appendText: (text) => {
+        if (text) {
+          setInputValue((prev) => (prev ? `${prev} ${text}` : text));
+        }
+      },
+    });
 
   const lastMessage = (chatId ? (messagesById.get(chatId) ?? []) : []).at(-1);
   const disableSendButton =
@@ -318,15 +330,19 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           <DragDropOverlay isDraggingOver={isDraggingOver} />
 
           <div className="flex items-start space-x-2 ">
-            <LexicalChatInput
-              value={inputValue}
-              onChange={setInputValue}
-              onSubmit={handleSubmit}
-              onPaste={handlePaste}
-              placeholder="Ask Dyad to build..."
-              excludeCurrentApp={true}
-              disableSendButton={disableSendButton}
-            />
+            {isRecording ? (
+              <VoiceWaveform analyser={analyser} />
+            ) : (
+              <LexicalChatInput
+                value={inputValue}
+                onChange={setInputValue}
+                onSubmit={handleSubmit}
+                onPaste={handlePaste}
+                placeholder="Ask Dyad to build..."
+                excludeCurrentApp={true}
+                disableSendButton={disableSendButton}
+              />
+            )}
 
             {isStreaming ? (
               <button
@@ -337,17 +353,24 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                 <StopCircleIcon size={20} />
               </button>
             ) : (
-              <button
-                onClick={handleSubmit}
-                disabled={
-                  (!inputValue.trim() && attachments.length === 0) ||
-                  disableSendButton
-                }
-                className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
-                title="Send message"
-              >
-                <SendHorizontalIcon size={20} />
-              </button>
+              <div className="flex items-center mt-1 mr-1">
+                <VoiceInputButton
+                  isRecording={isRecording}
+                  isTranscribing={isTranscribing}
+                  onClick={handleMicClick}
+                />
+                <button
+                  onClick={handleSubmit}
+                  disabled={
+                    (!inputValue.trim() && attachments.length === 0) ||
+                    disableSendButton
+                  }
+                  className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
+                  title="Send message"
+                >
+                  <SendHorizontalIcon size={20} />
+                </button>
+              </div>
             )}
           </div>
           <div className="pl-2 pr-1 flex items-center justify-between pb-2">

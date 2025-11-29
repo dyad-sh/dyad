@@ -1,10 +1,17 @@
 import { useState, useRef, useCallback } from "react";
+import { IpcClient } from "@/ipc/ipc_client";
 
 export interface AudioRecorderState {
   isRecording: boolean;
   recordingTime: number;
   audioBlob: Blob | null;
 }
+type UseVoiceInputOptions = {
+  // how to insert the transcribed text into this input
+  appendText: (text: string) => void;
+  // optional error handler (e.g. setError in ChatInput)
+  onError?: (message: string) => void;
+};
 
 export function useAudioRecorder(onRecordingComplete?: (blob: Blob) => void) {
   const [isRecording, setIsRecording] = useState(false);
@@ -90,5 +97,65 @@ export function useAudioRecorder(onRecordingComplete?: (blob: Blob) => void) {
     startRecording,
     stopRecording,
     analyser: analyserRef.current,
+  };
+}
+
+export function useVoiceInput({ appendText, onError }: UseVoiceInputOptions) {
+  const [isTranscribing, setIsTranscribing] = useState(false);
+
+  const handleRecordingComplete = useCallback(
+    async (blob: Blob) => {
+      setIsTranscribing(true);
+      try {
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+
+        reader.onloadend = async () => {
+          try {
+            const base64data = reader.result as string;
+            const base64Content = base64data.split(",")[1];
+
+            const text = await IpcClient.getInstance().transcribeAudio(
+              base64Content,
+              "webm",
+            );
+
+            if (text) {
+              appendText(text);
+            }
+          } catch (err) {
+            console.error("Transcription failed", err);
+            onError?.("Failed to transcribe audio");
+          } finally {
+            setIsTranscribing(false);
+          }
+        };
+      } catch (err) {
+        console.error("Transcription failed", err);
+        onError?.("Failed to transcribe audio");
+        setIsTranscribing(false);
+      }
+    },
+    [appendText, onError],
+  );
+
+  const { isRecording, startRecording, stopRecording, analyser } =
+    useAudioRecorder(handleRecordingComplete);
+
+  const handleMicClick = () => {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
+  };
+
+  return {
+    isTranscribing,
+    isRecording,
+    analyser,
+    handleMicClick,
+    startRecording,
+    stopRecording,
   };
 }

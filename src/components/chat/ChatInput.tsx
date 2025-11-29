@@ -7,7 +7,6 @@ import {
   AlertOctagon,
   FileText,
   Check,
-  Loader,
   Loader2,
   Package,
   FileX,
@@ -84,9 +83,9 @@ import { VisualEditingChangesDialog } from "@/components/preview_panel/VisualEdi
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
-import { useAudioRecorder } from "@/hooks/useAudioRecorder";
-
+import { useVoiceInput } from "@/hooks/useAudioRecorder";
 import { VoiceWaveform } from "./VoiceWaveform";
+import { VoiceInputButton } from "./VoiceInputButton";
 
 const showTokenBarAtom = atom(false);
 
@@ -158,49 +157,14 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const { proposal, messageId } = proposalResult ?? {};
   useChatModeToggle();
 
-  const [isTranscribing, setIsTranscribing] = useState(false);
-
-  const handleRecordingComplete = useCallback(
-    async (blob: Blob) => {
-      setIsTranscribing(true);
-      try {
-        const reader = new FileReader();
-        reader.readAsDataURL(blob);
-        reader.onloadend = async () => {
-          const base64data = reader.result as string;
-          // Remove data URL prefix
-          const base64Content = base64data.split(",")[1];
-
-          const text = await IpcClient.getInstance().transcribeAudio(
-            base64Content,
-            "webm",
-          );
-
-          if (text) {
-            setInputValue((prev) => (prev ? `${prev} ${text}` : text));
-          }
-          setIsTranscribing(false);
-        };
-      } catch (err) {
-        console.error("Transcription failed", err);
-        setError("Failed to transcribe audio");
-        setIsTranscribing(false);
-      }
-    },
-    [setInputValue, setError],
-  );
-
-  // Audio Recorder
-  const { isRecording, startRecording, stopRecording, analyser } =
-    useAudioRecorder(handleRecordingComplete);
-
-  const handleMicClick = () => {
-    if (isRecording) {
-      stopRecording();
-    } else {
-      startRecording();
-    }
-  };
+  const { isTranscribing, isRecording, analyser, handleMicClick } =
+    useVoiceInput({
+      appendText: (text) => {
+        if (text) {
+          setInputValue((prev) => (prev ? `${prev} ${text}` : text));
+        }
+      },
+    });
 
   const lastMessage = (chatId ? (messagesById.get(chatId) ?? []) : []).at(-1);
   const disableSendButton =
@@ -519,39 +483,18 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               </button>
             ) : (
               <div className="flex items-center mt-1 mr-1">
-                <button
+                <VoiceInputButton
+                  isRecording={isRecording}
+                  isTranscribing={isTranscribing}
                   onClick={handleMicClick}
-                  className={`px-2 py-2 rounded-lg transition-colors ${
-                    isRecording
-                      ? "bg-red-500/10 text-red-500 animate-pulse"
-                      : isTranscribing
-                        ? "bg-yellow-500/10 text-yellow-500"
-                        : "hover:bg-(--background-darkest) text-(--sidebar-accent-fg)"
-                  }`}
-                  title={
-                    isRecording
-                      ? "Stop recording"
-                      : isTranscribing
-                        ? "Transcribing..."
-                        : "Start voice input"
-                  }
-                  disabled={isTranscribing}
-                >
-                  {isRecording ? (
-                    <Square size={20} fill="currentColor" />
-                  ) : isTranscribing ? (
-                    <Loader size={20} className="animate-spin" />
-                  ) : (
-                    <Mic size={20} />
-                  )}
-                </button>
+                />
                 <button
                   onClick={handleSubmit}
                   disabled={
                     (!inputValue.trim() && attachments.length === 0) ||
                     disableSendButton
                   }
-                  className="px-2 py-2 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
+                  className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
                   title="Send message"
                 >
                   <SendHorizontalIcon size={20} />

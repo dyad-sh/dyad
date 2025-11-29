@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { X } from "lucide-react";
 
 interface DraggableTextInputProps {
   input: {
@@ -21,6 +22,7 @@ interface DraggableTextInputProps {
   ) => void;
   onChange: (id: string, value: string) => void;
   onKeyDown: (id: string, e: React.KeyboardEvent, index: number) => void;
+  onRemove: (id: string) => void;
   spanRef: React.MutableRefObject<HTMLSpanElement[]>;
   inputRef: React.MutableRefObject<HTMLInputElement[]>;
 }
@@ -33,6 +35,7 @@ export const DraggableTextInput = ({
   onMove,
   onChange,
   onKeyDown,
+  onRemove,
   spanRef,
   inputRef,
 }: DraggableTextInputProps) => {
@@ -75,7 +78,7 @@ export const DraggableTextInput = ({
       }}
     >
       <div className="relative">
-        {/* Drag Handle - Inside input on the left */}
+        {/* Drag Handle */}
         <div
           className="absolute left-2 top-1/2 -translate-y-1/2 cursor-move p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors z-10"
           onMouseDown={(e) => {
@@ -124,12 +127,26 @@ export const DraggableTextInput = ({
           value={input.value}
           onChange={(e) => onChange(input.id, e.target.value)}
           onKeyDown={(e) => onKeyDown(input.id, e, index)}
-          className="pl-8 pr-3 py-2 bg-[var(--background)] border-2 border-[#7f22fe] rounded-md shadow-lg text-gray-900 dark:text-gray-100 focus:outline-none min-w-[200px] cursor-text"
+          className="pl-8 pr-8 py-2 bg-[var(--background)] border-2 border-[#7f22fe] rounded-md shadow-lg text-gray-900 dark:text-gray-100 focus:outline-none min-w-[200px] cursor-text"
           placeholder="Type text..."
           ref={(e) => {
             if (e) inputRef.current[index] = e;
           }}
         />
+
+        {/* Close Button - Rightmost */}
+        <button
+          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-colors z-10 group"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onRemove(input.id);
+          }}
+          title="Remove text input"
+          type="button"
+        >
+          <X className="w-3 h-3 text-gray-400 dark:text-gray-500 group-hover:text-red-600 dark:group-hover:text-red-400" />
+        </button>
       </div>
     </div>
   );

@@ -210,6 +210,10 @@ export const Annotator = ({
     }
   };
 
+  const handleTextInputRemove = (inputId: string) => {
+    setTextInputs((prev) => prev.filter((i) => i.id !== inputId));
+  };
+
   const handleMouseDown = (e: any) => {
     if (tool === "select") {
       const clickedOnEmpty = e.target === e.target.getStage();
@@ -360,6 +364,7 @@ export const Annotator = ({
           onMove={handleTextInputMove}
           onChange={handleTextInputChange}
           onKeyDown={handleTextInputKeyDown}
+          onRemove={handleTextInputRemove}
           spanRef={spanRef}
           inputRef={inputRef}
         />

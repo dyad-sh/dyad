@@ -72,7 +72,9 @@ export function registerVisualEditingHandlers() {
           fileChanges.get(change.relativePath)!.set(change.lineNumber, {
             classes: tailwindClasses,
             prefixes: changePrefixes,
-            textContent: change.textContent,
+            ...(change.textContent !== undefined && {
+              textContent: change.textContent,
+            }),
           });
         }
 
@@ -168,14 +170,30 @@ export function registerVisualEditingHandlers() {
                   }
                 }
 
-                // Update text content if provided
-                if (change.textContent !== undefined) {
-                  path.node.children = [
-                    {
-                      type: "JSXText",
-                      value: change.textContent,
-                    } as any,
-                  ];
+                if (
+                  "textContent" in change &&
+                  change.textContent !== undefined
+                ) {
+                  // Check if all children are text nodes (no nested JSX elements)
+                  const hasOnlyTextChildren = path.node.children.every(
+                    (child: any) => {
+                      return (
+                        child.type === "JSXText" ||
+                        (child.type === "JSXExpressionContainer" &&
+                          child.expression.type === "StringLiteral")
+                      );
+                    },
+                  );
+
+                  // Only replace children if there are no nested JSX elements
+                  if (hasOnlyTextChildren) {
+                    path.node.children = [
+                      {
+                        type: "JSXText",
+                        value: change.textContent,
+                      } as any,
+                    ];
+                  }
                 }
               }
             },

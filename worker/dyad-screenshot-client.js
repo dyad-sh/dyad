@@ -71,6 +71,4 @@
       handleScreenshotRequest();
     }
   });
-
-  console.debug("[dyad-screenshot] Screenshot client initialized");
 })();

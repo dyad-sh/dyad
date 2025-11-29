@@ -281,7 +281,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           setScreenshotDataUrl(event.data.dataUrl);
           setAnnotatorMode(true);
         } else {
-          showError("Failed to capture screenshot");
+          showError(event.data.error);
         }
         return;
       }
@@ -576,7 +576,12 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                       ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
                       : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
                   }`}
-                  disabled={loading || !selectedAppId || isPicking}
+                  disabled={
+                    loading ||
+                    !selectedAppId ||
+                    isPicking ||
+                    !isComponentSelectorInitialized
+                  }
                   data-testid="preview-annotator-button"
                 >
                   <Pen size={16} />

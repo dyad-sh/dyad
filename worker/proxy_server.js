@@ -42,16 +42,51 @@ let dyadScreenshotClientContent = null;
 let htmlToImageContent = null;
 
 try {
-  const htmlToImagePath = path.join(
-    __dirname,
-    "..",
-    "node_modules",
-    "html-to-image",
-    "dist",
-    "html-to-image.js",
-  );
-  htmlToImageContent = fs.readFileSync(htmlToImagePath, "utf-8");
-  parentPort?.postMessage("[proxy-worker] html-to-image.js loaded.");
+  // Try multiple possible paths for html-to-image
+  const possiblePaths = [
+    path.join(
+      __dirname,
+      "..",
+      "node_modules",
+      "html-to-image",
+      "dist",
+      "html-to-image.js",
+    ),
+    path.join(
+      process.cwd(),
+      "node_modules",
+      "html-to-image",
+      "dist",
+      "html-to-image.js",
+    ),
+    path.join(
+      __dirname,
+      "..",
+      "..",
+      "node_modules",
+      "html-to-image",
+      "dist",
+      "html-to-image.js",
+    ),
+  ];
+
+  let loaded = false;
+  for (const htmlToImagePath of possiblePaths) {
+    if (fs.existsSync(htmlToImagePath)) {
+      htmlToImageContent = fs.readFileSync(htmlToImagePath, "utf-8");
+      parentPort?.postMessage(
+        `[proxy-worker] html-to-image.js loaded from: ${htmlToImagePath}`,
+      );
+      loaded = true;
+      break;
+    }
+  }
+
+  if (!loaded) {
+    parentPort?.postMessage(
+      `[proxy-worker] Failed to find html-to-image.js. Tried paths: ${possiblePaths.join(", ")}`,
+    );
+  }
 } catch (error) {
   parentPort?.postMessage(
     `[proxy-worker] Failed to read html-to-image.js: ${error.message}`,
@@ -162,9 +197,15 @@ function injectHTML(buf) {
   }
   if (htmlToImageContent) {
     scripts.push(`<script>${htmlToImageContent}</script>`);
+    parentPort?.postMessage(
+      "[proxy-worker] html-to-image script injected into HTML.",
+    );
   } else {
     scripts.push(
-      '<script>console.warn("[proxy-worker] html-to-image was not injected.");</script>',
+      '<script>console.error("[proxy-worker] html-to-image was not injected - library not loaded.");</script>',
+    );
+    parentPort?.postMessage(
+      "[proxy-worker] WARNING: html-to-image not injected!",
     );
   }
   if (dyadScreenshotClientContent) {

@@ -803,10 +803,14 @@ export class IpcClient {
     audioData: string,
     format: string,
   ): Promise<string> {
-    return this.ipcRenderer.invoke("chat:transcribe", {
-      audioData,
-      format,
-    });
+    return this.ipcRenderer
+      .invoke("chat:transcribe", {
+        audioData,
+        format,
+      })
+      .catch((err) => {
+        showError(err);
+      });
   }
   // --- End Audio Transcription ---
 

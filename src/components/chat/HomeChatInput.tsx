@@ -13,6 +13,9 @@ import { HomeSubmitOptions } from "@/pages/home";
 import { ChatInputControls } from "../ChatInputControls";
 import { LexicalChatInput } from "./LexicalChatInput";
 import { useChatModeToggle } from "@/hooks/useChatModeToggle";
+import { useVoiceInput } from "@/hooks/useAudioRecorder";
+import { VoiceWaveform } from "./VoiceWaveform";
+import { VoiceInputButton } from "./VoiceInputButton";
 export function HomeChatInput({
   onSubmit,
 }: {
@@ -25,6 +28,16 @@ export function HomeChatInput({
     hasChatId: false,
   }); // eslint-disable-line @typescript-eslint/no-unused-vars
   useChatModeToggle();
+
+  // Use the voice input hook
+  const { isTranscribing, isRecording, analyser, handleMicClick } =
+    useVoiceInput({
+      appendText: (text) => {
+        if (text) {
+          setInputValue((prev) => (prev ? `${prev} ${text}` : text));
+        }
+      },
+    });
 
   // Use the attachments hook
   const {
@@ -78,16 +91,20 @@ export function HomeChatInput({
           <DragDropOverlay isDraggingOver={isDraggingOver} />
 
           <div className="flex items-start space-x-2 ">
-            <LexicalChatInput
-              value={inputValue}
-              onChange={setInputValue}
-              onSubmit={handleCustomSubmit}
-              onPaste={handlePaste}
-              placeholder="Ask Dyad to build..."
-              disabled={isStreaming}
-              excludeCurrentApp={false}
-              disableSendButton={false}
-            />
+            {isRecording ? (
+              <VoiceWaveform analyser={analyser} />
+            ) : (
+              <LexicalChatInput
+                value={inputValue}
+                onChange={setInputValue}
+                onSubmit={handleCustomSubmit}
+                onPaste={handlePaste}
+                placeholder="Ask Dyad to build..."
+                disabled={isStreaming}
+                excludeCurrentApp={false}
+                disableSendButton={false}
+              />
+            )}
 
             {/* File attachment dropdown */}
             <FileAttachmentDropdown
@@ -104,14 +121,21 @@ export function HomeChatInput({
                 <StopCircleIcon size={20} />
               </button>
             ) : (
-              <button
-                onClick={handleCustomSubmit}
-                disabled={!inputValue.trim() && attachments.length === 0}
-                className="px-2 py-2 mt-1 mr-2 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
-                title="Send message"
-              >
-                <SendIcon size={20} />
-              </button>
+              <div className="flex items-center mt-1 mr-1">
+                <VoiceInputButton
+                  isRecording={isRecording}
+                  isTranscribing={isTranscribing}
+                  onClick={handleMicClick}
+                />
+                <button
+                  onClick={handleCustomSubmit}
+                  disabled={!inputValue.trim() && attachments.length === 0}
+                  className="px-2 py-2 mt-1 mr-2 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
+                  title="Send message"
+                >
+                  <SendIcon size={20} />
+                </button>
+              </div>
             )}
           </div>
           <div className="px-2 pb-2">

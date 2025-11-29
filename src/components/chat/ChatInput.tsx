@@ -64,6 +64,7 @@ import { ChatErrorBox } from "./ChatErrorBox";
 import {
   selectedComponentsPreviewAtom,
   previewIframeRefAtom,
+  visualEditingSelectedComponentAtom,
 } from "@/atoms/previewAtoms";
 import { SelectedComponentsDisplay } from "./SelectedComponentDisplay";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
@@ -91,6 +92,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     selectedComponentsPreviewAtom,
   );
   const previewIframeRef = useAtomValue(previewIframeRefAtom);
+  const setVisualEditingSelectedComponent = useSetAtom(
+    visualEditingSelectedComponentAtom,
+  );
   const { checkProblems } = useCheckProblems(appId);
   // Use the attachments hook
   const {
@@ -159,7 +163,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         ? selectedComponents
         : [];
     setSelectedComponents([]);
-
+    setVisualEditingSelectedComponent(null);
     // Clear overlays in the preview iframe
     if (previewIframeRef?.contentWindow) {
       previewIframeRef.contentWindow.postMessage(

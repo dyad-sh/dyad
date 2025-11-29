@@ -5,6 +5,8 @@ import { contextBridge, ipcRenderer, webFrame } from "electron";
 
 // Whitelist of valid channels
 const validInvokeChannels = [
+  "analyzeComponent",
+  "applyVisualEditingChanges",
   "get-language-models",
   "get-language-models-by-providers",
   "create-custom-language-model",

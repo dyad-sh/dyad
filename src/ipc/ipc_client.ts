@@ -1327,4 +1327,27 @@ export class IpcClient {
   public cancelHelpChat(sessionId: string): void {
     this.ipcRenderer.invoke("help:chat:cancel", sessionId).catch(() => {});
   }
+
+  // --- Visual Editing ---
+  public async applyVisualEditingChanges(
+    changes: Array<{
+      componentId: string;
+      relativePath: string;
+      lineNumber: number;
+      styles: {
+        margin?: Record<string, string>;
+        padding?: Record<string, string>;
+        dimensions?: Record<string, string>;
+      };
+    }>,
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("applyVisualEditingChanges", changes);
+  }
+
+  public async analyzeComponent(
+    appId: number,
+    componentId: string,
+  ): Promise<{ isDynamic: boolean; hasStaticText: boolean }> {
+    return this.ipcRenderer.invoke("analyzeComponent", { appId, componentId });
+  }
 }

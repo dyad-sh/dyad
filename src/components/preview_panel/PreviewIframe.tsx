@@ -37,7 +37,11 @@ import {
 import { useStreamChat } from "@/hooks/useStreamChat";
 import {
   selectedComponentsPreviewAtom,
+  visualEditingSelectedComponentAtom,
+  currentComponentCoordinatesAtom,
   previewIframeRefAtom,
+  pendingVisualChangesAtom,
+  multiSelectorEnabledAtom,
 } from "@/atoms/previewAtoms";
 import { ComponentSelection } from "@/ipc/ipc_types";
 import {
@@ -56,6 +60,8 @@ import { useRunApp } from "@/hooks/useRunApp";
 import { useShortcut } from "@/hooks/useShortcut";
 import { cn } from "@/lib/utils";
 import { normalizePath } from "../../../shared/normalizePath";
+import { VisualEditingToolbar } from "./VisualEditingToolbar";
+import { VisualEditingChangesDialog } from "./VisualEditingChangesDialog";
 
 interface ErrorBannerProps {
   error: { message: string; source: "preview-app" | "dyad-app" } | undefined;
@@ -176,9 +182,107 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const [selectedComponentsPreview, setSelectedComponentsPreview] = useAtom(
     selectedComponentsPreviewAtom,
   );
+  const [visualEditingSelectedComponent, setVisualEditingSelectedComponent] =
+    useAtom(visualEditingSelectedComponentAtom);
+  const setCurrentComponentCoordinates = useSetAtom(
+    currentComponentCoordinatesAtom,
+  );
   const setPreviewIframeRef = useSetAtom(previewIframeRefAtom);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isPicking, setIsPicking] = useState(false);
+  const setPendingChanges = useSetAtom(pendingVisualChangesAtom);
+  const [multiSelectorEnabled, setMultiSelectorEnabled] = useAtom(
+    multiSelectorEnabledAtom,
+  );
+  const [isPickerPopoverOpen, setIsPickerPopoverOpen] = useState(false);
+
+  // AST Analysis State
+  const [isDynamicComponent, setIsDynamicComponent] = useState(false);
+  const [hasStaticText, setHasStaticText] = useState(false);
+
+  const analyzeComponent = async (componentId: string) => {
+    if (!componentId || !selectedAppId) return;
+
+    try {
+      const result = await IpcClient.getInstance().analyzeComponent(
+        selectedAppId,
+        componentId,
+      );
+      setIsDynamicComponent(result.isDynamic);
+      setHasStaticText(result.hasStaticText);
+
+      // Automatically enable text editing if component has static text
+      if (result.hasStaticText && iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage(
+          {
+            type: "enable-dyad-text-editing",
+            data: {
+              componentId: componentId,
+            },
+          },
+          "*",
+        );
+      }
+    } catch (err) {
+      console.error("Failed to analyze component", err);
+      setIsDynamicComponent(false);
+      setHasStaticText(false);
+    }
+  };
+
+  const handleTextUpdated = async (data: any) => {
+    const { componentId, text } = data;
+    if (!componentId || !selectedAppId) return;
+
+    // Parse componentId to extract file path and line number
+    const [filePath, lineStr] = componentId.split(":");
+    const lineNumber = parseInt(lineStr, 10);
+
+    if (!filePath || isNaN(lineNumber)) {
+      console.error("Invalid componentId format:", componentId);
+      return;
+    }
+
+    // Store text change in pending changes
+    setPendingChanges((prev) => {
+      const updated = new Map(prev);
+      const existing = updated.get(componentId);
+
+      updated.set(componentId, {
+        componentId: componentId,
+        componentName:
+          existing?.componentName || visualEditingSelectedComponent?.name || "",
+        relativePath: filePath,
+        lineNumber: lineNumber,
+        appId: selectedAppId,
+        styles: existing?.styles || {},
+        textContent: text,
+      });
+
+      return updated;
+    });
+  };
+
+  // Function to get current styles from selected element
+  const getCurrentElementStyles = () => {
+    if (!iframeRef.current?.contentWindow || !visualEditingSelectedComponent)
+      return;
+
+    try {
+      // Send message to iframe to get current styles
+      iframeRef.current.contentWindow.postMessage(
+        {
+          type: "get-dyad-component-styles",
+          data: {
+            elementId: visualEditingSelectedComponent.id,
+          },
+        },
+        "*",
+      );
+    } catch (error) {
+      console.error("Failed to get element styles:", error);
+    }
+  };
 
   // Device mode state
   type DeviceMode = "desktop" | "tablet" | "mobile";
@@ -194,23 +298,41 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   //detect if the user is using Mac
   const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
 
+  // Reset visual editing state when app changes or component unmounts
+  useEffect(() => {
+    return () => {
+      // Cleanup on unmount or when app changes
+      setVisualEditingSelectedComponent(null);
+      setPendingChanges(new Map());
+      setCurrentComponentCoordinates(null);
+    };
+  }, [selectedAppId]);
+
   // Update iframe ref atom
   useEffect(() => {
     setPreviewIframeRef(iframeRef.current);
   }, [iframeRef.current, setPreviewIframeRef]);
 
   // Deactivate component selector when selection is cleared
-  useEffect(() => {
-    if (!selectedComponentsPreview || selectedComponentsPreview.length === 0) {
+  /*useEffect(() => {
+    if (
+      (!selectedComponentsPreview || selectedComponentsPreview.length === 0) &&
+      isPicking
+    ) {
       if (iframeRef.current?.contentWindow) {
         iframeRef.current.contentWindow.postMessage(
           { type: "deactivate-dyad-component-selector" },
           "*",
         );
+        // Clean up any text editing states
+        iframeRef.current.contentWindow.postMessage(
+          { type: "cleanup-all-text-editing" },
+          "*",
+        );
       }
       setIsPicking(false);
     }
-  }, [selectedComponentsPreview]);
+  }, [selectedComponentsPreview]);*/
 
   // Add message listener for iframe errors and navigation events
   useEffect(() => {
@@ -222,6 +344,16 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
       if (event.data?.type === "dyad-component-selector-initialized") {
         setIsComponentSelectorInitialized(true);
+        return;
+      }
+
+      if (event.data?.type === "dyad-text-updated") {
+        handleTextUpdated(event.data);
+        return;
+      }
+
+      if (event.data?.type === "dyad-text-finalized") {
+        handleTextUpdated(event.data);
         return;
       }
 
@@ -239,24 +371,72 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
         if (!component) return;
 
-        // Add to existing components, avoiding duplicates by id
-        setSelectedComponentsPreview((prev) => {
-          // Check if this component is already selected
-          if (prev.some((c) => c.id === component.id)) {
-            return prev;
-          }
-          return [...prev, component];
-        });
+        // Store the coordinates
+        if (event.data.coordinates) {
+          setCurrentComponentCoordinates(event.data.coordinates);
+        }
+
+        // Set as the highlighted component for visual editing
+        setVisualEditingSelectedComponent(component);
+
+        // Handle component selection based on multi-selector mode
+        if (!multiSelectorEnabled) {
+          setSelectedComponentsPreview([component]);
+        } else {
+          setSelectedComponentsPreview((prev) => {
+            const exists = prev.some((c) => c.id === component.id);
+            if (exists) {
+              return prev;
+            }
+            return [...prev, component];
+          });
+        }
+
+        // Trigger AST analysis
+        analyzeComponent(component.id);
 
         return;
       }
 
       if (event.data?.type === "dyad-component-deselected") {
+        console.log("message received");
         const componentId = event.data.componentId;
         if (componentId) {
+          // Disable text editing for the deselected component
+          if (iframeRef.current?.contentWindow) {
+            iframeRef.current.contentWindow.postMessage(
+              {
+                type: "disable-dyad-text-editing",
+                data: { componentId },
+              },
+              "*",
+            );
+          }
+
+          if (!multiSelectorEnabled) {
+            setSelectedComponentsPreview([]);
+            setVisualEditingSelectedComponent(null);
+          }
+
+          console.log(selectedComponentsPreview);
           setSelectedComponentsPreview((prev) =>
             prev.filter((c) => c.id !== componentId),
           );
+          console.log(selectedComponentsPreview);
+          setVisualEditingSelectedComponent((prev) => {
+            const shouldClear = prev?.id === componentId;
+            if (shouldClear) {
+              setCurrentComponentCoordinates(null);
+            }
+            return shouldClear ? null : prev;
+          });
+        }
+        return;
+      }
+
+      if (event.data?.type === "dyad-component-coordinates-updated") {
+        if (event.data.coordinates) {
+          setCurrentComponentCoordinates(event.data.coordinates);
         }
         return;
       }
@@ -346,6 +526,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     setErrorMessage,
     setIsComponentSelectorInitialized,
     setSelectedComponentsPreview,
+    setVisualEditingSelectedComponent,
+    multiSelectorEnabled,
+    selectedComponentsPreview,
   ]);
 
   useEffect(() => {
@@ -364,10 +547,30 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     }
   }, [appUrl]);
 
+  // Get current styles when component is selected for visual editing
+  useEffect(() => {
+    if (visualEditingSelectedComponent) {
+      getCurrentElementStyles();
+    }
+  }, [visualEditingSelectedComponent]);
+
   // Function to activate component selector in the iframe
   const handleActivateComponentSelector = () => {
     if (iframeRef.current?.contentWindow) {
       const newIsPicking = !isPicking;
+      if (!newIsPicking) {
+        setVisualEditingSelectedComponent(null);
+        // Clean up any text editing states when deactivating
+        iframeRef.current.contentWindow.postMessage(
+          { type: "cleanup-all-text-editing" },
+          "*",
+        );
+        setSelectedComponentsPreview([]);
+        iframeRef.current.contentWindow.postMessage(
+          { type: "clear-dyad-component-overlays" },
+          "*",
+        );
+      }
       setIsPicking(newIsPicking);
       iframeRef.current.contentWindow.postMessage(
         {
@@ -377,8 +580,32 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         },
         "*",
       );
+
+      if (newIsPicking) {
+        iframeRef.current.contentWindow.postMessage(
+          {
+            type: multiSelectorEnabled
+              ? "enable-multi-selector"
+              : "disable-multi-selector",
+          },
+          "*",
+        );
+      }
     }
   };
+
+  useEffect(() => {
+    if (isPicking && iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage(
+        {
+          type: multiSelectorEnabled
+            ? "enable-multi-selector"
+            : "disable-multi-selector",
+        },
+        "*",
+      );
+    }
+  }, [multiSelectorEnabled, isPicking]);
 
   // Activate component selector using a shortcut
   useShortcut(
@@ -431,6 +658,10 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const handleReload = () => {
     setReloadKey((prevKey) => prevKey + 1);
     setErrorMessage(undefined);
+    // Reset visual editing state
+    setVisualEditingSelectedComponent(null);
+    setPendingChanges(new Map());
+    setCurrentComponentCoordinates(null);
     // Optionally, add logic here if you need to explicitly stop/start the app again
     // For now, just changing the key should remount the iframe
     console.debug("Reloading iframe preview for app", selectedAppId);
@@ -498,32 +729,98 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         {/* Navigation Buttons */}
         <div className="flex space-x-1">
           <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={handleActivateComponentSelector}
-                  className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
-                    isPicking
-                      ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
-                      : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
-                  }`}
-                  disabled={
-                    loading || !selectedAppId || !isComponentSelectorInitialized
-                  }
-                  data-testid="preview-pick-element-button"
-                >
-                  <MousePointerClick size={16} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>
-                  {isPicking
-                    ? "Deactivate component selector"
-                    : "Select component"}
-                </p>
-                <p>{isMac ? "⌘ + ⇧ + C" : "Ctrl + ⇧ + C"}</p>
-              </TooltipContent>
-            </Tooltip>
+            <Popover
+              open={isPickerPopoverOpen}
+              onOpenChange={() => {
+                if (!isPicking) setIsPickerPopoverOpen;
+              }}
+            >
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <PopoverTrigger asChild>
+                    <button
+                      onClick={() => {
+                        if (isPicking) {
+                          handleActivateComponentSelector();
+                        } else {
+                          setIsPickerPopoverOpen(true);
+                        }
+                      }}
+                      className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
+                        isPicking
+                          ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
+                          : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
+                      }`}
+                      disabled={
+                        loading ||
+                        !selectedAppId ||
+                        !isComponentSelectorInitialized
+                      }
+                      data-testid="preview-pick-element-button"
+                    >
+                      <MousePointerClick size={16} />
+                    </button>
+                  </PopoverTrigger>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>
+                    {isPicking
+                      ? "Deactivate component selector"
+                      : "Select component"}
+                  </p>
+                  <p>{isMac ? "⌘ + ⇧ + C" : "Ctrl + ⇧ + C"}</p>
+                </TooltipContent>
+              </Tooltip>
+              <PopoverContent className="w-56 p-3" align="start">
+                <div className="space-y-3">
+                  <div className="text-sm font-medium">Selection Mode</div>
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => {
+                        setMultiSelectorEnabled(false);
+                        setIsPickerPopoverOpen(false);
+                        if (!isPicking) {
+                          handleActivateComponentSelector();
+                        }
+                      }}
+                      className={cn(
+                        "w-full text-left px-3 py-2 rounded-md text-sm transition-colors",
+                        !multiSelectorEnabled
+                          ? "bg-purple-100 dark:bg-purple-900 text-purple-900 dark:text-purple-100"
+                          : "hover:bg-gray-100 dark:hover:bg-gray-800",
+                      )}
+                      data-testid="select-one-component"
+                    >
+                      <div className="font-medium">Single Component</div>
+                      <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                        Select one component at a time
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setMultiSelectorEnabled(true);
+                        setIsPickerPopoverOpen(false);
+                        if (!isPicking) {
+                          handleActivateComponentSelector();
+                        }
+                      }}
+                      className={cn(
+                        "w-full text-left px-3 py-2 rounded-md text-sm transition-colors",
+                        multiSelectorEnabled
+                          ? "bg-purple-100 dark:bg-purple-900 text-purple-900 dark:text-purple-100"
+                          : "hover:bg-gray-100 dark:hover:bg-gray-800",
+                      )}
+                      data-testid="select-several-components"
+                    >
+                      <div className="font-medium">Multiple Components</div>
+                      <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                        Select and edit multiple components
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
           </TooltipProvider>
           <button
             className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
@@ -734,6 +1031,35 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               }
               src={appUrl}
               allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
+            />
+            {/* Visual Editing Toolbar */}
+            {visualEditingSelectedComponent && selectedAppId && (
+              <VisualEditingToolbar
+                selectedComponent={visualEditingSelectedComponent}
+                iframeRef={iframeRef}
+                appId={selectedAppId}
+                isDynamic={isDynamicComponent}
+                hasStaticText={hasStaticText}
+              />
+            )}
+            <VisualEditingChangesDialog
+              iframeRef={iframeRef}
+              onReset={() => {
+                // Exit component selection mode and visual editing
+                setSelectedComponentsPreview([]);
+                setVisualEditingSelectedComponent(null);
+                setCurrentComponentCoordinates(null);
+                setIsPicking(false);
+                handleReload();
+
+                // Deactivate component selector in iframe
+                if (iframeRef.current?.contentWindow) {
+                  iframeRef.current.contentWindow.postMessage(
+                    { type: "deactivate-dyad-component-selector" },
+                    "*",
+                  );
+                }
+              }}
             />
           </div>
         )}

@@ -520,6 +520,10 @@ export class PageObject {
     await this.page
       .getByTestId("preview-pick-element-button")
       .click({ timeout: Timeout.EXTRA_LONG });
+
+    await this.page
+      .getByTestId("select-several-components")
+      .click({ timeout: Timeout.EXTRA_LONG });
   }
 
   async clickDeselectComponent(options?: { index?: number }) {

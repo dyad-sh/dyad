@@ -561,9 +561,9 @@ export class PageObject {
 
   async waitForAnnotatorMode() {
     // Wait for the annotator toolbar to be visible
-    await expect(
-      this.page.getByRole("button", { name: "Select (V)" }),
-    ).toBeVisible({ timeout: Timeout.MEDIUM });
+    await expect(this.page.getByRole("button", { name: "Select" })).toBeVisible(
+      { timeout: Timeout.MEDIUM },
+    );
   }
 
   async clickAnnotatorSubmit() {

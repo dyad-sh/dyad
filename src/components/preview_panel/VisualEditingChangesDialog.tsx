@@ -89,29 +89,30 @@ export function VisualEditingChangesDialog({
   };
 
   return (
-    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-[var(--background)] border border-[var(--border)] rounded-lg shadow-lg p-4 z-50 flex items-center gap-4">
-      <p className="text-sm">
+    <div className="bg-[var(--background)] border-b border-[var(--border)] px-2 lg:px-4 py-1.5 flex flex-col lg:flex-row items-start lg:items-center lg:justify-between gap-1.5 lg:gap-4">
+      <p className="text-xs lg:text-sm w-full lg:w-auto">
         <span className="font-medium">{pendingChanges.size}</span> component
         {pendingChanges.size > 1 ? "s" : ""} modified
       </p>
-      <div className="flex gap-2">
+      <div className="flex gap-1 lg:gap-2 w-full lg:w-auto">
         <Button
           size="sm"
           onClick={handleSave}
           disabled={isSaving}
-          className="bg-[#7f22fe] hover:bg-[#450e91ff] dark:text-white"
+          className="bg-[#7f22fe] hover:bg-[#450e91ff] dark:text-white text-xs lg:text-sm px-2 lg:px-3 flex-1 lg:flex-initial"
         >
-          <Check size={16} className="mr-1" />
-          {isSaving ? "Saving..." : "Save Changes"}
+          <Check size={14} className="mr-1" />
+          <span>{isSaving ? "Saving..." : "Save Changes"}</span>
         </Button>
         <Button
           size="sm"
           variant="outline"
           onClick={handleDiscard}
           disabled={isSaving}
+          className="text-xs lg:text-sm px-2 lg:px-3 flex-1 lg:flex-initial"
         >
-          <X size={16} className="mr-1" />
-          Discard
+          <X size={14} className="mr-1" />
+          <span>Discard</span>
         </Button>
       </div>
     </div>

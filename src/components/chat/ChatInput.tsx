@@ -65,11 +65,14 @@ import {
   selectedComponentsPreviewAtom,
   previewIframeRefAtom,
   visualEditingSelectedComponentAtom,
+  currentComponentCoordinatesAtom,
+  pendingVisualChangesAtom,
 } from "@/atoms/previewAtoms";
 import { SelectedComponentsDisplay } from "./SelectedComponentDisplay";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
 import { LexicalChatInput } from "./LexicalChatInput";
 import { useChatModeToggle } from "@/hooks/useChatModeToggle";
+import { VisualEditingChangesDialog } from "@/components/preview_panel/VisualEditingChangesDialog";
 
 const showTokenBarAtom = atom(false);
 
@@ -95,7 +98,12 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const setVisualEditingSelectedComponent = useSetAtom(
     visualEditingSelectedComponentAtom,
   );
+  const setCurrentComponentCoordinates = useSetAtom(
+    currentComponentCoordinatesAtom,
+  );
+  const setPendingVisualChanges = useSetAtom(pendingVisualChangesAtom);
   const { checkProblems } = useCheckProblems(appId);
+  const { refreshAppIframe } = useRunApp();
   // Use the attachments hook
   const {
     attachments,
@@ -309,6 +317,30 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                 isRejecting={isRejecting}
               />
             )}
+
+          <VisualEditingChangesDialog
+            iframeRef={
+              previewIframeRef
+                ? { current: previewIframeRef }
+                : { current: null }
+            }
+            onReset={() => {
+              // Exit component selection mode and visual editing
+              setSelectedComponents([]);
+              setVisualEditingSelectedComponent(null);
+              setCurrentComponentCoordinates(null);
+              setPendingVisualChanges(new Map());
+              refreshAppIframe();
+
+              // Deactivate component selector in iframe
+              if (previewIframeRef?.contentWindow) {
+                previewIframeRef.contentWindow.postMessage(
+                  { type: "deactivate-dyad-component-selector" },
+                  "*",
+                );
+              }
+            }}
+          />
 
           <SelectedComponentsDisplay />
 

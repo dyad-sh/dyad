@@ -152,11 +152,13 @@
       });
     }
 
-    // Send updated coordinates for highlighted component to parent
+    // Send updated coordinates for highlighted or selected component to parent
     if (highlightedComponentId) {
+      // Multi-selector mode: send coordinates for the highlighted component
       const highlightedItem = overlays.find(
         ({ el }) => el.dataset.dyadId === highlightedComponentId,
       );
+
       if (highlightedItem) {
         const rect = highlightedItem.el.getBoundingClientRect();
         window.parent.postMessage(
@@ -172,6 +174,21 @@
           "*",
         );
       }
+    } else if (!multiSelectorEnabled && overlays.length === 1) {
+      // Single-selector mode: send coordinates for the only selected component
+      const rect = overlays[0].el.getBoundingClientRect();
+      window.parent.postMessage(
+        {
+          type: "dyad-component-coordinates-updated",
+          coordinates: {
+            top: rect.top,
+            left: rect.left,
+            width: rect.width,
+            height: rect.height,
+          },
+        },
+        "*",
+      );
     }
   }
 

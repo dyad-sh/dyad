@@ -61,7 +61,6 @@ import { useShortcut } from "@/hooks/useShortcut";
 import { cn } from "@/lib/utils";
 import { normalizePath } from "../../../shared/normalizePath";
 import { VisualEditingToolbar } from "./VisualEditingToolbar";
-import { VisualEditingChangesDialog } from "./VisualEditingChangesDialog";
 
 interface ErrorBannerProps {
   error: { message: string; source: "preview-app" | "dyad-app" } | undefined;
@@ -1042,25 +1041,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 hasStaticText={hasStaticText}
               />
             )}
-            <VisualEditingChangesDialog
-              iframeRef={iframeRef}
-              onReset={() => {
-                // Exit component selection mode and visual editing
-                setSelectedComponentsPreview([]);
-                setVisualEditingSelectedComponent(null);
-                setCurrentComponentCoordinates(null);
-                setIsPicking(false);
-                handleReload();
-
-                // Deactivate component selector in iframe
-                if (iframeRef.current?.contentWindow) {
-                  iframeRef.current.contentWindow.postMessage(
-                    { type: "deactivate-dyad-component-selector" },
-                    "*",
-                  );
-                }
-              }}
-            />
           </div>
         )}
       </div>

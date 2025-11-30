@@ -82,7 +82,7 @@ export const AnnotationCanvas = ({
   }
 
   return (
-    <div className="flex items-center justify-center w-full h-full">
+    <div className="w-full h-full">
       <Stage
         width={stageDimensions.width}
         height={stageDimensions.height}

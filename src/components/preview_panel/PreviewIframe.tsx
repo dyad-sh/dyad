@@ -534,233 +534,239 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Browser-style header */}
-      <div className="flex items-center p-2 border-b space-x-2 ">
-        {/* Navigation Buttons */}
-        <div className="flex space-x-1">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={handleActivateComponentSelector}
-                  className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
-                    isPicking
-                      ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
-                      : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
-                  }`}
-                  disabled={
-                    loading || !selectedAppId || !isComponentSelectorInitialized
-                  }
-                  data-testid="preview-pick-element-button"
-                >
-                  <MousePointerClick size={16} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>
-                  {isPicking
-                    ? "Deactivate component selector"
-                    : "Select component"}
-                </p>
-                <p>{isMac ? "⌘ + ⇧ + C" : "Ctrl + ⇧ + C"}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={handleAnnotatorClick}
-                  className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
-                    annotatorMode
-                      ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
-                      : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
-                  }`}
-                  disabled={
-                    loading ||
-                    !selectedAppId ||
-                    isPicking ||
-                    !isComponentSelectorInitialized
-                  }
-                  data-testid="preview-annotator-button"
-                >
-                  <Pen size={16} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>
-                  {annotatorMode
-                    ? "Annotator mode active"
-                    : "Activate annotator"}
-                </p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          <button
-            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
-            disabled={!canGoBack || loading || !selectedAppId}
-            onClick={handleNavigateBack}
-            data-testid="preview-navigate-back-button"
-          >
-            <ArrowLeft size={16} />
-          </button>
-          <button
-            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
-            disabled={!canGoForward || loading || !selectedAppId}
-            onClick={handleNavigateForward}
-            data-testid="preview-navigate-forward-button"
-          >
-            <ArrowRight size={16} />
-          </button>
-          <button
-            onClick={handleReload}
-            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
-            disabled={loading || !selectedAppId}
-            data-testid="preview-refresh-button"
-          >
-            <RefreshCw size={16} />
-          </button>
-        </div>
-
-        {/* Address Bar with Routes Dropdown - using shadcn/ui dropdown-menu */}
-        <div className="relative flex-grow min-w-20">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <div className="flex items-center justify-between px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded text-sm text-gray-700 dark:text-gray-200 cursor-pointer w-full min-w-0">
-                <span className="truncate flex-1 mr-2 min-w-0">
-                  {navigationHistory[currentHistoryPosition]
-                    ? new URL(navigationHistory[currentHistoryPosition])
-                        .pathname
-                    : "/"}
-                </span>
-                <ChevronDown size={14} className="flex-shrink-0" />
-              </div>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-full">
-              {availableRoutes.length > 0 ? (
-                availableRoutes.map((route) => (
-                  <DropdownMenuItem
-                    key={route.path}
-                    onClick={() => navigateToRoute(route.path)}
-                    className="flex justify-between"
-                  >
-                    <span>{route.label}</span>
-                    <span className="text-gray-500 dark:text-gray-400 text-xs">
-                      {route.path}
-                    </span>
-                  </DropdownMenuItem>
-                ))
-              ) : (
-                <DropdownMenuItem disabled>Loading routes...</DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex space-x-1">
-          <button
-            onClick={onRestart}
-            className="flex items-center space-x-1 px-3 py-1 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
-            title="Restart App"
-          >
-            <Power size={16} />
-            <span>Restart</span>
-          </button>
-          <button
-            data-testid="preview-open-browser-button"
-            onClick={() => {
-              if (originalUrl) {
-                IpcClient.getInstance().openExternalUrl(originalUrl);
-              }
-            }}
-            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
-          >
-            <ExternalLink size={16} />
-          </button>
-
-          {/* Device Mode Button */}
-          <Popover open={isDevicePopoverOpen} modal={false}>
-            <PopoverTrigger asChild>
-              <button
-                data-testid="device-mode-button"
-                onClick={() => {
-                  // Toggle popover open/close
-                  if (isDevicePopoverOpen) setDeviceMode("desktop");
-                  setIsDevicePopoverOpen(!isDevicePopoverOpen);
-                }}
-                className={cn(
-                  "p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 dark:text-gray-300",
-                  deviceMode !== "desktop" && "bg-gray-200 dark:bg-gray-700",
-                )}
-                title="Device Mode"
-              >
-                <MonitorSmartphone size={16} />
-              </button>
-            </PopoverTrigger>
-            <PopoverContent
-              className="w-auto p-2"
-              onOpenAutoFocus={(e) => e.preventDefault()}
-              onInteractOutside={(e) => e.preventDefault()}
-            >
-              <TooltipProvider>
-                <ToggleGroup
-                  type="single"
-                  value={deviceMode}
-                  onValueChange={(value) => {
-                    if (value) {
-                      setDeviceMode(value as DeviceMode);
-                      setIsDevicePopoverOpen(false);
+      {/* Browser-style header - hide when annotator is active */}
+      {!annotatorMode && (
+        <div className="flex items-center p-2 border-b space-x-2">
+          {/* Navigation Buttons */}
+          <div className="flex space-x-1">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={handleActivateComponentSelector}
+                    className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
+                      isPicking
+                        ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
+                        : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
+                    }`}
+                    disabled={
+                      loading ||
+                      !selectedAppId ||
+                      !isComponentSelectorInitialized
                     }
-                  }}
-                  variant="outline"
-                >
-                  {/* Tooltips placed inside items instead of wrapping 
-                  to avoid asChild prop merging that breaks highlighting */}
-                  <ToggleGroupItem value="desktop" aria-label="Desktop view">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="flex items-center justify-center">
-                          <Monitor size={16} />
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Desktop</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </ToggleGroupItem>
-                  <ToggleGroupItem value="tablet" aria-label="Tablet view">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="flex items-center justify-center">
-                          <Tablet size={16} className="scale-x-130" />
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Tablet</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </ToggleGroupItem>
-                  <ToggleGroupItem value="mobile" aria-label="Mobile view">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="flex items-center justify-center">
-                          <Smartphone size={16} />
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Mobile</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </ToggleGroupItem>
-                </ToggleGroup>
-              </TooltipProvider>
-            </PopoverContent>
-          </Popover>
-        </div>
-      </div>
+                    data-testid="preview-pick-element-button"
+                  >
+                    <MousePointerClick size={16} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>
+                    {isPicking
+                      ? "Deactivate component selector"
+                      : "Select component"}
+                  </p>
+                  <p>{isMac ? "⌘ + ⇧ + C" : "Ctrl + ⇧ + C"}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={handleAnnotatorClick}
+                    className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
+                      annotatorMode
+                        ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
+                        : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
+                    }`}
+                    disabled={
+                      loading ||
+                      !selectedAppId ||
+                      isPicking ||
+                      !isComponentSelectorInitialized
+                    }
+                    data-testid="preview-annotator-button"
+                  >
+                    <Pen size={16} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>
+                    {annotatorMode
+                      ? "Annotator mode active"
+                      : "Activate annotator"}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <button
+              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
+              disabled={!canGoBack || loading || !selectedAppId}
+              onClick={handleNavigateBack}
+              data-testid="preview-navigate-back-button"
+            >
+              <ArrowLeft size={16} />
+            </button>
+            <button
+              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
+              disabled={!canGoForward || loading || !selectedAppId}
+              onClick={handleNavigateForward}
+              data-testid="preview-navigate-forward-button"
+            >
+              <ArrowRight size={16} />
+            </button>
+            <button
+              onClick={handleReload}
+              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
+              disabled={loading || !selectedAppId}
+              data-testid="preview-refresh-button"
+            >
+              <RefreshCw size={16} />
+            </button>
+          </div>
 
-      <div className="relative flex-grow ">
+          {/* Address Bar with Routes Dropdown - using shadcn/ui dropdown-menu */}
+          <div className="relative flex-grow min-w-20">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <div className="flex items-center justify-between px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded text-sm text-gray-700 dark:text-gray-200 cursor-pointer w-full min-w-0">
+                  <span className="truncate flex-1 mr-2 min-w-0">
+                    {navigationHistory[currentHistoryPosition]
+                      ? new URL(navigationHistory[currentHistoryPosition])
+                          .pathname
+                      : "/"}
+                  </span>
+                  <ChevronDown size={14} className="flex-shrink-0" />
+                </div>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-full">
+                {availableRoutes.length > 0 ? (
+                  availableRoutes.map((route) => (
+                    <DropdownMenuItem
+                      key={route.path}
+                      onClick={() => navigateToRoute(route.path)}
+                      className="flex justify-between"
+                    >
+                      <span>{route.label}</span>
+                      <span className="text-gray-500 dark:text-gray-400 text-xs">
+                        {route.path}
+                      </span>
+                    </DropdownMenuItem>
+                  ))
+                ) : (
+                  <DropdownMenuItem disabled>
+                    Loading routes...
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex space-x-1">
+            <button
+              onClick={onRestart}
+              className="flex items-center space-x-1 px-3 py-1 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
+              title="Restart App"
+            >
+              <Power size={16} />
+              <span>Restart</span>
+            </button>
+            <button
+              data-testid="preview-open-browser-button"
+              onClick={() => {
+                if (originalUrl) {
+                  IpcClient.getInstance().openExternalUrl(originalUrl);
+                }
+              }}
+              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
+            >
+              <ExternalLink size={16} />
+            </button>
+
+            {/* Device Mode Button */}
+            <Popover open={isDevicePopoverOpen} modal={false}>
+              <PopoverTrigger asChild>
+                <button
+                  data-testid="device-mode-button"
+                  onClick={() => {
+                    // Toggle popover open/close
+                    if (isDevicePopoverOpen) setDeviceMode("desktop");
+                    setIsDevicePopoverOpen(!isDevicePopoverOpen);
+                  }}
+                  className={cn(
+                    "p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 dark:text-gray-300",
+                    deviceMode !== "desktop" && "bg-gray-200 dark:bg-gray-700",
+                  )}
+                  title="Device Mode"
+                >
+                  <MonitorSmartphone size={16} />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                className="w-auto p-2"
+                onOpenAutoFocus={(e) => e.preventDefault()}
+                onInteractOutside={(e) => e.preventDefault()}
+              >
+                <TooltipProvider>
+                  <ToggleGroup
+                    type="single"
+                    value={deviceMode}
+                    onValueChange={(value) => {
+                      if (value) {
+                        setDeviceMode(value as DeviceMode);
+                        setIsDevicePopoverOpen(false);
+                      }
+                    }}
+                    variant="outline"
+                  >
+                    {/* Tooltips placed inside items instead of wrapping 
+                    to avoid asChild prop merging that breaks highlighting */}
+                    <ToggleGroupItem value="desktop" aria-label="Desktop view">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="flex items-center justify-center">
+                            <Monitor size={16} />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Desktop</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </ToggleGroupItem>
+                    <ToggleGroupItem value="tablet" aria-label="Tablet view">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="flex items-center justify-center">
+                            <Tablet size={16} className="scale-x-130" />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Tablet</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </ToggleGroupItem>
+                    <ToggleGroupItem value="mobile" aria-label="Mobile view">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="flex items-center justify-center">
+                            <Smartphone size={16} />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Mobile</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </ToggleGroupItem>
+                  </ToggleGroup>
+                </TooltipProvider>
+              </PopoverContent>
+            </Popover>
+          </div>
+        </div>
+      )}
+
+      <div className="relative flex-grow overflow-hidden">
         <ErrorBanner
           error={errorMessage}
           onDismiss={() => setErrorMessage(undefined)}

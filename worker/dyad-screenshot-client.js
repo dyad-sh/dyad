@@ -18,25 +18,7 @@
     try {
       console.debug("[dyad-screenshot] Capturing screenshot...");
 
-      // Save current styles
-      const originalPaddingTop = document.body.style.paddingTop;
-      const originalTransition = document.body.style.transition;
-
-      // Add padding to avoid toolbar covering content
-      // The toolbar is approx 60px height + offset, so 80px is safe
-      document.body.style.transition = "none";
-      document.body.style.paddingTop = "80px";
-
-      // Wait a brief moment for layout to update
-      await new Promise((resolve) =>
-        requestAnimationFrame(() => setTimeout(resolve, 100)),
-      );
-
       const dataUrl = await captureScreenshot();
-
-      // Restore styles
-      document.body.style.paddingTop = originalPaddingTop;
-      document.body.style.transition = originalTransition;
 
       console.debug("[dyad-screenshot] Screenshot captured successfully");
 

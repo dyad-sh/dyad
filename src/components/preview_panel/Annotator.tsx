@@ -336,10 +336,7 @@ export const Annotator = ({
   }, [image, scale, containerSize]);
 
   return (
-    <div
-      ref={containerRef}
-      className="w-full h-full relative bg-gray-50 dark:bg-gray-900 overflow-auto"
-    >
+    <div className="w-full h-full flex flex-col bg-gray-50 dark:bg-gray-900">
       {/* Toolbar */}
       <AnnotatorToolbar
         tool={tool}
@@ -351,47 +348,51 @@ export const Annotator = ({
         onUndo={handleUndo}
         onRedo={handleRedo}
         onSubmit={handleSubmit}
+        onDeactivate={handleAnnotatorClick}
         hasSubmitHandler={!!onSubmit}
       />
 
-      {textInputs.map((input, index) => (
-        <DraggableTextInput
-          key={input.id}
-          input={input}
-          index={index}
-          totalInputs={textInputs.length}
-          scale={scale}
-          onMove={handleTextInputMove}
-          onChange={handleTextInputChange}
-          onKeyDown={handleTextInputKeyDown}
-          onRemove={handleTextInputRemove}
-          spanRef={spanRef}
-          inputRef={inputRef}
-        />
-      ))}
+      {/* Canvas Container - Scrollable */}
+      <div ref={containerRef} className="flex-1 relative overflow-auto">
+        {textInputs.map((input, index) => (
+          <DraggableTextInput
+            key={input.id}
+            input={input}
+            index={index}
+            totalInputs={textInputs.length}
+            scale={scale}
+            onMove={handleTextInputMove}
+            onChange={handleTextInputChange}
+            onKeyDown={handleTextInputKeyDown}
+            onRemove={handleTextInputRemove}
+            spanRef={spanRef}
+            inputRef={inputRef}
+          />
+        ))}
 
-      <AnnotationCanvas
-        image={image}
-        shapes={shapes}
-        selectedId={selectedId}
-        tool={tool}
-        scale={scale}
-        stageDimensions={stageDimensions}
-        containerSize={containerSize}
-        stageRef={stageRef}
-        transformerRef={transformerRef}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onShapeSelect={setSelectedId}
-        onShapeDragEnd={(id, x, y) => {
-          const newShapes = shapes.map((s) =>
-            s.id === id ? { ...s, x, y } : s,
-          );
-          setShapes(newShapes);
-          saveHistory(newShapes);
-        }}
-      />
+        <AnnotationCanvas
+          image={image}
+          shapes={shapes}
+          selectedId={selectedId}
+          tool={tool}
+          scale={scale}
+          stageDimensions={stageDimensions}
+          containerSize={containerSize}
+          stageRef={stageRef}
+          transformerRef={transformerRef}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onShapeSelect={setSelectedId}
+          onShapeDragEnd={(id, x, y) => {
+            const newShapes = shapes.map((s) =>
+              s.id === id ? { ...s, x, y } : s,
+            );
+            setShapes(newShapes);
+            saveHistory(newShapes);
+          }}
+        />
+      </div>
     </div>
   );
 };

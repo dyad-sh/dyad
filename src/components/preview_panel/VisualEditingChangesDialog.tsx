@@ -89,12 +89,12 @@ export function VisualEditingChangesDialog({
   };
 
   return (
-    <div className="bg-[var(--background)] border-b border-[var(--border)] px-2 lg:px-4 py-1.5 flex flex-col lg:flex-row items-start lg:items-center lg:justify-between gap-1.5 lg:gap-4">
+    <div className="bg-[var(--background)] border-b border-[var(--border)] px-2 lg:px-4 py-1.5 flex flex-col lg:flex-row items-start lg:items-center lg:justify-between gap-1.5 lg:gap-4 flex-wrap">
       <p className="text-xs lg:text-sm w-full lg:w-auto">
         <span className="font-medium">{pendingChanges.size}</span> component
         {pendingChanges.size > 1 ? "s" : ""} modified
       </p>
-      <div className="flex gap-1 lg:gap-2 w-full lg:w-auto">
+      <div className="flex gap-1 lg:gap-2 w-full lg:w-auto flex-wrap">
         <Button
           size="sm"
           onClick={handleSave}

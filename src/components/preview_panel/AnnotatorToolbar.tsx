@@ -52,6 +52,7 @@ export const AnnotatorToolbar = ({
             <TooltipTrigger asChild>
               <button
                 onClick={() => onToolChange("select")}
+                aria-label="Select"
                 className={cn(
                   "p-1 rounded transition-colors duration-200",
                   tool === "select"
@@ -71,6 +72,7 @@ export const AnnotatorToolbar = ({
             <TooltipTrigger asChild>
               <button
                 onClick={() => onToolChange("draw")}
+                aria-label="Draw"
                 className={cn(
                   "p-1 rounded transition-colors duration-200",
                   tool === "draw"
@@ -90,6 +92,7 @@ export const AnnotatorToolbar = ({
             <TooltipTrigger asChild>
               <button
                 onClick={() => onToolChange("text")}
+                aria-label="Text"
                 className={cn(
                   "p-1 rounded transition-colors duration-200",
                   tool === "text"
@@ -111,6 +114,7 @@ export const AnnotatorToolbar = ({
             <TooltipTrigger asChild>
               <button
                 onClick={onDelete}
+                aria-label="Delete"
                 className="p-1 rounded transition-colors duration-200 text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900 disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={!selectedId}
               >
@@ -128,6 +132,7 @@ export const AnnotatorToolbar = ({
             <TooltipTrigger asChild>
               <button
                 onClick={onUndo}
+                aria-label="Undo"
                 className="p-1 rounded transition-colors duration-200 text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900 disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={historyStep === 0}
               >
@@ -143,6 +148,7 @@ export const AnnotatorToolbar = ({
             <TooltipTrigger asChild>
               <button
                 onClick={onRedo}
+                aria-label="Redo"
                 className="p-1 rounded transition-colors duration-200 text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900 disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={historyStep === historyLength - 1}
               >
@@ -160,6 +166,7 @@ export const AnnotatorToolbar = ({
             <TooltipTrigger asChild>
               <button
                 onClick={onSubmit}
+                aria-label="Submit to Chat"
                 className="p-1 rounded transition-colors duration-200 text-purple-700 hover:bg-purple-200 dark:text-purple-300 dark:hover:bg-purple-900 disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={!hasSubmitHandler}
               >
@@ -174,6 +181,7 @@ export const AnnotatorToolbar = ({
             <TooltipTrigger asChild>
               <button
                 onClick={onDeactivate}
+                aria-label="Close Annotator"
                 className="p-1 rounded transition-colors duration-200 text-purple-700 hover:bg-purple-200 dark:text-purple-300 dark:hover:bg-purple-900"
               >
                 <X size={16} />

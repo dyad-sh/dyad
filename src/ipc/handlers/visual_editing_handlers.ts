@@ -7,7 +7,7 @@ import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import { getDyadAppPath } from "../../paths/paths";
 import { parse } from "@babel/parser";
-import generate from "@babel/generator";
+import * as recast from "recast";
 import traverse from "@babel/traverse";
 import {
   stylesToTailwind,
@@ -86,7 +86,7 @@ export function registerVisualEditingHandlers() {
           const filePath = path.join(appPath, relativePath);
           const content = await fsPromises.readFile(filePath, "utf-8");
 
-          // Use AST for all changes
+          // Parse with babel for compatibility with JSX/TypeScript
           const ast = parse(content, {
             sourceType: "module",
             plugins: ["jsx", "typescript"],
@@ -212,11 +212,8 @@ export function registerVisualEditingHandlers() {
             },
           });
 
-          // Generate updated code
-          const output = generate(ast, {
-            retainLines: true,
-            compact: false,
-          });
+          // Use recast to generate code with preserved formatting
+          const output = recast.print(ast);
 
           await fsPromises.writeFile(filePath, output.code, "utf-8");
           // Check if git repository exists and commit the change

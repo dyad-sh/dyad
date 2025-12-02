@@ -6,7 +6,6 @@
   let currentHoveredElement = null;
   let highlightedComponentId = null;
   let componentCoordinates = null; // Store the last selected component's coordinates
-  let multiSelectorEnabled = true;
   //detect if the user is using Mac
   const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
 
@@ -174,21 +173,6 @@
           "*",
         );
       }
-    } else if (!multiSelectorEnabled && overlays.length === 1) {
-      // Single-selector mode: send coordinates for the only selected component
-      const rect = overlays[0].el.getBoundingClientRect();
-      window.parent.postMessage(
-        {
-          type: "dyad-component-coordinates-updated",
-          coordinates: {
-            top: rect.top,
-            left: rect.left,
-            width: rect.width,
-            height: rect.height,
-          },
-        },
-        "*",
-      );
     }
   }
 
@@ -369,8 +353,7 @@
     // If hovering over a selected component, show its label only if it's not highlighted
     if (
       hoveredItem &&
-      hoveredItem.el.dataset.dyadId !== highlightedComponentId &&
-      multiSelectorEnabled
+      hoveredItem.el.dataset.dyadId !== highlightedComponentId
     ) {
       updateSelectedOverlayLabel(hoveredItem, true);
       if (hoverOverlay) hoverOverlay.style.display = "none";
@@ -411,10 +394,7 @@
     const selectedItem = overlays.find((item) => item.el === state.element);
 
     // If clicking on the currently highlighted component, deselect it
-    if (
-      selectedItem &&
-      (highlightedComponentId === clickedComponentId || !multiSelectorEnabled)
-    ) {
+    if (selectedItem && highlightedComponentId === clickedComponentId) {
       if (state.element.contentEditable === "true") {
         return;
       }
@@ -432,38 +412,29 @@
       return;
     }
 
-    if (!multiSelectorEnabled) {
-      clearOverlays();
-    }
-
     // Update only the previously highlighted and newly highlighted components
-    // Only highlight if multi-selector is enabled
-    if (multiSelectorEnabled) {
-      if (
-        highlightedComponentId &&
-        highlightedComponentId !== clickedComponentId
-      ) {
-        const previousItem = overlays.find(
-          (item) => item.el.dataset.dyadId === highlightedComponentId,
-        );
-        if (previousItem) {
-          css(previousItem.overlay, {
-            border: `3px solid #7f22fe`,
-            background: "rgba(127, 34, 254, 0.05)",
-          });
-        }
-      }
-
-      highlightedComponentId = clickedComponentId;
-
-      if (selectedItem) {
-        css(selectedItem.overlay, {
-          border: `3px solid #00ff00`,
-          background: "rgba(0, 255, 0, 0.05)",
+    if (
+      highlightedComponentId &&
+      highlightedComponentId !== clickedComponentId
+    ) {
+      const previousItem = overlays.find(
+        (item) => item.el.dataset.dyadId === highlightedComponentId,
+      );
+      if (previousItem) {
+        css(previousItem.overlay, {
+          border: `3px solid #7f22fe`,
+          background: "rgba(127, 34, 254, 0.05)",
         });
       }
-    } else {
-      highlightedComponentId = null;
+    }
+
+    highlightedComponentId = clickedComponentId;
+
+    if (selectedItem) {
+      css(selectedItem.overlay, {
+        border: `3px solid #00ff00`,
+        background: "rgba(0, 255, 0, 0.05)",
+      });
     }
 
     if (!selectedItem) {
@@ -567,13 +538,6 @@
       if (e.data.componentId) {
         removeOverlayById(e.data.componentId);
       }
-    }
-    if (e.data.type === "enable-multi-selector") {
-      multiSelectorEnabled = true;
-    }
-    if (e.data.type === "disable-multi-selector") {
-      multiSelectorEnabled = false;
-      highlightedComponentId = null;
     }
   });
 

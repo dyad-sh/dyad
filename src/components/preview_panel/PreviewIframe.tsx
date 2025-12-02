@@ -41,7 +41,6 @@ import {
   currentComponentCoordinatesAtom,
   previewIframeRefAtom,
   pendingVisualChangesAtom,
-  multiSelectorEnabledAtom,
 } from "@/atoms/previewAtoms";
 import { ComponentSelection } from "@/ipc/ipc_types";
 import {
@@ -190,10 +189,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isPicking, setIsPicking] = useState(false);
   const setPendingChanges = useSetAtom(pendingVisualChangesAtom);
-  const [multiSelectorEnabled, setMultiSelectorEnabled] = useAtom(
-    multiSelectorEnabledAtom,
-  );
-  const [isPickerPopoverOpen, setIsPickerPopoverOpen] = useState(false);
 
   // AST Analysis State
   const [isDynamicComponent, setIsDynamicComponent] = useState(false);
@@ -378,18 +373,14 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         // Set as the highlighted component for visual editing
         setVisualEditingSelectedComponent(component);
 
-        // Handle component selection based on multi-selector mode
-        if (!multiSelectorEnabled) {
-          setSelectedComponentsPreview([component]);
-        } else {
-          setSelectedComponentsPreview((prev) => {
-            const exists = prev.some((c) => c.id === component.id);
-            if (exists) {
-              return prev;
-            }
-            return [...prev, component];
-          });
-        }
+        // Add to selected components if not already there
+        setSelectedComponentsPreview((prev) => {
+          const exists = prev.some((c) => c.id === component.id);
+          if (exists) {
+            return prev;
+          }
+          return [...prev, component];
+        });
 
         // Trigger AST analysis
         analyzeComponent(component.id);
@@ -410,11 +401,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               },
               "*",
             );
-          }
-
-          if (!multiSelectorEnabled) {
-            setSelectedComponentsPreview([]);
-            setVisualEditingSelectedComponent(null);
           }
 
           console.log(selectedComponentsPreview);
@@ -526,8 +512,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     setIsComponentSelectorInitialized,
     setSelectedComponentsPreview,
     setVisualEditingSelectedComponent,
-    multiSelectorEnabled,
-    selectedComponentsPreview,
   ]);
 
   useEffect(() => {
@@ -558,19 +542,14 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     if (iframeRef.current?.contentWindow) {
       const newIsPicking = !isPicking;
       if (!newIsPicking) {
-        setVisualEditingSelectedComponent(null);
         // Clean up any text editing states when deactivating
         iframeRef.current.contentWindow.postMessage(
           { type: "cleanup-all-text-editing" },
           "*",
         );
-        setSelectedComponentsPreview([]);
-        iframeRef.current.contentWindow.postMessage(
-          { type: "clear-dyad-component-overlays" },
-          "*",
-        );
       }
       setIsPicking(newIsPicking);
+      setVisualEditingSelectedComponent(null);
       iframeRef.current.contentWindow.postMessage(
         {
           type: newIsPicking
@@ -579,32 +558,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         },
         "*",
       );
-
-      if (newIsPicking) {
-        iframeRef.current.contentWindow.postMessage(
-          {
-            type: multiSelectorEnabled
-              ? "enable-multi-selector"
-              : "disable-multi-selector",
-          },
-          "*",
-        );
-      }
     }
   };
-
-  useEffect(() => {
-    if (isPicking && iframeRef.current?.contentWindow) {
-      iframeRef.current.contentWindow.postMessage(
-        {
-          type: multiSelectorEnabled
-            ? "enable-multi-selector"
-            : "disable-multi-selector",
-        },
-        "*",
-      );
-    }
-  }, [multiSelectorEnabled, isPicking]);
 
   // Activate component selector using a shortcut
   useShortcut(
@@ -728,98 +683,32 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         {/* Navigation Buttons */}
         <div className="flex space-x-1">
           <TooltipProvider>
-            <Popover
-              open={isPickerPopoverOpen}
-              onOpenChange={() => {
-                if (!isPicking) setIsPickerPopoverOpen;
-              }}
-            >
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <PopoverTrigger asChild>
-                    <button
-                      onClick={() => {
-                        if (isPicking) {
-                          handleActivateComponentSelector();
-                        } else {
-                          setIsPickerPopoverOpen(true);
-                        }
-                      }}
-                      className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
-                        isPicking
-                          ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
-                          : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
-                      }`}
-                      disabled={
-                        loading ||
-                        !selectedAppId ||
-                        !isComponentSelectorInitialized
-                      }
-                      data-testid="preview-pick-element-button"
-                    >
-                      <MousePointerClick size={16} />
-                    </button>
-                  </PopoverTrigger>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>
-                    {isPicking
-                      ? "Deactivate component selector"
-                      : "Select component"}
-                  </p>
-                  <p>{isMac ? "⌘ + ⇧ + C" : "Ctrl + ⇧ + C"}</p>
-                </TooltipContent>
-              </Tooltip>
-              <PopoverContent className="w-56 p-3" align="start">
-                <div className="space-y-3">
-                  <div className="text-sm font-medium">Selection Mode</div>
-                  <div className="space-y-2">
-                    <button
-                      onClick={() => {
-                        setMultiSelectorEnabled(false);
-                        setIsPickerPopoverOpen(false);
-                        if (!isPicking) {
-                          handleActivateComponentSelector();
-                        }
-                      }}
-                      className={cn(
-                        "w-full text-left px-3 py-2 rounded-md text-sm transition-colors",
-                        !multiSelectorEnabled
-                          ? "bg-purple-100 dark:bg-purple-900 text-purple-900 dark:text-purple-100"
-                          : "hover:bg-gray-100 dark:hover:bg-gray-800",
-                      )}
-                      data-testid="select-one-component"
-                    >
-                      <div className="font-medium">Single Component</div>
-                      <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                        Select one component at a time
-                      </div>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setMultiSelectorEnabled(true);
-                        setIsPickerPopoverOpen(false);
-                        if (!isPicking) {
-                          handleActivateComponentSelector();
-                        }
-                      }}
-                      className={cn(
-                        "w-full text-left px-3 py-2 rounded-md text-sm transition-colors",
-                        multiSelectorEnabled
-                          ? "bg-purple-100 dark:bg-purple-900 text-purple-900 dark:text-purple-100"
-                          : "hover:bg-gray-100 dark:hover:bg-gray-800",
-                      )}
-                      data-testid="select-several-components"
-                    >
-                      <div className="font-medium">Multiple Components</div>
-                      <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                        Select and edit multiple components
-                      </div>
-                    </button>
-                  </div>
-                </div>
-              </PopoverContent>
-            </Popover>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={handleActivateComponentSelector}
+                  className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
+                    isPicking
+                      ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
+                      : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
+                  }`}
+                  disabled={
+                    loading || !selectedAppId || !isComponentSelectorInitialized
+                  }
+                  data-testid="preview-pick-element-button"
+                >
+                  <MousePointerClick size={16} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>
+                  {isPicking
+                    ? "Deactivate component selector"
+                    : "Select component"}
+                </p>
+                <p>{isMac ? "⌘ + ⇧ + C" : "Ctrl + ⇧ + C"}</p>
+              </TooltipContent>
+            </Tooltip>
           </TooltipProvider>
           <button
             className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"

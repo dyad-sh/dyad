@@ -1,5 +1,6 @@
 import { ipcMain } from "electron";
-import fs from "fs/promises";
+import fs from "node:fs";
+import { promises as fsPromises } from "node:fs";
 import path from "path";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
@@ -12,6 +13,8 @@ import {
   stylesToTailwind,
   extractClassPrefixes,
 } from "../../utils/style-utils";
+import git from "isomorphic-git";
+import { gitCommit } from "../utils/git_utils";
 
 interface StyleChange {
   componentId: string;
@@ -81,7 +84,7 @@ export function registerVisualEditingHandlers() {
         // Apply changes to each file
         for (const [relativePath, lineChanges] of fileChanges) {
           const filePath = path.join(appPath, relativePath);
-          const content = await fs.readFile(filePath, "utf-8");
+          const content = await fsPromises.readFile(filePath, "utf-8");
 
           // Use AST for all changes
           const ast = parse(content, {
@@ -215,7 +218,20 @@ export function registerVisualEditingHandlers() {
             compact: false,
           });
 
-          await fs.writeFile(filePath, output.code, "utf-8");
+          await fsPromises.writeFile(filePath, output.code, "utf-8");
+          // Check if git repository exists and commit the change
+          if (fs.existsSync(path.join(appPath, ".git"))) {
+            await git.add({
+              fs,
+              dir: appPath,
+              filepath: relativePath,
+            });
+
+            await gitCommit({
+              path: appPath,
+              message: `Updated ${relativePath}`,
+            });
+          }
         }
       } catch (error) {
         throw new Error(`Failed to apply visual editing changes: ${error}`);
@@ -248,7 +264,7 @@ export function registerVisualEditingHandlers() {
 
         const appPath = getDyadAppPath(app.path);
         const fullPath = path.join(appPath, filePath);
-        const content = await fs.readFile(fullPath, "utf-8");
+        const content = await fsPromises.readFile(fullPath, "utf-8");
 
         const ast = parse(content, {
           sourceType: "module",

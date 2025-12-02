@@ -42,7 +42,8 @@ if (started) {
   app.quit();
 }
 // Set up Dugite git path for development
-if (!app.isPackaged) {
+if (!app.isPackaged && !process.env.CI) {
+  // <-- ADDED CHECK
   const gitPath = path.join(app.getAppPath(), "node_modules/dugite/git");
   process.env.LOCAL_GIT_DIRECTORY = gitPath;
 }

@@ -13,6 +13,7 @@ import { HomeSubmitOptions } from "@/pages/home";
 import { ChatInputControls } from "../ChatInputControls";
 import { LexicalChatInput } from "./LexicalChatInput";
 import { useChatModeToggle } from "@/hooks/useChatModeToggle";
+import { useTypingPlaceholder } from "@/hooks/useTypingPlaceholder";
 export function HomeChatInput({
   onSubmit,
 }: {
@@ -25,6 +26,13 @@ export function HomeChatInput({
     hasChatId: false,
   }); // eslint-disable-line @typescript-eslint/no-unused-vars
   useChatModeToggle();
+
+  const typingText = useTypingPlaceholder([
+    "an ecommerce store...",
+    "an information page...",
+    "a landing page...",
+  ]);
+  const placeholder = `Ask Dyad to build ${typingText ?? ""}`;
 
   // Use the attachments hook
   const {
@@ -83,7 +91,7 @@ export function HomeChatInput({
               onChange={setInputValue}
               onSubmit={handleCustomSubmit}
               onPaste={handlePaste}
-              placeholder="Ask Dyad to build..."
+              placeholder={placeholder}
               disabled={isStreaming}
               excludeCurrentApp={false}
               disableSendButton={false}

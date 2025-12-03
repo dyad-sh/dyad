@@ -14,6 +14,7 @@ import type {
   UserSettings,
   VertexProviderSetting,
   AzureProviderSetting,
+  ClaudeCodeProviderSetting,
 } from "../../lib/schemas";
 import { getEnvVar } from "./read_env";
 import log from "electron-log";
@@ -399,10 +400,50 @@ function getRegularModelClient(
         `Using Claude Code provider: ${model.name}${apiKey ? " with API key" : " (subscription mode)"}`,
       );
 
+      // Helper function to expand ~ to home directory
+      const expandHomeDir = (filePath: string): string => {
+        if (filePath.startsWith("~/")) {
+          const homeDir = process.env.HOME || process.env.USERPROFILE || "";
+          return `${homeDir}/${filePath.slice(2)}`;
+        }
+        return filePath;
+      };
+
+      // Determine Claude CLI executable path with priority:
+      // 1. User settings (claudeExecutablePath)
+      // 2. Environment variable (CLAUDE_CODE_EXECUTABLE_PATH)
+      // 3. Default path ($HOME/.local/bin/claude)
+      const claudeCodeSettings = settings?.providerSettings?.[
+        "claude-code"
+      ] as ClaudeCodeProviderSetting | undefined;
+      const userExecutablePath = claudeCodeSettings?.claudeExecutablePath
+        ? expandHomeDir(claudeCodeSettings.claudeExecutablePath)
+        : undefined;
+      const envExecutablePath = getEnvVar("CLAUDE_CODE_EXECUTABLE_PATH")
+        ? expandHomeDir(getEnvVar("CLAUDE_CODE_EXECUTABLE_PATH")!)
+        : undefined;
+      const homeDir = process.env.HOME || process.env.USERPROFILE || "";
+      const defaultClaudePath = homeDir
+        ? `${homeDir}/.local/bin/claude`
+        : "";
+
+      const claudeExecutablePath =
+        userExecutablePath || envExecutablePath || defaultClaudePath;
+
+      logger.info(
+        `Claude CLI executable path: ${claudeExecutablePath}${
+          userExecutablePath
+            ? " (from settings)"
+            : envExecutablePath
+              ? " (from env)"
+              : " (default)"
+        }`,
+      );
+
       return {
         modelClient: {
           model: claudeCode(model.name, {
-            pathToClaudeCodeExecutable: "claude", // Use system PATH
+            pathToClaudeCodeExecutable: claudeExecutablePath,
           }),
           builtinProviderId: providerId,
         },

@@ -380,28 +380,26 @@ export async function gitSetRemoteUrl({
   if (settings.enableNativeGit) {
     // Dugite version
     try {
-      // First check if remote exists
-      const checkResult = await exec(["remote", "get-url", "origin"], path);
+      // Try to add the remote
+      const result = await exec(["remote", "add", "origin", remoteUrl], path);
 
-      if (checkResult.exitCode === 0) {
-        // Remote exists, update it
-        const result = await exec(
+      // If remote already exists, update it instead
+      if (result.exitCode !== 0 && result.stderr.includes("already exists")) {
+        const updateResult = await exec(
           ["remote", "set-url", "origin", remoteUrl],
           path,
         );
-        if (result.exitCode !== 0) {
-          throw new Error(
-            `Failed to set remote URL: ${result.stderr.toString()}`,
-          );
+
+        if (updateResult.exitCode !== 0) {
+          throw new Error(`Failed to update remote: ${updateResult.stderr}`);
         }
-      } else {
-        throw new Error(
-          `Remote does not exist: ${checkResult.stderr.toString()}`,
-        );
+      } else if (result.exitCode !== 0) {
+        // Handle other errors
+        throw new Error(`Failed to add remote: ${result.stderr}`);
       }
-    } catch (error: any) {
-      logger.error("Error setting remote URL:", error);
-      throw new Error(`Error setting remote URL: ${error.message}`);
+    } catch (error) {
+      console.error("Error setting up remote:", error);
+      throw error; // or handle as needed
     }
   } else {
     //isomorphic-git version

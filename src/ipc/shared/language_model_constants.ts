@@ -263,6 +263,15 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       dollarSigns: 0,
     },
     {
+      name: "deepseek/deepseek-v3.2",
+      displayName: "DeepSeek v3.2",
+      description: "DeepSeek's latest model",
+      maxOutputTokens: 32_000,
+      contextWindow: 128_000,
+      temperature: 1,
+      dollarSigns: 2,
+    },
+    {
       name: "z-ai/glm-4.6",
       displayName: "GLM 4.6",
       description: "Z-AI's best coding model",

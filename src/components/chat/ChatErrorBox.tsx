@@ -36,10 +36,15 @@ export function ChatErrorBox({
 
   // Important, this needs to come after the "free quota tier" check
   // because it also includes this URL in the error message
+  //
+  // Sometimes Dyad Pro can return rate limit errors and we do not want to
+  // show the upgrade to Dyad Pro link in that case because they are
+  // already on the Dyad Pro plan.
   if (
-    error.includes("Resource has been exhausted") ||
-    error.includes("https://ai.google.dev/gemini-api/docs/rate-limits") ||
-    error.includes("Provider returned error")
+    !isDyadProEnabled &&
+    (error.includes("Resource has been exhausted") ||
+      error.includes("https://ai.google.dev/gemini-api/docs/rate-limits") ||
+      error.includes("Provider returned error"))
   ) {
     return (
       <ChatErrorContainer onDismiss={onDismiss}>
@@ -93,8 +98,13 @@ export function ChatErrorBox({
     );
   }
   // This is a very long list of model fallbacks that clutters the error message.
-  if (error.includes("Fallbacks=")) {
-    error = error.split("Fallbacks=")[0];
+  //
+  // We are matching "Fallbacks=[{" and not just "Fallbacks=" because the fallback
+  // model itself can error and we want to include the fallback model error in the error message.
+  // Example: https://github.com/dyad-sh/dyad/issues/1849#issuecomment-3590685911
+  const fallbackPrefix = "Fallbacks=[{";
+  if (error.includes(fallbackPrefix)) {
+    error = error.split(fallbackPrefix)[0];
   }
   return (
     <ChatErrorContainer onDismiss={onDismiss}>

@@ -10,6 +10,8 @@ import crypto from "node:crypto";
 // Mock git_utils
 vi.mock("@/ipc/utils/git_utils", () => ({
   getFileAtCommit: vi.fn(),
+  getCurrentCommitHash: vi.fn().mockResolvedValue("mock-current-commit-hash"),
+  isGitStatusClean: vi.fn().mockResolvedValue(true),
 }));
 
 // Mock electron-log

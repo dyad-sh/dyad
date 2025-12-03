@@ -546,6 +546,7 @@ ${componentSnippet}
           role: message.role as "user" | "assistant" | "system",
           content: message.content,
           sourceCommitHash: message.sourceCommitHash,
+          commitHash: message.commitHash,
         }));
 
         // For Dyad Pro + Deep Context, we set to 200 chat turns (+1)
@@ -746,6 +747,7 @@ This conversation includes one or more image attachments. When the user uploads 
           providerOptions: {
             "dyad-engine": {
               sourceCommitHash: msg.sourceCommitHash,
+              commitHash: msg.commitHash,
             },
           },
         }));

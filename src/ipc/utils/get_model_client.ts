@@ -401,7 +401,9 @@ function getRegularModelClient(
 
       return {
         modelClient: {
-          model: claudeCode(model.name),
+          model: claudeCode(model.name, {
+            pathToClaudeCodeExecutable: "claude", // Use system PATH
+          }),
           builtinProviderId: providerId,
         },
         backupModelClients: [],

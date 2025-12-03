@@ -8,6 +8,7 @@ import { LanguageModelV2 } from "@ai-sdk/provider";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
+import { claudeCode } from "ai-sdk-provider-claude-code";
 import type {
   LargeLanguageModel,
   UserSettings,
@@ -386,6 +387,21 @@ function getRegularModelClient(
       return {
         modelClient: {
           model: provider(model.name),
+          builtinProviderId: providerId,
+        },
+        backupModelClients: [],
+      };
+    }
+    case "claude-code": {
+      // Claude Code (Agent SDK) - supports both subscription and API key modes
+      // Note: API key is optional - will use Pro/Max subscription if not provided
+      logger.info(
+        `Using Claude Code provider: ${model.name}${apiKey ? " with API key" : " (subscription mode)"}`,
+      );
+
+      return {
+        modelClient: {
+          model: claudeCode(model.name),
           builtinProviderId: providerId,
         },
         backupModelClients: [],

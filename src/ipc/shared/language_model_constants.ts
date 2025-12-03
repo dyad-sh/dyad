@@ -485,6 +485,35 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       temperature: 0,
     },
   ],
+  "claude-code": [
+    {
+      name: "sonnet",
+      displayName: "Claude Sonnet 4.5 (Agent)",
+      description:
+        "Claude Agent SDK経由。Pro/Maxサブスクリプション、またはAPIキーで使用可能。",
+      maxOutputTokens: 32_000,
+      contextWindow: 200_000,
+      temperature: 0,
+    },
+    {
+      name: "opus",
+      displayName: "Claude Opus 4 (Agent)",
+      description:
+        "Claude Agent SDK経由。Pro/Maxサブスクリプション、またはAPIキーで使用可能。",
+      maxOutputTokens: 32_000,
+      contextWindow: 200_000,
+      temperature: 0,
+    },
+    {
+      name: "haiku",
+      displayName: "Claude Haiku 4 (Agent)",
+      description:
+        "Claude Agent SDK経由。Pro/Maxサブスクリプション、またはAPIキーで使用可能。",
+      maxOutputTokens: 32_000,
+      contextWindow: 200_000,
+      temperature: 0,
+    },
+  ],
 };
 
 export const TURBO_MODELS: LanguageModel[] = [
@@ -522,6 +551,7 @@ export const PROVIDER_TO_ENV_VAR: Record<string, string> = {
   azure: "AZURE_API_KEY",
   xai: "XAI_API_KEY",
   bedrock: "AWS_BEARER_TOKEN_BEDROCK",
+  "claude-code": "ANTHROPIC_API_KEY",
 };
 
 export const CLOUD_PROVIDERS: Record<
@@ -590,6 +620,13 @@ export const CLOUD_PROVIDERS: Record<
     hasFreeTier: false,
     websiteUrl: "https://console.aws.amazon.com/bedrock/",
     gatewayPrefix: "bedrock/",
+    secondary: true,
+  },
+  "claude-code": {
+    displayName: "Claude Code (Agent SDK)",
+    hasFreeTier: false,
+    websiteUrl: "https://claude.ai/",
+    gatewayPrefix: "claude-code/",
     secondary: true,
   },
 };

@@ -17,7 +17,7 @@ testSkipIfWindows("smart context deep - read write read", async ({ po }) => {
   await po.snapshotMessages({ replaceDumpPath: true });
 });
 
-testSkipIfWindows.only(
+testSkipIfWindows(
   "smart context deep - mention app should fallback to balanced",
   async ({ po }) => {
     await po.setUpDyadPro();

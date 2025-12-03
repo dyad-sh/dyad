@@ -212,6 +212,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             type: "enable-dyad-text-editing",
             data: {
               componentId: componentId,
+              runtimeId: visualEditingSelectedComponent?.runtimeId,
             },
           },
           "*",
@@ -269,6 +270,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           type: "get-dyad-component-styles",
           data: {
             elementId: visualEditingSelectedComponent.id,
+            runtimeId: visualEditingSelectedComponent.runtimeId,
           },
         },
         "*",
@@ -354,14 +356,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       if (event.data?.type === "dyad-component-selected") {
         console.log("Component picked:", event.data);
 
-        // Parse the single selected component
-        const component = event.data.component
-          ? parseComponentSelection({
-              type: "dyad-component-selected",
-              id: event.data.component.id,
-              name: event.data.component.name,
-            })
-          : null;
+        const component = parseComponentSelection(event.data);
 
         if (!component) return;
 
@@ -375,7 +370,13 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
         // Add to selected components if not already there
         setSelectedComponentsPreview((prev) => {
-          const exists = prev.some((c) => c.id === component.id);
+          const exists = prev.some((c) => {
+            // Check by runtimeId if available, otherwise by id
+            if (component.runtimeId && c.runtimeId) {
+              return c.runtimeId === component.runtimeId;
+            }
+            return c.id === component.id;
+          });
           if (exists) {
             return prev;
           }
@@ -938,16 +939,20 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 };
 
 function parseComponentSelection(data: any): ComponentSelection | null {
+  if (!data || data.type !== "dyad-component-selected") {
+    return null;
+  }
+
+  const component = data.component;
   if (
-    !data ||
-    data.type !== "dyad-component-selected" ||
-    typeof data.id !== "string" ||
-    typeof data.name !== "string"
+    !component ||
+    typeof component.id !== "string" ||
+    typeof component.name !== "string"
   ) {
     return null;
   }
 
-  const { id, name } = data;
+  const { id, name, runtimeId } = component;
 
   // The id is expected to be in the format "filepath:line:column"
   const parts = id.split(":");
@@ -976,6 +981,7 @@ function parseComponentSelection(data: any): ComponentSelection | null {
   return {
     id,
     name,
+    runtimeId,
     relativePath: normalizePath(relativePath),
     lineNumber,
     columnNumber,

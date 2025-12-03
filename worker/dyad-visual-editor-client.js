@@ -4,22 +4,20 @@
   // Track text editing state globally
   let textEditingState = new Map(); // componentId -> { originalText, currentText, cleanup }
 
-  function findElementByDyadId(dyadId) {
-    const escaped = CSS.escape(dyadId);
-    const element = document.querySelector(`[data-dyad-id="${escaped}"]`);
-
-    if (!element) {
-      console.warn(
-        `[Dyad Visual Editor] Element not found. Available elements with data-dyad-id:`,
-        Array.from(document.querySelectorAll("[data-dyad-id]")).map((el) =>
-          el.getAttribute("data-dyad-id"),
-        ),
+  function findElementByDyadId(dyadId, runtimeId) {
+    // If runtimeId is provided, try to find element by runtime ID first
+    if (runtimeId) {
+      const elementByRuntimeId = document.querySelector(
+        `[data-dyad-runtime-id="${runtimeId}"]`,
       );
-    } else {
-      console.debug(`[Dyad Visual Editor] Found element:`, element);
+      if (elementByRuntimeId) {
+        return elementByRuntimeId;
+      }
     }
 
-    return element;
+    // Fall back to finding by dyad-id (will get first match)
+    const escaped = CSS.escape(dyadId);
+    return document.querySelector(`[data-dyad-id="${escaped}"]`);
   }
 
   function applyStyles(element, styles) {
@@ -78,8 +76,8 @@
   /* ---------- message handlers ------------------------------------------ */
 
   function handleGetStyles(data) {
-    const { elementId } = data;
-    const element = findElementByDyadId(elementId);
+    const { elementId, runtimeId } = data;
+    const element = findElementByDyadId(elementId, runtimeId);
     if (element) {
       const computedStyle = window.getComputedStyle(element);
       const styles = {
@@ -120,8 +118,8 @@
   }
 
   function handleModifyStyles(data) {
-    const { elementId, styles } = data;
-    const element = findElementByDyadId(elementId);
+    const { elementId, runtimeId, styles } = data;
+    const element = findElementByDyadId(elementId, runtimeId);
     if (element) {
       applyStyles(element, styles);
 
@@ -144,7 +142,7 @@
   }
 
   function handleEnableTextEditing(data) {
-    const { componentId } = data;
+    const { componentId, runtimeId } = data;
 
     // Clean up any existing text editing states first
     textEditingState.forEach((state, existingId) => {
@@ -153,7 +151,7 @@
       }
     });
 
-    const element = findElementByDyadId(componentId);
+    const element = findElementByDyadId(componentId, runtimeId);
     if (element) {
       const originalText = element.innerText;
 
@@ -231,8 +229,8 @@
   }
 
   function handleGetTextContent(data) {
-    const { componentId } = data;
-    const element = findElementByDyadId(componentId);
+    const { componentId, runtimeId } = data;
+    const element = findElementByDyadId(componentId, runtimeId);
     const state = textEditingState.get(componentId);
 
     window.parent.postMessage(

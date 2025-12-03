@@ -280,6 +280,7 @@ export type UserBudgetInfo = z.infer<typeof UserBudgetInfoSchema>;
 export interface ComponentSelection {
   id: string;
   name: string;
+  runtimeId?: string; // Unique runtime ID for duplicate components
   relativePath: string;
   lineNumber: number;
   columnNumber: number;

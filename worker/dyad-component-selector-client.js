@@ -4,7 +4,7 @@
   let hoverOverlay = null;
   let hoverLabel = null;
   let currentHoveredElement = null;
-  let highlightedComponentId = null;
+  let highlightedElement = null;
   let componentCoordinates = null; // Store the last selected component's coordinates
   //detect if the user is using Mac
   const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
@@ -152,10 +152,10 @@
     }
 
     // Send updated coordinates for highlighted or selected component to parent
-    if (highlightedComponentId) {
+    if (highlightedElement) {
       // Multi-selector mode: send coordinates for the highlighted component
       const highlightedItem = overlays.find(
-        ({ el }) => el.dataset.dyadId === highlightedComponentId,
+        ({ el }) => el === highlightedElement,
       );
 
       if (highlightedItem) {
@@ -187,21 +187,30 @@
     }
 
     currentHoveredElement = null;
-    highlightedComponentId = null;
+    highlightedElement = null;
   }
 
   function removeOverlayById(componentId) {
-    const index = overlays.findIndex(
-      ({ el }) => el.dataset.dyadId === componentId,
-    );
-    if (index !== -1) {
-      const { overlay } = overlays[index];
-      overlay.remove();
-      overlays.splice(index, 1);
-
-      if (highlightedComponentId === componentId) {
-        highlightedComponentId = null;
+    // Remove all overlays with the same componentId
+    const indicesToRemove = [];
+    overlays.forEach((item, index) => {
+      if (item.el.dataset.dyadId === componentId) {
+        indicesToRemove.push(index);
       }
+    });
+
+    // Remove in reverse order to maintain correct indices
+    for (let i = indicesToRemove.length - 1; i >= 0; i--) {
+      const { overlay } = overlays[indicesToRemove[i]];
+      overlay.remove();
+      overlays.splice(indicesToRemove[i], 1);
+    }
+
+    if (
+      highlightedElement &&
+      highlightedElement.dataset.dyadId === componentId
+    ) {
+      highlightedElement = null;
     }
   }
 
@@ -227,10 +236,10 @@
 
   // Helper function to check if the highlighted component is inside another selected component
   function isHighlightedComponentChildOfSelected() {
-    if (!highlightedComponentId) return null;
+    if (!highlightedElement) return null;
 
     const highlightedItem = overlays.find(
-      ({ el }) => el.dataset.dyadId === highlightedComponentId,
+      ({ el }) => el === highlightedElement,
     );
     if (!highlightedItem) return null;
 
@@ -327,7 +336,7 @@
     // If hovering over the highlighted component and it has a parent, hide the parent's label
     if (
       hoveredItem &&
-      hoveredItem.el.dataset.dyadId === highlightedComponentId &&
+      hoveredItem.el === highlightedElement &&
       parentOfHighlighted
     ) {
       // Hide the parent component's label
@@ -351,10 +360,7 @@
     currentHoveredElement = el;
 
     // If hovering over a selected component, show its label only if it's not highlighted
-    if (
-      hoveredItem &&
-      hoveredItem.el.dataset.dyadId !== highlightedComponentId
-    ) {
+    if (hoveredItem && hoveredItem.el !== highlightedElement) {
       updateSelectedOverlayLabel(hoveredItem, true);
       if (hoverOverlay) hoverOverlay.style.display = "none";
     }
@@ -394,14 +400,16 @@
     const selectedItem = overlays.find((item) => item.el === state.element);
 
     // If clicking on the currently highlighted component, deselect it
-    if (selectedItem && highlightedComponentId === clickedComponentId) {
+    if (selectedItem && highlightedElement === state.element) {
       if (state.element.contentEditable === "true") {
         return;
       }
 
       removeOverlayById(clickedComponentId);
       requestAnimationFrame(updateAllOverlayPositions);
-      highlightedComponentId = null;
+      highlightedElement = null;
+
+      // Only post message once for all elements with the same ID
       window.parent.postMessage(
         {
           type: "dyad-component-deselected",
@@ -412,13 +420,10 @@
       return;
     }
 
-    // Update only the previously highlighted and newly highlighted components
-    if (
-      highlightedComponentId &&
-      highlightedComponentId !== clickedComponentId
-    ) {
+    // Update only the previously highlighted component
+    if (highlightedElement && highlightedElement !== state.element) {
       const previousItem = overlays.find(
-        (item) => item.el.dataset.dyadId === highlightedComponentId,
+        (item) => item.el === highlightedElement,
       );
       if (previousItem) {
         css(previousItem.overlay, {
@@ -428,7 +433,7 @@
       }
     }
 
-    highlightedComponentId = clickedComponentId;
+    highlightedElement = state.element;
 
     if (selectedItem) {
       css(selectedItem.overlay, {
@@ -442,6 +447,11 @@
       requestAnimationFrame(updateAllOverlayPositions);
     }
 
+    // Assign a unique runtime ID to this element if it doesn't have one
+    if (!state.element.dataset.dyadRuntimeId) {
+      state.element.dataset.dyadRuntimeId = `dyad-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    }
+
     const rect = state.element.getBoundingClientRect();
     window.parent.postMessage(
       {
@@ -449,6 +459,7 @@
         component: {
           id: clickedComponentId,
           name: state.element.dataset.dyadName,
+          runtimeId: state.element.dataset.dyadRuntimeId,
         },
         coordinates: {
           top: rect.top,

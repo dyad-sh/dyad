@@ -128,6 +128,7 @@ export function VisualEditingToolbar({
         type: "modify-dyad-component-styles",
         data: {
           elementId: selectedComponent.id,
+          runtimeId: selectedComponent.runtimeId,
           styles,
         },
       },
@@ -185,6 +186,7 @@ export function VisualEditingToolbar({
           type: "get-dyad-component-styles",
           data: {
             elementId: selectedComponent.id,
+            runtimeId: selectedComponent.runtimeId,
           },
         },
         "*",

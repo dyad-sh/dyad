@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/accordion";
 import { AzureConfiguration } from "./AzureConfiguration";
 import { VertexConfiguration } from "./VertexConfiguration";
+import { ClaudeCodeConfiguration } from "./ClaudeCodeConfiguration";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { UserSettings } from "@/lib/schemas";
@@ -65,6 +66,16 @@ export function ApiKeyConfiguration({
   // Special handling for Google Vertex AI which uses service account credentials
   if (provider === "vertex") {
     return <VertexConfiguration />;
+  }
+  // Special handling for Claude Code (Agent SDK) which supports executable path configuration
+  if (provider === "claude-code") {
+    return (
+      <ClaudeCodeConfiguration
+        settings={settings}
+        envVars={envVars}
+        updateSettings={updateSettings}
+      />
+    );
   }
 
   const envApiKey = envVarName ? envVars[envVarName] : undefined;

@@ -39,6 +39,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
     data: allProviders,
     isLoading: providersLoading,
     error: providersError,
+    isProviderSetup,
   } = useLanguageModelProviders();
 
   // Find the specific provider data from the fetched list
@@ -110,12 +111,8 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
       ? azureHasSavedSettings || azureHasEnvConfiguration
       : false;
 
-  const isConfigured =
-    provider === "azure"
-      ? isAzureConfigured
-      : provider === "vertex"
-        ? isVertexConfigured
-        : isValidUserKey || hasEnvKey; // Configured if either is set
+  // Use isProviderSetup from useLanguageModelProviders hook for consistent logic
+  const isConfigured = isProviderSetup(provider);
 
   // --- Save Handler ---
   const handleSaveKey = async (value: string) => {

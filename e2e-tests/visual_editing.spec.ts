@@ -96,8 +96,10 @@ testSkipIfWindows(
     // Close the popover
     await po.page.keyboard.press("Escape");
 
-    // Wait for changes to be registered
-    await po.page.waitForTimeout(500);
+    // Wait for popover to fully close before selecting next component
+    await expect(po.page.getByLabel("Horizontal")).not.toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
 
     // Select and edit second component (keeping first selected)
     await po
@@ -106,15 +108,17 @@ testSkipIfWindows(
       .getByText("Made with Dyad")
       .click();
 
-    // Wait for toolbar to update
-    await po.page.waitForTimeout(500);
+    // Wait for toolbar to update and ensure the margin button is visible
+    await expect(po.page.getByRole("button", { name: "Margin" })).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
 
     // Click on margin button again for the second component
     await po.page.getByRole("button", { name: "Margin" }).click();
 
-    // Wait for the margin inputs to be visible in the popover
+    // Wait longer for the margin inputs to be visible in the popover on Mac
     await expect(po.page.getByLabel("Horizontal")).toBeVisible({
-      timeout: Timeout.MEDIUM,
+      timeout: Timeout.LONG,
     });
 
     // Edit margin for second component

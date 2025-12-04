@@ -42,10 +42,25 @@ if (started) {
   app.quit();
 }
 // Set up Dugite git path for development
-if (!app.isPackaged && !process.env.CI) {
-  // <-- ADDED CHECK
-  const gitPath = path.join(app.getAppPath(), "node_modules/dugite/git");
-  process.env.LOCAL_GIT_DIRECTORY = gitPath;
+// if (!app.isPackaged && !process.env.CI) {
+// <-- ADDED CHECK
+// Set up Dugite git path for development and e2e tests
+if (!app.isPackaged || IS_TEST_BUILD) {
+  // For tests, use process.cwd() which should be the project root
+  // For dev, use app.getAppPath() which is also the project root
+  const projectRoot = IS_TEST_BUILD ? process.cwd() : app.getAppPath();
+  const gitPath = path.join(projectRoot, "node_modules/dugite/git");
+
+  const fs = require("fs");
+  if (fs.existsSync(gitPath)) {
+    process.env.LOCAL_GIT_DIRECTORY = gitPath;
+  } else {
+    // Try alternative location
+    const altGitPath = path.join(process.cwd(), "node_modules/dugite/git");
+    if (fs.existsSync(altGitPath)) {
+      process.env.LOCAL_GIT_DIRECTORY = altGitPath;
+    }
+  }
 }
 
 // https://www.electronjs.org/docs/latest/tutorial/launch-app-from-url-in-another-app#main-process-mainjs

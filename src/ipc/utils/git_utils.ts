@@ -397,8 +397,8 @@ export async function gitSetRemoteUrl({
         // Handle other errors
         throw new Error(`Failed to add remote: ${result.stderr}`);
       }
-    } catch (error) {
-      console.error("Error setting up remote:", error);
+    } catch (error: any) {
+      logger.error("Error setting up remote:", error);
       throw error; // or handle as needed
     }
   } else {

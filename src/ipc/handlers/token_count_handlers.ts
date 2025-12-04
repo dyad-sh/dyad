@@ -141,8 +141,12 @@ export function registerTokenCountHandlers() {
         codebaseTokens +
         mentionedAppsTokens;
 
+      const lastMessage = chat.messages[chat.messages.length - 1];
+      const actualTotalTokens = lastMessage?.totalTokens;
+
       return {
-        totalTokens,
+        estimatedTotalTokens: totalTokens,
+        actualTotalTokens,
         messageHistoryTokens,
         codebaseTokens,
         mentionedAppsTokens,

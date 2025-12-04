@@ -27,11 +27,16 @@ import { useSettings } from "@/hooks/useSettings";
 import { PriceBadge } from "@/components/PriceBadge";
 import { TURBO_MODELS } from "@/ipc/shared/language_model_constants";
 import { cn } from "@/lib/utils";
+import { useQueryClient } from "@tanstack/react-query";
+import { TOKEN_COUNT_QUERY_KEY } from "@/hooks/useCountTokens";
 
 export function ModelPicker() {
   const { settings, updateSettings } = useSettings();
+  const queryClient = useQueryClient();
   const onModelSelect = (model: LargeLanguageModel) => {
     updateSettings({ selectedModel: model });
+    // Invalidate token count when model changes since different models have different tokenizers/context windows
+    queryClient.invalidateQueries({ queryKey: TOKEN_COUNT_QUERY_KEY });
   };
 
   const [open, setOpen] = useState(false);

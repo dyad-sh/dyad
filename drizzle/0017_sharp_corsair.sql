@@ -1,0 +1,1 @@
+ALTER TABLE `messages` ADD `total_tokens` integer;

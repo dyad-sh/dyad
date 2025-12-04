@@ -49,6 +49,8 @@ export interface ChatResponseEnd {
   updatedFiles: boolean;
   extraFiles?: string[];
   extraFilesError?: string;
+  totalTokens?: number;
+  contextWindow?: number;
 }
 
 export interface ChatProblemsEvent {
@@ -81,6 +83,7 @@ export interface Message {
   dbTimestamp?: string | null;
   createdAt?: Date | string;
   requestId?: string | null;
+  totalTokens?: number | null;
 }
 
 export interface Chat {
@@ -167,7 +170,8 @@ export interface TokenCountParams {
 }
 
 export interface TokenCountResult {
-  totalTokens: number;
+  estimatedTotalTokens: number;
+  actualTotalTokens: number | null;
   messageHistoryTokens: number;
   codebaseTokens: number;
   mentionedAppsTokens: number;

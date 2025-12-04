@@ -447,6 +447,7 @@ ${componentSnippet}
       });
 
       let fullResponse = "";
+      let totalTokensUsed: number | undefined;
 
       // Check if this is a test prompt
       const testResponse = getTestResponse(req.prompt);
@@ -871,7 +872,7 @@ This conversation includes one or more image attachments. When the user uploads 
             } satisfies GoogleGenerativeAIProviderOptions;
           }
 
-          return streamText({
+          const streamResult = streamText({
             headers: isAnthropic
               ? {
                   "anthropic-beta": "context-1m-2025-08-07",
@@ -886,6 +887,32 @@ This conversation includes one or more image attachments. When the user uploads 
             system: systemPromptOverride,
             tools,
             messages: chatMessages.filter((m) => m.content),
+            onFinish: (response) => {
+              const totalTokens = response.usage?.totalTokens;
+
+              if (typeof totalTokens === "number") {
+                // Accumulate total tokens across all model calls for this message
+                totalTokensUsed = (totalTokensUsed ?? 0) + totalTokens;
+
+                // Persist the aggregated token usage on the placeholder assistant message
+                void db
+                  .update(messages)
+                  .set({ totalTokens: totalTokensUsed })
+                  .where(eq(messages.id, placeholderAssistantMessage.id))
+                  .catch((error) => {
+                    logger.error(
+                      "Failed to save total tokens for assistant message",
+                      error,
+                    );
+                  });
+
+                logger.log(
+                  `Total tokens used (aggregated for message ${placeholderAssistantMessage.id}): ${totalTokensUsed}`,
+                );
+              } else {
+                logger.log("Total tokens used: unknown");
+              }
+            },
             onError: (error: any) => {
               let errorMessage = (error as any)?.error?.message;
               const responseBody = error?.error?.responseBody;
@@ -909,6 +936,10 @@ This conversation includes one or more image attachments. When the user uploads 
             },
             abortSignal: abortController.signal,
           });
+          return {
+            fullStream: streamResult.fullStream,
+            usage: streamResult.usage,
+          };
         };
 
         let lastDbSaveAt = 0;

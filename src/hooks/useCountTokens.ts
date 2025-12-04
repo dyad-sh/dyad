@@ -1,43 +1,37 @@
-import { useCallback } from "react";
-import { atom, useAtom } from "jotai";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { IpcClient } from "@/ipc/ipc_client";
 import type { TokenCountResult } from "@/ipc/ipc_types";
+import { useCallback } from "react";
 
-// Create atoms to store the token count state
-export const tokenCountResultAtom = atom<TokenCountResult | null>(null);
-export const tokenCountLoadingAtom = atom<boolean>(false);
-export const tokenCountErrorAtom = atom<Error | null>(null);
+export const TOKEN_COUNT_QUERY_KEY = ["tokenCount"] as const;
 
-export function useCountTokens() {
-  const [result, setResult] = useAtom(tokenCountResultAtom);
-  const [loading, setLoading] = useAtom(tokenCountLoadingAtom);
-  const [error, setError] = useAtom(tokenCountErrorAtom);
+export function useCountTokens(chatId: number | null, input: string = "") {
+  const queryClient = useQueryClient();
 
-  const countTokens = useCallback(
-    async (chatId: number, input: string) => {
-      setLoading(true);
-      setError(null);
-
-      try {
-        const ipcClient = IpcClient.getInstance();
-        const tokenResult = await ipcClient.countTokens({ chatId, input });
-        setResult(tokenResult);
-        return tokenResult;
-      } catch (error) {
-        console.error("Error counting tokens:", error);
-        setError(error instanceof Error ? error : new Error(String(error)));
-        throw error;
-      } finally {
-        setLoading(false);
-      }
+  const {
+    data: result = null,
+    isLoading: loading,
+    error,
+    refetch,
+  } = useQuery<TokenCountResult | null>({
+    queryKey: [...TOKEN_COUNT_QUERY_KEY, chatId, input],
+    queryFn: async () => {
+      if (chatId === null) return null;
+      return IpcClient.getInstance().countTokens({ chatId, input });
     },
-    [setLoading, setError, setResult],
-  );
+    enabled: chatId !== null,
+  });
+
+  // For imperative invalidation (e.g., after streaming completes)
+  const invalidateTokenCount = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: TOKEN_COUNT_QUERY_KEY });
+  }, [queryClient]);
 
   return {
-    countTokens,
     result,
     loading,
     error,
+    refetch,
+    invalidateTokenCount,
   };
 }

@@ -10,6 +10,8 @@ import crypto from "node:crypto";
 // Mock git_utils
 vi.mock("@/ipc/utils/git_utils", () => ({
   getFileAtCommit: vi.fn(),
+  getCurrentCommitHash: vi.fn().mockResolvedValue("mock-current-commit-hash"),
+  isGitStatusClean: vi.fn().mockResolvedValue(true),
 }));
 
 // Mock electron-log
@@ -971,6 +973,149 @@ src/file2.ts
         "src/file1.ts": hash,
         "src/file2.ts": hash,
       });
+    });
+  });
+
+  describe("hasExternalChanges", () => {
+    it("should default to true when no assistant message has commitHash", async () => {
+      const { getCurrentCommitHash, isGitStatusClean } = await import(
+        "@/ipc/utils/git_utils"
+      );
+      const mockGetCurrentCommitHash = vi.mocked(getCurrentCommitHash);
+      const mockIsGitStatusClean = vi.mocked(isGitStatusClean);
+
+      const files: CodebaseFile[] = [];
+      const chatMessages: ModelMessage[] = [
+        {
+          role: "assistant",
+          content: "No commit hash here",
+          providerOptions: {
+            "dyad-engine": {
+              sourceCommitHash: "abc123",
+              commitHash: null,
+            },
+          },
+        },
+      ];
+      const appPath = "/test/app";
+
+      const result = await processChatMessagesWithVersionedFiles({
+        files,
+        chatMessages,
+        appPath,
+      });
+
+      expect(result.hasExternalChanges).toBe(true);
+      expect(mockGetCurrentCommitHash).not.toHaveBeenCalled();
+      expect(mockIsGitStatusClean).not.toHaveBeenCalled();
+    });
+
+    it("should be false when latest assistant commit matches current and git status is clean", async () => {
+      const { getCurrentCommitHash, isGitStatusClean } = await import(
+        "@/ipc/utils/git_utils"
+      );
+      const mockGetCurrentCommitHash = vi.mocked(getCurrentCommitHash);
+      const mockIsGitStatusClean = vi.mocked(isGitStatusClean);
+
+      mockGetCurrentCommitHash.mockResolvedValue("commit-123");
+      mockIsGitStatusClean.mockResolvedValue(true);
+
+      const files: CodebaseFile[] = [];
+      const chatMessages: ModelMessage[] = [
+        {
+          role: "assistant",
+          content: "Assistant message with commit hash",
+          providerOptions: {
+            "dyad-engine": {
+              sourceCommitHash: "ignored-for-this-test",
+              commitHash: "commit-123",
+            },
+          },
+        },
+      ];
+      const appPath = "/test/app";
+
+      const result = await processChatMessagesWithVersionedFiles({
+        files,
+        chatMessages,
+        appPath,
+      });
+
+      expect(result.hasExternalChanges).toBe(false);
+      expect(mockGetCurrentCommitHash).toHaveBeenCalledWith({ path: appPath });
+      expect(mockIsGitStatusClean).toHaveBeenCalledWith({ path: appPath });
+    });
+
+    it("should be true when latest assistant commit differs from current", async () => {
+      const { getCurrentCommitHash, isGitStatusClean } = await import(
+        "@/ipc/utils/git_utils"
+      );
+      const mockGetCurrentCommitHash = vi.mocked(getCurrentCommitHash);
+      const mockIsGitStatusClean = vi.mocked(isGitStatusClean);
+
+      mockGetCurrentCommitHash.mockResolvedValue("current-commit");
+      mockIsGitStatusClean.mockResolvedValue(true);
+
+      const files: CodebaseFile[] = [];
+      const chatMessages: ModelMessage[] = [
+        {
+          role: "assistant",
+          content: "Assistant message with different commit hash",
+          providerOptions: {
+            "dyad-engine": {
+              sourceCommitHash: "ignored-for-this-test",
+              commitHash: "older-commit",
+            },
+          },
+        },
+      ];
+      const appPath = "/test/app";
+
+      const result = await processChatMessagesWithVersionedFiles({
+        files,
+        chatMessages,
+        appPath,
+      });
+
+      expect(result.hasExternalChanges).toBe(true);
+      expect(mockGetCurrentCommitHash).toHaveBeenCalledWith({ path: appPath });
+      expect(mockIsGitStatusClean).toHaveBeenCalledWith({ path: appPath });
+    });
+
+    it("should be true when git status is dirty even if commits match", async () => {
+      const { getCurrentCommitHash, isGitStatusClean } = await import(
+        "@/ipc/utils/git_utils"
+      );
+      const mockGetCurrentCommitHash = vi.mocked(getCurrentCommitHash);
+      const mockIsGitStatusClean = vi.mocked(isGitStatusClean);
+
+      mockGetCurrentCommitHash.mockResolvedValue("same-commit");
+      mockIsGitStatusClean.mockResolvedValue(false);
+
+      const files: CodebaseFile[] = [];
+      const chatMessages: ModelMessage[] = [
+        {
+          role: "assistant",
+          content: "Assistant message with matching commit but dirty status",
+          providerOptions: {
+            "dyad-engine": {
+              sourceCommitHash: "ignored-for-this-test",
+              commitHash: "same-commit",
+            },
+          },
+        },
+      ];
+      const appPath = "/test/app";
+
+      const result = await processChatMessagesWithVersionedFiles({
+        files,
+        chatMessages,
+        appPath,
+      });
+
+      expect(result.hasExternalChanges).toBe(true);
+      expect(mockGetCurrentCommitHash).toHaveBeenCalledWith({ path: appPath });
+      expect(mockIsGitStatusClean).toHaveBeenCalledWith({ path: appPath });
     });
   });
 });

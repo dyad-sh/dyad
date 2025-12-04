@@ -525,7 +525,8 @@
             "src/pages/Index.tsx": "63e4529ce654d0667a5204e3ec99ea29aac4ad8967682eb9158506beda92b4eb"
           },
           "7": {}
-        }
+        },
+        "hasExternalChanges": false
       },
       "enable_lazy_edits": true,
       "enable_smart_files_context": true,

@@ -17,6 +17,10 @@ export function useSummarizeInNewChat() {
       console.error("No app id found");
       return;
     }
+    if (!chatId) {
+      console.error("No chat id found");
+      return;
+    }
     try {
       const newChatId = await IpcClient.getInstance().createChat(appId);
       // navigate to new chat

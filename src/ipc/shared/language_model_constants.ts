@@ -20,11 +20,12 @@ export interface ModelOption {
 
 export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
   openai: [
-    // https://platform.openai.com/docs/models/gpt-5-codex
+    // https://platform.openai.com/docs/models/gpt-5.1
     {
-      name: "gpt-5-codex",
-      displayName: "GPT 5 Codex",
-      description: "OpenAI's flagship model optimized for coding",
+      name: "gpt-5.1",
+      displayName: "GPT 5.1",
+      description:
+        "OpenAI's flagship model- smarter, faster, and more conversational",
       // Technically it's 128k but OpenAI errors if you set max_tokens instead of max_completion_tokens
       maxOutputTokens: undefined,
       contextWindow: 400_000,
@@ -32,11 +33,48 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       temperature: 1,
       dollarSigns: 3,
     },
+    // https://platform.openai.com/docs/models/gpt-5.1-codex
+    {
+      name: "gpt-5.1-codex",
+      displayName: "GPT 5.1 Codex",
+      description: "OpenAI's advanced coding workflows",
+      // Technically it's 128k but OpenAI errors if you set max_tokens instead of max_completion_tokens
+      maxOutputTokens: undefined,
+      contextWindow: 400_000,
+      // Requires temperature to be default value (1)
+      temperature: 1,
+      dollarSigns: 3,
+    },
+    // https://platform.openai.com/docs/models/gpt-5.1-codex-mini
+    {
+      name: "gpt-5.1-codex-mini",
+      displayName: "GPT 5.1 Codex Mini",
+      description: "OpenAI's compact and efficient coding model",
+      // Technically it's 128k but OpenAI errors if you set max_tokens instead of max_completion_tokens
+      maxOutputTokens: undefined,
+      contextWindow: 400_000,
+      // Requires temperature to be default value (1)
+      temperature: 1,
+      dollarSigns: 2,
+    },
+
     // https://platform.openai.com/docs/models/gpt-5
     {
       name: "gpt-5",
       displayName: "GPT 5",
       description: "OpenAI's flagship model",
+      // Technically it's 128k but OpenAI errors if you set max_tokens instead of max_completion_tokens
+      maxOutputTokens: undefined,
+      contextWindow: 400_000,
+      // Requires temperature to be default value (1)
+      temperature: 1,
+      dollarSigns: 3,
+    },
+    // https://platform.openai.com/docs/models/gpt-5-codex
+    {
+      name: "gpt-5-codex",
+      displayName: "GPT 5 Codex",
+      description: "OpenAI's flagship model optimized for coding",
       // Technically it's 128k but OpenAI errors if you set max_tokens instead of max_completion_tokens
       maxOutputTokens: undefined,
       contextWindow: 400_000,
@@ -138,6 +176,18 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     },
   ],
   google: [
+    // https://ai.google.dev/gemini-api/docs/models#gemini-3-pro
+    {
+      name: "gemini-3-pro-preview",
+      displayName: "Gemini 3 Pro (Preview)",
+      description: "Google's latest Gemini model",
+      // See Flash 2.5 comment below (go 1 below just to be safe, even though it seems OK now).
+      maxOutputTokens: 65_536 - 1,
+      // Gemini context window = input token + output token
+      contextWindow: 1_048_576,
+      temperature: 1.0,
+      dollarSigns: 4,
+    },
     // https://ai.google.dev/gemini-api/docs/models#gemini-2.5-pro-preview-03-25
     {
       name: "gemini-2.5-pro",
@@ -297,6 +347,33 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     },
   ],
   azure: [
+    {
+      name: "gpt-5.1",
+      displayName: "GPT-5.1",
+      description: "Azure OpenAI GPT-5.1 model",
+      // See OpenAI comment above
+      // maxOutputTokens: 128_000,
+      contextWindow: 400_000,
+      temperature: 1,
+    },
+    {
+      name: "gpt-5.1-codex",
+      displayName: "GPT-5.1 Codex",
+      description: "Azure OpenAI GPT-5.1 Codex model",
+      // See OpenAI comment above
+      // maxOutputTokens: 128_000,
+      contextWindow: 400_000,
+      temperature: 1,
+    },
+    {
+      name: "gpt-5.1-codex-mini",
+      displayName: "GPT-5.1 Codex Mini",
+      description: "Azure OpenAI GPT-5.1 Codex Mini model",
+      // See OpenAI comment above
+      // maxOutputTokens: 128_000,
+      contextWindow: 400_000,
+      temperature: 1,
+    },
     {
       name: "gpt-5-codex",
       displayName: "GPT-5 Codex",

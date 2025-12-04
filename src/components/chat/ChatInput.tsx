@@ -366,6 +366,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               onPaste={handlePaste}
               placeholder="Ask Dyad to build..."
               excludeCurrentApp={true}
+              disableSendButton={disableSendButton}
             />
 
             {isStreaming ? (

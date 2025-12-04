@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 
 testSkipIfWindows("edit style of one selected component", async ({ po }) => {
-  await po.setUp();
+  await po.setUpDyadPro();
   await po.sendPrompt("tc=basic");
   await po.clickTogglePreviewPanel();
   await po.clickPreviewPickElement();
@@ -61,7 +61,7 @@ testSkipIfWindows("edit style of one selected component", async ({ po }) => {
 testSkipIfWindows(
   "edit style of several selected components",
   async ({ po }) => {
-    await po.setUp();
+    await po.setUpDyadPro();
     await po.sendPrompt("tc=basic");
     await po.clickTogglePreviewPanel();
     await po.clickPreviewPickElement();
@@ -151,7 +151,7 @@ testSkipIfWindows(
 );
 
 testSkipIfWindows("edit text of the selected component", async ({ po }) => {
-  await po.setUp();
+  await po.setUpDyadPro();
   await po.sendPrompt("tc=basic");
   await po.clickTogglePreviewPanel();
   await po.clickPreviewPickElement();
@@ -213,7 +213,7 @@ testSkipIfWindows("edit text of the selected component", async ({ po }) => {
 });
 
 testSkipIfWindows("discard changes", async ({ po }) => {
-  await po.setUp();
+  await po.setUpDyadPro();
   await po.sendPrompt("tc=basic");
   await po.clickTogglePreviewPanel();
   await po.clickPreviewPickElement();

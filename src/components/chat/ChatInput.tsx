@@ -73,6 +73,7 @@ import { useCheckProblems } from "@/hooks/useCheckProblems";
 import { LexicalChatInput } from "./LexicalChatInput";
 import { useChatModeToggle } from "@/hooks/useChatModeToggle";
 import { VisualEditingChangesDialog } from "@/components/preview_panel/VisualEditingChangesDialog";
+import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 
 const showTokenBarAtom = atom(false);
 
@@ -134,6 +135,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     !!proposal &&
     proposal.type === "code-proposal" &&
     messageId === lastMessage.id;
+
+  const { userBudget } = useUserBudgetInfo();
 
   useEffect(() => {
     if (error) {
@@ -318,29 +321,31 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               />
             )}
 
-          <VisualEditingChangesDialog
-            iframeRef={
-              previewIframeRef
-                ? { current: previewIframeRef }
-                : { current: null }
-            }
-            onReset={() => {
-              // Exit component selection mode and visual editing
-              setSelectedComponents([]);
-              setVisualEditingSelectedComponent(null);
-              setCurrentComponentCoordinates(null);
-              setPendingVisualChanges(new Map());
-              refreshAppIframe();
-
-              // Deactivate component selector in iframe
-              if (previewIframeRef?.contentWindow) {
-                previewIframeRef.contentWindow.postMessage(
-                  { type: "deactivate-dyad-component-selector" },
-                  "*",
-                );
+          {userBudget && (
+            <VisualEditingChangesDialog
+              iframeRef={
+                previewIframeRef
+                  ? { current: previewIframeRef }
+                  : { current: null }
               }
-            }}
-          />
+              onReset={() => {
+                // Exit component selection mode and visual editing
+                setSelectedComponents([]);
+                setVisualEditingSelectedComponent(null);
+                setCurrentComponentCoordinates(null);
+                setPendingVisualChanges(new Map());
+                refreshAppIframe();
+
+                // Deactivate component selector in iframe
+                if (previewIframeRef?.contentWindow) {
+                  previewIframeRef.contentWindow.postMessage(
+                    { type: "deactivate-dyad-component-selector" },
+                    "*",
+                  );
+                }
+              }}
+            />
+          )}
 
           <SelectedComponentsDisplay />
 

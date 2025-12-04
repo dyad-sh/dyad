@@ -35,6 +35,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useStreamChat } from "@/hooks/useStreamChat";
+import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import {
   selectedComponentsPreviewAtom,
   visualEditingSelectedComponentAtom,
@@ -169,6 +170,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const { streamMessage } = useStreamChat();
   const { routes: availableRoutes } = useParseRouter(selectedAppId);
   const { restartApp } = useRunApp();
+  const { userBudget } = useUserBudgetInfo();
+  const isProMode = !!userBudget;
 
   // Navigation state
   const [isComponentSelectorInitialized, setIsComponentSelectorInitialized] =
@@ -309,6 +312,16 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     setPreviewIframeRef(iframeRef.current);
   }, [iframeRef.current, setPreviewIframeRef]);
 
+  // Send pro mode status to iframe
+  useEffect(() => {
+    if (iframeRef.current?.contentWindow && isComponentSelectorInitialized) {
+      iframeRef.current.contentWindow.postMessage(
+        { type: "dyad-pro-mode", enabled: isProMode },
+        "*",
+      );
+    }
+  }, [isProMode, isComponentSelectorInitialized]);
+
   // Deactivate component selector when selection is cleared
   /*useEffect(() => {
     if (
@@ -340,6 +353,10 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
       if (event.data?.type === "dyad-component-selector-initialized") {
         setIsComponentSelectorInitialized(true);
+        iframeRef.current?.contentWindow?.postMessage(
+          { type: "dyad-pro-mode", enabled: isProMode },
+          "*",
+        );
         return;
       }
 
@@ -361,12 +378,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         if (!component) return;
 
         // Store the coordinates
-        if (event.data.coordinates) {
+        if (event.data.coordinates && isProMode) {
           setCurrentComponentCoordinates(event.data.coordinates);
         }
-
-        // Set as the highlighted component for visual editing
-        setVisualEditingSelectedComponent(component);
 
         // Add to selected components if not already there
         setSelectedComponentsPreview((prev) => {
@@ -383,8 +397,12 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           return [...prev, component];
         });
 
-        // Trigger AST analysis
-        analyzeComponent(component.id);
+        if (isProMode) {
+          // Set as the highlighted component for visual editing
+          setVisualEditingSelectedComponent(component);
+          // Trigger AST analysis
+          analyzeComponent(component.id);
+        }
 
         return;
       }
@@ -922,7 +940,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
             />
             {/* Visual Editing Toolbar */}
-            {visualEditingSelectedComponent && selectedAppId && (
+            {isProMode && visualEditingSelectedComponent && selectedAppId && (
               <VisualEditingToolbar
                 selectedComponent={visualEditingSelectedComponent}
                 iframeRef={iframeRef}

@@ -2,19 +2,19 @@ import { ipcMain } from "electron";
 import fs from "node:fs";
 import { promises as fsPromises } from "node:fs";
 import path from "path";
-import { db } from "../../db";
-import { apps } from "../../db/schema";
+import { db } from "../../../../db";
+import { apps } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
-import { getDyadAppPath } from "../../paths/paths";
+import { getDyadAppPath } from "../../../../paths/paths";
 import { parse } from "@babel/parser";
 import * as recast from "recast";
 import traverse from "@babel/traverse";
 import {
   stylesToTailwind,
   extractClassPrefixes,
-} from "../../utils/style-utils";
+} from "../../../../utils/style-utils";
 import git from "isomorphic-git";
-import { gitCommit } from "../utils/git_utils";
+import { gitCommit } from "../../../../ipc/utils/git_utils";
 
 interface StyleChange {
   componentId: string;
@@ -40,7 +40,7 @@ interface StyleChange {
 
 export function registerVisualEditingHandlers() {
   ipcMain.handle(
-    "applyVisualEditingChanges",
+    "apply-visual-editing-changes",
     async (_event, changes: StyleChange[]) => {
       try {
         if (changes.length === 0) return;
@@ -237,7 +237,7 @@ export function registerVisualEditingHandlers() {
   );
 
   ipcMain.handle(
-    "analyzeComponent",
+    "analyze-component",
     async (
       _event,
       { appId, componentId }: { appId: number; componentId: string },

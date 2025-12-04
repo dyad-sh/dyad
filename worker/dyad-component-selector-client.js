@@ -6,6 +6,7 @@
   let currentHoveredElement = null;
   let highlightedElement = null;
   let componentCoordinates = null; // Store the last selected component's coordinates
+  let isProMode = false; // Track if pro mode is enabled
   //detect if the user is using Mac
   const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
 
@@ -400,7 +401,7 @@
     const selectedItem = overlays.find((item) => item.el === state.element);
 
     // If clicking on the currently highlighted component, deselect it
-    if (selectedItem && highlightedElement === state.element) {
+    if (selectedItem && (highlightedElement === state.element || !isProMode)) {
       if (state.element.contentEditable === "true") {
         return;
       }
@@ -435,7 +436,7 @@
 
     highlightedElement = state.element;
 
-    if (selectedItem) {
+    if (selectedItem && isProMode) {
       css(selectedItem.overlay, {
         border: `3px solid #00ff00`,
         background: "rgba(0, 255, 0, 0.05)",
@@ -443,7 +444,7 @@
     }
 
     if (!selectedItem) {
-      updateOverlay(state.element, true, overlays.length);
+      updateOverlay(state.element, true, isProMode);
       requestAnimationFrame(updateAllOverlayPositions);
     }
 
@@ -525,6 +526,9 @@
   /* ---------- message bridge -------------------------------------------- */
   window.addEventListener("message", (e) => {
     if (e.source !== window.parent) return;
+    if (e.data.type === "dyad-pro-mode") {
+      isProMode = e.data.enabled;
+    }
     if (e.data.type === "activate-dyad-component-selector") activate();
     if (e.data.type === "deactivate-dyad-component-selector") deactivate();
     if (e.data.type === "activate-dyad-visual-editing") {

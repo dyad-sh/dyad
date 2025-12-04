@@ -73,7 +73,13 @@ export function useLanguageModelProviders() {
       }
       return false;
     }
-    if (providerSettings?.apiKey?.value) {
+    // Check if API key is set and valid (not a placeholder value)
+    const apiKeyValue = providerSettings?.apiKey?.value;
+    if (
+      apiKeyValue &&
+      !apiKeyValue.startsWith("Invalid Key") &&
+      apiKeyValue !== "Not Set"
+    ) {
       return true;
     }
     const providerData = queryResult.data?.find((p) => p.id === provider);

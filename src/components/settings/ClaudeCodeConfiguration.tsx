@@ -54,7 +54,8 @@ export function ClaudeCodeConfiguration({
   const defaultClaudePath = `${homeDir}/.local/bin/claude`;
 
   const handleSaveApiKey = async (value: string) => {
-    if (!value.trim()) {
+    const trimmedValue = value.trim();
+    if (!trimmedValue) {
       setSaveError("API Key cannot be empty.");
       return;
     }
@@ -66,7 +67,7 @@ export function ClaudeCodeConfiguration({
           ...settings?.providerSettings,
           "claude-code": {
             ...claudeCodeSettings,
-            apiKey: { value },
+            apiKey: { value: trimmedValue },
           },
         },
       });
@@ -101,7 +102,8 @@ export function ClaudeCodeConfiguration({
   };
 
   const handleSaveExecutablePath = async (value: string) => {
-    if (!value.trim()) {
+    const trimmedValue = value.trim();
+    if (!trimmedValue) {
       setSaveError("Executable path cannot be empty.");
       return;
     }
@@ -113,7 +115,7 @@ export function ClaudeCodeConfiguration({
           ...settings?.providerSettings,
           "claude-code": {
             ...claudeCodeSettings,
-            claudeExecutablePath: value,
+            claudeExecutablePath: trimmedValue,
           },
         },
       });

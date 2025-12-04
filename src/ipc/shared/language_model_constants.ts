@@ -490,7 +490,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       name: "sonnet",
       displayName: "Claude Sonnet 4.5 (Agent)",
       description:
-        "Claude Agent SDK経由。Pro/Maxサブスクリプション、またはAPIキーで使用可能。",
+        "Via Claude Agent SDK. Available with Pro/Max subscription or API key.",
       maxOutputTokens: 32_000,
       contextWindow: 200_000,
       temperature: 0,
@@ -499,7 +499,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       name: "opus",
       displayName: "Claude Opus 4 (Agent)",
       description:
-        "Claude Agent SDK経由。Pro/Maxサブスクリプション、またはAPIキーで使用可能。",
+        "Via Claude Agent SDK. Available with Pro/Max subscription or API key.",
       maxOutputTokens: 32_000,
       contextWindow: 200_000,
       temperature: 0,
@@ -508,7 +508,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       name: "haiku",
       displayName: "Claude Haiku 4 (Agent)",
       description:
-        "Claude Agent SDK経由。Pro/Maxサブスクリプション、またはAPIキーで使用可能。",
+        "Via Claude Agent SDK. Available with Pro/Max subscription or API key.",
       maxOutputTokens: 32_000,
       contextWindow: 200_000,
       temperature: 0,

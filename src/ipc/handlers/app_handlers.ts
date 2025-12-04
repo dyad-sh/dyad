@@ -1205,7 +1205,7 @@ export function registerAppHandlers() {
         const pathChanged = appPath !== app.path;
 
         if (pathChanged) {
-          const invalidChars = /[<>:"|?*\/\\]/;
+          const invalidChars = /[<>:"|?*/\\]/;
           const hasInvalidChars =
             invalidChars.test(appPath) || /[\x00-\x1f]/.test(appPath);
 

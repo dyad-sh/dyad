@@ -92,8 +92,6 @@ export async function getModelClient(
               : settings.enableProLazyEditsMode &&
                 settings.proLazyEditsMode !== "v2",
           enableSmartFilesContext,
-          // Keep in sync with getCurrentValue in ProModeSelector.tsx
-          smartContextMode: settings.proSmartContextOption ?? "balanced",
           enableWebSearch: settings.enableProWebSearch,
         },
         settings,

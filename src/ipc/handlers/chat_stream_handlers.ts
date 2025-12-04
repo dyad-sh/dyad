@@ -14,6 +14,7 @@ import {
 import { db } from "../../db";
 import { chats, messages } from "../../db/schema";
 import { and, eq, isNull } from "drizzle-orm";
+import type { SmartContextMode } from "../../lib/schemas";
 import {
   constructSystemPrompt,
   readAiRules,
@@ -516,6 +517,12 @@ ${componentSnippet}
           updatedChat.app.id, // Exclude current app
         );
 
+        const isDeepContextEnabled =
+          isEngineEnabled &&
+          settings.proSmartContextOption === "deep" &&
+          mentionedAppsCodebases.length === 0;
+        logger.log(`isDeepContextEnabled: ${isDeepContextEnabled}`);
+
         // Combine current app codebase with mentioned apps' codebases
         let otherAppsCodebaseInfo = "";
         if (mentionedAppsCodebases.length > 0) {
@@ -555,10 +562,9 @@ ${componentSnippet}
         //
         // Limit chat history based on maxChatTurnsInContext setting
         // We add 1 because the current prompt counts as a turn.
-        const maxChatTurns =
-          isEngineEnabled && settings.proSmartContextOption === "deep"
-            ? 201
-            : (settings.maxChatTurnsInContext || MAX_CHAT_TURNS_IN_CONTEXT) + 1;
+        const maxChatTurns = isDeepContextEnabled
+          ? 201
+          : (settings.maxChatTurnsInContext || MAX_CHAT_TURNS_IN_CONTEXT) + 1;
 
         // If we need to limit the context, we take only the most recent turns
         let limitedMessageHistory = messageHistory;
@@ -812,19 +818,24 @@ This conversation includes one or more image attachments. When the user uploads 
             logger.log("sending AI request");
           }
           let versionedFiles: VersionedFiles | undefined;
-          if (isEngineEnabled && settings.proSmartContextOption === "deep") {
+          if (isDeepContextEnabled) {
             versionedFiles = await getVersionedFiles({
               files,
               chatMessages,
               appPath,
             });
           }
+          const smartContextMode: SmartContextMode = isDeepContextEnabled
+            ? "deep"
+            : // Keep in sync with getCurrentValue in ProModeSelector.tsx
+              "balanced";
           // Build provider options with correct Google/Vertex thinking config gating
           const providerOptions: Record<string, any> = {
             "dyad-engine": {
               dyadAppId: updatedChat.app.id,
               dyadRequestId,
               dyadDisableFiles,
+              dyadSmartContextMode: smartContextMode,
               dyadFiles: versionedFiles ? undefined : files,
               dyadVersionedFiles: versionedFiles,
               dyadMentionedApps: mentionedAppsCodebases.map(

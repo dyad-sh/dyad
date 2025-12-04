@@ -246,6 +246,9 @@ export async function processChatMessagesWithVersionedFiles({
 
       // hasExternalChanges is false only if commits match AND status is clean
       hasExternalChanges = !(latestCommitHash === currentCommitHash && isClean);
+      logger.info(
+        `detected hasExternalChanges: ${hasExternalChanges} because latestCommitHash: ${latestCommitHash} and currentCommitHash: ${currentCommitHash} and isClean: ${isClean}`,
+      );
     } catch (error) {
       logger.warn("Failed to determine hasExternalChanges:", error);
       // Keep default of true

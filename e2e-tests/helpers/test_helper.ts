@@ -575,6 +575,14 @@ export class PageObject {
     await this.page.getByRole("button", { name: "Fix error with AI" }).click();
   }
 
+  async clickCopyErrorMessage() {
+    await this.page.getByRole("button", { name: /Copy/ }).click();
+  }
+
+  async getClipboardText(): Promise<string> {
+    return await this.page.evaluate(() => navigator.clipboard.readText());
+  }
+
   async snapshotPreviewErrorBanner() {
     await expect(this.locatePreviewErrorBanner()).toMatchAriaSnapshot({
       timeout: Timeout.LONG,

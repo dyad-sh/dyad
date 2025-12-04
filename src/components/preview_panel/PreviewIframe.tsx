@@ -180,7 +180,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const [canGoForward, setCanGoForward] = useState(false);
   const [navigationHistory, setNavigationHistory] = useState<string[]>([]);
   const [currentHistoryPosition, setCurrentHistoryPosition] = useState(0);
-  const [selectedComponentsPreview, setSelectedComponentsPreview] = useAtom(
+  const setSelectedComponentsPreview = useSetAtom(
     selectedComponentsPreviewAtom,
   );
   const [visualEditingSelectedComponent, setVisualEditingSelectedComponent] =
@@ -322,27 +322,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     }
   }, [isProMode, isComponentSelectorInitialized]);
 
-  // Deactivate component selector when selection is cleared
-  /*useEffect(() => {
-    if (
-      (!selectedComponentsPreview || selectedComponentsPreview.length === 0) &&
-      isPicking
-    ) {
-      if (iframeRef.current?.contentWindow) {
-        iframeRef.current.contentWindow.postMessage(
-          { type: "deactivate-dyad-component-selector" },
-          "*",
-        );
-        // Clean up any text editing states
-        iframeRef.current.contentWindow.postMessage(
-          { type: "cleanup-all-text-editing" },
-          "*",
-        );
-      }
-      setIsPicking(false);
-    }
-  }, [selectedComponentsPreview]);*/
-
   // Add message listener for iframe errors and navigation events
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -408,7 +387,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       }
 
       if (event.data?.type === "dyad-component-deselected") {
-        console.log("message received");
         const componentId = event.data.componentId;
         if (componentId) {
           // Disable text editing for the deselected component
@@ -422,11 +400,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             );
           }
 
-          console.log(selectedComponentsPreview);
           setSelectedComponentsPreview((prev) =>
             prev.filter((c) => c.id !== componentId),
           );
-          console.log(selectedComponentsPreview);
           setVisualEditingSelectedComponent((prev) => {
             const shouldClear = prev?.id === componentId;
             if (shouldClear) {

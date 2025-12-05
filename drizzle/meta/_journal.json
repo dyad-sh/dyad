@@ -120,6 +120,13 @@
       "when": 1762297039106,
       "tag": "0016_petite_thanos",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1764804624402,
+      "tag": "0017_sharp_corsair",
+      "breakpoints": true
     }
   ]
 }

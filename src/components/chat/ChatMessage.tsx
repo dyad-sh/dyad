@@ -12,6 +12,7 @@ import {
   GitCommit,
   Copy,
   Check,
+  Info,
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 import { useVersions } from "@/hooks/useVersions";
@@ -273,6 +274,20 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
                     {copiedRequestId
                       ? "Copied!"
                       : `Copy Request ID: ${message.requestId.slice(0, 8)}...`}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+            {isLastMessage && message.totalTokens && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex items-center space-x-1 px-1 py-0.5">
+                      <Info className="h-3 w-3" />
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Max tokens used: {message.totalTokens.toLocaleString()}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>

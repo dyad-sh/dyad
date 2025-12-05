@@ -52,13 +52,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "../ui/tooltip";
-import { useNavigate } from "@tanstack/react-router";
+
 import { useVersions } from "@/hooks/useVersions";
 import { useAttachments } from "@/hooks/useAttachments";
 import { AttachmentsList } from "./AttachmentsList";
 import { DragDropOverlay } from "./DragDropOverlay";
 import { FileAttachmentDropdown } from "./FileAttachmentDropdown";
-import { showError, showExtraFilesToast } from "@/lib/toast";
+import { showExtraFilesToast } from "@/lib/toast";
+import { useSummarizeInNewChat } from "./SummarizeInNewChatButton";
 import { ChatInputControls } from "../ChatInputControls";
 import { ChatErrorBox } from "./ChatErrorBox";
 import {
@@ -419,30 +420,10 @@ function SuggestionButton({
 }
 
 function SummarizeInNewChatButton() {
-  const chatId = useAtomValue(selectedChatIdAtom);
-  const appId = useAtomValue(selectedAppIdAtom);
-  const { streamMessage } = useStreamChat();
-  const navigate = useNavigate();
-  const onClick = async () => {
-    if (!appId) {
-      console.error("No app id found");
-      return;
-    }
-    try {
-      const newChatId = await IpcClient.getInstance().createChat(appId);
-      // navigate to new chat
-      await navigate({ to: "/chat", search: { id: newChatId } });
-      await streamMessage({
-        prompt: "Summarize from chat-id=" + chatId,
-        chatId: newChatId,
-      });
-    } catch (err) {
-      showError(err);
-    }
-  };
+  const { handleSummarize } = useSummarizeInNewChat();
   return (
     <SuggestionButton
-      onClick={onClick}
+      onClick={handleSummarize}
       tooltipText="Creating a new chat makes the AI more focused and efficient"
     >
       Summarize to new chat

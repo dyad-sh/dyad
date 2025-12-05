@@ -97,7 +97,11 @@ export function ChatPanel({
     const streamCount = chatId ? (streamCountById.get(chatId) ?? 0) : 0;
     console.log("streamCount - scrolling to bottom", streamCount);
     scrollToBottom();
-  }, [chatId, chatId ? (streamCountById.get(chatId) ?? 0) : 0]);
+  }, [
+    chatId,
+    chatId ? (streamCountById.get(chatId) ?? 0) : 0,
+    chatId ? (isStreamingById.get(chatId) ?? false) : false,
+  ]);
 
   useEffect(() => {
     const container = messagesContainerRef.current;

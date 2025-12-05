@@ -519,7 +519,9 @@ ${componentSnippet}
 
         const isDeepContextEnabled =
           isEngineEnabled &&
-          settings.proSmartContextOption === "deep" &&
+          settings.enableProSmartFilesContextMode &&
+          // Anything besides balanced will use deep context.
+          settings.proSmartContextOption !== "balanced" &&
           mentionedAppsCodebases.length === 0;
         logger.log(`isDeepContextEnabled: ${isDeepContextEnabled}`);
 
@@ -829,8 +831,7 @@ This conversation includes one or more image attachments. When the user uploads 
           }
           const smartContextMode: SmartContextMode = isDeepContextEnabled
             ? "deep"
-            : // Keep in sync with getCurrentValue in ProModeSelector.tsx
-              "balanced";
+            : "balanced";
           // Build provider options with correct Google/Vertex thinking config gating
           const providerOptions: Record<string, any> = {
             "dyad-engine": {

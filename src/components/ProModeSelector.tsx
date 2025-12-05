@@ -315,9 +315,8 @@ function SmartContextSelector({
     if (settings?.proSmartContextOption === "balanced") {
       return "balanced";
     }
-    // Keep in sync with getModelClient in get_model_client.ts
-    // If enabled but no option set (undefined/falsey), it's balanced
-    return "balanced";
+    // Keep logic in sync with isDeepContextEnabled in chat_stream_handlers.ts
+    return "deep";
   };
 
   const currentValue = getCurrentValue();

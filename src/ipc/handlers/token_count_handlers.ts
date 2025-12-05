@@ -141,8 +141,11 @@ export function registerTokenCountHandlers() {
         codebaseTokens +
         mentionedAppsTokens;
 
-      const lastMessage = chat.messages[chat.messages.length - 1];
-      const actualTotalTokens = lastMessage?.totalTokens;
+      // Find the last assistant message since totalTokens is only set on assistant messages
+      const lastAssistantMessage = [...chat.messages]
+        .reverse()
+        .find((m) => m.role === "assistant");
+      const actualTotalTokens = lastAssistantMessage?.totalTokens ?? null;
 
       return {
         estimatedTotalTokens: totalTokens,

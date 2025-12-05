@@ -961,4 +961,188 @@ export function registerSuiHandlers() {
       }
     },
   );
+
+  /**
+   * Transpile Solidity ERC20/ERC721 to Sui Move using shinso-transpiler
+   */
+  handle(
+    "transpile-contract",
+    async (
+      _,
+      params: {
+        code: string;
+        tokenType: "erc20" | "erc721";
+        compile?: boolean;
+        outputPath?: string;
+      },
+    ): Promise<{
+      success: boolean;
+      files?: string[];
+      output?: string;
+      error?: string;
+      stdout?: string;
+      stderr?: string;
+    }> => {
+      const { code, tokenType, compile = false, outputPath } = params;
+      const os = await import("os");
+      const tmpDir = os.tmpdir();
+
+      // Create unique input file in temp directory
+      const timestamp = Date.now();
+      const inputFile = path.join(tmpDir, `shinso_input_${timestamp}.sol`);
+
+      // Use provided output path or create temp directory
+      // If outputPath is provided, resolve it to absolute path using getDyadAppPath
+      const outputDir = outputPath
+        ? getDyadAppPath(outputPath)
+        : path.join(tmpDir, `shinso_output_${timestamp}`);
+      const isDirectOutput = !!outputPath;
+
+      logger.info(
+        `Transpiling ${tokenType.toUpperCase()} contract using shinso-transpiler`,
+      );
+      logger.info(`Input file: ${inputFile}`);
+      logger.info(`Output directory: ${outputDir}`);
+      logger.info(`Direct output: ${isDirectOutput}`);
+
+      try {
+        // Write Solidity code to temporary file
+        fs.writeFileSync(inputFile, code, "utf-8");
+        logger.info(`Wrote ${code.length} bytes to input file`);
+
+        // Create output directory
+        if (!fs.existsSync(outputDir)) {
+          fs.mkdirSync(outputDir, { recursive: true });
+          logger.info(`Created output directory: ${outputDir}`);
+        }
+
+        // Build command arguments
+        const args = [
+          "transpile",
+          "--input",
+          inputFile,
+          "--output",
+          outputDir,
+          tokenType === "erc20" ? "--erc20" : "--erc721",
+        ];
+
+        if (compile) {
+          args.push("--compile");
+        }
+
+        logger.info(`Running: shinso-transpiler ${args.join(" ")}`);
+
+        return new Promise((resolve) => {
+          let stdout = "";
+          let stderr = "";
+
+          const transpilerProcess = spawn("shinso-transpiler", args, {
+            shell: true,
+          });
+
+          // Capture output for debugging/logging only
+          transpilerProcess.stdout.on("data", (data) => {
+            const output = data.toString();
+            stdout += output;
+            logger.info(`[shinso-transpiler]: ${output.trim()}`);
+          });
+
+          transpilerProcess.stderr.on("data", (data) => {
+            const output = data.toString();
+            stderr += output;
+            logger.info(`[shinso-transpiler]: ${output.trim()}`);
+          });
+
+          transpilerProcess.on("close", (code) => {
+            logger.info(`shinso-transpiler exited with code ${code}`);
+
+            // Clean up input file
+            try {
+              fs.unlinkSync(inputFile);
+            } catch (err) {
+              logger.warn("Failed to clean up input file:", err);
+            }
+
+            if (code === 0) {
+              // Success - transpiler created the files
+              // Just list what was created for the frontend
+              const sourcesDir = path.join(outputDir, "sources");
+              const allFiles: string[] = [];
+
+              if (fs.existsSync(sourcesDir)) {
+                const files = fs.readdirSync(sourcesDir);
+                const moveFiles = files.filter(f => f.endsWith(".move"));
+                allFiles.push(...moveFiles);
+              }
+
+              const moveTomlPath = path.join(outputDir, "Move.toml");
+              if (fs.existsSync(moveTomlPath)) {
+                allFiles.push("Move.toml");
+              }
+
+              logger.info(`Transpilation successful: ${allFiles.length} files created`);
+
+              resolve({
+                success: true,
+                files: allFiles,
+                stdout: stdout || undefined,
+              });
+            } else {
+              // Failure - clean up if temp directory
+              logger.error(`Transpilation failed with exit code ${code}`);
+              if (!isDirectOutput && fs.existsSync(outputDir)) {
+                try {
+                  fs.rmSync(outputDir, { recursive: true, force: true });
+                } catch (err) {
+                  logger.warn("Failed to clean up temp directory:", err);
+                }
+              }
+
+              resolve({
+                success: false,
+                error: stderr || stdout || `Transpiler failed with exit code ${code}`,
+                stderr: stderr || undefined,
+              });
+            }
+          });
+
+          transpilerProcess.on("error", (err) => {
+            logger.error("Failed to start shinso-transpiler:", err);
+
+            // Clean up
+            try {
+              if (fs.existsSync(inputFile)) fs.unlinkSync(inputFile);
+              if (!isDirectOutput && fs.existsSync(outputDir)) {
+                fs.rmSync(outputDir, { recursive: true, force: true });
+              }
+            } catch (cleanupErr) {
+              logger.warn("Failed to clean up:", cleanupErr);
+            }
+
+            resolve({
+              success: false,
+              error: `Failed to start shinso-transpiler: ${err.message}. Make sure it's installed and in PATH.`,
+            });
+          });
+        });
+      } catch (err) {
+        logger.error("Error setting up transpilation:", err);
+
+        // Clean up files
+        try {
+          if (fs.existsSync(inputFile)) fs.unlinkSync(inputFile);
+          if (!isDirectOutput && fs.existsSync(outputDir)) {
+            fs.rmSync(outputDir, { recursive: true, force: true });
+          }
+        } catch (cleanupErr) {
+          logger.warn("Failed to clean up files:", cleanupErr);
+        }
+
+        return {
+          success: false,
+          error: `Setup error: ${err instanceof Error ? err.message : String(err)}`,
+        };
+      }
+    },
+  );
 }

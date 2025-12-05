@@ -180,6 +180,107 @@ export default function HomePage() {
     console.log("handleTranslate - extractedName:", extractedName);
     console.log("handleTranslate - finalName:", finalName);
 
+    // Try shinso-transpiler for Solidity → Sui Move token standards
+    let transpilerUsed = false;
+    let suiAppId: number | undefined;
+    let writtenFiles: string[] = [];
+
+    console.log("🔍 Transpiler check:", {
+      sourceLanguage,
+      targetLanguage,
+      hasCode: !!code.trim(),
+      codeLength: code.length,
+    });
+
+    if (sourceLanguage === "solidity" && targetLanguage === "sui_move" && code.trim()) {
+      console.log("✅ Conditions met for transpiler check");
+
+      // Detect ERC20 or ERC721 patterns in the code
+      const hasERC20 = /ERC20|IERC20|function\s+transfer\s*\(|function\s+balanceOf\s*\(/i.test(code);
+      const hasERC721 = /ERC721|IERC721|function\s+ownerOf\s*\(|function\s+tokenURI\s*\(/i.test(code);
+
+      console.log("🔍 Token detection:", {
+        hasERC20,
+        hasERC721,
+        erc20Matches: code.match(/ERC20|IERC20|function\s+transfer\s*\(|function\s+balanceOf\s*\(/gi),
+        erc721Matches: code.match(/ERC721|IERC721|function\s+ownerOf\s*\(|function\s+tokenURI\s*\(/gi),
+      });
+
+      if (hasERC20 || hasERC721) {
+        const tokenType = hasERC721 ? "erc721" : "erc20";
+        console.log(`✨ Detected ${tokenType.toUpperCase()} contract, using shinso-transpiler...`);
+
+        try {
+          setIsLoading(true);
+
+          // Create the app first to get the output path
+          console.log("📦 Creating Sui Move app...");
+          const createResult = await IpcClient.getInstance().createApp({
+            name: finalName,
+            isContractProject: true,
+          });
+          suiAppId = createResult.app.id;
+          console.log(`✅ Created app with ID: ${suiAppId}, path: ${createResult.app.path}`);
+
+          // Run transpiler directly to the app directory
+          // Backend will resolve the relative path to absolute
+          console.log("📡 Calling transpiler with direct output to app directory");
+          console.log("  Token type:", tokenType);
+          console.log("  Output path:", createResult.app.path);
+
+          const result = await IpcClient.getInstance().transpileContract({
+            code,
+            tokenType,
+            compile: false,
+            outputPath: createResult.app.path, // Backend will resolve to absolute path
+          });
+
+          console.log("📥 Transpiler result:", {
+            success: result.success,
+            filesCount: result.files?.length || 0,
+            files: result.files,
+            error: result.error,
+          });
+
+          if (result.success && result.files) {
+            transpilerUsed = true;
+            writtenFiles = result.files;
+            console.log("✅ Shinso transpiler succeeded!");
+            console.log(`\n✅ Successfully transpiled ${writtenFiles.length} file(s):`);
+            console.table(writtenFiles.map((f, i) => ({
+              '#': i + 1,
+              'File': f,
+              'Location': f === 'Move.toml' ? `src/${finalName}` : `src/${finalName}/sources`
+            })));
+
+            if (result.stdout) console.log("Transpiler stdout:", result.stdout);
+          } else {
+            console.warn("❌ Shinso transpiler failed:", result.error);
+            if (result.stderr) console.warn("Transpiler stderr:", result.stderr);
+
+            // Check for common unsupported features
+            const errorStr = result.error || "";
+            if (errorStr.includes("InlineAssembly")) {
+              console.info("ℹ️ Transpiler doesn't support inline assembly yet. Falling back to LLM translation.");
+            } else if (errorStr.includes("unknown variant")) {
+              console.info("ℹ️ Transpiler doesn't support this Solidity feature yet. Falling back to LLM translation.");
+            }
+          }
+        } catch (error) {
+          console.warn("⚠️ Shinso transpiler error, falling back to LLM:", error);
+        } finally {
+          setIsLoading(false);
+        }
+      } else {
+        console.log("⚠️ No ERC20/ERC721 patterns detected, skipping transpiler");
+      }
+    } else {
+      console.log("⚠️ Transpiler conditions not met:", {
+        isRightLanguagePair: sourceLanguage === "solidity" && targetLanguage === "sui_move",
+        hasCode: !!code.trim(),
+      });
+    }
+
     // If target is Solana, scaffold the Anchor project first
     let solanaAppId: number | undefined;
     if (targetLanguage === "solana_rust") {
@@ -225,7 +326,62 @@ Use this exact path in your <dyad-write> tag.`
       : "";
 
     // Create the complete translation prompt with the user's code
-    const translationPrompt = `${basePrompt}
+    let translationPrompt: string;
+
+    if (transpilerUsed && suiAppId && writtenFiles.length > 0) {
+      console.log("🎯 Using transpiler - files already written to codebase");
+      // Files have been written - ask LLM to review and improve
+      const helperFiles = writtenFiles.filter(f => f.match(/^(i8|i16|i32|i64|i128|i256|map)\.move$/));
+      const contractFiles = writtenFiles.filter(f => !f.match(/^(i8|i16|i32|i64|i128|i256|map)\.move$/));
+
+      const fileList = [
+        ...(helperFiles.length > 0 ? [`- Helper modules: ${helperFiles.map(f => `\`${f}\``).join(', ')}`] : []),
+        ...(contractFiles.length > 0 ? [`- Main contract(s): ${contractFiles.map(f => `\`${f}\``).join(', ')}`] : []),
+      ].join('\n');
+
+      translationPrompt = `${basePrompt}
+
+---
+
+## ✅ Automatic Transpilation Completed
+
+**Project Name:** ${finalName}
+
+The Solidity contract has been **automatically transpiled** to Sui Move using shinso-transpiler and **all ${writtenFiles.length} files have been written to the codebase** in \`src/${finalName}/sources/\`.
+
+**Files created:**
+${fileList}
+
+**Your Task:**
+1. **Review the transpiled code** - Check the files in \`src/${finalName}/sources/\`
+2. **Verify correctness** - Ensure it implements the Solidity contract's functionality properly
+3. **Add tests** - Create comprehensive test cases in a test file
+4. **Optimize** - Improve gas efficiency and code quality where needed
+5. **Document** - Add/improve inline comments and module documentation
+6. **Enhance** - Add any missing features, better error handling, or security improvements
+
+**Original Solidity Contract (for reference):**
+\`\`\`solidity
+${code}
+\`\`\`
+
+**Next Steps:**
+- Review the existing transpiled files
+- Create a test file (e.g., \`src/${finalName}/tests/${extractedName || 'contract'}_tests.move\`)
+- Add any improvements or missing functionality
+- Ensure the code compiles and tests pass
+
+The transpiled code is already in the codebase. Focus on review, testing, and enhancement rather than rewriting.`;
+    } else {
+      console.log("📝 Using standard LLM translation (no transpiler output)");
+      // Standard LLM translation (no transpiler or transpiler failed)
+      const contractSource = code.trim()
+        ? code
+        : attachments.length > 0
+          ? `**See attached ${BLOCKCHAIN_LANGUAGES[sourceLanguage]?.fileExtension || 'source'} files for the contract code.**`
+          : '';
+
+      translationPrompt = `${basePrompt}
 
 ---
 
@@ -233,11 +389,12 @@ Use this exact path in your <dyad-write> tag.`
 
 **Project Name:** ${finalName}${solanaPathInstruction}
 
-${code}
+${contractSource}
 
 ---
 
-Please translate this ${BLOCKCHAIN_LANGUAGES[sourceLanguage]?.displayName || sourceLanguage} contract to ${BLOCKCHAIN_LANGUAGES[targetLanguage]?.displayName || targetLanguage} following the guidelines above. Provide a complete, working implementation with inline comments explaining key translation decisions.`;
+Please translate this ${BLOCKCHAIN_LANGUAGES[sourceLanguage]?.displayName || sourceLanguage} contract to ${BLOCKCHAIN_LANGUAGES[targetLanguage]?.displayName || targetLanguage} following the guidelines above. Provide a complete, working implementation with inline comments explaining key translation decisions.${attachments.length > 0 ? '\n\n**Note:** The source contract code is provided in the attached files. Please read and translate the attached contract files.' : ''}`;
+    }
 
     // For Solana, use the full path since anchor init creates it in src/
     const appPath = targetLanguage === "solana_rust"
@@ -250,7 +407,7 @@ Please translate this ${BLOCKCHAIN_LANGUAGES[sourceLanguage]?.displayName || sou
       customName: appPath,
       isContractProject: true,
       prompt: translationPrompt,
-      existingAppId: solanaAppId, // Pass the app ID from scaffold
+      existingAppId: solanaAppId || suiAppId, // Pass the app ID from scaffold/transpiler
     });
   };
 

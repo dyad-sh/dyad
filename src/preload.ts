@@ -152,6 +152,9 @@ const validInvokeChannels = [
   "sui-test",
   "sui-get-address",
   "sui-get-balance",
+  // Shinso Transpiler
+  "transpile-contract",
+  // Get all apps
   // Solana
   "solana-compile",
   "solana-deploy",

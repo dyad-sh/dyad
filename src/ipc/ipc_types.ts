@@ -701,3 +701,20 @@ export interface TelemetryEventPayload {
   eventName: string;
   properties?: Record<string, unknown>;
 }
+
+// --- Shinso Transpiler Types ---
+export interface TranspileContractParams {
+  code: string;
+  tokenType: "erc20" | "erc721";
+  compile?: boolean;
+  outputPath?: string; // Optional: direct output path (for app directory)
+}
+
+export interface TranspileContractResult {
+  success: boolean;
+  files?: string[]; // List of generated files
+  output?: string; // The transpiled Move code (deprecated, use files)
+  error?: string;
+  stdout?: string;
+  stderr?: string;
+}

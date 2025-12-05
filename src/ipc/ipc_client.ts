@@ -1596,4 +1596,21 @@ export class IpcClient {
   }): Promise<{ success: boolean; output: string; error?: string; appId?: number }> {
     return this.ipcRenderer.invoke("solana-init-project", params);
   }
+
+  // Shinso Transpiler
+  public async transpileContract(params: {
+    code: string;
+    tokenType: "erc20" | "erc721";
+    compile?: boolean;
+    outputPath?: string;
+  }): Promise<{
+    success: boolean;
+    files?: string[];
+    output?: string;
+    error?: string;
+    stdout?: string;
+    stderr?: string;
+  }> {
+    return this.ipcRenderer.invoke("transpile-contract", params);
+  }
 }

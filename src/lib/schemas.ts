@@ -253,6 +253,18 @@ export const UserSettingsSchema = z.object({
   releaseChannel: ReleaseChannelSchema,
   runtimeMode2: RuntimeMode2Schema.optional(),
   customNodePath: z.string().optional().nullable(),
+  isRunning: z.boolean().optional(),
+  lastKnownPerformance: z
+    .object({
+      timestamp: z.number(),
+      memoryUsageMB: z.number(),
+      cpuUsagePercent: z.number().optional(),
+      systemMemoryUsageMB: z.number().optional(),
+      systemMemoryTotalMB: z.number().optional(),
+      systemMemoryPercent: z.number().optional(),
+      systemCpuPercent: z.number().optional(),
+    })
+    .optional(),
 
   ////////////////////////////////
   // E2E TESTING ONLY.

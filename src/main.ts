@@ -24,6 +24,10 @@ import {
   AddPromptDataSchema,
   AddPromptPayload,
 } from "./ipc/deep_link_data";
+import {
+  startPerformanceMonitoring,
+  stopPerformanceMonitoring,
+} from "./main/performance_monitor";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -65,6 +69,24 @@ export async function onReady() {
   }
   initializeDatabase();
   const settings = readSettings();
+
+  // Check if app was force-closed
+  if (settings.isRunning) {
+    logger.warn("App was force-closed on previous run");
+
+    // Store performance data to send after window is created
+    if (settings.lastKnownPerformance) {
+      logger.warn("Last known performance:", settings.lastKnownPerformance);
+      pendingForceCloseData = settings.lastKnownPerformance;
+    }
+  }
+
+  // Set isRunning to true at startup
+  writeSettings({ isRunning: true });
+
+  // Start performance monitoring
+  startPerformanceMonitoring();
+
   await onFirstRunMaybe(settings);
   createWindow();
 
@@ -134,6 +156,7 @@ declare global {
 }
 
 let mainWindow: BrowserWindow | null = null;
+let pendingForceCloseData: any = null;
 
 const createWindow = () => {
   // Create the browser window.
@@ -168,6 +191,16 @@ const createWindow = () => {
   if (process.env.NODE_ENV === "development") {
     // Open the DevTools.
     mainWindow.webContents.openDevTools();
+  }
+
+  // Send force-close event if it was detected
+  if (pendingForceCloseData) {
+    mainWindow.webContents.once("did-finish-load", () => {
+      mainWindow?.webContents.send("force-close-detected", {
+        performanceData: pendingForceCloseData,
+      });
+      pendingForceCloseData = null;
+    });
   }
 
   // Enable native context menu on right-click
@@ -395,6 +428,16 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
   }
+});
+
+// Only set isRunning to false when the app is properly quit by the user
+app.on("will-quit", () => {
+  logger.info("App is quitting, setting isRunning to false");
+
+  // Stop performance monitoring and capture final metrics
+  stopPerformanceMonitoring();
+
+  writeSettings({ isRunning: false });
 });
 
 app.on("activate", () => {

@@ -1062,6 +1062,29 @@ export class IpcClient {
     };
   }
 
+  // Listen for force close detected events
+  public onForceCloseDetected(
+    callback: (data: {
+      performanceData?: {
+        timestamp: number;
+        memoryUsageMB: number;
+        cpuUsagePercent?: number;
+        systemMemoryUsageMB?: number;
+        systemMemoryTotalMB?: number;
+        systemMemoryPercent?: number;
+        systemCpuPercent?: number;
+      };
+    }) => void,
+  ): () => void {
+    const listener = (data: any) => {
+      callback(data);
+    };
+    this.ipcRenderer.on("force-close-detected", listener);
+    return () => {
+      this.ipcRenderer.removeListener("force-close-detected", listener);
+    };
+  }
+
   // Count tokens for a chat and input
   public async countTokens(
     params: TokenCountParams,

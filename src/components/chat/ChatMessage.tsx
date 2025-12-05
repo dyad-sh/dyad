@@ -287,7 +287,7 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
                     </div>
                   </TooltipTrigger>
                   <TooltipContent>
-                    Total tokens used: {message.totalTokens.toLocaleString()}
+                    Max tokens used: {message.totalTokens.toLocaleString()}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>

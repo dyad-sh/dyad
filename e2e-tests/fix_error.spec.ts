@@ -1,4 +1,4 @@
-import { testSkipIfWindows } from "./helpers/test_helper";
+import { testSkipIfWindows, test } from "./helpers/test_helper";
 
 testSkipIfWindows("fix error with AI", async ({ po }) => {
   await po.setUp({ autoApprove: true });
@@ -18,4 +18,14 @@ testSkipIfWindows("fix error with AI", async ({ po }) => {
   // we don't reliably detect when the HMR update has completed.
   // await po.locatePreviewErrorBanner().waitFor({ state: "hidden" });
   await po.snapshotPreview();
+});
+
+test("fix all errors button", async ({ po }) => {
+  await po.setUp({ autoApprove: true });
+  await po.sendPrompt("tc=create-multiple-errors");
+
+  await po.clickFixAllErrors();
+  await po.waitForChatCompletion();
+
+  await po.snapshotMessages();
 });

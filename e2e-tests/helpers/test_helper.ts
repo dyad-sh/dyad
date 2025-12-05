@@ -575,6 +575,10 @@ export class PageObject {
     await this.page.getByRole("button", { name: "Fix error with AI" }).click();
   }
 
+  async clickFixAllErrors() {
+    await this.page.getByRole("button", { name: /Fix All Errors/ }).click();
+  }
+
   async snapshotPreviewErrorBanner() {
     await expect(this.locatePreviewErrorBanner()).toMatchAriaSnapshot({
       timeout: Timeout.LONG,

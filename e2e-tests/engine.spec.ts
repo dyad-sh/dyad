@@ -25,7 +25,7 @@ testSkipIfWindows(
     await po.setUpDyadPro();
     // By default, it's using auto which points to Flash 2.5 and doesn't
     // use engine.
-    await po.selectModel({ provider: "Anthropic", model: "Claude 4 Sonnet" });
+    await po.selectModel({ provider: "Anthropic", model: "Claude Sonnet 4" });
     await po.sendPrompt("[dump] tc=turbo-edits");
 
     await po.snapshotServerDump("request");

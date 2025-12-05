@@ -1,1 +1,1 @@
-ALTER TABLE `messages` ADD `total_tokens` integer;
+ALTER TABLE `messages` ADD `max_tokens_used` integer;

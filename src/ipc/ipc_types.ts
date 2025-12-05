@@ -171,7 +171,7 @@ export interface TokenCountParams {
 
 export interface TokenCountResult {
   estimatedTotalTokens: number;
-  actualTotalTokens: number | null;
+  actualMaxTokens: number | null;
   messageHistoryTokens: number;
   codebaseTokens: number;
   mentionedAppsTokens: number;

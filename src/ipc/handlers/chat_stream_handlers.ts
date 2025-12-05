@@ -447,7 +447,7 @@ ${componentSnippet}
       });
 
       let fullResponse = "";
-      let totalTokensUsed: number | undefined;
+      let maxTokensUsed: number | undefined;
 
       // Check if this is a test prompt
       const testResponse = getTestResponse(req.prompt);
@@ -891,13 +891,14 @@ This conversation includes one or more image attachments. When the user uploads 
               const totalTokens = response.usage?.totalTokens;
 
               if (typeof totalTokens === "number") {
-                // Accumulate total tokens across all model calls for this message
-                totalTokensUsed = (totalTokensUsed ?? 0) + totalTokens;
+                // We use the highest total tokens used (we are *not* accumulating)
+                // since we're trying to figure it out if we're near the context limit.
+                maxTokensUsed = Math.max(maxTokensUsed ?? 0, totalTokens);
 
                 // Persist the aggregated token usage on the placeholder assistant message
                 void db
                   .update(messages)
-                  .set({ totalTokens: totalTokensUsed })
+                  .set({ maxTokensUsed: maxTokensUsed })
                   .where(eq(messages.id, placeholderAssistantMessage.id))
                   .catch((error) => {
                     logger.error(
@@ -907,7 +908,7 @@ This conversation includes one or more image attachments. When the user uploads 
                   });
 
                 logger.log(
-                  `Total tokens used (aggregated for message ${placeholderAssistantMessage.id}): ${totalTokensUsed}`,
+                  `Total tokens used (aggregated for message ${placeholderAssistantMessage.id}): ${maxTokensUsed}`,
                 );
               } else {
                 logger.log("Total tokens used: unknown");

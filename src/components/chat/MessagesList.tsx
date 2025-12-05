@@ -83,7 +83,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         {/* Show context limit banner when close to token limit */}
         {!isStreaming && tokenCountResult && (
           <ContextLimitBanner
-            totalTokens={tokenCountResult.actualTotalTokens}
+            totalTokens={tokenCountResult.actualMaxTokens}
             contextWindow={tokenCountResult.contextWindow}
           />
         )}

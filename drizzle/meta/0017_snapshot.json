@@ -586,8 +586,8 @@
           "notNull": false,
           "autoincrement": false
         },
-        "total_tokens": {
-          "name": "total_tokens",
+        "max_tokens_used": {
+          "name": "max_tokens_used",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,

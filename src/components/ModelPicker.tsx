@@ -35,7 +35,8 @@ export function ModelPicker() {
   const queryClient = useQueryClient();
   const onModelSelect = (model: LargeLanguageModel) => {
     updateSettings({ selectedModel: model });
-    // Invalidate token count when model changes since different models have different tokenizers/context windows
+    // Invalidate token count when model changes since different models have different context windows
+    // (technically they have different tokenizers, but we don't keep track of that).
     queryClient.invalidateQueries({ queryKey: TOKEN_COUNT_QUERY_KEY });
   };
 

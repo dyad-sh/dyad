@@ -373,6 +373,7 @@ export default Index;
 
     // Check for high token usage marker to simulate near context limit
     const highTokensMatch =
+      typeof lastMessage?.content === "string" &&
       !lastMessage?.content.startsWith("Summarize the following chat:") &&
       lastMessage?.content?.match?.(/\[high-tokens=(\d+)\]/);
     const highTokensValue = highTokensMatch

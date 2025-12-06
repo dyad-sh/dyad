@@ -70,6 +70,8 @@ import type {
   SupabaseBranch,
   SetSupabaseAppProjectParams,
   SelectNodeFolderResult,
+  ApplyVisualEditingChangesParams,
+  AnalyseComponentParams,
 } from "./ipc_types";
 import type { Template } from "../shared/templates";
 import type {
@@ -1326,5 +1328,18 @@ export class IpcClient {
 
   public cancelHelpChat(sessionId: string): void {
     this.ipcRenderer.invoke("help:chat:cancel", sessionId).catch(() => {});
+  }
+
+  // --- Visual Editing ---
+  public async applyVisualEditingChanges(
+    changes: ApplyVisualEditingChangesParams,
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("apply-visual-editing-changes", changes);
+  }
+
+  public async analyzeComponent(
+    params: AnalyseComponentParams,
+  ): Promise<{ isDynamic: boolean; hasStaticText: boolean }> {
+    return this.ipcRenderer.invoke("analyze-component", params);
   }
 }

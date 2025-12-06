@@ -16,6 +16,7 @@ import {
   ChevronsDownUp,
   ChartColumnIncreasing,
   SendHorizontalIcon,
+  Lock,
 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useState } from "react";
@@ -65,11 +66,16 @@ import { ChatErrorBox } from "./ChatErrorBox";
 import {
   selectedComponentsPreviewAtom,
   previewIframeRefAtom,
+  visualEditingSelectedComponentAtom,
+  currentComponentCoordinatesAtom,
+  pendingVisualChangesAtom,
 } from "@/atoms/previewAtoms";
 import { SelectedComponentsDisplay } from "./SelectedComponentDisplay";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
 import { LexicalChatInput } from "./LexicalChatInput";
 import { useChatModeToggle } from "@/hooks/useChatModeToggle";
+import { VisualEditingChangesDialog } from "@/components/preview_panel/VisualEditingChangesDialog";
+import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 
 const showTokenBarAtom = atom(false);
 
@@ -92,7 +98,15 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     selectedComponentsPreviewAtom,
   );
   const previewIframeRef = useAtomValue(previewIframeRefAtom);
+  const setVisualEditingSelectedComponent = useSetAtom(
+    visualEditingSelectedComponentAtom,
+  );
+  const setCurrentComponentCoordinates = useSetAtom(
+    currentComponentCoordinatesAtom,
+  );
+  const setPendingVisualChanges = useSetAtom(pendingVisualChangesAtom);
   const { checkProblems } = useCheckProblems(appId);
+  const { refreshAppIframe } = useRunApp();
   // Use the attachments hook
   const {
     attachments,
@@ -123,6 +137,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     !!proposal &&
     proposal.type === "code-proposal" &&
     messageId === lastMessage.id;
+
+  const { userBudget } = useUserBudgetInfo();
 
   useEffect(() => {
     if (error) {
@@ -160,7 +176,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         ? selectedComponents
         : [];
     setSelectedComponents([]);
-
+    setVisualEditingSelectedComponent(null);
     // Clear overlays in the preview iframe
     if (previewIframeRef?.contentWindow) {
       previewIframeRef.contentWindow.postMessage(
@@ -306,6 +322,58 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                 isRejecting={isRejecting}
               />
             )}
+
+          {userBudget ? (
+            <VisualEditingChangesDialog
+              iframeRef={
+                previewIframeRef
+                  ? { current: previewIframeRef }
+                  : { current: null }
+              }
+              onReset={() => {
+                // Exit component selection mode and visual editing
+                setSelectedComponents([]);
+                setVisualEditingSelectedComponent(null);
+                setCurrentComponentCoordinates(null);
+                setPendingVisualChanges(new Map());
+                refreshAppIframe();
+
+                // Deactivate component selector in iframe
+                if (previewIframeRef?.contentWindow) {
+                  previewIframeRef.contentWindow.postMessage(
+                    { type: "deactivate-dyad-component-selector" },
+                    "*",
+                  );
+                }
+              }}
+            />
+          ) : (
+            selectedComponents.length > 0 && (
+              <div className="border-b border-border p-3 bg-muted/30">
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => {
+                          IpcClient.getInstance().openExternalUrl(
+                            "https://dyad.sh/pro",
+                          );
+                        }}
+                        className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors cursor-pointer"
+                      >
+                        <Lock size={16} />
+                        <span className="font-medium">Visual editor (Pro)</span>
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      Visual editing lets you make UI changes without AI and is
+                      a Pro-only feature
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+            )
+          )}
 
           <SelectedComponentsDisplay />
 

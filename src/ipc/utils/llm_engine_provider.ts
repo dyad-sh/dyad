@@ -10,6 +10,7 @@ import log from "electron-log";
 import { getExtraProviderOptions } from "./thinking_utils";
 import type { UserSettings } from "../../lib/schemas";
 import type { LanguageModel } from "ai";
+import OpenAI from "openai";
 
 const logger = log.scope("llm_engine_provider");
 
@@ -225,4 +226,72 @@ export function createDyadEngine(
   provider.responses = createResponsesModel;
 
   return provider;
+}
+
+export function createDyadOpenAIClient(
+  options: ExampleProviderSettings,
+): OpenAI {
+  const baseURL = withoutTrailingSlash(options.baseURL);
+
+  const apiKey = loadApiKey({
+    apiKey: options.apiKey,
+    environmentVariableName: "DYAD_PRO_API_KEY",
+    description: "Dyad Pro API key",
+  });
+
+  return new OpenAI({
+    apiKey,
+    baseURL,
+    defaultHeaders: options.headers,
+    fetch: options.fetch,
+  });
+}
+export async function transcribeWithDyadEngine(
+  audioBuffer: Buffer,
+  filename: string,
+  requestId: string,
+  options: ExampleProviderSettings,
+): Promise<string> {
+  const baseURL = withoutTrailingSlash(options.baseURL);
+  const apiKey = loadApiKey({
+    apiKey: options.apiKey,
+    environmentVariableName: "DYAD_PRO_API_KEY",
+    description: "Dyad Pro API key",
+  });
+  logger.info("transcribing with dyad engine with baseURL", baseURL);
+
+  // Track request ID attempts
+  const requestIdAttempts = new Map<string, number>();
+  // Track and modify requestId with attempt number
+  let modifiedRequestId = requestId;
+  if (requestId) {
+    const currentAttempt = (requestIdAttempts.get(requestId) || 0) + 1;
+    requestIdAttempts.set(requestId, currentAttempt);
+    modifiedRequestId = `${requestId}:attempt-${currentAttempt}`;
+  }
+
+  const formData = new FormData();
+  const blob = new Blob([audioBuffer as any]);
+  formData.append("file", blob, filename);
+  formData.append("model", "whisper-1");
+
+  const fetchFn = options.fetch || fetch;
+  const response = await fetchFn(`${baseURL}/audio/transcriptions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "X-Dyad-Request-Id": modifiedRequestId,
+      ...options.headers,
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `Dyad Engine transcription failed: ${response.status} ${response.statusText} - ${errorText}`,
+    );
+  }
+  const data = (await response.json()) as { text: string };
+  return data.text;
 }

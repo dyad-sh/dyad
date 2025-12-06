@@ -1,10 +1,11 @@
-import { useAtom } from "jotai";
+import { useAtom, useAtomValue } from "jotai";
 import { pendingVisualChangesAtom } from "@/atoms/previewAtoms";
 import { Button } from "@/components/ui/button";
 import { IpcClient } from "@/ipc/ipc_client";
 import { Check, X } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { showError, showSuccess } from "@/lib/toast";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
 
 interface VisualEditingChangesDialogProps {
   onReset?: () => void;
@@ -16,8 +17,12 @@ export function VisualEditingChangesDialog({
   iframeRef,
 }: VisualEditingChangesDialogProps) {
   const [pendingChanges, setPendingChanges] = useAtom(pendingVisualChangesAtom);
+  const selectedAppId = useAtomValue(selectedAppIdAtom);
   const [isSaving, setIsSaving] = useState(false);
   const textContentCache = useRef<Map<string, string>>(new Map());
+  const [allResponsesReceived, setAllResponsesReceived] = useState(false);
+  const expectedResponsesRef = useRef<Set<string>>(new Set());
+  const isWaitingForResponses = useRef(false);
 
   // Listen for text content responses
   useEffect(() => {
@@ -27,6 +32,17 @@ export function VisualEditingChangesDialog({
         if (text !== null) {
           textContentCache.current.set(componentId, text);
         }
+
+        // Mark this response as received
+        expectedResponsesRef.current.delete(componentId);
+
+        // Check if all responses received (only if we're actually waiting)
+        if (
+          isWaitingForResponses.current &&
+          expectedResponsesRef.current.size === 0
+        ) {
+          setAllResponsesReceived(true);
+        }
       }
     };
 
@@ -34,15 +50,70 @@ export function VisualEditingChangesDialog({
     return () => window.removeEventListener("message", handleMessage);
   }, []);
 
+  // Execute when all responses are received
+  useEffect(() => {
+    if (allResponsesReceived && isSaving) {
+      const applyChanges = async () => {
+        try {
+          const changesToSave = Array.from(pendingChanges.values());
+
+          // Update changes with cached text content
+          const updatedChanges = changesToSave.map((change) => {
+            const cachedText = textContentCache.current.get(change.componentId);
+            if (cachedText !== undefined) {
+              return { ...change, textContent: cachedText };
+            }
+            return change;
+          });
+
+          await IpcClient.getInstance().applyVisualEditingChanges({
+            appId: selectedAppId!,
+            changes: updatedChanges,
+          });
+
+          setPendingChanges(new Map());
+          textContentCache.current.clear();
+          showSuccess("Visual changes saved to source files");
+          onReset?.();
+        } catch (error) {
+          console.error("Failed to save visual editing changes:", error);
+          showError(`Failed to save changes: ${error}`);
+        } finally {
+          setIsSaving(false);
+          setAllResponsesReceived(false);
+          isWaitingForResponses.current = false;
+        }
+      };
+
+      applyChanges();
+    }
+  }, [
+    allResponsesReceived,
+    isSaving,
+    pendingChanges,
+    selectedAppId,
+    onReset,
+    setPendingChanges,
+  ]);
+
   if (pendingChanges.size === 0) return null;
 
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      // Request text content for all components that might be editing
       const changesToSave = Array.from(pendingChanges.values());
 
       if (iframeRef?.current?.contentWindow) {
+        // Reset state for new request
+        setAllResponsesReceived(false);
+        expectedResponsesRef.current.clear();
+        isWaitingForResponses.current = true;
+
+        // Track which components we're expecting responses from
+        for (const change of changesToSave) {
+          expectedResponsesRef.current.add(change.componentId);
+        }
+
         // Request text content for each component
         for (const change of changesToSave) {
           iframeRef.current.contentWindow.postMessage(
@@ -54,32 +125,26 @@ export function VisualEditingChangesDialog({
           );
         }
 
-        // Wait a bit for responses
-        await new Promise((resolve) => setTimeout(resolve, 50));
-
-        // Update changes with cached text content
-        const updatedChanges = changesToSave.map((change) => {
-          const cachedText = textContentCache.current.get(change.componentId);
-          if (cachedText !== undefined) {
-            return { ...change, textContent: cachedText };
-          }
-          return change;
+        // If no responses are expected, trigger immediately
+        if (expectedResponsesRef.current.size === 0) {
+          setAllResponsesReceived(true);
+        }
+      } else {
+        await IpcClient.getInstance().applyVisualEditingChanges({
+          appId: selectedAppId!,
+          changes: changesToSave,
         });
 
-        await IpcClient.getInstance().applyVisualEditingChanges(updatedChanges);
-      } else {
-        await IpcClient.getInstance().applyVisualEditingChanges(changesToSave);
+        setPendingChanges(new Map());
+        textContentCache.current.clear();
+        showSuccess("Visual changes saved to source files");
+        onReset?.();
       }
-
-      setPendingChanges(new Map());
-      textContentCache.current.clear();
-      showSuccess("Visual changes saved to source files");
-      onReset?.();
     } catch (error) {
       console.error("Failed to save visual editing changes:", error);
       showError(`Failed to save changes: ${error}`);
-    } finally {
       setIsSaving(false);
+      isWaitingForResponses.current = false;
     }
   };
 

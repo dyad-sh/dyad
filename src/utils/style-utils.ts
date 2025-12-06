@@ -44,20 +44,32 @@ function convertSpacingToTailwind(
   ) {
     classes.push(`${prefix}-[${left}]`);
   } else {
-    // Horizontal
-    if (hasHorizontal && left === right) {
-      classes.push(`${prefix}x-[${left}]`);
-    } else {
-      if (left !== undefined) classes.push(`${prefix}l-[${left}]`);
-      if (right !== undefined) classes.push(`${prefix}r-[${right}]`);
-    }
+    const horizontalValue = hasHorizontal && left === right ? left : null;
+    const verticalValue = hasVertical && top === bottom ? top : null;
 
-    // Vertical
-    if (hasVertical && top === bottom) {
-      classes.push(`${prefix}y-[${top}]`);
+    if (
+      horizontalValue !== null &&
+      verticalValue !== null &&
+      horizontalValue === verticalValue
+    ) {
+      // px = py or mx = my, so use the shorthand for all sides
+      classes.push(`${prefix}-[${horizontalValue}]`);
     } else {
-      if (top !== undefined) classes.push(`${prefix}t-[${top}]`);
-      if (bottom !== undefined) classes.push(`${prefix}b-[${bottom}]`);
+      // Horizontal
+      if (hasHorizontal && left === right) {
+        classes.push(`${prefix}x-[${left}]`);
+      } else {
+        if (left !== undefined) classes.push(`${prefix}l-[${left}]`);
+        if (right !== undefined) classes.push(`${prefix}r-[${right}]`);
+      }
+
+      // Vertical
+      if (hasVertical && top === bottom) {
+        classes.push(`${prefix}y-[${top}]`);
+      } else {
+        if (top !== undefined) classes.push(`${prefix}t-[${top}]`);
+        if (bottom !== undefined) classes.push(`${prefix}b-[${bottom}]`);
+      }
     }
   }
 

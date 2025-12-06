@@ -58,7 +58,6 @@ const FONT_FAMILY_OPTIONS = [
 interface VisualEditingToolbarProps {
   selectedComponent: ComponentSelection | null;
   iframeRef: React.RefObject<HTMLIFrameElement | null>;
-  appId: number;
   isDynamic: boolean;
   hasStaticText: boolean;
 }
@@ -66,7 +65,6 @@ interface VisualEditingToolbarProps {
 export function VisualEditingToolbar({
   selectedComponent,
   iframeRef,
-  appId,
   isDynamic,
   hasStaticText,
 }: VisualEditingToolbarProps) {
@@ -169,7 +167,6 @@ export function VisualEditingToolbar({
         componentName: selectedComponent.name,
         relativePath: selectedComponent.relativePath,
         lineNumber: selectedComponent.lineNumber,
-        appId,
         styles: newStyles,
         textContent: existing?.textContent || "",
       });

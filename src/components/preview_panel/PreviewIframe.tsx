@@ -201,10 +201,10 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     if (!componentId || !selectedAppId) return;
 
     try {
-      const result = await IpcClient.getInstance().analyzeComponent(
-        selectedAppId,
+      const result = await IpcClient.getInstance().analyzeComponent({
+        appId: selectedAppId,
         componentId,
-      );
+      });
       setIsDynamicComponent(result.isDynamic);
       setHasStaticText(result.hasStaticText);
 
@@ -252,7 +252,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           existing?.componentName || visualEditingSelectedComponent?.name || "",
         relativePath: filePath,
         lineNumber: lineNumber,
-        appId: selectedAppId,
         styles: existing?.styles || {},
         textContent: text,
       });
@@ -920,7 +919,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               <VisualEditingToolbar
                 selectedComponent={visualEditingSelectedComponent}
                 iframeRef={iframeRef}
-                appId={selectedAppId}
                 isDynamic={isDynamicComponent}
                 hasStaticText={hasStaticText}
               />

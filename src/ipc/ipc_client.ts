@@ -70,6 +70,8 @@ import type {
   SupabaseBranch,
   SetSupabaseAppProjectParams,
   SelectNodeFolderResult,
+  ApplyVisualEditingChangesParams,
+  AnalyseComponentParams,
 } from "./ipc_types";
 import type { Template } from "../shared/templates";
 import type {
@@ -1330,24 +1332,14 @@ export class IpcClient {
 
   // --- Visual Editing ---
   public async applyVisualEditingChanges(
-    changes: Array<{
-      componentId: string;
-      relativePath: string;
-      lineNumber: number;
-      styles: {
-        margin?: Record<string, string>;
-        padding?: Record<string, string>;
-        dimensions?: Record<string, string>;
-      };
-    }>,
+    changes: ApplyVisualEditingChangesParams,
   ): Promise<void> {
     await this.ipcRenderer.invoke("apply-visual-editing-changes", changes);
   }
 
   public async analyzeComponent(
-    appId: number,
-    componentId: string,
+    params: AnalyseComponentParams,
   ): Promise<{ isDynamic: boolean; hasStaticText: boolean }> {
-    return this.ipcRenderer.invoke("analyze-component", { appId, componentId });
+    return this.ipcRenderer.invoke("analyze-component", params);
   }
 }

@@ -87,11 +87,16 @@ testSkipIfWindows("edit text of the selected component", async ({ po }) => {
 
   await heading.dblclick();
 
-  // Wait a bit for contentEditable to be enabled
-  await po.page.waitForTimeout(300);
+  // Wait for contentEditable to be enabled
+  await expect(async () => {
+    const isEditable = await heading.evaluate(
+      (el) => (el as HTMLElement).isContentEditable,
+    );
+    expect(isEditable).toBe(true);
+  }).toPass({ timeout: Timeout.MEDIUM });
 
   // Clear the existing text and type new text
-  await heading.press("Meta+A");
+  await heading.press("Control+A");
   await heading.type("Hello from E2E Test");
 
   // Click outside to finish editing

@@ -545,3 +545,34 @@ export interface SelectNodeFolderResult {
   canceled?: boolean;
   selectedPath: string | null;
 }
+
+export interface VisualEditingChange {
+  componentId: string;
+  componentName: string;
+  relativePath: string;
+  lineNumber: number;
+  styles: {
+    margin?: { left?: string; right?: string; top?: string; bottom?: string };
+    padding?: { left?: string; right?: string; top?: string; bottom?: string };
+    dimensions?: { width?: string; height?: string };
+    border?: { width?: string; radius?: string; color?: string };
+    backgroundColor?: string;
+    text?: {
+      fontSize?: string;
+      fontWeight?: string;
+      color?: string;
+      fontFamily?: string;
+    };
+  };
+  textContent?: string;
+}
+
+export interface ApplyVisualEditingChangesParams {
+  appId: number;
+  changes: VisualEditingChange[];
+}
+
+export interface AnalyseComponentParams {
+  appId: number;
+  componentId: string;
+}

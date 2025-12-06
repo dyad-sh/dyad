@@ -6,6 +6,7 @@ import {
   cloudProviders,
   VertexProviderSetting,
   AzureProviderSetting,
+  ClaudeCodeProviderSetting,
 } from "@/lib/schemas";
 
 export function useLanguageModelProviders() {
@@ -17,6 +18,28 @@ export function useLanguageModelProviders() {
     queryFn: async () => {
       return ipcClient.getLanguageModelProviders();
     },
+  });
+
+  const claudeCodeSettings = settings?.providerSettings?.[
+    "claude-code"
+  ] as ClaudeCodeProviderSetting | undefined;
+
+  const { data: claudeCliExists } = useQuery<boolean, Error>({
+    queryKey: [
+      "claudeCliExists",
+      claudeCodeSettings?.claudeExecutablePath,
+      envVars["CLAUDE_CODE_EXECUTABLE_PATH"],
+    ],
+    queryFn: async () => {
+      try {
+        return await ipcClient.checkClaudeCliExists();
+      } catch (error) {
+        console.error("Error checking Claude CLI existence:", error);
+        return false;
+      }
+    },
+    staleTime: 5000, // Cache for 5 seconds
+    enabled: !!settings, // Only run query when settings are loaded
   });
 
   const isProviderSetup = (provider: string) => {
@@ -50,12 +73,23 @@ export function useLanguageModelProviders() {
       }
       return false;
     }
-    if (providerSettings?.apiKey?.value) {
+    // Check if API key is set and valid (not a placeholder value)
+    const apiKeyValue = providerSettings?.apiKey?.value;
+    if (
+      apiKeyValue &&
+      !apiKeyValue.startsWith("Invalid Key") &&
+      apiKeyValue !== "Not Set"
+    ) {
       return true;
     }
     const providerData = queryResult.data?.find((p) => p.id === provider);
     if (providerData?.envVarName && envVars[providerData.envVarName]) {
       return true;
+    }
+    // Claude Code (Agent SDK) requires Claude CLI executable to be present
+    // Check this last as it's a special case that doesn't require API key
+    if (provider === "claude-code") {
+      return claudeCliExists ?? false;
     }
     return false;
   };

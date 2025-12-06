@@ -70,6 +70,7 @@ const providers = [
   "azure",
   "xai",
   "bedrock",
+  "claude-code",
 ] as const;
 
 export const cloudProviders = providers.filter(
@@ -111,6 +112,11 @@ export const VertexProviderSettingSchema = z.object({
   serviceAccountKey: SecretSchema.optional(),
 });
 
+export const ClaudeCodeProviderSettingSchema = z.object({
+  apiKey: SecretSchema.optional(),
+  claudeExecutablePath: z.string().optional(),
+});
+
 export const ProviderSettingSchema = z.union([
   // Must use more specific type first!
   // Zod uses the first type that matches.
@@ -121,6 +127,7 @@ export const ProviderSettingSchema = z.union([
   // In addition, there may be future provider settings that
   // we may want to preserve (e.g. user downgrades to older version)
   // so doing passthrough keeps these extra fields.
+  ClaudeCodeProviderSettingSchema.passthrough(),
   AzureProviderSettingSchema.passthrough(),
   VertexProviderSettingSchema.passthrough(),
   RegularProviderSettingSchema.passthrough(),
@@ -135,6 +142,9 @@ export type RegularProviderSetting = z.infer<
 >;
 export type AzureProviderSetting = z.infer<typeof AzureProviderSettingSchema>;
 export type VertexProviderSetting = z.infer<typeof VertexProviderSettingSchema>;
+export type ClaudeCodeProviderSetting = z.infer<
+  typeof ClaudeCodeProviderSettingSchema
+>;
 
 export const RuntimeModeSchema = z.enum(["web-sandbox", "local-node", "unset"]);
 export type RuntimeMode = z.infer<typeof RuntimeModeSchema>;

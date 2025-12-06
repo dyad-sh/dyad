@@ -24,6 +24,7 @@ import {
   AddPromptDataSchema,
   AddPromptPayload,
 } from "./ipc/deep_link_data";
+import fs from "fs";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -41,26 +42,27 @@ registerIpcHandlers();
 if (started) {
   app.quit();
 }
-// Set up Dugite git path for development
-// if (!app.isPackaged && !process.env.CI) {
 // <-- ADDED CHECK
 // Set up Dugite git path for development and e2e tests
-if (!app.isPackaged || IS_TEST_BUILD) {
-  // For tests, use process.cwd() which should be the project root
-  // For dev, use app.getAppPath() which is also the project root
-  const projectRoot = IS_TEST_BUILD ? process.cwd() : app.getAppPath();
-  const gitPath = path.join(projectRoot, "node_modules/dugite/git");
-
-  const fs = require("fs");
-  if (fs.existsSync(gitPath)) {
-    process.env.LOCAL_GIT_DIRECTORY = gitPath;
-  } else {
-    // Try alternative location
-    const altGitPath = path.join(process.cwd(), "node_modules/dugite/git");
-    if (fs.existsSync(altGitPath)) {
-      process.env.LOCAL_GIT_DIRECTORY = altGitPath;
-    }
+// Decide the git directory depending on environment
+function resolveLocalGitDirectory() {
+  if (IS_TEST_BUILD) {
+    // Tests run from repo root
+    return path.join(process.cwd(), "node_modules/dugite/git");
   }
+
+  if (!app.isPackaged) {
+    // Dev: app.getAppPath() is the project root
+    return path.join(app.getAppPath(), "node_modules/dugite/git");
+  }
+
+  // Packaged app: git is bundled via extraResource
+  return path.join(process.resourcesPath, "git");
+}
+
+const gitDir = resolveLocalGitDirectory();
+if (fs.existsSync(gitDir)) {
+  process.env.LOCAL_GIT_DIRECTORY = gitDir;
 }
 
 // https://www.electronjs.org/docs/latest/tutorial/launch-app-from-url-in-another-app#main-process-mainjs

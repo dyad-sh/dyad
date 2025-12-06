@@ -48,8 +48,15 @@ export async function isGitStatusClean({
 }): Promise<boolean> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
-    const { stdout } = await execAsync(`git -C "${path}" status --porcelain`);
-    return stdout.trim() === "";
+    const result = await exec(["status", "--porcelain"], path);
+
+    if (result.exitCode !== 0) {
+      throw new Error(`Failed to get status: ${result.stderr}`);
+    }
+
+    // If output is empty, working directory is clean (no changes)
+    const isClean = result.stdout.trim().length === 0;
+    return isClean;
   } else {
     const statusMatrix = await git.statusMatrix({ fs, dir: path });
     return statusMatrix.every(

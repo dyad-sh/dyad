@@ -3,13 +3,12 @@ import { db } from "../../db";
 import { apps, chats, messages } from "../../db/schema";
 import { desc, eq, and, like } from "drizzle-orm";
 import type { ChatSearchResult, ChatSummary } from "../../lib/schemas";
-import * as git from "isomorphic-git";
-import * as fs from "fs";
 import { createLoggedHandler } from "./safe_handle";
 
 import log from "electron-log";
 import { getDyadAppPath } from "../../paths/paths";
 import { UpdateChatParams } from "../ipc_types";
+import { getCurrentCommitHash } from "../utils/git_utils";
 
 const logger = log.scope("chat_handlers");
 const handle = createLoggedHandler(logger);
@@ -31,9 +30,8 @@ export function registerChatHandlers() {
     let initialCommitHash = null;
     try {
       // Get the current git revision of main branch
-      initialCommitHash = await git.resolveRef({
-        fs,
-        dir: getDyadAppPath(app.path),
+      initialCommitHash = await getCurrentCommitHash({
+        path: getDyadAppPath(app.path),
         ref: "main",
       });
     } catch (error) {

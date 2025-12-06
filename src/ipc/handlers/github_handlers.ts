@@ -1,8 +1,7 @@
 import { ipcMain, BrowserWindow, IpcMainInvokeEvent } from "electron";
 import fetch from "node-fetch"; // Use node-fetch for making HTTP requests in main process
 import { writeSettings, readSettings } from "../../main/settings";
-import git, { clone } from "isomorphic-git";
-import http from "isomorphic-git/http/node";
+import { gitSetRemoteUrl, gitPush, gitClone } from "../utils/git_utils";
 import * as schema from "../../db/schema";
 import fs from "node:fs";
 import { getDyadAppPath } from "../../paths/paths";
@@ -575,25 +574,17 @@ async function handlePushToGithub(
       ? `${GITHUB_GIT_BASE}/${app.githubOrg}/${app.githubRepo}.git`
       : `https://${accessToken}:x-oauth-basic@github.com/${app.githubOrg}/${app.githubRepo}.git`;
     // Set or update remote URL using git config
-    await git.setConfig({
-      fs,
-      dir: appPath,
-      path: "remote.origin.url",
-      value: remoteUrl,
+    await gitSetRemoteUrl({
+      path: appPath,
+      remoteUrl,
     });
+
     // Push to GitHub
-    await git.push({
-      fs,
-      http,
-      dir: appPath,
-      remote: "origin",
-      ref: "main",
-      remoteRef: branch,
-      onAuth: () => ({
-        username: accessToken,
-        password: "x-oauth-basic",
-      }),
-      force: !!force,
+    await gitPush({
+      path: appPath,
+      branch,
+      accessToken,
+      force,
     });
     return { success: true };
   } catch (err: any) {
@@ -673,8 +664,11 @@ async function handleCloneRepoFromUrl(
     }
 
     const appPath = getDyadAppPath(finalAppName);
-    if (!fs.existsSync(appPath)) {
-      fs.mkdirSync(appPath, { recursive: true });
+    // Ensure the app directory exists if native git is disabled
+    if (!settings.enableNativeGit) {
+      if (!fs.existsSync(appPath)) {
+        fs.mkdirSync(appPath, { recursive: true });
+      }
     }
     // Use authenticated URL if token exists, otherwise use public HTTPS URL
     const cloneUrl = accessToken
@@ -683,17 +677,10 @@ async function handleCloneRepoFromUrl(
         : `https://${accessToken}:x-oauth-basic@github.com/${owner}/${repoName}.git`
       : `https://github.com/${owner}/${repoName}.git`; // Changed: use public HTTPS URL instead of original url
     try {
-      await clone({
-        fs,
-        http,
-        dir: appPath,
+      await gitClone({
+        path: appPath,
         url: cloneUrl,
-        onAuth: accessToken
-          ? () => ({
-              username: accessToken,
-              password: "x-oauth-basic",
-            })
-          : undefined,
+        accessToken,
         singleBranch: false,
       });
     } catch (cloneErr) {

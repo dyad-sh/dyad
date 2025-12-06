@@ -128,11 +128,10 @@ export default function AppDetailsPage() {
       await refreshApps();
     } catch (error) {
       console.error("Failed to rename app:", error);
-      alert(
-        `Error renaming app: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      const errorMessage = (
+        error instanceof Error ? error.message : String(error)
+      ).replace(/^Error invoking remote method 'rename-app': Error: /, "");
+      showError(errorMessage);
     } finally {
       setIsRenaming(false);
     }
@@ -143,7 +142,6 @@ export default function AppDetailsPage() {
 
     try {
       setIsRenamingFolder(true);
-
       await IpcClient.getInstance().renameApp({
         appId,
         appName: selectedApp.name, // Keep the app name the same
@@ -154,11 +152,10 @@ export default function AppDetailsPage() {
       await refreshApps();
     } catch (error) {
       console.error("Failed to rename folder:", error);
-      alert(
-        `Error renaming folder: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      const errorMessage = (
+        error instanceof Error ? error.message : String(error)
+      ).replace(/^Error invoking remote method 'rename-app': Error: /, "");
+      showError(errorMessage);
     } finally {
       setIsRenamingFolder(false);
     }

@@ -42,6 +42,54 @@ function createVercelClient(token: string): Vercel {
   });
 }
 
+interface VercelProjectResponse {
+  id: string;
+  name: string;
+  framework?: string | null;
+  targets?: {
+    production?: {
+      url?: string;
+    };
+  };
+}
+
+interface GetVercelProjectsResponse {
+  projects: VercelProjectResponse[];
+}
+
+/**
+ * Fetch Vercel projects via HTTP request (bypasses the broken SDK).
+ * Mimics the SDK's `vercel.projects.getProjects` API.
+ */
+async function getVercelProjects(
+  token: string,
+  options?: { search?: string },
+): Promise<GetVercelProjectsResponse> {
+  const url = new URL(`${VERCEL_API_BASE}/v9/projects`);
+  if (options?.search) {
+    url.searchParams.set("search", options.search);
+  }
+
+  const response = await fetch(url.toString(), {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `Failed to fetch Vercel projects: ${response.status} ${response.statusText} - ${errorText}`,
+    );
+  }
+
+  const data = await response.json();
+  return {
+    projects: data.projects || [],
+  };
+}
+
 async function validateVercelToken(token: string): Promise<boolean> {
   try {
     const vercel = createVercelClient(token);
@@ -184,8 +232,7 @@ async function handleListVercelProjects(): Promise<VercelProject[]> {
       throw new Error("Not authenticated with Vercel.");
     }
 
-    const vercel = createVercelClient(accessToken);
-    const response = await vercel.projects.getProjects({});
+    const response = await getVercelProjects(accessToken);
 
     if (!response.projects) {
       throw new Error("Failed to retrieve projects from Vercel.");
@@ -214,12 +261,8 @@ async function handleIsProjectAvailable(
       return { available: false, error: "Not authenticated with Vercel." };
     }
 
-    const vercel = createVercelClient(accessToken);
-
     // Check if project name is available by searching for projects with that name
-    const response = await vercel.projects.getProjects({
-      search: name,
-    });
+    const response = await getVercelProjects(accessToken, { search: name });
 
     if (!response.projects) {
       return {
@@ -361,10 +404,8 @@ async function handleConnectToExistingProject(
       `Connecting to existing Vercel project: ${projectId} for app ${appId}`,
     );
 
-    const vercel = createVercelClient(accessToken);
-
     // Verify the project exists and get its details
-    const response = await vercel.projects.getProjects({});
+    const response = await getVercelProjects(accessToken);
     const projectData = response.projects?.find(
       (p) => p.id === projectId || p.name === projectId,
     );

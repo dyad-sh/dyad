@@ -591,6 +591,10 @@ export class PageObject {
     await this.page.getByRole("button", { name: "Fix error with AI" }).click();
   }
 
+  async clickFixAllErrors() {
+    await this.page.getByRole("button", { name: /Fix All Errors/ }).click();
+  }
+
   async snapshotPreviewErrorBanner() {
     await expect(this.locatePreviewErrorBanner()).toMatchAriaSnapshot({
       timeout: Timeout.LONG,
@@ -729,7 +733,7 @@ export class PageObject {
 
   getChatInput() {
     return this.page.locator(
-      '[data-lexical-editor="true"][aria-placeholder="Ask Dyad to build..."]',
+      '[data-lexical-editor="true"][aria-placeholder^="Ask Dyad to build"]',
     );
   }
 

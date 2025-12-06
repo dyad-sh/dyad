@@ -1,0 +1,1 @@
+ALTER TABLE `messages` ADD `max_tokens_used` integer;

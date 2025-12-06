@@ -29,8 +29,13 @@ export function createStreamChunk(
   content: string,
   role: string = "assistant",
   isLast: boolean = false,
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  },
 ) {
-  const chunk = {
+  const chunk: any = {
     id: `chatcmpl-${Date.now()}`,
     object: "chat.completion.chunk",
     created: Math.floor(Date.now() / 1000),
@@ -43,6 +48,11 @@ export function createStreamChunk(
       },
     ],
   };
+
+  // Add usage info to the final chunk if provided
+  if (isLast && usage) {
+    chunk.usage = usage;
+  }
 
   return `data: ${JSON.stringify(chunk)}\n\n${isLast ? "data: [DONE]\n\n" : ""}`;
 }

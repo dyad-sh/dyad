@@ -18,6 +18,8 @@ import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useSettings } from "@/hooks/useSettings";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { PromoMessage } from "./PromoMessage";
+import { ContextLimitBanner } from "./ContextLimitBanner";
+import { useCountTokens } from "@/hooks/useCountTokens";
 
 interface MessagesListProps {
   messages: Message[];
@@ -36,6 +38,11 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
     const [isRetryLoading, setIsRetryLoading] = useState(false);
     const selectedChatId = useAtomValue(selectedChatIdAtom);
     const { userBudget } = useUserBudgetInfo();
+    // Only fetch token count when not streaming
+    const { result: tokenCountResult } = useCountTokens(
+      !isStreaming ? selectedChatId : null,
+      "",
+    );
 
     const renderSetupBanner = () => {
       const selectedModel = settings?.selectedModel;
@@ -73,6 +80,13 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
                 </div>
               </div>
             )}
+        {/* Show context limit banner when close to token limit */}
+        {!isStreaming && tokenCountResult && (
+          <ContextLimitBanner
+            totalTokens={tokenCountResult.actualMaxTokens}
+            contextWindow={tokenCountResult.contextWindow}
+          />
+        )}
         {!isStreaming && (
           <div className="flex max-w-3xl mx-auto gap-2">
             {!!messages.length &&

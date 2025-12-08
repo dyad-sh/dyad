@@ -68,7 +68,14 @@
   app-region: no-drag;
 }
 
-/* Disable drag region when select is open */
+/* 
+ * Disable drag region when select is open.
+ * See: https://github.com/dyad-sh/dyad/issues/1717
+ *
+ * Radix select component sets this data attribute when the select is open
+ * to disable scrolling on the body and we use this as a signal to disable
+ * dragging (e.g. the title bar)
+ */
 body[data-scroll-locked="1"] .app-region-drag {
   app-region: no-drag;
 }

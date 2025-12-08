@@ -27,7 +27,7 @@ import {
 import {
   startPerformanceMonitoring,
   stopPerformanceMonitoring,
-} from "./main/performance_monitor";
+} from "./utils/performance_monitor";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();

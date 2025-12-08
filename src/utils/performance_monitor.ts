@@ -1,5 +1,5 @@
 import log from "electron-log";
-import { writeSettings } from "./settings";
+import { writeSettings } from "../main/settings";
 import os from "node:os";
 
 const logger = log.scope("performance-monitor");
@@ -199,46 +199,4 @@ export function stopPerformanceMonitoring() {
     // Capture final metrics before stopping
     capturePerformanceMetrics();
   }
-}
-
-/**
- * Format performance data for display
- */
-export function formatPerformanceData(data: {
-  timestamp: number;
-  memoryUsageMB: number;
-  cpuUsagePercent?: number;
-  systemMemoryUsageMB?: number;
-  systemMemoryTotalMB?: number;
-  systemMemoryPercent?: number;
-  systemCpuPercent?: number;
-}): string {
-  const date = new Date(data.timestamp);
-  const timeStr = date.toLocaleString();
-
-  const parts: string[] = [];
-
-  // Process metrics
-  parts.push(`Process Memory: ${data.memoryUsageMB}MB`);
-  if (data.cpuUsagePercent !== undefined) {
-    parts.push(`Process CPU: ${data.cpuUsagePercent}%`);
-  }
-
-  // System metrics
-  if (
-    data.systemMemoryUsageMB !== undefined &&
-    data.systemMemoryTotalMB !== undefined
-  ) {
-    parts.push(
-      `System Memory: ${data.systemMemoryUsageMB}/${data.systemMemoryTotalMB}MB`,
-    );
-  }
-  if (data.systemMemoryPercent !== undefined) {
-    parts.push(`(${data.systemMemoryPercent}%)`);
-  }
-  if (data.systemCpuPercent !== undefined) {
-    parts.push(`System CPU: ${data.systemCpuPercent}%`);
-  }
-
-  return `Last known state (${timeStr}):\n${parts.join(", ")}`;
 }

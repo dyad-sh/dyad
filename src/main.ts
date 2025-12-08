@@ -42,15 +42,9 @@ registerIpcHandlers();
 if (started) {
   app.quit();
 }
-// <-- ADDED CHECK
-// Set up Dugite git path for development and e2e tests
+
 // Decide the git directory depending on environment
 function resolveLocalGitDirectory() {
-  if (IS_TEST_BUILD) {
-    // Tests run from repo root
-    return path.join(process.cwd(), "node_modules/dugite/git");
-  }
-
   if (!app.isPackaged) {
     // Dev: app.getAppPath() is the project root
     return path.join(app.getAppPath(), "node_modules/dugite/git");

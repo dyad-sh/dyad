@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import {
   Tooltip,
   TooltipContent,
@@ -24,31 +24,15 @@ interface TokenBarProps {
 
 export function TokenBar({ chatId }: TokenBarProps) {
   const [inputValue] = useAtom(chatInputValueAtom);
-  const { countTokens, result } = useCountTokens();
-  const [error, setError] = useState<string | null>(null);
   const { settings } = useSettings();
-  useEffect(() => {
-    if (!chatId) return;
-    // Mark this as used, we need to re-trigger token count
-    // when selected model changes.
-    void settings?.selectedModel;
-
-    const debounceTimer = setTimeout(() => {
-      countTokens(chatId, inputValue).catch((err) => {
-        setError("Failed to count tokens");
-        console.error("Token counting error:", err);
-      });
-    }, 500);
-
-    return () => clearTimeout(debounceTimer);
-  }, [chatId, inputValue, countTokens, settings?.selectedModel]);
+  const { result, error } = useCountTokens(chatId ?? null, inputValue);
 
   if (!chatId || !result) {
     return null;
   }
 
   const {
-    totalTokens,
+    estimatedTotalTokens: totalTokens,
     messageHistoryTokens,
     codebaseTokens,
     mentionedAppsTokens,
@@ -142,7 +126,9 @@ export function TokenBar({ chatId }: TokenBarProps) {
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
-      {error && <div className="text-red-500 text-xs mt-1">{error}</div>}
+      {error && (
+        <div className="text-red-500 text-xs mt-1">Failed to count tokens</div>
+      )}
       {(!settings?.enableProSmartFilesContextMode ||
         !settings?.enableDyadPro) && (
         <div className="text-xs text-center text-muted-foreground mt-2">

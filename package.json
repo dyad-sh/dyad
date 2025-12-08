@@ -1,7 +1,7 @@
 {
   "name": "dyad",
   "productName": "dyad",
-  "version": "0.28.0",
+  "version": "0.29.0-beta.1",
   "description": "Free, local, open-source AI app builder",
   "main": ".vite/build/main.js",
   "repository": {
@@ -124,7 +124,7 @@
     "@tanstack/react-query": "^5.75.5",
     "@tanstack/react-router": "^1.114.34",
     "@types/uuid": "^10.0.0",
-    "@vercel/sdk": "^1.10.0",
+    "@vercel/sdk": "^1.18.0",
     "@vitejs/plugin-react": "^4.3.4",
     "ai": "^5.0.15",
     "better-sqlite3": "^12.4.1",

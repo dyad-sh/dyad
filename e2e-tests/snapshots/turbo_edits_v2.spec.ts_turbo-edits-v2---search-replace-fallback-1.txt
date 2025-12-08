@@ -18,7 +18,7 @@
       },
       {
         "role": "user",
-        "content": "There was an issue with the following `dyad-search-replace` tags. Make sure you use `dyad-read` to read the latest version of the file and then trying to do search & replace again.\n                \nFile path: src/pages/Index.tsx\nError: Unable to apply search-replace to file"
+        "content": "There was an issue with the following `dyad-search-replace` tags. Make sure you use `dyad-read` to read the latest version of the file and then trying to do search & replace again.\n                \nFile path: src/pages/Index.tsx\nError: Unable to apply search-replace to file because: Search block did not match any content in the target file. Best fuzzy match had similarity of 0.0% (threshold: 90.0%)"
       },
       {
         "role": "assistant",
@@ -26,7 +26,7 @@
       },
       {
         "role": "user",
-        "content": "There was an issue with the following `dyad-search-replace` tags. Please fix the errors by generating the code changes using `dyad-write` tags instead.\n                \nFile path: src/pages/Index.tsx\nError: Unable to apply search-replace to file"
+        "content": "There was an issue with the following `dyad-search-replace` tags. Please fix the errors by generating the code changes using `dyad-write` tags instead.\n                \nFile path: src/pages/Index.tsx\nError: Unable to apply search-replace to file because: Search block did not match any content in the target file. Best fuzzy match had similarity of 0.0% (threshold: 90.0%)"
       }
     ],
     "stream": true,

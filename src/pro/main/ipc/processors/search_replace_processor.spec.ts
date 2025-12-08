@@ -229,8 +229,8 @@ function example() {
     expect(content).not.toContain("start();");
   });
 
-  it("errors when SEARCH and REPLACE blocks are identical", () => {
-    const original = ["x", "y", "z"].join("\n");
+  it("not an error when SEARCH and REPLACE blocks are identical", () => {
+    const original = ["x", "middle", "z"].join("\n");
     const diff = `
 <<<<<<< SEARCH
 middle
@@ -238,9 +238,9 @@ middle
 middle
 >>>>>>> REPLACE
 `;
-    const { success, error } = applySearchReplace(original, diff);
-    expect(success).toBe(false);
-    expect(error).toMatch(/Search and replace blocks are identical/i);
+    const { success, content } = applySearchReplace(original, diff);
+    expect(success).toBe(true);
+    expect(content).toBe(original);
   });
 
   it("errors when SEARCH block matches multiple locations (ambiguous)", () => {

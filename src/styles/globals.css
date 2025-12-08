@@ -68,6 +68,11 @@
   app-region: no-drag;
 }
 
+/* Disable drag region when select is open */
+body[data-scroll-locked="1"] .app-region-drag {
+  app-region: no-drag;
+}
+
 .h-screenish {
   height: calc(100vh - 64px);
 }

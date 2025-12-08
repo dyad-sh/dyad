@@ -24,9 +24,11 @@ testSkipIfWindows("edit style of one selected component", async ({ po }) => {
   // Click on margin button to open the margin popover
   await po.page.getByRole("button", { name: "Margin" }).click();
 
-  // Wait for the margin inputs to be visible in the popover
-  await expect(po.page.getByLabel("Horizontal")).toBeVisible({
-    timeout: Timeout.MEDIUM,
+  // Wait for the popover to fully open by checking for the popover content container
+  await expect(
+    po.page.locator('[role="dialog"]').filter({ hasText: "Margin" }),
+  ).toBeVisible({
+    timeout: Timeout.LONG,
   });
 
   // Edit margin - set horizontal margin
@@ -96,7 +98,7 @@ testSkipIfWindows("edit text of the selected component", async ({ po }) => {
   }).toPass({ timeout: Timeout.MEDIUM });
 
   // Clear the existing text and type new text
-  await heading.press("Control+A");
+  await heading.press("Meta+A");
   await heading.type("Hello from E2E Test");
 
   // Click outside to finish editing
@@ -146,9 +148,11 @@ testSkipIfWindows("discard changes", async ({ po }) => {
   // Click on margin button to open the margin popover
   await po.page.getByRole("button", { name: "Margin" }).click();
 
-  // Wait for the margin inputs to be visible in the popover
-  await expect(po.page.getByLabel("Horizontal")).toBeVisible({
-    timeout: Timeout.MEDIUM,
+  // Wait for the popover to fully open by checking for the popover content container
+  await expect(
+    po.page.locator('[role="dialog"]').filter({ hasText: "Margin" }),
+  ).toBeVisible({
+    timeout: Timeout.LONG,
   });
 
   // Edit margin

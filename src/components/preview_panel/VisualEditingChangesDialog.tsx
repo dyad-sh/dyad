@@ -160,12 +160,7 @@ export function VisualEditingChangesDialog({
         {pendingChanges.size > 1 ? "s" : ""} modified
       </p>
       <div className="flex gap-1 lg:gap-2 w-full lg:w-auto flex-wrap">
-        <Button
-          size="sm"
-          onClick={handleSave}
-          disabled={isSaving}
-          className="bg-[#7f22fe] hover:bg-[#450e91ff] dark:text-white text-xs lg:text-sm px-2 lg:px-3 flex-1 lg:flex-initial"
-        >
+        <Button size="sm" onClick={handleSave} disabled={isSaving}>
           <Check size={14} className="mr-1" />
           <span>{isSaving ? "Saving..." : "Save Changes"}</span>
         </Button>
@@ -174,7 +169,6 @@ export function VisualEditingChangesDialog({
           variant="outline"
           onClick={handleDiscard}
           disabled={isSaving}
-          className="text-xs lg:text-sm px-2 lg:px-3 flex-1 lg:flex-initial"
         >
           <X size={14} className="mr-1" />
           <span>Discard</span>

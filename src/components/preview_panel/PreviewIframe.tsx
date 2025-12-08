@@ -363,7 +363,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         // Add to selected components if not already there
         setSelectedComponentsPreview((prev) => {
           const exists = prev.some((c) => {
-            // Check by runtimeId if available, otherwise by id
+            // Check by runtimeId if available otherwise by id
+            // Stored components may have lost their runtimeId after re-renders or reloading the page
             if (component.runtimeId && c.runtimeId) {
               return c.runtimeId === component.runtimeId;
             }

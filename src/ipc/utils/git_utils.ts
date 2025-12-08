@@ -24,6 +24,23 @@ import type {
 } from "../git_types";
 import type { GitCommit } from "../ipc_types";
 
+/**
+ * Helper function that wraps exec and throws an error if the exit code is non-zero
+ */
+async function execOrThrow(
+  args: string[],
+  path: string,
+  errorMessage?: string,
+): Promise<void> {
+  const result = await exec(args, path);
+  if (result.exitCode !== 0) {
+    const error =
+      errorMessage ||
+      `Git command failed: ${args.join(" ")}. ${result.stderr.trim() || result.stdout.trim()}`;
+    throw new Error(error);
+  }
+}
+
 export async function getCurrentCommitHash({
   path,
   ref = "HEAD",
@@ -31,6 +48,11 @@ export async function getCurrentCommitHash({
   const settings = readSettings();
   if (settings.enableNativeGit) {
     const result = await exec(["rev-parse", ref], path);
+    if (result.exitCode !== 0) {
+      throw new Error(
+        `Failed to resolve ref '${ref}': ${result.stderr.trim() || result.stdout.trim()}`,
+      );
+    }
     return result.stdout.trim();
   } else {
     return await git.resolveRef({
@@ -72,14 +94,27 @@ export async function gitCommit({
 }: GitCommitParams): Promise<string> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
-    // Perform the commit using dugite
-    const args = ["commit", "-m", message];
+    // Get author info to match isomorphic-git behavior
+    const author = await getGitAuthor();
+    // Perform the commit using dugite with --author flag
+    const args = [
+      "commit",
+      "-m",
+      message,
+      "--author",
+      `${author.name} <${author.email}>`,
+    ];
     if (amend) {
       args.push("--amend");
     }
-    await exec(args, path);
+    await execOrThrow(args, path, "Failed to create commit");
     // Get the new commit hash
     const result = await exec(["rev-parse", "HEAD"], path);
+    if (result.exitCode !== 0) {
+      throw new Error(
+        `Failed to get commit hash: ${result.stderr.trim() || result.stdout.trim()}`,
+      );
+    }
     return result.stdout.trim();
   } else {
     return git.commit({
@@ -98,7 +133,11 @@ export async function gitCheckout({
 }: GitCheckoutParams): Promise<void> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
-    await exec(["checkout", ref], path);
+    await execOrThrow(
+      ["checkout", ref],
+      path,
+      `Failed to checkout ref '${ref}'`,
+    );
     return;
   } else {
     return git.checkout({ fs, dir: path, ref });
@@ -112,9 +151,14 @@ export async function gitStageToRevert({
   const settings = readSettings();
   if (settings.enableNativeGit) {
     // Get the current HEAD commit hash
-    const { stdout: currentHead } = await exec(["rev-parse", "HEAD"], path);
+    const currentHeadResult = await exec(["rev-parse", "HEAD"], path);
+    if (currentHeadResult.exitCode !== 0) {
+      throw new Error(
+        `Failed to get current commit: ${currentHeadResult.stderr.trim() || currentHeadResult.stdout.trim()}`,
+      );
+    }
 
-    const currentCommit = currentHead.trim();
+    const currentCommit = currentHeadResult.stdout.trim();
 
     // If we're already at the target commit, nothing to do
     if (currentCommit === targetOid) {
@@ -122,18 +166,31 @@ export async function gitStageToRevert({
     }
 
     // Safety: refuse to run if the work-tree isn't clean.
-    const { stdout: wtStatus } = await exec(["status", "--porcelain"], path);
-    if (wtStatus.trim() !== "") {
+    const statusResult = await exec(["status", "--porcelain"], path);
+    if (statusResult.exitCode !== 0) {
+      throw new Error(
+        `Failed to get status: ${statusResult.stderr.trim() || statusResult.stdout.trim()}`,
+      );
+    }
+    if (statusResult.stdout.trim() !== "") {
       throw new Error("Cannot revert: working tree has uncommitted changes.");
     }
 
     // Reset the working directory and index to match the target commit state
     // This effectively undoes all changes since the target commit
-    await exec(["reset", "--hard", targetOid], path);
+    await execOrThrow(
+      ["reset", "--hard", targetOid],
+      path,
+      `Failed to reset to target commit '${targetOid}'`,
+    );
 
     // Reset back to the original HEAD but keep the working directory as it is
     // This stages all the changes needed to revert to the target state
-    await exec(["reset", "--soft", currentCommit], path);
+    await execOrThrow(
+      ["reset", "--soft", currentCommit],
+      path,
+      "Failed to reset back to original HEAD",
+    );
   } else {
     // Get status matrix comparing the target commit (previousVersionId as HEAD) with current working directory
     const matrix = await git.statusMatrix({
@@ -187,7 +244,7 @@ export async function gitStageToRevert({
 export async function gitAddAll({ path }: GitBaseParams): Promise<void> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
-    await exec(["add", "."], path);
+    await execOrThrow(["add", "."], path, "Failed to stage all files");
     return;
   } else {
     return git.add({ fs, dir: path, filepath: "." });
@@ -197,7 +254,11 @@ export async function gitAddAll({ path }: GitBaseParams): Promise<void> {
 export async function gitAdd({ path, filepath }: GitFileParams): Promise<void> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
-    await exec(["add", "--", filepath], path);
+    await execOrThrow(
+      ["add", "--", filepath],
+      path,
+      `Failed to stage file '${filepath}'`,
+    );
   } else {
     await git.add({
       fs,
@@ -213,7 +274,11 @@ export async function gitInit({
 }: GitInitParams): Promise<void> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
-    await exec(["init", "-b", ref], path);
+    await execOrThrow(
+      ["init", "-b", ref],
+      path,
+      `Failed to initialize git repository with branch '${ref}'`,
+    );
   } else {
     await git.init({
       fs,
@@ -229,7 +294,11 @@ export async function gitRemove({
 }: GitFileParams): Promise<void> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
-    await exec(["rm", "-f", filepath], path);
+    await execOrThrow(
+      ["rm", "-f", filepath],
+      path,
+      `Failed to remove file '${filepath}'`,
+    );
   } else {
     await git.remove({
       fs,
@@ -245,6 +314,11 @@ export async function getGitUncommittedFiles({
   const settings = readSettings();
   if (settings.enableNativeGit) {
     const result = await exec(["status", "--porcelain"], path);
+    if (result.exitCode !== 0) {
+      throw new Error(
+        `Failed to get uncommitted files: ${result.stderr.trim() || result.stdout.trim()}`,
+      );
+    }
     return result.stdout
       .toString()
       .split("\n")
@@ -266,11 +340,12 @@ export async function getFileAtCommit({
   const settings = readSettings();
   if (settings.enableNativeGit) {
     try {
-      const { stdout } = await exec(
-        ["show", `${commitHash}:${filePath}`],
-        path,
-      );
-      return stdout;
+      const result = await exec(["show", `${commitHash}:${filePath}`], path);
+      if (result.exitCode !== 0) {
+        // File doesn't exist at this commit or other error
+        return null;
+      }
+      return result.stdout;
     } catch (error: any) {
       logger.error(
         `Error getting file at commit ${commitHash}: ${error.message}`,
@@ -487,6 +562,11 @@ export async function gitCurrentBranch({
   if (settings.enableNativeGit) {
     // Dugite version
     const result = await exec(["branch", "--show-current"], path);
+    if (result.exitCode !== 0) {
+      throw new Error(
+        `Failed to get current branch: ${result.stderr.trim() || result.stdout.trim()}`,
+      );
+    }
     const branch = result.stdout.trim() || null;
     return branch;
   } else {

@@ -60,8 +60,10 @@ import { useShortcut } from "@/hooks/useShortcut";
 import { cn } from "@/lib/utils";
 import { normalizePath } from "../../../shared/normalizePath";
 import { showError } from "@/lib/toast";
-import { Annotator } from "./Annotator";
+import { AnnotatorOnlyForPro } from "./AnnotatorOnlyForPro";
 import { useAttachments } from "@/hooks/useAttachments";
+import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
+import { Annotator } from "@/pro/ui/components/Annotator/Annotator";
 
 interface ErrorBannerProps {
   error: { message: string; source: "preview-app" | "dyad-app" } | undefined;
@@ -196,6 +198,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   type DeviceMode = "desktop" | "tablet" | "mobile";
   const [deviceMode, setDeviceMode] = useState<DeviceMode>("desktop");
   const [isDevicePopoverOpen, setIsDevicePopoverOpen] = useState(false);
+  const { userBudget } = useUserBudgetInfo();
 
   // Device configurations
   const deviceWidthConfig = {
@@ -803,11 +806,17 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                     : { width: `${deviceWidthConfig[deviceMode]}px` }
                 }
               >
-                <Annotator
-                  screenshotUrl={screenshotDataUrl}
-                  onSubmit={addAttachments}
-                  handleAnnotatorClick={handleAnnotatorClick}
-                />
+                {userBudget ? (
+                  <Annotator
+                    screenshotUrl={screenshotDataUrl}
+                    onSubmit={addAttachments}
+                    handleAnnotatorClick={handleAnnotatorClick}
+                  />
+                ) : (
+                  <AnnotatorOnlyForPro
+                    onGoBack={() => setAnnotatorMode(false)}
+                  />
+                )}
               </div>
             ) : (
               <iframe

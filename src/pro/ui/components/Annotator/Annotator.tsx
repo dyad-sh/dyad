@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
-import { DraggableTextInput } from "./DraggableTextInput";
-import { AnnotatorToolbar } from "./AnnotatorToolbar";
 import { AnnotationCanvas } from "./AnnotationCanvas";
+import { AnnotatorToolbar } from "@/components/preview_panel/AnnotatorToolbar";
+import { DraggableTextInput } from "@/components/preview_panel/DraggableTextInput";
 
 // Types
 type Point = [number, number];

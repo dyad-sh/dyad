@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 
 import { Label } from "@/components/ui/label";
@@ -42,6 +42,8 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   const { app, refreshApp } = useLoadApp(appId);
   const { lastDeepLink, clearLastDeepLink } = useDeepLink();
   const { isDarkMode } = useTheme();
+  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
+
   useEffect(() => {
     const handleDeepLink = async () => {
       if (lastDeepLink?.type === "supabase-oauth-return") {
@@ -53,9 +55,11 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     handleDeepLink();
   }, [lastDeepLink?.timestamp]);
   const {
+    organizations,
     projects,
     loading,
     error,
+    loadOrganizations,
     loadProjects,
     branches,
     loadBranches,
@@ -65,11 +69,29 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   const currentProjectId = app?.supabaseProjectId;
 
   useEffect(() => {
-    // Load projects when the component mounts and user is connected
+    // Load organizations when the component mounts and user is connected
     if (settings?.supabase?.accessToken) {
-      loadProjects();
+      loadOrganizations();
     }
-  }, [settings?.supabase?.accessToken, loadProjects]);
+  }, [settings?.supabase?.accessToken, loadOrganizations]);
+
+  useEffect(() => {
+    // Auto-select first organization if available and none selected
+    if (organizations.length > 0 && !selectedOrgId) {
+      setSelectedOrgId(organizations[0].id);
+    }
+  }, [organizations, selectedOrgId]);
+
+  useEffect(() => {
+    // Load projects when organization is selected
+    if (selectedOrgId) {
+      loadProjects(selectedOrgId);
+    }
+  }, [selectedOrgId, loadProjects]);
+
+  const handleOrganizationSelect = (orgId: string) => {
+    setSelectedOrgId(orgId);
+  };
 
   const handleProjectSelect = async (projectId: string) => {
     try {
@@ -196,57 +218,93 @@ export function SupabaseConnector({ appId }: { appId: number }) {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {loading ? (
+          {loading && organizations.length === 0 ? (
             <div className="space-y-2">
               <Skeleton className="h-4 w-full" />
               <Skeleton className="h-10 w-full" />
             </div>
           ) : error ? (
             <div className="text-red-500">
-              Error loading projects: {error.message}
+              Error loading data: {error.message}
               <Button
                 variant="outline"
                 className="mt-2"
-                onClick={() => loadProjects()}
+                onClick={() => loadOrganizations()}
               >
                 Retry
               </Button>
             </div>
           ) : (
             <div className="space-y-4">
-              {projects.length === 0 ? (
-                <p className="text-sm text-gray-500">
-                  No projects found in your Supabase account.
-                </p>
-              ) : (
+              {/* Organization Selector */}
+              {organizations.length > 0 && (
+                <div className="space-y-2">
+                  <Label htmlFor="org-select">Organization</Label>
+                  <Select
+                    value={selectedOrgId || ""}
+                    onValueChange={handleOrganizationSelect}
+                  >
+                    <SelectTrigger id="org-select" data-testid="org-select">
+                      <SelectValue placeholder="Select an organization" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {organizations.map((org) => (
+                        <SelectItem key={org.id} value={org.id}>
+                          {org.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Project Selector */}
+              {selectedOrgId && (
                 <>
-                  <div className="space-y-2">
-                    <Label htmlFor="project-select">Project</Label>
-                    <Select
-                      value={currentProjectId || ""}
-                      onValueChange={handleProjectSelect}
-                    >
-                      <SelectTrigger id="project-select">
-                        <SelectValue placeholder="Select a project" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {projects.map((project) => (
-                          <SelectItem key={project.id} value={project.id}>
-                            {project.name || project.id}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  {loading ? (
+                    <div className="space-y-2">
+                      <Skeleton className="h-4 w-20" />
+                      <Skeleton className="h-10 w-full" />
+                    </div>
+                  ) : projects.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      No projects found in this organization.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      <Label htmlFor="project-select">Project</Label>
+                      <Select
+                        value={currentProjectId || ""}
+                        onValueChange={handleProjectSelect}
+                      >
+                        <SelectTrigger id="project-select">
+                          <SelectValue placeholder="Select a project" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {projects.map((project) => (
+                            <SelectItem key={project.id} value={project.id}>
+                              {project.name || project.id}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
 
                   {currentProjectId && (
-                    <div className="text-sm text-gray-500">
+                    <div className="text-sm text-muted-foreground">
                       This app is connected to project:{" "}
                       {projects.find((p) => p.id === currentProjectId)?.name ||
                         currentProjectId}
                     </div>
                   )}
                 </>
+              )}
+
+              {organizations.length === 0 && !loading && (
+                <p className="text-sm text-muted-foreground">
+                  No organizations found in your Supabase account.
+                </p>
               )}
             </div>
           )}

@@ -3,8 +3,9 @@ import { db } from "../../db";
 import { eq } from "drizzle-orm";
 import { apps } from "../../db/schema";
 import {
-  getSupabaseClient,
   listSupabaseBranches,
+  listSupabaseOrganizations,
+  listSupabaseProjects,
 } from "../../supabase_admin/supabase_management_client";
 import {
   createLoggedHandler,
@@ -13,17 +14,48 @@ import {
 import { handleSupabaseOAuthReturn } from "../../supabase_admin/supabase_return_handler";
 import { safeSend } from "../utils/safe_sender";
 
-import { SetSupabaseAppProjectParams, SupabaseBranch } from "../ipc_types";
+import {
+  SetSupabaseAppProjectParams,
+  SupabaseBranch,
+  SupabaseOrganization,
+  SupabaseProject,
+} from "../ipc_types";
 
 const logger = log.scope("supabase_handlers");
 const handle = createLoggedHandler(logger);
 const testOnlyHandle = createTestOnlyLoggedHandler(logger);
 
 export function registerSupabaseHandlers() {
-  handle("supabase:list-projects", async () => {
-    const supabase = await getSupabaseClient();
-    return supabase.getProjects();
-  });
+  // List all organizations the user belongs to
+  handle(
+    "supabase:list-organizations",
+    async (): Promise<Array<SupabaseOrganization>> => {
+      const organizations = await listSupabaseOrganizations();
+      return organizations.map((org) => ({
+        id: org.id,
+        name: org.name,
+        slug: org.slug,
+      }));
+    },
+  );
+
+  // List projects, optionally filtered by organization
+  handle(
+    "supabase:list-projects",
+    async (
+      _,
+      { orgId }: { orgId?: string } = {},
+    ): Promise<Array<SupabaseProject>> => {
+      const projects = await listSupabaseProjects({ orgId });
+      return projects.map((project) => ({
+        id: project.id,
+        name: project.name,
+        organizationId: project.organization_id,
+        region: project.region,
+        createdAt: project.created_at,
+      }));
+    },
+  );
 
   // List branches for a Supabase project (database branches)
   handle(

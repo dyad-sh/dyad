@@ -68,6 +68,8 @@ import type {
   CreateMcpServer,
   CloneRepoParams,
   SupabaseBranch,
+  SupabaseOrganization,
+  SupabaseProject,
   SetSupabaseAppProjectParams,
   SelectNodeFolderResult,
 } from "./ipc_types";
@@ -955,8 +957,14 @@ export class IpcClient {
   // --- End Proposal Management ---
 
   // --- Supabase Management ---
-  public async listSupabaseProjects(): Promise<any[]> {
-    return this.ipcRenderer.invoke("supabase:list-projects");
+  public async listSupabaseOrganizations(): Promise<SupabaseOrganization[]> {
+    return this.ipcRenderer.invoke("supabase:list-organizations");
+  }
+
+  public async listSupabaseProjects(params?: {
+    orgId?: string;
+  }): Promise<SupabaseProject[]> {
+    return this.ipcRenderer.invoke("supabase:list-projects", params ?? {});
   }
 
   public async listSupabaseBranches(params: {

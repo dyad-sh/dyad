@@ -534,6 +534,20 @@ export interface SupabaseBranch {
   parentProjectRef: string;
 }
 
+export interface SupabaseOrganization {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+export interface SupabaseProject {
+  id: string;
+  name: string;
+  organizationId: string;
+  region: string;
+  createdAt: string;
+}
+
 export interface SetSupabaseAppProjectParams {
   projectId: string;
   parentProjectId?: string;

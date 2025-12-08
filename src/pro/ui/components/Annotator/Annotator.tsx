@@ -122,7 +122,9 @@ export const Annotator = ({
             y: input.y + 8,
             text: input.value,
             fontSize: 24,
-            color: "#7f22fe",
+            color: getComputedStyle(document.documentElement)
+              .getPropertyValue("--primary")
+              .trim(),
           };
           setShapes((prev) => [...prev, newShape]);
         }
@@ -239,7 +241,9 @@ export const Annotator = ({
         id,
         type: "line",
         points: [[adjustedPos.x, adjustedPos.y]],
-        color: "#7f22fe", // Red-500
+        color: getComputedStyle(document.documentElement)
+          .getPropertyValue("--primary")
+          .trim(),
         size: 6,
         isComplete: false,
       };

@@ -10,14 +10,6 @@
       },
       {
         "role": "user",
-        "content": "tc=1"
-      },
-      {
-        "role": "assistant",
-        "content": "Error: Test case file not found: 1.md"
-      },
-      {
-        "role": "user",
         "content": "[dump] hi"
       }
     ],
@@ -423,7 +415,7 @@
       "enable_lazy_edits": true,
       "enable_smart_files_context": true,
       "smart_context_mode": "balanced",
-      "app_id": 1
+      "app_id": 2
     }
   },
   "headers": {

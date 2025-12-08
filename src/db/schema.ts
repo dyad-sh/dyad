@@ -77,6 +77,8 @@ export const messages = sqliteTable("messages", {
   // The commit hash of the codebase at the time the message was sent
   commitHash: text("commit_hash"),
   requestId: text("request_id"),
+  // Max tokens used for this message (only for assistant messages)
+  maxTokensUsed: integer("max_tokens_used"),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),

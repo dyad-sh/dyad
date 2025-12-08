@@ -2,7 +2,11 @@ import { CodebaseFile, CodebaseFileReference } from "@/utils/codebase";
 import { ModelMessage } from "@ai-sdk/provider-utils";
 import crypto from "node:crypto";
 import log from "electron-log";
-import { getFileAtCommit } from "./git_utils";
+import {
+  getCurrentCommitHash,
+  getFileAtCommit,
+  isGitStatusClean,
+} from "./git_utils";
 import { normalizePath } from "../../../shared/normalizePath";
 
 const logger = log.scope("versioned_codebase_context");
@@ -11,10 +15,13 @@ export interface VersionedFiles {
   fileIdToContent: Record<string, string>;
   fileReferences: CodebaseFileReference[];
   messageIndexToFilePathToFileId: Record<number, Record<string, string>>;
+  /** True if there are changes outside of files from the latest chat message (different commit or dirty git status) */
+  hasExternalChanges: boolean;
 }
 
 interface DyadEngineProviderOptions {
-  sourceCommitHash: string;
+  sourceCommitHash: string | null;
+  commitHash: string | null;
 }
 
 /**
@@ -211,9 +218,47 @@ export async function processChatMessagesWithVersionedFiles({
     }
   }
 
+  // Determine hasExternalChanges:
+  // Find the latest assistant message's commitHash
+  let latestCommitHash: string | undefined;
+  for (let i = chatMessages.length - 1; i >= 0; i--) {
+    const message = chatMessages[i];
+    if (message.role === "assistant") {
+      const engineOptions = message.providerOptions?.[
+        "dyad-engine"
+      ] as unknown as DyadEngineProviderOptions;
+      if (engineOptions?.commitHash) {
+        latestCommitHash = engineOptions.commitHash;
+        break;
+      }
+    }
+  }
+
+  let hasExternalChanges = true; // Default to true if we can't determine
+
+  if (latestCommitHash) {
+    try {
+      // Get current commit hash
+      const currentCommitHash = await getCurrentCommitHash({ path: appPath });
+
+      // Check if git status is clean
+      const isClean = await isGitStatusClean({ path: appPath });
+
+      // hasExternalChanges is false only if commits match AND status is clean
+      hasExternalChanges = !(latestCommitHash === currentCommitHash && isClean);
+      logger.info(
+        `detected hasExternalChanges: ${hasExternalChanges} because latestCommitHash: ${latestCommitHash} and currentCommitHash: ${currentCommitHash} and isClean: ${isClean}`,
+      );
+    } catch (error) {
+      logger.warn("Failed to determine hasExternalChanges:", error);
+      // Keep default of true
+    }
+  }
+
   return {
     fileIdToContent,
     fileReferences,
     messageIndexToFilePathToFileId,
+    hasExternalChanges,
   };
 }

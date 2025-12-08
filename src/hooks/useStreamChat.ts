@@ -49,7 +49,6 @@ export function useStreamChat({
   const setStreamCountById = useSetAtom(chatStreamCountByIdAtom);
   const { refreshVersions } = useVersions(selectedAppId);
   const { refreshAppIframe } = useRunApp();
-  const { countTokens } = useCountTokens();
   const { refetchUserBudget } = useUserBudgetInfo();
   const { checkProblems } = useCheckProblems(selectedAppId);
   const { settings } = useSettings();
@@ -62,6 +61,7 @@ export function useStreamChat({
     chatId = id;
   }
   let { refreshProposal } = hasChatId ? useProposal(chatId) : useProposal();
+  const { invalidateTokenCount } = useCountTokens(chatId ?? null, "");
 
   const streamMessage = useCallback(
     async ({
@@ -154,7 +154,7 @@ export function useStreamChat({
             refreshChats();
             refreshApp();
             refreshVersions();
-            countTokens(chatId, "");
+            invalidateTokenCount();
             onSettled?.();
           },
           onError: (errorMessage: string) => {
@@ -174,7 +174,7 @@ export function useStreamChat({
             refreshChats();
             refreshApp();
             refreshVersions();
-            countTokens(chatId, "");
+            invalidateTokenCount();
             onSettled?.();
           },
         });

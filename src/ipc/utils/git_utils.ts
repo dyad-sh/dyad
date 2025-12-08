@@ -21,8 +21,8 @@ import type {
   GitStageToRevertParams,
   GitInitParams,
   GitPushParams,
+  GitCommit,
 } from "../git_types";
-import type { GitCommit } from "../ipc_types";
 
 /**
  * Helper function that wraps exec and throws an error if the exit code is non-zero
@@ -295,7 +295,7 @@ export async function gitRemove({
   const settings = readSettings();
   if (settings.enableNativeGit) {
     await execOrThrow(
-      ["rm", "-f", filepath],
+      ["rm", "-f", "--", filepath],
       path,
       `Failed to remove file '${filepath}'`,
     );

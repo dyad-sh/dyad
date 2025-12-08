@@ -6,8 +6,8 @@ import type {
   BranchResult,
   RevertVersionParams,
   RevertVersionResponse,
-  GitCommit,
 } from "../ipc_types";
+import type { GitCommit } from "../git_types";
 import fs from "node:fs";
 import path from "node:path";
 import { getDyadAppPath } from "../../paths/paths";

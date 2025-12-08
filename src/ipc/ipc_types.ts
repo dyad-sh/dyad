@@ -511,15 +511,7 @@ export interface CloneRepoParams {
   startCommand?: string;
   appName: string;
 }
-export type GitCommit = {
-  oid: string;
-  commit: {
-    message: string;
-    author: {
-      timestamp: number;
-    };
-  };
-};
+
 export interface GithubRepository {
   name: string;
   full_name: string;

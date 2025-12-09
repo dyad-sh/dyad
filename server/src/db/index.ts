@@ -31,7 +31,10 @@ export async function initializeDatabase(): Promise<void> {
     // Create database pool
     _pool = new Pool({
         connectionString,
-        ssl: connectionString.includes("localhost") ? false : { rejectUnauthorized: false },
+        // Disable SSL if the server doesn't support it, even for remote connections.
+        // If your prod DB demands SSL, this might need to range based on env var.
+        // But the error explicitly says the server does NOT support it.
+        ssl: false,
         max: 20,
         idleTimeoutMillis: 30000,
         connectionTimeoutMillis: 2000,

@@ -67,6 +67,8 @@ COPY shared ../shared
 
 # Build server
 RUN npm run build
+RUN ls -la dist
+
 
 # -----------------------------------------------------------------------------
 # Stage 3: Production Runtime
@@ -90,6 +92,7 @@ RUN npm install --omit=dev
 
 # Copy built server
 COPY --from=backend-builder /app/server/dist ./dist
+RUN ls -la dist
 COPY --from=backend-builder /app/drizzle ../drizzle
 
 # Copy built frontend to serve as static files

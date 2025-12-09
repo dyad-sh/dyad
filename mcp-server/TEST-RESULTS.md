@@ -46,13 +46,28 @@ Le serveur est prêt à être utilisé. Il faut maintenant :
 ## 📍 Localisation de la base de données
 
 Le serveur cherchera la base de données Dyad à :
-- **Windows** : `%APPDATA%\dyad\dyad.db`
-- **macOS** : `~/Library/Application Support/dyad/dyad.db`
-- **Linux** : `~/.config/dyad/dyad.db`
+- **Windows** : `%APPDATA%\dyad\sqlite.db`
+- **macOS** : `~/Library/Application Support/dyad/sqlite.db`
+- **Linux** : `~/.config/dyad/sqlite.db`
 
 ## 🔧 Configuration Claude Desktop
 
 Fichier : `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "dyad": {
+      "command": "node",
+      "args": [
+        "${workspaceFolder}\\mcp-server\\dist\\index.js"
+      ]
+    }
+  }
+}
+```
+
+Ou avec le chemin absolu :
 
 ```json
 {

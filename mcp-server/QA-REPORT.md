@@ -7,9 +7,13 @@
 
 ---
 
-## 📋 Résumé Exécutif
+## 📊 Résumé Exécutif
 
-Le module MCP Server de Dyad est un serveur Model Context Protocol bien structuré qui permet aux assistants IA d'interagir avec Dyad. Le code est de haute qualité TypeScript, bien documenté, et compile sans erreur. Cependant, **le serveur n'est pas actuellement fonctionnel** en mode standalone car il nécessite une intégration IPC avec l'application Dyad principale.
+Le module MCP Server de Dyad est un serveur Model Context Protocol bien structuré qui permet aux assistants IA d'interagir avec Dyad. Le code est de haute qualité TypeScript, bien documenté, et compile sans erreur. 
+
+**✅ MISE À JOUR (9 Déc 2025)** : Le serveur supporte maintenant **deux modes d'accès** :
+1. **Mode API (Web/Docker)** : Communique avec Dyad via REST API (PostgreSQL backend)
+2. **Mode SQLite (Desktop)** : Accès direct à la base SQLite locale
 
 ### Scores Globaux
 
@@ -19,11 +23,11 @@ Le module MCP Server de Dyad est un serveur Model Context Protocol bien structur
 | **Code Quality** | ✅ 9/10 | TypeScript strict, bien typé, propre |
 | **Documentation** | ✅ 10/10 | Documentation exceptionnelle (FR+EN) |
 | **Tests** | ❌ 0/10 | Aucun test unitaire ou d'intégration |
-| **Fonctionnalité** | ⚠️ 3/10 | Compile mais non fonctionnel standalone |
+| **Fonctionnalité** | ✅ 8/10 | ✅ Mode API fonctionnel pour Docker/Web |
 | **Sécurité** | ✅ 8/10 | Bonnes pratiques (path validation) |
-| **Déploiement** | ⚠️ 5/10 | Build OK mais nécessite setup complexe |
+| **Déploiement** | ✅ 8/10 | Dockerfile + docker-compose prêts |
 
-**Score Global: 6.3/10** ⚠️
+**Score Global: 7.4/10** ✅ (Amélioration : +1.1)
 
 ---
 

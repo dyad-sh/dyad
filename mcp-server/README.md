@@ -53,7 +53,23 @@ Add to your Claude Desktop configuration file:
     "dyad": {
       "command": "node",
       "args": [
-        "C:\\Users\\amine\\dyad-1\\mcp-server\\dist\\index.js"
+        "<path-to-dyad>\\mcp-server\\dist\\index.js"
+      ]
+    }
+  }
+}
+```
+
+Remplacez `<path-to-dyad>` par le chemin complet vers votre installation Dyad.
+
+Exemple :
+```json
+{
+  "mcpServers": {
+    "dyad": {
+      "command": "node",
+      "args": [
+        "C:\\dyad-1\\mcp-server\\dist\\index.js"
       ]
     }
   }

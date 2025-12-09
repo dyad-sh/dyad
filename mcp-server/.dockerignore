@@ -1,0 +1,15 @@
+node_modules
+dist
+*.log
+.env
+.env.local
+.DS_Store
+Thumbs.db
+*.md
+!README.md
+.git
+.gitignore
+coverage
+.nyc_output
+*.test.ts
+*.spec.ts

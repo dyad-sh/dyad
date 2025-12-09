@@ -1,8 +1,7 @@
 /**
  * Database access layer for Dyad MCP Server
  *
- * Provides read-only access to Dyad's SQLite database
- * Note: This uses a simple approach without better-sqlite3 to avoid native dependencies
+ * Supports both SQLite (desktop) and PostgreSQL (web/server) via REST API
  */
 
 import * as path from "node:path";
@@ -38,19 +37,61 @@ export interface Message {
 
 /**
  * Database manager for Dyad
- * Uses Dyad's parent process database connection when available
+ * Supports both local SQLite and remote PostgreSQL via REST API
  */
 export class DyadDatabase {
   private dbPath: string;
+  private apiUrl?: string;
+  private mode: "sqlite" | "api";
 
   constructor(customPath?: string) {
-    this.dbPath = customPath || this.getDefaultDatabasePath();
+    // Check if API URL is provided for web mode
+    this.apiUrl = process.env.DYAD_API_URL;
+    
+    if (this.apiUrl) {
+      this.mode = "api";
+      console.error(`[MCP] Using API mode: ${this.apiUrl}`);
+    } else {
+      this.mode = "sqlite";
+      this.dbPath = customPath || this.getDefaultDatabasePath();
 
-    if (!fs.existsSync(this.dbPath)) {
-      throw new Error(
-        `Dyad database not found at: ${this.dbPath}\n` +
-        `Please ensure Dyad is installed and has been run at least once.`
-      );
+      if (!fs.existsSync(this.dbPath)) {
+        throw new Error(
+          `Dyad database not found at: ${this.dbPath}\n` +
+          `For web mode, set DYAD_API_URL environment variable.\n` +
+          `For desktop mode, ensure Dyad is installed and has been run at least once.`
+        );
+      }
+      console.error(`[MCP] Using SQLite mode: ${this.dbPath}`);
+    }
+  }
+
+  /**
+   * Make API request to Dyad server
+   */
+  private async apiRequest<T>(endpoint: string): Promise<T> {
+    if (!this.apiUrl) {
+      throw new Error("API URL not configured");
+    }
+
+    const url = `${this.apiUrl}${endpoint}`;
+    console.error(`[MCP] API Request: ${url}`);
+    
+    try {
+      const response = await fetch(url, {
+        headers: {
+          "Accept": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status} ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error(`[MCP] API error:`, error);
+      throw new Error(`Failed to fetch from Dyad API: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -88,7 +129,7 @@ export class DyadDatabase {
         throw new Error(`Unsupported platform: ${platform}`);
     }
 
-    return path.join(userDataPath, "dyad.db");
+    return path.join(userDataPath, "sqlite.db");
   }
 
   /**
@@ -100,28 +141,47 @@ export class DyadDatabase {
 
   // ============================================
   // App queries
-  // Note: These methods now throw errors directing users to use Dyad's IPC
-  // This MCP server should be run as a subprocess of Dyad itself
   // ============================================
 
   async listApps(): Promise<App[]> {
+    if (this.mode === "api") {
+      const response = await this.apiRequest<{ apps: App[] }>("/api/apps");
+      return response.apps || [];
+    }
+    
     throw new Error(
-      "Database queries require Dyad to be running. " +
-      "This MCP server should be configured to run through Dyad's IPC system."
+      "SQLite mode requires direct database access implementation. " +
+      "Use DYAD_API_URL for web mode or implement SQLite connector."
     );
   }
 
   async getApp(appId: number): Promise<App | undefined> {
+    if (this.mode === "api") {
+      try {
+        const app = await this.apiRequest<App>(`/api/apps/${appId}`);
+        return app;
+      } catch (error) {
+        return undefined;
+      }
+    }
+    
     throw new Error(
-      "Database queries require Dyad to be running. " +
-      "This MCP server should be configured to run through Dyad's IPC system."
+      "SQLite mode requires direct database access implementation. " +
+      "Use DYAD_API_URL for web mode or implement SQLite connector."
     );
   }
 
   async searchApps(query: string): Promise<App[]> {
+    if (this.mode === "api") {
+      const allApps = await this.listApps();
+      return allApps.filter(app => 
+        app.name.toLowerCase().includes(query.toLowerCase())
+      );
+    }
+    
     throw new Error(
-      "Database queries require Dyad to be running. " +
-      "This MCP server should be configured to run through Dyad's IPC system."
+      "SQLite mode requires direct database access implementation. " +
+      "Use DYAD_API_URL for web mode or implement SQLite connector."
     );
   }
 
@@ -130,23 +190,47 @@ export class DyadDatabase {
   // ============================================
 
   async listChats(appId?: number): Promise<Chat[]> {
+    if (this.mode === "api") {
+      const endpoint = appId 
+        ? `/api/apps/${appId}/chats` 
+        : "/api/chats";
+      const response = await this.apiRequest<{ chats: Chat[] }>(endpoint);
+      return response.chats || [];
+    }
+    
     throw new Error(
-      "Database queries require Dyad to be running. " +
-      "This MCP server should be configured to run through Dyad's IPC system."
+      "SQLite mode requires direct database access implementation. " +
+      "Use DYAD_API_URL for web mode or implement SQLite connector."
     );
   }
 
   async getChat(chatId: number): Promise<Chat | undefined> {
+    if (this.mode === "api") {
+      try {
+        const chat = await this.apiRequest<Chat>(`/api/chats/${chatId}`);
+        return chat;
+      } catch (error) {
+        return undefined;
+      }
+    }
+    
     throw new Error(
-      "Database queries require Dyad to be running. " +
-      "This MCP server should be configured to run through Dyad's IPC system."
+      "SQLite mode requires direct database access implementation. " +
+      "Use DYAD_API_URL for web mode or implement SQLite connector."
     );
   }
 
   async searchChats(query: string, appId?: number): Promise<Chat[]> {
+    if (this.mode === "api") {
+      const chats = await this.listChats(appId);
+      return chats.filter(chat => 
+        chat.title.toLowerCase().includes(query.toLowerCase())
+      );
+    }
+    
     throw new Error(
-      "Database queries require Dyad to be running. " +
-      "This MCP server should be configured to run through Dyad's IPC system."
+      "SQLite mode requires direct database access implementation. " +
+      "Use DYAD_API_URL for web mode or implement SQLite connector."
     );
   }
 
@@ -155,16 +239,30 @@ export class DyadDatabase {
   // ============================================
 
   async getChatMessages(chatId: number): Promise<Message[]> {
+    if (this.mode === "api") {
+      const response = await this.apiRequest<{ messages: Message[] }>(`/api/chats/${chatId}/messages`);
+      return response.messages || [];
+    }
+    
     throw new Error(
-      "Database queries require Dyad to be running. " +
-      "This MCP server should be configured to run through Dyad's IPC system."
+      "SQLite mode requires direct database access implementation. " +
+      "Use DYAD_API_URL for web mode or implement SQLite connector."
     );
   }
 
   async getMessage(messageId: number): Promise<Message | undefined> {
+    if (this.mode === "api") {
+      try {
+        const message = await this.apiRequest<Message>(`/api/messages/${messageId}`);
+        return message;
+      } catch (error) {
+        return undefined;
+      }
+    }
+    
     throw new Error(
-      "Database queries require Dyad to be running. " +
-      "This MCP server should be configured to run through Dyad's IPC system."
+      "SQLite mode requires direct database access implementation. " +
+      "Use DYAD_API_URL for web mode or implement SQLite connector."
     );
   }
 }

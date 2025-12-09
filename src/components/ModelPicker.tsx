@@ -78,13 +78,15 @@ export function ModelPicker() {
     return null;
   }
   const selectedModel = settings?.selectedModel;
-  
+
   if (!selectedModel) {
     return null;
   }
 
   // Get display name for the selected model
   const getModelDisplayName = () => {
+    if (!selectedModel) return "Unknown Model";
+
     if (selectedModel.provider === "ollama") {
       return (
         ollamaModels.find(

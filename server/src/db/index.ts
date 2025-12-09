@@ -1,34 +1,19 @@
 /**
- * Database initialization for server
- * Adapted from: src/db/index.ts (without Electron dependencies)
+ * Database initialization for server (PostgreSQL)
  */
 
-import { drizzle, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import Database from "better-sqlite3";
+import { drizzle, NodePgDatabase } from "drizzle-orm/node-postgres";
+import pkg from "pg";
 import * as schema from "./schema.js";
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
 import path from "node:path";
 import fs from "node:fs";
 
+const { Pool } = pkg;
+
 // Database connection instance
-let _db: BetterSQLite3Database<typeof schema> | null = null;
-let _sqlite: Database.Database | null = null;
-
-/**
- * Get the database path based on environment
- */
-export function getDatabasePath(): string {
-    const dataDir = process.env.DATA_DIR || "./data";
-    return path.join(dataDir, "sqlite.db");
-}
-
-/**
- * Get the apps directory path
- */
-export function getAppsPath(): string {
-    const dataDir = process.env.DATA_DIR || "./data";
-    return path.join(dataDir, "apps");
-}
+let _db: NodePgDatabase<typeof schema> | null = null;
+let _pool: pkg.Pool | null = null;
 
 /**
  * Initialize the database connection
@@ -36,46 +21,35 @@ export function getAppsPath(): string {
 export async function initializeDatabase(): Promise<void> {
     if (_db) return;
 
-    const dbPath = getDatabasePath();
-    const dataDir = path.dirname(dbPath);
-    const appsDir = getAppsPath();
-
-    console.log("[DB] Initializing database at:", dbPath);
-
-    // Ensure directories exist
-    if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dataDir, { recursive: true });
-    }
-    if (!fs.existsSync(appsDir)) {
-        fs.mkdirSync(appsDir, { recursive: true });
+    const connectionString = process.env.DATABASE_URL;
+    if (!connectionString) {
+        throw new Error("DATABASE_URL environment variable is not defined");
     }
 
-    // Check if the database file exists and remove it if corrupted
-    try {
-        if (fs.existsSync(dbPath)) {
-            const stats = fs.statSync(dbPath);
-            if (stats.size < 100) {
-                console.log("[DB] Database file may be corrupted. Removing...");
-                fs.unlinkSync(dbPath);
-            }
-        }
-    } catch (error) {
-        console.error("[DB] Error checking database file:", error);
-    }
+    console.log("[DB] Initializing PostgreSQL connection...");
 
-    // Create database connection
-    _sqlite = new Database(dbPath, { timeout: 10000 });
-    _sqlite.pragma("foreign_keys = ON");
-    _sqlite.pragma("journal_mode = WAL");
+    // Create database pool
+    _pool = new Pool({
+        connectionString,
+        ssl: connectionString.includes("localhost") ? false : { rejectUnauthorized: false },
+        max: 20,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 2000,
+    });
 
-    _db = drizzle(_sqlite, { schema });
+    _pool.on("error", (err) => {
+        console.error("[DB] Unexpected error on idle client", err);
+        process.exit(-1);
+    });
+
+    _db = drizzle(_pool, { schema });
 
     // Run migrations
     try {
         const migrationsFolder = path.join(process.cwd(), "drizzle");
         if (fs.existsSync(migrationsFolder)) {
             console.log("[DB] Running migrations from:", migrationsFolder);
-            migrate(_db, { migrationsFolder });
+            await migrate(_db, { migrationsFolder });
         } else {
             console.log("[DB] No migrations folder found, skipping migrations");
         }
@@ -89,7 +63,7 @@ export async function initializeDatabase(): Promise<void> {
 /**
  * Get the database instance (throws if not initialized)
  */
-export function getDb(): BetterSQLite3Database<typeof schema> {
+export function getDb(): NodePgDatabase<typeof schema> {
     if (!_db) {
         throw new Error("Database not initialized. Call initializeDatabase() first.");
     }
@@ -99,17 +73,17 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 /**
  * Close the database connection
  */
-export function closeDatabase(): void {
-    if (_sqlite) {
-        _sqlite.close();
-        _sqlite = null;
+export async function closeDatabase(): Promise<void> {
+    if (_pool) {
+        await _pool.end();
+        _pool = null;
         _db = null;
         console.log("[DB] Database connection closed");
     }
 }
 
 // Proxy for lazy access
-export const db = new Proxy({} as BetterSQLite3Database<typeof schema>, {
+export const db = new Proxy({} as NodePgDatabase<typeof schema>, {
     get(target, prop) {
         const database = getDb();
         return database[prop as keyof typeof database];

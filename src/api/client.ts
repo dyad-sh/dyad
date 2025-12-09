@@ -3,8 +3,15 @@
  * Replaces Electron IPC calls with HTTP/WebSocket API calls
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3001/api";
-const WS_BASE_URL = import.meta.env.VITE_WS_URL || "ws://localhost:3001";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "/api";
+
+const getWsBaseUrl = () => {
+    if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL;
+    const protocol = window.location.protocol === "https:" ? "wss://" : "ws://";
+    return `${protocol}${window.location.host}`;
+};
+
+const WS_BASE_URL = getWsBaseUrl();
 
 // Types
 interface ApiResponse<T> {

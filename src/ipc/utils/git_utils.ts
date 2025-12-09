@@ -588,12 +588,7 @@ export async function gitLog({
   const settings = readSettings();
 
   if (settings.enableNativeGit) {
-    try {
-      return await gitLogNative(path, depth);
-    } catch (error) {
-      logger.warn(`Git log (native) failed: ${error}`);
-      return [];
-    }
+    return await gitLogNative(path, depth);
   } else {
     // isomorphic-git fallback: this already returns the same structure
     return await git.log({

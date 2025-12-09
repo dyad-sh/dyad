@@ -68,6 +68,21 @@
   app-region: no-drag;
 }
 
+/* 
+ * Disable drag region when select is open.
+ * See: https://github.com/dyad-sh/dyad/issues/1717
+ *
+ * Radix select component sets this data attribute when the select is open
+ * to disable scrolling on the body and we use this as a signal to disable
+ * dragging (e.g. the title bar).
+ *
+ * Note: We match any value (not just "1") because react-remove-scroll-bar
+ * increments this counter for nested scroll locks (e.g., select inside dialog).
+ */
+body[data-scroll-locked] .app-region-drag {
+  app-region: no-drag;
+}
+
 .h-screenish {
   height: calc(100vh - 64px);
 }

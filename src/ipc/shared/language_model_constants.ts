@@ -123,8 +123,19 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
   // https://docs.anthropic.com/en/docs/about-claude/models/all-models#model-comparison-table
   anthropic: [
     {
+      name: "claude-opus-4-5",
+      displayName: "Claude Opus 4.5",
+      description:
+        "Anthropic's best model for coding (note: this model is very expensive!)",
+      // Set to 32k since context window is 1M tokens
+      maxOutputTokens: 32_000,
+      contextWindow: 200_000,
+      temperature: 0,
+      dollarSigns: 5,
+    },
+    {
       name: "claude-sonnet-4-5-20250929",
-      displayName: "Claude 4.5 Sonnet",
+      displayName: "Claude Sonnet 4.5",
       description:
         "Anthropic's best model for coding (note: >200k tokens is very expensive!)",
       // Set to 32k since context window is 1M tokens
@@ -135,44 +146,13 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     },
     {
       name: "claude-sonnet-4-20250514",
-      displayName: "Claude 4 Sonnet",
+      displayName: "Claude Sonnet 4",
       description: "Excellent coder (note: >200k tokens is very expensive!)",
       // Set to 32k since context window is 1M tokens
       maxOutputTokens: 32_000,
       contextWindow: 1_000_000,
       temperature: 0,
       dollarSigns: 5,
-    },
-    {
-      name: "claude-3-7-sonnet-latest",
-      displayName: "Claude 3.7 Sonnet",
-      description: "Excellent coder",
-      // Technically the max output tokens is 64k, *however* if the user has a lot of input tokens,
-      // then setting a high max output token will cause the request to fail because
-      // the max output tokens is *included* in the context window limit, see:
-      // https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking#max-tokens-and-context-window-size-with-extended-thinking
-      maxOutputTokens: 16_000,
-      contextWindow: 200_000,
-      temperature: 0,
-      dollarSigns: 4,
-    },
-    {
-      name: "claude-3-5-sonnet-20241022",
-      displayName: "Claude 3.5 Sonnet",
-      description: "Good coder, excellent at following instructions",
-      maxOutputTokens: 8_000,
-      contextWindow: 200_000,
-      temperature: 0,
-      dollarSigns: 4,
-    },
-    {
-      name: "claude-3-5-haiku-20241022",
-      displayName: "Claude 3.5 Haiku",
-      description: "Lightweight coder",
-      maxOutputTokens: 8_000,
-      contextWindow: 200_000,
-      temperature: 0,
-      dollarSigns: 2,
     },
   ],
   google: [
@@ -306,11 +286,9 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       displayName: "Auto",
       description: "Automatically selects the best model",
       tag: "Default",
-      // These are below Gemini 2.5 Pro & Flash limits
-      // which are the ones defaulted to for both regular auto
-      // and smart auto.
+      // The following is reasonable defaults.
       maxOutputTokens: 32_000,
-      contextWindow: 1_000_000,
+      contextWindow: 200_000,
       temperature: 0,
     },
     {
@@ -466,22 +444,6 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       description: "Excellent coder (note: >200k tokens is very expensive!)",
       maxOutputTokens: 32_000,
       contextWindow: 1_000_000,
-      temperature: 0,
-    },
-    {
-      name: "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-      displayName: "Claude 3.7 Sonnet",
-      description: "Excellent coder",
-      maxOutputTokens: 16_000,
-      contextWindow: 200_000,
-      temperature: 0,
-    },
-    {
-      name: "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
-      displayName: "Claude 3.5 Sonnet",
-      description: "Good coder, excellent at following instructions",
-      maxOutputTokens: 8_000,
-      contextWindow: 200_000,
       temperature: 0,
     },
   ],

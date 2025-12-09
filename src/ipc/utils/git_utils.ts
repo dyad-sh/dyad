@@ -39,6 +39,23 @@ export async function getCurrentCommitHash({
   });
 }
 
+export async function isGitStatusClean({
+  path,
+}: {
+  path: string;
+}): Promise<boolean> {
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    const { stdout } = await execAsync(`git -C "${path}" status --porcelain`);
+    return stdout.trim() === "";
+  } else {
+    const statusMatrix = await git.statusMatrix({ fs, dir: path });
+    return statusMatrix.every(
+      (row) => row[1] === 1 && row[2] === 1 && row[3] === 1,
+    );
+  }
+}
+
 export async function gitCommit({
   path,
   message,

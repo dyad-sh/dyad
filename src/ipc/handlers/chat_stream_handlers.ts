@@ -14,6 +14,7 @@ import {
 import { db } from "../../db";
 import { chats, messages } from "../../db/schema";
 import { and, eq, isNull } from "drizzle-orm";
+import type { SmartContextMode } from "../../lib/schemas";
 import {
   constructSystemPrompt,
   readAiRules,
@@ -447,6 +448,7 @@ ${componentSnippet}
       });
 
       let fullResponse = "";
+      let maxTokensUsed: number | undefined;
 
       // Check if this is a test prompt
       const testResponse = getTestResponse(req.prompt);
@@ -516,6 +518,14 @@ ${componentSnippet}
           updatedChat.app.id, // Exclude current app
         );
 
+        const isDeepContextEnabled =
+          isEngineEnabled &&
+          settings.enableProSmartFilesContextMode &&
+          // Anything besides balanced will use deep context.
+          settings.proSmartContextOption !== "balanced" &&
+          mentionedAppsCodebases.length === 0;
+        logger.log(`isDeepContextEnabled: ${isDeepContextEnabled}`);
+
         // Combine current app codebase with mentioned apps' codebases
         let otherAppsCodebaseInfo = "";
         if (mentionedAppsCodebases.length > 0) {
@@ -546,6 +556,7 @@ ${componentSnippet}
           role: message.role as "user" | "assistant" | "system",
           content: message.content,
           sourceCommitHash: message.sourceCommitHash,
+          commitHash: message.commitHash,
         }));
 
         // For Dyad Pro + Deep Context, we set to 200 chat turns (+1)
@@ -555,10 +566,9 @@ ${componentSnippet}
         //
         // Limit chat history based on maxChatTurnsInContext setting
         // We add 1 because the current prompt counts as a turn.
-        const maxChatTurns =
-          isEngineEnabled && settings.proSmartContextOption === "deep"
-            ? 201
-            : (settings.maxChatTurnsInContext || MAX_CHAT_TURNS_IN_CONTEXT) + 1;
+        const maxChatTurns = isDeepContextEnabled
+          ? 201
+          : (settings.maxChatTurnsInContext || MAX_CHAT_TURNS_IN_CONTEXT) + 1;
 
         // If we need to limit the context, we take only the most recent turns
         let limitedMessageHistory = messageHistory;
@@ -746,6 +756,7 @@ This conversation includes one or more image attachments. When the user uploads 
           providerOptions: {
             "dyad-engine": {
               sourceCommitHash: msg.sourceCommitHash,
+              commitHash: msg.commitHash,
             },
           },
         }));
@@ -812,19 +823,23 @@ This conversation includes one or more image attachments. When the user uploads 
             logger.log("sending AI request");
           }
           let versionedFiles: VersionedFiles | undefined;
-          if (isEngineEnabled && settings.proSmartContextOption === "deep") {
+          if (isDeepContextEnabled) {
             versionedFiles = await getVersionedFiles({
               files,
               chatMessages,
               appPath,
             });
           }
+          const smartContextMode: SmartContextMode = isDeepContextEnabled
+            ? "deep"
+            : "balanced";
           // Build provider options with correct Google/Vertex thinking config gating
           const providerOptions: Record<string, any> = {
             "dyad-engine": {
               dyadAppId: updatedChat.app.id,
               dyadRequestId,
               dyadDisableFiles,
+              dyadSmartContextMode: smartContextMode,
               dyadFiles: versionedFiles ? undefined : files,
               dyadVersionedFiles: versionedFiles,
               dyadMentionedApps: mentionedAppsCodebases.map(
@@ -871,7 +886,7 @@ This conversation includes one or more image attachments. When the user uploads 
             } satisfies GoogleGenerativeAIProviderOptions;
           }
 
-          return streamText({
+          const streamResult = streamText({
             headers: isAnthropic
               ? {
                   "anthropic-beta": "context-1m-2025-08-07",
@@ -886,6 +901,33 @@ This conversation includes one or more image attachments. When the user uploads 
             system: systemPromptOverride,
             tools,
             messages: chatMessages.filter((m) => m.content),
+            onFinish: (response) => {
+              const totalTokens = response.usage?.totalTokens;
+
+              if (typeof totalTokens === "number") {
+                // We use the highest total tokens used (we are *not* accumulating)
+                // since we're trying to figure it out if we're near the context limit.
+                maxTokensUsed = Math.max(maxTokensUsed ?? 0, totalTokens);
+
+                // Persist the aggregated token usage on the placeholder assistant message
+                void db
+                  .update(messages)
+                  .set({ maxTokensUsed: maxTokensUsed })
+                  .where(eq(messages.id, placeholderAssistantMessage.id))
+                  .catch((error) => {
+                    logger.error(
+                      "Failed to save total tokens for assistant message",
+                      error,
+                    );
+                  });
+
+                logger.log(
+                  `Total tokens used (aggregated for message ${placeholderAssistantMessage.id}): ${maxTokensUsed}`,
+                );
+              } else {
+                logger.log("Total tokens used: unknown");
+              }
+            },
             onError: (error: any) => {
               let errorMessage = (error as any)?.error?.message;
               const responseBody = error?.error?.responseBody;
@@ -909,6 +951,10 @@ This conversation includes one or more image attachments. When the user uploads 
             },
             abortSignal: abortController.signal,
           });
+          return {
+            fullStream: streamResult.fullStream,
+            usage: streamResult.usage,
+          };
         };
 
         let lastDbSaveAt = 0;

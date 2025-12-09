@@ -582,6 +582,9 @@ export class PageObject {
   async getClipboardText(): Promise<string> {
     return await this.page.evaluate(() => navigator.clipboard.readText());
   }
+  async clickFixAllErrors() {
+    await this.page.getByRole("button", { name: /Fix All Errors/ }).click();
+  }
 
   async snapshotPreviewErrorBanner() {
     await expect(this.locatePreviewErrorBanner()).toMatchAriaSnapshot({

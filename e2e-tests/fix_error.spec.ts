@@ -1,4 +1,4 @@
-import { testSkipIfWindows } from "./helpers/test_helper";
+import { testSkipIfWindows, test } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
 testSkipIfWindows("fix error with AI", async ({ po }) => {
@@ -40,4 +40,13 @@ testSkipIfWindows("copy error message from banner", async ({ po }) => {
   await expect(po.page.getByRole("button", { name: "Copied" })).toBeHidden({
     timeout: 3000,
   });
+});
+test("fix all errors button", async ({ po }) => {
+  await po.setUp({ autoApprove: true });
+  await po.sendPrompt("tc=create-multiple-errors");
+
+  await po.clickFixAllErrors();
+  await po.waitForChatCompletion();
+
+  await po.snapshotMessages();
 });

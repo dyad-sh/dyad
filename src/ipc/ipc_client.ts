@@ -598,6 +598,10 @@ export class IpcClient {
   // Get allow-listed environment variables
   public async getEnvVars(): Promise<Record<string, string | undefined>> {
     try {
+      if (!this.ipcRenderer) {
+        // In web mode, we don't expose system env vars this way/yet
+        return {};
+      }
       const envVars = await this.ipcRenderer.invoke("get-env-vars");
       return envVars as Record<string, string | undefined>;
     } catch (error) {
@@ -609,6 +613,10 @@ export class IpcClient {
   // List all versions (commits) of an app
   public async listVersions({ appId }: { appId: number }): Promise<Version[]> {
     try {
+      if (!this.ipcRenderer) {
+        // Not supported in web mode yet
+        return [];
+      }
       const versions = await this.ipcRenderer.invoke("list-versions", {
         appId,
       });
@@ -642,6 +650,9 @@ export class IpcClient {
 
   // Get the current branch of an app
   public async getCurrentBranch(appId: number): Promise<BranchResult> {
+    if (!this.ipcRenderer) {
+      return { branch: "main", exists: true };
+    }
     return this.ipcRenderer.invoke("get-current-branch", {
       appId,
     });
@@ -650,6 +661,12 @@ export class IpcClient {
   // Get user settings
   public async getUserSettings(): Promise<UserSettings> {
     try {
+      if (!this.ipcRenderer) {
+        const settings = await settingsApi.get();
+        // Ensure we return the expected structure even if API returns partial
+        // (Assuming API returns object matching/compatible with UserSettings)
+        return settings as UserSettings;
+      }
       const settings = await this.ipcRenderer.invoke("get-user-settings");
       return settings;
     } catch (error) {
@@ -663,6 +680,10 @@ export class IpcClient {
     settings: Partial<UserSettings>,
   ): Promise<UserSettings> {
     try {
+      if (!this.ipcRenderer) {
+        const updated = await settingsApi.update(settings);
+        return updated as UserSettings;
+      }
       const updatedSettings = await this.ipcRenderer.invoke(
         "set-user-settings",
         settings,

@@ -47,7 +47,7 @@ COPY server/package*.json ./server/
 
 # Install server dependencies
 WORKDIR /app/server
-RUN npm install
+RUN npm install --include=dev
 RUN npm install -g typescript
 
 # Copy server source

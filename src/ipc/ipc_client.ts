@@ -741,6 +741,14 @@ export class IpcClient {
 
   // Check Node.js and npm status
   public async getNodejsStatus(): Promise<NodeSystemInfo> {
+    if (!this.ipcRenderer) {
+      // Return dummy valid status for web
+      return {
+        nodeVersion: "20.0.0",
+        pnpmVersion: "8.0.0",
+        nodeDownloadUrl: ""
+      };
+    }
     return this.ipcRenderer.invoke("nodejs-status");
   }
 
@@ -1118,6 +1126,10 @@ export class IpcClient {
   public onDeepLinkReceived(
     callback: (data: DeepLinkData) => void,
   ): () => void {
+    if (!this.ipcRenderer) {
+      // Deep links not yet supported/handled in web mode
+      return () => { };
+    }
     const listener = (data: any) => {
       callback(data as DeepLinkData);
     };
@@ -1132,6 +1144,19 @@ export class IpcClient {
     params: TokenCountParams,
   ): Promise<TokenCountResult> {
     try {
+      if (!this.ipcRenderer) {
+        // Mock token count for now or implement client side estimation
+        return {
+          estimatedTotalTokens: 0,
+          actualMaxTokens: 128000,
+          messageHistoryTokens: 0,
+          codebaseTokens: 0,
+          mentionedAppsTokens: 0,
+          inputTokens: 0,
+          systemPromptTokens: 0,
+          contextWindow: 128000
+        };
+      }
       const result = await this.ipcRenderer.invoke("chat:count-tokens", params);
       return result as TokenCountResult;
     } catch (error) {
@@ -1143,6 +1168,7 @@ export class IpcClient {
   // Window control methods
   public async minimizeWindow(): Promise<void> {
     try {
+      if (!this.ipcRenderer) return;
       await this.ipcRenderer.invoke("window:minimize");
     } catch (error) {
       showError(error);
@@ -1152,6 +1178,7 @@ export class IpcClient {
 
   public async maximizeWindow(): Promise<void> {
     try {
+      if (!this.ipcRenderer) return;
       await this.ipcRenderer.invoke("window:maximize");
     } catch (error) {
       showError(error);
@@ -1161,6 +1188,7 @@ export class IpcClient {
 
   public async closeWindow(): Promise<void> {
     try {
+      if (!this.ipcRenderer) return;
       await this.ipcRenderer.invoke("window:close");
     } catch (error) {
       showError(error);
@@ -1170,6 +1198,10 @@ export class IpcClient {
 
   // Get system platform (win32, darwin, linux)
   public async getSystemPlatform(): Promise<string> {
+    if (!this.ipcRenderer) {
+      // Simple client-side detection or default to linux for web
+      return "linux";
+    }
     return this.ipcRenderer.invoke("get-system-platform");
   }
 

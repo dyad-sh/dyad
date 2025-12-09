@@ -41,12 +41,12 @@ export default defineConfig({
         proxy: {
             // Proxy API requests to backend server
             "/api": {
-                target: "http://localhost:3001",
+                target: "http://localhost:3007",
                 changeOrigin: true,
             },
             // Proxy WebSocket connections
             "/ws": {
-                target: "ws://localhost:3001",
+                target: "ws://localhost:3007",
                 ws: true,
             },
         },
@@ -55,8 +55,8 @@ export default defineConfig({
     // Define environment variables for web mode
     define: {
         "import.meta.env.VITE_WEB_MODE": JSON.stringify(true),
-        "import.meta.env.VITE_API_URL": JSON.stringify("http://localhost:3001/api"),
-        "import.meta.env.VITE_WS_URL": JSON.stringify("ws://localhost:3001"),
+        "import.meta.env.VITE_API_URL": JSON.stringify("http://localhost:3007/api"),
+        "import.meta.env.VITE_WS_URL": JSON.stringify("ws://localhost:3007"),
     },
 
     // Optimize dependencies

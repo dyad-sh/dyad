@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  dyad-server:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    container_name: dyad-server
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    volumes:
+      - dyad-data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - HOST=0.0.0.0
+      - DATA_DIR=/app/data
+      - CORS_ORIGIN=${CORS_ORIGIN:-*}
+      # AI Provider Keys (set in .env file)
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GOOGLE_GENERATIVE_AI_API_KEY=${GOOGLE_GENERATIVE_AI_API_KEY}
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:3001/api/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Optional: MCP Server sidecar
+  dyad-mcp:
+    build:
+      context: ../mcp-server
+      dockerfile: Dockerfile
+    container_name: dyad-mcp
+    restart: unless-stopped
+    volumes:
+      - dyad-data:/app/data:ro
+    environment:
+      - DYAD_DATA_DIR=/app/data
+    depends_on:
+      - dyad-server
+
+volumes:
+  dyad-data:
+    driver: local

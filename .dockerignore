@@ -1,0 +1,56 @@
+# Dependencies
+node_modules
+**/node_modules
+
+# Build outputs
+dist
+dist-web
+out
+.vite
+
+# Development files
+*.log
+*.md
+!README.md
+.git
+.github
+.husky
+.cursor
+.devcontainer
+
+# Test files
+__tests__
+e2e-tests
+testing
+*.test.ts
+*.spec.ts
+vitest.config.ts
+playwright.config.ts
+
+# Electron-specific (not needed for web)
+forge.config.ts
+forge.env.d.ts
+vite.main.config.mts
+vite.preload.config.mts
+vite.worker.config.mts
+
+# IDE and OS
+.vscode
+.idea
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Environment files (copy manually)
+.env
+.env.local
+.env.*.local
+
+# Certificates (mount as volume)
+certs/
+
+# Large files
+*.zip
+*.tar.gz
+*.7z

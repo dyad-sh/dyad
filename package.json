@@ -38,7 +38,10 @@
     "init-precommit": "husky",
     "pre:e2e": "cross-env E2E_TEST_BUILD=true npm run package",
     "e2e": "playwright test",
-    "e2e:shard": "playwright test --shard"
+    "e2e:shard": "playwright test --shard",
+    "web:dev": "vite --config vite.web.config.mts",
+    "web:build": "vite build --config vite.web.config.mts",
+    "web:preview": "vite preview --config vite.web.config.mts --port 5173"
   },
   "keywords": [],
   "author": {

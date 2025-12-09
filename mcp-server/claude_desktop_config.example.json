@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "dyad": {
+      "command": "node",
+      "args": [
+        "C:\\Users\\amine\\dyad-1\\mcp-server\\dist\\index.js"
+      ]
+    }
+  }
+}

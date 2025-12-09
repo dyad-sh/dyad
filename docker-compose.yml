@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  # ==========================================================================
+  # Dyad Web Application
+  # ==========================================================================
+  dyad:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dyad-web
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    volumes:
+      - dyad-data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - HOST=0.0.0.0
+      - DATA_DIR=/app/data
+      - CORS_ORIGIN=${CORS_ORIGIN:-*}
+      # AI Provider Keys
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GOOGLE_GENERATIVE_AI_API_KEY=${GOOGLE_GENERATIVE_AI_API_KEY}
+      # GitHub (optional)
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:3001/api/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - dyad-network
+
+  # ==========================================================================
+  # Nginx Reverse Proxy (optional, for SSL termination)
+  # ==========================================================================
+  nginx:
+    image: nginx:alpine
+    container_name: dyad-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      - dyad
+    networks:
+      - dyad-network
+    profiles:
+      - with-nginx
+
+  # ==========================================================================
+  # MCP Server (optional sidecar)
+  # ==========================================================================
+  mcp-server:
+    build:
+      context: ./mcp-server
+      dockerfile: Dockerfile
+    container_name: dyad-mcp
+    restart: unless-stopped
+    volumes:
+      - dyad-data:/app/data:ro
+    environment:
+      - DYAD_DATA_DIR=/app/data
+    depends_on:
+      - dyad
+    networks:
+      - dyad-network
+    profiles:
+      - with-mcp
+
+volumes:
+  dyad-data:
+    driver: local
+
+networks:
+  dyad-network:
+    driver: bridge

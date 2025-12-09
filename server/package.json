@@ -1,0 +1,43 @@
+{
+    "name": "dyad-server",
+    "version": "0.1.0",
+    "description": "Dyad Web Server - Backend API for Dyad AI App Builder",
+    "main": "dist/index.js",
+    "scripts": {
+        "dev": "tsx watch src/index.ts",
+        "build": "tsc",
+        "start": "node dist/index.js",
+        "db:generate": "drizzle-kit generate",
+        "db:push": "drizzle-kit push",
+        "db:studio": "drizzle-kit studio"
+    },
+    "dependencies": {
+        "express": "^4.21.0",
+        "cors": "^2.8.5",
+        "helmet": "^8.0.0",
+        "compression": "^1.7.4",
+        "dotenv": "^16.4.7",
+        "drizzle-orm": "^0.41.0",
+        "better-sqlite3": "^12.4.1",
+        "zod": "^3.25.76",
+        "ws": "^8.18.0",
+        "uuid": "^11.1.0",
+        "@ai-sdk/anthropic": "^2.0.4",
+        "@ai-sdk/openai": "2.0.15",
+        "@ai-sdk/google": "^2.0.6",
+        "ai": "^5.0.15",
+        "isomorphic-git": "^1.30.1"
+    },
+    "devDependencies": {
+        "@types/express": "^5.0.0",
+        "@types/cors": "^2.8.17",
+        "@types/compression": "^1.7.5",
+        "@types/better-sqlite3": "^7.6.13",
+        "@types/ws": "^8.5.13",
+        "@types/uuid": "^10.0.0",
+        "@types/node": "^22.14.0",
+        "typescript": "^5.8.3",
+        "tsx": "^4.19.2",
+        "drizzle-kit": "^0.30.6"
+    }
+}

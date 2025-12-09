@@ -265,6 +265,15 @@ router.post("/push/:appId", async (req, res, next) => {
         }
 
         const appData = app[0];
+
+        // In web mode, path may be null - return error if so
+        if (!appData.path) {
+            return res.status(400).json({
+                success: false,
+                error: { message: "App path not configured. This operation requires a local file system path.", code: "NO_PATH" }
+            });
+        }
+
         const appsDir = process.env.DATA_DIR ? path.join(process.env.DATA_DIR, "apps") : "./data/apps";
         const appPath = path.join(appsDir, appData.path);
         const branch = appData.githubBranch || "main";

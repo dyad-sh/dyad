@@ -48,6 +48,7 @@ COPY server/package*.json ./server/
 # Install server dependencies
 WORKDIR /app/server
 RUN npm install
+RUN npm install -g typescript
 
 # Copy server source
 COPY server/src ./src
@@ -57,6 +58,7 @@ COPY server/drizzle.config.ts ./
 # Copy shared schema
 COPY src/db ../src/db
 COPY drizzle ../drizzle
+COPY shared ../shared
 
 # Build server
 RUN npm run build

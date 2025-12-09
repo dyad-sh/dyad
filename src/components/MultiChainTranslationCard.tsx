@@ -125,6 +125,11 @@ export function MultiChainTranslationCard({
   const checkToolchainSetup = async (language: string) => {
     try {
       switch (language) {
+        case "solidity": {
+          const { solcVersion } =
+            await IpcClient.getInstance().solidityVersion();
+          return !!solcVersion;
+        }
         case "sui_move": {
           const { suiVersion } = await IpcClient.getInstance().suiVersion();
           return !!suiVersion;

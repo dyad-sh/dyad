@@ -173,6 +173,8 @@ const validInvokeChannels = [
   "cairo-version",
   // Cosmwasm
   "cosmwasm-version",
+  // Solidity
+  "solidity-version",
 
   "save-contract-deployment",
   // Test-only channels

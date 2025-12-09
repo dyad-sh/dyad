@@ -1670,4 +1670,11 @@ export class IpcClient {
   }> {
     return this.ipcRenderer.invoke("cosmwasm-version");
   }
+
+  // Solidity Version
+  public async solidityVersion(): Promise<{
+    solcVersion: string | null;
+  }> {
+    return this.ipcRenderer.invoke("solidity-version");
+  }
 }

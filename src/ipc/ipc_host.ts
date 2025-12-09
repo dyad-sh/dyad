@@ -40,6 +40,7 @@ import { registerAptosHandlers } from "./handlers/aptos_handlers";
 import { registerVyperHandlers } from "./handlers/vyper_handlers";
 import { registerCairoHandlers } from "./handlers/cairo_handlers";
 import { registerCosmwasmHandlers } from "./handlers/cosmwasm_handlers";
+import { registerSolidityHandlers } from "./handlers/solidity_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -85,4 +86,5 @@ export function registerIpcHandlers() {
   registerVyperHandlers();
   registerCairoHandlers();
   registerCosmwasmHandlers();
+  registerSolidityHandlers();
 }

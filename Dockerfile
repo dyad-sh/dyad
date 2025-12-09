@@ -91,16 +91,16 @@ RUN mkdir -p /app/data
 
 # Environment variables
 ENV NODE_ENV=production
-ENV PORT=3001
+ENV PORT=3007
 ENV HOST=0.0.0.0
 ENV DATA_DIR=/app/data
 ENV STATIC_DIR=/app/server/public
 
-EXPOSE 3001
+EXPOSE 3007
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:3001/api/health || exit 1
+    CMD curl -f http://localhost:3007/api/health || exit 1
 
 # Start server
 CMD ["node", "dist/index.js"]

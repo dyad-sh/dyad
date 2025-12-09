@@ -22,6 +22,7 @@ RUN npm ci
 
 # Copy source files
 COPY src ./src
+COPY assets ./assets
 
 # Build frontend for production
 RUN npm run web:build

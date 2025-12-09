@@ -17,17 +17,26 @@ testSkipIfWindows("edit style of one selected component", async ({ po }) => {
     .click();
 
   // Wait for the toolbar to appear (check for the Margin button which is always visible)
-  await expect(po.page.getByRole("button", { name: "Margin" })).toBeVisible({
+  const marginButton = po.page.getByRole("button", { name: "Margin" });
+  await expect(marginButton).toBeVisible({
     timeout: Timeout.MEDIUM,
   });
 
+  // Ensure the toolbar has proper coordinates before clicking
+  await expect(async () => {
+    const box = await marginButton.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.y).toBeGreaterThan(0);
+  }).toPass({ timeout: Timeout.MEDIUM });
+
   // Click on margin button to open the margin popover
-  await po.page.getByRole("button", { name: "Margin" }).click();
+  await marginButton.click();
 
   // Wait for the popover to fully open by checking for the popover content container
-  await expect(
-    po.page.locator('[role="dialog"]').filter({ hasText: "Margin" }),
-  ).toBeVisible({
+  const marginDialog = po.page
+    .locator('[role="dialog"]')
+    .filter({ hasText: "Margin" });
+  await expect(marginDialog).toBeVisible({
     timeout: Timeout.LONG,
   });
 
@@ -141,17 +150,26 @@ testSkipIfWindows("discard changes", async ({ po }) => {
     .click();
 
   // Wait for the toolbar to appear (check for the Margin button which is always visible)
-  await expect(po.page.getByRole("button", { name: "Margin" })).toBeVisible({
+  const marginButton = po.page.getByRole("button", { name: "Margin" });
+  await expect(marginButton).toBeVisible({
     timeout: Timeout.MEDIUM,
   });
 
+  // Ensure the toolbar has proper coordinates before clicking
+  await expect(async () => {
+    const box = await marginButton.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.y).toBeGreaterThan(0);
+  }).toPass({ timeout: Timeout.MEDIUM });
+
   // Click on margin button to open the margin popover
-  await po.page.getByRole("button", { name: "Margin" }).click();
+  await marginButton.click();
 
   // Wait for the popover to fully open by checking for the popover content container
-  await expect(
-    po.page.locator('[role="dialog"]').filter({ hasText: "Margin" }),
-  ).toBeVisible({
+  const marginDialog = po.page
+    .locator('[role="dialog"]')
+    .filter({ hasText: "Margin" });
+  await expect(marginDialog).toBeVisible({
     timeout: Timeout.LONG,
   });
 
@@ -164,6 +182,11 @@ testSkipIfWindows("discard changes", async ({ po }) => {
 
   // Close the popover
   await po.page.keyboard.press("Escape");
+
+  // Wait for the popover to close
+  await expect(marginDialog).not.toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
 
   // Check if the changes are applied to UI
   await expect(po.page.getByText(/\d+ component[s]? modified/)).toBeVisible({

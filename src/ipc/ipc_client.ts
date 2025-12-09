@@ -1267,7 +1267,46 @@ export class IpcClient {
   }
 
   public async getLanguageModelProviders(): Promise<LanguageModelProvider[]> {
-    if (!this.ipcRenderer) return [];
+    if (!this.ipcRenderer) {
+      // In web mode, return default cloud and local providers
+      const { CLOUD_PROVIDERS, LOCAL_PROVIDERS, PROVIDER_TO_ENV_VAR } = await import("./shared/language_model_constants");
+
+      const providers: LanguageModelProvider[] = [];
+
+      // Add cloud providers
+      for (const providerKey in CLOUD_PROVIDERS) {
+        if (Object.prototype.hasOwnProperty.call(CLOUD_PROVIDERS, providerKey)) {
+          const providerDetails = CLOUD_PROVIDERS[providerKey];
+          if (providerDetails) {
+            providers.push({
+              id: providerKey,
+              name: providerDetails.displayName,
+              hasFreeTier: providerDetails.hasFreeTier,
+              websiteUrl: providerDetails.websiteUrl,
+              gatewayPrefix: providerDetails.gatewayPrefix,
+              secondary: providerDetails.secondary,
+              envVarName: PROVIDER_TO_ENV_VAR[providerKey] ?? undefined,
+              type: "cloud",
+            });
+          }
+        }
+      }
+
+      // Add local providers
+      for (const providerKey in LOCAL_PROVIDERS) {
+        if (Object.prototype.hasOwnProperty.call(LOCAL_PROVIDERS, providerKey)) {
+          const providerDetails = LOCAL_PROVIDERS[providerKey];
+          providers.push({
+            id: providerKey,
+            name: providerDetails.displayName,
+            hasFreeTier: providerDetails.hasFreeTier,
+            type: "local",
+          });
+        }
+      }
+
+      return providers;
+    }
     return this.ipcRenderer.invoke("get-language-model-providers");
   }
 
@@ -1289,6 +1328,7 @@ export class IpcClient {
     apiBaseUrl,
     envVarName,
   }: CreateCustomLanguageModelProviderParams): Promise<LanguageModelProvider> {
+    if (!this.ipcRenderer) throw new Error("Not supported in web mode");
     return this.ipcRenderer.invoke("create-custom-language-model-provider", {
       id,
       name,
@@ -1299,6 +1339,7 @@ export class IpcClient {
   public async editCustomLanguageModelProvider(
     params: CreateCustomLanguageModelProviderParams,
   ): Promise<LanguageModelProvider> {
+    if (!this.ipcRenderer) throw new Error("Not supported in web mode");
     return this.ipcRenderer.invoke(
       "edit-custom-language-model-provider",
       params,
@@ -1308,14 +1349,17 @@ export class IpcClient {
   public async createCustomLanguageModel(
     params: CreateCustomLanguageModelParams,
   ): Promise<void> {
+    if (!this.ipcRenderer) return;
     await this.ipcRenderer.invoke("create-custom-language-model", params);
   }
 
   public async deleteCustomLanguageModel(modelId: string): Promise<void> {
+    if (!this.ipcRenderer) return;
     return this.ipcRenderer.invoke("delete-custom-language-model", modelId);
   }
 
   async deleteCustomModel(params: DeleteCustomModelParams): Promise<void> {
+    if (!this.ipcRenderer) return;
     return this.ipcRenderer.invoke("delete-custom-model", params);
   }
 

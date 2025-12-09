@@ -22,7 +22,7 @@ export const prompts = pgTable("prompts", {
 export const apps = pgTable("apps", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  path: text("path").notNull(),
+  path: text("path"), // Nullable for web mode where no file system exists
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
   githubOrg: text("github_org"),

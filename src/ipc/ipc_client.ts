@@ -1313,12 +1313,35 @@ export class IpcClient {
   public async getLanguageModels(params: {
     providerId: string;
   }): Promise<LanguageModel[]> {
+    if (!this.ipcRenderer) {
+      // In web mode, return models from constants
+      const { MODEL_OPTIONS } = await import("./shared/language_model_constants");
+      const models = MODEL_OPTIONS[params.providerId] || [];
+      return models.map(model => ({
+        ...model,
+        apiName: model.name,
+        type: "cloud" as const,
+      }));
+    }
     return this.ipcRenderer.invoke("get-language-models", params);
   }
 
   public async getLanguageModelsByProviders(): Promise<
     Record<string, LanguageModel[]>
   > {
+    if (!this.ipcRenderer) {
+      // In web mode, return models for all providers
+      const providers = await this.getLanguageModelProviders();
+      const record: Record<string, LanguageModel[]> = {};
+
+      for (const provider of providers) {
+        if (provider.type !== "local") {
+          record[provider.id] = await this.getLanguageModels({ providerId: provider.id });
+        }
+      }
+
+      return record;
+    }
     return this.ipcRenderer.invoke("get-language-models-by-providers");
   }
 

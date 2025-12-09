@@ -15,8 +15,14 @@ export function registerProHandlers() {
   // information and isn't critical to using the app
   handle("get-user-budget", async (): Promise<UserBudgetInfo | null> => {
     if (IS_TEST_BUILD) {
-      // Avoid spamming the API in E2E tests.
-      return null;
+      // Return mock budget data for E2E tests instead of spamming the API
+      const resetDate = new Date();
+      resetDate.setDate(resetDate.getDate() + 30); // Reset in 30 days
+      return {
+        usedCredits: 100,
+        totalCredits: 1000,
+        budgetResetDate: resetDate,
+      };
     }
     logger.info("Attempting to fetch user budget information.");
 

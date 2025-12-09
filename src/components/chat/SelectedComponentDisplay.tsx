@@ -1,8 +1,9 @@
 import {
   selectedComponentsPreviewAtom,
   previewIframeRefAtom,
+  visualEditingSelectedComponentAtom,
 } from "@/atoms/previewAtoms";
-import { useAtom, useAtomValue } from "jotai";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { Code2, X } from "lucide-react";
 
 export function SelectedComponentsDisplay() {
@@ -10,11 +11,15 @@ export function SelectedComponentsDisplay() {
     selectedComponentsPreviewAtom,
   );
   const previewIframeRef = useAtomValue(previewIframeRefAtom);
+  const setVisualEditingSelectedComponent = useSetAtom(
+    visualEditingSelectedComponentAtom,
+  );
 
   const handleRemoveComponent = (index: number) => {
     const componentToRemove = selectedComponents[index];
     const newComponents = selectedComponents.filter((_, i) => i !== index);
     setSelectedComponents(newComponents);
+    setVisualEditingSelectedComponent(null);
 
     // Remove the specific overlay from the iframe
     if (previewIframeRef?.contentWindow) {
@@ -30,7 +35,7 @@ export function SelectedComponentsDisplay() {
 
   const handleClearAll = () => {
     setSelectedComponents([]);
-
+    setVisualEditingSelectedComponent(null);
     if (previewIframeRef?.contentWindow) {
       previewIframeRef.contentWindow.postMessage(
         { type: "clear-dyad-component-overlays" },

@@ -26,14 +26,12 @@ router.get("/", async (req, res, next) => {
         const db = getDb();
         const { appId } = req.query;
 
-        // @ts-ignore - updatedAt will be added to schema later
         let query = db.select().from(chats).orderBy(desc(chats.updatedAt));
 
         if (appId) {
             const allChats = await db.select()
                 .from(chats)
                 .where(eq(chats.appId, Number(appId)))
-                // @ts-ignore - updatedAt will be added to schema later
                 .orderBy(desc(chats.updatedAt));
 
             return res.json({

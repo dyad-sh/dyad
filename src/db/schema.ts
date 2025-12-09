@@ -45,12 +45,13 @@ export const apps = pgTable("apps", {
 
 export const chats = pgTable("chats", {
   id: serial("id").primaryKey(),
-  appId: serial("app_id")
+  appId: integer("app_id")
     .notNull()
     .references(() => apps.id, { onDelete: "cascade" }),
   title: text("title"),
   initialCommitHash: text("initial_commit_hash"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const messages = pgTable("messages", {

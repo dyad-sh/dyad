@@ -924,28 +924,45 @@ export class IpcClient {
 
   // --- MCP Client Methods ---
   public async listMcpServers() {
+    if (!this.ipcRenderer) return mcpApi.listServers();
     return this.ipcRenderer.invoke("mcp:list-servers");
   }
 
   public async createMcpServer(params: CreateMcpServer) {
+    if (!this.ipcRenderer) return mcpApi.createServer(params);
     return this.ipcRenderer.invoke("mcp:create-server", params);
   }
 
   public async updateMcpServer(params: McpServerUpdate) {
+    if (!this.ipcRenderer) {
+      if (!params.id) throw new Error("Server ID required for update");
+      return mcpApi.updateServer(params.id, params);
+    }
     return this.ipcRenderer.invoke("mcp:update-server", params);
   }
 
   public async deleteMcpServer(id: number) {
+    if (!this.ipcRenderer) return mcpApi.deleteServer(id);
     return this.ipcRenderer.invoke("mcp:delete-server", id);
   }
 
   public async listMcpTools(serverId: number) {
+    if (!this.ipcRenderer) {
+      // Tools are fetched via SSE in web mode usually, or we might need an endpoint
+      // For now, return empty to prevent crash
+      return [];
+    }
     return this.ipcRenderer.invoke("mcp:list-tools", serverId);
   }
 
   // Removed: upsertMcpTools and setMcpToolActive – tools are fetched dynamically at runtime
 
   public async getMcpToolConsents() {
+    if (!this.ipcRenderer) {
+      // Web mode: we'd need to fetch for all servers or have a bulk endpoint.
+      // Returning empty for now.
+      return [];
+    }
     return this.ipcRenderer.invoke("mcp:get-tool-consents");
   }
 
@@ -954,6 +971,7 @@ export class IpcClient {
     toolName: string;
     consent: "ask" | "always" | "denied";
   }) {
+    if (!this.ipcRenderer) return mcpApi.setConsent(params.serverId, params.toolName, params.consent);
     return this.ipcRenderer.invoke("mcp:set-tool-consent", params);
   }
 
@@ -1091,6 +1109,31 @@ export class IpcClient {
   // --- End Portal Management ---
 
   public async getSystemDebugInfo(): Promise<SystemDebugInfo> {
+    if (!this.ipcRenderer) {
+      return {
+        os: "web",
+        arch: "web",
+        release: "web",
+        hostname: window.location.hostname,
+        totalmem: 0,
+        freemem: 0,
+        cpus: [],
+        uptime: 0,
+        shell: navigator.userAgent,
+        // Add other required fields with defaults
+        nodeVersion: "n/a",
+        electronVersion: "n/a",
+        chromeVersion: "n/a",
+        appVersion: "web",
+        userDataPath: "n/a",
+        logsPath: "n/a",
+        appPath: "n/a",
+        tempPath: "n/a",
+        homePath: "n/a",
+        env: {},
+        networkInterfaces: {}
+      } as unknown as SystemDebugInfo;
+    }
     return this.ipcRenderer.invoke("get-system-debug-info");
   }
 

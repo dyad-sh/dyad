@@ -8,6 +8,13 @@
       "when": 1765298916395,
       "tag": "0000_shiny_mandroid",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1765299752674,
+      "tag": "0001_little_boomerang",
+      "breakpoints": true
     }
   ]
 }

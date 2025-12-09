@@ -62,7 +62,7 @@ COPY server/drizzle.config.ts ./
 
 # Copy shared schema
 COPY src/db ../src/db
-COPY drizzle ../drizzle
+COPY server/drizzle ./drizzle
 COPY shared ../shared
 
 # Build server
@@ -90,7 +90,8 @@ RUN npm install --omit=dev
 
 # Copy built server
 COPY --from=backend-builder /app/server/dist ./dist
-COPY --from=backend-builder /app/drizzle ../drizzle
+# Copy migrations from server/drizzle to /app/server/drizzle
+COPY --from=backend-builder /app/server/drizzle ./drizzle
 
 # Copy built frontend to serve as static files
 COPY --from=frontend-builder /app/dist-web ./public

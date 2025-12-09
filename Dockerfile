@@ -45,7 +45,7 @@ COPY server/package*.json ./server/
 
 # Install server dependencies
 WORKDIR /app/server
-RUN npm ci
+RUN npm install
 
 # Copy server source
 COPY server/src ./src
@@ -77,7 +77,7 @@ RUN apt-get update && apt-get install -y \
 # Copy server production dependencies
 COPY server/package*.json ./server/
 WORKDIR /app/server
-RUN npm ci --only=production
+RUN npm install --omit=dev
 
 # Copy built server
 COPY --from=backend-builder /app/server/dist ./dist

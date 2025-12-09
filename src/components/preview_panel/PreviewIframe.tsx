@@ -25,6 +25,7 @@ import {
   Smartphone,
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { CopyErrorMessage } from "@/components/CopyErrorMessage";
 import { IpcClient } from "@/ipc/ipc_client";
 
 import { useParseRouter } from "@/hooks/useParseRouter";
@@ -136,13 +137,14 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
         </div>
       </div>
 
-      {/* AI Fix button at the bottom */}
+      {/* Action buttons at the bottom */}
       {!isDockerError && error.source === "preview-app" && (
-        <div className="mt-2 flex justify-end">
+        <div className="mt-3 px-6 flex justify-end gap-2">
+          <CopyErrorMessage errorMessage={error.message} />
           <button
             disabled={isStreaming}
             onClick={onAIFix}
-            className="cursor-pointer flex items-center space-x-1 px-2 py-0.5 bg-red-500 dark:bg-red-600 text-white rounded text-sm hover:bg-red-600 dark:hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="cursor-pointer flex items-center space-x-1 px-2 py-1 bg-red-500 dark:bg-red-600 text-white rounded text-sm hover:bg-red-600 dark:hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Sparkles size={14} />
             <span>Fix error with AI</span>

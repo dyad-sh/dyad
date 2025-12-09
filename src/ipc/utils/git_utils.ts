@@ -637,54 +637,52 @@ export async function gitLogNative(
   path: string,
   depth = 100_000,
 ): Promise<GitCommit[]> {
-  // 1) Get the commit OIDs (like isomorphic-git log order)
-  const revArgs = ["rev-list", "--max-count", String(depth), "HEAD"];
-  const revResult = await exec(revArgs, path);
+  // Use git log with custom format to get all data in a single process
+  // Format: %H = commit hash, %at = author timestamp (unix), %B = raw body (message)
+  // Using null byte as field separator and custom delimiter between commits
+  const logArgs = [
+    "log",
+    "--max-count",
+    String(depth),
+    "--format=%H%x00%at%x00%B%x00---END-COMMIT---",
+    "HEAD",
+  ];
 
-  if (revResult.exitCode !== 0) {
-    throw new Error(revResult.stderr.toString());
+  const logResult = await exec(logArgs, path);
+
+  if (logResult.exitCode !== 0) {
+    throw new Error(logResult.stderr.toString());
   }
 
-  const oids = revResult.stdout.toString().trim().split("\n").filter(Boolean);
+  const output = logResult.stdout.toString().trim();
+  if (!output) {
+    return [];
+  }
+
+  // Split by commit delimiter
+  const commitChunks = output.split("\x00---END-COMMIT---\n").filter(Boolean);
   const entries: GitCommit[] = [];
 
-  // 2) For each OID, get the commit object and parse author.timestamp + message
-  for (const oid of oids) {
-    const catArgs = ["cat-file", "-p", oid];
-    const catResult = await exec(catArgs, path);
-    if (catResult.exitCode !== 0) continue;
+  for (const chunk of commitChunks) {
+    // Split by null byte: [oid, timestamp, message]
+    const parts = chunk.split("\x00");
+    if (parts.length >= 3) {
+      const oid = parts[0].trim();
+      const timestamp = Number(parts[1]);
+      // Message is everything after the second null byte, may contain null bytes itself
+      const message = parts.slice(2).join("\x00");
 
-    const raw = catResult.stdout.toString();
-
-    // Split headers and commit message
-    const sepIndex = raw.indexOf("\n\n");
-    const headerPart = sepIndex === -1 ? raw : raw.slice(0, sepIndex);
-    const messagePart = sepIndex === -1 ? "" : raw.slice(sepIndex + 2); // includes trailing \n
-
-    const headerLines = headerPart.split("\n");
-
-    let authorTimestamp = 0;
-
-    for (const line of headerLines) {
-      if (line.startsWith("author ")) {
-        // Example: "author Name <email> 1764892838 +0000"
-        const m = /^author (.+) <(.+)> (\d+) ([+-]\d{4})$/.exec(line);
-        if (m) {
-          const ts = m[3];
-          authorTimestamp = Number(ts);
-        }
-        break;
-      }
-    }
-    entries.push({
-      oid,
-      commit: {
-        message: messagePart,
-        author: {
-          timestamp: authorTimestamp,
+      entries.push({
+        oid,
+        commit: {
+          message: message,
+          author: {
+            timestamp: timestamp,
+          },
         },
-      },
-    });
+      });
+    }
   }
+
   return entries;
 }

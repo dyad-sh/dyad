@@ -64,6 +64,25 @@ async function main() {
     app.use("/api/github", githubRoutes);
     app.use("/api/mcp", mcpRoutes);
 
+    // Serve static files (Frontend)
+    if (process.env.STATIC_DIR) {
+        const staticDir = process.env.STATIC_DIR;
+        console.log(`Serving static files from: ${staticDir}`);
+        app.use(express.static(staticDir));
+
+        // SPA Catch-all route
+        app.get("*", (req, res, next) => {
+            if (req.path.startsWith("/api")) {
+                return next();
+            }
+            res.sendFile("index.html", { root: staticDir }, (err) => {
+                if (err) {
+                    next(err);
+                }
+            });
+        });
+    }
+
     // Error handler (must be last)
     app.use(errorHandler);
 

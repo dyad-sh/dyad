@@ -709,6 +709,7 @@ export class IpcClient {
     appName: string;
     appPath: string;
   }): Promise<void> {
+    if (!this.ipcRenderer) return;
     await this.ipcRenderer.invoke("rename-app", {
       appId,
       appName,
@@ -717,11 +718,13 @@ export class IpcClient {
   }
 
   public async copyApp(params: CopyAppParams): Promise<{ app: App }> {
+    if (!this.ipcRenderer) throw new Error("Not supported in web mode");
     return this.ipcRenderer.invoke("copy-app", params);
   }
 
   // Reset all - removes all app files, settings, and drops the database
   public async resetAll(): Promise<void> {
+    if (!this.ipcRenderer) return;
     await this.ipcRenderer.invoke("reset-all");
   }
 
@@ -732,6 +735,7 @@ export class IpcClient {
     chatId: number;
     packages: string[];
   }): Promise<void> {
+    if (!this.ipcRenderer) return;
     await this.ipcRenderer.invoke("chat:add-dep", {
       chatId,
       packages,
@@ -898,6 +902,7 @@ export class IpcClient {
   public async createVercelProject(
     params: CreateVercelProjectParams,
   ): Promise<void> {
+    if (!this.ipcRenderer) return;
     await this.ipcRenderer.invoke("vercel:create-project", params);
   }
 
@@ -905,18 +910,21 @@ export class IpcClient {
   public async getVercelDeployments(
     params: GetVercelDeploymentsParams,
   ): Promise<VercelDeployment[]> {
+    if (!this.ipcRenderer) return [];
     return this.ipcRenderer.invoke("vercel:get-deployments", params);
   }
 
   public async disconnectVercelProject(
     params: DisconnectVercelProjectParams,
   ): Promise<void> {
+    if (!this.ipcRenderer) return;
     await this.ipcRenderer.invoke("vercel:disconnect", params);
   }
   // --- End Vercel Project Management ---
 
   // Get the main app version
   public async getAppVersion(): Promise<string> {
+    if (!this.ipcRenderer) return "1.0.0-web";
     const result = await this.ipcRenderer.invoke("get-app-version");
     return result.version as string;
   }
@@ -1102,6 +1110,7 @@ export class IpcClient {
   public async portalMigrateCreate(params: {
     appId: number;
   }): Promise<{ output: string }> {
+    if (!this.ipcRenderer) return { output: "" };
     return this.ipcRenderer.invoke("portal:migrate-create", params);
   }
 
@@ -1137,6 +1146,7 @@ export class IpcClient {
   }
 
   public async getChatLogs(chatId: number): Promise<ChatLogsData> {
+    if (!this.ipcRenderer) return { logs: [] } as any;
     return this.ipcRenderer.invoke("get-chat-logs", chatId);
   }
 
@@ -1145,6 +1155,7 @@ export class IpcClient {
     contentType: string,
     data: any,
   ): Promise<void> {
+    if (!this.ipcRenderer) return;
     await this.ipcRenderer.invoke("upload-to-signed-url", {
       url,
       contentType,
@@ -1153,11 +1164,13 @@ export class IpcClient {
   }
 
   public async listLocalOllamaModels(): Promise<LocalModel[]> {
+    if (!this.ipcRenderer) return [];
     const response = await this.ipcRenderer.invoke("local-models:list-ollama");
     return response?.models || [];
   }
 
   public async listLocalLMStudioModels(): Promise<LocalModel[]> {
+    if (!this.ipcRenderer) return [];
     const response = await this.ipcRenderer.invoke(
       "local-models:list-lmstudio",
     );
@@ -1254,6 +1267,7 @@ export class IpcClient {
   }
 
   public async getLanguageModelProviders(): Promise<LanguageModelProvider[]> {
+    if (!this.ipcRenderer) return [];
     return this.ipcRenderer.invoke("get-language-model-providers");
   }
 
@@ -1409,16 +1423,19 @@ export class IpcClient {
   public async checkProblems(params: {
     appId: number;
   }): Promise<ProblemReport> {
+    if (!this.ipcRenderer) return { missingEnvVars: [], missingFiles: [] } as any;
     return this.ipcRenderer.invoke("check-problems", params);
   }
 
   // Template methods
   public async getTemplates(): Promise<Template[]> {
+    if (!this.ipcRenderer) return [];
     return this.ipcRenderer.invoke("get-templates");
   }
 
   // --- Prompts Library ---
   public async listPrompts(): Promise<PromptDto[]> {
+    if (!this.ipcRenderer) return [];
     return this.ipcRenderer.invoke("prompts:list");
   }
 

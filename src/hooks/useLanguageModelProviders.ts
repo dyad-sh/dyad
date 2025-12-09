@@ -20,7 +20,7 @@ export function useLanguageModelProviders() {
   });
 
   const isProviderSetup = (provider: string) => {
-    const providerSettings = settings?.providerSettings[provider];
+    const providerSettings = settings?.providerSettings?.[provider];
     if (queryResult.isLoading) {
       return false;
     }
@@ -40,7 +40,7 @@ export function useLanguageModelProviders() {
       const azureSettings = providerSettings as AzureProviderSetting;
       const hasSavedSettings = Boolean(
         (azureSettings?.apiKey?.value ?? "").trim() &&
-          (azureSettings?.resourceName ?? "").trim(),
+        (azureSettings?.resourceName ?? "").trim(),
       );
       if (hasSavedSettings) {
         return true;

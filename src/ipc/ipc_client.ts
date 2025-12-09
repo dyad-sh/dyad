@@ -664,8 +664,7 @@ export class IpcClient {
       if (!this.ipcRenderer) {
         const settings = await settingsApi.get();
         // Ensure we return the expected structure even if API returns partial
-        // (Assuming API returns object matching/compatible with UserSettings)
-        return settings as UserSettings;
+        return (settings || { providerSettings: {} }) as UserSettings;
       }
       const settings = await this.ipcRenderer.invoke("get-user-settings");
       return settings;

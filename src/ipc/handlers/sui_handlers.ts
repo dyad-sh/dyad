@@ -7,6 +7,7 @@ import { getDyadAppPath } from "../../paths/paths";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
+import { runShellCommand } from "../utils/runShellCommand";
 
 const logger = log.scope("sui_handlers");
 const handle = createLoggedHandler(logger);
@@ -265,6 +266,10 @@ function formatCompilerErrors(rawOutput: string, truncate = true): string {
   return output.trim();
 }
 
+export interface SuiVersionResult {
+  suiVersion: string | null;
+}
+
 export interface SuiCompileParams {
   appPath: string;
 }
@@ -411,6 +416,22 @@ export function registerSuiHandlers() {
 
     return null;
   }
+
+  /**
+   * Check Sui CLI version
+   */
+  handle("sui-version", async (): Promise<SuiVersionResult> => {
+    logger.info("IPC: sui-version called");
+    let suiVersion: string | null = null;
+    try {
+      suiVersion = await runShellCommand(`sui --version`);
+    } catch (err) {
+      console.error("Failed to get SUI CLI version:", err);
+    }
+    return {
+      suiVersion,
+    };
+  });
 
   /**
    * Compile a Move package using sui move build
@@ -949,7 +970,9 @@ export function registerSuiHandlers() {
           })
           .where(eq(apps.id, appId));
 
-        logger.info(`Saved deployment info for app ${appId}: ${chain} - ${address}`);
+        logger.info(
+          `Saved deployment info for app ${appId}: ${chain} - ${address}`,
+        );
 
         return { success: true };
       } catch (error) {

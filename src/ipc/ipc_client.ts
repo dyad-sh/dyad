@@ -6,7 +6,11 @@ import {
   type ContextPathResults,
   ChatSearchResultsSchema,
   AppSearchResultsSchema,
-} from "../lib/schemas";
+
+  AppChatContext,
+  AppSearchResult,
+  ChatSearchResult,
+  ProposalResult} from "../lib/schemas";
 import type {
   AppOutput,
   Chat,
@@ -85,12 +89,6 @@ import type {
 } from "./ipc_types";
 import type { ConsoleEntry } from "../atoms/appAtoms";
 import type { Template } from "../shared/templates";
-import type {
-  AppChatContext,
-  AppSearchResult,
-  ChatSearchResult,
-  ProposalResult,
-} from "@/lib/schemas";
 import { showError } from "@/lib/toast";
 import { DeepLinkData } from "./deep_link_data";
 
@@ -1503,6 +1501,13 @@ export class IpcClient {
   ): Promise<{ isDynamic: boolean; hasStaticText: boolean }> {
     return this.ipcRenderer.invoke("analyze-component", params);
   }
+  // Sui Version
+  public async suiVersion(): Promise<{
+    suiVersion: string | null;
+  }> {
+    return this.ipcRenderer.invoke("sui-version");
+  }
+
   // Sui Move compilation and deployment
   public async suiCompile(appPath: string): Promise<{
     success: boolean;
@@ -1560,6 +1565,13 @@ export class IpcClient {
     return this.ipcRenderer.invoke("save-contract-deployment", params);
   }
 
+  // Solana Version
+  public async solanaVersion(): Promise<{
+    anchorVersion: string | null;
+  }> {
+    return this.ipcRenderer.invoke("solana-version");
+  }
+
   // Solana/Anchor compilation and deployment
   public async solanaCompile(appPath: string): Promise<{
     success: boolean;
@@ -1605,7 +1617,12 @@ export class IpcClient {
   public async solanaInitProject(params: {
     projectName: string;
     parentPath: string;
-  }): Promise<{ success: boolean; output: string; error?: string; appId?: number }> {
+  }): Promise<{
+    success: boolean;
+    output: string;
+    error?: string;
+    appId?: number;
+  }> {
     return this.ipcRenderer.invoke("solana-init-project", params);
   }
 
@@ -1624,5 +1641,33 @@ export class IpcClient {
     stderr?: string;
   }> {
     return this.ipcRenderer.invoke("transpile-contract", params);
+  }
+  
+  // Aptos Move Version
+  public async aptosVersion(): Promise<{
+    aptosMoveVersion: string | null;
+  }> {
+    return this.ipcRenderer.invoke("aptos-version");
+  }
+
+  // Vyper Version
+  public async vyperVersion(): Promise<{
+    vyperVersion: string | null;
+  }> {
+    return this.ipcRenderer.invoke("vyper-version");
+  }
+
+  // Cairo Version
+  public async cairoVersion(): Promise<{
+    cairoVersion: string | null;
+  }> {
+    return this.ipcRenderer.invoke("cairo-version");
+  }
+
+  // Cosmwasm Version
+  public async cosmwasmVersion(): Promise<{
+    cosmwasmVersion: string | null;
+  }> {
+    return this.ipcRenderer.invoke("cosmwasm-version");
   }
 }

@@ -36,6 +36,10 @@ import { registerVisualEditingHandlers } from "../pro/main/ipc/handlers/visual_e
 import { registerAgentToolHandlers } from "../pro/main/ipc/handlers/local_agent/agent_tool_handlers";
 import { registerSuiHandlers } from "./handlers/sui_handlers";
 import { registerSolanaHandlers } from "./handlers/solana_handlers";
+import { registerAptosHandlers } from "./handlers/aptos_handlers";
+import { registerVyperHandlers } from "./handlers/vyper_handlers";
+import { registerCairoHandlers } from "./handlers/cairo_handlers";
+import { registerCosmwasmHandlers } from "./handlers/cosmwasm_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -77,4 +81,8 @@ export function registerIpcHandlers() {
   registerAgentToolHandlers();
   registerSuiHandlers();
   registerSolanaHandlers();
+  registerAptosHandlers();
+  registerVyperHandlers();
+  registerCairoHandlers();
+  registerCosmwasmHandlers();
 }

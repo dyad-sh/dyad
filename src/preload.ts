@@ -148,6 +148,7 @@ const validInvokeChannels = [
   "github:clone-repo-from-url",
   "get-latest-security-review",
   // Sui
+  "sui-version",
   "sui-compile",
   "sui-deploy",
   "sui-test",
@@ -157,12 +158,21 @@ const validInvokeChannels = [
   "transpile-contract",
   // Get all apps
   // Solana
+  "solana-version",
   "solana-compile",
   "solana-deploy",
   "solana-test",
   "solana-get-address",
   "solana-get-balance",
   "solana-init-project",
+  // Aptos
+  "aptos-version",
+  // Vyper
+  "vyper-version",
+  // Cairo
+  "cairo-version",
+  // Cosmwasm
+  "cosmwasm-version",
 
   "save-contract-deployment",
   // Test-only channels

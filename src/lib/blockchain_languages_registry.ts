@@ -16,6 +16,7 @@ export interface BlockchainLanguage {
   category: "evm" | "move" | "wasm" | "non-evm";
   icon?: string; // Optional emoji or icon identifier
   documentationUrl?: string;
+  installationUrl: string;
   features: {
     hasObjects?: boolean; // Object-oriented like Sui Move
     hasCapabilities?: boolean; // Capability-based security
@@ -36,6 +37,8 @@ export const BLOCKCHAIN_LANGUAGES: Record<string, BlockchainLanguage> = {
     category: "evm",
     icon: "⟠",
     documentationUrl: "https://docs.soliditylang.org",
+    installationUrl:
+      "https://docs.soliditylang.org/en/latest/installing-solidity.html",
     features: {
       hasObjects: false,
       hasCapabilities: false,
@@ -55,6 +58,8 @@ export const BLOCKCHAIN_LANGUAGES: Record<string, BlockchainLanguage> = {
     category: "move",
     icon: "🌊",
     documentationUrl: "https://docs.sui.io/build/move",
+    installationUrl:
+      "https://docs.sui.io/guides/developer/getting-started/sui-install",
     features: {
       hasObjects: true,
       hasCapabilities: true,
@@ -74,6 +79,7 @@ export const BLOCKCHAIN_LANGUAGES: Record<string, BlockchainLanguage> = {
     category: "move",
     icon: "🅰️",
     documentationUrl: "https://aptos.dev/move/move-on-aptos",
+    installationUrl: "https://aptos.dev/build/cli",
     features: {
       hasObjects: false,
       hasCapabilities: true,
@@ -88,11 +94,14 @@ export const BLOCKCHAIN_LANGUAGES: Record<string, BlockchainLanguage> = {
     displayName: "Rust/Anchor",
     fileExtension: ".rs",
     monacoLanguageId: "rust",
-    description: "Rust-based programs for Solana (often using Anchor framework)",
+    description:
+      "Rust-based programs for Solana (often using Anchor framework)",
     ecosystem: ["Solana"],
     category: "non-evm",
     icon: "◎",
-    documentationUrl: "https://docs.solana.com/developing/on-chain-programs/overview",
+    documentationUrl:
+      "https://docs.solana.com/developing/on-chain-programs/overview",
+    installationUrl: "https://solana.com/docs/intro/installation",
     features: {
       hasObjects: false,
       hasCapabilities: false,
@@ -112,6 +121,8 @@ export const BLOCKCHAIN_LANGUAGES: Record<string, BlockchainLanguage> = {
     category: "non-evm",
     icon: "🏛️",
     documentationUrl: "https://www.cairo-lang.org/docs",
+    installationUrl:
+      "https://www.cairo-lang.org/tutorial/getting-started-with-cairo/",
     features: {
       hasObjects: false,
       hasCapabilities: false,
@@ -131,6 +142,8 @@ export const BLOCKCHAIN_LANGUAGES: Record<string, BlockchainLanguage> = {
     category: "evm",
     icon: "🐍",
     documentationUrl: "https://docs.vyperlang.org",
+    installationUrl:
+      "https://docs.vyperlang.org/en/stable/installing-vyper.html",
     features: {
       hasObjects: false,
       hasCapabilities: false,
@@ -150,6 +163,7 @@ export const BLOCKCHAIN_LANGUAGES: Record<string, BlockchainLanguage> = {
     category: "wasm",
     icon: "⚛️",
     documentationUrl: "https://docs.cosmwasm.com",
+    installationUrl: "https://cosmwasm.github.io/wasmd",
     features: {
       hasObjects: false,
       hasCapabilities: false,
@@ -263,7 +277,9 @@ export const TRANSLATION_MATRIX: TranslationPair[] = [
 /**
  * Get supported translation targets for a given source language
  */
-export function getSupportedTargets(sourceLanguageId: string): TranslationPair[] {
+export function getSupportedTargets(
+  sourceLanguageId: string,
+): TranslationPair[] {
   return TRANSLATION_MATRIX.filter((pair) => pair.source === sourceLanguageId);
 }
 
@@ -272,10 +288,10 @@ export function getSupportedTargets(sourceLanguageId: string): TranslationPair[]
  */
 export function isTranslationSupported(
   sourceId: string,
-  targetId: string
+  targetId: string,
 ): TranslationPair | undefined {
   return TRANSLATION_MATRIX.find(
-    (pair) => pair.source === sourceId && pair.target === targetId
+    (pair) => pair.source === sourceId && pair.target === targetId,
   );
 }
 
@@ -285,7 +301,7 @@ export function isTranslationSupported(
 export function getSourceLanguages(): BlockchainLanguage[] {
   const sourceIds = new Set(TRANSLATION_MATRIX.map((pair) => pair.source));
   return Object.values(BLOCKCHAIN_LANGUAGES).filter((lang) =>
-    sourceIds.has(lang.id)
+    sourceIds.has(lang.id),
   );
 }
 

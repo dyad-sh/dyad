@@ -6,6 +6,7 @@ import { createLoggedHandler } from "./safe_handle";
 import { getDyadAppPath } from "../../paths/paths";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
+import { runShellCommand } from "../utils/runShellCommand";
 
 const logger = log.scope("solana_handlers");
 const handle = createLoggedHandler(logger);
@@ -98,6 +99,10 @@ function formatCompilerErrors(rawOutput: string, truncate = true): string {
   }
 
   return output.trim();
+}
+
+export interface SolanaVersionResult {
+  anchorVersion: string | null;
 }
 
 export interface SolanaCompileParams {
@@ -197,6 +202,22 @@ test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
 
 export function registerSolanaHandlers() {
   /**
+   * Check Solana CLI version
+   */
+  handle("solana-version", async (): Promise<SolanaVersionResult> => {
+    logger.info("IPC: solana-version called");
+    let anchorVersion: string | null = null;
+    try {
+      anchorVersion = await runShellCommand(`anchor --version`);
+    } catch (err) {
+      console.error("Failed to get Solana CLI version:", err);
+    }
+    return {
+      anchorVersion,
+    };
+  });
+
+  /**
    * Compile an Anchor program using anchor build
    */
   handle(
@@ -214,7 +235,9 @@ export function registerSolanaHandlers() {
       }
 
       const programName = path.basename(anchorPath);
-      logger.info(`Compiling Anchor program at: ${anchorPath} (${programName})`);
+      logger.info(
+        `Compiling Anchor program at: ${anchorPath} (${programName})`,
+      );
 
       // Ensure Anchor structure
       try {
@@ -258,11 +281,19 @@ export function registerSolanaHandlers() {
             });
           } else {
             logger.error(`Anchor compilation failed with code ${code}`);
-            const combinedOutput = [stderr, stdout].filter((s) => s.trim()).join("\n\n");
+            const combinedOutput = [stderr, stdout]
+              .filter((s) => s.trim())
+              .join("\n\n");
             const rawErrorOutput = combinedOutput || "Compilation failed";
 
-            const formattedErrorsTruncated = formatCompilerErrors(rawErrorOutput, true);
-            const formattedErrorsFull = formatCompilerErrors(rawErrorOutput, false);
+            const formattedErrorsTruncated = formatCompilerErrors(
+              rawErrorOutput,
+              true,
+            );
+            const formattedErrorsFull = formatCompilerErrors(
+              rawErrorOutput,
+              false,
+            );
 
             resolve({
               success: false,
@@ -283,7 +314,7 @@ export function registerSolanaHandlers() {
           });
         });
       });
-    }
+    },
   );
 
   /**
@@ -305,7 +336,9 @@ export function registerSolanaHandlers() {
       }
 
       const programName = path.basename(anchorPath);
-      logger.info(`Deploying Anchor program at: ${anchorPath} (${programName})`);
+      logger.info(
+        `Deploying Anchor program at: ${anchorPath} (${programName})`,
+      );
 
       return new Promise((resolve) => {
         let stdout = "";
@@ -377,7 +410,10 @@ export function registerSolanaHandlers() {
             let errorMessage = stderr || stdout || "Deployment failed";
 
             // Check for common errors
-            if (errorMessage.includes("Insufficient funds") || errorMessage.includes("insufficient")) {
+            if (
+              errorMessage.includes("Insufficient funds") ||
+              errorMessage.includes("insufficient")
+            ) {
               errorMessage =
                 "❌ Deployment failed: Insufficient SOL for deployment.\n\n" +
                 "To get devnet SOL tokens:\n" +
@@ -413,7 +449,7 @@ export function registerSolanaHandlers() {
           });
         });
       });
-    }
+    },
   );
 
   /**
@@ -434,7 +470,9 @@ export function registerSolanaHandlers() {
       }
 
       const programName = path.basename(anchorPath);
-      logger.info(`Running tests for Anchor program at: ${anchorPath} (${programName})`);
+      logger.info(
+        `Running tests for Anchor program at: ${anchorPath} (${programName})`,
+      );
 
       return new Promise((resolve) => {
         let stdout = "";
@@ -467,8 +505,12 @@ export function registerSolanaHandlers() {
             });
           } else {
             logger.error(`Anchor tests failed with code ${code}`);
-            const combinedOutput = [stderr, stdout].filter((s) => s.trim()).join("\n\n");
-            const cleanOutput = stripAnsiCodes(combinedOutput || "Tests failed");
+            const combinedOutput = [stderr, stdout]
+              .filter((s) => s.trim())
+              .join("\n\n");
+            const cleanOutput = stripAnsiCodes(
+              combinedOutput || "Tests failed",
+            );
             resolve({
               success: false,
               output: "❌ Tests failed:\n\n" + cleanOutput,
@@ -481,50 +523,57 @@ export function registerSolanaHandlers() {
           logger.error("Failed to start anchor test process:", err);
           resolve({
             success: false,
-            output: "Failed to start Anchor CLI. Make sure Anchor is installed and in PATH.",
+            output:
+              "Failed to start Anchor CLI. Make sure Anchor is installed and in PATH.",
             error: err.message,
           });
         });
       });
-    }
+    },
   );
 
   /**
    * Get Solana wallet address
    */
-  handle("solana-get-address", async (): Promise<{ address: string | null }> => {
-    return new Promise((resolve) => {
-      let stdout = "";
+  handle(
+    "solana-get-address",
+    async (): Promise<{ address: string | null }> => {
+      return new Promise((resolve) => {
+        let stdout = "";
 
-      const solanaProcess = spawn("solana", ["address"], {
-        shell: true,
-      });
+        const solanaProcess = spawn("solana", ["address"], {
+          shell: true,
+        });
 
-      solanaProcess.stdout.on("data", (data) => {
-        stdout += data.toString();
-      });
+        solanaProcess.stdout.on("data", (data) => {
+          stdout += data.toString();
+        });
 
-      solanaProcess.on("close", (code) => {
-        if (code === 0) {
-          const address = stdout.trim();
-          resolve({ address });
-        } else {
+        solanaProcess.on("close", (code) => {
+          if (code === 0) {
+            const address = stdout.trim();
+            resolve({ address });
+          } else {
+            resolve({ address: null });
+          }
+        });
+
+        solanaProcess.on("error", () => {
           resolve({ address: null });
-        }
+        });
       });
-
-      solanaProcess.on("error", () => {
-        resolve({ address: null });
-      });
-    });
-  });
+    },
+  );
 
   /**
    * Get Solana balance
    */
   handle(
     "solana-get-balance",
-    async (): Promise<{ balance: string | null; formattedBalance: string | null }> => {
+    async (): Promise<{
+      balance: string | null;
+      formattedBalance: string | null;
+    }> => {
       return new Promise((resolve) => {
         let stdout = "";
 
@@ -544,7 +593,9 @@ export function registerSolanaHandlers() {
               const balanceMatch = stdout.match(/([\d.]+)\s*SOL/);
               if (balanceMatch) {
                 const balanceInSol = balanceMatch[1];
-                const balanceInLamports = (parseFloat(balanceInSol) * 1_000_000_000).toString();
+                const balanceInLamports = (
+                  parseFloat(balanceInSol) * 1_000_000_000
+                ).toString();
 
                 logger.info(`Balance: ${balanceInSol} SOL`);
                 resolve({
@@ -559,7 +610,9 @@ export function registerSolanaHandlers() {
               resolve({ balance: null, formattedBalance: null });
             }
           } else {
-            logger.warn(`Failed to get balance. Code: ${code}, stdout: ${stdout}`);
+            logger.warn(
+              `Failed to get balance. Code: ${code}, stdout: ${stdout}`,
+            );
             resolve({ balance: null, formattedBalance: null });
           }
         });
@@ -569,7 +622,7 @@ export function registerSolanaHandlers() {
           resolve({ balance: null, formattedBalance: null });
         });
       });
-    }
+    },
   );
 
   /**
@@ -579,12 +632,19 @@ export function registerSolanaHandlers() {
     "solana-init-project",
     async (
       _,
-      params: { projectName: string; parentPath: string }
-    ): Promise<{ success: boolean; output: string; error?: string; appId?: number }> => {
+      params: { projectName: string; parentPath: string },
+    ): Promise<{
+      success: boolean;
+      output: string;
+      error?: string;
+      appId?: number;
+    }> => {
       const { projectName, parentPath } = params;
       const fullParentPath = getDyadAppPath(parentPath);
 
-      logger.info(`Initializing Anchor project: ${projectName} in ${fullParentPath}`);
+      logger.info(
+        `Initializing Anchor project: ${projectName} in ${fullParentPath}`,
+      );
 
       // Ensure parent directory exists
       if (!fs.existsSync(fullParentPath)) {
@@ -642,14 +702,10 @@ export function registerSolanaHandlers() {
                     // Create initial commit using local git config
                     const gitCommit = spawn(
                       "git",
-                      [
-                        "commit",
-                        "-m",
-                        "Initial Anchor project scaffold",
-                      ],
+                      ["commit", "-m", "Initial Anchor project scaffold"],
                       {
                         cwd: fullProjectPath,
-                      }
+                      },
                     );
 
                     let gitCommitStderr = "";
@@ -668,7 +724,9 @@ export function registerSolanaHandlers() {
                         logger.info("Initial commit created successfully");
                         resolveGit();
                       } else {
-                        logger.warn(`Failed to create initial commit (code ${commitCode})`);
+                        logger.warn(
+                          `Failed to create initial commit (code ${commitCode})`,
+                        );
                         logger.warn("Git commit stderr:", gitCommitStderr);
                         logger.warn("Git commit stdout:", gitCommitStdout);
                         resolveGit(); // Continue anyway
@@ -741,6 +799,6 @@ export function registerSolanaHandlers() {
           });
         });
       });
-    }
+    },
   );
 }

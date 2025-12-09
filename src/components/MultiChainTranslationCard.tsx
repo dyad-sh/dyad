@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -26,10 +26,8 @@ import {
   getSourceLanguages,
   getTargetLanguages,
   getSupportedTargets,
-  getLanguageDisplayText,
-  type BlockchainLanguage,
-  type TranslationPair,
 } from "@/lib/blockchain_languages_registry";
+import { IpcClient } from "@/ipc/ipc_client";
 
 interface MultiChainTranslationCardProps {
   onTranslate: (
@@ -37,7 +35,7 @@ interface MultiChainTranslationCardProps {
     attachments: any[],
     projectName: string,
     sourceLanguage: string,
-    targetLanguage: string
+    targetLanguage: string,
   ) => void;
 }
 
@@ -52,6 +50,7 @@ export function MultiChainTranslationCard({
   const [code, setCode] = useState("");
   const [projectName, setProjectName] = useState("");
   const [isTranslating, setIsTranslating] = useState(false);
+  const [toolchainSetup, setToolchainSetup] = useState(false);
 
   const { attachments, handleFileSelect, removeAttachment, clearAttachments } =
     useAttachments();
@@ -60,7 +59,7 @@ export function MultiChainTranslationCard({
   const sourceLanguages = useMemo(() => getSourceLanguages(), []);
   const targetLanguages = useMemo(
     () => getTargetLanguages(sourceLanguage),
-    [sourceLanguage]
+    [sourceLanguage],
   );
 
   // Get translation pair info
@@ -82,7 +81,7 @@ export function MultiChainTranslationCard({
   // Swap languages (if bidirectional translation exists)
   const handleSwapLanguages = () => {
     const reverseSupported = getSupportedTargets(targetLanguage).some(
-      (p) => p.target === sourceLanguage
+      (p) => p.target === sourceLanguage,
     );
     if (reverseSupported) {
       const temp = sourceLanguage;
@@ -93,7 +92,7 @@ export function MultiChainTranslationCard({
 
   const canSwap = useMemo(() => {
     return getSupportedTargets(targetLanguage).some(
-      (p) => p.target === sourceLanguage
+      (p) => p.target === sourceLanguage,
     );
   }, [sourceLanguage, targetLanguage]);
 
@@ -108,7 +107,7 @@ export function MultiChainTranslationCard({
         attachments,
         projectName,
         sourceLanguage,
-        targetLanguage
+        targetLanguage,
       );
       setCode("");
       setProjectName("");
@@ -122,6 +121,52 @@ export function MultiChainTranslationCard({
 
   const sourceLang = BLOCKCHAIN_LANGUAGES[sourceLanguage];
   const targetLang = BLOCKCHAIN_LANGUAGES[targetLanguage];
+
+  const checkToolchainSetup = async (language: string) => {
+    try {
+      switch (language) {
+        case "sui_move": {
+          const { suiVersion } = await IpcClient.getInstance().suiVersion();
+          return !!suiVersion;
+        }
+        case "solana_rust": {
+          const { anchorVersion } =
+            await IpcClient.getInstance().solanaVersion();
+          return !!anchorVersion;
+        }
+        case "aptos_move": {
+          const { aptosMoveVersion } =
+            await IpcClient.getInstance().aptosVersion();
+          return !!aptosMoveVersion;
+        }
+        case "vyper": {
+          const { vyperVersion } = await IpcClient.getInstance().vyperVersion();
+          return !!vyperVersion;
+        }
+        case "cairo": {
+          const { cairoVersion } = await IpcClient.getInstance().cairoVersion();
+          return !!cairoVersion;
+        }
+        case "cosmwasm_rust": {
+          const { cosmwasmVersion } =
+            await IpcClient.getInstance().cosmwasmVersion();
+          return !!cosmwasmVersion;
+        }
+        default:
+          return false;
+      }
+    } catch (err) {
+      console.error(err);
+      return false;
+    }
+  };
+
+  useEffect(() => {
+    const check = async () => {
+      setToolchainSetup(await checkToolchainSetup(targetLanguage));
+    };
+    check();
+  }, [targetLanguage]);
 
   return (
     <Card className="w-full border-2 border-primary/20 shadow-lg">
@@ -210,15 +255,15 @@ export function MultiChainTranslationCard({
                 translationPair.status === "implemented"
                   ? "bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400"
                   : translationPair.status === "experimental"
-                  ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400"
-                  : "bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400"
+                    ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400"
+                    : "bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400"
               }`}
             >
               {translationPair.status === "implemented"
                 ? "✓ Fully Supported"
                 : translationPair.status === "experimental"
-                ? "⚠ Experimental"
-                : "🚧 Coming Soon"}
+                  ? "⚠ Experimental"
+                  : "🚧 Coming Soon"}
             </div>
             <span className="text-xs text-muted-foreground">
               Quality: {translationPair.quality}
@@ -260,6 +305,22 @@ export function MultiChainTranslationCard({
             />
           )}
         </div>
+        {!toolchainSetup && (
+          <div className="max-w-3xl mx-auto mt-4 py-2 px-3 text-sm bg-red-100 border border-red-200 rounded-lg dark:bg-red-800/10 dark:border-red-900">
+            {targetLang.displayName} compiler is required but not installed on
+            your system.{" "}
+            <a
+              onClick={() =>
+                IpcClient.getInstance().openExternalUrl(
+                  targetLang.installationUrl,
+                )
+              }
+              className="text-gray-700 hover:text-gray-900 underline cursor-pointer font-medium dark:text-gray-300 dark:hover:text-gray-100"
+            >
+              See installation docs
+            </a>
+          </div>
+        )}
 
         {/* Actions */}
         <div className="flex items-center justify-between gap-2">
@@ -274,7 +335,8 @@ export function MultiChainTranslationCard({
               (!code.trim() && attachments.length === 0) ||
               isTranslating ||
               !translationPair ||
-              translationPair.status === "planned"
+              translationPair.status === "planned" ||
+              !toolchainSetup
             }
             className="gap-2"
             size="lg"

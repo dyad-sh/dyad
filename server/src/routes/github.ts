@@ -50,7 +50,7 @@ router.get("/status", async (req, res, next) => {
             });
         }
 
-        const user = await response.json();
+        const user = await response.json() as any;
         res.json({
             success: true,
             data: {
@@ -80,7 +80,7 @@ router.post("/connect", async (req, res, next) => {
         }
 
         githubAccessToken = accessToken;
-        const user = await response.json();
+        const user = await response.json() as any;
 
         res.json({
             success: true,
@@ -138,7 +138,7 @@ router.get("/repos", async (req, res, next) => {
             throw createError("Failed to fetch repositories", response.status);
         }
 
-        const repos = await response.json();
+        const repos = await response.json() as any;
         res.json({
             success: true,
             data: repos.map((repo: any) => ({
@@ -177,7 +177,7 @@ router.get("/repos/:owner/:repo/branches", async (req, res, next) => {
             throw createError("Failed to fetch branches", response.status);
         }
 
-        const branches = await response.json();
+        const branches = await response.json() as any;
         res.json({
             success: true,
             data: branches.map((branch: any) => ({
@@ -220,11 +220,11 @@ router.post("/repos", async (req, res, next) => {
         });
 
         if (!response.ok) {
-            const data = await response.json();
+            const data = await response.json() as any;
             throw createError(data.message || "Failed to create repository", response.status);
         }
 
-        const repo = await response.json();
+        const repo = await response.json() as any;
         res.status(201).json({
             success: true,
             data: {

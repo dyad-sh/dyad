@@ -14,7 +14,9 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "types": ["node"]
+    "types": ["node"],
+    "allowImportingTsExtensions": false,
+    "customConditions": ["node"]
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]

@@ -35,9 +35,9 @@ async function execOrThrow(
   const result = await exec(args, path);
   if (result.exitCode !== 0) {
     const errorDetails = result.stderr.trim() || result.stdout.trim();
-    const error =
-      errorMessage + ". " + errorDetails ||
-      `Git command failed: ${args.join(" ")}. ${errorDetails}`;
+    const error = errorMessage
+      ? `${errorMessage}. ${errorDetails}`
+      : `Git command failed: ${args.join(" ")}. ${errorDetails}`;
     throw new Error(error);
   }
 }

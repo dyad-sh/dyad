@@ -74,6 +74,11 @@ export function ModelPicker() {
     }
   }, [open, loadOllamaModels, loadLMStudioModels]);
 
+  if (!settings) {
+    return null;
+  }
+  const selectedModel = settings?.selectedModel;
+
   // Get display name for the selected model
   const getModelDisplayName = () => {
     if (selectedModel.provider === "ollama") {
@@ -116,22 +121,22 @@ export function ModelPicker() {
   const autoModels =
     !loading && modelsByProviders && modelsByProviders["auto"]
       ? modelsByProviders["auto"].filter((model) => {
-          if (
-            settings &&
-            !isDyadProEnabled(settings) &&
-            ["turbo", "value"].includes(model.apiName)
-          ) {
-            return false;
-          }
-          if (
-            settings &&
-            isDyadProEnabled(settings) &&
-            model.apiName === "free"
-          ) {
-            return false;
-          }
-          return true;
-        })
+        if (
+          settings &&
+          !isDyadProEnabled(settings) &&
+          ["turbo", "value"].includes(model.apiName)
+        ) {
+          return false;
+        }
+        if (
+          settings &&
+          isDyadProEnabled(settings) &&
+          model.apiName === "free"
+        ) {
+          return false;
+        }
+        return true;
+      })
       : [];
 
   // Determine availability of local models
@@ -140,17 +145,13 @@ export function ModelPicker() {
   const hasLMStudioModels =
     !lmStudioLoading && !lmStudioError && lmStudioModels.length > 0;
 
-  if (!settings) {
-    return null;
-  }
-  const selectedModel = settings?.selectedModel;
   const modelDisplayName = getModelDisplayName();
   // Split providers into primary and secondary groups (excluding auto)
   const providerEntries =
     !loading && modelsByProviders
       ? Object.entries(modelsByProviders).filter(
-          ([providerId]) => providerId !== "auto",
-        )
+        ([providerId]) => providerId !== "auto",
+      )
       : [];
   const primaryProviders = providerEntries.filter(([providerId, models]) => {
     if (models.length === 0) return false;
@@ -221,7 +222,7 @@ export function ModelPicker() {
                       <DropdownMenuItem
                         className={
                           selectedModel.provider === "auto" &&
-                          selectedModel.name === model.apiName
+                            selectedModel.name === model.apiName
                             ? "bg-secondary"
                             : ""
                         }
@@ -317,7 +318,7 @@ export function ModelPicker() {
                           <DropdownMenuItem
                             className={
                               selectedModel.provider === providerId &&
-                              selectedModel.name === model.apiName
+                                selectedModel.name === model.apiName
                                 ? "bg-secondary"
                                 : ""
                             }
@@ -399,7 +400,7 @@ export function ModelPicker() {
                                 <DropdownMenuItem
                                   className={
                                     selectedModel.provider === providerId &&
-                                    selectedModel.name === model.apiName
+                                      selectedModel.name === model.apiName
                                       ? "bg-secondary"
                                       : ""
                                   }
@@ -510,7 +511,7 @@ export function ModelPicker() {
                       key={`ollama-${model.modelName}`}
                       className={
                         selectedModel.provider === "ollama" &&
-                        selectedModel.name === model.modelName
+                          selectedModel.name === model.modelName
                           ? "bg-secondary"
                           : ""
                       }
@@ -591,7 +592,7 @@ export function ModelPicker() {
                       key={`lmstudio-${model.modelName}`}
                       className={
                         selectedModel.provider === "lmstudio" &&
-                        selectedModel.name === model.modelName
+                          selectedModel.name === model.modelName
                           ? "bg-secondary"
                           : ""
                       }

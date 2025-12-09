@@ -69,8 +69,10 @@ import type {
   CloneRepoParams,
   SupabaseBranch,
   SetSupabaseAppProjectParams,
+
   SelectNodeFolderResult,
 } from "./ipc_types";
+import { appsApi, chatsApi, settingsApi, githubApi, mcpApi } from "@/api/client";
 import type { Template } from "../shared/templates";
 import type {
   AppChatContext,
@@ -125,11 +127,18 @@ export class IpcClient {
   >;
   private mcpConsentHandlers: Map<string, (payload: any) => void>;
   private constructor() {
-    this.ipcRenderer = (window as any).electron.ipcRenderer as IpcRenderer;
+    const electron = (window as any).electron;
+    this.ipcRenderer = electron ? electron.ipcRenderer : null;
     this.chatStreams = new Map();
     this.appStreams = new Map();
     this.helpStreams = new Map();
     this.mcpConsentHandlers = new Map();
+
+    if (!this.ipcRenderer) {
+      console.warn("IpcClient: Running in browser mode, IPC methods will likely fail unless polyfilled.");
+      return;
+    }
+
     // Set up listeners for stream events
     this.ipcRenderer.on("chat:response:chunk", (data) => {
       if (
@@ -281,10 +290,16 @@ export class IpcClient {
 
   // Create a new app with an initial chat
   public async createApp(params: CreateAppParams): Promise<CreateAppResult> {
+    if (!this.ipcRenderer) {
+      return appsApi.create(params);
+    }
     return this.ipcRenderer.invoke("create-app", params);
   }
 
   public async getApp(appId: number): Promise<App> {
+    if (!this.ipcRenderer) {
+      return appsApi.get(appId);
+    }
     return this.ipcRenderer.invoke("get-app", appId);
   }
 
@@ -325,6 +340,10 @@ export class IpcClient {
   // Get all chats
   public async getChats(appId?: number): Promise<ChatSummary[]> {
     try {
+      if (!this.ipcRenderer) {
+        const chats = await chatsApi.list(appId);
+        return ChatSummariesSchema.parse(chats);
+      }
       const data = await this.ipcRenderer.invoke("get-chats", appId);
       return ChatSummariesSchema.parse(data);
     } catch (error) {
@@ -339,6 +358,17 @@ export class IpcClient {
     query: string,
   ): Promise<ChatSearchResult[]> {
     try {
+      if (!this.ipcRenderer) {
+        console.warn("IpcClient: Search chats not fully implemented in web mode");
+        const chats = await chatsApi.list(appId);
+        return chats.filter((c: any) => c.title?.toLowerCase().includes(query.toLowerCase())).map((c: any) => ({
+          id: c.id,
+          appId: appId,
+          title: c.title,
+          createdAt: new Date(c.createdAt || Date.now()),
+          matchedMessageContent: null
+        }));
+      }
       const data = await this.ipcRenderer.invoke("search-chats", appId, query);
       return ChatSearchResultsSchema.parse(data);
     } catch (error) {
@@ -349,6 +379,10 @@ export class IpcClient {
 
   // Get all apps
   public async listApps(): Promise<ListAppsResponse> {
+    if (!this.ipcRenderer) {
+      const apps = await appsApi.list();
+      return { apps, appBasePath: "" };
+    }
     return this.ipcRenderer.invoke("list-apps");
   }
 
@@ -407,6 +441,12 @@ export class IpcClient {
       onError,
     } = options;
     this.chatStreams.set(chatId, { onUpdate, onEnd, onError });
+
+    if (!this.ipcRenderer) {
+      console.warn("IpcClient: streamMessage not fully implemented in web mode");
+      onError("Chat streaming is not yet supported in the web version.");
+      return;
+    }
 
     // Handle file attachments if provided
     if (attachments && attachments.length > 0) {
@@ -482,6 +522,10 @@ export class IpcClient {
 
   // Create a new chat for an app
   public async createChat(appId: number): Promise<number> {
+    if (!this.ipcRenderer) {
+      const chat = await chatsApi.create({ appId });
+      return chat.id;
+    }
     return this.ipcRenderer.invoke("create-chat", appId);
   }
 
@@ -1325,6 +1369,6 @@ export class IpcClient {
   }
 
   public cancelHelpChat(sessionId: string): void {
-    this.ipcRenderer.invoke("help:chat:cancel", sessionId).catch(() => {});
+    this.ipcRenderer.invoke("help:chat:cancel", sessionId).catch(() => { });
   }
 }

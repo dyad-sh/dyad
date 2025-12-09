@@ -112,13 +112,13 @@ function App() {
 
   useEffect(() => {
     const ipc = IpcClient.getInstance();
-    const unsubscribe = ipc.onMcpToolConsentRequest((payload) => {
+    const unsubscribe = ipc.onMcpToolConsentRequest((payload: any) => {
       showMcpConsentToast({
         serverName: payload.serverName,
         toolName: payload.toolName,
         toolDescription: payload.toolDescription,
         inputPreview: payload.inputPreview,
-        onDecision: (d) => ipc.respondToMcpConsentRequest(payload.requestId, d),
+        onDecision: (d: any) => ipc.respondToMcpConsentRequest(payload.requestId, d),
       });
     });
     return () => unsubscribe();

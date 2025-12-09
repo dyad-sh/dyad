@@ -1118,6 +1118,10 @@ export class IpcClient {
     return this.ipcRenderer.invoke("get-language-model-providers");
   }
 
+  public async checkClaudeCliExists(): Promise<boolean> {
+    return this.ipcRenderer.invoke("check-claude-cli-exists");
+  }
+
   public async getLanguageModels(params: {
     providerId: string;
   }): Promise<LanguageModel[]> {

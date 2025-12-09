@@ -9,6 +9,7 @@ const validInvokeChannels = [
   "get-language-models-by-providers",
   "create-custom-language-model",
   "get-language-model-providers",
+  "check-claude-cli-exists",
   "delete-custom-language-model-provider",
   "create-custom-language-model-provider",
   "edit-custom-language-model-provider",

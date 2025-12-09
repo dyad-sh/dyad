@@ -50,7 +50,12 @@ WORKDIR /app/server
 RUN npm install --include=dev
 RUN npm install -g typescript
 
+# Install drizzle-orm at root level for shared schema
+WORKDIR /app
+RUN npm init -y && npm install drizzle-orm
+
 # Copy server source
+WORKDIR /app/server
 COPY server/src ./src
 COPY server/tsconfig.json ./
 COPY server/drizzle.config.ts ./

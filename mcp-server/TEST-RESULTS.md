@@ -73,6 +73,6 @@ Une fois Dyad lancé et Claude configuré, vous pourrez utiliser les 13 outils M
 
 ---
 
-**Date de compilation** : 9 décembre 2025  
-**Statut** : ✅ Prêt à l'emploi  
+**Date de compilation** : 9 décembre 2025
+**Statut** : ✅ Prêt à l'emploi
 **Prochaine étape** : Configuration du client MCP

@@ -78,6 +78,10 @@ export function ModelPicker() {
     return null;
   }
   const selectedModel = settings?.selectedModel;
+  
+  if (!selectedModel) {
+    return null;
+  }
 
   // Get display name for the selected model
   const getModelDisplayName = () => {

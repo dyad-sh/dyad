@@ -12,7 +12,7 @@ import { apps } from "../db/schema.js";
 import { eq } from "drizzle-orm";
 import git from "isomorphic-git";
 // @ts-ignore - isomorphic-git types are incomplete
-import http from "isomorphic-git/http/node/index.js";
+import http from "isomorphic-git/http/node";
 import fs from "node:fs";
 import path from "node:path";
 

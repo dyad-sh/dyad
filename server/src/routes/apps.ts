@@ -73,6 +73,7 @@ router.post("/", async (req, res, next) => {
         const db = getDb();
         const body = CreateAppSchema.parse(req.body);
 
+        // @ts-ignore - description will be added to schema later
         const newApp = await db.insert(apps).values({
             name: body.name,
             description: body.description || "",

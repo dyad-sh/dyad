@@ -1,7 +1,21 @@
 import { ipcMain, BrowserWindow, IpcMainInvokeEvent } from "electron";
 import fetch from "node-fetch"; // Use node-fetch for making HTTP requests in main process
 import { writeSettings, readSettings } from "../../main/settings";
-import { gitSetRemoteUrl, gitPush, gitClone } from "../utils/git_utils";
+import {
+  gitSetRemoteUrl,
+  gitPush,
+  gitClone,
+  gitPull,
+  gitFetch,
+  gitCreateBranch,
+  gitDeleteBranch,
+  gitCheckout,
+  gitMerge,
+  gitGetMergeConflicts,
+  gitCurrentBranch,
+  gitListBranches,
+  gitRenameBranch,
+} from "../utils/git_utils";
 import * as schema from "../../db/schema";
 import fs from "node:fs";
 import { getDyadAppPath } from "../../paths/paths";
@@ -579,6 +593,39 @@ async function handlePushToGithub(
       remoteUrl,
     });
 
+    // Pull changes first (unless force push)
+    if (!force) {
+      try {
+        await gitPull({
+          path: appPath,
+          remote: "origin",
+          branch,
+          accessToken,
+        });
+      } catch (pullError: any) {
+        // Check if it's a conflict
+        const errorMessage = pullError.message || "";
+        if (
+          errorMessage.includes("conflict") ||
+          errorMessage.includes("Merge conflict")
+        ) {
+          return {
+            success: false,
+            error:
+              "Merge conflict detected. Please resolve conflicts before pushing.",
+            isConflict: true,
+          };
+        }
+        // If it's just that remote doesn't have the branch yet, we can ignore and push
+        if (
+          !errorMessage.includes("couldn't find remote ref") &&
+          !errorMessage.includes("not found")
+        ) {
+          throw pullError;
+        }
+      }
+    }
+
     // Push to GitHub
     await gitPush({
       path: appPath,
@@ -591,7 +638,236 @@ async function handlePushToGithub(
     return {
       success: false,
       error: err.message || "Failed to push to GitHub.",
+      isConflict: err.message?.includes("conflict"),
     };
+  }
+}
+
+// --- GitHub Pull Handler ---
+async function handlePullFromGithub(
+  event: IpcMainInvokeEvent,
+  { appId }: { appId: number },
+) {
+  try {
+    const settings = readSettings();
+    const accessToken = settings.githubAccessToken?.value;
+    if (!accessToken) {
+      return { success: false, error: "Not authenticated with GitHub." };
+    }
+    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+    if (!app || !app.githubOrg || !app.githubRepo) {
+      return { success: false, error: "App is not linked to a GitHub repo." };
+    }
+    const appPath = getDyadAppPath(app.path);
+    const branch = app.githubBranch || "main";
+
+    // Pull from GitHub
+    await gitPull({
+      path: appPath,
+      remote: "origin",
+      branch,
+      accessToken,
+    });
+    return { success: true };
+  } catch (err: any) {
+    return {
+      success: false,
+      error: err.message || "Failed to pull from GitHub.",
+    };
+  }
+}
+
+// --- GitHub Fetch Handler ---
+async function handleFetchFromGithub(
+  event: IpcMainInvokeEvent,
+  { appId }: { appId: number },
+) {
+  try {
+    const settings = readSettings();
+    const accessToken = settings.githubAccessToken?.value;
+    if (!accessToken) {
+      return { success: false, error: "Not authenticated with GitHub." };
+    }
+    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+    if (!app || !app.githubOrg || !app.githubRepo) {
+      return { success: false, error: "App is not linked to a GitHub repo." };
+    }
+    const appPath = getDyadAppPath(app.path);
+
+    await gitFetch({
+      path: appPath,
+      remote: "origin",
+      accessToken,
+    });
+    return { success: true };
+  } catch (err: any) {
+    return {
+      success: false,
+      error: err.message || "Failed to fetch from GitHub.",
+    };
+  }
+}
+
+// --- GitHub Branch Handlers ---
+
+async function handleCreateBranch(
+  event: IpcMainInvokeEvent,
+  { appId, branch, from }: { appId: number; branch: string; from?: string },
+) {
+  try {
+    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+    if (!app) throw new Error("App not found");
+    const appPath = getDyadAppPath(app.path);
+
+    await gitCreateBranch({
+      path: appPath,
+      branch,
+      from,
+    });
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message || "Failed to create branch." };
+  }
+}
+
+async function handleDeleteBranch(
+  event: IpcMainInvokeEvent,
+  { appId, branch }: { appId: number; branch: string },
+) {
+  try {
+    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+    if (!app) throw new Error("App not found");
+    const appPath = getDyadAppPath(app.path);
+
+    await gitDeleteBranch({
+      path: appPath,
+      branch,
+    });
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message || "Failed to delete branch." };
+  }
+}
+
+async function handleSwitchBranch(
+  event: IpcMainInvokeEvent,
+  { appId, branch }: { appId: number; branch: string },
+) {
+  try {
+    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+    if (!app) throw new Error("App not found");
+    const appPath = getDyadAppPath(app.path);
+
+    await gitCheckout({
+      path: appPath,
+      ref: branch,
+    });
+
+    // Update DB with new branch
+    await updateAppGithubRepo({
+      appId,
+      org: app.githubOrg || undefined,
+      repo: app.githubRepo || "",
+      branch,
+    });
+
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message || "Failed to switch branch." };
+  }
+}
+
+async function handleRenameBranch(
+  event: IpcMainInvokeEvent,
+  {
+    appId,
+    oldBranch,
+    newBranch,
+  }: { appId: number; oldBranch: string; newBranch: string },
+) {
+  try {
+    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+    if (!app) throw new Error("App not found");
+    const appPath = getDyadAppPath(app.path);
+
+    await gitRenameBranch({
+      path: appPath,
+      oldBranch,
+      newBranch,
+    });
+
+    // If we renamed the current branch (which is likely), update DB if needed
+    // But gitRenameBranch doesn't change HEAD if we are on it?
+    // Actually git branch -m renames the current branch if on it.
+    // We should check if we were on oldBranch and if so update DB.
+    const current = await gitCurrentBranch({ path: appPath });
+    if (current === newBranch) {
+      await updateAppGithubRepo({
+        appId,
+        org: app.githubOrg || undefined,
+        repo: app.githubRepo || "",
+        branch: newBranch,
+      });
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message || "Failed to rename branch." };
+  }
+}
+
+async function handleMergeBranch(
+  event: IpcMainInvokeEvent,
+  { appId, branch }: { appId: number; branch: string },
+) {
+  try {
+    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+    if (!app) throw new Error("App not found");
+    const appPath = getDyadAppPath(app.path);
+
+    await gitMerge({
+      path: appPath,
+      branch,
+    });
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message || "Failed to merge branch." };
+  }
+}
+
+async function handleGetMergeConflicts(
+  event: IpcMainInvokeEvent,
+  { appId }: { appId: number },
+) {
+  try {
+    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+    if (!app) throw new Error("App not found");
+    const appPath = getDyadAppPath(app.path);
+
+    const conflicts = await gitGetMergeConflicts({ path: appPath });
+    return { success: true, conflicts };
+  } catch (err: any) {
+    return {
+      success: false,
+      error: err.message || "Failed to get merge conflicts.",
+    };
+  }
+}
+
+async function handleListLocalBranches(
+  event: IpcMainInvokeEvent,
+  { appId }: { appId: number },
+) {
+  try {
+    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+    if (!app) throw new Error("App not found");
+    const appPath = getDyadAppPath(app.path);
+
+    const branches = await gitListBranches({ path: appPath });
+    const current = await gitCurrentBranch({ path: appPath });
+    return { success: true, branches, current };
+  } catch (err: any) {
+    return { success: false, error: err.message || "Failed to list branches." };
   }
 }
 
@@ -727,6 +1003,134 @@ async function handleCloneRepoFromUrl(
   }
 }
 
+async function handleListCollaborators(
+  event: IpcMainInvokeEvent,
+  { appId }: { appId: number },
+): Promise<{ login: string; avatar_url: string; permissions: any }[]> {
+  try {
+    const settings = readSettings();
+    const accessToken = settings.githubAccessToken?.value;
+    if (!accessToken) {
+      throw new Error("Not authenticated with GitHub.");
+    }
+
+    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+    if (!app || !app.githubOrg || !app.githubRepo) {
+      throw new Error("App is not linked to a GitHub repo.");
+    }
+
+    const response = await fetch(
+      `${GITHUB_API_BASE}/repos/${app.githubOrg}/${app.githubRepo}/collaborators`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: "application/vnd.github+json",
+        },
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `Failed to list collaborators: ${response.status} ${response.statusText}`,
+      );
+    }
+
+    const collaborators = await response.json();
+    return collaborators.map((c: any) => ({
+      login: c.login,
+      avatar_url: c.avatar_url,
+      permissions: c.permissions,
+    }));
+  } catch (err: any) {
+    logger.error("[GitHub Handler] Failed to list collaborators:", err);
+    throw new Error(err.message || "Failed to list collaborators.");
+  }
+}
+
+async function handleInviteCollaborator(
+  event: IpcMainInvokeEvent,
+  { appId, username }: { appId: number; username: string },
+): Promise<void> {
+  try {
+    const settings = readSettings();
+    const accessToken = settings.githubAccessToken?.value;
+    if (!accessToken) {
+      throw new Error("Not authenticated with GitHub.");
+    }
+
+    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+    if (!app || !app.githubOrg || !app.githubRepo) {
+      throw new Error("App is not linked to a GitHub repo.");
+    }
+
+    // GitHub API to add a collaborator (sends an invitation)
+    const response = await fetch(
+      `${GITHUB_API_BASE}/repos/${app.githubOrg}/${app.githubRepo}/collaborators/${username}`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: "application/vnd.github+json",
+        },
+        body: JSON.stringify({
+          permission: "push", // Default to write access
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(
+        data.message ||
+          `Failed to invite collaborator: ${response.status} ${response.statusText}`,
+      );
+    }
+  } catch (err: any) {
+    logger.error("[GitHub Handler] Failed to invite collaborator:", err);
+    throw new Error(err.message || "Failed to invite collaborator.");
+  }
+}
+
+async function handleRemoveCollaborator(
+  event: IpcMainInvokeEvent,
+  { appId, username }: { appId: number; username: string },
+): Promise<void> {
+  try {
+    const settings = readSettings();
+    const accessToken = settings.githubAccessToken?.value;
+    if (!accessToken) {
+      throw new Error("Not authenticated with GitHub.");
+    }
+
+    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+    if (!app || !app.githubOrg || !app.githubRepo) {
+      throw new Error("App is not linked to a GitHub repo.");
+    }
+
+    const response = await fetch(
+      `${GITHUB_API_BASE}/repos/${app.githubOrg}/${app.githubRepo}/collaborators/${username}`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: "application/vnd.github+json",
+        },
+      },
+    );
+
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(
+        data.message ||
+          `Failed to remove collaborator: ${response.status} ${response.statusText}`,
+      );
+    }
+  } catch (err: any) {
+    logger.error("[GitHub Handler] Failed to remove collaborator:", err);
+    throw new Error(err.message || "Failed to remove collaborator.");
+  }
+}
+
 // --- Registration ---
 export function registerGithubHandlers() {
   ipcMain.handle("github:start-flow", handleStartGithubFlow);
@@ -746,6 +1150,15 @@ export function registerGithubHandlers() {
     ) => handleConnectToExistingRepo(event, args),
   );
   ipcMain.handle("github:push", handlePushToGithub);
+  ipcMain.handle("github:pull", handlePullFromGithub);
+  ipcMain.handle("github:fetch", handleFetchFromGithub);
+  ipcMain.handle("github:create-branch", handleCreateBranch);
+  ipcMain.handle("github:delete-branch", handleDeleteBranch);
+  ipcMain.handle("github:switch-branch", handleSwitchBranch);
+  ipcMain.handle("github:rename-branch", handleRenameBranch);
+  ipcMain.handle("github:merge-branch", handleMergeBranch);
+  ipcMain.handle("github:get-conflicts", handleGetMergeConflicts);
+  ipcMain.handle("github:list-local-branches", handleListLocalBranches);
   ipcMain.handle("github:disconnect", (event, args: { appId: number }) =>
     handleDisconnectGithubRepo(event, args),
   );
@@ -755,6 +1168,9 @@ export function registerGithubHandlers() {
       return await handleCloneRepoFromUrl(event, args);
     },
   );
+  ipcMain.handle("github:list-collaborators", handleListCollaborators);
+  ipcMain.handle("github:invite-collaborator", handleInviteCollaborator);
+  ipcMain.handle("github:remove-collaborator", handleRemoveCollaborator);
 }
 
 export async function updateAppGithubRepo({

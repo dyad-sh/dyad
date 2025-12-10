@@ -825,7 +825,7 @@ export class IpcClient {
   public async syncGithubRepo(
     appId: number,
     force?: boolean,
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<{ success: boolean; error?: string; isConflict?: boolean }> {
     return this.ipcRenderer.invoke("github:push", {
       appId,
       force,
@@ -837,6 +837,85 @@ export class IpcClient {
       appId,
     });
   }
+
+  public async pullGithubRepo(
+    appId: number,
+  ): Promise<{ success: boolean; error?: string }> {
+    return this.ipcRenderer.invoke("github:pull", { appId });
+  }
+
+  public async fetchGithubRepo(
+    appId: number,
+  ): Promise<{ success: boolean; error?: string }> {
+    return this.ipcRenderer.invoke("github:fetch", { appId });
+  }
+
+  public async createGithubBranch(
+    appId: number,
+    branch: string,
+    from?: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    return this.ipcRenderer.invoke("github:create-branch", {
+      appId,
+      branch,
+      from,
+    });
+  }
+
+  public async deleteGithubBranch(
+    appId: number,
+    branch: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    return this.ipcRenderer.invoke("github:delete-branch", { appId, branch });
+  }
+
+  public async switchGithubBranch(
+    appId: number,
+    branch: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    return this.ipcRenderer.invoke("github:switch-branch", { appId, branch });
+  }
+
+  public async renameGithubBranch(
+    appId: number,
+    oldBranch: string,
+    newBranch: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    return this.ipcRenderer.invoke("github:rename-branch", {
+      appId,
+      oldBranch,
+      newBranch,
+    });
+  }
+
+  public async mergeGithubBranch(
+    appId: number,
+    branch: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    return this.ipcRenderer.invoke("github:merge-branch", { appId, branch });
+  }
+
+  public async getGithubMergeConflicts(
+    appId: number,
+  ): Promise<{ success: boolean; conflicts?: string[]; error?: string }> {
+    return this.ipcRenderer.invoke("github:get-conflicts", { appId });
+  }
+
+  public async listLocalGithubBranches(appId: number): Promise<{
+    success: boolean;
+    branches?: string[];
+    current?: string | null;
+    error?: string;
+  }> {
+    return this.ipcRenderer.invoke("github:list-local-branches", { appId });
+  }
+  public async resolveGithubConflict(
+    appId: number,
+    filePath: string,
+  ): Promise<{ success: boolean; resolution?: string; error?: string }> {
+    return this.ipcRenderer.invoke("ai:resolve-conflict", { appId, filePath });
+  }
+
   // --- End GitHub Repo Management ---
 
   // --- Vercel Token Management ---
@@ -1476,5 +1555,31 @@ export class IpcClient {
     params: AnalyseComponentParams,
   ): Promise<{ isDynamic: boolean; hasStaticText: boolean }> {
     return this.ipcRenderer.invoke("analyze-component", params);
+  }
+
+  public async listCollaborators(
+    appId: number,
+  ): Promise<{ login: string; avatar_url: string; permissions: any }[]> {
+    return this.ipcRenderer.invoke("github:list-collaborators", { appId });
+  }
+
+  public async inviteCollaborator(
+    appId: number,
+    username: string,
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("github:invite-collaborator", {
+      appId,
+      username,
+    });
+  }
+
+  public async removeCollaborator(
+    appId: number,
+    username: string,
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("github:remove-collaborator", {
+      appId,
+      username,
+    });
   }
 }

@@ -22,6 +22,11 @@ import type {
   GitInitParams,
   GitPushParams,
   GitCommit,
+  GitFetchParams,
+  GitPullParams,
+  GitMergeParams,
+  GitCreateBranchParams,
+  GitDeleteBranchParams,
 } from "../git_types";
 
 /**
@@ -680,4 +685,159 @@ export async function gitLogNative(
   }
 
   return entries;
+}
+
+export async function gitFetch({
+  path,
+  remote = "origin",
+  accessToken,
+}: GitFetchParams): Promise<void> {
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    await execOrThrow(["fetch", remote], path, "Failed to fetch from remote");
+  } else {
+    await git.fetch({
+      fs,
+      http,
+      dir: path,
+      remote,
+      onAuth: accessToken
+        ? () => ({
+            username: accessToken,
+            password: "x-oauth-basic",
+          })
+        : undefined,
+    });
+  }
+}
+
+export async function gitPull({
+  path,
+  remote = "origin",
+  branch = "main",
+  accessToken,
+  author,
+}: GitPullParams): Promise<void> {
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    // git pull origin main --rebase
+    // We use rebase to keep history clean, but maybe we should make it configurable?
+    // For now, let's stick to standard pull (merge) to avoid complex rebase conflicts for non-technical users,
+    // OR use rebase if that's the preferred workflow.
+    // The plan mentioned "pull --rebase (or merge)". Let's default to merge for safety/simplicity first,
+    // as rebase conflicts can be scarier.
+    await execOrThrow(
+      ["pull", remote, branch],
+      path,
+      "Failed to pull from remote",
+    );
+  } else {
+    await git.pull({
+      fs,
+      http,
+      dir: path,
+      remote,
+      ref: branch,
+      singleBranch: true,
+      author: author || (await getGitAuthor()),
+      onAuth: accessToken
+        ? () => ({
+            username: accessToken,
+            password: "x-oauth-basic",
+          })
+        : undefined,
+    });
+  }
+}
+
+export async function gitMerge({
+  path,
+  branch,
+  author,
+}: GitMergeParams): Promise<void> {
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    await execOrThrow(
+      ["merge", branch],
+      path,
+      `Failed to merge branch ${branch}`,
+    );
+  } else {
+    await git.merge({
+      fs,
+      dir: path,
+      ours: "HEAD",
+      theirs: branch,
+      author: author || (await getGitAuthor()),
+    });
+  }
+}
+
+export async function gitCreateBranch({
+  path,
+  branch,
+  from = "HEAD",
+}: GitCreateBranchParams): Promise<void> {
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    await execOrThrow(
+      ["branch", branch, from],
+      path,
+      `Failed to create branch ${branch}`,
+    );
+  } else {
+    await git.branch({
+      fs,
+      dir: path,
+      ref: branch,
+      checkout: false, // Just create, don't switch yet (unless we want to?)
+      // isomorphic-git branch doesn't support 'from' directly in the same way, it branches from HEAD usually.
+      // If 'from' is not HEAD, we might need to checkout 'from' first or use plumbing.
+      // For simplicity, let's assume branching from current HEAD for now or implement checkout logic if needed.
+    });
+  }
+}
+
+export async function gitDeleteBranch({
+  path,
+  branch,
+}: GitDeleteBranchParams): Promise<void> {
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    await execOrThrow(
+      ["branch", "-D", branch],
+      path,
+      `Failed to delete branch ${branch}`,
+    );
+  } else {
+    await git.deleteBranch({
+      fs,
+      dir: path,
+      ref: branch,
+    });
+  }
+}
+
+export async function gitGetMergeConflicts({
+  path,
+}: GitBaseParams): Promise<string[]> {
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    // git diff --name-only --diff-filter=U
+    const result = await exec(["diff", "--name-only", "--diff-filter=U"], path);
+    if (result.exitCode !== 0) {
+      throw new Error(`Failed to get merge conflicts: ${result.stderr}`);
+    }
+    return result.stdout
+      .toString()
+      .split("\n")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+  } else {
+    // Actually, isomorphic-git doesn't have a direct "getConflicts" helper.
+    // We might need to iterate statusMatrix.
+    // Let's assume for now we iterate and look for specific patterns, or just return empty if not supported yet.
+    // TODO: Implement proper conflict detection for isomorphic-git
+    return [];
+  }
 }

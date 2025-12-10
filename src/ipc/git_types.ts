@@ -58,3 +58,36 @@ export interface GitInitParams extends GitBaseParams {
 export interface GitStageToRevertParams extends GitBaseParams {
   targetOid: string;
 }
+
+export interface GitAuthorParam {
+  name: string;
+  email: string;
+  timestamp?: number;
+  timezoneOffset?: number;
+}
+
+export interface GitFetchParams extends GitBaseParams {
+  remote?: string;
+  accessToken?: string;
+}
+
+export interface GitPullParams extends GitBaseParams {
+  remote?: string;
+  branch?: string;
+  accessToken?: string;
+  author?: GitAuthorParam;
+}
+
+export interface GitMergeParams extends GitBaseParams {
+  branch: string;
+  author?: GitAuthorParam;
+}
+
+export interface GitCreateBranchParams extends GitBaseParams {
+  branch: string;
+  from?: string;
+}
+
+export interface GitDeleteBranchParams extends GitBaseParams {
+  branch: string;
+}

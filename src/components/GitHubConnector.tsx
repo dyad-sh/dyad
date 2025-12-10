@@ -32,6 +32,7 @@ interface GitHubConnectorProps {
   appId: number | null;
   folderName: string;
   expanded?: boolean;
+  onConflict?: (conflicts: string[]) => void;
 }
 
 interface GitHubRepo {
@@ -51,6 +52,7 @@ interface ConnectedGitHubConnectorProps {
   refreshApp: () => void;
   triggerAutoSync?: boolean;
   onAutoSyncComplete?: () => void;
+  onConflict?: (conflicts: string[]) => void;
 }
 
 export interface UnconnectedGitHubConnectorProps {
@@ -68,6 +70,7 @@ function ConnectedGitHubConnector({
   refreshApp,
   triggerAutoSync,
   onAutoSyncComplete,
+  onConflict,
 }: ConnectedGitHubConnectorProps) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -105,6 +108,24 @@ function ConnectedGitHubConnector({
         if (result.success) {
           setSyncSuccess(true);
         } else {
+          if (result.isConflict) {
+            // Fetch the actual conflicts
+            const conflictsResult =
+              await IpcClient.getInstance().getGithubMergeConflicts(appId);
+            if (
+              conflictsResult.success &&
+              conflictsResult.conflicts &&
+              conflictsResult.conflicts.length > 0 &&
+              onConflict
+            ) {
+              onConflict(conflictsResult.conflicts);
+              setSyncError(
+                "Merge conflicts detected. Please resolve them below.",
+              );
+              return;
+            }
+          }
+
           setSyncError(result.error || "Failed to sync to GitHub.");
           // If it's a push rejection error, show the force dialog
           if (
@@ -901,6 +922,7 @@ export function GitHubConnector({
   appId,
   folderName,
   expanded,
+  onConflict,
 }: GitHubConnectorProps) {
   const { app, refreshApp } = useLoadApp(appId);
   const { settings, refreshSettings } = useSettings();
@@ -923,6 +945,7 @@ export function GitHubConnector({
         refreshApp={refreshApp}
         triggerAutoSync={pendingAutoSync}
         onAutoSyncComplete={handleAutoSyncComplete}
+        onConflict={onConflict}
       />
     );
   } else {

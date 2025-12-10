@@ -40,14 +40,14 @@ export interface Message {
  * Supports both local SQLite and remote PostgreSQL via REST API
  */
 export class DyadDatabase {
-  private dbPath: string;
+  private dbPath!: string;
   private apiUrl?: string;
   private mode: "sqlite" | "api";
 
   constructor(customPath?: string) {
     // Check if API URL is provided for web mode
     this.apiUrl = process.env.DYAD_API_URL;
-    
+
     if (this.apiUrl) {
       this.mode = "api";
       console.error(`[MCP] Using API mode: ${this.apiUrl}`);
@@ -76,7 +76,7 @@ export class DyadDatabase {
 
     const url = `${this.apiUrl}${endpoint}`;
     console.error(`[MCP] API Request: ${url}`);
-    
+
     try {
       const response = await fetch(url, {
         headers: {
@@ -88,7 +88,7 @@ export class DyadDatabase {
         throw new Error(`API error: ${response.status} ${response.statusText}`);
       }
 
-      return await response.json();
+      return await response.json() as T;
     } catch (error) {
       console.error(`[MCP] API error:`, error);
       throw new Error(`Failed to fetch from Dyad API: ${error instanceof Error ? error.message : String(error)}`);
@@ -148,7 +148,7 @@ export class DyadDatabase {
       const response = await this.apiRequest<{ apps: App[] }>("/api/apps");
       return response.apps || [];
     }
-    
+
     throw new Error(
       "SQLite mode requires direct database access implementation. " +
       "Use DYAD_API_URL for web mode or implement SQLite connector."
@@ -164,7 +164,7 @@ export class DyadDatabase {
         return undefined;
       }
     }
-    
+
     throw new Error(
       "SQLite mode requires direct database access implementation. " +
       "Use DYAD_API_URL for web mode or implement SQLite connector."
@@ -174,11 +174,11 @@ export class DyadDatabase {
   async searchApps(query: string): Promise<App[]> {
     if (this.mode === "api") {
       const allApps = await this.listApps();
-      return allApps.filter(app => 
+      return allApps.filter(app =>
         app.name.toLowerCase().includes(query.toLowerCase())
       );
     }
-    
+
     throw new Error(
       "SQLite mode requires direct database access implementation. " +
       "Use DYAD_API_URL for web mode or implement SQLite connector."
@@ -191,13 +191,13 @@ export class DyadDatabase {
 
   async listChats(appId?: number): Promise<Chat[]> {
     if (this.mode === "api") {
-      const endpoint = appId 
-        ? `/api/apps/${appId}/chats` 
+      const endpoint = appId
+        ? `/api/apps/${appId}/chats`
         : "/api/chats";
       const response = await this.apiRequest<{ chats: Chat[] }>(endpoint);
       return response.chats || [];
     }
-    
+
     throw new Error(
       "SQLite mode requires direct database access implementation. " +
       "Use DYAD_API_URL for web mode or implement SQLite connector."
@@ -213,7 +213,7 @@ export class DyadDatabase {
         return undefined;
       }
     }
-    
+
     throw new Error(
       "SQLite mode requires direct database access implementation. " +
       "Use DYAD_API_URL for web mode or implement SQLite connector."
@@ -223,11 +223,11 @@ export class DyadDatabase {
   async searchChats(query: string, appId?: number): Promise<Chat[]> {
     if (this.mode === "api") {
       const chats = await this.listChats(appId);
-      return chats.filter(chat => 
+      return chats.filter(chat =>
         chat.title.toLowerCase().includes(query.toLowerCase())
       );
     }
-    
+
     throw new Error(
       "SQLite mode requires direct database access implementation. " +
       "Use DYAD_API_URL for web mode or implement SQLite connector."
@@ -243,7 +243,7 @@ export class DyadDatabase {
       const response = await this.apiRequest<{ messages: Message[] }>(`/api/chats/${chatId}/messages`);
       return response.messages || [];
     }
-    
+
     throw new Error(
       "SQLite mode requires direct database access implementation. " +
       "Use DYAD_API_URL for web mode or implement SQLite connector."
@@ -259,7 +259,7 @@ export class DyadDatabase {
         return undefined;
       }
     }
-    
+
     throw new Error(
       "SQLite mode requires direct database access implementation. " +
       "Use DYAD_API_URL for web mode or implement SQLite connector."

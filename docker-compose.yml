@@ -24,6 +24,8 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - GOOGLE_GENERATIVE_AI_API_KEY=${GOOGLE_GENERATIVE_AI_API_KEY}
+      # Database
+      - DATABASE_URL=${DATABASE_URL}
       # GitHub (optional)
       - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
       - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
@@ -69,6 +71,7 @@ services:
       - dyad-data:/app/data:ro
     environment:
       - DYAD_DATA_DIR=/app/data
+      - DYAD_API_URL=http://dyad:3007
     depends_on:
       - dyad
     networks:

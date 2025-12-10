@@ -67,11 +67,15 @@ services:
       dockerfile: Dockerfile
     container_name: dyad-mcp
     restart: unless-stopped
+    ports:
+      - "3008:3008"
     volumes:
       - dyad-data:/app/data:ro
     environment:
       - DYAD_DATA_DIR=/app/data
       - DYAD_API_URL=http://dyad:3007
+      - MCP_HTTP_PORT=3008
+      - MCP_HTTP_HOST=0.0.0.0
     depends_on:
       - dyad
     networks:

@@ -28,6 +28,7 @@ import { ImportAppButton } from "@/components/ImportAppButton";
 import { showError } from "@/lib/toast";
 import { invalidateAppQuery } from "@/hooks/useLoadApp";
 import { useQueryClient } from "@tanstack/react-query";
+import { ForceCloseDialog } from "@/components/ForceCloseDialog";
 
 import type { FileAttachment } from "@/ipc/ipc_types";
 import { NEON_TEMPLATE_IDS } from "@/shared/templates";
@@ -48,6 +49,8 @@ export default function HomePage() {
   const { settings, updateSettings } = useSettings();
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const [isLoading, setIsLoading] = useState(false);
+  const [forceCloseDialogOpen, setForceCloseDialogOpen] = useState(false);
+  const [performanceData, setPerformanceData] = useState<any>(undefined);
   const { streamMessage } = useStreamChat({ hasChatId: false });
   const posthog = usePostHog();
   const appVersion = useAppVersion();
@@ -55,6 +58,17 @@ export default function HomePage() {
   const [releaseUrl, setReleaseUrl] = useState("");
   const { theme } = useTheme();
   const queryClient = useQueryClient();
+
+  // Listen for force-close events
+  useEffect(() => {
+    const ipc = IpcClient.getInstance();
+    const unsubscribe = ipc.onForceCloseDetected((data) => {
+      setPerformanceData(data.performanceData);
+      setForceCloseDialogOpen(true);
+    });
+    return () => unsubscribe();
+  }, []);
+
   useEffect(() => {
     const updateLastVersionLaunched = async () => {
       if (
@@ -189,6 +203,11 @@ export default function HomePage() {
   // Main Home Page Content
   return (
     <div className="flex flex-col items-center justify-center max-w-3xl w-full m-auto p-8">
+      <ForceCloseDialog
+        isOpen={forceCloseDialogOpen}
+        onClose={() => setForceCloseDialogOpen(false)}
+        performanceData={performanceData}
+      />
       <SetupBanner />
 
       <div className="w-full">

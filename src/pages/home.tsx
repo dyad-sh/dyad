@@ -8,7 +8,7 @@ import { useLoadApps } from "@/hooks/useLoadApps";
 import { useSettings } from "@/hooks/useSettings";
 import { SetupBanner } from "@/components/SetupBanner";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { HomeChatInput } from "@/components/chat/HomeChatInput";
 import { usePostHog } from "posthog-js/react";
@@ -55,13 +55,19 @@ export default function HomePage() {
   const [releaseUrl, setReleaseUrl] = useState("");
   const { theme } = useTheme();
   const queryClient = useQueryClient();
+  
+  // Use ref to track if we've already updated the version to prevent infinite loop
+  const hasUpdatedVersionRef = useRef(false);
+  
   useEffect(() => {
     const updateLastVersionLaunched = async () => {
       if (
         appVersion &&
         settings &&
-        settings.lastShownReleaseNotesVersion !== appVersion
+        settings.lastShownReleaseNotesVersion !== appVersion &&
+        !hasUpdatedVersionRef.current
       ) {
+        hasUpdatedVersionRef.current = true;
         const shouldShowReleaseNotes = !!settings.lastShownReleaseNotesVersion;
         await updateSettings({
           lastShownReleaseNotesVersion: appVersion,
@@ -90,7 +96,7 @@ export default function HomePage() {
       }
     };
     updateLastVersionLaunched();
-  }, [appVersion, settings, updateSettings, theme]);
+  }, [appVersion, updateSettings, theme]);
 
   // Get the appId from search params
   const appId = search.appId ? Number(search.appId) : null;

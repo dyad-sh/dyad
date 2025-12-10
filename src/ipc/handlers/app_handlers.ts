@@ -14,7 +14,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { getDyadAppPath, getUserDataPath } from "../../paths/paths";
 import { ChildProcess, spawn } from "node:child_process";
-import git from "isomorphic-git";
 import { promises as fsPromises } from "node:fs";
 
 // Import our utility modules
@@ -44,7 +43,13 @@ import { getLanguageModelProviders } from "../shared/language_model_helpers";
 import { startProxy } from "../utils/start_proxy_server";
 import { Worker } from "worker_threads";
 import { createFromTemplate } from "./createFromTemplate";
-import { gitCommit } from "../utils/git_utils";
+import {
+  gitCommit,
+  gitAdd,
+  gitInit,
+  gitListBranches,
+  gitRenameBranch,
+} from "../utils/git_utils";
 import { safeSend } from "../utils/safe_sender";
 import { normalizePath } from "../../../shared/normalizePath";
 import { isServerFunction } from "@/supabase_admin/supabase_utils";
@@ -585,18 +590,11 @@ export function registerAppHandlers() {
       });
 
       // Initialize git repo and create first commit
-      await git.init({
-        fs: fs,
-        dir: fullAppPath,
-        defaultBranch: "main",
-      });
+
+      await gitInit({ path: fullAppPath, ref: "main" });
 
       // Stage all files
-      await git.add({
-        fs: fs,
-        dir: fullAppPath,
-        filepath: ".",
-      });
+      await gitAdd({ path: fullAppPath, filepath: "." });
 
       // Create initial commit
       const commitHash = await gitCommit({
@@ -657,18 +655,10 @@ export function registerAppHandlers() {
 
       if (!withHistory) {
         // Initialize git repo and create first commit
-        await git.init({
-          fs: fs,
-          dir: newAppPath,
-          defaultBranch: "main",
-        });
+        await gitInit({ path: newAppPath, ref: "main" });
 
         // Stage all files
-        await git.add({
-          fs: fs,
-          dir: newAppPath,
-          filepath: ".",
-        });
+        await gitAdd({ path: newAppPath, filepath: "." });
 
         // Create initial commit
         await gitCommit({
@@ -1049,11 +1039,7 @@ export function registerAppHandlers() {
 
         // Check if git repository exists and commit the change
         if (fs.existsSync(path.join(appPath, ".git"))) {
-          await git.add({
-            fs,
-            dir: appPath,
-            filepath: filePath,
-          });
+          await gitAdd({ path: appPath, filepath: filePath });
 
           await gitCommit({
             path: appPath,
@@ -1398,7 +1384,7 @@ export function registerAppHandlers() {
     return withLock(appId, async () => {
       try {
         // Check if the old branch exists
-        const branches = await git.listBranches({ fs, dir: appPath });
+        const branches = await gitListBranches({ path: appPath });
         if (!branches.includes(oldBranchName)) {
           throw new Error(`Branch '${oldBranchName}' not found.`);
         }
@@ -1414,11 +1400,10 @@ export function registerAppHandlers() {
           );
         }
 
-        await git.renameBranch({
-          fs: fs,
-          dir: appPath,
-          oldref: oldBranchName,
-          ref: newBranchName,
+        await gitRenameBranch({
+          path: appPath,
+          oldBranch: oldBranchName,
+          newBranch: newBranchName,
         });
         logger.info(
           `Branch renamed from '${oldBranchName}' to '${newBranchName}' for app ${appId}`,

@@ -654,8 +654,8 @@ export async function gitLogNative(
     return [];
   }
 
-  // Split by commit delimiter
-  const commitChunks = output.split("\x00---END-COMMIT---\n").filter(Boolean);
+  // Split by commit delimiter (without newline since trim() removes trailing newline)
+  const commitChunks = output.split("\x00---END-COMMIT---").filter(Boolean);
   const entries: GitCommit[] = [];
 
   for (const chunk of commitChunks) {

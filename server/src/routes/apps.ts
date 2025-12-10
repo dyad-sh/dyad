@@ -73,10 +73,17 @@ router.post("/", async (req, res, next) => {
         const db = getDb();
         const body = CreateAppSchema.parse(req.body);
 
+        // Generate a path for web mode (no actual filesystem)
+        // Use timestamp + sanitized name to ensure uniqueness
+        const sanitizedName = body.name.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+        const timestamp = Date.now();
+        const webPath = `/web-apps/${sanitizedName}-${timestamp}`;
+
         // @ts-ignore - description will be added to schema later
         const newApp = await db.insert(apps).values({
             name: body.name,
             description: body.description || "",
+            path: webPath, // Provide path for web mode to satisfy NOT NULL constraint
             // Additional fields will be set by service layer
         }).returning();
 

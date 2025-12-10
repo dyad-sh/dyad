@@ -66,7 +66,7 @@ router.get("/:id", async (req, res, next) => {
 });
 
 /**
- * POST /api/apps - Create new app
+ * POST /api/apps - Create new app with initial chat
  */
 router.post("/", async (req, res, next) => {
     try {
@@ -79,17 +79,25 @@ router.post("/", async (req, res, next) => {
         const timestamp = Date.now();
         const webPath = `/web-apps/${sanitizedName}-${timestamp}`;
 
-        // @ts-ignore - description will be added to schema later
+        // Create the app
         const newApp = await db.insert(apps).values({
             name: body.name,
             description: body.description || "",
             path: webPath, // Provide path for web mode to satisfy NOT NULL constraint
-            // Additional fields will be set by service layer
+        }).returning();
+
+        // Create an initial chat for the app
+        const newChat = await db.insert(chats).values({
+            appId: newApp[0].id,
+            title: null, // Will be set later based on first message
         }).returning();
 
         res.status(201).json({
             success: true,
-            data: newApp[0],
+            data: {
+                app: newApp[0],
+                chatId: newChat[0].id,
+            },
         });
     } catch (error) {
         if (error instanceof z.ZodError) {

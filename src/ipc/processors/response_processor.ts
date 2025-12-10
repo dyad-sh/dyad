@@ -78,7 +78,8 @@ export async function dryRunSearchReplace({
       if (!result.success || typeof result.content !== "string") {
         issues.push({
           filePath,
-          error: "Unable to apply search-replace to file",
+          error:
+            "Unable to apply search-replace to file because: " + result.error,
         });
         continue;
       }

@@ -26,6 +26,7 @@ import {
   Pen,
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { CopyErrorMessage } from "@/components/CopyErrorMessage";
 import { IpcClient } from "@/ipc/ipc_client";
 
 import { useParseRouter } from "@/hooks/useParseRouter";
@@ -36,11 +37,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useStreamChat } from "@/hooks/useStreamChat";
+import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import {
   selectedComponentsPreviewAtom,
+  visualEditingSelectedComponentAtom,
+  currentComponentCoordinatesAtom,
   previewIframeRefAtom,
   annotatorModeAtom,
   screenshotDataUrlAtom,
+  pendingVisualChangesAtom,
 } from "@/atoms/previewAtoms";
 import { ComponentSelection } from "@/ipc/ipc_types";
 import {
@@ -64,6 +69,7 @@ import { AnnotatorOnlyForPro } from "./AnnotatorOnlyForPro";
 import { useAttachments } from "@/hooks/useAttachments";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { Annotator } from "@/pro/ui/components/Annotator/Annotator";
+import { VisualEditingToolbar } from "./VisualEditingToolbar";
 
 interface ErrorBannerProps {
   error: { message: string; source: "preview-app" | "dyad-app" } | undefined;
@@ -144,13 +150,14 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
         </div>
       </div>
 
-      {/* AI Fix button at the bottom */}
+      {/* Action buttons at the bottom */}
       {!isDockerError && error.source === "preview-app" && (
-        <div className="mt-2 flex justify-end">
+        <div className="mt-3 px-6 flex justify-end gap-2">
+          <CopyErrorMessage errorMessage={error.message} />
           <button
             disabled={isStreaming}
             onClick={onAIFix}
-            className="cursor-pointer flex items-center space-x-1 px-2 py-0.5 bg-red-500 dark:bg-red-600 text-white rounded text-sm hover:bg-red-600 dark:hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="cursor-pointer flex items-center space-x-1 px-2 py-1 bg-red-500 dark:bg-red-600 text-white rounded text-sm hover:bg-red-600 dark:hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Sparkles size={14} />
             <span>Fix error with AI</span>
@@ -173,6 +180,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const { streamMessage } = useStreamChat();
   const { routes: availableRoutes } = useParseRouter(selectedAppId);
   const { restartApp } = useRunApp();
+  const { userBudget } = useUserBudgetInfo();
+  const isProMode = !!userBudget;
 
   // Navigation state
   const [isComponentSelectorInitialized, setIsComponentSelectorInitialized] =
@@ -181,8 +190,13 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const [canGoForward, setCanGoForward] = useState(false);
   const [navigationHistory, setNavigationHistory] = useState<string[]>([]);
   const [currentHistoryPosition, setCurrentHistoryPosition] = useState(0);
-  const [selectedComponentsPreview, setSelectedComponentsPreview] = useAtom(
+  const setSelectedComponentsPreview = useSetAtom(
     selectedComponentsPreviewAtom,
+  );
+  const [visualEditingSelectedComponent, setVisualEditingSelectedComponent] =
+    useAtom(visualEditingSelectedComponentAtom);
+  const setCurrentComponentCoordinates = useSetAtom(
+    currentComponentCoordinatesAtom,
   );
   const setPreviewIframeRef = useSetAtom(previewIframeRefAtom);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -193,6 +207,11 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   );
 
   const { addAttachments } = useAttachments();
+  const setPendingChanges = useSetAtom(pendingVisualChangesAtom);
+
+  // AST Analysis State
+  const [isDynamicComponent, setIsDynamicComponent] = useState(false);
+  const [hasStaticText, setHasStaticText] = useState(false);
 
   // Device mode state
   type DeviceMode = "desktop" | "tablet" | "mobile";
@@ -209,26 +228,117 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   //detect if the user is using Mac
   const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
 
+  const analyzeComponent = async (componentId: string) => {
+    if (!componentId || !selectedAppId) return;
+
+    try {
+      const result = await IpcClient.getInstance().analyzeComponent({
+        appId: selectedAppId,
+        componentId,
+      });
+      setIsDynamicComponent(result.isDynamic);
+      setHasStaticText(result.hasStaticText);
+
+      // Automatically enable text editing if component has static text
+      if (result.hasStaticText && iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage(
+          {
+            type: "enable-dyad-text-editing",
+            data: {
+              componentId: componentId,
+              runtimeId: visualEditingSelectedComponent?.runtimeId,
+            },
+          },
+          "*",
+        );
+      }
+    } catch (err) {
+      console.error("Failed to analyze component", err);
+      setIsDynamicComponent(false);
+      setHasStaticText(false);
+    }
+  };
+
+  const handleTextUpdated = async (data: any) => {
+    const { componentId, text } = data;
+    if (!componentId || !selectedAppId) return;
+
+    // Parse componentId to extract file path and line number
+    const [filePath, lineStr] = componentId.split(":");
+    const lineNumber = parseInt(lineStr, 10);
+
+    if (!filePath || isNaN(lineNumber)) {
+      console.error("Invalid componentId format:", componentId);
+      return;
+    }
+
+    // Store text change in pending changes
+    setPendingChanges((prev) => {
+      const updated = new Map(prev);
+      const existing = updated.get(componentId);
+
+      updated.set(componentId, {
+        componentId: componentId,
+        componentName:
+          existing?.componentName || visualEditingSelectedComponent?.name || "",
+        relativePath: filePath,
+        lineNumber: lineNumber,
+        styles: existing?.styles || {},
+        textContent: text,
+      });
+
+      return updated;
+    });
+  };
+
+  // Function to get current styles from selected element
+  const getCurrentElementStyles = () => {
+    if (!iframeRef.current?.contentWindow || !visualEditingSelectedComponent)
+      return;
+
+    try {
+      // Send message to iframe to get current styles
+      iframeRef.current.contentWindow.postMessage(
+        {
+          type: "get-dyad-component-styles",
+          data: {
+            elementId: visualEditingSelectedComponent.id,
+            runtimeId: visualEditingSelectedComponent.runtimeId,
+          },
+        },
+        "*",
+      );
+    } catch (error) {
+      console.error("Failed to get element styles:", error);
+    }
+  };
   useEffect(() => {
     setAnnotatorMode(false);
   }, []);
+  // Reset visual editing state when app changes or component unmounts
+  useEffect(() => {
+    return () => {
+      // Cleanup on unmount or when app changes
+      setVisualEditingSelectedComponent(null);
+      setPendingChanges(new Map());
+      setCurrentComponentCoordinates(null);
+    };
+  }, [selectedAppId]);
+
   // Update iframe ref atom
   useEffect(() => {
     setPreviewIframeRef(iframeRef.current);
   }, [iframeRef.current, setPreviewIframeRef]);
 
-  // Deactivate component selector when selection is cleared
+  // Send pro mode status to iframe
   useEffect(() => {
-    if (!selectedComponentsPreview || selectedComponentsPreview.length === 0) {
-      if (iframeRef.current?.contentWindow) {
-        iframeRef.current.contentWindow.postMessage(
-          { type: "deactivate-dyad-component-selector" },
-          "*",
-        );
-      }
-      setIsPicking(false);
+    if (iframeRef.current?.contentWindow && isComponentSelectorInitialized) {
+      iframeRef.current.contentWindow.postMessage(
+        { type: "dyad-pro-mode", enabled: isProMode },
+        "*",
+      );
     }
-  }, [selectedComponentsPreview]);
+  }, [isProMode, isComponentSelectorInitialized]);
 
   // Add message listener for iframe errors and navigation events
   useEffect(() => {
@@ -240,31 +350,57 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
       if (event.data?.type === "dyad-component-selector-initialized") {
         setIsComponentSelectorInitialized(true);
+        iframeRef.current?.contentWindow?.postMessage(
+          { type: "dyad-pro-mode", enabled: isProMode },
+          "*",
+        );
+        return;
+      }
+
+      if (event.data?.type === "dyad-text-updated") {
+        handleTextUpdated(event.data);
+        return;
+      }
+
+      if (event.data?.type === "dyad-text-finalized") {
+        handleTextUpdated(event.data);
         return;
       }
 
       if (event.data?.type === "dyad-component-selected") {
         console.log("Component picked:", event.data);
 
-        // Parse the single selected component
-        const component = event.data.component
-          ? parseComponentSelection({
-              type: "dyad-component-selected",
-              id: event.data.component.id,
-              name: event.data.component.name,
-            })
-          : null;
+        const component = parseComponentSelection(event.data);
 
         if (!component) return;
 
-        // Add to existing components, avoiding duplicates by id
+        // Store the coordinates
+        if (event.data.coordinates && isProMode) {
+          setCurrentComponentCoordinates(event.data.coordinates);
+        }
+
+        // Add to selected components if not already there
         setSelectedComponentsPreview((prev) => {
-          // Check if this component is already selected
-          if (prev.some((c) => c.id === component.id)) {
+          const exists = prev.some((c) => {
+            // Check by runtimeId if available otherwise by id
+            // Stored components may have lost their runtimeId after re-renders or reloading the page
+            if (component.runtimeId && c.runtimeId) {
+              return c.runtimeId === component.runtimeId;
+            }
+            return c.id === component.id;
+          });
+          if (exists) {
             return prev;
           }
           return [...prev, component];
         });
+
+        if (isProMode) {
+          // Set as the highlighted component for visual editing
+          setVisualEditingSelectedComponent(component);
+          // Trigger AST analysis
+          analyzeComponent(component.id);
+        }
 
         return;
       }
@@ -272,9 +408,34 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       if (event.data?.type === "dyad-component-deselected") {
         const componentId = event.data.componentId;
         if (componentId) {
+          // Disable text editing for the deselected component
+          if (iframeRef.current?.contentWindow) {
+            iframeRef.current.contentWindow.postMessage(
+              {
+                type: "disable-dyad-text-editing",
+                data: { componentId },
+              },
+              "*",
+            );
+          }
+
           setSelectedComponentsPreview((prev) =>
             prev.filter((c) => c.id !== componentId),
           );
+          setVisualEditingSelectedComponent((prev) => {
+            const shouldClear = prev?.id === componentId;
+            if (shouldClear) {
+              setCurrentComponentCoordinates(null);
+            }
+            return shouldClear ? null : prev;
+          });
+        }
+        return;
+      }
+
+      if (event.data?.type === "dyad-component-coordinates-updated") {
+        if (event.data.coordinates) {
+          setCurrentComponentCoordinates(event.data.coordinates);
         }
         return;
       }
@@ -374,6 +535,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     setErrorMessage,
     setIsComponentSelectorInitialized,
     setSelectedComponentsPreview,
+    setVisualEditingSelectedComponent,
   ]);
 
   useEffect(() => {
@@ -392,11 +554,26 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     }
   }, [appUrl]);
 
+  // Get current styles when component is selected for visual editing
+  useEffect(() => {
+    if (visualEditingSelectedComponent) {
+      getCurrentElementStyles();
+    }
+  }, [visualEditingSelectedComponent]);
+
   // Function to activate component selector in the iframe
   const handleActivateComponentSelector = () => {
     if (iframeRef.current?.contentWindow) {
       const newIsPicking = !isPicking;
+      if (!newIsPicking) {
+        // Clean up any text editing states when deactivating
+        iframeRef.current.contentWindow.postMessage(
+          { type: "cleanup-all-text-editing" },
+          "*",
+        );
+      }
       setIsPicking(newIsPicking);
+      setVisualEditingSelectedComponent(null);
       iframeRef.current.contentWindow.postMessage(
         {
           type: newIsPicking
@@ -475,6 +652,10 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const handleReload = () => {
     setReloadKey((prevKey) => prevKey + 1);
     setErrorMessage(undefined);
+    // Reset visual editing state
+    setVisualEditingSelectedComponent(null);
+    setPendingChanges(new Map());
+    setCurrentComponentCoordinates(null);
     // Optionally, add logic here if you need to explicitly stop/start the app again
     // For now, just changing the key should remount the iframe
     console.debug("Reloading iframe preview for app", selectedAppId);
@@ -837,6 +1018,15 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 src={appUrl}
                 allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
               />
+              {/* Visual Editing Toolbar */}
+              {isProMode && visualEditingSelectedComponent && selectedAppId && (
+                <VisualEditingToolbar
+                  selectedComponent={visualEditingSelectedComponent}
+                  iframeRef={iframeRef}
+                  isDynamic={isDynamicComponent}
+                  hasStaticText={hasStaticText}
+                />
+              )}
             )}
           </div>
         )}
@@ -846,16 +1036,20 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 };
 
 function parseComponentSelection(data: any): ComponentSelection | null {
+  if (!data || data.type !== "dyad-component-selected") {
+    return null;
+  }
+
+  const component = data.component;
   if (
-    !data ||
-    data.type !== "dyad-component-selected" ||
-    typeof data.id !== "string" ||
-    typeof data.name !== "string"
+    !component ||
+    typeof component.id !== "string" ||
+    typeof component.name !== "string"
   ) {
     return null;
   }
 
-  const { id, name } = data;
+  const { id, name, runtimeId } = component;
 
   // The id is expected to be in the format "filepath:line:column"
   const parts = id.split(":");
@@ -884,6 +1078,7 @@ function parseComponentSelection(data: any): ComponentSelection | null {
   return {
     id,
     name,
+    runtimeId,
     relativePath: normalizePath(relativePath),
     lineNumber,
     columnNumber,

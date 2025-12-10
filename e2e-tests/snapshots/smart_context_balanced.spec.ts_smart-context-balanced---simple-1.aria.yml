@@ -1,0 +1,12 @@
+- paragraph: "[dump]"
+- paragraph: "[[dyad-dump-path=*]]"
+- button:
+  - img
+- img
+- text: Approved
+- img
+- text: less than a minute ago
+- button "Request ID":
+  - img
+- button "Retry":
+  - img

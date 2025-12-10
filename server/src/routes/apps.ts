@@ -82,7 +82,6 @@ router.post("/", async (req, res, next) => {
         // Create the app
         const newApp = await db.insert(apps).values({
             name: body.name,
-            description: body.description || "",
             path: webPath, // Provide path for web mode to satisfy NOT NULL constraint
         }).returning();
 

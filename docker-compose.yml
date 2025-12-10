@@ -76,8 +76,6 @@ services:
       - dyad
     networks:
       - dyad-network
-    profiles:
-      - with-mcp
 
 volumes:
   dyad-data:

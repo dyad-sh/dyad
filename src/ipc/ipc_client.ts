@@ -757,46 +757,74 @@ export class IpcClient {
 
   // --- GitHub Device Flow ---
   public startGithubDeviceFlow(appId: number | null): void {
+    if (!this.ipcRenderer) {
+      console.warn("startGithubDeviceFlow: Not supported in web mode");
+      return;
+    }
     this.ipcRenderer.invoke("github:start-flow", { appId });
   }
 
   public onGithubDeviceFlowUpdate(
     callback: (data: GitHubDeviceFlowUpdateData) => void,
   ): () => void {
+    if (!this.ipcRenderer) {
+      console.warn("onGithubDeviceFlowUpdate: Not supported in web mode");
+      return () => { };
+    }
+
     const listener = (data: any) => {
       console.log("github:flow-update", data);
       callback(data as GitHubDeviceFlowUpdateData);
     };
     this.ipcRenderer.on("github:flow-update", listener);
+
     // Return a function to remove the listener
     return () => {
-      this.ipcRenderer.removeListener("github:flow-update", listener);
+      if (this.ipcRenderer) {
+        this.ipcRenderer.removeListener("github:flow-update", listener);
+      }
     };
   }
 
   public onGithubDeviceFlowSuccess(
     callback: (data: GitHubDeviceFlowSuccessData) => void,
   ): () => void {
+    if (!this.ipcRenderer) {
+      console.warn("onGithubDeviceFlowSuccess: Not supported in web mode");
+      return () => { };
+    }
+
     const listener = (data: any) => {
       console.log("github:flow-success", data);
       callback(data as GitHubDeviceFlowSuccessData);
     };
     this.ipcRenderer.on("github:flow-success", listener);
+
     return () => {
-      this.ipcRenderer.removeListener("github:flow-success", listener);
+      if (this.ipcRenderer) {
+        this.ipcRenderer.removeListener("github:flow-success", listener);
+      }
     };
   }
 
   public onGithubDeviceFlowError(
     callback: (data: GitHubDeviceFlowErrorData) => void,
   ): () => void {
+    if (!this.ipcRenderer) {
+      console.warn("onGithubDeviceFlowError: Not supported in web mode");
+      return () => { };
+    }
+
     const listener = (data: any) => {
       console.log("github:flow-error", data);
       callback(data as GitHubDeviceFlowErrorData);
     };
     this.ipcRenderer.on("github:flow-error", listener);
+
     return () => {
-      this.ipcRenderer.removeListener("github:flow-error", listener);
+      if (this.ipcRenderer) {
+        this.ipcRenderer.removeListener("github:flow-error", listener);
+      }
     };
   }
   // --- End GitHub Device Flow ---
@@ -1015,7 +1043,7 @@ export class IpcClient {
       console.log("IpcClient: getProposal not implemented in web mode");
       return null;
     }
-    
+
     try {
       const data = await this.ipcRenderer.invoke("get-proposal", { chatId });
       // Assuming the main process returns data matching the ProposalResult interface

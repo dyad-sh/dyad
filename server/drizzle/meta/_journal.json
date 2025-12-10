@@ -5,15 +5,29 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1765298916395,
+      "when": 1733835600000,
       "tag": "0000_shiny_mandroid",
       "breakpoints": true
     },
     {
       "idx": 1,
       "version": "7",
-      "when": 1765299752674,
+      "when": 1733835700000,
       "tag": "0001_little_boomerang",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1733835800000,
+      "tag": "0002_make_path_nullable",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1733836200000,
+      "tag": "0003_add_chats_updated_at",
       "breakpoints": true
     }
   ]

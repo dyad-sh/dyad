@@ -13,7 +13,7 @@ export const ChatSummarySchema = z.object({
   id: z.number(),
   appId: z.number(),
   title: z.string().nullable(),
-  createdAt: z.date(),
+  createdAt: z.coerce.date(),
 });
 
 /**
@@ -33,7 +33,7 @@ export const ChatSearchResultSchema = z.object({
   id: z.number(),
   appId: z.number(),
   title: z.string().nullable(),
-  createdAt: z.date(),
+  createdAt: z.coerce.date(),
   matchedMessageContent: z.string().nullable(),
 });
 
@@ -48,7 +48,7 @@ export const ChatSearchResultsSchema = z.array(ChatSearchResultSchema);
 export const AppSearchResultSchema = z.object({
   id: z.number(),
   name: z.string(),
-  createdAt: z.date(),
+  createdAt: z.coerce.date(),
   matchedChatTitle: z.string().nullable(),
   matchedChatMessage: z.string().nullable(),
 });

@@ -26,6 +26,7 @@ export function useSettings() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const appVersion = useAppVersion();
+  
   const loadInitialData = useCallback(async () => {
     setLoading(true);
     try {
@@ -52,12 +53,13 @@ export function useSettings() {
     } finally {
       setLoading(false);
     }
-  }, [setSettingsAtom, setEnvVarsAtom, appVersion]);
+  }, [setSettingsAtom, setEnvVarsAtom, posthog, appVersion]);
 
   useEffect(() => {
-    // Only run once on mount, dependencies are stable getters/setters
+    // Only run once on mount to prevent infinite loops
     loadInitialData();
-  }, [loadInitialData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const updateSettings = async (newSettings: Partial<UserSettings>) => {
     setLoading(true);

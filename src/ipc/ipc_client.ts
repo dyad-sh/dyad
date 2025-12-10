@@ -1010,6 +1010,12 @@ export class IpcClient {
 
   // Get proposal details
   public async getProposal(chatId: number): Promise<ProposalResult | null> {
+    // In web mode, proposals are not yet supported
+    if (!this.ipcRenderer) {
+      console.log("IpcClient: getProposal not implemented in web mode");
+      return null;
+    }
+    
     try {
       const data = await this.ipcRenderer.invoke("get-proposal", { chatId });
       // Assuming the main process returns data matching the ProposalResult interface
@@ -1032,6 +1038,9 @@ export class IpcClient {
     chatId: number;
     messageId: number;
   }): Promise<ApproveProposalResult> {
+    if (!this.ipcRenderer) {
+      throw new Error("Proposal approval is not supported in web mode");
+    }
     return this.ipcRenderer.invoke("approve-proposal", {
       chatId,
       messageId,
@@ -1045,6 +1054,9 @@ export class IpcClient {
     chatId: number;
     messageId: number;
   }): Promise<void> {
+    if (!this.ipcRenderer) {
+      throw new Error("Proposal rejection is not supported in web mode");
+    }
     await this.ipcRenderer.invoke("reject-proposal", {
       chatId,
       messageId,

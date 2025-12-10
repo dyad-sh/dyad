@@ -107,7 +107,7 @@ export const ActionHeader = () => {
   }, [clearSessionData]);
 
   // Get the problem count for the selected app
-  const problemCount = problemReport ? problemReport.problems.length : 0;
+  const problemCount = problemReport?.problems?.length ?? 0;
 
   // Format the problem count for display
   const formatProblemCount = (count: number): string => {

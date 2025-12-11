@@ -5,6 +5,7 @@ import {
     chatsApi,
     settingsApi,
     mcpApi,
+    promptsApi,
     createChatStream,
     ChatMessage,
     StreamCallbacks
@@ -15,11 +16,8 @@ import {
     AppSearchResultsSchema,
 } from "../lib/schemas";
 import {
-    CLOUD_PROVIDERS,
-    LOCAL_PROVIDERS,
-    MODEL_OPTIONS,
     PROVIDER_TO_ENV_VAR,
-} from "../shared/language_model_constants";
+} from "./shared/language_model_constants";
 import type {
     App,
     AppOutput,
@@ -172,7 +170,8 @@ export class WebBackend implements IBackendClient {
     }
 
     async copyApp(params: CopyAppParams): Promise<{ app: App }> {
-        throw new Error("copyApp not implemented in web");
+        const res = await appsApi.copy(params.appId, params.newAppName);
+        return { app: res.app };
     }
 
     async resetAll(): Promise<void> {
@@ -267,7 +266,7 @@ export class WebBackend implements IBackendClient {
     }
 
     async updateChat(params: UpdateChatParams): Promise<void> {
-        // API needed
+        await chatsApi.update(params.chatId, { title: params.title });
     }
 
     async deleteChat(chatId: number): Promise<void> {
@@ -412,10 +411,27 @@ export class WebBackend implements IBackendClient {
     async checkProblems(): Promise<ProblemReport> { return { missingEnvVars: [], missingFiles: [] }; }
 
     async getTemplates(): Promise<Template[]> { return []; }
-    async listPrompts(): Promise<PromptDto[]> { return []; }
-    async createPrompt(params: CreatePromptParamsDto): Promise<PromptDto> { throw new Error("Not supported"); }
-    async updatePrompt(): Promise<void> { }
-    async deletePrompt(): Promise<void> { }
+
+    // Prompts
+    async listPrompts(): Promise<PromptDto[]> {
+        return promptsApi.list();
+    }
+
+    async createPrompt(params: CreatePromptParamsDto): Promise<PromptDto> {
+        return promptsApi.create(params);
+    }
+
+    async updatePrompt(params: UpdatePromptParamsDto): Promise<void> {
+        await promptsApi.update(params.id, {
+            title: params.title,
+            content: params.content,
+            description: params.description
+        });
+    }
+
+    async deletePrompt(id: number): Promise<void> {
+        await promptsApi.delete(id);
+    }
 
     async selectNodeFolder(): Promise<SelectNodeFolderResult> { return { path: null, selectedPath: null }; }
     async getNodePath(): Promise<string | null> { return null; }

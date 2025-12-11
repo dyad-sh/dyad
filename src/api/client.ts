@@ -88,6 +88,12 @@ export const appsApi = {
 
     stop: (id: number) =>
         apiRequest<{ success: boolean }>(`/apps/${id}/stop`, { method: "POST" }),
+
+    copy: (id: number, newAppName: string) =>
+        apiRequest<{ app: any; success: boolean }>(`/apps/${id}/copy`, {
+            method: "POST",
+            body: JSON.stringify({ newAppName }),
+        }),
 };
 
 // ============================================================================
@@ -103,6 +109,12 @@ export const chatsApi = {
     create: (data: { appId: number; title?: string }) =>
         apiRequest<any>("/chats", {
             method: "POST",
+            body: JSON.stringify(data),
+        }),
+
+    update: (id: number, data: { title: string }) =>
+        apiRequest<any>(`/chats/${id}`, {
+            method: "PUT",
             body: JSON.stringify(data),
         }),
 
@@ -215,6 +227,30 @@ export const mcpApi = {
             method: "PUT",
             body: JSON.stringify({ toolName, consent }),
         }),
+};
+
+// ============================================================================
+// Prompts API
+// ============================================================================
+
+export const promptsApi = {
+    list: () =>
+        apiRequest<any[]>("/prompts"),
+
+    create: (data: { title: string; content: string; description?: string }) =>
+        apiRequest<any>("/prompts", {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
+
+    update: (id: number, data: Partial<{ title: string; content: string; description: string }>) =>
+        apiRequest<any>(`/prompts/${id}`, {
+            method: "PUT",
+            body: JSON.stringify(data),
+        }),
+
+    delete: (id: number) =>
+        apiRequest<{ deleted: boolean }>(`/prompts/${id}`, { method: "DELETE" }),
 };
 
 // ============================================================================

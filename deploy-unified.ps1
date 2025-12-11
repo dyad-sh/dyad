@@ -7,6 +7,8 @@ param(
     [string]$RemotePath = "/root/dyad-1"
 )
 
+$ErrorActionPreference = "Stop"
+
 Write-Host "╔════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
 Write-Host "║  Déploiement Unifié Dyad + MCP (Port 3007)                 ║"
 Write-Host "╚════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
@@ -21,16 +23,16 @@ Write-Host "[2/3] Redémarrage des services Docker..." -ForegroundColor Yellow
 
 $remoteScript = @"
 cd $RemotePath
-echo "Arrêt des conteneurs..."
+echo 'Arrêt des conteneurs...'
 docker compose down
 
-echo "Nettoyage..."
+echo 'Nettoyage...'
 docker rm -f dyad-nginx 2>/dev/null || true
 
-echo "Démarrage (Construction)..."
+echo 'Démarrage (Construction)...'
 docker compose up -d --build
 
-echo "Vérification..."
+echo 'Vérification...'
 sleep 5
 docker compose ps
 "@
@@ -39,14 +41,16 @@ ssh "${RemoteUser}@${RemoteHost}" $remoteScript
 
 # 3. Test
 Write-Host "[3/3] Tests de connexion..." -ForegroundColor Yellow
-Write-Host "  - Dyad Web: http://${RemoteHost}:3007/"
-Write-Host "  - MCP Health: http://${RemoteHost}:3007/mcp/health"
-Write-Host "  - MCP Apps: http://${RemoteHost}:3007/mcp/api/apps"
+$baseUrl = "http://${RemoteHost}:3007"
+Write-Host "  - Dyad Web: $baseUrl/"
+Write-Host "  - MCP Health: $baseUrl/mcp/health"
+Write-Host "  - MCP Apps: $baseUrl/mcp/api/apps"
 
 try {
-    $r = Invoke-WebRequest "http://${RemoteHost}:3007/mcp/health" -UseBasicParsing
+    Write-Host "Testing MCP Health..."
+    $r = Invoke-WebRequest "$baseUrl/mcp/health" -UseBasicParsing -TimeoutSec 10
     Write-Host "✓ MCP Accessible via Nginx!" -ForegroundColor Green
     Write-Host $r.Content
 } catch {
-    Write-Host "⚠ Erreur test MCP: $_" -ForegroundColor Red
+    Write-Host "⚠ Erreur test MCP: $($_.Exception.Message)" -ForegroundColor Red
 }

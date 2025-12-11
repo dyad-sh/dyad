@@ -84,9 +84,9 @@ router.get("/", async (req, res, next) => {
             // Map DB keys to settings object
             for (const provider of providers) {
                 if (provider.apiKey) {
-                    if (provider.id === "openai") settings = { ...settings, openaiApiKey: provider.apiKey };
-                    if (provider.id === "anthropic") settings = { ...settings, anthropicApiKey: provider.apiKey };
-                    if (provider.id === "google") settings = { ...settings, googleApiKey: provider.apiKey };
+                    if (provider.id === "openai") settings = { ...settings, openaiApiKey: provider.apiKey } as any;
+                    if (provider.id === "anthropic") settings = { ...settings, anthropicApiKey: provider.apiKey } as any;
+                    if (provider.id === "google") settings = { ...settings, googleApiKey: provider.apiKey } as any;
                 }
             }
 

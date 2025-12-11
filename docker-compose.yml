@@ -10,8 +10,8 @@ services:
       dockerfile: Dockerfile
     container_name: dyad-web
     restart: unless-stopped
-    ports:
-      - "3007:3007"
+    # ports:
+    #   - "3007:3007"  <-- Handled by Nginx now
     volumes:
       - dyad-data:/app/data
     environment:
@@ -46,17 +46,16 @@ services:
     container_name: dyad-nginx
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
+      - "3007:80" # Main Entry Point
+      # - "443:443"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - ./certs:/etc/nginx/certs:ro
     depends_on:
       - dyad
+      - mcp-server
     networks:
       - dyad-network
-    profiles:
-      - with-nginx
 
   # ==========================================================================
   # MCP Server (optional sidecar)
@@ -67,8 +66,8 @@ services:
       dockerfile: Dockerfile
     container_name: dyad-mcp
     restart: unless-stopped
-    ports:
-      - "3008:3008"
+    # ports:
+    #   - "3008:3008" <-- Handled by Nginx now
     volumes:
       - dyad-data:/app/data:ro
     environment:

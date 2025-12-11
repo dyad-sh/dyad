@@ -142,8 +142,8 @@ async function handleStreamRequest(
 
     try {
         // Get default model from settings if not specified
-        let modelToUse = request.model;
-        if (!modelToUse) {
+        let modelToUse: string = request.model || "gemini-2.0-flash-exp";
+        if (!request.model) {
             try {
                 const dataDir = process.env.DATA_DIR || "./data";
                 const settingsPath = path.join(dataDir, "settings.json");
@@ -151,12 +151,10 @@ async function handleStreamRequest(
                     const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
                     modelToUse = settings.defaultModel || "gemini-2.0-flash-exp";
                     console.log(`[WS] Using default model from settings: ${modelToUse}`);
-                } else {
-                    modelToUse = "gemini-2.0-flash-exp";
                 }
             } catch (e) {
                 console.error("[WS] Failed to read settings, using gemini-2.0-flash-exp:", e);
-                modelToUse = "gemini-2.0-flash-exp";
+                // modelToUse already has fallback value
             }
         }
 

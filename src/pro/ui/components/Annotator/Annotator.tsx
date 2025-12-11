@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect, useMemo } from "react";
 import { AnnotationCanvas } from "./AnnotationCanvas";
 import { AnnotatorToolbar } from "@/components/preview_panel/AnnotatorToolbar";
 import { DraggableTextInput } from "@/components/preview_panel/DraggableTextInput";
+import { useSetAtom } from "jotai";
+import { chatInputValueAtom } from "@/atoms/chatAtoms";
 
 // Types
 type Point = [number, number];
@@ -49,12 +51,14 @@ export const Annotator = ({
 }) => {
   const image = useImage(screenshotUrl);
   const [tool, setTool] = useState<"select" | "draw" | "text">("draw");
+  const [color, setColor] = useState<string>("#7f22fe");
   const [shapes, setShapes] = useState<Shape[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [history, setHistory] = useState<Shape[][]>([]);
   const [historyStep, setHistoryStep] = useState(0);
   const spanRef = useRef<HTMLSpanElement[]>([]);
   const inputRef = useRef<HTMLInputElement[]>([]);
+  const setChatInput = useSetAtom(chatInputValueAtom);
 
   // Text input state - now supports multiple inputs
   const [textInputs, setTextInputs] = useState<
@@ -65,6 +69,7 @@ export const Annotator = ({
       adjustedX: number;
       adjustedY: number;
       value: string;
+      color: string;
     }>
   >([]);
 
@@ -122,9 +127,7 @@ export const Annotator = ({
             y: input.y + 8,
             text: input.value,
             fontSize: 24,
-            color: getComputedStyle(document.documentElement)
-              .getPropertyValue("--primary")
-              .trim(),
+            color: input.color,
           };
           setShapes((prev) => [...prev, newShape]);
         }
@@ -148,6 +151,7 @@ export const Annotator = ({
       });
 
       onSubmit([file], "chat-context");
+      setChatInput("Please update the UI based on these screenshots");
       handleAnnotatorClick();
     } catch (error) {
       console.error("Failed to export annotated image:", error);
@@ -241,9 +245,7 @@ export const Annotator = ({
         id,
         type: "line",
         points: [[adjustedPos.x, adjustedPos.y]],
-        color: getComputedStyle(document.documentElement)
-          .getPropertyValue("--primary")
-          .trim(),
+        color: color,
         size: 6,
         isComplete: false,
       };
@@ -257,6 +259,7 @@ export const Annotator = ({
         adjustedX: adjustedPos.x,
         adjustedY: adjustedPos.y,
         value: "",
+        color: color,
       };
       setTextInputs([...textInputs, newInput]);
     }
@@ -344,10 +347,12 @@ export const Annotator = ({
       {/* Toolbar */}
       <AnnotatorToolbar
         tool={tool}
+        color={color}
         selectedId={selectedId}
         historyStep={historyStep}
         historyLength={history.length}
         onToolChange={setTool}
+        onColorChange={setColor}
         onDelete={handleDelete}
         onUndo={handleUndo}
         onRedo={handleRedo}
@@ -371,6 +376,7 @@ export const Annotator = ({
             onRemove={handleTextInputRemove}
             spanRef={spanRef}
             inputRef={inputRef}
+            color={input.color}
           />
         ))}
 

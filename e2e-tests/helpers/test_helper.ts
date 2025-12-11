@@ -567,7 +567,7 @@ export class PageObject {
   }
 
   async clickAnnotatorSubmit() {
-    await this.page.getByRole("button", { name: "Submit to Chat" }).click();
+    await this.page.getByRole("button", { name: "Add to Chat" }).click();
   }
   locateLoadingAppPreview() {
     return this.page.getByText("Preparing app preview...");

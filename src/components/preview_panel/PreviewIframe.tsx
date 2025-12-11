@@ -37,7 +37,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useStreamChat } from "@/hooks/useStreamChat";
-import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import {
   selectedComponentsPreviewAtom,
   visualEditingSelectedComponentAtom,
@@ -217,7 +216,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   type DeviceMode = "desktop" | "tablet" | "mobile";
   const [deviceMode, setDeviceMode] = useState<DeviceMode>("desktop");
   const [isDevicePopoverOpen, setIsDevicePopoverOpen] = useState(false);
-  const { userBudget } = useUserBudgetInfo();
 
   // Device configurations
   const deviceWidthConfig = {
@@ -1000,33 +998,37 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 )}
               </div>
             ) : (
-              <iframe
-                sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-downloads"
-                data-testid="preview-iframe-element"
-                onLoad={() => {
-                  setErrorMessage(undefined);
-                }}
-                ref={iframeRef}
-                key={reloadKey}
-                title={`Preview for App ${selectedAppId}`}
-                className="w-full h-full border-none bg-white dark:bg-gray-950"
-                style={
-                  deviceMode == "desktop"
-                    ? {}
-                    : { width: `${deviceWidthConfig[deviceMode]}px` }
-                }
-                src={appUrl}
-                allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
-              />
-              {/* Visual Editing Toolbar */}
-              {isProMode && visualEditingSelectedComponent && selectedAppId && (
-                <VisualEditingToolbar
-                  selectedComponent={visualEditingSelectedComponent}
-                  iframeRef={iframeRef}
-                  isDynamic={isDynamicComponent}
-                  hasStaticText={hasStaticText}
+              <>
+                <iframe
+                  sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-downloads"
+                  data-testid="preview-iframe-element"
+                  onLoad={() => {
+                    setErrorMessage(undefined);
+                  }}
+                  ref={iframeRef}
+                  key={reloadKey}
+                  title={`Preview for App ${selectedAppId}`}
+                  className="w-full h-full border-none bg-white dark:bg-gray-950"
+                  style={
+                    deviceMode == "desktop"
+                      ? {}
+                      : { width: `${deviceWidthConfig[deviceMode]}px` }
+                  }
+                  src={appUrl}
+                  allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
                 />
-              )}
+                {/* Visual Editing Toolbar */}
+                {isProMode &&
+                  visualEditingSelectedComponent &&
+                  selectedAppId && (
+                    <VisualEditingToolbar
+                      selectedComponent={visualEditingSelectedComponent}
+                      iframeRef={iframeRef}
+                      isDynamic={isDynamicComponent}
+                      hasStaticText={hasStaticText}
+                    />
+                  )}
+              </>
             )}
           </div>
         )}

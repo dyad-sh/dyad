@@ -22,6 +22,12 @@ testSkipIfWindows(
     // Verify the screenshot was attached to chat context
     await po.sendPrompt("[dump]");
 
+    // Wait for the LLM response containing the dump path to appear in the UI
+    // before attempting to extract it from the messages list
+    await po.page.waitForSelector("text=/\\[\\[dyad-dump-path=.*\\]\\]/", {
+      timeout: 1000,
+    });
+
     // Get the dump file path from the messages list
     const messagesListText = await po.page
       .getByTestId("messages-list")
@@ -30,7 +36,7 @@ testSkipIfWindows(
       /\[\[dyad-dump-path=([^\]]+)\]\]/,
     );
 
-    if (!dumpPathMatch || !dumpPathMatch[1]) {
+    if (!dumpPathMatch) {
       throw new Error("No dump path found in messages list");
     }
 

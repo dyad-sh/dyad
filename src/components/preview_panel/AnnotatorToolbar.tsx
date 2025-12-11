@@ -15,13 +15,16 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { ToolbarColorPicker } from "./ToolbarColorPicker";
 
 interface AnnotatorToolbarProps {
   tool: "select" | "draw" | "text";
+  color: string;
   selectedId: string | null;
   historyStep: number;
   historyLength: number;
   onToolChange: (tool: "select" | "draw" | "text") => void;
+  onColorChange: (color: string) => void;
   onDelete: () => void;
   onUndo: () => void;
   onRedo: () => void;
@@ -32,10 +35,12 @@ interface AnnotatorToolbarProps {
 
 export const AnnotatorToolbar = ({
   tool,
+  color,
   selectedId,
   historyStep,
   historyLength,
   onToolChange,
+  onColorChange,
   onDelete,
   onUndo,
   onRedo,
@@ -108,6 +113,17 @@ export const AnnotatorToolbar = ({
             </TooltipContent>
           </Tooltip>
 
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="p-1 rounded transition-colors duration-200 hover:bg-purple-200 dark:hover:bg-purple-900">
+                <ToolbarColorPicker color={color} onChange={onColorChange} />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Color</p>
+            </TooltipContent>
+          </Tooltip>
+
           <div className="w-px bg-gray-200 dark:bg-gray-700 h-4" />
 
           <Tooltip>
@@ -166,7 +182,7 @@ export const AnnotatorToolbar = ({
             <TooltipTrigger asChild>
               <button
                 onClick={onSubmit}
-                aria-label="Submit to Chat"
+                aria-label="Add to Chat"
                 className="p-1 rounded transition-colors duration-200 text-purple-700 hover:bg-purple-200 dark:text-purple-300 dark:hover:bg-purple-900 disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={!hasSubmitHandler}
               >
@@ -174,7 +190,7 @@ export const AnnotatorToolbar = ({
               </button>
             </TooltipTrigger>
             <TooltipContent>
-              <p>Submit to Chat</p>
+              <p>Add to Chat</p>
             </TooltipContent>
           </Tooltip>
           <Tooltip>

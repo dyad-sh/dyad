@@ -22,6 +22,7 @@ export function registerProHandlers() {
         usedCredits: 100,
         totalCredits: 1000,
         budgetResetDate: resetDate,
+        redactedUserId: "<redacted-user-id-testing>",
       };
     }
     logger.info("Attempting to fetch user budget information.");

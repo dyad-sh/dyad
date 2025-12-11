@@ -278,6 +278,7 @@ export const UserBudgetInfoSchema = z.object({
   usedCredits: z.number(),
   totalCredits: z.number(),
   budgetResetDate: z.date(),
+  redactedUserId: z.string(),
 });
 export type UserBudgetInfo = z.infer<typeof UserBudgetInfoSchema>;
 

@@ -26,6 +26,7 @@ import { showError } from "@/lib/toast";
 import { HelpBotDialog } from "./HelpBotDialog";
 import { useSettings } from "@/hooks/useSettings";
 import { BugScreenshotDialog } from "./BugScreenshotDialog";
+import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 
 interface HelpDialogProps {
   isOpen: boolean;
@@ -43,7 +44,7 @@ export function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
   const [isBugScreenshotOpen, setIsBugScreenshotOpen] = useState(false);
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { settings } = useSettings();
-
+  const { userBudget } = useUserBudgetInfo();
   const isDyadProUser = settings?.providerSettings?.["auto"]?.apiKey?.value;
 
   // Function to reset all dialog state
@@ -103,6 +104,7 @@ Issues that do not meet these requirements will be closed and may need to be res
 - Node Version: ${debugInfo.nodeVersion || "n/a"}
 - PNPM Version: ${debugInfo.pnpmVersion || "n/a"}
 - Node Path: ${debugInfo.nodePath || "n/a"}
+- Pro User ID: ${userBudget?.redactedUserId || "n/a"}
 - Telemetry ID: ${debugInfo.telemetryId || "n/a"}
 - Model: ${debugInfo.selectedLanguageModel || "n/a"}
 
@@ -226,6 +228,7 @@ Issues that do not meet these requirements will be closed and may need to be res
 -->
 
 Session ID: ${sessionId}
+Pro User ID: ${userBudget?.redactedUserId || "n/a"}
 
 ## Issue Description (required)
 <!-- Please describe the issue you're experiencing -->

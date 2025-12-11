@@ -60,7 +60,7 @@ build() {
 start() {
     print_header "Starting Dyad Web Application"
     docker compose up -d
-    print_success "Dyad is running at http://localhost:3001"
+    print_success "Dyad is running at http://localhost:3007"
 }
 
 # Start with nginx

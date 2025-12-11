@@ -8,8 +8,8 @@ import { Router } from "express";
 import { z } from "zod";
 import { createError } from "../middleware/errorHandler.js";
 import { getDb } from "../db/index.js";
-import { apps } from "../db/schema.js";
-import { eq } from "drizzle-orm";
+import { apps, system_settings } from "../db/schema.js";
+import { eq, inArray } from "drizzle-orm";
 import git from "isomorphic-git";
 // @ts-ignore - isomorphic-git types are incomplete
 import http from "isomorphic-git/http/node";
@@ -19,9 +19,34 @@ import path from "node:path";
 const router = Router();
 
 // GitHub API configuration
-const GITHUB_API_BASE = process.env.GITHUB_API_URL || "https://api.github.com";
-const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID || "";
-const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET || "";
+// GitHub API configuration helper
+async function getGithubConfig() {
+    const db = getDb();
+    const headers = {
+        "User-Agent": "Dyad-Server",
+        "Accept": "application/vnd.github.v3+json"
+    };
+
+    try {
+        const settings = await db.select().from(system_settings)
+            .where(inArray(system_settings.key, ["GITHUB_API_URL", "GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET"]));
+
+        const config = settings.reduce((acc, curr) => ({ ...acc, [curr.key]: curr.value }), {} as Record<string, string>);
+
+        return {
+            apiUrl: config.GITHUB_API_URL || process.env.GITHUB_API_URL || "https://api.github.com",
+            clientId: config.GITHUB_CLIENT_ID || process.env.GITHUB_CLIENT_ID || "",
+            clientSecret: config.GITHUB_CLIENT_SECRET || process.env.GITHUB_CLIENT_SECRET || "",
+        };
+    } catch (e) {
+        console.error("Failed to fetch GitHub config from DB, parsing env only:", e);
+        return {
+            apiUrl: process.env.GITHUB_API_URL || "https://api.github.com",
+            clientId: process.env.GITHUB_CLIENT_ID || "",
+            clientSecret: process.env.GITHUB_CLIENT_SECRET || "",
+        };
+    }
+}
 
 // Simple in-memory token store (replace with session/DB in production)
 let githubAccessToken: string | null = null;
@@ -38,8 +63,10 @@ router.get("/status", async (req, res, next) => {
             });
         }
 
+        const { apiUrl } = await getGithubConfig();
+
         // Verify token is still valid
-        const response = await fetch(`${GITHUB_API_BASE}/user`, {
+        const response = await fetch(`${apiUrl}/user`, {
             headers: { Authorization: `Bearer ${githubAccessToken}` },
         });
 
@@ -71,8 +98,10 @@ router.post("/connect", async (req, res, next) => {
     try {
         const { accessToken } = z.object({ accessToken: z.string() }).parse(req.body);
 
+        const { apiUrl } = await getGithubConfig();
+
         // Verify token
-        const response = await fetch(`${GITHUB_API_BASE}/user`, {
+        const response = await fetch(`${apiUrl}/user`, {
             headers: { Authorization: `Bearer ${accessToken}` },
         });
 
@@ -125,8 +154,10 @@ router.get("/repos", async (req, res, next) => {
             throw createError("Not connected to GitHub", 401, "NOT_CONNECTED");
         }
 
+        const { apiUrl } = await getGithubConfig();
+
         const response = await fetch(
-            `${GITHUB_API_BASE}/user/repos?per_page=100&sort=updated`,
+            `${apiUrl}/user/repos?per_page=100&sort=updated`,
             {
                 headers: {
                     Authorization: `Bearer ${githubAccessToken}`,
@@ -164,8 +195,9 @@ router.get("/repos/:owner/:repo/branches", async (req, res, next) => {
         }
 
         const { owner, repo } = req.params;
+        const { apiUrl } = await getGithubConfig();
         const response = await fetch(
-            `${GITHUB_API_BASE}/repos/${owner}/${repo}/branches`,
+            `${apiUrl}/repos/${owner}/${repo}/branches`,
             {
                 headers: {
                     Authorization: `Bearer ${githubAccessToken}`,
@@ -206,9 +238,11 @@ router.post("/repos", async (req, res, next) => {
             isPrivate: z.boolean().optional(),
         }).parse(req.body);
 
+        const { apiUrl } = await getGithubConfig();
+
         const createUrl = org
-            ? `${GITHUB_API_BASE}/orgs/${org}/repos`
-            : `${GITHUB_API_BASE}/user/repos`;
+            ? `${apiUrl}/orgs/${org}/repos`
+            : `${apiUrl}/user/repos`;
 
         const response = await fetch(createUrl, {
             method: "POST",

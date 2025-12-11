@@ -119,6 +119,14 @@ export const language_model_providers = pgTable("language_model_providers", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const system_settings = pgTable("system_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(), // Could be encrypted in future
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const language_models = pgTable("language_models", {
   id: serial("id").primaryKey(),
   displayName: text("display_name").notNull(),

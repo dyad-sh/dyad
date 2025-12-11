@@ -302,7 +302,6 @@ router.post("/:id/copy", async (req, res, next) => {
         const newApp = await db.insert(apps).values({
             name: newAppName,
             path: webPath,
-            description: app[0].description ? `Copy of ${app[0].name}` : undefined,
         }).returning();
 
         // Copy chats? For now just create a new empty one

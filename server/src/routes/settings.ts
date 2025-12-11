@@ -9,8 +9,8 @@ import { createError } from "../middleware/errorHandler.js";
 import fs from "node:fs";
 import path from "node:path";
 import { getDb } from "../db/index.js";
-import { language_model_providers } from "../db/schema.js";
-import { eq } from "drizzle-orm";
+import { language_model_providers, system_settings } from "../db/schema.js";
+import { eq, inArray } from "drizzle-orm";
 
 const router = Router();
 
@@ -50,6 +50,8 @@ const SettingsSchema = z.object({
     anthropicApiKey: z.string().optional(),
     openaiApiKey: z.string().optional(),
     googleApiKey: z.string().optional(),
+    githubClientId: z.string().optional(),
+    githubClientSecret: z.string().optional(),
 
     // Support modern nested provider settings
     providerSettings: z.record(z.string(), ProviderSettingSchema).optional(),
@@ -77,6 +79,7 @@ router.get("/", async (req, res, next) => {
         try {
             const db = getDb();
             const providers = await db.select().from(language_model_providers);
+            const sysSettings = await db.select().from(system_settings).where(inArray(system_settings.key, ["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET"]));
 
             // Map DB keys to settings object
             for (const provider of providers) {
@@ -84,10 +87,12 @@ router.get("/", async (req, res, next) => {
                     if (provider.id === "openai") settings = { ...settings, openaiApiKey: provider.apiKey };
                     if (provider.id === "anthropic") settings = { ...settings, anthropicApiKey: provider.apiKey };
                     if (provider.id === "google") settings = { ...settings, googleApiKey: provider.apiKey };
-
-                    // Also populate providerSettings if needed structure matches
-                    // (Skipping complex providerSettings mapping for now to keep it simple for the requested env vars)
                 }
+            }
+
+            for (const setting of sysSettings) {
+                if (setting.key === "GITHUB_CLIENT_ID") settings = { ...settings, githubClientId: setting.value } as any;
+                if (setting.key === "GITHUB_CLIENT_SECRET") settings = { ...settings, githubClientSecret: setting.value } as any;
             }
         } catch (e) {
             console.error("Failed to fetch providers from DB:", e);
@@ -124,7 +129,7 @@ router.put("/", async (req, res, next) => {
         }
 
         // Separate keys from general settings
-        const { openaiApiKey, anthropicApiKey, googleApiKey, ...generalSettings } = body;
+        const { openaiApiKey, anthropicApiKey, googleApiKey, githubClientId, githubClientSecret, ...generalSettings } = body;
 
         // Merge with new settings (excluding keys from JSON file ideally, but keeping backwards compat logic if needed)
         // We will strip keys from saving to JSON to ensure they only live in DB if that's the goal, 
@@ -164,6 +169,23 @@ router.put("/", async (req, res, next) => {
             if (anthropicApiKey !== undefined) await upsertKey("anthropic", "Anthropic", anthropicApiKey, "https://api.anthropic.com");
             if (googleApiKey !== undefined) await upsertKey("google", "Google Gemini", googleApiKey, "https://generativelanguage.googleapis.com");
 
+            // Save System Settings
+            const upsertSystemSetting = async (key: string, value?: string, description?: string) => {
+                if (value !== undefined) {
+                    await db.insert(system_settings).values({
+                        key,
+                        value,
+                        description,
+                    }).onConflictDoUpdate({
+                        target: system_settings.key,
+                        set: { value, updatedAt: new Date() }
+                    });
+                }
+            };
+
+            await upsertSystemSetting("GITHUB_CLIENT_ID", githubClientId, "GitHub Client ID");
+            await upsertSystemSetting("GITHUB_CLIENT_SECRET", githubClientSecret, "GitHub Client Secret");
+
         } catch (e) {
             console.error("Failed to save keys to DB:", e);
             throw createError("Failed to persist API keys to database", 500);
@@ -172,7 +194,7 @@ router.put("/", async (req, res, next) => {
         // Return combined result
         res.json({
             success: true,
-            data: { ...settingsToSave, openaiApiKey, anthropicApiKey, googleApiKey },
+            data: { ...settingsToSave, openaiApiKey, anthropicApiKey, googleApiKey, githubClientId, githubClientSecret } as any,
         });
     } catch (error) {
         if (error instanceof z.ZodError) {

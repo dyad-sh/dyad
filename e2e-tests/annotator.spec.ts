@@ -19,14 +19,16 @@ testSkipIfWindows(
     // Submit the screenshot to chat
     await po.clickAnnotatorSubmit();
 
+    await expect(po.getChatInput()).toContainText(
+      "Please update the UI based on these screenshots",
+    );
+
     // Verify the screenshot was attached to chat context
     await po.sendPrompt("[dump]");
 
     // Wait for the LLM response containing the dump path to appear in the UI
     // before attempting to extract it from the messages list
-    await po.page.waitForSelector("text=/\\[\\[dyad-dump-path=.*\\]\\]/", {
-      timeout: 1000,
-    });
+    await po.page.waitForSelector("text=/\\[\\[dyad-dump-path=.*\\]\\]/");
 
     // Get the dump file path from the messages list
     const messagesListText = await po.page

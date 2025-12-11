@@ -44,6 +44,7 @@ export interface GitPushParams extends GitBaseParams {
   branch: string;
   accessToken: string;
   force?: boolean;
+  forceWithLease?: boolean;
 }
 export interface GitFileAtCommitParams extends GitBaseParams {
   filePath: string;
@@ -76,6 +77,7 @@ export interface GitPullParams extends GitBaseParams {
   branch?: string;
   accessToken?: string;
   author?: GitAuthorParam;
+  rebase?: boolean;
 }
 
 export interface GitMergeParams extends GitBaseParams {

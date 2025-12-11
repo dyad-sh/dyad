@@ -825,10 +825,30 @@ export class IpcClient {
   public async syncGithubRepo(
     appId: number,
     force?: boolean,
+    rebase?: boolean,
+    forceWithLease?: boolean,
   ): Promise<{ success: boolean; error?: string; isConflict?: boolean }> {
     return this.ipcRenderer.invoke("github:push", {
       appId,
       force,
+      rebase,
+      forceWithLease,
+    });
+  }
+
+  public async abortGithubRebase(
+    appId: number,
+  ): Promise<{ success: boolean; error?: string }> {
+    return this.ipcRenderer.invoke("github:rebase-abort", {
+      appId,
+    });
+  }
+
+  public async continueGithubRebase(
+    appId: number,
+  ): Promise<{ success: boolean; error?: string }> {
+    return this.ipcRenderer.invoke("github:rebase-continue", {
+      appId,
     });
   }
 

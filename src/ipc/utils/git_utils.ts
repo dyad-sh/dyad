@@ -522,6 +522,7 @@ export async function gitPush({
   branch,
   accessToken,
   force,
+  forceWithLease,
 }: GitPushParams): Promise<void> {
   const settings = readSettings();
 
@@ -530,7 +531,9 @@ export async function gitPush({
     try {
       // Push using the configured origin remote (which already has auth in URL)
       const args = ["push", "origin", `main:${branch}`];
-      if (force) {
+      if (forceWithLease) {
+        args.push("--force-with-lease");
+      } else if (force) {
         args.push("--force");
       }
       const result = await exec(args, path);
@@ -556,9 +559,37 @@ export async function gitPush({
         username: accessToken,
         password: "x-oauth-basic",
       }),
-      force: !!force,
+      force: !!(force || forceWithLease),
     });
   }
+}
+
+export async function gitRebaseAbort({ path }: GitBaseParams): Promise<void> {
+  const settings = readSettings();
+  if (!settings.enableNativeGit) {
+    throw new Error(
+      "Rebase controls require native Git. Enable native Git in settings.",
+    );
+  }
+
+  await execOrThrow(["rebase", "--abort"], path, "Failed to abort rebase");
+}
+
+export async function gitRebaseContinue({
+  path,
+}: GitBaseParams): Promise<void> {
+  const settings = readSettings();
+  if (!settings.enableNativeGit) {
+    throw new Error(
+      "Rebase controls require native Git. Enable native Git in settings.",
+    );
+  }
+
+  await execOrThrow(
+    ["rebase", "--continue"],
+    path,
+    "Failed to continue rebase. Make sure conflicts are resolved and changes are staged.",
+  );
 }
 
 export async function gitCurrentBranch({
@@ -717,20 +748,15 @@ export async function gitPull({
   branch = "main",
   accessToken,
   author,
+  rebase,
 }: GitPullParams): Promise<void> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
-    // git pull origin main --rebase
-    // We use rebase to keep history clean, but maybe we should make it configurable?
-    // For now, let's stick to standard pull (merge) to avoid complex rebase conflicts for non-technical users,
-    // OR use rebase if that's the preferred workflow.
-    // The plan mentioned "pull --rebase (or merge)". Let's default to merge for safety/simplicity first,
-    // as rebase conflicts can be scarier.
-    await execOrThrow(
-      ["pull", remote, branch],
-      path,
-      "Failed to pull from remote",
-    );
+    const args = ["pull", remote, branch];
+    if (rebase) {
+      args.push("--rebase");
+    }
+    await execOrThrow(args, path, "Failed to pull from remote");
   } else {
     await git.pull({
       fs,

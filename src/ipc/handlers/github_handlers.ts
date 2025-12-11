@@ -6,6 +6,8 @@ import {
   gitPush,
   gitClone,
   gitPull,
+  gitRebaseAbort,
+  gitRebaseContinue,
   gitFetch,
   gitCreateBranch,
   gitDeleteBranch,
@@ -566,7 +568,17 @@ async function handleConnectToExistingRepo(
 // --- GitHub Push Handler ---
 async function handlePushToGithub(
   event: IpcMainInvokeEvent,
-  { appId, force }: { appId: number; force?: boolean },
+  {
+    appId,
+    force,
+    rebase,
+    forceWithLease,
+  }: {
+    appId: number;
+    force?: boolean;
+    rebase?: boolean;
+    forceWithLease?: boolean;
+  },
 ) {
   try {
     // Get access token from settings
@@ -594,13 +606,14 @@ async function handlePushToGithub(
     });
 
     // Pull changes first (unless force push)
-    if (!force) {
+    if (!force && !forceWithLease) {
       try {
         await gitPull({
           path: appPath,
           remote: "origin",
           branch,
           accessToken,
+          rebase,
         });
       } catch (pullError: any) {
         // Check if it's a conflict
@@ -632,6 +645,7 @@ async function handlePushToGithub(
       branch,
       accessToken,
       force,
+      forceWithLease,
     });
     return { success: true };
   } catch (err: any) {
@@ -673,6 +687,44 @@ async function handlePullFromGithub(
     return {
       success: false,
       error: err.message || "Failed to pull from GitHub.",
+    };
+  }
+}
+
+async function handleAbortRebase(
+  event: IpcMainInvokeEvent,
+  { appId }: { appId: number },
+) {
+  try {
+    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+    if (!app) throw new Error("App not found");
+    const appPath = getDyadAppPath(app.path);
+
+    await gitRebaseAbort({ path: appPath });
+    return { success: true };
+  } catch (err: any) {
+    return {
+      success: false,
+      error: err.message || "Failed to abort rebase.",
+    };
+  }
+}
+
+async function handleContinueRebase(
+  event: IpcMainInvokeEvent,
+  { appId }: { appId: number },
+) {
+  try {
+    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+    if (!app) throw new Error("App not found");
+    const appPath = getDyadAppPath(app.path);
+
+    await gitRebaseContinue({ path: appPath });
+    return { success: true };
+  } catch (err: any) {
+    return {
+      success: false,
+      error: err.message || "Failed to continue rebase.",
     };
   }
 }
@@ -832,25 +884,6 @@ async function handleMergeBranch(
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message || "Failed to merge branch." };
-  }
-}
-
-async function handleGetMergeConflicts(
-  event: IpcMainInvokeEvent,
-  { appId }: { appId: number },
-) {
-  try {
-    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-    if (!app) throw new Error("App not found");
-    const appPath = getDyadAppPath(app.path);
-
-    const conflicts = await gitGetMergeConflicts({ path: appPath });
-    return { success: true, conflicts };
-  } catch (err: any) {
-    return {
-      success: false,
-      error: err.message || "Failed to get merge conflicts.",
-    };
   }
 }
 
@@ -1151,13 +1184,15 @@ export function registerGithubHandlers() {
   );
   ipcMain.handle("github:push", handlePushToGithub);
   ipcMain.handle("github:pull", handlePullFromGithub);
+  ipcMain.handle("github:rebase-abort", handleAbortRebase);
+  ipcMain.handle("github:rebase-continue", handleContinueRebase);
   ipcMain.handle("github:fetch", handleFetchFromGithub);
   ipcMain.handle("github:create-branch", handleCreateBranch);
   ipcMain.handle("github:delete-branch", handleDeleteBranch);
   ipcMain.handle("github:switch-branch", handleSwitchBranch);
   ipcMain.handle("github:rename-branch", handleRenameBranch);
   ipcMain.handle("github:merge-branch", handleMergeBranch);
-  ipcMain.handle("github:get-conflicts", handleGetMergeConflicts);
+
   ipcMain.handle("github:list-local-branches", handleListLocalBranches);
   ipcMain.handle("github:disconnect", (event, args: { appId: number }) =>
     handleDisconnectGithubRepo(event, args),
@@ -1169,8 +1204,60 @@ export function registerGithubHandlers() {
     },
   );
   ipcMain.handle("github:list-collaborators", handleListCollaborators);
+  ipcMain.handle("github:get-conflicts", handleGetMergeConflicts);
+  ipcMain.handle("github:resolve-conflict", handleResolveConflict);
   ipcMain.handle("github:invite-collaborator", handleInviteCollaborator);
   ipcMain.handle("github:remove-collaborator", handleRemoveCollaborator);
+}
+
+async function handleGetMergeConflicts(
+  event: IpcMainInvokeEvent,
+  { appId }: { appId: number },
+) {
+  try {
+    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+    if (!app) throw new Error("App not found");
+    const appPath = getDyadAppPath(app.path);
+
+    const conflicts = await gitGetMergeConflicts({ path: appPath });
+    return { success: true, conflicts };
+  } catch (err: any) {
+    return { success: false, error: err.message || "Failed to get conflicts." };
+  }
+}
+
+async function handleResolveConflict(
+  event: IpcMainInvokeEvent,
+  { appId, file }: { appId: number; file: string },
+) {
+  try {
+    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+    if (!app) {
+      throw new Error("App not found");
+    }
+
+    const appPath = getDyadAppPath(app.path);
+    const filePath = path.join(appPath, file);
+
+    if (!fs.existsSync(filePath)) {
+      throw new Error("File not found");
+    }
+
+    const content = fs.readFileSync(filePath, "utf-8");
+
+    // Prefer local (HEAD) changes in conflict blocks.
+    const resolution = content.replace(
+      /<<<<<<< HEAD\n([\s\S]*?)=======\n([\s\S]*?)>>>>>>> .*?\n/g,
+      (_match, headContent) => headContent,
+    );
+
+    return { success: true, resolution };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to resolve conflict.";
+
+    return { success: false, error: message };
+  }
 }
 
 export async function updateAppGithubRepo({

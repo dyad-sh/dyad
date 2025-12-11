@@ -114,6 +114,7 @@ export const language_model_providers = pgTable("language_model_providers", {
   name: text("name").notNull(),
   api_base_url: text("api_base_url").notNull(),
   env_var_name: text("env_var_name"),
+  apiKey: text("api_key"), // Encrypted or plain text key
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

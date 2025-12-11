@@ -18,6 +18,10 @@ const CreateChatSchema = z.object({
     title: z.string().optional(),
 });
 
+const UpdateChatSchema = z.object({
+    title: z.string().min(1).max(100),
+});
+
 /**
  * GET /api/chats - List all chats (optionally by appId)
  */
@@ -98,6 +102,46 @@ router.post("/", async (req, res, next) => {
         res.status(201).json({
             success: true,
             data: newChat[0],
+        });
+    } catch (error) {
+        if (error instanceof z.ZodError) {
+            return res.status(400).json({
+                success: false,
+                error: {
+                    message: "Validation error",
+                    code: "VALIDATION_ERROR",
+                    details: error.errors,
+                },
+            });
+        }
+        next(error);
+    }
+});
+
+/**
+ * PUT /api/chats/:id - Update chat
+ */
+router.put("/:id", async (req, res, next) => {
+    try {
+        const db = getDb();
+        const { id } = req.params;
+        const body = UpdateChatSchema.parse(req.body);
+
+        const updated = await db.update(chats)
+            .set({
+                title: body.title,
+                updatedAt: new Date(),
+            })
+            .where(eq(chats.id, Number(id)))
+            .returning();
+
+        if (!updated.length) {
+            throw createError("Chat not found", 404, "CHAT_NOT_FOUND");
+        }
+
+        res.json({
+            success: true,
+            data: updated[0],
         });
     } catch (error) {
         if (error instanceof z.ZodError) {

@@ -8,7 +8,12 @@ import { v4 as uuidv4 } from "uuid";
 import { streamText } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
-import { google } from "@ai-sdk/google";
+import { google, createGoogleGenerativeAI } from "@ai-sdk/google";
+import { getDb } from "../db/index.js";
+import { language_model_providers } from "../db/schema.js";
+import { eq } from "drizzle-orm";
+import { createOpenAI } from "@ai-sdk/openai";
+import { createAnthropic } from "@ai-sdk/anthropic";
 
 interface ChatMessage {
     role: "user" | "assistant" | "system";
@@ -36,13 +41,42 @@ const activeStreams = new Map<string, AbortController>();
 /**
  * Get the appropriate AI provider based on model string
  */
-function getModelProvider(modelId: string) {
+/**
+ * Get the appropriate AI provider based on model string
+ * Fetches API key from DB if available.
+ */
+async function getModelProvider(modelId: string) {
+    const db = getDb(); // Assuming we export getDb from ../db/index.js
+
+    // Helper to get key from DB or Env
+    const getApiKey = async (providerId: string, envVar: string): Promise<string | undefined> => {
+        try {
+            const result = await db.select({ apiKey: language_model_providers.apiKey })
+                .from(language_model_providers)
+                .where(eq(language_model_providers.id, providerId))
+                .limit(1);
+
+            if (result.length > 0 && result[0].apiKey) {
+                return result[0].apiKey;
+            }
+        } catch (e) {
+            console.error(`Failed to fetch key for ${providerId}:`, e);
+        }
+        return process.env[envVar];
+    };
+
     if (modelId.startsWith("claude")) {
-        return anthropic(modelId);
+        const apiKey = await getApiKey("anthropic", "ANTHROPIC_API_KEY");
+        if (apiKey) return createAnthropic({ apiKey })(modelId);
+        return anthropic(modelId); // Fallback to default env var behavior of SDK
     } else if (modelId.startsWith("gemini")) {
+        const apiKey = await getApiKey("google", "GOOGLE_GENERATIVE_AI_API_KEY"); // or GOOGLE_API_KEY
+        if (apiKey) return createGoogleGenerativeAI({ apiKey })(modelId);
         return google(modelId);
     } else {
         // Default to OpenAI
+        const apiKey = await getApiKey("openai", "OPENAI_API_KEY");
+        if (apiKey) return createOpenAI({ apiKey })(modelId || "gpt-4o");
         return openai(modelId || "gpt-4o");
     }
 }
@@ -105,7 +139,7 @@ async function handleStreamRequest(
     activeStreams.set(requestId, abortController);
 
     try {
-        const model = getModelProvider(request.model || "gpt-4o");
+        const model = await getModelProvider(request.model || "gpt-4o");
 
         const messagesWithSystem = request.systemPrompt
             ? [{ role: "system" as const, content: request.systemPrompt }, ...request.messages]

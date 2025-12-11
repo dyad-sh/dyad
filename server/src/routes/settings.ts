@@ -8,6 +8,9 @@ import { z } from "zod";
 import { createError } from "../middleware/errorHandler.js";
 import fs from "node:fs";
 import path from "node:path";
+import { getDb } from "../db/index.js";
+import { language_model_providers } from "../db/schema.js";
+import { eq } from "drizzle-orm";
 
 const router = Router();
 
@@ -52,25 +55,48 @@ const SettingsSchema = z.object({
     providerSettings: z.record(z.string(), ProviderSettingSchema).optional(),
 });
 
+const PROVIDER_IDS = {
+    openaiApiKey: "openai",
+    anthropicApiKey: "anthropic",
+    googleApiKey: "google",
+};
+
 /**
  * GET /api/settings - Get all settings
  */
 router.get("/", async (req, res, next) => {
     try {
         const settingsPath = getSettingsPath();
+        let settings = defaultSettings;
 
-        if (!fs.existsSync(settingsPath)) {
-            return res.json({
-                success: true,
-                data: defaultSettings,
-            });
+        if (fs.existsSync(settingsPath)) {
+            settings = { ...defaultSettings, ...JSON.parse(fs.readFileSync(settingsPath, "utf-8")) };
         }
 
-        const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+        // Fetch keys from DB
+        try {
+            const db = getDb();
+            const providers = await db.select().from(language_model_providers);
+
+            // Map DB keys to settings object
+            for (const provider of providers) {
+                if (provider.apiKey) {
+                    if (provider.id === "openai") settings = { ...settings, openaiApiKey: provider.apiKey };
+                    if (provider.id === "anthropic") settings = { ...settings, anthropicApiKey: provider.apiKey };
+                    if (provider.id === "google") settings = { ...settings, googleApiKey: provider.apiKey };
+
+                    // Also populate providerSettings if needed structure matches
+                    // (Skipping complex providerSettings mapping for now to keep it simple for the requested env vars)
+                }
+            }
+        } catch (e) {
+            console.error("Failed to fetch providers from DB:", e);
+            // Non-fatal, return file settings
+        }
 
         res.json({
             success: true,
-            data: { ...defaultSettings, ...settings },
+            data: settings,
         });
     } catch (error) {
         next(error);
@@ -97,15 +123,56 @@ router.put("/", async (req, res, next) => {
             currentSettings = { ...defaultSettings, ...JSON.parse(fs.readFileSync(settingsPath, "utf-8")) };
         }
 
-        // Merge with new settings
-        const updatedSettings = { ...currentSettings, ...body };
+        // Separate keys from general settings
+        const { openaiApiKey, anthropicApiKey, googleApiKey, ...generalSettings } = body;
 
-        // Write back
-        fs.writeFileSync(settingsPath, JSON.stringify(updatedSettings, null, 2));
+        // Merge with new settings (excluding keys from JSON file ideally, but keeping backwards compat logic if needed)
+        // We will strip keys from saving to JSON to ensure they only live in DB if that's the goal, 
+        // OR we keep them in both. User said "persist in DB", implies DB is the source of truth.
+        // Let's remove them from the object saved to JSON to avoid duplication/stale content.
+        const settingsToSave = { ...currentSettings, ...generalSettings };
+        delete (settingsToSave as any).openaiApiKey;
+        delete (settingsToSave as any).anthropicApiKey;
+        delete (settingsToSave as any).googleApiKey;
 
+        // Write back general settings
+        fs.writeFileSync(settingsPath, JSON.stringify(settingsToSave, null, 2));
+
+        // Save keys to DB
+        try {
+            const db = getDb();
+
+            const upsertKey = async (id: string, name: string, apiKey?: string, baseUrl = "https://api.openai.com/v1") => {
+                if (apiKey !== undefined) {
+                    // Only update if provided (even empty string to clear?)
+                    // If undefined, do nothing. If empty string, maybe clear?
+                    // Assuming provided means update.
+
+                    await db.insert(language_model_providers).values({
+                        id,
+                        name,
+                        api_base_url: baseUrl, // Default, not real for all but required by schema
+                        apiKey,
+                    }).onConflictDoUpdate({
+                        target: language_model_providers.id,
+                        set: { apiKey, updatedAt: new Date() }
+                    });
+                }
+            };
+
+            if (openaiApiKey !== undefined) await upsertKey("openai", "OpenAI", openaiApiKey, "https://api.openai.com/v1");
+            if (anthropicApiKey !== undefined) await upsertKey("anthropic", "Anthropic", anthropicApiKey, "https://api.anthropic.com");
+            if (googleApiKey !== undefined) await upsertKey("google", "Google Gemini", googleApiKey, "https://generativelanguage.googleapis.com");
+
+        } catch (e) {
+            console.error("Failed to save keys to DB:", e);
+            throw createError("Failed to persist API keys to database", 500);
+        }
+
+        // Return combined result
         res.json({
             success: true,
-            data: updatedSettings,
+            data: { ...settingsToSave, openaiApiKey, anthropicApiKey, googleApiKey },
         });
     } catch (error) {
         if (error instanceof z.ZodError) {

@@ -198,7 +198,9 @@ router.get("/:id/files/read", async (req, res, next) => {
 
         res.json({
             success: true,
-            content: `// Content of ${filePath}\n// Fetched from Web Backend`,
+            data: {
+                content: `// Content of ${filePath}\n// Fetched from Web Backend`,
+            }
         });
     } catch (error) {
         next(error);
@@ -222,6 +224,9 @@ router.post("/:id/files/write", async (req, res, next) => {
 
         res.json({
             success: true,
+            data: {
+                success: true
+            }
         });
     } catch (error) {
         next(error);
@@ -241,7 +246,10 @@ router.post("/:id/run", async (req, res, next) => {
 
         res.json({
             success: true,
-            processId: 12345
+            data: {
+                success: true,
+                processId: 12345
+            }
         });
     } catch (error) {
         next(error);
@@ -259,6 +267,56 @@ router.post("/:id/stop", async (req, res, next) => {
 
         res.json({
             success: true,
+            data: {
+                success: true
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+
+/**
+ * POST /api/apps/:id/copy
+ */
+router.post("/:id/copy", async (req, res, next) => {
+    try {
+        const db = getDb();
+        const { id } = req.params;
+        const { newAppName } = req.body;
+
+        if (!newAppName) {
+            throw createError("New app name required", 400, "INVALID_NAME");
+        }
+
+        const app = await db.select().from(apps).where(eq(apps.id, Number(id))).limit(1);
+        if (!app.length) {
+            throw createError("App not found", 404, "APP_NOT_FOUND");
+        }
+
+        const sanitizedName = newAppName.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+        const timestamp = Date.now();
+        const webPath = `/web-apps/${sanitizedName}-${timestamp}`;
+
+        const newApp = await db.insert(apps).values({
+            name: newAppName,
+            path: webPath,
+            description: app[0].description ? `Copy of ${app[0].name}` : undefined,
+        }).returning();
+
+        // Copy chats? For now just create a new empty one
+        await db.insert(chats).values({
+            appId: newApp[0].id,
+            title: null,
+        });
+
+        res.json({
+            success: true,
+            data: {
+                success: true,
+                app: newApp[0]
+            }
         });
     } catch (error) {
         next(error);

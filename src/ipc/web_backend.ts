@@ -14,10 +14,13 @@ import {
     ChatSummariesSchema,
     ChatSearchResultsSchema,
     AppSearchResultsSchema,
-} from "../lib/schemas";
+} from "@/lib/schemas";
 import {
     PROVIDER_TO_ENV_VAR,
-} from "./shared/language_model_constants";
+    CLOUD_PROVIDERS,
+    LOCAL_PROVIDERS,
+    MODEL_OPTIONS,
+} from "@/ipc/shared/language_model_constants";
 import type {
     App,
     AppOutput,
@@ -295,41 +298,48 @@ export class WebBackend implements IBackendClient {
             onProblems?: (problems: ChatProblemsEvent) => void;
         }
     ): void {
-        // Adapt to api/client createChatStream
-        // We need to convert prompt to messages... actually api/client takes messages[]
-        // But IpcClient usually manages history? 
-        // Wait, createChatStream in api/client expects "messages". 
-        // The IPC contract sends "prompt" and "chatId", and the backend figures out the context.
+        const { chatId, onUpdate, onEnd, onError } = options;
 
-        // For now, we will assume we send just the user message as a start
+        // In the web client, we reconstruct the ephemeral message list for the UI
+        // processing. The actual persistent history is managed by the server for next fetches.
+        // We start with the user's new message.
         const messages: ChatMessage[] = [{ role: "user", content: prompt }];
+        let assistantContent = "";
 
-        // We need to fetch history if we want full context, OR the backend handles it by chatId.
-        // The `createChatStream` in `api/client.ts` sends `chatId` AND `messages`.
-        // If we pass `chatId`, the backend should append `messages` to history.
+        const stream = createChatStream(
+            chatId,
+            messages,
+            {
+                onChunk: (chunk) => {
+                    assistantContent += chunk;
 
-        const callbacks: StreamCallbacks = {
-            onChunk: (content) => {
-                // This is partial content. 
-                // IpcClient expects full message updates `onUpdate(messages[])`.
-                // We need to accumulate locally or fetching updated messages.
-                // Actually Electron IPC sends `messages: Message[]` (full history) on every chunk? 
-                // Or just the updated last message?
-                // Looking at ElectronBackend: `callbacks.onUpdate(messages)`
+                    // The UI expects the full conversation history or at least the current turn
+                    // configured in a way it understands.
+                    // Ideally we should have the full history, but for now we construct the 
+                    // current exchange.
+                    // NOTE: If the UI demands full history including previous turns, this might 
+                    // look empty until refresh. However, typically the chat view appends 
+                    // these updates to its existing local list.
 
-                // This is a discrepancy. Electron sends full message list updates. Web socket sends chunks.
-                // We need to reconstruct the message list.
-                // For 100% compatibility, `WebBackend` should probably maintain state or the API should return full messages.
+                    const updatedMessages: Message[] = [
+                        { role: "user", content: prompt } as Message,
+                        { role: "assistant", content: assistantContent } as Message,
+                    ];
 
-                // HACK: for now, we just call onUpdate with a constructed message. 
-                // Real fix: Update API to send full messages or fetch history.
-            },
-            onEnd: () => options.onEnd({ chatId: options.chatId, updatedFiles: false }),
-            onError: (err) => options.onError(err)
-        };
+                    onUpdate(updatedMessages);
+                },
+                onEnd: () => {
+                    onEnd({ chatId, updatedFiles: false });
+                    this.chatCancelFns.delete(chatId);
+                },
+                onError: (err) => {
+                    onError(String(err));
+                    this.chatCancelFns.delete(chatId);
+                }
+            }
+        );
 
-        const stream = createChatStream(options.chatId, messages, callbacks);
-        this.chatCancelFns.set(options.chatId, stream.cancel);
+        this.chatCancelFns.set(chatId, stream.cancel);
     }
 
     cancelChatStream(chatId: number): void {
@@ -368,14 +378,45 @@ export class WebBackend implements IBackendClient {
     onGithubDeviceFlowSuccess(): () => void { return () => { }; }
     onGithubDeviceFlowError(): () => void { return () => { }; }
 
-    async listGithubRepos(): Promise<any[]> { return []; }
-    async getGithubRepoBranches(): Promise<any[]> { return []; }
-    async connectToExistingGithubRepo(): Promise<void> { }
-    async checkGithubRepoAvailable(): Promise<any> { return { available: false }; }
-    async createGithubRepo(): Promise<void> { }
-    async syncGithubRepo(): Promise<any> { return { success: false }; }
-    async disconnectGithubRepo(): Promise<void> { }
-    async cloneRepoFromUrl(): Promise<any> { return { error: "Not supported" }; }
+    async listGithubRepos(): Promise<{ name: string; full_name: string; private: boolean }[]> {
+        return githubApi.listRepos();
+    }
+
+    async getGithubRepoBranches(owner: string, repo: string): Promise<any[]> {
+        return githubApi.getBranches(owner, repo);
+    }
+
+    async connectToExistingGithubRepo(owner: string, repo: string, branch: string, appId: number): Promise<void> {
+        await githubApi.link(appId, owner, repo, branch);
+    }
+
+    async checkGithubRepoAvailable(org: string, repo: string): Promise<any> {
+        // This is tricky as we need to check if we can access it; listRepos filtering might be enough or try to fetch it
+        const repos = await this.listGithubRepos();
+        const exists = repos.some(r => r.name === repo && (!org || r.full_name.startsWith(org)));
+        return { available: exists };
+    }
+
+    async createGithubRepo(org: string, repo: string, appId: number, branch?: string): Promise<void> {
+        await githubApi.createRepo(repo, org);
+        await githubApi.link(appId, org, repo, branch || "main"); // Assuming link is desired
+    }
+
+    async syncGithubRepo(appId: number, force?: boolean): Promise<{ success: boolean; error?: string }> {
+        return githubApi.push(appId, force);
+    }
+
+    async disconnectGithubRepo(appId: number): Promise<void> {
+        await githubApi.unlink(appId);
+    }
+
+    async cloneRepoFromUrl(params: CloneRepoParams): Promise<{ app: App; hasAiRules: boolean } | { error: string }> {
+        // Cloning requires server-side filesystem operations which might not be fully exposed for arbitrary URLs in web mode yet
+        // But let's check if we have an API for it. `appsApi.create` creates from scratch.
+        // We need a specific clone endpoint if we want this. For now, specific `clone` is not in `appsApi`.
+        // Leaving as unsupported for generic URL, but GitHub specific flow is separate.
+        return { error: "Clone from URL not supported in web version yet" };
+    }
 
     async saveVercelAccessToken(): Promise<void> { }
     async listVercelProjects(): Promise<VercelProject[]> { return []; }

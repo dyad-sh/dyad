@@ -281,10 +281,15 @@ export class IpcClient {
   }
 
   public async restartDyad(): Promise<void> {
+    if (!this.ipcRenderer) {
+      console.warn("restartDyad: Not supported in web mode");
+      return;
+    }
     await this.ipcRenderer.invoke("restart-dyad");
   }
 
   public async reloadEnvPath(): Promise<void> {
+    if (!this.ipcRenderer) return;
     await this.ipcRenderer.invoke("reload-env-path");
   }
 
@@ -1303,6 +1308,7 @@ export class IpcClient {
   public async doesReleaseNoteExist(
     params: DoesReleaseNoteExistParams,
   ): Promise<{ exists: boolean; url?: string }> {
+    if (!this.ipcRenderer) return { exists: false };
     return this.ipcRenderer.invoke("does-release-note-exist", params);
   }
 
@@ -1574,6 +1580,10 @@ export class IpcClient {
     },
   ): void {
     this.helpStreams.set(sessionId, options);
+    if (!this.ipcRenderer) {
+      options.onError("Help chat not available in web mode");
+      return;
+    }
     this.ipcRenderer
       .invoke("help:chat:start", { sessionId, message })
       .catch((err) => {
@@ -1584,10 +1594,12 @@ export class IpcClient {
   }
 
   public async takeScreenshot(): Promise<void> {
+    if (!this.ipcRenderer) return;
     await this.ipcRenderer.invoke("take-screenshot");
   }
 
   public cancelHelpChat(sessionId: string): void {
+    if (!this.ipcRenderer) return;
     this.ipcRenderer.invoke("help:chat:cancel", sessionId).catch(() => { });
   }
 }

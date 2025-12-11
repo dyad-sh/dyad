@@ -1,276 +1,94 @@
-import type { IpcRenderer } from "electron";
-import {
-  type ChatSummary,
-  ChatSummariesSchema,
-  type UserSettings,
-  type ContextPathResults,
-  ChatSearchResultsSchema,
-  AppSearchResultsSchema,
-} from "../lib/schemas";
+import type { IBackendClient } from "./backend_interface";
+import { ElectronBackend } from "./electron_backend";
+import { WebBackend } from "./web_backend";
 import type {
+  App,
   AppOutput,
+  AppSearchResult,
+  AppUpgrade,
+  ApproveProposalResult,
+  BranchResult,
   Chat,
+  ChatLogsData,
   ChatResponseEnd,
-  ChatProblemsEvent,
+  ChatSearchResult,
+  ChatSummary,
+  CloneRepoParams,
+  ComponentSelection,
+  ConnectToExistingVercelProjectParams,
+  ContextPathResults,
+  CopyAppParams,
   CreateAppParams,
   CreateAppResult,
-  ListAppsResponse,
-  NodeSystemInfo,
-  Message,
-  Version,
-  SystemDebugInfo,
-  LocalModel,
-  TokenCountParams,
-  TokenCountResult,
-  ChatLogsData,
-  BranchResult,
-  LanguageModelProvider,
-  LanguageModel,
-  CreateCustomLanguageModelProviderParams,
   CreateCustomLanguageModelParams,
-  DoesReleaseNoteExistParams,
-  ApproveProposalResult,
-  ImportAppResult,
-  ImportAppParams,
-  RenameBranchParams,
-  UserBudgetInfo,
-  CopyAppParams,
-  App,
-  ComponentSelection,
-  AppUpgrade,
-  ProblemReport,
-  EditAppFileReturnType,
-  GetAppEnvVarsParams,
-  SetAppEnvVarsParams,
-  ConnectToExistingVercelProjectParams,
-  IsVercelProjectAvailableResponse,
-  CreateVercelProjectParams,
-  VercelDeployment,
-  GetVercelDeploymentsParams,
-  DisconnectVercelProjectParams,
-  SecurityReviewResult,
-  IsVercelProjectAvailableParams,
-  SaveVercelAccessTokenParams,
-  VercelProject,
-  UpdateChatParams,
-  FileAttachment,
+  CreateCustomLanguageModelProviderParams,
+  CreateMcpServer,
   CreateNeonProjectParams,
-  NeonProject,
+  CreatePromptParamsDto,
+  CreateVercelProjectParams,
+  DeepLinkData,
+  DisconnectVercelProjectParams,
+  DoesReleaseNoteExistParams,
+  EditAppFileReturnType,
+  FileAttachment,
+  GetAppEnvVarsParams,
   GetNeonProjectParams,
   GetNeonProjectResponse,
-  RevertVersionResponse,
-  RevertVersionParams,
-  RespondToAppInputParams,
-  PromptDto,
-  CreatePromptParamsDto,
-  UpdatePromptParamsDto,
+  GetVercelDeploymentsParams,
+  GitHubDeviceFlowErrorData,
+  GitHubDeviceFlowSuccessData,
+  GitHubDeviceFlowUpdateData,
+  ImportAppParams,
+  ImportAppResult,
+  IsVercelProjectAvailableParams,
+  IsVercelProjectAvailableResponse,
+  LanguageModel,
+  LanguageModelProvider,
+  ListAppsResponse,
+  LocalModel,
   McpServerUpdate,
-  CreateMcpServer,
-  CloneRepoParams,
-  SupabaseBranch,
-  SetSupabaseAppProjectParams,
-
-  SelectNodeFolderResult,
-} from "./ipc_types";
-import { appsApi, chatsApi, settingsApi, githubApi, mcpApi } from "@/api/client";
-import type { Template } from "../shared/templates";
-import type {
-  AppChatContext,
-  AppSearchResult,
-  ChatSearchResult,
+  NeonProject,
+  NodeSystemInfo,
+  ProblemReport,
+  PromptDto,
   ProposalResult,
-} from "@/lib/schemas";
-import { showError } from "@/lib/toast";
-import { DeepLinkData } from "./deep_link_data";
+  RenameBranchParams,
+  RespondToAppInputParams,
+  RevertVersionParams,
+  RevertVersionResponse,
+  SaveVercelAccessTokenParams,
+  SecurityReviewResult,
+  SelectNodeFolderResult,
+  SetAppEnvVarsParams,
+  SetSupabaseAppProjectParams,
+  SupabaseBranch,
+  SystemDebugInfo,
+  Template,
+  TokenCountParams,
+  TokenCountResult,
+  UpdateChatParams,
+  UpdatePromptParamsDto,
+  UserBudgetInfo,
+  UserSettings,
+  VercelDeployment,
+  VercelProject,
+  Version,
+  Message,
+  ChatProblemsEvent
+} from "./ipc_types";
 
-export interface ChatStreamCallbacks {
-  onUpdate: (messages: Message[]) => void;
-  onEnd: (response: ChatResponseEnd) => void;
-  onError: (error: string) => void;
-}
-
-export interface AppStreamCallbacks {
-  onOutput: (output: AppOutput) => void;
-}
-
-export interface GitHubDeviceFlowUpdateData {
-  userCode?: string;
-  verificationUri?: string;
-  message?: string;
-}
-
-export interface GitHubDeviceFlowSuccessData {
-  message?: string;
-}
-
-export interface GitHubDeviceFlowErrorData {
-  error: string;
-}
-
-interface DeleteCustomModelParams {
-  providerId: string;
-  modelApiName: string;
-}
-
-export class IpcClient {
+export class IpcClient implements IBackendClient {
   private static instance: IpcClient;
-  private ipcRenderer: IpcRenderer;
-  private chatStreams: Map<number, ChatStreamCallbacks>;
-  private appStreams: Map<number, AppStreamCallbacks>;
-  private helpStreams: Map<
-    string,
-    {
-      onChunk: (delta: string) => void;
-      onEnd: () => void;
-      onError: (error: string) => void;
-    }
-  >;
-  private mcpConsentHandlers: Map<string, (payload: any) => void>;
+  private backend: IBackendClient;
+
   private constructor() {
-    const electron = (window as any).electron;
-    this.ipcRenderer = electron ? electron.ipcRenderer : null;
-    this.chatStreams = new Map();
-    this.appStreams = new Map();
-    this.helpStreams = new Map();
-    this.mcpConsentHandlers = new Map();
-
-    if (!this.ipcRenderer) {
-      console.warn("IpcClient: Running in browser mode, IPC methods will likely fail unless polyfilled.");
-      return;
+    if ((window as any).electron) {
+      this.backend = new ElectronBackend();
+      console.log("IpcClient: Initialized with ElectronBackend");
+    } else {
+      this.backend = new WebBackend();
+      console.log("IpcClient: Initialized with WebBackend");
     }
-
-    // Set up listeners for stream events
-    this.ipcRenderer.on("chat:response:chunk", (data) => {
-      if (
-        data &&
-        typeof data === "object" &&
-        "chatId" in data &&
-        "messages" in data
-      ) {
-        const { chatId, messages } = data as {
-          chatId: number;
-          messages: Message[];
-        };
-
-        const callbacks = this.chatStreams.get(chatId);
-        if (callbacks) {
-          callbacks.onUpdate(messages);
-        } else {
-          console.warn(
-            `[IPC] No callbacks found for chat ${chatId}`,
-            this.chatStreams,
-          );
-        }
-      } else {
-        showError(new Error(`[IPC] Invalid chunk data received: ${data}`));
-      }
-    });
-
-    this.ipcRenderer.on("app:output", (data) => {
-      if (
-        data &&
-        typeof data === "object" &&
-        "type" in data &&
-        "message" in data &&
-        "appId" in data
-      ) {
-        const { type, message, appId } = data as unknown as AppOutput;
-        const callbacks = this.appStreams.get(appId);
-        if (callbacks) {
-          callbacks.onOutput({ type, message, appId, timestamp: Date.now() });
-        }
-      } else {
-        showError(new Error(`[IPC] Invalid app output data received: ${data}`));
-      }
-    });
-
-    this.ipcRenderer.on("chat:response:end", (payload) => {
-      const { chatId } = payload as unknown as ChatResponseEnd;
-      const callbacks = this.chatStreams.get(chatId);
-      if (callbacks) {
-        callbacks.onEnd(payload as unknown as ChatResponseEnd);
-        console.debug("chat:response:end");
-        this.chatStreams.delete(chatId);
-      } else {
-        console.error(
-          new Error(
-            `[IPC] No callbacks found for chat ${chatId} on stream end`,
-          ),
-        );
-      }
-    });
-
-    this.ipcRenderer.on("chat:response:error", (payload) => {
-      console.debug("chat:response:error");
-      if (
-        payload &&
-        typeof payload === "object" &&
-        "chatId" in payload &&
-        "error" in payload
-      ) {
-        const { chatId, error } = payload as { chatId: number; error: string };
-        const callbacks = this.chatStreams.get(chatId);
-        if (callbacks) {
-          callbacks.onError(error);
-          this.chatStreams.delete(chatId);
-        } else {
-          console.warn(
-            `[IPC] No callbacks found for chat ${chatId} on error`,
-            this.chatStreams,
-          );
-        }
-      } else {
-        console.error("[IPC] Invalid error data received:", payload);
-      }
-    });
-
-    // Help bot events
-    this.ipcRenderer.on("help:chat:response:chunk", (data) => {
-      if (
-        data &&
-        typeof data === "object" &&
-        "sessionId" in data &&
-        "delta" in data
-      ) {
-        const { sessionId, delta } = data as {
-          sessionId: string;
-          delta: string;
-        };
-        const callbacks = this.helpStreams.get(sessionId);
-        if (callbacks) callbacks.onChunk(delta);
-      }
-    });
-
-    this.ipcRenderer.on("help:chat:response:end", (data) => {
-      if (data && typeof data === "object" && "sessionId" in data) {
-        const { sessionId } = data as { sessionId: string };
-        const callbacks = this.helpStreams.get(sessionId);
-        if (callbacks) callbacks.onEnd();
-        this.helpStreams.delete(sessionId);
-      }
-    });
-    this.ipcRenderer.on("help:chat:response:error", (data) => {
-      if (
-        data &&
-        typeof data === "object" &&
-        "sessionId" in data &&
-        "error" in data
-      ) {
-        const { sessionId, error } = data as {
-          sessionId: string;
-          error: string;
-        };
-        const callbacks = this.helpStreams.get(sessionId);
-        if (callbacks) callbacks.onError(error);
-        this.helpStreams.delete(sessionId);
-      }
-    });
-
-    // MCP tool consent request from main
-    this.ipcRenderer.on("mcp:tool-consent-request", (payload) => {
-      const handler = this.mcpConsentHandlers.get("consent");
-      if (handler) handler(payload);
-    });
   }
 
   public static getInstance(): IpcClient {
@@ -280,1381 +98,155 @@ export class IpcClient {
     return IpcClient.instance;
   }
 
-  public async restartDyad(): Promise<void> {
-    if (!this.ipcRenderer) {
-      console.warn("restartDyad: Not supported in web mode");
-      return;
-    }
-    await this.ipcRenderer.invoke("restart-dyad");
-  }
-
-  public async reloadEnvPath(): Promise<void> {
-    if (!this.ipcRenderer) return;
-    await this.ipcRenderer.invoke("reload-env-path");
-  }
-
-  // Create a new app with an initial chat
-  public async createApp(params: CreateAppParams): Promise<CreateAppResult> {
-    if (!this.ipcRenderer) {
-      return appsApi.create(params);
-    }
-    return this.ipcRenderer.invoke("create-app", params);
-  }
-
-  public async getApp(appId: number): Promise<App> {
-    if (!this.ipcRenderer) {
-      return appsApi.get(appId);
-    }
-    return this.ipcRenderer.invoke("get-app", appId);
-  }
-
-  public async addAppToFavorite(
-    appId: number,
-  ): Promise<{ isFavorite: boolean }> {
-    try {
-      const result = await this.ipcRenderer.invoke("add-to-favorite", {
-        appId,
-      });
-      return result;
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
-  }
-
-  public async getAppEnvVars(
-    params: GetAppEnvVarsParams,
-  ): Promise<{ key: string; value: string }[]> {
-    if (!this.ipcRenderer) return [];
-    return this.ipcRenderer.invoke("get-app-env-vars", params);
-  }
-
-  public async setAppEnvVars(params: SetAppEnvVarsParams): Promise<void> {
-    if (!this.ipcRenderer) return;
-    return this.ipcRenderer.invoke("set-app-env-vars", params);
-  }
-
-  public async getChat(chatId: number): Promise<Chat> {
-    try {
-      if (!this.ipcRenderer) {
-        return chatsApi.get(chatId);
-      }
-      const data = await this.ipcRenderer.invoke("get-chat", chatId);
-      return data;
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
-  }
-
-  // Get all chats
-  public async getChats(appId?: number): Promise<ChatSummary[]> {
-    try {
-      if (!this.ipcRenderer) {
-        const chats = await chatsApi.list(appId);
-        return ChatSummariesSchema.parse(chats);
-      }
-      const data = await this.ipcRenderer.invoke("get-chats", appId);
-      return ChatSummariesSchema.parse(data);
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
-  }
-
-  // search for chats
-  public async searchChats(
-    appId: number,
-    query: string,
-  ): Promise<ChatSearchResult[]> {
-    try {
-      if (!this.ipcRenderer) {
-        console.warn("IpcClient: Search chats not fully implemented in web mode");
-        const chats = await chatsApi.list(appId);
-        return chats.filter((c: any) => c.title?.toLowerCase().includes(query.toLowerCase())).map((c: any) => ({
-          id: c.id,
-          appId: appId,
-          title: c.title,
-          createdAt: new Date(c.createdAt || Date.now()),
-          matchedMessageContent: null
-        }));
-      }
-      const data = await this.ipcRenderer.invoke("search-chats", appId, query);
-      return ChatSearchResultsSchema.parse(data);
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
-  }
-
-  // Get all apps
-  public async listApps(): Promise<ListAppsResponse> {
-    if (!this.ipcRenderer) {
-      const apps = await appsApi.list();
-      return { apps, appBasePath: "" };
-    }
-    return this.ipcRenderer.invoke("list-apps");
-  }
-
-  // Search apps by name
-  public async searchApps(searchQuery: string): Promise<AppSearchResult[]> {
-    try {
-      const data = await this.ipcRenderer.invoke("search-app", searchQuery);
-      return AppSearchResultsSchema.parse(data);
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
-  }
-
-  public async readAppFile(appId: number, filePath: string): Promise<string> {
-    if (!this.ipcRenderer) {
-      // TODO: Implement file reading via API for web mode
-      console.warn("readAppFile not implemented in web mode");
-      return "";
-    }
-    return this.ipcRenderer.invoke("read-app-file", {
-      appId,
-      filePath,
-    });
-  }
-
-  // Edit a file in an app directory
-  public async editAppFile(
-    appId: number,
-    filePath: string,
-    content: string,
-  ): Promise<EditAppFileReturnType> {
-    if (!this.ipcRenderer) {
-      console.warn("editAppFile not implemented in web mode");
-      return { success: false, error: "Not supported in web mode" };
-    }
-    return this.ipcRenderer.invoke("edit-app-file", {
-      appId,
-      filePath,
-      content,
-    });
-  }
-
-  // New method for streaming responses
-  public streamMessage(
-    prompt: string,
-    options: {
-      selectedComponents?: ComponentSelection[];
-      chatId: number;
-      redo?: boolean;
-      attachments?: FileAttachment[];
-      onUpdate: (messages: Message[]) => void;
-      onEnd: (response: ChatResponseEnd) => void;
-      onError: (error: string) => void;
-      onProblems?: (problems: ChatProblemsEvent) => void;
-    },
-  ): void {
-    const {
-      chatId,
-      redo,
-      attachments,
-      selectedComponents,
-      onUpdate,
-      onEnd,
-      onError,
-    } = options;
-    this.chatStreams.set(chatId, { onUpdate, onEnd, onError });
-
-    if (!this.ipcRenderer) {
-      console.warn("IpcClient: streamMessage not fully implemented in web mode");
-      onError("Chat streaming is not yet supported in the web version.");
-      return;
-    }
-
-    // Handle file attachments if provided
-    if (attachments && attachments.length > 0) {
-      // Process each file attachment and convert to base64
-      Promise.all(
-        attachments.map(async (attachment) => {
-          return new Promise<{
-            name: string;
-            type: string;
-            data: string;
-            attachmentType: "upload-to-codebase" | "chat-context";
-          }>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => {
-              resolve({
-                name: attachment.file.name,
-                type: attachment.file.type,
-                data: reader.result as string,
-                attachmentType: attachment.type,
-              });
-            };
-            reader.onerror = () =>
-              reject(new Error(`Failed to read file: ${attachment.file.name}`));
-            reader.readAsDataURL(attachment.file);
-          });
-        }),
-      )
-        .then((fileDataArray) => {
-          // Use invoke to start the stream and pass the chatId and attachments
-          this.ipcRenderer
-            .invoke("chat:stream", {
-              prompt,
-              chatId,
-              redo,
-              selectedComponents,
-              attachments: fileDataArray,
-            })
-            .catch((err) => {
-              console.error("Error streaming message:", err);
-              showError(err);
-              onError(String(err));
-              this.chatStreams.delete(chatId);
-            });
-        })
-        .catch((err) => {
-          console.error("Error streaming message:", err);
-          showError(err);
-          onError(String(err));
-          this.chatStreams.delete(chatId);
-        });
-    } else {
-      // No attachments, proceed normally
-      this.ipcRenderer
-        .invoke("chat:stream", {
-          prompt,
-          chatId,
-          redo,
-          selectedComponents,
-        })
-        .catch((err) => {
-          console.error("Error streaming message:", err);
-          showError(err);
-          onError(String(err));
-          this.chatStreams.delete(chatId);
-        });
-    }
-  }
-
-  // Method to cancel an ongoing stream
-  public cancelChatStream(chatId: number): void {
-    this.ipcRenderer.invoke("chat:cancel", chatId);
-  }
-
-  // Create a new chat for an app
-  public async createChat(appId: number): Promise<number> {
-    if (!this.ipcRenderer) {
-      const chat = await chatsApi.create({ appId });
-      return chat.id;
-    }
-    return this.ipcRenderer.invoke("create-chat", appId);
-  }
-
-  public async updateChat(params: UpdateChatParams): Promise<void> {
-    if (!this.ipcRenderer) return;
-    return this.ipcRenderer.invoke("update-chat", params);
-  }
-
-  public async deleteChat(chatId: number): Promise<void> {
-    if (!this.ipcRenderer) {
-      return chatsApi.delete(chatId).then(() => { });
-    }
-    await this.ipcRenderer.invoke("delete-chat", chatId);
-  }
-
-  public async deleteMessages(chatId: number): Promise<void> {
-    if (!this.ipcRenderer) return;
-    await this.ipcRenderer.invoke("delete-messages", chatId);
-  }
-
-  // Open an external URL using the default browser
-  public async openExternalUrl(url: string): Promise<void> {
-    if (!this.ipcRenderer) {
-      window.open(url, "_blank");
-      return;
-    }
-    await this.ipcRenderer.invoke("open-external-url", url);
-  }
-
-  public async showItemInFolder(fullPath: string): Promise<void> {
-    if (!this.ipcRenderer) return;
-    await this.ipcRenderer.invoke("show-item-in-folder", fullPath);
-  }
-
-  // Run an app
-  public async runApp(
-    appId: number,
-    onOutput: (output: AppOutput) => void,
-  ): Promise<void> {
-    if (!this.ipcRenderer) {
-      console.warn("runApp: Not fully supported in web mode yet");
-      // Simulate run or call API
-      return;
-    }
-    await this.ipcRenderer.invoke("run-app", { appId });
-    this.appStreams.set(appId, { onOutput });
-  }
-
-  // Stop a running app
-  public async stopApp(appId: number): Promise<void> {
-    if (!this.ipcRenderer) return;
-    await this.ipcRenderer.invoke("stop-app", { appId });
-  }
-
-  // Restart a running app
-  public async restartApp(
-    appId: number,
-    onOutput: (output: AppOutput) => void,
-    removeNodeModules?: boolean,
-  ): Promise<{ success: boolean }> {
-    try {
-      if (!this.ipcRenderer) {
-        return { success: false };
-      }
-      const result = await this.ipcRenderer.invoke("restart-app", {
-        appId,
-        removeNodeModules,
-      });
-      this.appStreams.set(appId, { onOutput });
-      return result;
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
-  }
-
-  // Respond to an app input request (y/n prompts)
-  public async respondToAppInput(
-    params: RespondToAppInputParams,
-  ): Promise<void> {
-    try {
-      if (!this.ipcRenderer) return;
-      await this.ipcRenderer.invoke("respond-to-app-input", params);
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
-  }
-
-  // Get allow-listed environment variables
-  public async getEnvVars(): Promise<Record<string, string | undefined>> {
-    try {
-      if (!this.ipcRenderer) {
-        // In web mode, we don't expose system env vars this way/yet
-        return {};
-      }
-      const envVars = await this.ipcRenderer.invoke("get-env-vars");
-      return envVars as Record<string, string | undefined>;
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
-  }
-
-  // List all versions (commits) of an app
-  public async listVersions({ appId }: { appId: number }): Promise<Version[]> {
-    try {
-      if (!this.ipcRenderer) {
-        // Not supported in web mode yet
-        return [];
-      }
-      const versions = await this.ipcRenderer.invoke("list-versions", {
-        appId,
-      });
-      return versions;
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
-  }
-
-  // Revert to a specific version
-  public async revertVersion(
-    params: RevertVersionParams,
-  ): Promise<RevertVersionResponse> {
-    return this.ipcRenderer.invoke("revert-version", params);
-  }
-
-  // Checkout a specific version without creating a revert commit
-  public async checkoutVersion({
-    appId,
-    versionId,
-  }: {
-    appId: number;
-    versionId: string;
-  }): Promise<void> {
-    await this.ipcRenderer.invoke("checkout-version", {
-      appId,
-      versionId,
-    });
-  }
-
-  // Get the current branch of an app
-  public async getCurrentBranch(appId: number): Promise<BranchResult> {
-    if (!this.ipcRenderer) {
-      return { branch: "main", exists: true };
-    }
-    return this.ipcRenderer.invoke("get-current-branch", {
-      appId,
-    });
-  }
-
-  // Get user settings
-  public async getUserSettings(): Promise<UserSettings> {
-    try {
-      if (!this.ipcRenderer) {
-        const settings = await settingsApi.get();
-        // Ensure we return the expected structure even if API returns partial
-        return (settings || { providerSettings: {} }) as UserSettings;
-      }
-      const settings = await this.ipcRenderer.invoke("get-user-settings");
-      return settings;
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
-  }
-
-  // Update user settings
-  public async setUserSettings(
-    settings: Partial<UserSettings>,
-  ): Promise<UserSettings> {
-    try {
-      if (!this.ipcRenderer) {
-        const updated = await settingsApi.update(settings);
-        return updated as UserSettings;
-      }
-      const updatedSettings = await this.ipcRenderer.invoke(
-        "set-user-settings",
-        settings,
-      );
-      return updatedSettings;
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
-  }
-
-  // Delete an app and all its files
-  public async deleteApp(appId: number): Promise<void> {
-    await this.ipcRenderer.invoke("delete-app", { appId });
-  }
-
-  // Rename an app (update name and path)
-  public async renameApp({
-    appId,
-    appName,
-    appPath,
-  }: {
-    appId: number;
-    appName: string;
-    appPath: string;
-  }): Promise<void> {
-    if (!this.ipcRenderer) return;
-    await this.ipcRenderer.invoke("rename-app", {
-      appId,
-      appName,
-      appPath,
-    });
-  }
-
-  public async copyApp(params: CopyAppParams): Promise<{ app: App }> {
-    if (!this.ipcRenderer) throw new Error("Not supported in web mode");
-    return this.ipcRenderer.invoke("copy-app", params);
-  }
-
-  // Reset all - removes all app files, settings, and drops the database
-  public async resetAll(): Promise<void> {
-    if (!this.ipcRenderer) return;
-    await this.ipcRenderer.invoke("reset-all");
-  }
-
-  public async addDependency({
-    chatId,
-    packages,
-  }: {
-    chatId: number;
-    packages: string[];
-  }): Promise<void> {
-    if (!this.ipcRenderer) return;
-    await this.ipcRenderer.invoke("chat:add-dep", {
-      chatId,
-      packages,
-    });
-  }
-
-  // Check Node.js and npm status
-  public async getNodejsStatus(): Promise<NodeSystemInfo> {
-    if (!this.ipcRenderer) {
-      // Return dummy valid status for web
-      return {
-        nodeVersion: "20.0.0",
-        pnpmVersion: "8.0.0",
-        nodeDownloadUrl: ""
-      };
-    }
-    return this.ipcRenderer.invoke("nodejs-status");
-  }
-
-  // --- GitHub Device Flow ---
-  public startGithubDeviceFlow(appId: number | null): void {
-    if (!this.ipcRenderer) {
-      console.warn("startGithubDeviceFlow: Not supported in web mode");
-      return;
-    }
-    this.ipcRenderer.invoke("github:start-flow", { appId });
-  }
-
-  public onGithubDeviceFlowUpdate(
-    callback: (data: GitHubDeviceFlowUpdateData) => void,
-  ): () => void {
-    if (!this.ipcRenderer) {
-      console.warn("onGithubDeviceFlowUpdate: Not supported in web mode");
-      return () => { };
-    }
-
-    const listener = (data: any) => {
-      console.log("github:flow-update", data);
-      callback(data as GitHubDeviceFlowUpdateData);
-    };
-    this.ipcRenderer.on("github:flow-update", listener);
-
-    // Return a function to remove the listener
-    return () => {
-      if (this.ipcRenderer) {
-        this.ipcRenderer.removeListener("github:flow-update", listener);
-      }
-    };
-  }
-
-  public onGithubDeviceFlowSuccess(
-    callback: (data: GitHubDeviceFlowSuccessData) => void,
-  ): () => void {
-    if (!this.ipcRenderer) {
-      console.warn("onGithubDeviceFlowSuccess: Not supported in web mode");
-      return () => { };
-    }
-
-    const listener = (data: any) => {
-      console.log("github:flow-success", data);
-      callback(data as GitHubDeviceFlowSuccessData);
-    };
-    this.ipcRenderer.on("github:flow-success", listener);
-
-    return () => {
-      if (this.ipcRenderer) {
-        this.ipcRenderer.removeListener("github:flow-success", listener);
-      }
-    };
-  }
-
-  public onGithubDeviceFlowError(
-    callback: (data: GitHubDeviceFlowErrorData) => void,
-  ): () => void {
-    if (!this.ipcRenderer) {
-      console.warn("onGithubDeviceFlowError: Not supported in web mode");
-      return () => { };
-    }
-
-    const listener = (data: any) => {
-      console.log("github:flow-error", data);
-      callback(data as GitHubDeviceFlowErrorData);
-    };
-    this.ipcRenderer.on("github:flow-error", listener);
-
-    return () => {
-      if (this.ipcRenderer) {
-        this.ipcRenderer.removeListener("github:flow-error", listener);
-      }
-    };
-  }
-  // --- End GitHub Device Flow ---
-
-  // --- GitHub Repo Management ---
-  public async listGithubRepos(): Promise<
-    { name: string; full_name: string; private: boolean }[]
-  > {
-    return this.ipcRenderer.invoke("github:list-repos");
-  }
-
-  public async getGithubRepoBranches(
-    owner: string,
-    repo: string,
-  ): Promise<{ name: string; commit: { sha: string } }[]> {
-    return this.ipcRenderer.invoke("github:get-repo-branches", {
-      owner,
-      repo,
-    });
-  }
-
-  public async connectToExistingGithubRepo(
-    owner: string,
-    repo: string,
-    branch: string,
-    appId: number,
-  ): Promise<void> {
-    await this.ipcRenderer.invoke("github:connect-existing-repo", {
-      owner,
-      repo,
-      branch,
-      appId,
-    });
-  }
-
-  public async checkGithubRepoAvailable(
-    org: string,
-    repo: string,
-  ): Promise<{ available: boolean; error?: string }> {
-    return this.ipcRenderer.invoke("github:is-repo-available", {
-      org,
-      repo,
-    });
-  }
-
-  public async createGithubRepo(
-    org: string,
-    repo: string,
-    appId: number,
-    branch?: string,
-  ): Promise<void> {
-    await this.ipcRenderer.invoke("github:create-repo", {
-      org,
-      repo,
-      appId,
-      branch,
-    });
-  }
-
-  // Sync (push) local repo to GitHub
-  public async syncGithubRepo(
-    appId: number,
-    force?: boolean,
-  ): Promise<{ success: boolean; error?: string }> {
-    return this.ipcRenderer.invoke("github:push", {
-      appId,
-      force,
-    });
-  }
-
-  public async disconnectGithubRepo(appId: number): Promise<void> {
-    await this.ipcRenderer.invoke("github:disconnect", {
-      appId,
-    });
-  }
-  // --- End GitHub Repo Management ---
-
-  // --- Vercel Token Management ---
-  public async saveVercelAccessToken(
-    params: SaveVercelAccessTokenParams,
-  ): Promise<void> {
-    await this.ipcRenderer.invoke("vercel:save-token", params);
-  }
-  // --- End Vercel Token Management ---
-
-  // --- Vercel Project Management ---
-  public async listVercelProjects(): Promise<VercelProject[]> {
-    return this.ipcRenderer.invoke("vercel:list-projects", undefined);
-  }
-
-  public async connectToExistingVercelProject(
-    params: ConnectToExistingVercelProjectParams,
-  ): Promise<void> {
-    await this.ipcRenderer.invoke("vercel:connect-existing-project", params);
-  }
-
-  public async isVercelProjectAvailable(
-    params: IsVercelProjectAvailableParams,
-  ): Promise<IsVercelProjectAvailableResponse> {
-    return this.ipcRenderer.invoke("vercel:is-project-available", params);
-  }
-
-  public async createVercelProject(
-    params: CreateVercelProjectParams,
-  ): Promise<void> {
-    if (!this.ipcRenderer) return;
-    await this.ipcRenderer.invoke("vercel:create-project", params);
-  }
-
-  // Get Vercel Deployments
-  public async getVercelDeployments(
-    params: GetVercelDeploymentsParams,
-  ): Promise<VercelDeployment[]> {
-    if (!this.ipcRenderer) return [];
-    return this.ipcRenderer.invoke("vercel:get-deployments", params);
-  }
-
-  public async disconnectVercelProject(
-    params: DisconnectVercelProjectParams,
-  ): Promise<void> {
-    if (!this.ipcRenderer) return;
-    await this.ipcRenderer.invoke("vercel:disconnect", params);
-  }
-  // --- End Vercel Project Management ---
-
-  // Get the main app version
-  public async getAppVersion(): Promise<string> {
-    if (!this.ipcRenderer) return "1.0.0-web";
-    const result = await this.ipcRenderer.invoke("get-app-version");
-    return result.version as string;
-  }
-
-  // --- MCP Client Methods ---
-  public async listMcpServers() {
-    if (!this.ipcRenderer) return mcpApi.listServers();
-    return this.ipcRenderer.invoke("mcp:list-servers");
-  }
-
-  public async createMcpServer(params: CreateMcpServer) {
-    if (!this.ipcRenderer) return mcpApi.createServer(params);
-    return this.ipcRenderer.invoke("mcp:create-server", params);
-  }
-
-  public async updateMcpServer(params: McpServerUpdate) {
-    if (!this.ipcRenderer) {
-      if (!params.id) throw new Error("Server ID required for update");
-      return mcpApi.updateServer(params.id, params);
-    }
-    return this.ipcRenderer.invoke("mcp:update-server", params);
-  }
-
-  public async deleteMcpServer(id: number) {
-    if (!this.ipcRenderer) return mcpApi.deleteServer(id);
-    return this.ipcRenderer.invoke("mcp:delete-server", id);
-  }
-
-  public async listMcpTools(serverId: number) {
-    if (!this.ipcRenderer) {
-      // Tools are fetched via SSE in web mode usually, or we might need an endpoint
-      // For now, return empty to prevent crash
-      return [];
-    }
-    return this.ipcRenderer.invoke("mcp:list-tools", serverId);
-  }
-
-  // Removed: upsertMcpTools and setMcpToolActive – tools are fetched dynamically at runtime
-
-  public async getMcpToolConsents() {
-    if (!this.ipcRenderer) {
-      // Web mode: we'd need to fetch for all servers or have a bulk endpoint.
-      // Returning empty for now.
-      return [];
-    }
-    return this.ipcRenderer.invoke("mcp:get-tool-consents");
-  }
-
-  public async setMcpToolConsent(params: {
-    serverId: number;
-    toolName: string;
-    consent: "ask" | "always" | "denied";
-  }) {
-    if (!this.ipcRenderer) return mcpApi.setConsent(params.serverId, params.toolName, params.consent);
-    return this.ipcRenderer.invoke("mcp:set-tool-consent", params);
-  }
-
-  public onMcpToolConsentRequest(
-    handler: (payload: {
-      requestId: string;
-      serverId: number;
-      serverName: string;
-      toolName: string;
-      toolDescription?: string | null;
-      inputPreview?: string | null;
-    }) => void,
-  ) {
-    this.mcpConsentHandlers.set("consent", handler as any);
-    return () => {
-      this.mcpConsentHandlers.delete("consent");
-    };
-  }
-
-  public respondToMcpConsentRequest(
-    requestId: string,
-    decision: "accept-once" | "accept-always" | "decline",
-  ) {
-    this.ipcRenderer.invoke("mcp:tool-consent-response", {
-      requestId,
-      decision,
-    });
-  }
-
-  // Get proposal details
-  public async getProposal(chatId: number): Promise<ProposalResult | null> {
-    // In web mode, proposals are not yet supported
-    if (!this.ipcRenderer) {
-      console.log("IpcClient: getProposal not implemented in web mode");
-      return null;
-    }
-
-    try {
-      const data = await this.ipcRenderer.invoke("get-proposal", { chatId });
-      // Assuming the main process returns data matching the ProposalResult interface
-      // Add a type check/guard if necessary for robustness
-      return data as ProposalResult | null;
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
-  }
-
-  // Example methods for listening to events (if needed)
-  // public on(channel: string, func: (...args: any[]) => void): void {
-
-  // --- Proposal Management ---
-  public async approveProposal({
-    chatId,
-    messageId,
-  }: {
-    chatId: number;
-    messageId: number;
-  }): Promise<ApproveProposalResult> {
-    if (!this.ipcRenderer) {
-      throw new Error("Proposal approval is not supported in web mode");
-    }
-    return this.ipcRenderer.invoke("approve-proposal", {
-      chatId,
-      messageId,
-    });
-  }
-
-  public async rejectProposal({
-    chatId,
-    messageId,
-  }: {
-    chatId: number;
-    messageId: number;
-  }): Promise<void> {
-    if (!this.ipcRenderer) {
-      throw new Error("Proposal rejection is not supported in web mode");
-    }
-    await this.ipcRenderer.invoke("reject-proposal", {
-      chatId,
-      messageId,
-    });
-  }
-  // --- End Proposal Management ---
-
-  // --- Supabase Management ---
-  public async listSupabaseProjects(): Promise<any[]> {
-    return this.ipcRenderer.invoke("supabase:list-projects");
-  }
-
-  public async listSupabaseBranches(params: {
-    projectId: string;
-  }): Promise<SupabaseBranch[]> {
-    return this.ipcRenderer.invoke("supabase:list-branches", params);
-  }
-
-  public async setSupabaseAppProject(
-    params: SetSupabaseAppProjectParams,
-  ): Promise<void> {
-    await this.ipcRenderer.invoke("supabase:set-app-project", params);
-  }
-
-  public async unsetSupabaseAppProject(app: number): Promise<void> {
-    await this.ipcRenderer.invoke("supabase:unset-app-project", {
-      app,
-    });
-  }
-
-  public async fakeHandleSupabaseConnect(params: {
-    appId: number;
-    fakeProjectId: string;
-  }): Promise<void> {
-    await this.ipcRenderer.invoke(
-      "supabase:fake-connect-and-set-project",
-      params,
-    );
-  }
-
-  // --- End Supabase Management ---
-
-  // --- Neon Management ---
-  public async fakeHandleNeonConnect(): Promise<void> {
-    await this.ipcRenderer.invoke("neon:fake-connect");
-  }
-
-  public async createNeonProject(
-    params: CreateNeonProjectParams,
-  ): Promise<NeonProject> {
-    return this.ipcRenderer.invoke("neon:create-project", params);
-  }
-
-  public async getNeonProject(
-    params: GetNeonProjectParams,
-  ): Promise<GetNeonProjectResponse> {
-    return this.ipcRenderer.invoke("neon:get-project", params);
-  }
-
-  // --- End Neon Management ---
-
-  // --- Portal Management ---
-  public async portalMigrateCreate(params: {
-    appId: number;
-  }): Promise<{ output: string }> {
-    if (!this.ipcRenderer) return { output: "" };
-    return this.ipcRenderer.invoke("portal:migrate-create", params);
-  }
-
-  // --- End Portal Management ---
-
-  public async getSystemDebugInfo(): Promise<SystemDebugInfo> {
-    if (!this.ipcRenderer) {
-      return {
-        os: "web",
-        arch: "web",
-        release: "web",
-        hostname: window.location.hostname,
-        totalmem: 0,
-        freemem: 0,
-        cpus: [],
-        uptime: 0,
-        shell: navigator.userAgent,
-        // Add other required fields with defaults
-        nodeVersion: "n/a",
-        electronVersion: "n/a",
-        chromeVersion: "n/a",
-        appVersion: "web",
-        userDataPath: "n/a",
-        logsPath: "n/a",
-        appPath: "n/a",
-        tempPath: "n/a",
-        homePath: "n/a",
-        env: {},
-        networkInterfaces: {}
-      } as unknown as SystemDebugInfo;
-    }
-    return this.ipcRenderer.invoke("get-system-debug-info");
-  }
-
-  public async getChatLogs(chatId: number): Promise<ChatLogsData> {
-    if (!this.ipcRenderer) return { logs: [] } as any;
-    return this.ipcRenderer.invoke("get-chat-logs", chatId);
-  }
-
-  public async uploadToSignedUrl(
-    url: string,
-    contentType: string,
-    data: any,
-  ): Promise<void> {
-    if (!this.ipcRenderer) return;
-    await this.ipcRenderer.invoke("upload-to-signed-url", {
-      url,
-      contentType,
-      data,
-    });
-  }
-
-  public async listLocalOllamaModels(): Promise<LocalModel[]> {
-    if (!this.ipcRenderer) return [];
-    const response = await this.ipcRenderer.invoke("local-models:list-ollama");
-    return response?.models || [];
-  }
-
-  public async listLocalLMStudioModels(): Promise<LocalModel[]> {
-    if (!this.ipcRenderer) return [];
-    const response = await this.ipcRenderer.invoke(
-      "local-models:list-lmstudio",
-    );
-    return response?.models || [];
-  }
-
-  // Listen for deep link events
-  public onDeepLinkReceived(
-    callback: (data: DeepLinkData) => void,
-  ): () => void {
-    if (!this.ipcRenderer) {
-      // Deep links not yet supported/handled in web mode
-      return () => { };
-    }
-    const listener = (data: any) => {
-      callback(data as DeepLinkData);
-    };
-    this.ipcRenderer.on("deep-link-received", listener);
-    return () => {
-      this.ipcRenderer.removeListener("deep-link-received", listener);
-    };
-  }
-
-  // Count tokens for a chat and input
-  public async countTokens(
-    params: TokenCountParams,
-  ): Promise<TokenCountResult> {
-    try {
-      if (!this.ipcRenderer) {
-        // Mock token count for now or implement client side estimation
-        return {
-          estimatedTotalTokens: 0,
-          actualMaxTokens: 128000,
-          messageHistoryTokens: 0,
-          codebaseTokens: 0,
-          mentionedAppsTokens: 0,
-          inputTokens: 0,
-          systemPromptTokens: 0,
-          contextWindow: 128000
-        };
-      }
-      const result = await this.ipcRenderer.invoke("chat:count-tokens", params);
-      return result as TokenCountResult;
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
-  }
-
-  // Window control methods
-  public async minimizeWindow(): Promise<void> {
-    try {
-      if (!this.ipcRenderer) return;
-      await this.ipcRenderer.invoke("window:minimize");
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
-  }
-
-  public async maximizeWindow(): Promise<void> {
-    try {
-      if (!this.ipcRenderer) return;
-      await this.ipcRenderer.invoke("window:maximize");
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
-  }
-
-  public async closeWindow(): Promise<void> {
-    try {
-      if (!this.ipcRenderer) return;
-      await this.ipcRenderer.invoke("window:close");
-    } catch (error) {
-      showError(error);
-      throw error;
-    }
-  }
-
-  // Get system platform (win32, darwin, linux)
-  public async getSystemPlatform(): Promise<string> {
-    if (!this.ipcRenderer) {
-      // Simple client-side detection or default to linux for web
-      return "linux";
-    }
-    return this.ipcRenderer.invoke("get-system-platform");
-  }
-
-  public async doesReleaseNoteExist(
-    params: DoesReleaseNoteExistParams,
-  ): Promise<{ exists: boolean; url?: string }> {
-    if (!this.ipcRenderer) return { exists: false };
-    return this.ipcRenderer.invoke("does-release-note-exist", params);
-  }
-
-  public async getLanguageModelProviders(): Promise<LanguageModelProvider[]> {
-    if (!this.ipcRenderer) {
-      // In web mode, return default cloud and local providers
-      const { CLOUD_PROVIDERS, LOCAL_PROVIDERS, PROVIDER_TO_ENV_VAR } = await import("./shared/language_model_constants");
-
-      const providers: LanguageModelProvider[] = [];
-
-      // Add cloud providers
-      for (const providerKey in CLOUD_PROVIDERS) {
-        if (Object.prototype.hasOwnProperty.call(CLOUD_PROVIDERS, providerKey)) {
-          const providerDetails = CLOUD_PROVIDERS[providerKey];
-          if (providerDetails) {
-            providers.push({
-              id: providerKey,
-              name: providerDetails.displayName,
-              hasFreeTier: providerDetails.hasFreeTier,
-              websiteUrl: providerDetails.websiteUrl,
-              gatewayPrefix: providerDetails.gatewayPrefix,
-              secondary: providerDetails.secondary,
-              envVarName: PROVIDER_TO_ENV_VAR[providerKey] ?? undefined,
-              type: "cloud",
-            });
-          }
-        }
-      }
-
-      // Add local providers
-      for (const providerKey in LOCAL_PROVIDERS) {
-        if (Object.prototype.hasOwnProperty.call(LOCAL_PROVIDERS, providerKey)) {
-          const providerDetails = LOCAL_PROVIDERS[providerKey];
-          providers.push({
-            id: providerKey,
-            name: providerDetails.displayName,
-            hasFreeTier: providerDetails.hasFreeTier,
-            type: "local",
-          });
-        }
-      }
-
-      return providers;
-    }
-    return this.ipcRenderer.invoke("get-language-model-providers");
-  }
-
-  public async getLanguageModels(params: {
-    providerId: string;
-  }): Promise<LanguageModel[]> {
-    if (!this.ipcRenderer) {
-      // In web mode, return models from constants
-      const { MODEL_OPTIONS } = await import("./shared/language_model_constants");
-      const models = MODEL_OPTIONS[params.providerId] || [];
-      return models.map(model => ({
-        ...model,
-        apiName: model.name,
-        type: "cloud" as const,
-      }));
-    }
-    return this.ipcRenderer.invoke("get-language-models", params);
-  }
-
-  public async getLanguageModelsByProviders(): Promise<
-    Record<string, LanguageModel[]>
-  > {
-    if (!this.ipcRenderer) {
-      // In web mode, return models for all providers
-      const providers = await this.getLanguageModelProviders();
-      const record: Record<string, LanguageModel[]> = {};
-
-      for (const provider of providers) {
-        if (provider.type !== "local") {
-          record[provider.id] = await this.getLanguageModels({ providerId: provider.id });
-        }
-      }
-
-      return record;
-    }
-    return this.ipcRenderer.invoke("get-language-models-by-providers");
-  }
-
-  public async createCustomLanguageModelProvider({
-    id,
-    name,
-    apiBaseUrl,
-    envVarName,
-  }: CreateCustomLanguageModelProviderParams): Promise<LanguageModelProvider> {
-    if (!this.ipcRenderer) throw new Error("Not supported in web mode");
-    return this.ipcRenderer.invoke("create-custom-language-model-provider", {
-      id,
-      name,
-      apiBaseUrl,
-      envVarName,
-    });
-  }
-  public async editCustomLanguageModelProvider(
-    params: CreateCustomLanguageModelProviderParams,
-  ): Promise<LanguageModelProvider> {
-    if (!this.ipcRenderer) throw new Error("Not supported in web mode");
-    return this.ipcRenderer.invoke(
-      "edit-custom-language-model-provider",
-      params,
-    );
-  }
-
-  public async createCustomLanguageModel(
-    params: CreateCustomLanguageModelParams,
-  ): Promise<void> {
-    if (!this.ipcRenderer) return;
-    await this.ipcRenderer.invoke("create-custom-language-model", params);
-  }
-
-  public async deleteCustomLanguageModel(modelId: string): Promise<void> {
-    if (!this.ipcRenderer) return;
-    return this.ipcRenderer.invoke("delete-custom-language-model", modelId);
-  }
-
-  async deleteCustomModel(params: DeleteCustomModelParams): Promise<void> {
-    if (!this.ipcRenderer) return;
-    return this.ipcRenderer.invoke("delete-custom-model", params);
-  }
-
-  async deleteCustomLanguageModelProvider(providerId: string): Promise<void> {
-    return this.ipcRenderer.invoke("delete-custom-language-model-provider", {
-      providerId,
-    });
-  }
-
-  public async selectAppFolder(): Promise<{
-    path: string | null;
-    name: string | null;
-  }> {
-    return this.ipcRenderer.invoke("select-app-folder");
-  }
-
-  // Add these methods to IpcClient class
-
-  public async selectNodeFolder(): Promise<SelectNodeFolderResult> {
-    if (!this.ipcRenderer) return { canceled: true };
-    return this.ipcRenderer.invoke("select-node-folder");
-  }
-
-  public async getNodePath(): Promise<string | null> {
-    if (!this.ipcRenderer) return null;
-    return this.ipcRenderer.invoke("get-node-path");
-  }
-
-  public async checkAiRules(params: {
-    path: string;
-  }): Promise<{ exists: boolean }> {
-    if (!this.ipcRenderer) return { exists: false };
-    return this.ipcRenderer.invoke("check-ai-rules", params);
-  }
-
-  public async getLatestSecurityReview(
-    appId: number,
-  ): Promise<SecurityReviewResult> {
-    if (!this.ipcRenderer) return { riskScore: 0, issues: [] };
-    return this.ipcRenderer.invoke("get-latest-security-review", appId);
-  }
-
-  public async importApp(params: ImportAppParams): Promise<ImportAppResult> {
-    if (!this.ipcRenderer) throw new Error("Import not supported in web mode");
-    return this.ipcRenderer.invoke("import-app", params);
-  }
-
-  async checkAppName(params: {
-    appName: string;
-  }): Promise<{ exists: boolean }> {
-    if (!this.ipcRenderer) return { exists: false };
-    return this.ipcRenderer.invoke("check-app-name", params);
-  }
-
-  public async renameBranch(params: RenameBranchParams): Promise<void> {
-    if (!this.ipcRenderer) return;
-    await this.ipcRenderer.invoke("rename-branch", params);
-  }
-
-  async clearSessionData(): Promise<void> {
-    if (!this.ipcRenderer) return;
-    return this.ipcRenderer.invoke("clear-session-data");
-  }
-
-  // Method to get user budget information
-  public async getUserBudget(): Promise<UserBudgetInfo | null> {
-    if (!this.ipcRenderer) return null;
-    return this.ipcRenderer.invoke("get-user-budget");
-  }
-
-  public async getChatContextResults(params: {
-    appId: number;
-  }): Promise<ContextPathResults> {
-    if (!this.ipcRenderer) return { files: [], symbols: [] };
-    return this.ipcRenderer.invoke("get-context-paths", params);
-  }
-
-  public async setChatContext(params: {
-    appId: number;
-    chatContext: AppChatContext;
-  }): Promise<void> {
-    if (!this.ipcRenderer) return;
-    await this.ipcRenderer.invoke("set-context-paths", params);
-  }
-
-  public async getAppUpgrades(params: {
-    appId: number;
-  }): Promise<AppUpgrade[]> {
-    if (!this.ipcRenderer) return [];
-    return this.ipcRenderer.invoke("get-app-upgrades", params);
-  }
-
-  public async executeAppUpgrade(params: {
-    appId: number;
-    upgradeId: string;
-  }): Promise<void> {
-    if (!this.ipcRenderer) throw new Error("Not supported in web mode");
-    return this.ipcRenderer.invoke("execute-app-upgrade", params);
-  }
-
-  // Capacitor methods
-  public async isCapacitor(params: { appId: number }): Promise<boolean> {
-    if (!this.ipcRenderer) return false;
-    return this.ipcRenderer.invoke("is-capacitor", params);
-  }
-
-  public async syncCapacitor(params: { appId: number }): Promise<void> {
-    if (!this.ipcRenderer) return;
-    return this.ipcRenderer.invoke("sync-capacitor", params);
-  }
-
-  public async openIos(params: { appId: number }): Promise<void> {
-    if (!this.ipcRenderer) return;
-    return this.ipcRenderer.invoke("open-ios", params);
-  }
-
-  public async openAndroid(params: { appId: number }): Promise<void> {
-    if (!this.ipcRenderer) return;
-    return this.ipcRenderer.invoke("open-android", params);
-  }
-
-  public async checkProblems(params: {
-    appId: number;
-  }): Promise<ProblemReport> {
-    if (!this.ipcRenderer) return { missingEnvVars: [], missingFiles: [] } as any;
-    return this.ipcRenderer.invoke("check-problems", params);
-  }
-
-  // Template methods
-  public async getTemplates(): Promise<Template[]> {
-    if (!this.ipcRenderer) return [];
-    return this.ipcRenderer.invoke("get-templates");
-  }
-
-  // --- Prompts Library ---
-  public async listPrompts(): Promise<PromptDto[]> {
-    if (!this.ipcRenderer) return [];
-    return this.ipcRenderer.invoke("prompts:list");
-  }
-
-  public async createPrompt(params: CreatePromptParamsDto): Promise<PromptDto> {
-    if (!this.ipcRenderer) throw new Error("Not supported in web mode");
-    return this.ipcRenderer.invoke("prompts:create", params);
-  }
-
-  public async updatePrompt(params: UpdatePromptParamsDto): Promise<void> {
-    if (!this.ipcRenderer) return;
-    await this.ipcRenderer.invoke("prompts:update", params);
-  }
-
-  public async deletePrompt(id: number): Promise<void> {
-    if (!this.ipcRenderer) return;
-    await this.ipcRenderer.invoke("prompts:delete", id);
-  }
-  public async cloneRepoFromUrl(
-    params: CloneRepoParams,
-  ): Promise<{ app: App; hasAiRules: boolean } | { error: string }> {
-    if (!this.ipcRenderer) return { error: "Not supported in web mode" };
-    return this.ipcRenderer.invoke("github:clone-repo-from-url", params);
-  }
-
-  // --- Help bot ---
-  public startHelpChat(
-    sessionId: string,
-    message: string,
-    options: {
-      onChunk: (delta: string) => void;
-      onEnd: () => void;
-      onError: (error: string) => void;
-    },
-  ): void {
-    this.helpStreams.set(sessionId, options);
-    if (!this.ipcRenderer) {
-      options.onError("Help chat not available in web mode");
-      return;
-    }
-    this.ipcRenderer
-      .invoke("help:chat:start", { sessionId, message })
-      .catch((err) => {
-        this.helpStreams.delete(sessionId);
-        showError(err);
-        options.onError(String(err));
-      });
-  }
-
-  public async takeScreenshot(): Promise<void> {
-    if (!this.ipcRenderer) return;
-    await this.ipcRenderer.invoke("take-screenshot");
-  }
-
-  public cancelHelpChat(sessionId: string): void {
-    if (!this.ipcRenderer) return;
-    this.ipcRenderer.invoke("help:chat:cancel", sessionId).catch(() => { });
-  }
+  // --- Delegation ---
+
+  public restartDyad() { return this.backend.restartDyad(); }
+  public reloadEnvPath() { return this.backend.reloadEnvPath(); }
+  public getSystemDebugInfo() { return this.backend.getSystemDebugInfo(); }
+  public getSystemPlatform() { return this.backend.getSystemPlatform(); }
+
+  public createApp(params: CreateAppParams) { return this.backend.createApp(params); }
+  public getApp(appId: number) { return this.backend.getApp(appId); }
+  public listApps() { return this.backend.listApps(); }
+  public searchApps(searchQuery: string) { return this.backend.searchApps(searchQuery); }
+  public deleteApp(appId: number) { return this.backend.deleteApp(appId); }
+  public renameApp(params: any) { return this.backend.renameApp(params); }
+  public copyApp(params: CopyAppParams) { return this.backend.copyApp(params); }
+  public resetAll() { return this.backend.resetAll(); }
+  public addAppToFavorite(appId: number) { return this.backend.addAppToFavorite(appId); }
+
+  public readAppFile(appId: number, filePath: string) { return this.backend.readAppFile(appId, filePath); }
+  public editAppFile(appId: number, filePath: string, content: string) { return this.backend.editAppFile(appId, filePath, content); }
+  public getAppEnvVars(params: GetAppEnvVarsParams) { return this.backend.getAppEnvVars(params); }
+  public setAppEnvVars(params: SetAppEnvVarsParams) { return this.backend.setAppEnvVars(params); }
+  public getEnvVars() { return this.backend.getEnvVars(); }
+  public selectAppFolder() { return this.backend.selectAppFolder(); }
+  public showItemInFolder(fullPath: string) { return this.backend.showItemInFolder(fullPath); }
+
+  public runApp(appId: number, onOutput: (output: AppOutput) => void) { return this.backend.runApp(appId, onOutput); }
+  public stopApp(appId: number) { return this.backend.stopApp(appId); }
+  public restartApp(appId: number, onOutput: (output: AppOutput) => void, removeNodeModules?: boolean) { return this.backend.restartApp(appId, onOutput, removeNodeModules); }
+  public respondToAppInput(params: RespondToAppInputParams) { return this.backend.respondToAppInput(params); }
+
+  public getChat(chatId: number) { return this.backend.getChat(chatId); }
+  public getChats(appId?: number) { return this.backend.getChats(appId); }
+  public searchChats(appId: number, query: string) { return this.backend.searchChats(appId, query); }
+  public createChat(appId: number) { return this.backend.createChat(appId); }
+  public updateChat(params: UpdateChatParams) { return this.backend.updateChat(params); }
+  public deleteChat(chatId: number) { return this.backend.deleteChat(chatId); }
+  public deleteMessages(chatId: number) { return this.backend.deleteMessages(chatId); }
+  public getChatLogs(chatId: number) { return this.backend.getChatLogs(chatId); }
+
+  public streamMessage(prompt: string, options: any) { return this.backend.streamMessage(prompt, options); }
+  public cancelChatStream(chatId: number) { return this.backend.cancelChatStream(chatId); }
+
+  public addDependency(params: any) { return this.backend.addDependency(params); }
+  public countTokens(params: TokenCountParams) { return this.backend.countTokens(params); }
+  public getChatContextResults(params: any) { return this.backend.getChatContextResults(params); }
+  public setChatContext(params: any) { return this.backend.setChatContext(params); }
+
+  public getUserSettings() { return this.backend.getUserSettings(); }
+  public setUserSettings(settings: Partial<UserSettings>) { return this.backend.setUserSettings(settings); }
+  public getUserBudget() { return this.backend.getUserBudget(); }
+  public clearSessionData() { return this.backend.clearSessionData(); }
+
+  public listVersions(params: any) { return this.backend.listVersions(params); }
+  public revertVersion(params: RevertVersionParams) { return this.backend.revertVersion(params); }
+  public checkoutVersion(params: any) { return this.backend.checkoutVersion(params); }
+  public getCurrentBranch(appId: number) { return this.backend.getCurrentBranch(appId); }
+  public renameBranch(params: RenameBranchParams) { return this.backend.renameBranch(params); }
+
+  public startGithubDeviceFlow(appId: number | null) { return this.backend.startGithubDeviceFlow(appId); }
+  public onGithubDeviceFlowUpdate(cb: any) { return this.backend.onGithubDeviceFlowUpdate(cb); }
+  public onGithubDeviceFlowSuccess(cb: any) { return this.backend.onGithubDeviceFlowSuccess(cb); }
+  public onGithubDeviceFlowError(cb: any) { return this.backend.onGithubDeviceFlowError(cb); }
+  public listGithubRepos() { return this.backend.listGithubRepos(); }
+  public getGithubRepoBranches(owner: string, repo: string) { return this.backend.getGithubRepoBranches(owner, repo); }
+  public connectToExistingGithubRepo(owner: string, repo: string, branch: string, appId: number) { return this.backend.connectToExistingGithubRepo(owner, repo, branch, appId); }
+  public checkGithubRepoAvailable(org: string, repo: string) { return this.backend.checkGithubRepoAvailable(org, repo); }
+  public createGithubRepo(org: string, repo: string, appId: number, branch?: string) { return this.backend.createGithubRepo(org, repo, appId, branch); }
+  public syncGithubRepo(appId: number, force?: boolean) { return this.backend.syncGithubRepo(appId, force); }
+  public disconnectGithubRepo(appId: number) { return this.backend.disconnectGithubRepo(appId); }
+  public cloneRepoFromUrl(params: CloneRepoParams) { return this.backend.cloneRepoFromUrl(params); }
+
+  public saveVercelAccessToken(params: SaveVercelAccessTokenParams) { return this.backend.saveVercelAccessToken(params); }
+  public listVercelProjects() { return this.backend.listVercelProjects(); }
+  public connectToExistingVercelProject(params: ConnectToExistingVercelProjectParams) { return this.backend.connectToExistingVercelProject(params); }
+  public isVercelProjectAvailable(params: IsVercelProjectAvailableParams) { return this.backend.isVercelProjectAvailable(params); }
+  public createVercelProject(params: CreateVercelProjectParams) { return this.backend.createVercelProject(params); }
+  public getVercelDeployments(params: GetVercelDeploymentsParams) { return this.backend.getVercelDeployments(params); }
+  public disconnectVercelProject(params: DisconnectVercelProjectParams) { return this.backend.disconnectVercelProject(params); }
+
+  public listMcpServers() { return this.backend.listMcpServers(); }
+  public createMcpServer(params: CreateMcpServer) { return this.backend.createMcpServer(params); }
+  public updateMcpServer(params: McpServerUpdate) { return this.backend.updateMcpServer(params); }
+  public deleteMcpServer(id: number) { return this.backend.deleteMcpServer(id); }
+  public listMcpTools(serverId: number) { return this.backend.listMcpTools(serverId); }
+  public getMcpToolConsents() { return this.backend.getMcpToolConsents(); }
+  public setMcpToolConsent(params: any) { return this.backend.setMcpToolConsent(params); }
+  public onMcpToolConsentRequest(handler: any) { return this.backend.onMcpToolConsentRequest(handler); }
+  public respondToMcpConsentRequest(reqId: string, decision: any) { return this.backend.respondToMcpConsentRequest(reqId, decision); }
+
+  public listSupabaseProjects() { return this.backend.listSupabaseProjects(); }
+  public listSupabaseBranches(params: any) { return this.backend.listSupabaseBranches(params); }
+  public setSupabaseAppProject(params: any) { return this.backend.setSupabaseAppProject(params); }
+  public unsetSupabaseAppProject(app: number) { return this.backend.unsetSupabaseAppProject(app); }
+  public fakeHandleSupabaseConnect(params: any) { return this.backend.fakeHandleSupabaseConnect(params); }
+  public fakeHandleNeonConnect() { return this.backend.fakeHandleNeonConnect(); }
+  public createNeonProject(params: any) { return this.backend.createNeonProject(params); }
+  public getNeonProject(params: any) { return this.backend.getNeonProject(params); }
+
+  public getAppVersion() { return this.backend.getAppVersion(); }
+  public openExternalUrl(url: string) { return this.backend.openExternalUrl(url); }
+  public uploadToSignedUrl(url: string, contentType: string, data: any) { return this.backend.uploadToSignedUrl(url, contentType, data); }
+  public listLocalOllamaModels() { return this.backend.listLocalOllamaModels(); }
+  public listLocalLMStudioModels() { return this.backend.listLocalLMStudioModels(); }
+  public onDeepLinkReceived(cb: any) { return this.backend.onDeepLinkReceived(cb); }
+
+  public minimizeWindow() { return this.backend.minimizeWindow(); }
+  public maximizeWindow() { return this.backend.maximizeWindow(); }
+  public closeWindow() { return this.backend.closeWindow(); }
+  public takeScreenshot() { return this.backend.takeScreenshot(); }
+
+  public checkAiRules(params: any) { return this.backend.checkAiRules(params); }
+  public getLatestSecurityReview(appId: number) { return this.backend.getLatestSecurityReview(appId); }
+  public importApp(params: ImportAppParams) { return this.backend.importApp(params); }
+  public checkAppName(params: any) { return this.backend.checkAppName(params); }
+  public getAppUpgrades(params: any) { return this.backend.getAppUpgrades(params); }
+  public executeAppUpgrade(params: any) { return this.backend.executeAppUpgrade(params); }
+
+  public isCapacitor(params: any) { return this.backend.isCapacitor(params); }
+  public syncCapacitor(params: any) { return this.backend.syncCapacitor(params); }
+  public openIos(params: any) { return this.backend.openIos(params); }
+  public openAndroid(params: any) { return this.backend.openAndroid(params); }
+  public checkProblems(params: any) { return this.backend.checkProblems(params); }
+
+  public getTemplates() { return this.backend.getTemplates(); }
+  public listPrompts() { return this.backend.listPrompts(); }
+  public createPrompt(params: any) { return this.backend.createPrompt(params); }
+  public updatePrompt(params: any) { return this.backend.updatePrompt(params); }
+  public deletePrompt(id: number) { return this.backend.deletePrompt(id); }
+
+  public selectNodeFolder() { return this.backend.selectNodeFolder(); }
+  public getNodePath() { return this.backend.getNodePath(); }
+  public getNodejsStatus() { return this.backend.getNodejsStatus(); }
+
+  public startHelpChat(sessionId: string, message: string, options: any) { return this.backend.startHelpChat(sessionId, message, options); }
+  public cancelHelpChat(sessionId: string) { return this.backend.cancelHelpChat(sessionId); }
+
+  public getProposal(chatId: number) { return this.backend.getProposal(chatId); }
+  public approveProposal(params: any) { return this.backend.approveProposal(params); }
+  public rejectProposal(params: any) { return this.backend.rejectProposal(params); }
+
+  public doesReleaseNoteExist(params: any) { return this.backend.doesReleaseNoteExist(params); }
+  public getLanguageModelProviders() { return this.backend.getLanguageModelProviders(); }
+  public getLanguageModels(params: any) { return this.backend.getLanguageModels(params); }
+  public getLanguageModelsByProviders() { return this.backend.getLanguageModelsByProviders(); }
+  public createCustomLanguageModelProvider(params: any) { return this.backend.createCustomLanguageModelProvider(params); }
+  public editCustomLanguageModelProvider(params: any) { return this.backend.editCustomLanguageModelProvider(params); }
+  public createCustomLanguageModel(params: any) { return this.backend.createCustomLanguageModel(params); }
+  public deleteCustomLanguageModel(modelId: string) { return this.backend.deleteCustomLanguageModel(modelId); }
+  public deleteCustomModel(params: any) { return this.backend.deleteCustomModel(params); }
+  public deleteCustomLanguageModelProvider(providerId: string) { return this.backend.deleteCustomLanguageModelProvider(providerId); }
+  public portalMigrateCreate(params: any) { return this.backend.portalMigrateCreate(params); }
 }

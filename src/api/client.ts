@@ -71,6 +71,23 @@ export const appsApi = {
 
     delete: (id: number) =>
         apiRequest<{ deleted: boolean }>(`/apps/${id}`, { method: "DELETE" }),
+
+    // File System
+    readFile: (id: number, path: string) =>
+        apiRequest<{ content: string }>(`/apps/${id}/files/read?path=${encodeURIComponent(path)}`),
+
+    saveFile: (id: number, path: string, content: string) =>
+        apiRequest<{ success: boolean; error?: string }>(`/apps/${id}/files/write`, {
+            method: "POST",
+            body: JSON.stringify({ path, content }),
+        }),
+
+    // Process Control
+    run: (id: number) =>
+        apiRequest<{ success: boolean; processId?: number }>(`/apps/${id}/run`, { method: "POST" }),
+
+    stop: (id: number) =>
+        apiRequest<{ success: boolean }>(`/apps/${id}/stop`, { method: "POST" }),
 };
 
 // ============================================================================

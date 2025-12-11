@@ -14,6 +14,8 @@ import { language_model_providers } from "../db/schema.js";
 import { eq } from "drizzle-orm";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
+import fs from "node:fs";
+import path from "node:path";
 
 interface ChatMessage {
     role: "user" | "assistant" | "system";
@@ -139,7 +141,26 @@ async function handleStreamRequest(
     activeStreams.set(requestId, abortController);
 
     try {
-        const model = await getModelProvider(request.model || "gpt-4o");
+        // Get default model from settings if not specified
+        let modelToUse = request.model;
+        if (!modelToUse) {
+            try {
+                const dataDir = process.env.DATA_DIR || "./data";
+                const settingsPath = path.join(dataDir, "settings.json");
+                if (fs.existsSync(settingsPath)) {
+                    const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+                    modelToUse = settings.defaultModel || "gemini-2.0-flash-exp";
+                    console.log(`[WS] Using default model from settings: ${modelToUse}`);
+                } else {
+                    modelToUse = "gemini-2.0-flash-exp";
+                }
+            } catch (e) {
+                console.error("[WS] Failed to read settings, using gemini-2.0-flash-exp:", e);
+                modelToUse = "gemini-2.0-flash-exp";
+            }
+        }
+
+        const model = await getModelProvider(modelToUse);
 
         const messagesWithSystem = request.systemPrompt
             ? [{ role: "system" as const, content: request.systemPrompt }, ...request.messages]

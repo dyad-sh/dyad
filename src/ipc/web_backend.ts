@@ -188,8 +188,16 @@ export class WebBackend implements IBackendClient {
 
     // Files
     async readAppFile(appId: number, filePath: string): Promise<string> {
-        const res = await appsApi.readFile(appId, filePath);
-        return res.content;
+        console.log(`[WebBackend] Reading file: ${appId} / ${filePath}`);
+        try {
+            const res = await appsApi.readFile(appId, filePath);
+            console.log(`[WebBackend] readFile response:`, res);
+            if (!res) throw new Error("Response is undefined");
+            return res.content;
+        } catch (e) {
+            console.error(`[WebBackend] readFile failed:`, e);
+            throw e;
+        }
     }
 
     async editAppFile(appId: number, filePath: string, content: string): Promise<EditAppFileReturnType> {

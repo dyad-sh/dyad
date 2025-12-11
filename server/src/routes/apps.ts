@@ -180,4 +180,89 @@ router.delete("/:id", async (req, res, next) => {
     }
 });
 
+/**
+ * GET /api/apps/:id/files/read
+ */
+router.get("/:id/files/read", async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { path: filePath } = req.query;
+
+        if (!filePath || typeof filePath !== 'string') {
+            throw createError("Path query parameter required", 400, "INVALID_PATH");
+        }
+
+        // Mock file system in web mode
+        // In a real implementation, this would read from a secure container or storage
+        // For now, we return a mock content if the file implies it's new
+
+        res.json({
+            success: true,
+            content: `// Content of ${filePath}\n// Fetched from Web Backend`,
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * POST /api/apps/:id/files/write
+ */
+router.post("/:id/files/write", async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { path: filePath, content } = req.body;
+
+        if (!filePath || typeof filePath !== 'string') {
+            throw createError("Path required", 400, "INVALID_PATH");
+        }
+
+        // Mock write
+        console.log(`[WebBackend] Writing to app ${id} file ${filePath}: ${content.substring(0, 20)}...`);
+
+        res.json({
+            success: true,
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * POST /api/apps/:id/run
+ */
+router.post("/:id/run", async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        // Mock run
+        console.log(`[WebBackend] Running app ${id}`);
+
+        // We could trigger a websocket event here to stream "logs"
+
+        res.json({
+            success: true,
+            processId: 12345
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * POST /api/apps/:id/stop
+ */
+router.post("/:id/stop", async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        // Mock stop
+        console.log(`[WebBackend] Stopping app ${id}`);
+
+        res.json({
+            success: true,
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
 export default router;

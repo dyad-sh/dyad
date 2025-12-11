@@ -14,6 +14,12 @@ import {
     ChatSearchResultsSchema,
     AppSearchResultsSchema,
 } from "../lib/schemas";
+import {
+    CLOUD_PROVIDERS,
+    LOCAL_PROVIDERS,
+    MODEL_OPTIONS,
+    PROVIDER_TO_ENV_VAR,
+} from "../shared/language_model_constants";
 import type {
     App,
     AppOutput,
@@ -423,9 +429,72 @@ export class WebBackend implements IBackendClient {
     async rejectProposal(): Promise<void> { }
 
     async doesReleaseNoteExist(): Promise<{ exists: boolean }> { return { exists: false }; }
-    async getLanguageModelProviders(): Promise<LanguageModelProvider[]> { return []; }
-    async getLanguageModels(): Promise<LanguageModel[]> { return []; }
-    async getLanguageModelsByProviders(): Promise<Record<string, LanguageModel[]>> { return {}; }
+    async getLanguageModelProviders(): Promise<LanguageModelProvider[]> {
+        // Return hardcoded cloud providers (matching language_model_helpers.ts logic)
+        const hardcodedProviders: LanguageModelProvider[] = [];
+        for (const providerKey in CLOUD_PROVIDERS) {
+            if (Object.prototype.hasOwnProperty.call(CLOUD_PROVIDERS, providerKey)) {
+                const key = providerKey as keyof typeof CLOUD_PROVIDERS;
+                const providerDetails = CLOUD_PROVIDERS[key];
+                if (providerDetails) {
+                    hardcodedProviders.push({
+                        id: key,
+                        name: providerDetails.displayName,
+                        hasFreeTier: providerDetails.hasFreeTier,
+                        websiteUrl: providerDetails.websiteUrl,
+                        gatewayPrefix: providerDetails.gatewayPrefix,
+                        secondary: providerDetails.secondary,
+                        envVarName: PROVIDER_TO_ENV_VAR[key] ?? undefined,
+                        type: "cloud",
+                    });
+                }
+            }
+        }
+
+        for (const providerKey in LOCAL_PROVIDERS) {
+            if (Object.prototype.hasOwnProperty.call(LOCAL_PROVIDERS, providerKey)) {
+                const key = providerKey as keyof typeof LOCAL_PROVIDERS;
+                const providerDetails = LOCAL_PROVIDERS[key];
+                hardcodedProviders.push({
+                    id: key,
+                    name: providerDetails.displayName,
+                    hasFreeTier: providerDetails.hasFreeTier,
+                    type: "local",
+                });
+            }
+        }
+        // TODO: Fetch custom providers from API
+        return hardcodedProviders;
+    }
+
+    async getLanguageModels(params: { providerId: string }): Promise<LanguageModel[]> {
+        const { providerId } = params;
+        if (!providerId) return [];
+
+        let hardcodedModels: LanguageModel[] = [];
+        if (providerId in MODEL_OPTIONS) {
+            const models = MODEL_OPTIONS[providerId] || [];
+            hardcodedModels = models.map((model) => ({
+                ...model,
+                apiName: model.name,
+                type: "cloud",
+            }));
+        }
+
+        // TODO: Fetch custom models from API
+        return hardcodedModels;
+    }
+
+    async getLanguageModelsByProviders(): Promise<Record<string, LanguageModel[]>> {
+        const providers = await this.getLanguageModelProviders();
+        const record: Record<string, LanguageModel[]> = {};
+        for (const provider of providers) {
+            if (provider.type !== 'local') {
+                record[provider.id] = await this.getLanguageModels({ providerId: provider.id });
+            }
+        }
+        return record;
+    }
     async createCustomLanguageModelProvider(): Promise<LanguageModelProvider> { throw new Error("Not supported"); }
     async editCustomLanguageModelProvider(): Promise<LanguageModelProvider> { throw new Error("Not supported"); }
     async createCustomLanguageModel(): Promise<void> { }

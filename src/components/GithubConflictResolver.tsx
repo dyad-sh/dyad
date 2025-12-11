@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import type { FileAttachment } from "@/ipc/ipc_types";
 
 interface ConflictResolverProps {
   appId: number;
@@ -30,12 +31,28 @@ export function GithubConflictResolver({
   const [fileContent, setFileContent] = useState("");
   const [isResolving, setIsResolving] = useState(false);
   const [isAiResolving, setIsAiResolving] = useState(false);
+  const [aiChatId, setAiChatId] = useState<number | null>(null);
 
   const currentFile = conflicts[currentConflictIndex];
 
   useEffect(() => {
     loadFileContent();
   }, [currentFile, appId]);
+
+  const ensureChatId = async () => {
+    if (aiChatId) return aiChatId;
+    const newChatId = await IpcClient.getInstance().createChat(appId);
+    setAiChatId(newChatId);
+    return newChatId;
+  };
+
+  const extractConflictSnippet = (content: string) => {
+    const start = content.indexOf("<<<<<<<");
+    if (start === -1) return content.slice(0, 1000);
+    const end = content.indexOf(">>>>>>>", start);
+    const sliceEnd = end === -1 ? start + 1200 : end + 7;
+    return content.slice(start, sliceEnd).slice(0, 1500);
+  };
 
   const loadFileContent = async () => {
     if (!currentFile) return;
@@ -53,19 +70,43 @@ export function GithubConflictResolver({
   const handleAiResolve = async () => {
     setIsAiResolving(true);
     try {
-      const result = await IpcClient.getInstance().resolveGithubConflict(
-        appId,
-        currentFile,
+      const chatId = await ensureChatId();
+
+      const attachment: FileAttachment = {
+        file: new File([fileContent], currentFile, { type: "text/plain" }),
+        type: "chat-context",
+      };
+
+      let latestContent = fileContent;
+
+      IpcClient.getInstance().streamMessage(
+        `Resolve the Git conflict in ${currentFile}.The conflict markers are shown below. Return the fully resolved file content only.
+                ${extractConflictSnippet(fileContent)}`,
+        {
+          chatId,
+          attachments: [attachment],
+          onUpdate: (messages) => {
+            const lastAssistant = [...messages]
+              .reverse()
+              .find((msg) => msg.role === "assistant");
+            if (lastAssistant?.content) {
+              latestContent = lastAssistant.content;
+              setFileContent(lastAssistant.content);
+            }
+          },
+          onEnd: () => {
+            setFileContent(latestContent);
+            toast.success("AI suggested a resolution");
+            setIsAiResolving(false);
+          },
+          onError: (error) => {
+            toast.error(error || "Failed to resolve with AI");
+            setIsAiResolving(false);
+          },
+        },
       );
-      if (result.success && result.resolution) {
-        setFileContent(result.resolution);
-        toast.success("AI suggested a resolution");
-      } else {
-        toast.error(result.error || "Failed to resolve with AI");
-      }
     } catch (error: any) {
       toast.error(error.message || "Failed to resolve with AI");
-    } finally {
       setIsAiResolving(false);
     }
   };
@@ -143,7 +184,10 @@ export function GithubConflictResolver({
           <Button variant="outline" onClick={onCancel}>
             Cancel
           </Button>
-          <Button onClick={handleSaveResolution} disabled={isResolving}>
+          <Button
+            onClick={handleSaveResolution}
+            disabled={isResolving || isAiResolving}
+          >
             {currentConflictIndex < conflicts.length - 1
               ? "Next Conflict"
               : "Finish Resolution"}

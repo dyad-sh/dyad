@@ -39,11 +39,16 @@ USER nodejs
 
 # Environment variables
 ENV NODE_ENV=production \
-    DYAD_API_URL=""
+    DYAD_API_URL="" \
+    MCP_HTTP_PORT=3008 \
+    MCP_HTTP_HOST=0.0.0.0
 
-# Health check
+# Expose HTTP port
+EXPOSE 3008
+
+# Health check for HTTP server
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD node -e "process.exit(0)" || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost:3008/health || exit 1
 
-# Start the MCP server
-CMD ["node", "dist/index.js"]
+# Start the HTTP proxy server instead of stdio MCP server
+CMD ["node", "dist/http-proxy.js"]

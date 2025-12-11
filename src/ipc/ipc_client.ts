@@ -325,15 +325,20 @@ export class IpcClient {
   public async getAppEnvVars(
     params: GetAppEnvVarsParams,
   ): Promise<{ key: string; value: string }[]> {
+    if (!this.ipcRenderer) return [];
     return this.ipcRenderer.invoke("get-app-env-vars", params);
   }
 
   public async setAppEnvVars(params: SetAppEnvVarsParams): Promise<void> {
+    if (!this.ipcRenderer) return;
     return this.ipcRenderer.invoke("set-app-env-vars", params);
   }
 
   public async getChat(chatId: number): Promise<Chat> {
     try {
+      if (!this.ipcRenderer) {
+        return chatsApi.get(chatId);
+      }
       const data = await this.ipcRenderer.invoke("get-chat", chatId);
       return data;
     } catch (error) {
@@ -403,6 +408,11 @@ export class IpcClient {
   }
 
   public async readAppFile(appId: number, filePath: string): Promise<string> {
+    if (!this.ipcRenderer) {
+      // TODO: Implement file reading via API for web mode
+      console.warn("readAppFile not implemented in web mode");
+      return "";
+    }
     return this.ipcRenderer.invoke("read-app-file", {
       appId,
       filePath,
@@ -415,6 +425,10 @@ export class IpcClient {
     filePath: string,
     content: string,
   ): Promise<EditAppFileReturnType> {
+    if (!this.ipcRenderer) {
+      console.warn("editAppFile not implemented in web mode");
+      return { success: false, error: "Not supported in web mode" };
+    }
     return this.ipcRenderer.invoke("edit-app-file", {
       appId,
       filePath,
@@ -535,23 +549,33 @@ export class IpcClient {
   }
 
   public async updateChat(params: UpdateChatParams): Promise<void> {
+    if (!this.ipcRenderer) return;
     return this.ipcRenderer.invoke("update-chat", params);
   }
 
   public async deleteChat(chatId: number): Promise<void> {
+    if (!this.ipcRenderer) {
+      return chatsApi.delete(chatId).then(() => { });
+    }
     await this.ipcRenderer.invoke("delete-chat", chatId);
   }
 
   public async deleteMessages(chatId: number): Promise<void> {
+    if (!this.ipcRenderer) return;
     await this.ipcRenderer.invoke("delete-messages", chatId);
   }
 
   // Open an external URL using the default browser
   public async openExternalUrl(url: string): Promise<void> {
+    if (!this.ipcRenderer) {
+      window.open(url, "_blank");
+      return;
+    }
     await this.ipcRenderer.invoke("open-external-url", url);
   }
 
   public async showItemInFolder(fullPath: string): Promise<void> {
+    if (!this.ipcRenderer) return;
     await this.ipcRenderer.invoke("show-item-in-folder", fullPath);
   }
 
@@ -560,12 +584,18 @@ export class IpcClient {
     appId: number,
     onOutput: (output: AppOutput) => void,
   ): Promise<void> {
+    if (!this.ipcRenderer) {
+      console.warn("runApp: Not fully supported in web mode yet");
+      // Simulate run or call API
+      return;
+    }
     await this.ipcRenderer.invoke("run-app", { appId });
     this.appStreams.set(appId, { onOutput });
   }
 
   // Stop a running app
   public async stopApp(appId: number): Promise<void> {
+    if (!this.ipcRenderer) return;
     await this.ipcRenderer.invoke("stop-app", { appId });
   }
 
@@ -576,6 +606,9 @@ export class IpcClient {
     removeNodeModules?: boolean,
   ): Promise<{ success: boolean }> {
     try {
+      if (!this.ipcRenderer) {
+        return { success: false };
+      }
       const result = await this.ipcRenderer.invoke("restart-app", {
         appId,
         removeNodeModules,
@@ -593,6 +626,7 @@ export class IpcClient {
     params: RespondToAppInputParams,
   ): Promise<void> {
     try {
+      if (!this.ipcRenderer) return;
       await this.ipcRenderer.invoke("respond-to-app-input", params);
     } catch (error) {
       showError(error);
@@ -1448,51 +1482,61 @@ export class IpcClient {
   // Add these methods to IpcClient class
 
   public async selectNodeFolder(): Promise<SelectNodeFolderResult> {
+    if (!this.ipcRenderer) return { canceled: true };
     return this.ipcRenderer.invoke("select-node-folder");
   }
 
   public async getNodePath(): Promise<string | null> {
+    if (!this.ipcRenderer) return null;
     return this.ipcRenderer.invoke("get-node-path");
   }
 
   public async checkAiRules(params: {
     path: string;
   }): Promise<{ exists: boolean }> {
+    if (!this.ipcRenderer) return { exists: false };
     return this.ipcRenderer.invoke("check-ai-rules", params);
   }
 
   public async getLatestSecurityReview(
     appId: number,
   ): Promise<SecurityReviewResult> {
+    if (!this.ipcRenderer) return { riskScore: 0, issues: [] };
     return this.ipcRenderer.invoke("get-latest-security-review", appId);
   }
 
   public async importApp(params: ImportAppParams): Promise<ImportAppResult> {
+    if (!this.ipcRenderer) throw new Error("Import not supported in web mode");
     return this.ipcRenderer.invoke("import-app", params);
   }
 
   async checkAppName(params: {
     appName: string;
   }): Promise<{ exists: boolean }> {
+    if (!this.ipcRenderer) return { exists: false };
     return this.ipcRenderer.invoke("check-app-name", params);
   }
 
   public async renameBranch(params: RenameBranchParams): Promise<void> {
+    if (!this.ipcRenderer) return;
     await this.ipcRenderer.invoke("rename-branch", params);
   }
 
   async clearSessionData(): Promise<void> {
+    if (!this.ipcRenderer) return;
     return this.ipcRenderer.invoke("clear-session-data");
   }
 
   // Method to get user budget information
   public async getUserBudget(): Promise<UserBudgetInfo | null> {
+    if (!this.ipcRenderer) return null;
     return this.ipcRenderer.invoke("get-user-budget");
   }
 
   public async getChatContextResults(params: {
     appId: number;
   }): Promise<ContextPathResults> {
+    if (!this.ipcRenderer) return { files: [], symbols: [] };
     return this.ipcRenderer.invoke("get-context-paths", params);
   }
 
@@ -1500,12 +1544,14 @@ export class IpcClient {
     appId: number;
     chatContext: AppChatContext;
   }): Promise<void> {
+    if (!this.ipcRenderer) return;
     await this.ipcRenderer.invoke("set-context-paths", params);
   }
 
   public async getAppUpgrades(params: {
     appId: number;
   }): Promise<AppUpgrade[]> {
+    if (!this.ipcRenderer) return [];
     return this.ipcRenderer.invoke("get-app-upgrades", params);
   }
 
@@ -1513,23 +1559,28 @@ export class IpcClient {
     appId: number;
     upgradeId: string;
   }): Promise<void> {
+    if (!this.ipcRenderer) throw new Error("Not supported in web mode");
     return this.ipcRenderer.invoke("execute-app-upgrade", params);
   }
 
   // Capacitor methods
   public async isCapacitor(params: { appId: number }): Promise<boolean> {
+    if (!this.ipcRenderer) return false;
     return this.ipcRenderer.invoke("is-capacitor", params);
   }
 
   public async syncCapacitor(params: { appId: number }): Promise<void> {
+    if (!this.ipcRenderer) return;
     return this.ipcRenderer.invoke("sync-capacitor", params);
   }
 
   public async openIos(params: { appId: number }): Promise<void> {
+    if (!this.ipcRenderer) return;
     return this.ipcRenderer.invoke("open-ios", params);
   }
 
   public async openAndroid(params: { appId: number }): Promise<void> {
+    if (!this.ipcRenderer) return;
     return this.ipcRenderer.invoke("open-android", params);
   }
 
@@ -1553,19 +1604,23 @@ export class IpcClient {
   }
 
   public async createPrompt(params: CreatePromptParamsDto): Promise<PromptDto> {
+    if (!this.ipcRenderer) throw new Error("Not supported in web mode");
     return this.ipcRenderer.invoke("prompts:create", params);
   }
 
   public async updatePrompt(params: UpdatePromptParamsDto): Promise<void> {
+    if (!this.ipcRenderer) return;
     await this.ipcRenderer.invoke("prompts:update", params);
   }
 
   public async deletePrompt(id: number): Promise<void> {
+    if (!this.ipcRenderer) return;
     await this.ipcRenderer.invoke("prompts:delete", id);
   }
   public async cloneRepoFromUrl(
     params: CloneRepoParams,
   ): Promise<{ app: App; hasAiRules: boolean } | { error: string }> {
+    if (!this.ipcRenderer) return { error: "Not supported in web mode" };
     return this.ipcRenderer.invoke("github:clone-repo-from-url", params);
   }
 

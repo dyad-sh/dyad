@@ -27,6 +27,16 @@ const defaultSettings = {
     hasRunBefore: false,
 };
 
+const SecretSchema = z.object({
+    value: z.string(),
+    encryptionType: z.enum(["electron-safe-storage", "plaintext"]).optional(),
+});
+
+const ProviderSettingSchema = z.object({
+    apiKey: SecretSchema.optional(),
+    // Allow other fields like resourceName (Azure) or projectId (Vertex)
+}).passthrough();
+
 const SettingsSchema = z.object({
     theme: z.enum(["light", "dark", "system"]).optional(),
     telemetryEnabled: z.boolean().optional(),
@@ -37,6 +47,9 @@ const SettingsSchema = z.object({
     anthropicApiKey: z.string().optional(),
     openaiApiKey: z.string().optional(),
     googleApiKey: z.string().optional(),
+
+    // Support modern nested provider settings
+    providerSettings: z.record(z.string(), ProviderSettingSchema).optional(),
 });
 
 /**

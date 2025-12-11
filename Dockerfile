@@ -99,6 +99,10 @@ COPY --from=frontend-builder /app/dist-web ./public
 # Create data directory
 RUN mkdir -p /app/data
 
+# Copy entrypoint script
+COPY server/docker-entrypoint.sh /app/server/docker-entrypoint.sh
+RUN chmod +x /app/server/docker-entrypoint.sh
+
 # Environment variables
 ENV NODE_ENV=production
 ENV PORT=3007
@@ -112,5 +116,5 @@ EXPOSE 3007
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:3007/api/health || exit 1
 
-# Start server
-CMD ["node", "dist/server/src/index.js"]
+# Use entrypoint script to run migrations before starting server
+ENTRYPOINT ["/app/server/docker-entrypoint.sh"]

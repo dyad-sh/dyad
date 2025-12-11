@@ -22,6 +22,18 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
   openai: [
     // https://platform.openai.com/docs/models/gpt-5.1
     {
+      name: "gpt-5.2",
+      displayName: "GPT 5.2",
+      description: "OpenAI's latest model",
+      // Technically it's 128k but OpenAI errors if you set max_tokens instead of max_completion_tokens
+      maxOutputTokens: undefined,
+      contextWindow: 400_000,
+      // Requires temperature to be default value (1)
+      temperature: 1,
+      dollarSigns: 3,
+    },
+    // https://platform.openai.com/docs/models/gpt-5.1
+    {
       name: "gpt-5.1",
       displayName: "GPT 5.1",
       description:
@@ -92,31 +104,6 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       contextWindow: 400_000,
       // Requires temperature to be default value (1)
       temperature: 1,
-      dollarSigns: 2,
-    },
-    // https://platform.openai.com/docs/models/gpt-5-nano
-    {
-      name: "gpt-5-nano",
-      displayName: "GPT 5 Nano",
-      description: "Fastest, most cost-efficient version of GPT-5",
-      // Technically it's 128k but OpenAI errors if you set max_tokens instead of max_completion_tokens
-      maxOutputTokens: undefined,
-      contextWindow: 400_000,
-      // Requires temperature to be default value (1)
-      temperature: 1,
-      dollarSigns: 1,
-    },
-    // https://platform.openai.com/docs/models/o4-mini
-    {
-      name: "o4-mini",
-      displayName: "o4 mini",
-      description: "Reasoning model",
-      // Technically the max output tokens is 100k, *however* if the user has a lot of input tokens,
-      // then setting a high max output token will cause the request to fail because
-      // the max output tokens is *included* in the context window limit.
-      maxOutputTokens: 32_000,
-      contextWindow: 200_000,
-      temperature: 0,
       dollarSigns: 2,
     },
   ],

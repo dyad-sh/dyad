@@ -11,6 +11,7 @@ export {
     prompts,
     language_models,
     language_model_providers,
+    system_settings,
     mcpServers,
     mcpToolConsents,
     appsRelations,

@@ -67,19 +67,19 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
       >
         {messages.length > 0
           ? messages.map((message, index) => (
-              <ChatMessage
-                key={index}
-                message={message}
-                isLastMessage={index === messages.length - 1}
-              />
-            ))
+            <ChatMessage
+              key={index}
+              message={message}
+              isLastMessage={index === messages.length - 1}
+            />
+          ))
           : !renderSetupBanner() && (
-              <div className="flex flex-col items-center justify-center h-full max-w-2xl mx-auto">
-                <div className="flex flex-1 items-center justify-center text-gray-500">
-                  No messages yet
-                </div>
+            <div className="flex flex-col items-center justify-center h-full max-w-2xl mx-auto">
+              <div className="flex flex-1 items-center justify-center text-gray-500">
+                No messages yet
               </div>
-            )}
+            </div>
+          )}
         {/* Show context limit banner when close to token limit */}
         {!isStreaming && tokenCountResult && (
           <ContextLimitBanner
@@ -182,10 +182,11 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
                   setIsRetryLoading(true);
                   try {
                     // The last message is usually an assistant, but it might not be.
-                    const lastVersion = versions[0];
+                    const lastVersion = versions?.[0];
                     const lastMessage = messages[messages.length - 1];
                     let shouldRedo = true;
                     if (
+                      lastVersion &&
                       lastVersion.oid === lastMessage.commitHash &&
                       lastMessage.role === "assistant"
                     ) {

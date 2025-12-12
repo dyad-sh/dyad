@@ -75,12 +75,13 @@ FROM node:20-slim AS production
 
 WORKDIR /app
 
-# Install runtime dependencies for better-sqlite3
+# Install runtime dependencies including PostgreSQL client for migrations
 RUN apt-get update && apt-get install -y \
     python3 \
     make \
     g++ \
     curl \
+    postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy server production dependencies
@@ -117,4 +118,5 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:3007/api/health || exit 1
 
 # Use entrypoint script to run migrations before starting server
+# Note: The build outputs to dist/src/index.js, not dist/server/src/index.js
 ENTRYPOINT ["/app/server/docker-entrypoint.sh"]

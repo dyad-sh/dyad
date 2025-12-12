@@ -1,4 +1,5 @@
 import { formatMessagesForSummary } from "../ipc/handlers/chat_stream_handlers";
+import { describe, it, expect } from "vitest";
 
 describe("formatMessagesForSummary", () => {
   it("should return all messages when there are 8 or fewer messages", () => {

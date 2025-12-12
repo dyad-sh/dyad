@@ -65,12 +65,12 @@ interface RecheckButtonProps {
   appId: number;
   size?: "sm" | "default" | "lg";
   variant?:
-    | "default"
-    | "destructive"
-    | "outline"
-    | "secondary"
-    | "ghost"
-    | "link";
+  | "default"
+  | "destructive"
+  | "outline"
+  | "secondary"
+  | "ghost"
+  | "link";
   className?: string;
   onBeforeRecheck?: () => void;
 }
@@ -246,7 +246,7 @@ export function _Problems() {
     );
   }
 
-  if (!problemReport) {
+  if (!problemReport || !problemReport.problems) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center p-8">
         <div className="w-16 h-16 rounded-full bg-[var(--background-darkest)] flex items-center justify-center mb-4">

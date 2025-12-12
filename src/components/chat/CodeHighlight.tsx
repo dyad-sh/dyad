@@ -23,6 +23,8 @@ import markdown from "@shikijs/langs/markdown";
 import python from "@shikijs/langs/python";
 import sass from "@shikijs/langs/sass";
 import scss from "@shikijs/langs/scss";
+import shell from "@shikijs/langs/shell";
+import sql from "@shikijs/langs/sql";
 import tsx from "@shikijs/langs/tsx";
 import typescript from "@shikijs/langs/typescript";
 import vue from "@shikijs/langs/vue";
@@ -50,6 +52,8 @@ function getHighlighter(): Promise<HighlighterCore> {
         python,
         sass,
         scss,
+        shell,
+        sql,
         tsx,
         typescript,
         vue,

@@ -26,7 +26,7 @@ const defaultSettings = {
     telemetryEnabled: true,
     enableAutoUpdate: true,
     releaseChannel: "stable",
-    defaultModel: "gpt-4o",
+    defaultModel: "gemini-2.0-flash-exp",
     hasRunBefore: false,
 };
 
@@ -75,11 +75,11 @@ router.get("/", async (req, res, next) => {
             settings = { ...defaultSettings, ...JSON.parse(fs.readFileSync(settingsPath, "utf-8")) };
         }
 
-        // Fetch keys from DB
+        // Fetch keys and settings from DB
         try {
             const db = getDb();
             const providers = await db.select().from(language_model_providers);
-            const sysSettings = await db.select().from(system_settings).where(inArray(system_settings.key, ["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET"]));
+            const sysSettings = await db.select().from(system_settings).where(inArray(system_settings.key, ["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "defaultModel"]));
 
             // Map DB keys to settings object
             for (const provider of providers) {
@@ -93,6 +93,7 @@ router.get("/", async (req, res, next) => {
             for (const setting of sysSettings) {
                 if (setting.key === "GITHUB_CLIENT_ID") settings = { ...settings, githubClientId: setting.value } as any;
                 if (setting.key === "GITHUB_CLIENT_SECRET") settings = { ...settings, githubClientSecret: setting.value } as any;
+                if (setting.key === "defaultModel") settings = { ...settings, defaultModel: setting.value } as any;
             }
         } catch (e) {
             console.error("Failed to fetch providers from DB:", e);

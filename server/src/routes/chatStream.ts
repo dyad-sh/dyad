@@ -10,7 +10,7 @@ import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { google, createGoogleGenerativeAI } from "@ai-sdk/google";
 import { getDb } from "../db/index.js";
-import { language_model_providers } from "../db/schema.js";
+import { language_model_providers, messages, chats } from "../db/schema.js";
 import { eq } from "drizzle-orm";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
@@ -66,6 +66,24 @@ async function getModelProvider(modelId: string) {
         }
         return process.env[envVar];
     };
+
+    // Check for OpenRouter models (format: provider/model:variant)
+    if (modelId.includes('/') && modelId.includes(':')) {
+        const apiKey = await getApiKey("openrouter", "OPENROUTER_API_KEY");
+        if (apiKey) {
+            return createOpenAI({
+                apiKey,
+                baseURL: "https://openrouter.ai/api/v1",
+            })(modelId);
+        }
+        // Fallback to env var
+        if (process.env.OPENROUTER_API_KEY) {
+            return createOpenAI({
+                apiKey: process.env.OPENROUTER_API_KEY,
+                baseURL: "https://openrouter.ai/api/v1",
+            })(modelId);
+        }
+    }
 
     if (modelId.startsWith("claude")) {
         const apiKey = await getApiKey("anthropic", "ANTHROPIC_API_KEY");
@@ -141,6 +159,25 @@ async function handleStreamRequest(
     activeStreams.set(requestId, abortController);
 
     try {
+        // Get database connection
+        const db = getDb();
+
+        // Save user message to database
+        const userMessage = await db.insert(messages).values({
+            chatId: request.chatId,
+            role: "user",
+            content: request.messages[request.messages.length - 1].content,
+        }).returning();
+
+        // Create placeholder for assistant message
+        const assistantMessage = await db.insert(messages).values({
+            chatId: request.chatId,
+            role: "assistant",
+            content: "",
+        }).returning();
+
+        let fullResponse = "";
+
         // Get default model from settings if not specified
         let modelToUse: string = request.model || "gemini-2.0-flash-exp";
         if (!request.model) {
@@ -177,12 +214,24 @@ async function handleStreamRequest(
         for await (const chunk of textStream) {
             if (ws.readyState !== WebSocket.OPEN) break;
 
+            fullResponse += chunk;
+
             ws.send(JSON.stringify({
                 type: "chunk",
                 content: chunk,
                 requestId,
             } as StreamChunk));
         }
+
+        // Update assistant message with full response
+        await db.update(messages)
+            .set({ content: fullResponse })
+            .where(eq(messages.id, assistantMessage[0].id));
+
+        // Update chat timestamp
+        await db.update(chats)
+            .set({ updatedAt: new Date() })
+            .where(eq(chats.id, request.chatId));
 
         // Send completion
         ws.send(JSON.stringify({

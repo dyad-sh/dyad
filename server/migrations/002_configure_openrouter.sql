@@ -1,23 +1,9 @@
-#!/bin/sh
-# Entrypoint script to run migrations before starting the server
+-- Migration: Configure OpenRouter provider
+-- This script adds OpenRouter configuration to the database
 
-echo "Running database migrations..."
+BEGIN;
 
-# Run migrations using psql
-psql $DATABASE_URL <<EOF
--- Migration 001: Add api_key column if it doesn't exist
-ALTER TABLE language_model_providers ADD COLUMN IF NOT EXISTS api_key TEXT;
-
--- Create system_settings table if it doesn't exist
-CREATE TABLE IF NOT EXISTS system_settings (
-    key TEXT PRIMARY KEY NOT NULL,
-    value TEXT NOT NULL,
-    description TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
-);
-
--- Migration 002: Configure OpenRouter provider
+-- Insert or update OpenRouter provider configuration
 INSERT INTO language_model_providers (id, name, api_base_url, api_key, created_at, updated_at)
 VALUES (
     'openrouter',
@@ -46,10 +32,10 @@ ON CONFLICT (key)
 DO UPDATE SET
     value = EXCLUDED.value,
     updated_at = CURRENT_TIMESTAMP;
-EOF
 
-echo "Migrations completed!"
-echo "OpenRouter configured with DeepSeek model"
+COMMIT;
 
-# Start the server
-exec node dist/server/src/index.js
+-- Verify configuration
+SELECT 'OpenRouter configured successfully!' as status;
+SELECT id, name, api_base_url FROM language_model_providers WHERE id = 'openrouter';
+SELECT key, value FROM system_settings WHERE key = 'defaultModel';

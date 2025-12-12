@@ -74,6 +74,17 @@ async function getModelProvider(modelId: string) {
             return createOpenAI({
                 apiKey,
                 baseURL: "https://openrouter.ai/api/v1",
+                // Add custom headers for OpenRouter
+                fetch: async (url, options) => {
+                    const headers = new Headers(options?.headers);
+                    headers.set('HTTP-Referer', 'https://dyad1.ty-dev.site');
+                    headers.set('X-Title', 'Dyad Chat');
+
+                    return fetch(url, {
+                        ...options,
+                        headers,
+                    });
+                },
             })(modelId);
         }
         // Fallback to env var
@@ -81,6 +92,17 @@ async function getModelProvider(modelId: string) {
             return createOpenAI({
                 apiKey: process.env.OPENROUTER_API_KEY,
                 baseURL: "https://openrouter.ai/api/v1",
+                // Add custom headers for OpenRouter
+                fetch: async (url, options) => {
+                    const headers = new Headers(options?.headers);
+                    headers.set('HTTP-Referer', 'https://dyad1.ty-dev.site');
+                    headers.set('X-Title', 'Dyad Chat');
+
+                    return fetch(url, {
+                        ...options,
+                        headers,
+                    });
+                },
             })(modelId);
         }
     }

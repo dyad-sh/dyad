@@ -71,7 +71,8 @@ async function getModelProvider(modelId: string) {
     if (modelId.includes('/') && modelId.includes(':')) {
         const apiKey = await getApiKey("openrouter", "OPENROUTER_API_KEY");
         if (apiKey) {
-            return createOpenAI({
+            // Use openai.chat() instead of createOpenAI() to get chat completions endpoint
+            const openai = createOpenAI({
                 apiKey,
                 baseURL: "https://openrouter.ai/api/v1",
                 // Add custom headers for OpenRouter
@@ -85,11 +86,13 @@ async function getModelProvider(modelId: string) {
                         headers,
                     });
                 },
-            })(modelId);
+            });
+            // Return the chat model, not the responses model
+            return openai.chat(modelId);
         }
         // Fallback to env var
         if (process.env.OPENROUTER_API_KEY) {
-            return createOpenAI({
+            const openai = createOpenAI({
                 apiKey: process.env.OPENROUTER_API_KEY,
                 baseURL: "https://openrouter.ai/api/v1",
                 // Add custom headers for OpenRouter
@@ -103,7 +106,8 @@ async function getModelProvider(modelId: string) {
                         headers,
                     });
                 },
-            })(modelId);
+            });
+            return openai.chat(modelId);
         }
     }
 

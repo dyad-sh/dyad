@@ -117,7 +117,12 @@ async function getModelProvider(modelId: string) {
         return anthropic(modelId); // Fallback to default env var behavior of SDK
     } else if (modelId.startsWith("gemini")) {
         const apiKey = await getApiKey("google", "GOOGLE_GENERATIVE_AI_API_KEY"); // or GOOGLE_API_KEY
-        if (apiKey) return createGoogleGenerativeAI({ apiKey })(modelId);
+        console.log(`[DEBUG] Google API Key retrieved: ${apiKey ? apiKey.substring(0, 20) + '...' : 'NONE'}`);
+        if (apiKey) {
+            console.log(`[DEBUG] Using Google API key from database`);
+            return createGoogleGenerativeAI({ apiKey })(modelId);
+        }
+        console.log(`[DEBUG] No API key found, using default google() provider`);
         return google(modelId);
     } else {
         // Default to OpenAI

@@ -6,6 +6,7 @@ import {
   Check,
   AlertTriangle,
   ChevronRight,
+  GitMerge,
 } from "lucide-react";
 import { IpcClient } from "@/ipc/ipc_client";
 import { useSettings } from "@/hooks/useSettings";
@@ -32,6 +33,7 @@ interface GitHubConnectorProps {
   appId: number | null;
   folderName: string;
   expanded?: boolean;
+  onConflict?: (conflicts: string[]) => void;
 }
 
 interface GitHubRepo {
@@ -51,6 +53,7 @@ interface ConnectedGitHubConnectorProps {
   refreshApp: () => void;
   triggerAutoSync?: boolean;
   onAutoSyncComplete?: () => void;
+  onConflict?: (conflicts: string[]) => void;
 }
 
 export interface UnconnectedGitHubConnectorProps {
@@ -68,6 +71,7 @@ function ConnectedGitHubConnector({
   refreshApp,
   triggerAutoSync,
   onAutoSyncComplete,
+  onConflict,
 }: ConnectedGitHubConnectorProps) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -75,6 +79,13 @@ function ConnectedGitHubConnector({
   const [showForceDialog, setShowForceDialog] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [disconnectError, setDisconnectError] = useState<string | null>(null);
+  const [rebaseStatusMessage, setRebaseStatusMessage] = useState<string | null>(
+    null,
+  );
+  const [rebaseAction, setRebaseAction] = useState<
+    "abort" | "continue" | "safe-push" | null
+  >(null);
+  const [rebaseInProgress, setRebaseInProgress] = useState(false);
   const autoSyncTriggeredRef = useRef(false);
 
   const handleDisconnectRepo = async () => {
@@ -91,21 +102,50 @@ function ConnectedGitHubConnector({
   };
 
   const handleSyncToGithub = useCallback(
-    async (force: boolean = false) => {
+    async (
+      force: boolean = false,
+      rebase: boolean = false,
+      forceWithLease: boolean = false,
+    ) => {
       setIsSyncing(true);
       setSyncError(null);
       setSyncSuccess(false);
       setShowForceDialog(false);
+      setRebaseStatusMessage(null);
+      setRebaseInProgress(false);
 
       try {
         const result = await IpcClient.getInstance().syncGithubRepo(
           appId,
           force,
+          rebase,
+          forceWithLease,
         );
         if (result.success) {
           setSyncSuccess(true);
+          setRebaseInProgress(false);
         } else {
-          setSyncError(result.error || "Failed to sync to GitHub.");
+          if (result.isConflict) {
+            // Fetch the actual conflicts
+            const conflictsResult =
+              await IpcClient.getInstance().getGithubMergeConflicts(appId);
+            if (
+              conflictsResult.success &&
+              conflictsResult.conflicts &&
+              conflictsResult.conflicts.length > 0 &&
+              onConflict
+            ) {
+              onConflict(conflictsResult.conflicts);
+              setSyncError(
+                "Merge conflicts detected. Please resolve them below.",
+              );
+              return;
+            }
+          }
+
+          const errorMessage = result.error || "Failed to sync to GitHub.";
+          setSyncError(errorMessage);
+          setRebaseInProgress(errorMessage.includes("rebase-merge"));
           // If it's a push rejection error, show the force dialog
           if (
             result.error?.includes("rejected") ||
@@ -115,13 +155,64 @@ function ConnectedGitHubConnector({
           }
         }
       } catch (err: any) {
-        setSyncError(err.message || "Failed to sync to GitHub.");
+        const errorMessage = err.message || "Failed to sync to GitHub.";
+        setSyncError(errorMessage);
+        setRebaseInProgress(errorMessage.includes("rebase-merge"));
       } finally {
         setIsSyncing(false);
       }
     },
     [appId],
   );
+
+  const handleAbortRebase = useCallback(async () => {
+    setRebaseAction("abort");
+    setSyncError(null);
+    setRebaseStatusMessage(null);
+    setSyncSuccess(false);
+    try {
+      const result = await IpcClient.getInstance().abortGithubRebase(appId);
+      if (!result.success) {
+        throw new Error(result.error || "Failed to abort rebase.");
+      }
+      setRebaseInProgress(false);
+      setRebaseStatusMessage("Rebase aborted. You can try syncing again.");
+    } catch (err: any) {
+      setSyncError(err.message || "Failed to abort rebase.");
+      setRebaseInProgress(true);
+    } finally {
+      setRebaseAction(null);
+    }
+  }, [appId]);
+
+  const handleContinueRebase = useCallback(async () => {
+    setRebaseAction("continue");
+    setSyncError(null);
+    setRebaseStatusMessage(null);
+    setSyncSuccess(false);
+    try {
+      const result = await IpcClient.getInstance().continueGithubRebase(appId);
+      if (!result.success) {
+        throw new Error(result.error || "Failed to continue rebase.");
+      }
+      setRebaseInProgress(false);
+      setRebaseStatusMessage("Rebase continued. You can sync when ready.");
+    } catch (err: any) {
+      setSyncError(err.message || "Failed to continue rebase.");
+      setRebaseInProgress(true);
+    } finally {
+      setRebaseAction(null);
+    }
+  }, [appId]);
+
+  const handleSafeForcePush = useCallback(async () => {
+    setRebaseAction("safe-push");
+    try {
+      await handleSyncToGithub(false, false, true);
+    } finally {
+      setRebaseAction(null);
+    }
+  }, [handleSyncToGithub]);
 
   // Auto-sync when triggerAutoSync prop is true
   useEffect(() => {
@@ -135,6 +226,13 @@ function ConnectedGitHubConnector({
       autoSyncTriggeredRef.current = false;
     }
   }, [triggerAutoSync]); // Only depend on triggerAutoSync to avoid unnecessary re-runs
+
+  const isForcePushError =
+    syncError?.includes("rejected") || syncError?.includes("non-fast-forward");
+  const showRebaseAndSync = syncError?.includes("divergent branches");
+  const showRebaseRecoveryOptions =
+    rebaseInProgress || (syncError?.includes("rebase-merge") ?? false);
+  const isRebaseActionPending = isSyncing || !!rebaseAction;
 
   return (
     <div className="w-full" data-testid="github-connected-repo">
@@ -158,7 +256,10 @@ function ConnectedGitHubConnector({
         </p>
       )}
       <div className="mt-2 flex gap-2">
-        <Button onClick={() => handleSyncToGithub(false)} disabled={isSyncing}>
+        <Button
+          onClick={() => handleSyncToGithub(false)}
+          disabled={isRebaseActionPending}
+        >
           {isSyncing ? (
             <>
               <svg
@@ -197,7 +298,7 @@ function ConnectedGitHubConnector({
         </Button>
       </div>
       {syncError && (
-        <div className="mt-2">
+        <div className="mt-2 space-y-2">
           <p className="text-red-600">
             {syncError}{" "}
             <a
@@ -214,19 +315,77 @@ function ConnectedGitHubConnector({
               See troubleshooting guide
             </a>
           </p>
-          {(syncError.includes("rejected") ||
-            syncError.includes("non-fast-forward")) && (
+          {showRebaseRecoveryOptions && (
+            <div className="space-y-2 rounded-md border border-orange-200 p-3 dark:border-orange-800 dark:bg-orange-900/20">
+              <p className="text-sm text-orange-800 dark:text-orange-100">
+                A rebase is already in progress. Choose how to proceed.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  onClick={handleAbortRebase}
+                  variant="outline"
+                  size="sm"
+                  disabled={isRebaseActionPending}
+                >
+                  <AlertTriangle className="h-4 w-4 mr-2" />
+                  {rebaseAction === "abort" ? "Aborting..." : "Abort rebase"}
+                </Button>
+                <Button
+                  onClick={handleContinueRebase}
+                  variant="outline"
+                  size="sm"
+                  disabled={isRebaseActionPending}
+                >
+                  <GitMerge className="h-4 w-4 mr-2" />
+                  {rebaseAction === "continue"
+                    ? "Continuing..."
+                    : "Continue rebase"}
+                </Button>
+                <Button
+                  onClick={handleSafeForcePush}
+                  variant="outline"
+                  size="sm"
+                  disabled={isRebaseActionPending}
+                  className="text-orange-600 border-orange-600 hover:bg-orange-50"
+                >
+                  <AlertTriangle className="h-4 w-4 mr-2" />
+                  {rebaseAction === "safe-push"
+                    ? "Safe force pushing..."
+                    : "Safe Force Push"}
+                </Button>
+              </div>
+            </div>
+          )}
+          {isForcePushError && (
             <Button
               onClick={() => setShowForceDialog(true)}
               variant="outline"
               size="sm"
-              className="mt-2 text-orange-600 border-orange-600 hover:bg-orange-50"
+              disabled={isRebaseActionPending}
+              className="text-orange-600 border-orange-600 hover:bg-orange-50"
             >
               <AlertTriangle className="h-4 w-4 mr-2" />
               Force Push (Dangerous)
             </Button>
           )}
+          {showRebaseAndSync && (
+            <Button
+              onClick={() => handleSyncToGithub(false, true)}
+              variant="outline"
+              size="sm"
+              disabled={isRebaseActionPending}
+              className="mt-2 ml-2"
+            >
+              <GitMerge className="h-4 w-4 mr-2" />
+              Rebase and Sync
+            </Button>
+          )}
         </div>
+      )}
+      {rebaseStatusMessage && (
+        <p className="text-sm text-gray-700 dark:text-gray-300 mt-2">
+          {rebaseStatusMessage}
+        </p>
       )}
       {syncSuccess && (
         <p className="text-green-600 mt-2">Successfully pushed to GitHub!</p>
@@ -901,6 +1060,7 @@ export function GitHubConnector({
   appId,
   folderName,
   expanded,
+  onConflict,
 }: GitHubConnectorProps) {
   const { app, refreshApp } = useLoadApp(appId);
   const { settings, refreshSettings } = useSettings();
@@ -923,6 +1083,7 @@ export function GitHubConnector({
         refreshApp={refreshApp}
         triggerAutoSync={pendingAutoSync}
         onAutoSyncComplete={handleAutoSyncComplete}
+        onConflict={onConflict}
       />
     );
   } else {

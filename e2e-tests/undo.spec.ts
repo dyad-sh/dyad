@@ -1,8 +1,8 @@
-import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
+import { PageObject, testSkipIfWindows, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
-testSkipIfWindows("undo", async ({ po }) => {
-  await po.setUp({ autoApprove: true });
+const runUndoTest = async (po: PageObject, nativeGit: boolean) => {
+  await po.setUp({ autoApprove: true, nativeGit });
   await po.sendPrompt("tc=write-index");
   await po.sendPrompt("tc=write-index-2");
 
@@ -31,4 +31,12 @@ testSkipIfWindows("undo", async ({ po }) => {
     // Also, could be slow.
     timeout: Timeout.LONG,
   });
+};
+
+testSkipIfWindows("undo", async ({ po }) => {
+  await runUndoTest(po, false);
+});
+
+testSkipIfWindows("undo with native git", async ({ po }) => {
+  await runUndoTest(po, true);
 });

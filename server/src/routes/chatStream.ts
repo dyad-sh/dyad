@@ -179,18 +179,18 @@ async function handleStreamRequest(
         let fullResponse = "";
 
         // Get default model from settings if not specified
-        let modelToUse: string = request.model || "gemini-2.0-flash-exp";
+        let modelToUse: string = request.model || "deepseek/deepseek-chat-v3.1:free";
         if (!request.model) {
             try {
                 const dataDir = process.env.DATA_DIR || "./data";
                 const settingsPath = path.join(dataDir, "settings.json");
                 if (fs.existsSync(settingsPath)) {
                     const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
-                    modelToUse = settings.defaultModel || "gemini-2.0-flash-exp";
+                    modelToUse = settings.defaultModel || "deepseek/deepseek-chat-v3.1:free";
                     console.log(`[WS] Using default model from settings: ${modelToUse}`);
                 }
             } catch (e) {
-                console.error("[WS] Failed to read settings, using gemini-2.0-flash-exp:", e);
+                console.error("[WS] Failed to read settings, using deepseek/deepseek-chat-v3.1:free:", e);
                 // modelToUse already has fallback value
             }
         }

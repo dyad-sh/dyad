@@ -26,7 +26,7 @@ const defaultSettings = {
     telemetryEnabled: true,
     enableAutoUpdate: true,
     releaseChannel: "stable",
-    defaultModel: "gemini-2.0-flash-exp",
+    defaultModel: "deepseek/deepseek-chat-v3.1:free",
     hasRunBefore: false,
 };
 
@@ -186,6 +186,11 @@ router.put("/", async (req, res, next) => {
 
             await upsertSystemSetting("GITHUB_CLIENT_ID", githubClientId, "GitHub Client ID");
             await upsertSystemSetting("GITHUB_CLIENT_SECRET", githubClientSecret, "GitHub Client Secret");
+
+            // Save defaultModel to DB
+            if (body.defaultModel !== undefined) {
+                await upsertSystemSetting("defaultModel", body.defaultModel, "Default AI model for chat");
+            }
 
         } catch (e) {
             console.error("Failed to save keys to DB:", e);

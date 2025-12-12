@@ -19,11 +19,11 @@ DO UPDATE SET
     api_base_url = EXCLUDED.api_base_url,
     updated_at = CURRENT_TIMESTAMP;
 
--- Set default model to Gemini Flash
+-- Set default model to DeepSeek Chat v3.1
 INSERT INTO system_settings (key, value, description, created_at, updated_at)
 VALUES (
     'defaultModel',
-    'gemini-2.0-flash-exp',
+    'deepseek/deepseek-chat-v3.1:free',
     'Default AI model for chat',
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP)

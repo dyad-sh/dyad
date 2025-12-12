@@ -1,8 +1,35 @@
-import { editor } from "monaco-editor";
-
 import { loader } from "@monaco-editor/react";
 
-import * as monaco from "monaco-editor";
+// Use the core editor API (no languages bundled by default)
+import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
+
+// Language services (IntelliSense, validation, etc.)
+import "monaco-editor/esm/vs/language/typescript/monaco.contribution";
+import "monaco-editor/esm/vs/language/json/monaco.contribution";
+import "monaco-editor/esm/vs/language/css/monaco.contribution";
+import "monaco-editor/esm/vs/language/html/monaco.contribution";
+
+// Basic language tokenizers (syntax highlighting)
+import "monaco-editor/esm/vs/basic-languages/typescript/typescript.contribution";
+import "monaco-editor/esm/vs/basic-languages/javascript/javascript.contribution";
+import "monaco-editor/esm/vs/basic-languages/css/css.contribution";
+import "monaco-editor/esm/vs/basic-languages/less/less.contribution";
+import "monaco-editor/esm/vs/basic-languages/scss/scss.contribution";
+import "monaco-editor/esm/vs/basic-languages/html/html.contribution";
+import "monaco-editor/esm/vs/basic-languages/markdown/markdown.contribution";
+import "monaco-editor/esm/vs/basic-languages/yaml/yaml.contribution";
+import "monaco-editor/esm/vs/basic-languages/shell/shell.contribution";
+import "monaco-editor/esm/vs/basic-languages/python/python.contribution";
+import "monaco-editor/esm/vs/basic-languages/sql/sql.contribution";
+import "monaco-editor/esm/vs/basic-languages/xml/xml.contribution";
+import "monaco-editor/esm/vs/basic-languages/java/java.contribution";
+import "monaco-editor/esm/vs/basic-languages/kotlin/kotlin.contribution";
+import "monaco-editor/esm/vs/basic-languages/swift/swift.contribution";
+import "monaco-editor/esm/vs/basic-languages/dockerfile/dockerfile.contribution";
+import "monaco-editor/esm/vs/basic-languages/ruby/ruby.contribution";
+import "monaco-editor/esm/vs/basic-languages/php/php.contribution";
+
+const { editor } = monaco;
 // @ts-ignore
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 // @ts-ignore
@@ -35,7 +62,7 @@ self.MonacoEnvironment = {
 loader.config({ monaco });
 
 // loader.init().then(/* ... */);
-export const customLight: editor.IStandaloneThemeData = {
+export const customLight: monaco.editor.IStandaloneThemeData = {
   base: "vs",
   inherit: false,
   rules: [
@@ -108,7 +135,7 @@ export const customLight: editor.IStandaloneThemeData = {
 
 editor.defineTheme("dyad-light", customLight);
 
-export const customDark: editor.IStandaloneThemeData = {
+export const customDark: monaco.editor.IStandaloneThemeData = {
   base: "vs-dark",
   inherit: false,
   rules: [

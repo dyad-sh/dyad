@@ -2,6 +2,53 @@
 // which is Apache 2.0 licensed and copyrighted to Jijun Leng
 // https://github.com/jjleng/code-panda/blob/61f1fa514c647de1a8d2ad7f85102d49c6db2086/LICENSE
 
+/**
+ * Validates and escapes SQL identifiers (table names, column names, etc.)
+ * to prevent SQL injection when identifiers must be used in query structure
+ * @param identifier - The identifier to validate and escape
+ * @returns The safely escaped identifier
+ * @throws Error if identifier contains invalid characters
+ */
+export function escapeIdentifier(identifier: string): string {
+  // Only allow alphanumeric characters, underscores, and hyphens
+  // This prevents SQL injection through identifier names
+  if (!identifier || !/^[a-zA-Z0-9_-]+$/.test(identifier)) {
+    throw new Error(
+      `Invalid identifier: "${identifier}". Only alphanumeric characters, underscores, and hyphens are allowed.`
+    );
+  }
+  // In PostgreSQL, identifiers can be quoted with double quotes
+  // Escape any internal double quotes by doubling them
+  return `"${identifier.replace(/"/g, '""')}"`;
+}
+
+/**
+ * Builds a safe parameterized query to fetch table columns
+ * Uses parameterized queries ($1) to prevent SQL injection
+ * @param tableName - The table name to query (will be passed as parameter)
+ * @returns The parameterized SQL query string
+ */
+export function getTableWithColumnsQuery(tableName: string): { query: string; params: [string] } {
+  // Validate the table name format to add defense in depth
+  escapeIdentifier(tableName);
+  
+  // Use parameterized query with $1 placeholder
+  // The actual table name will be passed as a parameter, not concatenated
+  const query = `
+    SELECT
+      c.table_name,
+      c.column_name,
+      c.data_type,
+      c.is_nullable,
+      c.column_default
+    FROM information_schema.columns c
+    WHERE c.table_name = $1 AND c.table_schema = 'public'
+    ORDER BY c.ordinal_position;
+  `;
+  
+  return { query, params: [tableName] };
+}
+
 export const SUPABASE_SCHEMA_QUERY = `
         WITH table_info AS (
             SELECT

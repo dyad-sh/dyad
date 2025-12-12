@@ -161,7 +161,7 @@ async function handleStreamRequest(
         const model = await getModelProvider(modelToUse);
 
         const messagesWithSystem = request.systemPrompt
-            ? [{ role: "system" as const, content: request.systemPrompt }, ...request.messages]
+            ? [{ role: "system" as const, content: request.systemPrompt as string }, ...request.messages]
             : request.messages;
 
         const { textStream } = await streamText({

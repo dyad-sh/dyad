@@ -419,11 +419,11 @@ export class WebBackend implements IBackendClient {
     }
 
     async cloneRepoFromUrl(params: CloneRepoParams): Promise<{ app: App; hasAiRules: boolean } | { error: string }> {
-        // Cloning requires server-side filesystem operations which might not be fully exposed for arbitrary URLs in web mode yet
-        // But let's check if we have an API for it. `appsApi.create` creates from scratch.
-        // We need a specific clone endpoint if we want this. For now, specific `clone` is not in `appsApi`.
-        // Leaving as unsupported for generic URL, but GitHub specific flow is separate.
-        return { error: "Clone from URL not supported in web version yet" };
+        // For now, clone from URL is not fully implemented in web version
+        // Users should use GitHub integration instead
+        return {
+            error: "Clone from URL is not available in the web version. Please use the GitHub integration in Settings to connect your account and clone repositories."
+        };
     }
 
     async saveVercelAccessToken(): Promise<void> { }

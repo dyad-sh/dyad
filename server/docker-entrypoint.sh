@@ -52,5 +52,5 @@ echo "Migrations completed!"
 echo "OpenRouter configured with DeepSeek model"
 
 # Start the server
-# The TypeScript build outputs to dist/src/index.js, not dist/server/src/index.js
-exec node dist/src/index.js
+# The TypeScript build outputs to dist/index.js at the root of dist folder
+exec node dist/index.js

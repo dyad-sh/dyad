@@ -67,8 +67,27 @@ async function getModelProvider(modelId: string) {
         return process.env[envVar];
     };
 
-    // Check for OpenRouter models (format: provider/model:variant)
-    if (modelId.includes('/') && modelId.includes(':')) {
+    // Check specific providers first (Gemini, Claude, OpenAI) before OpenRouter
+    if (modelId.startsWith("claude")) {
+        const apiKey = await getApiKey("anthropic", "ANTHROPIC_API_KEY");
+        if (apiKey) return createAnthropic({ apiKey })(modelId);
+        return anthropic(modelId); // Fallback to default env var behavior of SDK
+    } else if (modelId.startsWith("gemini")) {
+        const apiKey = await getApiKey("google", "GOOGLE_GENERATIVE_AI_API_KEY"); // or GOOGLE_API_KEY
+        console.log(`[DEBUG] Google API Key retrieved: ${apiKey ? apiKey.substring(0, 20) + '...' : 'NONE'}`);
+        if (apiKey) {
+            console.log(`[DEBUG] Using Google API key from database`);
+            return createGoogleGenerativeAI({ apiKey })(modelId);
+        }
+        console.log(`[DEBUG] No API key found, using default google() provider`);
+        return google(modelId);
+    } else if (modelId.startsWith("gpt-") || modelId.startsWith("o1-")) {
+        // OpenAI models
+        const apiKey = await getApiKey("openai", "OPENAI_API_KEY");
+        if (apiKey) return createOpenAI({ apiKey })(modelId);
+        return openai(modelId);
+    } else if (modelId.includes('/') && modelId.includes(':')) {
+        // Check for OpenRouter models LAST (format: provider/model:variant)
         const apiKey = await getApiKey("openrouter", "OPENROUTER_API_KEY");
         if (apiKey) {
             // Use openai.chat() instead of createOpenAI() to get chat completions endpoint
@@ -111,25 +130,10 @@ async function getModelProvider(modelId: string) {
         }
     }
 
-    if (modelId.startsWith("claude")) {
-        const apiKey = await getApiKey("anthropic", "ANTHROPIC_API_KEY");
-        if (apiKey) return createAnthropic({ apiKey })(modelId);
-        return anthropic(modelId); // Fallback to default env var behavior of SDK
-    } else if (modelId.startsWith("gemini")) {
-        const apiKey = await getApiKey("google", "GOOGLE_GENERATIVE_AI_API_KEY"); // or GOOGLE_API_KEY
-        console.log(`[DEBUG] Google API Key retrieved: ${apiKey ? apiKey.substring(0, 20) + '...' : 'NONE'}`);
-        if (apiKey) {
-            console.log(`[DEBUG] Using Google API key from database`);
-            return createGoogleGenerativeAI({ apiKey })(modelId);
-        }
-        console.log(`[DEBUG] No API key found, using default google() provider`);
-        return google(modelId);
-    } else {
-        // Default to OpenAI
-        const apiKey = await getApiKey("openai", "OPENAI_API_KEY");
-        if (apiKey) return createOpenAI({ apiKey })(modelId || "gpt-4o");
-        return openai(modelId || "gpt-4o");
-    }
+    // Default fallback for unknown models
+    const apiKey = await getApiKey("openai", "OPENAI_API_KEY");
+    if (apiKey) return createOpenAI({ apiKey })(modelId || "gpt-4o");
+    return openai(modelId || "gpt-4o");
 }
 
 /**
@@ -210,18 +214,18 @@ async function handleStreamRequest(
         let fullResponse = "";
 
         // Get default model from settings if not specified
-        let modelToUse: string = request.model || "deepseek/deepseek-chat-v3.1:free";
+        let modelToUse: string = request.model || "gemini-2.0-flash-exp";
         if (!request.model) {
             try {
                 const dataDir = process.env.DATA_DIR || "./data";
                 const settingsPath = path.join(dataDir, "settings.json");
                 if (fs.existsSync(settingsPath)) {
                     const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
-                    modelToUse = settings.defaultModel || "deepseek/deepseek-chat-v3.1:free";
+                    modelToUse = settings.defaultModel || "gemini-2.0-flash-exp";
                     console.log(`[WS] Using default model from settings: ${modelToUse}`);
                 }
             } catch (e) {
-                console.error("[WS] Failed to read settings, using deepseek/deepseek-chat-v3.1:free:", e);
+                console.error("[WS] Failed to read settings, using gemini-2.0-flash-exp:", e);
                 // modelToUse already has fallback value
             }
         }

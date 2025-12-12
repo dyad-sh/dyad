@@ -37,7 +37,7 @@ DO UPDATE SET
 INSERT INTO system_settings (key, value, description, created_at, updated_at)
 VALUES (
     'defaultModel',
-    'deepseek/deepseek-chat-v3.1:free',
+    'gemini-2.0-flash-exp',
     'Default AI model for chat',
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP

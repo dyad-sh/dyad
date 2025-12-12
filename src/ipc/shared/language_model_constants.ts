@@ -225,7 +225,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     },
     // https://openrouter.ai/deepseek/deepseek-chat-v3-0324:free
     {
-      name: "deepseek/deepseek-chat-v3.1:free",
+      name: "gemini-2.0-flash-exp",
       displayName: "DeepSeek v3.1 (free)",
       description: "Use for free (data may be used for training)",
       maxOutputTokens: 32_000,

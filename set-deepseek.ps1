@@ -4,7 +4,7 @@ Write-Host "🔄 Configuration de DeepSeek Chat v3.1 comme modèle par défaut..
 
 # Mettre à jour via l'API
 $body = @{
-    defaultModel = "deepseek/deepseek-chat-v3.1:free"
+    defaultModel = "gemini-2.0-flash-exp"
 } | ConvertTo-Json
 
 try {
@@ -30,7 +30,7 @@ try {
     Write-Host "📊 Modèle actuel: " -NoNewline -ForegroundColor Yellow
     Write-Host $settings.data.defaultModel -ForegroundColor White
 
-    if ($settings.data.defaultModel -eq "deepseek/deepseek-chat-v3.1:free") {
+    if ($settings.data.defaultModel -eq "gemini-2.0-flash-exp") {
         Write-Host ""
         Write-Host "✅ Modèle mis à jour avec succès !" -ForegroundColor Green
         Write-Host ""

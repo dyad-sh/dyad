@@ -26,7 +26,7 @@ const defaultSettings = {
     telemetryEnabled: true,
     enableAutoUpdate: true,
     releaseChannel: "stable",
-    defaultModel: "deepseek/deepseek-chat-v3.1:free",
+    defaultModel: "gemini-2.0-flash-exp",
     hasRunBefore: false,
 };
 

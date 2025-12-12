@@ -33,11 +33,11 @@ DO UPDATE SET
     api_base_url = EXCLUDED.api_base_url,
     updated_at = CURRENT_TIMESTAMP;
 
--- Set default model to DeepSeek via OpenRouter
+-- Set default model to Gemini Flash
 INSERT INTO system_settings (key, value, description, created_at, updated_at)
 VALUES (
     'defaultModel',
-    'tngtech/deepseek-r1t2-chimera:free',
+    'gemini-2.0-flash-exp',
     'Default AI model for chat',
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
@@ -49,7 +49,7 @@ DO UPDATE SET
 EOF
 
 echo "Migrations completed!"
-echo "OpenRouter configured with DeepSeek model"
+echo "Gemini Flash configured as default model"
 
 # Start the server
 # The TypeScript build outputs to dist/index.js at the root of dist folder

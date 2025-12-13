@@ -32,6 +32,9 @@ const ignore = (file: string) => {
   if (file.startsWith("/node_modules/stacktrace-js/dist")) {
     return false;
   }
+  if (file.startsWith("/node_modules/html-to-image")) {
+    return false;
+  }
   if (file.startsWith("/node_modules/better-sqlite3")) {
     return false;
   }

@@ -38,7 +38,29 @@ let rememberedOrigin = null; // e.g. "http://localhost:5173"
 let stacktraceJsContent = null;
 let dyadShimContent = null;
 let dyadComponentSelectorClientContent = null;
+let dyadScreenshotClientContent = null;
+let htmlToImageContent = null;
 let dyadVisualEditorClientContent = null;
+
+try {
+  const htmlToImagePath = path.join(
+    __dirname,
+    "..",
+    "node_modules",
+    "html-to-image",
+    "dist",
+    "html-to-image.js",
+  );
+  htmlToImageContent = fs.readFileSync(htmlToImagePath, "utf-8");
+  parentPort?.postMessage(
+    `[proxy-worker] html-to-image.js loaded from: ${htmlToImagePath}`,
+  );
+} catch (error) {
+  parentPort?.postMessage(
+    `[proxy-worker] Failed to read html-to-image.js: ${error.message}`,
+  );
+}
+
 try {
   const stackTraceLibPath = path.join(
     __dirname,
@@ -81,6 +103,22 @@ try {
 } catch (error) {
   parentPort?.postMessage(
     `[proxy-worker] Failed to read dyad-component-selector-client.js: ${error.message}`,
+  );
+}
+
+try {
+  const dyadScreenshotClientPath = path.join(
+    __dirname,
+    "dyad-screenshot-client.js",
+  );
+  dyadScreenshotClientContent = fs.readFileSync(
+    dyadScreenshotClientPath,
+    "utf-8",
+  );
+  parentPort?.postMessage("[proxy-worker] dyad-screenshot-client.js loaded.");
+} catch (error) {
+  parentPort?.postMessage(
+    `[proxy-worker] Failed to read dyad-screenshot-client.js: ${error.message}`,
   );
 }
 
@@ -141,6 +179,26 @@ function injectHTML(buf) {
   } else {
     scripts.push(
       '<script>console.warn("[proxy-worker] dyad component selector client was not injected.");</script>',
+    );
+  }
+  if (htmlToImageContent) {
+    scripts.push(`<script>${htmlToImageContent}</script>`);
+    parentPort?.postMessage(
+      "[proxy-worker] html-to-image script injected into HTML.",
+    );
+  } else {
+    scripts.push(
+      '<script>console.error("[proxy-worker] html-to-image was not injected - library not loaded.");</script>',
+    );
+    parentPort?.postMessage(
+      "[proxy-worker] WARNING: html-to-image not injected!",
+    );
+  }
+  if (dyadScreenshotClientContent) {
+    scripts.push(`<script>${dyadScreenshotClientContent}</script>`);
+  } else {
+    scripts.push(
+      '<script>console.warn("[proxy-worker] dyad screenshot client was not injected.");</script>',
     );
   }
   if (dyadVisualEditorClientContent) {

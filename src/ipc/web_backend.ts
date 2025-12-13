@@ -533,8 +533,25 @@ export class WebBackend implements IBackendClient {
                 });
             }
         }
-        // TODO: Fetch custom providers from API
-        return hardcodedProviders;
+
+        // Fetch custom providers from API
+        try {
+            const { providersApi } = await import("@/api/client");
+            const customProvidersResponse = await providersApi.list();
+
+            const customProviders: LanguageModelProvider[] = customProvidersResponse.map((provider: any) => ({
+                id: provider.id,
+                name: provider.name,
+                type: "custom",
+                envVarName: provider.env_var_name || undefined,
+            }));
+
+            return [...hardcodedProviders, ...customProviders];
+        } catch (error) {
+            console.error("Failed to fetch custom providers:", error);
+            // Return hardcoded providers even if custom providers fail to load
+            return hardcodedProviders;
+        }
     }
 
     async getLanguageModels(params: { providerId: string }): Promise<LanguageModel[]> {

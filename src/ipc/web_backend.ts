@@ -311,6 +311,23 @@ export class WebBackend implements IBackendClient {
         // In the web client, we reconstruct the ephemeral message list for the UI
         // processing. The actual persistent history is managed by the server for next fetches.
         // We start with the user's new message.
+        // FIX: We need to preserve previous messages so the UI doesn't wipe them out.
+        // We'll trust the server to send the "real" history later, but for the immediate
+        // optimistic update, we need the old messages.
+
+        let existingMessages: ChatMessage[] = [];
+        this.getChat(chatId).then(chat => {
+            // Map existing chat messages to ChatMessage type
+            if (chat && chat.messages) {
+                existingMessages = chat.messages.map(m => ({
+                    role: m.role as "user" | "assistant" | "system",
+                    content: m.content
+                }));
+            }
+        }).catch(err => {
+            console.warn("Failed to fetch existing chat for history preservation:", err);
+        });
+
         const messages: ChatMessage[] = [{ role: "user", content: prompt }];
         let assistantContent = "";
         let filesUpdated = false;
@@ -330,9 +347,17 @@ export class WebBackend implements IBackendClient {
                     // look empty until refresh. However, typically the chat view appends 
                     // these updates to its existing local list.
 
-                    const updatedMessages: Message[] = [
+                    const currentTurnMessages: Message[] = [
                         { role: "user", content: prompt } as Message,
                         { role: "assistant", content: assistantContent } as Message,
+                    ];
+
+                    // Combine with existing messages for the UI update
+                    // We need to match the Message type which has more fields than ChatMessage
+                    // but for the UI display, role and content are key.
+                    const updatedMessages: Message[] = [
+                        ...existingMessages as any[],
+                        ...currentTurnMessages
                     ];
 
                     onUpdate(updatedMessages);

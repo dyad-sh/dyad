@@ -11,7 +11,7 @@ import { anthropic } from "@ai-sdk/anthropic";
 import { google, createGoogleGenerativeAI } from "@ai-sdk/google";
 import { getDb } from "../db/index.js";
 import { language_model_providers, messages, chats, system_settings, language_models } from "../db/schema.js";
-import { eq } from "drizzle-orm";
+import { eq, and, not, desc } from "drizzle-orm";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import fs from "node:fs";
@@ -38,6 +38,25 @@ interface StreamChunk {
     error?: string;
     requestId?: string;
 }
+
+
+// Default System Prompt (matches codeBlockParser format)
+const DEFAULT_SYSTEM_PROMPT = `You are an expert full-stack developer.
+
+When you write code, you MUST format it so it can be automatically saved to the file system.
+To do this, you MUST header the code block with the precise file path.
+
+Example:
+
+### src/components/Header.tsx
+\`\`\`typescript
+const Header = () => <div>Hello</div>;
+export default Header;
+\`\`\`
+
+If you do not provide the file path header, the code will NOT be saved.
+Always provide the FULL content of the file, not just snippets.
+`;
 
 // Active streams map for cancellation
 const activeStreams = new Map<string, AbortController>();
@@ -292,9 +311,40 @@ async function handleStreamRequest(
 
         const model = await getModelProvider(modelToUse);
 
-        const messagesWithSystem = request.systemPrompt
-            ? [{ role: "system" as const, content: request.systemPrompt as string }, ...request.messages]
-            : request.messages;
+        // Fetch chat history
+        // Get the last 20 messages for context (excluding the ones we just inserted)
+        // We need to exclude the placeholder assistant message (assistantMessage[0].id)
+        // and the user message (userMessage[0].id) to avoid duplication if we re-read them
+        const history = await db.select()
+            .from(messages)
+            .where(
+                and(
+                    eq(messages.chatId, request.chatId),
+                    not(eq(messages.id, assistantMessage[0].id)),
+                    not(eq(messages.id, userMessage[0].id))
+                )
+            )
+            .orderBy(messages.createdAt)
+            .limit(20);
+
+        // Convert DB messages to AI SDK format
+        const historyMessages = history.map(msg => ({
+            role: msg.role as "user" | "assistant" | "system",
+            content: msg.content
+        }));
+
+        // Construct full message list: History + Current User Message
+        const currentMessage = { role: "user" as const, content: request.messages[request.messages.length - 1].content };
+
+        // Prepare system prompt
+        const systemPromptContent = request.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+        const systemMessage = { role: "system" as const, content: systemPromptContent };
+
+        const messagesWithSystem = [
+            systemMessage,
+            ...historyMessages,
+            currentMessage
+        ];
 
         const { textStream } = await streamText({
             model,

@@ -10,7 +10,7 @@ import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { google, createGoogleGenerativeAI } from "@ai-sdk/google";
 import { getDb } from "../db/index.js";
-import { language_model_providers, messages, chats } from "../db/schema.js";
+import { language_model_providers, messages, chats, system_settings } from "../db/schema.js";
 import { eq } from "drizzle-orm";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
@@ -219,15 +219,21 @@ async function handleStreamRequest(
         let modelToUse: string = request.model || "gemini-1.5-flash";
         if (!request.model) {
             try {
-                const dataDir = process.env.DATA_DIR || "./data";
-                const settingsPath = path.join(dataDir, "settings.json");
-                if (fs.existsSync(settingsPath)) {
-                    const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
-                    modelToUse = settings.defaultModel || "gemini-1.5-flash";
-                    console.log(`[WS] Using default model from settings: ${modelToUse}`);
+                // Read default model from database system_settings table
+                const settingsResult = await db
+                    .select()
+                    .from(system_settings)
+                    .where(eq(system_settings.key, "defaultModel"))
+                    .limit(1);
+
+                if (settingsResult.length > 0) {
+                    modelToUse = settingsResult[0].value;
+                    console.log(`[WS] Using default model from database: ${modelToUse}`);
+                } else {
+                    console.log(`[WS] No default model in database, using fallback: ${modelToUse}`);
                 }
             } catch (e) {
-                console.error("[WS] Failed to read settings, using gemini-1.5-flash:", e);
+                console.error("[WS] Failed to read default model from database, using gemini-1.5-flash:", e);
                 // modelToUse already has fallback value
             }
         }

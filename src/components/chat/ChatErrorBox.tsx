@@ -1,3 +1,4 @@
+import React from "react";
 import { IpcClient } from "@/ipc/ipc_client";
 import { AI_STREAMING_ERROR_MESSAGE_PREFIX } from "@/shared/texts";
 import {
@@ -31,6 +32,51 @@ export function ChatErrorBox({
         </span>{" "}
         or switch to another model.
       </ChatErrorContainer>
+    );
+  }
+
+  // Handle leaked API key error (403)
+  if (
+    error.includes("Your API key was reported as leaked") ||
+    error.includes("PERMISSION_DENIED") ||
+    error.includes('"code": 403')
+  ) {
+    return (
+      <ChatErrorContainer onDismiss={onDismiss}>
+        <div className="space-y-2">
+          <div className="font-semibold">🔒 API Key Security Issue</div>
+          <div>
+            Your API key was reported as leaked and has been disabled for security reasons.
+          </div>
+          <div className="text-sm">
+            <strong>What to do:</strong>
+            <ol className="list-decimal ml-4 mt-1 space-y-1">
+              <li>Generate a new API key from your provider</li>
+              <li>Update the key in your environment variables</li>
+              <li>Never commit API keys to version control</li>
+            </ol>
+          </div>
+        </div>
+      </ChatErrorContainer>
+    );
+  }
+
+  // Handle quota exceeded error (429) - specific to Gemini
+  if (
+    error.includes("You exceeded your current quota") ||
+    error.includes('"code": 429') ||
+    error.includes("RESOURCE_EXHAUSTED") ||
+    error.includes("Quota exceeded for metric")
+  ) {
+    // Extract retry delay if available (format: "Please retry in 37.058691744s")
+    const retryMatch = error.match(/Please retry in ([\d.]+)s/);
+    const retrySeconds = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) : null;
+
+    return (
+      <QuotaExceededError
+        onDismiss={onDismiss}
+        retrySeconds={retrySeconds}
+      />
     );
   }
 
@@ -155,9 +201,8 @@ function ExternalLink({
 
   return (
     <a
-      className={`${baseClasses} ${
-        variant === "primary" ? primaryClasses : secondaryClasses
-      }`}
+      className={`${baseClasses} ${variant === "primary" ? primaryClasses : secondaryClasses
+        }`}
       onClick={() => IpcClient.getInstance().openExternalUrl(href)}
     >
       <span>{children}</span>
@@ -233,5 +278,112 @@ function ChatInfoContainer({
         <div className="text-sky-800 text-wrap">{children}</div>
       </div>
     </div>
+  );
+}
+
+// Enhanced quota exceeded error with countdown and suggestions
+function QuotaExceededError({
+  onDismiss,
+  retrySeconds,
+}: {
+  onDismiss: () => void;
+  retrySeconds: number | null;
+}) {
+  const [timeLeft, setTimeLeft] = React.useState(retrySeconds);
+
+  React.useEffect(() => {
+    if (!timeLeft || timeLeft <= 0) return;
+
+    const timer = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (!prev || prev <= 1) {
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [timeLeft]);
+
+  const formatTime = (seconds: number) => {
+    if (seconds < 60) return `${seconds}s`;
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}m ${secs}s`;
+  };
+
+  // Suggested alternative models
+  const suggestedModels = [
+    { name: "GPT-3.5 Turbo", provider: "OpenAI", icon: "🤖" },
+    { name: "Claude 3 Haiku", provider: "Anthropic", icon: "🧠" },
+    { name: "Gemini 1.5 Flash", provider: "Google", icon: "✨" },
+  ];
+
+  return (
+    <ChatErrorContainer onDismiss={onDismiss}>
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <div className="font-semibold text-base">⏳ API Quota Exceeded</div>
+          {timeLeft && timeLeft > 0 && (
+            <div className="ml-auto px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-mono">
+              Reset in {formatTime(timeLeft)}
+            </div>
+          )}
+        </div>
+
+        <div className="text-sm">
+          You've reached the rate limit for your current API plan.
+        </div>
+
+        {/* Model Suggestions */}
+        <div className="space-y-2">
+          <div className="text-sm font-medium">💡 Try these models instead:</div>
+          <div className="grid grid-cols-1 gap-1.5">
+            {suggestedModels.map((model) => (
+              <button
+                key={model.name}
+                onClick={() => {
+                  // Trigger model picker opening
+                  const modelPicker = document.querySelector('[data-model-picker-trigger]');
+                  if (modelPicker instanceof HTMLElement) {
+                    modelPicker.click();
+                  }
+                }}
+                className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-md hover:bg-gray-50 hover:border-gray-300 transition-colors text-left"
+              >
+                <span className="text-lg">{model.icon}</span>
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-gray-900">{model.name}</div>
+                  <div className="text-xs text-gray-500">{model.provider}</div>
+                </div>
+                <ExternalLinkIcon size={14} className="text-gray-400" />
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Quick Actions */}
+        <div className="flex flex-wrap gap-2 pt-2 border-t border-red-200">
+          <button
+            onClick={() => {
+              const modelPicker = document.querySelector('[data-model-picker-trigger]');
+              if (modelPicker instanceof HTMLElement) {
+                modelPicker.click();
+              }
+            }}
+            className="px-3 py-1.5 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
+          >
+            Open Model Picker
+          </button>
+          {timeLeft && timeLeft > 0 && (
+            <div className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-md text-sm">
+              Wait {formatTime(timeLeft)}
+            </div>
+          )}
+        </div>
+      </div>
+    </ChatErrorContainer>
   );
 }

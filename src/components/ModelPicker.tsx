@@ -182,6 +182,7 @@ export function ModelPicker() {
               variant="outline"
               size="sm"
               className="flex items-center gap-2 h-8 max-w-[130px] px-1.5 text-xs-sm"
+              data-model-picker-trigger
             >
               <span className="truncate">
                 {modelDisplayName === "Auto" && (

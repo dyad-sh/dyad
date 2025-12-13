@@ -22,6 +22,7 @@ export function registerProHandlers() {
         usedCredits: 100,
         totalCredits: 1000,
         budgetResetDate: resetDate,
+        redactedUserId: "<redacted-user-id-testing>",
       };
     }
     logger.info("Attempting to fetch user budget information.");
@@ -58,11 +59,18 @@ export function registerProHandlers() {
 
       const data = await response.json();
       const userInfoData = data["user_info"];
+      const userId = userInfoData["user_id"];
+      // Turn user_abc1234 =>  "****1234"
+      // Preserve the last 4 characters so we can correlate bug reports
+      // with the user.
+      const redactedUserId =
+        userId.length > 8 ? "****" + userId.slice(-4) : "<redacted>";
       logger.info("Successfully fetched user budget information.");
       return UserBudgetInfoSchema.parse({
         usedCredits: userInfoData["spend"] * CONVERSION_RATIO,
         totalCredits: userInfoData["max_budget"] * CONVERSION_RATIO,
         budgetResetDate: new Date(userInfoData["budget_reset_at"]),
+        redactedUserId: redactedUserId,
       });
     } catch (error: any) {
       logger.error(`Error fetching user budget: ${error.message}`, error);

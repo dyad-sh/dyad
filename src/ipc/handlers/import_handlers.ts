@@ -8,11 +8,10 @@ import { apps } from "@/db/schema";
 import { db } from "@/db";
 import { chats } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import git from "isomorphic-git";
 
 import { ImportAppParams, ImportAppResult } from "../ipc_types";
 import { copyDirectoryRecursive } from "../utils/file_utils";
-import { gitCommit } from "../utils/git_utils";
+import { gitCommit, gitAdd, gitInit } from "../utils/git_utils";
 
 const logger = log.scope("import-handlers");
 const handle = createLoggedHandler(logger);
@@ -106,18 +105,11 @@ export function registerImportHandlers() {
         .catch(() => false);
       if (!isGitRepo) {
         // Initialize git repo and create first commit
-        await git.init({
-          fs: fs,
-          dir: destPath,
-          defaultBranch: "main",
-        });
+        await gitInit({ path: destPath, ref: "main" });
 
         // Stage all files
-        await git.add({
-          fs: fs,
-          dir: destPath,
-          filepath: ".",
-        });
+
+        await gitAdd({ path: destPath, filepath: "." });
 
         // Create initial commit
         await gitCommit({

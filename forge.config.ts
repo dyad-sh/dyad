@@ -77,6 +77,7 @@ const config: ForgeConfig = {
         },
     asar: true,
     ignore,
+    extraResource: ["node_modules/dugite/git"],
     // ignore: [/node_modules\/(?!(better-sqlite3|bindings|file-uri-to-path)\/)/],
   },
   rebuildConfig: {

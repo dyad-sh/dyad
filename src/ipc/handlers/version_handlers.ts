@@ -7,15 +7,23 @@ import type {
   RevertVersionParams,
   RevertVersionResponse,
 } from "../ipc_types";
+import type { GitCommit } from "../git_types";
 import fs from "node:fs";
 import path from "node:path";
 import { getDyadAppPath } from "../../paths/paths";
-import git, { type ReadCommitResult } from "isomorphic-git";
 import { withLock } from "../utils/lock_utils";
 import log from "electron-log";
 import { createLoggedHandler } from "./safe_handle";
-import { gitCheckout, gitCommit, gitStageToRevert } from "../utils/git_utils";
+
 import { deployAllSupabaseFunctions } from "../../supabase_admin/supabase_utils";
+import {
+  gitCheckout,
+  gitCommit,
+  gitStageToRevert,
+  getCurrentCommitHash,
+  gitCurrentBranch,
+  gitLog,
+} from "../utils/git_utils";
 
 import {
   getNeonClient,
@@ -80,11 +88,9 @@ export function registerVersionHandlers() {
       return [];
     }
 
-    const commits = await git.log({
-      fs,
-      dir: appPath,
-      // KEEP UP TO DATE WITH ChatHeader.tsx
-      depth: 100_000, // Limit to last 100_000 commits for performance
+    const commits = await gitLog({
+      path: appPath,
+      depth: 100_000, // KEEP UP TO DATE WITH ChatHeader.tsx
     });
 
     // Get all snapshots for this app to match with commits
@@ -104,7 +110,7 @@ export function registerVersionHandlers() {
       });
     }
 
-    return commits.map((commit: ReadCommitResult) => {
+    return commits.map((commit: GitCommit) => {
       const snapshotInfo = snapshotMap.get(commit.oid);
       return {
         oid: commit.oid,
@@ -134,11 +140,7 @@ export function registerVersionHandlers() {
       }
 
       try {
-        const currentBranch = await git.currentBranch({
-          fs,
-          dir: appPath,
-          fullname: false,
-        });
+        const currentBranch = await gitCurrentBranch({ path: appPath });
 
         return {
           branch: currentBranch || "<no-branch>",
@@ -169,9 +171,8 @@ export function registerVersionHandlers() {
 
         const appPath = getDyadAppPath(app.path);
         // Get the current commit hash before reverting
-        const currentCommitHash = await git.resolveRef({
-          fs,
-          dir: appPath,
+        const currentCommitHash = await getCurrentCommitHash({
+          path: appPath,
           ref: "main",
         });
 

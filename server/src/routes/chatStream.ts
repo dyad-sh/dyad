@@ -69,7 +69,39 @@ async function getModelProvider(modelId: string) {
         return process.env[envVar];
     };
 
-    // Check specific providers first (Gemini, Claude, OpenAI) before OpenRouter
+    // Check if it's a custom model first
+    const customModel = await db.select({
+        model: language_models,
+        provider: language_model_providers
+    })
+        .from(language_models)
+        .innerJoin(language_model_providers, eq(language_models.customProviderId, language_model_providers.id))
+        .where(eq(language_models.apiName, modelId))
+        .limit(1);
+
+    if (customModel.length > 0) {
+        const { provider, model } = customModel[0];
+        console.log(`[WS] Using custom provider ${provider.name} for model ${model.apiName}`);
+
+        // Use custom provider configuration
+        const customOpenAI = createOpenAI({
+            apiKey: provider.apiKey || process.env[provider.env_var_name || ""] || "",
+            baseURL: provider.api_base_url,
+            // Add custom headers
+            fetch: async (url, options) => {
+                const headers = new Headers(options?.headers);
+
+                return fetch(url, {
+                    ...options,
+                    headers,
+                });
+            },
+        });
+
+        return customOpenAI.chat(model.apiName);
+    }
+
+    // Check specific providers (Gemini, Claude, OpenAI) before OpenRouter
     if (modelId.startsWith("claude")) {
         const apiKey = await getApiKey("anthropic", "ANTHROPIC_API_KEY");
         if (apiKey) return createAnthropic({ apiKey })(modelId);
@@ -84,40 +116,6 @@ async function getModelProvider(modelId: string) {
         console.log(`[DEBUG] No API key found, using default google() provider`);
         return google(modelId);
     } else if (modelId.startsWith("gpt-") || modelId.startsWith("o1-")) {
-        // Check if it's a custom model
-        const customModel = await db.select({
-            model: language_models,
-            provider: language_model_providers
-        })
-            .from(language_models)
-            .innerJoin(language_model_providers, eq(language_models.customProviderId, language_model_providers.id))
-            .where(eq(language_models.apiName, modelId))
-            .limit(1);
-
-        if (customModel.length > 0) {
-            const { provider, model } = customModel[0];
-            console.log(`[WS] Using custom provider ${provider.name} for model ${model.apiName}`);
-
-            // Use custom provider configuration
-            const customOpenAI = createOpenAI({
-                apiKey: provider.apiKey || process.env[provider.envVarName || ""] || "",
-                baseURL: provider.api_base_url,
-                // Add custom headers
-                fetch: async (url, options) => {
-                    const headers = new Headers(options?.headers);
-                    // Ensure text/event-stream content type negotiation for some providers
-                    // headers.set('Accept', 'text/event-stream'); 
-
-                    return fetch(url, {
-                        ...options,
-                        headers,
-                    });
-                },
-            });
-
-            return customOpenAI.chat(model.apiName);
-        }
-
         // OpenAI models (default behavior if not a custom model)
         const apiKey = await getApiKey("openai", "OPENAI_API_KEY");
         if (apiKey) return createOpenAI({ apiKey })(modelId);
@@ -145,39 +143,6 @@ async function getModelProvider(modelId: string) {
             // Return the chat model, not the responses model
             return openai.chat(modelId);
         }
-        // Check if it's a custom model
-        const db = getDb();
-        const customModel = await db.select({
-            model: language_models,
-            provider: language_model_providers
-        })
-            .from(language_models)
-            .innerJoin(language_model_providers, eq(language_models.customProviderId, language_model_providers.id))
-            .where(eq(language_models.apiName, modelId))
-            .limit(1);
-
-        if (customModel.length > 0) {
-            const { provider, model } = customModel[0];
-            console.log(`[WS] Using custom provider ${provider.name} for model ${model.apiName}`);
-
-            // Use custom provider configuration
-            const customOpenAI = createOpenAI({
-                apiKey: provider.apiKey || process.env[provider.env_var_name || ""] || "",
-                baseURL: provider.api_base_url,
-                // Add custom headers
-                fetch: async (url, options) => {
-                    const headers = new Headers(options?.headers);
-
-                    return fetch(url, {
-                        ...options,
-                        headers,
-                    });
-                },
-            });
-
-            return customOpenAI.chat(model.apiName);
-        }
-
         if (modelId.startsWith("claude-")) {
             const apiKey = await getApiKey("anthropic", "ANTHROPIC_API_KEY");
             if (apiKey) return createAnthropic({ apiKey })(modelId);
@@ -186,7 +151,7 @@ async function getModelProvider(modelId: string) {
 
         if (modelId.startsWith("gemini-")) {
             const apiKey = await getApiKey("google", "GOOGLE_GENERATIVE_AI_API_KEY");
-            if (apiKey) return google(modelId, { apiKey });
+            if (apiKey) return createGoogleGenerativeAI({ apiKey })(modelId);
             return google(modelId);
         }
 
@@ -216,224 +181,227 @@ async function getModelProvider(modelId: string) {
             // Fallback to env var if handled generic way (not common for / models unless OpenRouter)
         }
 
-        // Default fallback for unknown models (assumed OpenAI standard)
-        const apiKey = await getApiKey("openai", "OPENAI_API_KEY");
-        if (apiKey) return createOpenAI({ apiKey })(modelId || "gpt-4o");
-        return openai(modelId || "gpt-4o");
     }
 
-    /**
-     * Setup WebSocket handler for chat streaming
-     */
-    export function setupChatWebSocket(wss: WebSocketServer) {
-        wss.on("connection", (ws: WebSocket) => {
-            console.log("[WS] New client connected");
-            const clientId = uuidv4();
+    // Default fallback for unknown models (assumed OpenAI standard)
+    const apiKey = await getApiKey("openai", "OPENAI_API_KEY");
+    if (apiKey) return createOpenAI({ apiKey })(modelId || "gpt-4o");
+    return openai(modelId || "gpt-4o");
+}
 
-            ws.on("message", async (data: Buffer) => {
-                try {
-                    const message = JSON.parse(data.toString());
 
-                    if (message.type === "start_stream") {
-                        await handleStreamRequest(ws, clientId, message as StreamRequest);
-                    } else if (message.type === "cancel_stream") {
-                        handleCancelStream(message.requestId);
-                    }
-                } catch (error) {
-                    console.error("[WS] Error processing message:", error);
-                    ws.send(JSON.stringify({
-                        type: "error",
-                        error: error instanceof Error ? error.message : "Unknown error",
-                    }));
-                }
-            });
+/**
+ * Setup WebSocket handler for chat streaming
+ */
+export function setupChatWebSocket(wss: WebSocketServer) {
+    wss.on("connection", (ws: WebSocket) => {
+        console.log("[WS] New client connected");
+        const clientId = uuidv4();
 
-            ws.on("close", () => {
-                console.log("[WS] Client disconnected:", clientId);
-                // Cancel any active streams for this client
-                for (const [requestId, controller] of activeStreams) {
-                    if (requestId.startsWith(clientId)) {
-                        controller.abort();
-                        activeStreams.delete(requestId);
-                    }
-                }
-            });
-
-            ws.on("error", (error) => {
-                console.error("[WS] WebSocket error:", error);
-            });
-        });
-
-        console.log("[WS] Chat WebSocket server initialized");
-    }
-
-    /**
-     * Handle streaming chat request
-     */
-    async function handleStreamRequest(
-        ws: WebSocket,
-        clientId: string,
-        request: StreamRequest
-    ) {
-        const requestId = `${clientId}-${uuidv4()}`;
-        const abortController = new AbortController();
-        activeStreams.set(requestId, abortController);
-
-        try {
-            // Get database connection
-            const db = getDb();
-
-            // Save user message to database
-            const userMessage = await db.insert(messages).values({
-                chatId: request.chatId,
-                role: "user",
-                content: request.messages[request.messages.length - 1].content,
-            }).returning();
-
-            // Create placeholder for assistant message
-            const assistantMessage = await db.insert(messages).values({
-                chatId: request.chatId,
-                role: "assistant",
-                content: "",
-            }).returning();
-
-            let fullResponse = "";
-
-            // Get default model from settings if not specified
-            let modelToUse: string = request.model || "gemini-1.5-flash";
-            if (!request.model) {
-                try {
-                    // Read default model from database system_settings table
-                    const settingsResult = await db
-                        .select()
-                        .from(system_settings)
-                        .where(eq(system_settings.key, "defaultModel"))
-                        .limit(1);
-
-                    if (settingsResult.length > 0) {
-                        modelToUse = settingsResult[0].value;
-                        console.log(`[WS] Using default model from database: ${modelToUse}`);
-                    } else {
-                        console.log(`[WS] No default model in database, using fallback: ${modelToUse}`);
-                    }
-                } catch (e) {
-                    console.error("[WS] Failed to read default model from database, using gemini-1.5-flash:", e);
-                    // modelToUse already has fallback value
-                }
-            }
-
-            const model = await getModelProvider(modelToUse);
-
-            const messagesWithSystem = request.systemPrompt
-                ? [{ role: "system" as const, content: request.systemPrompt as string }, ...request.messages]
-                : request.messages;
-
-            const { textStream } = await streamText({
-                model,
-                messages: messagesWithSystem,
-                abortSignal: abortController.signal,
-            });
-
-            // Send request ID to client
-            ws.send(JSON.stringify({ type: "stream_started", requestId }));
-
-            // Stream chunks to client
-            for await (const chunk of textStream) {
-                if (ws.readyState !== WebSocket.OPEN) break;
-
-                fullResponse += chunk;
-
-                ws.send(JSON.stringify({
-                    type: "chunk",
-                    content: chunk,
-                    requestId,
-                } as StreamChunk));
-            }
-
-            // Update assistant message with full response
-            await db.update(messages)
-                .set({ content: fullResponse })
-                .where(eq(messages.id, assistantMessage[0].id));
-
-            // Update chat timestamp
-            await db.update(chats)
-                .set({ updatedAt: new Date() })
-                .where(eq(chats.id, request.chatId));
-
-            // Parse and save files from AI response
+        ws.on("message", async (data: Buffer) => {
             try {
-                const parsedFiles = parseCodeBlocks(fullResponse);
-                if (parsedFiles.length > 0) {
-                    // Get appId from chat
-                    const chat = await db.select().from(chats).where(eq(chats.id, request.chatId)).limit(1);
-                    if (chat.length > 0) {
-                        const appId = chat[0].appId;
-                        const fileService = new FileService();
+                const message = JSON.parse(data.toString());
 
-                        for (const file of parsedFiles) {
-                            await fileService.saveFile(appId, file.path, file.content);
-                        }
-
-                        // Notify client that files were updated
-                        ws.send(JSON.stringify({
-                            type: "files_updated",
-                            count: parsedFiles.length,
-                            files: parsedFiles.map(f => f.path),
-                        }));
-
-                        console.log(`[WS] Saved ${parsedFiles.length} files for app ${appId}`);
-                    }
+                if (message.type === "start_stream") {
+                    await handleStreamRequest(ws, clientId, message as StreamRequest);
+                } else if (message.type === "cancel_stream") {
+                    handleCancelStream(message.requestId);
                 }
-            } catch (fileError) {
-                console.error("[WS] Error parsing/saving files:", fileError);
-                // Don't fail the whole request if file parsing fails
-            }
-
-            // Send completion
-            ws.send(JSON.stringify({
-                type: "end",
-                requestId,
-            } as StreamChunk));
-
-        } catch (error) {
-            if (error instanceof Error && error.name === "AbortError") {
-                ws.send(JSON.stringify({
-                    type: "cancelled",
-                    requestId,
-                }));
-            } else {
-                console.error("[WS] Stream error:", error);
-
-                // Extract full error message with all details
-                let errorMessage = "Stream failed";
-                if (error instanceof Error) {
-                    // For AI SDK errors, the full error details are in the message
-                    errorMessage = error.message;
-
-                    // If it's a RetryError, it contains the full quota information
-                    // The error message already includes retry delay like "Please retry in 38.98s"
-                    console.error("[WS] Full error message:", errorMessage);
-                }
-
+            } catch (error) {
+                console.error("[WS] Error processing message:", error);
                 ws.send(JSON.stringify({
                     type: "error",
-                    error: errorMessage,
-                    requestId,
-                } as StreamChunk));
+                    error: error instanceof Error ? error.message : "Unknown error",
+                }));
             }
-        } finally {
-            activeStreams.delete(requestId);
-        }
-    }
+        });
 
-    /**
-     * Cancel an active stream
-     */
-    function handleCancelStream(requestId: string) {
-        const controller = activeStreams.get(requestId);
-        if (controller) {
-            controller.abort();
-            activeStreams.delete(requestId);
-            console.log("[WS] Stream cancelled:", requestId);
+        ws.on("close", () => {
+            console.log("[WS] Client disconnected:", clientId);
+            // Cancel any active streams for this client
+            for (const [requestId, controller] of activeStreams) {
+                if (requestId.startsWith(clientId)) {
+                    controller.abort();
+                    activeStreams.delete(requestId);
+                }
+            }
+        });
+
+        ws.on("error", (error) => {
+            console.error("[WS] WebSocket error:", error);
+        });
+    });
+
+    console.log("[WS] Chat WebSocket server initialized");
+}
+
+/**
+ * Handle streaming chat request
+ */
+async function handleStreamRequest(
+    ws: WebSocket,
+    clientId: string,
+    request: StreamRequest
+) {
+    const requestId = `${clientId}-${uuidv4()}`;
+    const abortController = new AbortController();
+    activeStreams.set(requestId, abortController);
+
+    try {
+        // Get database connection
+        const db = getDb();
+
+        // Save user message to database
+        const userMessage = await db.insert(messages).values({
+            chatId: request.chatId,
+            role: "user",
+            content: request.messages[request.messages.length - 1].content,
+        }).returning();
+
+        // Create placeholder for assistant message
+        const assistantMessage = await db.insert(messages).values({
+            chatId: request.chatId,
+            role: "assistant",
+            content: "",
+        }).returning();
+
+        let fullResponse = "";
+
+        // Get default model from settings if not specified
+        let modelToUse: string = request.model || "gemini-1.5-flash";
+        if (!request.model) {
+            try {
+                // Read default model from database system_settings table
+                const settingsResult = await db
+                    .select()
+                    .from(system_settings)
+                    .where(eq(system_settings.key, "defaultModel"))
+                    .limit(1);
+
+                if (settingsResult.length > 0) {
+                    modelToUse = settingsResult[0].value;
+                    console.log(`[WS] Using default model from database: ${modelToUse}`);
+                } else {
+                    console.log(`[WS] No default model in database, using fallback: ${modelToUse}`);
+                }
+            } catch (e) {
+                console.error("[WS] Failed to read default model from database, using gemini-1.5-flash:", e);
+                // modelToUse already has fallback value
+            }
         }
+
+        const model = await getModelProvider(modelToUse);
+
+        const messagesWithSystem = request.systemPrompt
+            ? [{ role: "system" as const, content: request.systemPrompt as string }, ...request.messages]
+            : request.messages;
+
+        const { textStream } = await streamText({
+            model,
+            messages: messagesWithSystem,
+            abortSignal: abortController.signal,
+        });
+
+        // Send request ID to client
+        ws.send(JSON.stringify({ type: "stream_started", requestId }));
+
+        // Stream chunks to client
+        for await (const chunk of textStream) {
+            if (ws.readyState !== WebSocket.OPEN) break;
+
+            fullResponse += chunk;
+
+            ws.send(JSON.stringify({
+                type: "chunk",
+                content: chunk,
+                requestId,
+            } as StreamChunk));
+        }
+
+        // Update assistant message with full response
+        await db.update(messages)
+            .set({ content: fullResponse })
+            .where(eq(messages.id, assistantMessage[0].id));
+
+        // Update chat timestamp
+        await db.update(chats)
+            .set({ updatedAt: new Date() })
+            .where(eq(chats.id, request.chatId));
+
+        // Parse and save files from AI response
+        try {
+            const parsedFiles = parseCodeBlocks(fullResponse);
+            if (parsedFiles.length > 0) {
+                // Get appId from chat
+                const chat = await db.select().from(chats).where(eq(chats.id, request.chatId)).limit(1);
+                if (chat.length > 0) {
+                    const appId = chat[0].appId;
+                    const fileService = new FileService();
+
+                    for (const file of parsedFiles) {
+                        await fileService.saveFile(appId, file.path, file.content);
+                    }
+
+                    // Notify client that files were updated
+                    ws.send(JSON.stringify({
+                        type: "files_updated",
+                        count: parsedFiles.length,
+                        files: parsedFiles.map(f => f.path),
+                    }));
+
+                    console.log(`[WS] Saved ${parsedFiles.length} files for app ${appId}`);
+                }
+            }
+        } catch (fileError) {
+            console.error("[WS] Error parsing/saving files:", fileError);
+            // Don't fail the whole request if file parsing fails
+        }
+
+        // Send completion
+        ws.send(JSON.stringify({
+            type: "end",
+            requestId,
+        } as StreamChunk));
+
+    } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+            ws.send(JSON.stringify({
+                type: "cancelled",
+                requestId,
+            }));
+        } else {
+            console.error("[WS] Stream error:", error);
+
+            // Extract full error message with all details
+            let errorMessage = "Stream failed";
+            if (error instanceof Error) {
+                // For AI SDK errors, the full error details are in the message
+                errorMessage = error.message;
+
+                // If it's a RetryError, it contains the full quota information
+                // The error message already includes retry delay like "Please retry in 38.98s"
+                console.error("[WS] Full error message:", errorMessage);
+            }
+
+            ws.send(JSON.stringify({
+                type: "error",
+                error: errorMessage,
+                requestId,
+            } as StreamChunk));
+        }
+    } finally {
+        activeStreams.delete(requestId);
     }
+}
+
+/**
+ * Cancel an active stream
+ */
+function handleCancelStream(requestId: string) {
+    const controller = activeStreams.get(requestId);
+    if (controller) {
+        controller.abort();
+        activeStreams.delete(requestId);
+        console.log("[WS] Stream cancelled:", requestId);
+    }
+}

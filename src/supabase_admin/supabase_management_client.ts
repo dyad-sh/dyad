@@ -168,6 +168,111 @@ export async function deleteSupabaseFunction({
   );
 }
 
+export async function listSupabaseOrganizations(): Promise<
+  Array<{
+    id: string;
+    name: string;
+    slug: string;
+  }>
+> {
+  if (IS_TEST_BUILD) {
+    return [
+      {
+        id: "fake-org-id-1",
+        name: "Test Organization",
+        slug: "test-org",
+      },
+      {
+        id: "fake-org-id-2",
+        name: "Another Organization",
+        slug: "another-org",
+      },
+    ];
+  }
+
+  logger.info("Listing Supabase organizations");
+  const supabase = await getSupabaseClient();
+
+  const response = await fetch("https://api.supabase.com/v1/organizations", {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${(supabase as any).options.accessToken}`,
+    },
+  });
+
+  if (response.status !== 200) {
+    throw await createResponseError(response, "list organizations");
+  }
+
+  logger.info("Listed Supabase organizations");
+  const jsonResponse = await response.json();
+  return jsonResponse;
+}
+
+export async function listSupabaseProjects({
+  orgId,
+}: {
+  orgId?: string;
+} = {}): Promise<
+  Array<{
+    id: string;
+    name: string;
+    organization_id: string;
+    region: string;
+    created_at: string;
+  }>
+> {
+  if (IS_TEST_BUILD) {
+    const fakeProjects = [
+      {
+        id: "fake-project-id",
+        name: "Fake Supabase Project",
+        organization_id: "fake-org-id-1",
+        region: "us-east-1",
+        created_at: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: "fake-project-id-2",
+        name: "Another Fake Project",
+        organization_id: "fake-org-id-2",
+        region: "us-west-2",
+        created_at: "2024-02-01T00:00:00Z",
+      },
+    ];
+    // Filter by orgId if provided
+    if (orgId) {
+      return fakeProjects.filter((p) => p.organization_id === orgId);
+    }
+    return fakeProjects;
+  }
+
+  logger.info(
+    `Listing Supabase projects${orgId ? ` for organization: ${orgId}` : ""}`,
+  );
+  const supabase = await getSupabaseClient();
+
+  const url = orgId
+    ? `https://api.supabase.com/v1/projects?org_id=${orgId}`
+    : "https://api.supabase.com/v1/projects";
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${(supabase as any).options.accessToken}`,
+    },
+  });
+
+  if (response.status !== 200) {
+    throw await createResponseError(response, "list projects");
+  }
+
+  logger.info(
+    `Listed Supabase projects${orgId ? ` for organization: ${orgId}` : ""}`,
+  );
+  const jsonResponse = await response.json();
+  return jsonResponse;
+}
+
 export async function listSupabaseBranches({
   supabaseProjectId,
 }: {

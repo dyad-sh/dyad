@@ -65,8 +65,14 @@ COPY src/db ../src/db
 COPY server/drizzle ./drizzle
 COPY shared ../shared
 
+# Copy migration SQL files
+COPY server/src/db/migrations ./src/db/migrations
+
 # Build server
 RUN npm run build
+
+# Verify build output
+RUN ls -la dist/ && echo "Build completed successfully"
 
 # -----------------------------------------------------------------------------
 # Stage 3: Production Runtime

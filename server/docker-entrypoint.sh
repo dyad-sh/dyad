@@ -1,56 +1,49 @@
 #!/bin/sh
-# Entrypoint script to run migrations before starting the server
+# =============================================================================
+# Docker Entrypoint Script
+# Runs database migrations before starting the server
+# =============================================================================
 
-echo "Running database migrations..."
+set -e
 
-# Run migrations using psql
-psql $DATABASE_URL <<EOF
--- Migration 001: Add api_key column if it doesn't exist
-ALTER TABLE language_model_providers ADD COLUMN IF NOT EXISTS api_key TEXT;
+echo "[ENTRYPOINT] Starting Dyad Server..."
 
--- Create system_settings table if it doesn't exist
-CREATE TABLE IF NOT EXISTS system_settings (
-    key TEXT PRIMARY KEY NOT NULL,
-    value TEXT NOT NULL,
-    description TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
-);
+# Wait for database to be ready
+echo "[ENTRYPOINT] Waiting for database to be ready..."
+MAX_RETRIES=30
+RETRY_COUNT=0
 
--- Migration 002: Configure OpenRouter provider
-INSERT INTO language_model_providers (id, name, api_base_url, api_key, created_at, updated_at)
-VALUES (
-    'openrouter',
-    'OpenRouter',
-    'https://openrouter.ai/api/v1',
-    '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',
-    CURRENT_TIMESTAMP,
-    CURRENT_TIMESTAMP
-)
-ON CONFLICT (id) 
-DO UPDATE SET 
-    api_key = EXCLUDED.api_key,
-    api_base_url = EXCLUDED.api_base_url,
-    updated_at = CURRENT_TIMESTAMP;
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    if node -e "
+        const { Pool } = require('pg');
+        const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+        pool.query('SELECT 1')
+            .then(() => { pool.end(); process.exit(0); })
+            .catch(() => { pool.end(); process.exit(1); });
+    " 2>/dev/null; then
+        echo "[ENTRYPOINT] ✅ Database is ready!"
+        break
+    fi
+    
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+    echo "[ENTRYPOINT] Database not ready yet... (attempt $RETRY_COUNT/$MAX_RETRIES)"
+    sleep 2
+done
 
--- Set default model to DeepSeek Chat v3.1
-INSERT INTO system_settings (key, value, description, created_at, updated_at)
-VALUES (
-    'defaultModel',
-    'gemini-2.0-flash-exp',
-    'Default AI model for chat',
-    CURRENT_TIMESTAMP,
-    CURRENT_TIMESTAMP
-)
-ON CONFLICT (key)
-DO UPDATE SET
-    value = EXCLUDED.value,
-    updated_at = CURRENT_TIMESTAMP;
-EOF
+if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+    echo "[ENTRYPOINT] ❌ Database failed to become ready after $MAX_RETRIES attempts"
+    echo "[ENTRYPOINT] Starting server anyway (migrations will fail)..."
+fi
 
-echo "Migrations completed!"
-echo "DeepSeek Chat v3.1 configured as default model"
+# Run database migrations
+echo "[ENTRYPOINT] Running database migrations..."
+if node dist/migrate.js 2>/dev/null; then
+    echo "[ENTRYPOINT] ✅ Migrations completed successfully!"
+else
+    echo "[ENTRYPOINT] ⚠️  Migration failed or no migrations to run"
+    echo "[ENTRYPOINT] Continuing to start server..."
+fi
 
 # Start the server
-# The TypeScript build outputs to dist/index.js at the root of dist folder
+echo "[ENTRYPOINT] Starting Node.js server..."
 exec node dist/index.js

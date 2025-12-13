@@ -254,6 +254,55 @@ export const promptsApi = {
 };
 
 // ============================================================================
+// Providers API
+// ============================================================================
+
+export const providersApi = {
+    list: () => apiRequest<any[]>("/providers"),
+
+    create: (data: {
+        id: string;
+        name: string;
+        apiBaseUrl: string;
+        envVarName?: string;
+        apiKey?: string;
+    }) =>
+        apiRequest<any>("/providers", {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
+
+    update: (id: string, data: Partial<{
+        name: string;
+        apiBaseUrl: string;
+        envVarName: string;
+        apiKey: string;
+    }>) =>
+        apiRequest<any>(`/providers/${id}`, {
+            method: "PUT",
+            body: JSON.stringify(data),
+        }),
+
+    delete: (id: string) =>
+        apiRequest<{ deleted: boolean }>(`/providers/${id}`, { method: "DELETE" }),
+
+    listModels: (providerId: string) =>
+        apiRequest<any[]>(`/providers/${providerId}/models`),
+
+    createModel: (providerId: string, data: {
+        displayName: string;
+        apiName: string;
+        description?: string;
+        maxOutputTokens?: number;
+        contextWindow?: number;
+    }) =>
+        apiRequest<any>(`/providers/${providerId}/models`, {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
+};
+
+// ============================================================================
 // Chat Streaming (WebSocket)
 // ============================================================================
 

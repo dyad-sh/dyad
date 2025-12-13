@@ -565,8 +565,44 @@ export class WebBackend implements IBackendClient {
         }
         return record;
     }
-    async createCustomLanguageModelProvider(): Promise<LanguageModelProvider> { throw new Error("Not supported"); }
-    async editCustomLanguageModelProvider(): Promise<LanguageModelProvider> { throw new Error("Not supported"); }
+    async createCustomLanguageModelProvider(params: CreateCustomLanguageModelProviderParams): Promise<LanguageModelProvider> {
+        const { id, name, apiBaseUrl, envVarName } = params;
+
+        // Import providersApi dynamically to avoid circular dependency
+        const { providersApi } = await import("@/api/client");
+
+        const provider = await providersApi.create({
+            id,
+            name,
+            apiBaseUrl,
+            envVarName,
+        });
+
+        return {
+            id: provider.id,
+            name: provider.name,
+            type: "custom",
+            envVarName: provider.env_var_name,
+        };
+    }
+    async editCustomLanguageModelProvider(params: CreateCustomLanguageModelProviderParams): Promise<LanguageModelProvider> {
+        const { id, name, apiBaseUrl, envVarName } = params;
+
+        const { providersApi } = await import("@/api/client");
+
+        const provider = await providersApi.update(id, {
+            name,
+            apiBaseUrl,
+            envVarName,
+        });
+
+        return {
+            id: provider.id,
+            name: provider.name,
+            type: "custom",
+            envVarName: provider.env_var_name,
+        };
+    }
     async createCustomLanguageModel(): Promise<void> { }
     async deleteCustomLanguageModel(): Promise<void> { }
     async deleteCustomModel(): Promise<void> { }

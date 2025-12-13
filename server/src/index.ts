@@ -23,6 +23,7 @@ import settingsRoutes from "./routes/settings.js";
 import githubRoutes from "./routes/github.js";
 import mcpRoutes from "./routes/mcp.js";
 import promptsRoutes from "./routes/prompts.js";
+import providersRoutes from "./routes/providers.js";
 import { setupChatWebSocket } from "./routes/chatStream.js";
 
 // Load environment variables
@@ -65,6 +66,7 @@ async function main() {
     app.use("/api/github", githubRoutes);
     app.use("/api/mcp", mcpRoutes);
     app.use("/api/prompts", promptsRoutes);
+    app.use("/api", providersRoutes);
 
 
     // Serve static files (Frontend)

@@ -195,3 +195,29 @@ export const mcpToolConsents = pgTable(
   },
   (table) => [unique("uniq_mcp_consent").on(table.serverId, table.toolName)],
 );
+
+// App Files table - stores files created by AI
+export const app_files = pgTable(
+  "app_files",
+  {
+    id: serial("id").primaryKey(),
+    appId: integer("app_id")
+      .notNull()
+      .references(() => apps.id, { onDelete: "cascade" }),
+    path: text("path").notNull(), // Relative file path (e.g., "src/index.ts")
+    content: text("content").notNull(), // File content
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    unique("app_files_app_path_unique").on(table.appId, table.path),
+  ],
+);
+
+// Relations for app_files
+export const appFilesRelations = relations(app_files, ({ one }) => ({
+  app: one(apps, {
+    fields: [app_files.appId],
+    references: [apps.id],
+  }),
+}));

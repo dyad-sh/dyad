@@ -39,8 +39,12 @@ ENV HOST=0.0.0.0
 
 EXPOSE 3001
 
+# Copy entrypoint script
+COPY server/entrypoint.sh /app/server/entrypoint.sh
+RUN chmod +x /app/server/entrypoint.sh
+
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:3001/api/health || exit 1
 
-CMD ["npm", "start"]
+ENTRYPOINT ["/app/server/entrypoint.sh"]

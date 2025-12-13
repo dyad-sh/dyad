@@ -16,6 +16,8 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import fs from "node:fs";
 import path from "node:path";
+import { parseCodeBlocks } from "../utils/codeBlockParser.js";
+import { FileService } from "../services/fileService.js";
 
 interface ChatMessage {
     role: "user" | "assistant" | "system";
@@ -267,6 +269,35 @@ async function handleStreamRequest(
         await db.update(chats)
             .set({ updatedAt: new Date() })
             .where(eq(chats.id, request.chatId));
+
+        // Parse and save files from AI response
+        try {
+            const parsedFiles = parseCodeBlocks(fullResponse);
+            if (parsedFiles.length > 0) {
+                // Get appId from chat
+                const chat = await db.select().from(chats).where(eq(chats.id, request.chatId)).limit(1);
+                if (chat.length > 0) {
+                    const appId = chat[0].appId;
+                    const fileService = new FileService();
+
+                    for (const file of parsedFiles) {
+                        await fileService.saveFile(appId, file.path, file.content);
+                    }
+
+                    // Notify client that files were updated
+                    ws.send(JSON.stringify({
+                        type: "files_updated",
+                        count: parsedFiles.length,
+                        files: parsedFiles.map(f => f.path),
+                    }));
+
+                    console.log(`[WS] Saved ${parsedFiles.length} files for app ${appId}`);
+                }
+            }
+        } catch (fileError) {
+            console.error("[WS] Error parsing/saving files:", fileError);
+            // Don't fail the whole request if file parsing fails
+        }
 
         // Send completion
         ws.send(JSON.stringify({

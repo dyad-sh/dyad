@@ -266,6 +266,7 @@ export interface StreamCallbacks {
     onChunk: (content: string) => void;
     onEnd: () => void;
     onError: (error: string) => void;
+    onFilesUpdated?: (files: string[], count: number) => void;
 }
 
 export function createChatStream(
@@ -297,6 +298,9 @@ export function createChatStream(
                 break;
             case "chunk":
                 callbacks.onChunk(data.content);
+                break;
+            case "files_updated":
+                callbacks.onFilesUpdated?.(data.files, data.count);
                 break;
             case "end":
                 callbacks.onEnd();

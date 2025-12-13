@@ -9,6 +9,7 @@ import { createError } from "../middleware/errorHandler.js";
 import { getDb } from "../db/index.js";
 import { apps, chats } from "../db/schema.js";
 import { eq, desc } from "drizzle-orm";
+import { FileService } from "../services/fileService.js";
 
 const router = Router();
 
@@ -56,9 +57,16 @@ router.get("/:id", async (req, res, next) => {
             throw createError("App not found", 404, "APP_NOT_FOUND");
         }
 
+        // Get files for this app
+        const fileService = new FileService();
+        const files = await fileService.listFiles(Number(id));
+
         res.json({
             success: true,
-            data: app[0],
+            data: {
+                ...app[0],
+                files,
+            },
         });
     } catch (error) {
         next(error);
@@ -192,14 +200,17 @@ router.get("/:id/files/read", async (req, res, next) => {
             throw createError("Path query parameter required", 400, "INVALID_PATH");
         }
 
-        // Mock file system in web mode
-        // In a real implementation, this would read from a secure container or storage
-        // For now, we return a mock content if the file implies it's new
+        const fileService = new FileService();
+        const content = await fileService.getFile(Number(id), filePath);
+
+        if (content === null) {
+            throw createError("File not found", 404, "FILE_NOT_FOUND");
+        }
 
         res.json({
             success: true,
             data: {
-                content: `// Content of ${filePath}\n// Fetched from Web Backend`,
+                content,
             }
         });
     } catch (error) {
@@ -219,8 +230,12 @@ router.post("/:id/files/write", async (req, res, next) => {
             throw createError("Path required", 400, "INVALID_PATH");
         }
 
-        // Mock write
-        console.log(`[WebBackend] Writing to app ${id} file ${filePath}: ${content.substring(0, 20)}...`);
+        if (typeof content !== 'string') {
+            throw createError("Content required", 400, "INVALID_CONTENT");
+        }
+
+        const fileService = new FileService();
+        await fileService.saveFile(Number(id), filePath, content);
 
         res.json({
             success: true,

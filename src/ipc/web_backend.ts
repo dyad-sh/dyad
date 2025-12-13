@@ -313,6 +313,7 @@ export class WebBackend implements IBackendClient {
         // We start with the user's new message.
         const messages: ChatMessage[] = [{ role: "user", content: prompt }];
         let assistantContent = "";
+        let filesUpdated = false;
 
         const stream = createChatStream(
             chatId,
@@ -336,8 +337,12 @@ export class WebBackend implements IBackendClient {
 
                     onUpdate(updatedMessages);
                 },
+                onFilesUpdated: (files, count) => {
+                    console.log(`[WebBackend] Files updated: ${count} files`, files);
+                    filesUpdated = true;
+                },
                 onEnd: () => {
-                    onEnd({ chatId, updatedFiles: false });
+                    onEnd({ chatId, updatedFiles: filesUpdated });
                     this.chatCancelFns.delete(chatId);
                 },
                 onError: (err) => {

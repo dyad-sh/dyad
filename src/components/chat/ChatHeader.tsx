@@ -28,6 +28,7 @@ import { useCheckoutVersion } from "@/hooks/useCheckoutVersion";
 import { useRenameBranch } from "@/hooks/useRenameBranch";
 import { isAnyCheckoutVersionInProgressAtom } from "@/store/appAtoms";
 import { LoadingBar } from "../ui/LoadingBar";
+import { ModelPicker } from "../ModelPicker";
 
 interface ChatHeaderProps {
   isVersionPaneOpen: boolean;
@@ -199,6 +200,7 @@ export function ChatHeader({
               ? "..."
               : `Version ${versions.length}${versionPostfix}`}
           </Button>
+          <ModelPicker />
         </div>
 
         <button

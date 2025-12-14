@@ -371,6 +371,15 @@ export default Index;
       return;
     }
 
+    // Check for high token usage marker to simulate near context limit
+    const highTokensMatch =
+      typeof lastMessage?.content === "string" &&
+      !lastMessage?.content.startsWith("Summarize the following chat:") &&
+      lastMessage?.content?.match?.(/\[high-tokens=(\d+)\]/);
+    const highTokensValue = highTokensMatch
+      ? parseInt(highTokensMatch[1], 10)
+      : null;
+
     // Split the message into characters to simulate streaming
     const messageChars = messageContent.split("");
 
@@ -388,8 +397,15 @@ export default Index;
         res.write(createStreamChunk(batch));
         index += batchSize;
       } else {
-        // Send the final chunk
-        res.write(createStreamChunk("", "assistant", true));
+        // Send the final chunk with optional usage info for high token simulation
+        const usage = highTokensValue
+          ? {
+              prompt_tokens: highTokensValue - 100,
+              completion_tokens: 100,
+              total_tokens: highTokensValue,
+            }
+          : undefined;
+        res.write(createStreamChunk("", "assistant", true, usage));
         clearInterval(interval);
         res.end();
       }

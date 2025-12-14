@@ -3,6 +3,7 @@ import { Star } from "lucide-react";
 import { SidebarMenuItem } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { App } from "@/ipc/ipc_types";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Tooltip,
   TooltipContent,
@@ -16,6 +17,9 @@ type AppItemProps = {
   selectedAppId: number | null;
   handleToggleFavorite: (appId: number, e: React.MouseEvent) => void;
   isFavoriteLoading: boolean;
+  bulkMode?: boolean;
+  checked?: boolean;
+  onToggleSelect?: (id: number) => void;
 };
 
 export function AppItem({
@@ -24,6 +28,9 @@ export function AppItem({
   selectedAppId,
   handleToggleFavorite,
   isFavoriteLoading,
+  bulkMode = false,
+  checked = false,
+  onToggleSelect,
 }: AppItemProps) {
   return (
     <SidebarMenuItem className="mb-1 relative ">
@@ -31,6 +38,13 @@ export function AppItem({
         <Tooltip>
           <TooltipTrigger asChild>
             <div className="flex w-[190px] items-center">
+              {bulkMode && (
+                <Checkbox
+                  checked={!!checked}
+                  onCheckedChange={() => onToggleSelect?.(app.id)}
+                  className="mr-2"
+                />
+              )}
               <Button
                 variant="ghost"
                 onClick={() => handleAppClick(app.id)}

@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { PlusCircle, Search } from "lucide-react";
+import { ListChecks, ListX, PlusCircle, Search } from "lucide-react";
 import { useAtom, useSetAtom } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import {
@@ -15,6 +15,16 @@ import { useMemo, useState } from "react";
 import { AppSearchDialog } from "./AppSearchDialog";
 import { useAddAppToFavorite } from "@/hooks/useAddAppToFavorite";
 import { AppItem } from "./appItem";
+import { IpcClient } from "@/ipc/ipc_client";
+import { showError, showSuccess } from "@/lib/toast";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 export function AppList({ show }: { show?: boolean }) {
   const navigate = useNavigate();
   const [selectedAppId, setSelectedAppId] = useAtom(selectedAppIdAtom);
@@ -24,6 +34,11 @@ export function AppList({ show }: { show?: boolean }) {
     useAddAppToFavorite();
   // search dialog state
   const [isSearchDialogOpen, setIsSearchDialogOpen] = useState(false);
+  // bulk mode state
+  const [bulkMode, setBulkMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [isBulkConfirmDialogOpen, setIsBulkConfirmDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const allApps = useMemo(
     () =>
@@ -52,13 +67,21 @@ export function AppList({ show }: { show?: boolean }) {
   }
 
   const handleAppClick = (id: number) => {
+    // toggle selected ids in bulk mode
+    if (bulkMode) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+      return;
+    }
+    // non-bulk: navigate to app details
     setSelectedAppId(id);
     setSelectedChatId(null);
     setIsSearchDialogOpen(false);
-    navigate({
-      to: "/",
-      search: { appId: id },
-    });
+    navigate({ to: "/", search: { appId: id } });
   };
 
   const handleNewApp = () => {
@@ -97,6 +120,18 @@ export function AppList({ show }: { show?: boolean }) {
               <Search size={16} />
               <span>Search Apps</span>
             </Button>
+            <Button
+              onClick={() => {
+                // toggle bulk mode, clear selected ids
+                setBulkMode((v) => !v);
+                setSelectedIds(new Set());
+              }}
+              variant="outline"
+              className="flex items-center justify-start gap-2 mx-2 py-2"
+            >
+              {bulkMode ? <ListX /> : <ListChecks />}
+              <span>{bulkMode ? "Exit Bulk Mode" : "Bulk Mode"}</span>
+            </Button>
 
             {loading ? (
               <div className="py-2 px-4 text-sm text-gray-500">
@@ -121,6 +156,9 @@ export function AppList({ show }: { show?: boolean }) {
                     selectedAppId={selectedAppId}
                     handleToggleFavorite={handleToggleFavorite}
                     isFavoriteLoading={isFavoriteLoading}
+                    bulkMode={bulkMode}
+                    checked={selectedIds.has(app.id)}
+                    onToggleSelect={() => handleAppClick(app.id)}
                   />
                 ))}
                 <SidebarGroupLabel>Other apps</SidebarGroupLabel>
@@ -132,6 +170,9 @@ export function AppList({ show }: { show?: boolean }) {
                     selectedAppId={selectedAppId}
                     handleToggleFavorite={handleToggleFavorite}
                     isFavoriteLoading={isFavoriteLoading}
+                    bulkMode={bulkMode}
+                    checked={selectedIds.has(app.id)}
+                    onToggleSelect={() => handleAppClick(app.id)}
                   />
                 ))}
               </SidebarMenu>
@@ -139,6 +180,96 @@ export function AppList({ show }: { show?: boolean }) {
           </div>
         </SidebarGroupContent>
       </SidebarGroup>
+      {bulkMode && selectedIds.size > 0 && (
+        <div className="fixed bottom-4 left-0 right-0 flex justify-end px-4 z-50 pointer-events-auto">
+          <Button
+            variant="destructive"
+            onClick={() => {
+              setIsBulkConfirmDialogOpen(true);
+            }}
+          >{`Bulk Delete(${selectedIds.size})`}</Button>
+        </div>
+      )}
+      <Dialog
+        open={isBulkConfirmDialogOpen}
+        onOpenChange={setIsBulkConfirmDialogOpen}
+      >
+        <DialogContent className="max-w-sm p-4">
+          <DialogHeader className="pb-2">
+            <DialogTitle>{`Delete ${selectedIds.size} apps?`}</DialogTitle>
+            <DialogDescription className="text-xs">
+              This action is irreversible. All app files and chat history will
+              be permanently deleted.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="outline"
+              onClick={() => setIsBulkConfirmDialogOpen(false)}
+              disabled={isDeleting}
+              size="sm"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                setIsDeleting(true);
+                try {
+                  const ipc = IpcClient.getInstance();
+                  const ids = Array.from(selectedIds);
+                  const results = await Promise.allSettled(
+                    ids.map((id) => ipc.deleteApp(id)),
+                  );
+                  const failed = results.filter((r) => r.status === "rejected");
+                  if (failed.length > 0) {
+                    showError(`some `);
+                  }
+                  setSelectedIds(new Set());
+                  setIsBulkConfirmDialogOpen(false);
+                  showSuccess("success");
+                } catch (e) {
+                  showError(e);
+                } finally {
+                  setIsDeleting(false);
+                }
+              }}
+              disabled={isDeleting}
+              className="flex items-center gap-1"
+              size="sm"
+            >
+              {isDeleting ? (
+                <>
+                  <svg
+                    className="animate-spin h-3 w-3 text-white"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
+                  </svg>
+                  Deleting...
+                </>
+              ) : (
+                "Delete Apps"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <AppSearchDialog
         open={isSearchDialogOpen}
         onOpenChange={setIsSearchDialogOpen}

@@ -28,6 +28,7 @@ import {
   startPerformanceMonitoring,
   stopPerformanceMonitoring,
 } from "./utils/performance_monitor";
+import fs from "fs";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -44,6 +45,22 @@ registerIpcHandlers();
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
   app.quit();
+}
+
+// Decide the git directory depending on environment
+function resolveLocalGitDirectory() {
+  if (!app.isPackaged) {
+    // Dev: app.getAppPath() is the project root
+    return path.join(app.getAppPath(), "node_modules/dugite/git");
+  }
+
+  // Packaged app: git is bundled via extraResource
+  return path.join(process.resourcesPath, "git");
+}
+
+const gitDir = resolveLocalGitDirectory();
+if (fs.existsSync(gitDir)) {
+  process.env.LOCAL_GIT_DIRECTORY = gitDir;
 }
 
 // https://www.electronjs.org/docs/latest/tutorial/launch-app-from-url-in-another-app#main-process-mainjs

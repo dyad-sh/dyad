@@ -163,18 +163,8 @@ export default function SettingsPage() {
                   <Label htmlFor="enable-native-git">Enable Native Git</Label>
                 </div>
                 <div className="text-sm text-gray-500 dark:text-gray-400">
-                  Native Git offers faster performance but requires{" "}
-                  <a
-                    onClick={() => {
-                      IpcClient.getInstance().openExternalUrl(
-                        "https://git-scm.com/downloads",
-                      );
-                    }}
-                    className="text-blue-600 hover:underline dark:text-blue-400"
-                  >
-                    installing Git
-                  </a>
-                  .
+                  This doesn't require any external Git installation and offers
+                  a faster, native-Git performance experience.
                 </div>
               </div>
             </div>

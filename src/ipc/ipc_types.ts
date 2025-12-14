@@ -278,12 +278,14 @@ export const UserBudgetInfoSchema = z.object({
   usedCredits: z.number(),
   totalCredits: z.number(),
   budgetResetDate: z.date(),
+  redactedUserId: z.string(),
 });
 export type UserBudgetInfo = z.infer<typeof UserBudgetInfoSchema>;
 
 export interface ComponentSelection {
   id: string;
   name: string;
+  runtimeId?: string; // Unique runtime ID for duplicate components
   relativePath: string;
   lineNumber: number;
   columnNumber: number;
@@ -517,6 +519,7 @@ export interface GithubRepository {
   full_name: string;
   private: boolean;
 }
+
 export type CloneRepoReturnType =
   | {
       app: App;
@@ -547,4 +550,35 @@ export interface SelectNodeFolderResult {
   path: string | null;
   canceled?: boolean;
   selectedPath: string | null;
+}
+
+export interface VisualEditingChange {
+  componentId: string;
+  componentName: string;
+  relativePath: string;
+  lineNumber: number;
+  styles: {
+    margin?: { left?: string; right?: string; top?: string; bottom?: string };
+    padding?: { left?: string; right?: string; top?: string; bottom?: string };
+    dimensions?: { width?: string; height?: string };
+    border?: { width?: string; radius?: string; color?: string };
+    backgroundColor?: string;
+    text?: {
+      fontSize?: string;
+      fontWeight?: string;
+      color?: string;
+      fontFamily?: string;
+    };
+  };
+  textContent?: string;
+}
+
+export interface ApplyVisualEditingChangesParams {
+  appId: number;
+  changes: VisualEditingChange[];
+}
+
+export interface AnalyseComponentParams {
+  appId: number;
+  componentId: string;
 }

@@ -1,40 +1,6 @@
-import { editor } from "monaco-editor";
-
+import type { editor } from "monaco-editor";
 import { loader } from "@monaco-editor/react";
 
-import * as monaco from "monaco-editor";
-// @ts-ignore
-import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
-// @ts-ignore
-import jsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
-// @ts-ignore
-import cssWorker from "monaco-editor/esm/vs/language/css/css.worker?worker";
-// @ts-ignore
-import htmlWorker from "monaco-editor/esm/vs/language/html/html.worker?worker";
-// @ts-ignore
-import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
-
-self.MonacoEnvironment = {
-  getWorker(_, label) {
-    if (label === "json") {
-      return new jsonWorker();
-    }
-    if (label === "css" || label === "scss" || label === "less") {
-      return new cssWorker();
-    }
-    if (label === "html" || label === "handlebars" || label === "razor") {
-      return new htmlWorker();
-    }
-    if (label === "typescript" || label === "javascript") {
-      return new tsWorker();
-    }
-    return new editorWorker();
-  },
-};
-
-loader.config({ monaco });
-
-// loader.init().then(/* ... */);
 export const customLight: editor.IStandaloneThemeData = {
   base: "vs",
   inherit: false,
@@ -106,8 +72,6 @@ export const customLight: editor.IStandaloneThemeData = {
   },
 };
 
-editor.defineTheme("dyad-light", customLight);
-
 export const customDark: editor.IStandaloneThemeData = {
   base: "vs-dark",
   inherit: false,
@@ -178,12 +142,15 @@ export const customDark: editor.IStandaloneThemeData = {
   },
 };
 
-editor.defineTheme("dyad-dark", customDark);
+loader.init().then((monaco) => {
+  monaco.editor.defineTheme("dyad-light", customLight);
+  monaco.editor.defineTheme("dyad-dark", customDark);
 
-monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
-  jsx: monaco.languages.typescript.JsxEmit.React, // Enable JSX
-});
-monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
-  // Too noisy because we don't have the full TS environment.
-  noSemanticValidation: true,
+  monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
+    jsx: monaco.languages.typescript.JsxEmit.React, // Enable JSX
+  });
+  monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+    // Too noisy because we don't have the full TS environment.
+    noSemanticValidation: true,
+  });
 });

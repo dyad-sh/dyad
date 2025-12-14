@@ -154,6 +154,7 @@ const validReceiveChannels = [
   "github:flow-success",
   "github:flow-error",
   "deep-link-received",
+  "force-close-detected",
   // Help bot
   "help:chat:response:chunk",
   "help:chat:response:end",

@@ -10,30 +10,6 @@
       },
       {
         "role": "user",
-        "content": "tc=1"
-      },
-      {
-        "role": "assistant",
-        "content": "Error: Test case file not found: 1.md"
-      },
-      {
-        "role": "user",
-        "content": "[dump] hi"
-      },
-      {
-        "role": "assistant",
-        "content": "[[dyad-dump-path=*]]"
-      },
-      {
-        "role": "user",
-        "content": "[dump] hi"
-      },
-      {
-        "role": "assistant",
-        "content": "[[dyad-dump-path=*]]"
-      },
-      {
-        "role": "user",
         "content": "[dump] hi"
       }
     ],

@@ -553,6 +553,22 @@ export class PageObject {
     await this.page.getByTestId("preview-open-browser-button").click();
   }
 
+  async clickPreviewAnnotatorButton() {
+    await this.page
+      .getByTestId("preview-annotator-button")
+      .click({ timeout: Timeout.EXTRA_LONG });
+  }
+
+  async waitForAnnotatorMode() {
+    // Wait for the annotator toolbar to be visible
+    await expect(this.page.getByRole("button", { name: "Select" })).toBeVisible(
+      { timeout: Timeout.MEDIUM },
+    );
+  }
+
+  async clickAnnotatorSubmit() {
+    await this.page.getByRole("button", { name: "Add to Chat" }).click();
+  }
   locateLoadingAppPreview() {
     return this.page.getByText("Preparing app preview...");
   }

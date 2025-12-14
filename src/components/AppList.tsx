@@ -221,13 +221,19 @@ export function AppList({ show }: { show?: boolean }) {
                   const results = await Promise.allSettled(
                     ids.map((id) => ipc.deleteApp(id)),
                   );
-                  const failed = results.filter((r) => r.status === "rejected");
-                  if (failed.length > 0) {
-                    showError(`some `);
+                  const failedIds = results.flatMap((r, i) =>
+                    r.status === "rejected" ? [ids[i]] : [],
+                  );
+                  if (failedIds.length > 0) {
+                    showError(
+                      `Failed to delete ${failedIds.length} of ${ids.length} app(s).`,
+                    );
+                    setSelectedIds(new Set(failedIds));
+                  } else {
+                    setSelectedIds(new Set());
+                    showSuccess(`Deleted ${ids.length} app(s).`);
                   }
-                  setSelectedIds(new Set());
                   setIsBulkConfirmDialogOpen(false);
-                  showSuccess("success");
                 } catch (e) {
                   showError(e);
                 } finally {

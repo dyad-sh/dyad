@@ -261,7 +261,6 @@ export const UserSettingsSchema = z.object({
       cpuUsagePercent: z.number().optional(),
       systemMemoryUsageMB: z.number().optional(),
       systemMemoryTotalMB: z.number().optional(),
-      systemMemoryPercent: z.number().optional(),
       systemCpuPercent: z.number().optional(),
     })
     .optional(),

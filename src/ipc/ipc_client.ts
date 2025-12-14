@@ -1071,7 +1071,6 @@ export class IpcClient {
         cpuUsagePercent?: number;
         systemMemoryUsageMB?: number;
         systemMemoryTotalMB?: number;
-        systemMemoryPercent?: number;
         systemCpuPercent?: number;
       };
     }) => void,

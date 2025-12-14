@@ -159,7 +159,6 @@ function capturePerformanceMetrics() {
         cpuUsagePercent,
         systemMemoryUsageMB: systemMemory.usedMemoryMB,
         systemMemoryTotalMB: systemMemory.totalMemoryMB,
-        systemMemoryPercent: systemMemory.usagePercent,
         systemCpuPercent,
       },
     });

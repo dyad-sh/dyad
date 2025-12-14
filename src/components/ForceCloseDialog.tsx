@@ -18,7 +18,6 @@ interface ForceCloseDialogProps {
     cpuUsagePercent?: number;
     systemMemoryUsageMB?: number;
     systemMemoryTotalMB?: number;
-    systemMemoryPercent?: number;
     systemCpuPercent?: number;
   };
 }

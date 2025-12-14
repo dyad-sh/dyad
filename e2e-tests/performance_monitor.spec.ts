@@ -138,9 +138,6 @@ testWithConfig({})(
     expect(settings.lastKnownPerformance.systemMemoryTotalMB).toBeGreaterThan(
       0,
     );
-    expect(settings.lastKnownPerformance.systemMemoryPercent).toBeGreaterThan(
-      0,
-    );
     expect(
       settings.lastKnownPerformance.systemCpuPercent,
     ).toBeGreaterThanOrEqual(0);
@@ -149,13 +146,5 @@ testWithConfig({})(
     const now = Date.now();
     const timeDiff = now - settings.lastKnownPerformance.timestamp;
     expect(timeDiff).toBeLessThan(60000); // Less than 1 minute old
-
-    // Verify percentages are in valid range
-    expect(
-      settings.lastKnownPerformance.systemMemoryPercent,
-    ).toBeLessThanOrEqual(100);
-    expect(settings.lastKnownPerformance.systemMemoryPercent).toBeGreaterThan(
-      0,
-    );
   },
 );

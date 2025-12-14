@@ -1,5 +1,6 @@
 import { useAtom, useAtomValue } from "jotai";
 import {
+  appLogsAtom,
   appOutputAtom,
   previewModeAtom,
   previewPanelKeyAtom,
@@ -17,6 +18,7 @@ import { Console } from "./Console";
 import { useRunApp } from "@/hooks/useRunApp";
 import { PublishPanel } from "./PublishPanel";
 import { SecurityPanel } from "./SecurityPanel";
+import { useSupabase } from "@/hooks/useSupabase";
 
 interface ConsoleHeaderProps {
   isOpen: boolean;
@@ -54,13 +56,23 @@ export function PreviewPanel() {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const [isConsoleOpen, setIsConsoleOpen] = useState(false);
   const { runApp, stopApp, loading, app } = useRunApp();
+  const { loadEdgeLogs } = useSupabase();
   const runningAppIdRef = useRef<number | null>(null);
   const key = useAtomValue(previewPanelKeyAtom);
+  const appLogs = useAtomValue(appLogsAtom);
   const appOutput = useAtomValue(appOutputAtom);
 
-  const messageCount = appOutput.length;
   const latestMessage =
-    messageCount > 0 ? appOutput[messageCount - 1]?.message : undefined;
+    appLogs.length > 0 && appOutput.length > 0
+      ? appLogs[appLogs.length - 1].timestamp >
+        appOutput[appOutput.length - 1].timestamp
+        ? appLogs[appLogs.length - 1]?.message
+        : appOutput[appOutput.length - 1]?.message
+      : appLogs.length > 0
+        ? appLogs[appLogs.length - 1]?.message
+        : appOutput.length > 0
+          ? appOutput[appOutput.length - 1]?.message
+          : undefined;
 
   useEffect(() => {
     const previousAppId = runningAppIdRef.current;
@@ -106,6 +118,28 @@ export function PreviewPanel() {
     // Dependencies: run effect when selectedAppId changes.
     // runApp/stopApp are stable due to useCallback.
   }, [selectedAppId, runApp, stopApp]);
+
+  // Load edge logs if app has Supabase project configured
+  useEffect(() => {
+    const projectId = app?.supabaseProjectId;
+    if (!projectId) return;
+
+    // Load logs immediately
+    loadEdgeLogs(projectId).catch((error) => {
+      console.error("Failed to load edge logs:", error);
+    });
+
+    // Poll for new logs every 5 seconds
+    const intervalId = setInterval(() => {
+      loadEdgeLogs(projectId).catch((error) => {
+        console.error("Failed to load edge logs:", error);
+      });
+      console.log("polling");
+    }, 5000);
+
+    return () => clearInterval(intervalId);
+  }, [app?.supabaseProjectId, loadEdgeLogs]);
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-hidden">

@@ -5,7 +5,9 @@ import { apps } from "../../db/schema";
 import {
   getSupabaseClient,
   listSupabaseBranches,
+  getSupabaseProjectLogs,
 } from "../../supabase_admin/supabase_management_client";
+import { extractFunctionName } from "../../supabase_admin/supabase_utils";
 import {
   createLoggedHandler,
   createTestOnlyLoggedHandler,
@@ -14,6 +16,7 @@ import { handleSupabaseOAuthReturn } from "../../supabase_admin/supabase_return_
 import { safeSend } from "../utils/safe_sender";
 
 import { SetSupabaseAppProjectParams, SupabaseBranch } from "../ipc_types";
+import type { LogEntry } from "../../atoms/appAtoms";
 
 const logger = log.scope("supabase_handlers");
 const handle = createLoggedHandler(logger);
@@ -42,6 +45,49 @@ export function registerSupabaseHandlers() {
         projectRef: branch.project_ref,
         parentProjectRef: branch.parent_project_ref,
       }));
+    },
+  );
+
+  // Get edge function logs for a Supabase project
+  handle(
+    "supabase:get-edge-logs",
+    async (
+      _,
+      {
+        projectId,
+        timestampStart,
+        appId,
+      }: { projectId: string; timestampStart?: number; appId: number },
+    ): Promise<Array<LogEntry>> => {
+      const response = await getSupabaseProjectLogs(projectId, timestampStart);
+
+      if (response.error) {
+        const errorMsg =
+          typeof response.error === "string"
+            ? response.error
+            : JSON.stringify(response.error);
+        throw new Error(`Failed to fetch logs: ${errorMsg}`);
+      }
+
+      const rawLogs = response.result || [];
+
+      // Transform to LogEntry format
+      return rawLogs.map((log: any) => {
+        const metadata = log.metadata?.[0] || {};
+        const level = metadata.level || "info";
+        const eventMessage = log.event_message || "";
+        const functionName = extractFunctionName(eventMessage);
+
+        return {
+          level:
+            level === "error" ? "error" : level === "warn" ? "warn" : "info",
+          type: "edge-function" as const,
+          message: eventMessage,
+          timestamp: log.timestamp / 1000, // Convert from microseconds to milliseconds
+          sourceName: functionName,
+          appId,
+        };
+      });
     },
   );
 

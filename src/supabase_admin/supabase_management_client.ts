@@ -135,6 +135,84 @@ export async function getSupabaseProjectName(
   return project?.name || `<project not found for: ${projectId}>`;
 }
 
+export async function getSupabaseProjectLogs(
+  projectId: string,
+  timestampStart?: number,
+): Promise<any> {
+  if (IS_TEST_BUILD) {
+    return {
+      result: [
+        {
+          event_message: "[test-function] Function executed successfully\n",
+          metadata: [
+            {
+              level: "info",
+              timestamp: new Date().toISOString(),
+            },
+          ],
+          timestamp: Date.now() * 1000,
+        },
+      ],
+      error: null,
+    };
+  }
+
+  const supabase = await getSupabaseClient();
+
+  // Build SQL query with optional timestamp filter
+  let sqlQuery = `
+SELECT 
+  timestamp,
+  event_message,
+  metadata
+FROM function_logs`;
+
+  if (timestampStart) {
+    // Convert milliseconds to microseconds and wrap in TIMESTAMP_MICROS for BigQuery
+    sqlQuery += `\nWHERE timestamp > TIMESTAMP_MICROS(${timestampStart * 1000})`;
+    console.log("start time exist  :", timestampStart);
+  }
+
+  console.log("start time doesnt exist :", timestampStart);
+  sqlQuery += `\nORDER BY timestamp DESC
+LIMIT 1000`;
+
+  // Calculate time range for API parameters
+  const now = new Date();
+  const isoTimestampEnd = now.toISOString();
+  // Default to last 24 hours if no start timestamp provided
+  const isoTimestampStart = timestampStart
+    ? new Date(timestampStart).toISOString()
+    : new Date(now.getTime() - 5 * 1000).toISOString();
+
+  // Encode SQL query for URL
+  const encodedSql = encodeURIComponent(sqlQuery);
+
+  const url = `https://api.supabase.com/v1/projects/${projectId}/analytics/endpoints/logs.all?sql=${encodedSql}&iso_timestamp_start=${isoTimestampStart}&iso_timestamp_end=${isoTimestampEnd}`;
+
+  logger.info(`Fetching logs from: ${url}`);
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${(supabase as any).options.accessToken}`,
+    },
+  });
+
+  if (response.status !== 200) {
+    const errorText = await response.text();
+    logger.error(`Failed to fetch logs (${response.status}): ${errorText}`);
+    throw new Error(
+      `Failed to fetch logs: ${response.statusText} (${response.status}) - ${errorText}`,
+    );
+  }
+
+  const jsonResponse = await response.json();
+  logger.info(`Received ${jsonResponse.result?.length || 0} logs`);
+
+  return jsonResponse;
+}
+
 export async function executeSupabaseSql({
   supabaseProjectId,
   query,

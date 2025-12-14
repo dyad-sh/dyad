@@ -541,6 +541,36 @@ export interface SetSupabaseAppProjectParams {
   parentProjectId?: string;
   appId: number;
 }
+
+// Supabase Logs
+export interface LogMetadata {
+  // For Edge Functions
+  function?: string;
+  request_id?: string;
+  status?: number;
+
+  // For Database logs
+  query?: string;
+  table?: string;
+  rows_affected?: number;
+
+  // For Auth logs
+  user_id?: string;
+  event?: string;
+
+  // Additional dynamic fields
+  [key: string]: any;
+}
+
+export interface SupabaseLog {
+  id: string;
+  timestamp: string;
+  log_type: "function" | "database" | "auth" | "api" | "realtime" | "system";
+  event_message: string;
+  metadata?: LogMetadata;
+  body?: any;
+}
+
 export interface SetNodePathParams {
   nodePath: string;
 }

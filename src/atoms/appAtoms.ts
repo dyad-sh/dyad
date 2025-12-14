@@ -12,6 +12,17 @@ export const previewModeAtom = atom<
 >("preview");
 export const selectedVersionIdAtom = atom<string | null>(null);
 export const appOutputAtom = atom<AppOutput[]>([]);
+
+export interface LogEntry {
+  level: "info" | "warn" | "error";
+  type: "server" | "client" | "edge-function";
+  message: string;
+  timestamp: number;
+  sourceName?: string;
+  appId: number;
+}
+
+export const appLogsAtom = atom<LogEntry[]>([]);
 export const appUrlAtom = atom<
   | { appUrl: string; appId: number; originalUrl: string }
   | { appUrl: null; appId: null; originalUrl: null }

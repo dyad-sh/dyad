@@ -5,6 +5,17 @@ import { deploySupabaseFunctions } from "./supabase_management_client";
 
 const logger = log.scope("supabase_utils");
 
+/**
+ * Extracts function name from Supabase edge function log event_message
+ * Example: "[todo-activity] fetched 0 recent todos\n" -> "todo-activity"
+ * @param eventMessage - The event_message string from the log
+ * @returns The function name or undefined if not found
+ */
+export function extractFunctionName(eventMessage: string): string | undefined {
+  const match = eventMessage.match(/^\[([^\]]+)\]/);
+  return match ? match[1] : undefined;
+}
+
 export function isServerFunction(filePath: string) {
   return filePath.startsWith("supabase/functions/");
 }

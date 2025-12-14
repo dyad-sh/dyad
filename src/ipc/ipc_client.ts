@@ -73,6 +73,7 @@ import type {
   ApplyVisualEditingChangesParams,
   AnalyseComponentParams,
 } from "./ipc_types";
+import type { LogEntry } from "../atoms/appAtoms";
 import type { Template } from "../shared/templates";
 import type {
   AppChatContext,
@@ -965,6 +966,14 @@ export class IpcClient {
     projectId: string;
   }): Promise<SupabaseBranch[]> {
     return this.ipcRenderer.invoke("supabase:list-branches", params);
+  }
+
+  public async getSupabaseEdgeLogs(params: {
+    projectId: string;
+    timestampStart?: number;
+    appId: number;
+  }): Promise<Array<LogEntry>> {
+    return this.ipcRenderer.invoke("supabase:get-edge-logs", params);
   }
 
   public async setSupabaseAppProject(

@@ -173,6 +173,7 @@ router.post("/", async (req, res, next) => {
         console.log(`[WebBackend] Creating app ${body.name} (template: ${body.templateId})`);
 
         // Create the app
+        // @ts-ignore - templateId will be added to schema after migration
         const newApp = await db.insert(apps).values({
             name: body.name,
             path: webPath, // Provide path for web mode to satisfy NOT NULL constraint

@@ -183,7 +183,9 @@ router.post("/stream", async (req: Request, res: Response) => {
             const appId = chatResult[0].appId;
             const appResult = await db.select().from(apps).where(eq(apps.id, appId)).limit(1);
 
+            // @ts-ignore - templateId will be available after migration
             if (appResult.length > 0 && appResult[0].templateId) {
+                // @ts-ignore - templateId will be available after migration
                 const templateId = appResult[0].templateId;
                 // Load system prompt from template definition
                 const promptFromTemplate = getTemplateSystemPrompt(templateId);

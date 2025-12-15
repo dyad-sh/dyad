@@ -2,13 +2,13 @@
  * Template utilities for loading templates and their system prompts
  */
 
-import { localTemplatesData, DEFAULT_TEMPLATE } from '../shared/templates.js';
+import { localTemplatesData, Template } from '../../../shared/templates';
 
 /**
  * Get template by ID
  */
-export function getTemplateById(templateId: string) {
-    return localTemplatesData.find(t => t.id === templateId);
+export function getTemplateById(templateId: string): Template | undefined {
+    return localTemplatesData.find((t: Template) => t.id === templateId);
 }
 
 /**

@@ -4,6 +4,7 @@
  */
 
 import { WebSocketServer, WebSocket } from "ws";
+import type { IncomingMessage } from "http";
 import { v4 as uuidv4 } from "uuid";
 import { streamText } from "ai";
 import { openai } from "@ai-sdk/openai";
@@ -195,9 +196,28 @@ async function getModelProvider(modelId: string) {
  * Setup WebSocket handler for chat streaming
  */
 export function setupChatWebSocket(wss: WebSocketServer) {
-    wss.on("connection", (ws: WebSocket) => {
-        console.log("[WS] New client connected");
+    // Ping all clients every 30 seconds to keep connections alive through proxies
+    const pingInterval = setInterval(() => {
+        wss.clients.forEach((ws) => {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.ping();
+            }
+        });
+    }, 30000);
+
+    wss.on("close", () => {
+        clearInterval(pingInterval);
+    });
+
+    wss.on("connection", (ws: WebSocket, req) => {
+        console.log(`[WS] New client connected from ${req.socket.remoteAddress}`);
+        console.log(`[WS] Headers: upgrade=${req.headers.upgrade}, connection=${req.headers.connection}`);
         const clientId = uuidv4();
+
+        // Handle pong responses (for connection health monitoring)
+        ws.on("pong", () => {
+            // Connection is alive
+        });
 
         ws.on("message", async (data: Buffer) => {
             try {

@@ -31,6 +31,26 @@ interface RunningApp {
 
 const runningApps = new Map<number, RunningApp>();
 
+// Package manager detection
+async function detectPackageManager(): Promise<'pnpm' | 'npm'> {
+    try {
+        // Try to execute pnpm --version
+        await new Promise<void>((resolve, reject) => {
+            const check = spawn('pnpm', ['--version'], { shell: true });
+            check.on('close', (code) => {
+                if (code === 0) resolve();
+                else reject();
+            });
+            check.on('error', reject);
+        });
+        console.log('[WebBackend] pnpm detected, will use pnpm for installs');
+        return 'pnpm';
+    } catch {
+        console.log('[WebBackend] pnpm not available, will use npm');
+        return 'npm';
+    }
+}
+
 // Load shim files for injection
 let dyadShimContent = '';
 let dyadComponentSelectorClientContent = '';
@@ -391,12 +411,31 @@ router.post("/:id/run", async (req, res, next) => {
 
         // Check if package.json exists before installing
         if (!await fs.pathExists(path.join(targetDir, 'package.json'))) {
-            throw createError("App is empty. Please ask AI to generate code first.", 400, "NO_CODE");
+            // Check how many files were written
+            const fileService = new FileService();
+            const files = await fileService.listFiles(appId);
+
+            if (files.length === 0) {
+                throw createError("No files found. Please ask AI to generate code first.", 400, "NO_FILES");
+            } else {
+                const fileList = files.join(', ');
+                console.error(`[WebBackend] App ${id} has ${files.length} files but no package.json: ${fileList}`);
+                throw createError(
+                    `App has ${files.length} files but package.json is missing. Files: ${fileList}. Please ask AI to create package.json.`,
+                    400,
+                    "MISSING_PACKAGE_JSON"
+                );
+            }
         }
 
         // 3. Install Dependencies
         console.log(`[WebBackend] Installing dependencies for app ${id} in ${targetDir}`);
-        const installProcess = spawn('npm', ['install'], {
+
+        // Detect package manager
+        const packageManager = await detectPackageManager();
+        console.log(`[WebBackend] Using ${packageManager} for dependency installation`);
+
+        const installProcess = spawn(packageManager, ['install'], {
             cwd: targetDir,
             shell: true,
             stdio: 'inherit' // Pipe to server logs for now
@@ -405,7 +444,7 @@ router.post("/:id/run", async (req, res, next) => {
         await new Promise<void>((resolve, reject) => {
             installProcess.on('close', (code) => {
                 if (code === 0) resolve();
-                else reject(new Error(`npm install failed with code ${code}`));
+                else reject(new Error(`${packageManager} install failed with code ${code}`));
             });
         });
 

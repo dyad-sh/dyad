@@ -108,13 +108,13 @@ export function useRunApp() {
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
 
-        // Handle "Empty App" gracefully
-        if (errorMessage.includes("App is empty")) {
-          console.log("App is empty, waiting for code generation.");
+        // Handle different error types with specific messages
+        if (errorMessage.includes("NO_FILES") || errorMessage.includes("No files found")) {
+          console.log("App has no files, waiting for code generation.");
           setAppOutput((prev) => [
             ...prev,
             {
-              message: "Waiting for AI to generate code...",
+              message: "⏳ Waiting for AI to generate code...",
               type: "stdout",
               appId,
               timestamp: Date.now(),
@@ -122,7 +122,63 @@ export function useRunApp() {
           ]);
           // Do not show red error banner for this expected state
           setPreviewErrorMessage(undefined);
+        } else if (errorMessage.includes("MISSING_PACKAGE_JSON") || errorMessage.includes("package.json is missing")) {
+          console.log("Files exist but package.json is missing.");
+          setAppOutput((prev) => [
+            ...prev,
+            {
+              message: "⚠️  Files were generated but package.json is missing.",
+              type: "stderr",
+              appId,
+              timestamp: Date.now(),
+            },
+            {
+              message: "💡 Ask AI: 'Please create package.json with the required dependencies'",
+              type: "stdout",
+              appId,
+              timestamp: Date.now(),
+            },
+          ]);
+          setPreviewErrorMessage({
+            message: "Missing package.json - Ask AI to create it",
+            source: "dyad-app",
+          });
+        } else if (errorMessage.includes("npm install failed") || errorMessage.includes("failed with code")) {
+          console.log("Dependency installation failed.");
+          setAppOutput((prev) => [
+            ...prev,
+            {
+              message: "❌ Failed to install dependencies.",
+              type: "stderr",
+              appId,
+              timestamp: Date.now(),
+            },
+            {
+              message: "💡 Check package.json for errors or ask AI to fix it",
+              type: "stdout",
+              appId,
+              timestamp: Date.now(),
+            },
+          ]);
+          setPreviewErrorMessage({
+            message: "Dependency installation failed - Check package.json",
+            source: "dyad-app",
+          });
+        } else if (errorMessage.includes("App is empty")) {
+          // Legacy error message support
+          console.log("App is empty (legacy), waiting for code generation.");
+          setAppOutput((prev) => [
+            ...prev,
+            {
+              message: "⏳ Waiting for AI to generate code...",
+              type: "stdout",
+              appId,
+              timestamp: Date.now(),
+            },
+          ]);
+          setPreviewErrorMessage(undefined);
         } else {
+          // Generic error
           console.error(`Error running app ${appId}:`, error);
           setPreviewErrorMessage({
             message: errorMessage,

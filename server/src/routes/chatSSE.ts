@@ -253,27 +253,44 @@ router.post("/stream", async (req: Request, res: Response) => {
 
         // Parse and save files
         try {
-            console.log(`[SSE] Attempting to parse code blocks from response (${fullResponse.length} chars)`);
+            console.log(`[SSE] ========== FILE PARSING DEBUG ==========`);
+            console.log(`[SSE] Response length: ${fullResponse.length} characters`);
+            console.log(`[SSE] First 200 chars:`, fullResponse.substring(0, 200));
+            console.log(`[SSE] Attempting to parse code blocks...`);
+
             const parsedFiles = parseCodeBlocks(fullResponse);
-            console.log(`[SSE] Parsed ${parsedFiles.length} files:`, parsedFiles.map(f => f.path));
+
+            console.log(`[SSE] ========== PARSING RESULT ==========`);
+            console.log(`[SSE] Parsed ${parsedFiles.length} files`);
 
             if (parsedFiles.length > 0) {
+                console.log(`[SSE] Files found:`);
+                parsedFiles.forEach((f, index) => {
+                    console.log(`  ${index + 1}. ${f.path} (${f.content.length} bytes)`);
+                });
+
                 const chat = await db.select().from(chats).where(eq(chats.id, chatId)).limit(1);
                 if (chat.length > 0) {
                     const appId = chat[0].appId;
                     const fileService = new FileService();
                     for (const file of parsedFiles) {
                         await fileService.saveFile(appId, file.path, file.content);
-                        console.log(`[SSE] Saved file: ${file.path} (${file.content.length} bytes)`);
+                        console.log(`[SSE] ✅ Saved: ${file.path}`);
                     }
                     res.write(`data: ${JSON.stringify({ type: "files_updated", count: parsedFiles.length, files: parsedFiles.map(f => f.path) })}\n\n`);
-                    console.log(`[SSE] Saved ${parsedFiles.length} files for app ${appId}`);
+                    console.log(`[SSE] ========== SAVE COMPLETE ==========`);
+                    console.log(`[SSE] Successfully saved ${parsedFiles.length} files for app ${appId}`);
                 }
             } else {
-                console.log(`[SSE] No files found in response`);
+                console.log(`[SSE] ⚠️  WARNING: No files found in response!`);
+                console.log(`[SSE] This means the AI did not use the correct format.`);
+                console.log(`[SSE] Expected format: \`\`\`language:path/to/file.ext`);
+                console.log(`[SSE] Sample of response (first 500 chars):`);
+                console.log(fullResponse.substring(0, 500));
+                console.log(`[SSE] ========================================`);
             }
         } catch (fileError) {
-            console.error("[SSE] Error parsing/saving files:", fileError);
+            console.error("[SSE] ❌ Error parsing/saving files:", fileError);
         }
 
         // Send end

@@ -106,15 +106,29 @@ export function useRunApp() {
         await ipcClient.runApp(appId, processAppOutput);
         setPreviewErrorMessage(undefined);
       } catch (error) {
-        console.error(`Error running app ${appId}:`, error);
-        setPreviewErrorMessage(
-          error instanceof Error
-            ? { message: error.message, source: "dyad-app" }
-            : {
-              message: error?.toString() || "Unknown error",
-              source: "dyad-app",
+        const errorMessage = error instanceof Error ? error.message : String(error);
+
+        // Handle "Empty App" gracefully
+        if (errorMessage.includes("App is empty")) {
+          console.log("App is empty, waiting for code generation.");
+          setAppOutput((prev) => [
+            ...prev,
+            {
+              message: "Waiting for AI to generate code...",
+              type: "stdout",
+              appId,
+              timestamp: Date.now(),
             },
-        );
+          ]);
+          // Do not show red error banner for this expected state
+          setPreviewErrorMessage(undefined);
+        } else {
+          console.error(`Error running app ${appId}:`, error);
+          setPreviewErrorMessage({
+            message: errorMessage,
+            source: "dyad-app",
+          });
+        }
       } finally {
         setLoading(false);
       }

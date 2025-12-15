@@ -11,6 +11,7 @@ import { NeonConnector } from "@/components/NeonConnector";
 const HubPage: React.FC = () => {
   const router = useRouter();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [dialogTemplate, setDialogTemplate] = useState<any>(undefined); // Store template for dialog
   const { templates, isLoading } = useTemplates();
   const { settings, updateSettings } = useSettings();
   const selectedTemplateId = settings?.selectedTemplateId;
@@ -19,7 +20,8 @@ const HubPage: React.FC = () => {
     updateSettings({ selectedTemplateId: templateId });
   };
 
-  const handleCreateApp = () => {
+  const handleCreateApp = (template: any) => {
+    setDialogTemplate(template);
     setIsCreateDialogOpen(true);
   };
   // Separate templates into official and community
@@ -63,7 +65,7 @@ const HubPage: React.FC = () => {
                   template={template}
                   isSelected={template.id === selectedTemplateId}
                   onSelect={handleTemplateSelect}
-                  onCreateApp={handleCreateApp}
+                  onCreateApp={() => handleCreateApp(template)}
                 />
               ))}
             </div>
@@ -83,7 +85,7 @@ const HubPage: React.FC = () => {
                   template={template}
                   isSelected={template.id === selectedTemplateId}
                   onSelect={handleTemplateSelect}
-                  onCreateApp={handleCreateApp}
+                  onCreateApp={() => handleCreateApp(template)}
                 />
               ))}
             </div>
@@ -96,7 +98,7 @@ const HubPage: React.FC = () => {
       <CreateAppDialog
         open={isCreateDialogOpen}
         onOpenChange={setIsCreateDialogOpen}
-        template={templates.find((t) => t.id === settings?.selectedTemplateId)}
+        template={dialogTemplate}
       />
     </div>
   );

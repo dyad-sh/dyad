@@ -52,7 +52,7 @@ export function CreateAppDialog({
 
     setIsSubmitting(true);
     try {
-      const result = await createApp({ name: appName.trim() });
+      const result = await createApp({ name: appName.trim(), templateId: template?.id });
       if (template && NEON_TEMPLATE_IDS.has(template.id)) {
         await neonTemplateHook({
           appId: result.app.id,

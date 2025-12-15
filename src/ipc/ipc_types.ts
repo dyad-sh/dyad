@@ -61,6 +61,7 @@ export interface ChatProblemsEvent {
 
 export interface CreateAppParams {
   name: string;
+  templateId?: string;
 }
 
 export interface CreateAppResult {

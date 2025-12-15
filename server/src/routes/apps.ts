@@ -7,7 +7,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { createError } from "../middleware/errorHandler.js";
 import { getDb } from "../db/index.js";
-import { apps, chats } from "../db/schema.js";
+import { apps, chats, messages } from "../db/schema.js";
 import { eq, desc } from "drizzle-orm";
 import { FileService } from "../services/fileService.js";
 
@@ -30,6 +30,38 @@ interface RunningApp {
 }
 
 const runningApps = new Map<number, RunningApp>();
+
+// Load shim files for injection
+let dyadShimContent = '';
+let dyadComponentSelectorClientContent = '';
+try {
+    const workerDir = path.resolve(__dirname, '../../../worker');
+    if (fs.existsSync(path.join(workerDir, 'dyad-shim.js'))) {
+        dyadShimContent = fs.readFileSync(path.join(workerDir, 'dyad-shim.js'), 'utf-8');
+    }
+    if (fs.existsSync(path.join(workerDir, 'dyad-component-selector-client.js'))) {
+        dyadComponentSelectorClientContent = fs.readFileSync(path.join(workerDir, 'dyad-component-selector-client.js'), 'utf-8');
+    }
+    console.log('[WebBackend] Shim files loaded for injection');
+} catch (e) {
+    console.warn('[WebBackend] Failed to load shim files:', e);
+}
+
+function injectHTML(html: string): string {
+    const scripts = [];
+    if (dyadShimContent) scripts.push(`<script>${dyadShimContent}</script>`);
+    if (dyadComponentSelectorClientContent) scripts.push(`<script>${dyadComponentSelectorClientContent}</script>`);
+
+    if (scripts.length === 0) return html;
+
+    const allScripts = scripts.join('\n');
+    const headRegex = /<head[^>]*>/i;
+    if (headRegex.test(html)) {
+        return html.replace(headRegex, `$&\n${allScripts}`);
+    } else {
+        return allScripts + '\n' + html;
+    }
+}
 
 // Materialize app files from DB to disk
 async function writeAppToDisk(appId: number, targetDir: string): Promise<void> {
@@ -64,6 +96,17 @@ const UpdateAppSchema = z.object({
     description: z.string().optional(),
     isFavorite: z.boolean().optional(),
 });
+
+// Template Prompt Map
+const TEMPLATE_PROMPTS: Record<string, string> = {
+    'react': 'Initialize a new React.js project using Vite and TypeScript. Set up a modern structure with Tailwind CSS, and create a beautiful landing page.',
+    'next': 'Initialize a new Next.js project using App Router, TypeScript, and Tailwind CSS. Create a modern landing page.',
+    'vue': 'Initialize a new Vue.js 3 project using Vite and TypeScript. Include Tailwind CSS.',
+    'angular': 'Initialize a new Angular 17+ project with TypeScript and SCSS.',
+    'node': 'Initialize a simple Node.js project with Express and TypeScript.',
+    'python': 'Initialize a Python project with Flask.',
+    'portal-mini-store': 'Initialize a mini store portal using Next.js and Neon.' // Custom
+};
 
 /**
  * GET /api/apps - List all apps
@@ -126,6 +169,8 @@ router.post("/", async (req, res, next) => {
         const timestamp = Date.now();
         const webPath = `/web-apps/${sanitizedName}-${timestamp}`;
 
+        console.log(`[WebBackend] Creating app ${body.name} (template: ${body.templateId})`);
+
         // Create the app
         const newApp = await db.insert(apps).values({
             name: body.name,
@@ -137,6 +182,18 @@ router.post("/", async (req, res, next) => {
             appId: newApp[0].id,
             title: null, // Will be set later based on first message
         }).returning();
+
+        // If Template ID provided, insert initial User Message
+        if (body.templateId && TEMPLATE_PROMPTS[body.templateId]) {
+            const promptContent = TEMPLATE_PROMPTS[body.templateId];
+            await db.insert(messages).values({
+                chatId: newChat[0].id,
+                role: 'user',
+                content: promptContent,
+                createdAt: new Date()
+            });
+            console.log(`[WebBackend] Inserted initial template prompt for ${body.templateId}`);
+        }
 
         res.status(201).json({
             success: true,
@@ -327,7 +384,12 @@ router.post("/:id/run", async (req, res, next) => {
         await writeAppToDisk(appId, targetDir);
 
         // 2. Find Port
-        const port = await portfinder.getPortPromise({ port: 3001 + Math.floor(Math.random() * 1000) });
+        const port = await portfinder.getPortPromise({ port: 32000 + Math.floor(Math.random() * 1000) });
+
+        // Check if package.json exists before installing
+        if (!await fs.pathExists(path.join(targetDir, 'package.json'))) {
+            throw createError("App is empty. Please ask AI to generate code first.", 400, "NO_CODE");
+        }
 
         // 3. Install Dependencies
         console.log(`[WebBackend] Installing dependencies for app ${id} in ${targetDir}`);
@@ -508,5 +570,86 @@ router.post("/:id/copy", async (req, res, next) => {
         next(error);
     }
 });
+
+// Proxy Middleware with HTML Injection
+const appProxy = createProxyMiddleware({
+    ws: true,
+    changeOrigin: true,
+    // logLevel: 'silent',
+    selfHandleResponse: true, // Enable manual response handling
+    onProxyReq: (proxyReq: any) => {
+        // Disable compression to allow string manipulation
+        proxyReq.setHeader('Accept-Encoding', 'identity');
+    },
+    onProxyRes: (proxyRes: any, req: any, res: any) => {
+        let originalBody: Buffer[] = [];
+
+        proxyRes.on('data', (chunk: any) => {
+            originalBody.push(chunk);
+        });
+
+        proxyRes.on('end', () => {
+            const body = Buffer.concat(originalBody);
+            const contentType = proxyRes.headers['content-type'] || '';
+
+            // Check if HTML and inject scripts
+            if (contentType.includes('text/html')) {
+                try {
+                    const htmlString = body.toString('utf-8');
+                    const injectedHtml = injectHTML(htmlString);
+                    const newBody = Buffer.from(injectedHtml);
+
+                    // Update headers
+                    // We must treat headers carefully.
+                    Object.keys(proxyRes.headers).forEach(key => {
+                        if (key !== 'content-length' && key !== 'content-encoding' && key !== 'etag' && key !== 'transfer-encoding') {
+                            res.setHeader(key, proxyRes.headers[key] as string | string[]);
+                        }
+                    });
+
+                    res.setHeader('content-length', newBody.length);
+                    res.statusCode = proxyRes.statusCode || 200;
+                    res.end(newBody);
+                } catch (e) {
+                    // Fallback on error
+                    console.error('Injection failed:', e);
+                    res.statusCode = proxyRes.statusCode || 500;
+                    res.end(body);
+                }
+            } else {
+                // Pass through non-HTML content
+                Object.keys(proxyRes.headers).forEach(key => {
+                    // Filter transfer-encoding for chunked responses if we manually send body?
+                    // Verify if http-proxy-middleware handles this.
+                    // Generally safe to copy most headers.
+                    res.setHeader(key, proxyRes.headers[key] as string | string[]);
+                });
+                res.statusCode = proxyRes.statusCode || 200;
+                res.end(body);
+            }
+        });
+    },
+    router: (req: any) => {
+        const match = req.originalUrl?.match(/\/api\/apps\/(\d+)\/proxy/);
+        if (match) {
+            const appId = Number(match[1]);
+            const running = runningApps.get(appId);
+            if (running) {
+                return `http://localhost:${running.port}`;
+            }
+        }
+        return 'http://localhost:3000'; // Default fallback
+    },
+    pathRewrite: (pathStr: string, req: any) => {
+        return pathStr.replace(/\/api\/apps\/\d+\/proxy/, '');
+    },
+    onError: (err: any, req: any, res: any) => {
+        console.error('Proxy error:', err);
+        res.writeHead(502, { 'Content-Type': 'text/plain' });
+        res.end('Bad Gateway: App not running or unreachable');
+    }
+});
+
+router.use('/:id/proxy', appProxy);
 
 export default router;

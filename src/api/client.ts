@@ -57,7 +57,7 @@ export const appsApi = {
 
     get: (id: number) => apiRequest<any>(`/apps/${id}`),
 
-    create: (data: { name: string; description?: string }) =>
+    create: (data: { name: string; description?: string; templateId?: string }) =>
         apiRequest<any>("/apps", {
             method: "POST",
             body: JSON.stringify(data),

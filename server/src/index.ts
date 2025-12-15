@@ -43,6 +43,11 @@ async function main() {
     const app = express();
     const server = createServer(app);
 
+    // Debug: Log upgrade requests to see if they reach the server and match the path
+    server.on('upgrade', (request, socket, head) => {
+        console.log(`[Server] HTTP server upgrade request: ${request.url}`);
+    });
+
     // WebSocket server for chat streaming
     const wss = new WebSocketServer({ server, path: "/ws/chat" });
     setupChatWebSocket(wss);

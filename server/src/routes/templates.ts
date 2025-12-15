@@ -46,7 +46,7 @@ const TEMPLATES = [
 ];
 
 router.get("/", (req, res) => {
-    res.json(TEMPLATES);
+    res.json({ success: true, data: TEMPLATES });
 });
 
 export default router;

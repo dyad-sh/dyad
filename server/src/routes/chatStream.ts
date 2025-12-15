@@ -40,24 +40,6 @@ interface StreamChunk {
 }
 
 
-// Default System Prompt (matches codeBlockParser format)
-const DEFAULT_SYSTEM_PROMPT = `You are an expert full-stack developer.
-
-When you write code, you MUST format it so it can be automatically saved to the file system.
-To do this, you MUST header the code block with the precise file path.
-
-Example:
-
-### src/components/Header.tsx
-\`\`\`typescript
-const Header = () => <div>Hello</div>;
-export default Header;
-\`\`\`
-
-If you do not provide the file path header, the code will NOT be saved.
-Always provide the FULL content of the file, not just snippets.
-`;
-
 // Active streams map for cancellation
 const activeStreams = new Map<string, AbortController>();
 
@@ -336,12 +318,9 @@ async function handleStreamRequest(
         // Construct full message list: History + Current User Message
         const currentMessage = { role: "user" as const, content: request.messages[request.messages.length - 1].content };
 
-        // Prepare system prompt
-        const systemPromptContent = request.systemPrompt || DEFAULT_SYSTEM_PROMPT;
-        const systemMessage = { role: "system" as const, content: systemPromptContent };
-
+        // Prepare system prompt if available
         const messagesWithSystem = [
-            systemMessage,
+            ...(request.systemPrompt ? [{ role: "system" as const, content: request.systemPrompt }] : []),
             ...historyMessages,
             currentMessage
         ];

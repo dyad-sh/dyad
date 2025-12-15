@@ -84,7 +84,7 @@ export const appsApi = {
 
     // Process Control
     run: (id: number) =>
-        apiRequest<{ success: boolean; processId?: number }>(`/apps/${id}/run`, { method: "POST" }),
+        apiRequest<{ success: boolean; processId?: number; previewUrl?: string }>(`/apps/${id}/run`, { method: "POST" }),
 
     stop: (id: number) =>
         apiRequest<{ success: boolean }>(`/apps/${id}/stop`, { method: "POST" }),

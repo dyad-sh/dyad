@@ -17,6 +17,7 @@ import { Console } from "./Console";
 import { useRunApp } from "@/hooks/useRunApp";
 import { PublishPanel } from "./PublishPanel";
 import { SecurityPanel } from "./SecurityPanel";
+import { Terminal } from "./Terminal";
 
 interface ConsoleHeaderProps {
   isOpen: boolean;
@@ -131,14 +132,22 @@ export function PreviewPanel() {
             <>
               <PanelResizeHandle className="h-1 bg-border hover:bg-gray-400 transition-colors cursor-row-resize" />
               <Panel id="console" minSize={10} defaultSize={30}>
-                <div className="flex flex-col h-full">
-                  <ConsoleHeader
-                    isOpen={true}
-                    onToggle={() => setIsConsoleOpen(false)}
-                    latestMessage={latestMessage}
-                  />
-                  <Console />
-                </div>
+                <PanelGroup direction="horizontal">
+                  <Panel defaultSize={50} minSize={20}>
+                    <Terminal />
+                  </Panel>
+                  <PanelResizeHandle className="w-1 bg-border hover:bg-gray-400 transition-colors cursor-col-resize" />
+                  <Panel defaultSize={50} minSize={20}>
+                    <div className="flex flex-col h-full border-l border-border">
+                      <ConsoleHeader
+                        isOpen={true}
+                        onToggle={() => setIsConsoleOpen(false)}
+                        latestMessage={latestMessage}
+                      />
+                      <Console />
+                    </div>
+                  </Panel>
+                </PanelGroup>
               </Panel>
             </>
           )}

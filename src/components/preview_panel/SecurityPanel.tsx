@@ -517,7 +517,7 @@ function FindingsTable({
               finding.description.length > DESCRIPTION_PREVIEW_LENGTH;
             const displayDescription = isLongDescription
               ? finding.description.substring(0, DESCRIPTION_PREVIEW_LENGTH) +
-                "..."
+              "..."
               : finding.description;
             const findingKey = createFindingKey(finding);
             const isFixing = fixingFindingKey === findingKey;
@@ -944,7 +944,7 @@ ${issuesList}`;
             isRunning={isRunningReview}
             onRun={handleRunSecurityReview}
           />
-        ) : data && data.findings.length > 0 ? (
+        ) : data && data.findings && data.findings.length > 0 ? (
           <FindingsTable
             findings={data.findings}
             onOpenDetails={openFindingDetails}

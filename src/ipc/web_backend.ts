@@ -229,9 +229,21 @@ export class WebBackend implements IBackendClient {
 
     // Execution
     async runApp(appId: number, onOutput: (output: AppOutput) => void): Promise<void> {
-        await appsApi.run(appId);
-        // TODO: Connect to output stream (WebSocket/SSE)
-        onOutput({ type: "info", message: "App started (output streaming pending impl)", appId, timestamp: Date.now() });
+        const res = await appsApi.run(appId);
+
+        onOutput({ type: "info", message: "App started", appId, timestamp: Date.now() });
+
+        if (res.previewUrl) {
+            // Emit the magic string that useRunApp listens for to set the preview Iframe URL
+            onOutput({
+                type: "info",
+                message: `[dyad-proxy-server]started=[${res.previewUrl}]`,
+                appId,
+                timestamp: Date.now()
+            });
+        } else {
+            onOutput({ type: "info", message: "App running (no preview URL returned)", appId, timestamp: Date.now() });
+        }
     }
 
     async stopApp(appId: number): Promise<void> {

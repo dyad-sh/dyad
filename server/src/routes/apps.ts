@@ -13,6 +13,27 @@ import { FileService } from "../services/fileService.js";
 
 const router = Router();
 
+// Helper for content types
+function getContentType(filename: string): string {
+    const ext = filename.split('.').pop()?.toLowerCase() || '';
+    const types: Record<string, string> = {
+        'html': 'text/html',
+        'css': 'text/css',
+        'js': 'text/javascript',
+        'ts': 'text/typescript',
+        'json': 'application/json',
+        'png': 'image/png',
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'gif': 'image/gif',
+        'svg': 'image/svg+xml',
+        'ico': 'image/x-icon',
+        'txt': 'text/plain',
+        'md': 'text/markdown'
+    };
+    return types[ext] || 'text/plain';
+}
+
 // Validation schemas
 const CreateAppSchema = z.object({
     name: z.string().min(1).max(100),
@@ -254,19 +275,74 @@ router.post("/:id/files/write", async (req, res, next) => {
 router.post("/:id/run", async (req, res, next) => {
     try {
         const { id } = req.params;
-        // Mock run
+        // Mock run - for web apps, "running" just means serving the files
         console.log(`[WebBackend] Running app ${id}`);
 
         // We could trigger a websocket event here to stream "logs"
+
+        // Return the preview URL for the frontend iframe
+        // The frontend expects a URL to load in the preview pane
+        // Use a relative URL which the frontend will resolve against the API base
+        // If API is at /api, checking how frontend constructs it.
+        // Usually full URL is safer if host is known, but relative path works if proxying.
+        // Let's assume the frontend uses the data.url or similar.
+
+        // Construct the preview URL pointing to our new preview route
+        const previewUrl = `/api/apps/${id}/preview/index.html`;
 
         res.json({
             success: true,
             data: {
                 success: true,
-                processId: 12345
+                processId: 12345,
+                previewUrl // This is what the frontend needs
             }
         });
     } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * GET /api/apps/:id/preview/*
+ * Serve app files for preview
+ */
+router.get("/:id/preview/*", async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        // req.params[0] captures everything after /preview/ due to wildcard *
+        // e.g. /api/apps/1/preview/css/style.css -> req.params[0] = "css/style.css"
+        const params = req.params as any;
+        const filePath = params[0] || "index.html";
+
+        if (!filePath) {
+            // Should verify if we ever hit this with the default fallback above
+            throw createError("Path required", 400, "INVALID_PATH");
+        }
+
+        const fileService = new FileService();
+        const content = await fileService.getFile(Number(id), filePath);
+
+        if (content === null) {
+            // Try adding .html if missing
+            if (!filePath.endsWith('.html') && !filePath.includes('.')) {
+                const htmlContent = await fileService.getFile(Number(id), `${filePath}.html`);
+                if (htmlContent !== null) {
+                    res.type('text/html').send(htmlContent);
+                    return;
+                }
+            }
+
+            // Return 404 for resources not found
+            // Don't throw JSON error for resources like favicon, just 404
+            return res.status(404).send("File not found");
+        }
+
+        const contentType = getContentType(filePath);
+        res.type(contentType).send(content);
+
+    } catch (error) {
+        // dynamic resource serving should probably just fail gracefully usually
         next(error);
     }
 });

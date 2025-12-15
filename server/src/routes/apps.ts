@@ -21,6 +21,7 @@ import os from 'os';
 import { spawn, ChildProcess } from 'child_process';
 import portfinder from 'portfinder';
 import { createProxyMiddleware } from 'http-proxy-middleware';
+import { DockerService } from '../services/dockerService.js';
 
 interface RunningApp {
     process: ChildProcess;
@@ -30,6 +31,7 @@ interface RunningApp {
 }
 
 const runningApps = new Map<number, RunningApp>();
+const dockerService = new DockerService();
 
 // Package manager detection
 async function detectPackageManager(): Promise<'pnpm' | 'npm'> {
@@ -383,35 +385,32 @@ router.post("/:id/run", async (req, res, next) => {
     try {
         const { id } = req.params;
         const appId = Number(id);
+        const port = 32000 + appId; // Fixed port based on appId
 
         console.log(`[WebBackend] Requested run for app ${id}`);
 
-        // Check if already running
-        if (runningApps.has(appId)) {
-            const running = runningApps.get(appId)!;
-            console.log(`[WebBackend] App ${id} already running on port ${running.port}`);
+        // Check if container is already running
+        const isRunning = await dockerService.getContainerStatus(appId);
+        if (isRunning) {
+            console.log(`[WebBackend] App ${id} already running in container on port ${port}`);
             res.json({
                 success: true,
                 data: {
                     success: true,
-                    processId: running.process.pid,
-                    previewUrl: `/api/apps/${id}/proxy/`
+                    containerName: `dyad-app-${appId}`,
+                    previewUrl: `http://dyad1.ty-dev.site:${port}`
                 }
             });
             return;
         }
 
-        // 1. Prepare Directory
-        const targetDir = path.join(os.tmpdir(), 'dyad-apps', String(id));
+        // 1. Prepare Directory on shared volume
+        const targetDir = `/apps/app-${appId}`;
         await fs.emptyDir(targetDir);
         await writeAppToDisk(appId, targetDir);
 
-        // 2. Find Port
-        const port = await portfinder.getPortPromise({ port: 32000 + Math.floor(Math.random() * 1000) });
-
-        // Check if package.json exists before installing
+        // 2. Check if package.json exists
         if (!await fs.pathExists(path.join(targetDir, 'package.json'))) {
-            // Check how many files were written
             const fileService = new FileService();
             const files = await fileService.listFiles(appId);
 
@@ -428,64 +427,22 @@ router.post("/:id/run", async (req, res, next) => {
             }
         }
 
-        // 3. Install Dependencies
-        console.log(`[WebBackend] Installing dependencies for app ${id} in ${targetDir}`);
+        // 3. Create and start Docker container
+        console.log(`[WebBackend] Creating Docker container for app ${id} on port ${port}`);
+        console.log(`[WebBackend] 🌐 Direct access: http://dyad1.ty-dev.site:${port}`);
 
-        // Detect package manager
-        const packageManager = await detectPackageManager();
-        console.log(`[WebBackend] Using ${packageManager} for dependency installation`);
+        await dockerService.createAppContainer(appId, port);
 
-        const installProcess = spawn(packageManager, ['install'], {
-            cwd: targetDir,
-            shell: true,
-            stdio: 'inherit' // Pipe to server logs for now
-        });
-
-        await new Promise<void>((resolve, reject) => {
-            installProcess.on('close', (code) => {
-                if (code === 0) resolve();
-                else reject(new Error(`${packageManager} install failed with code ${code}`));
-            });
-        });
-
-        // 4. Run Dev Server
-        console.log(`[WebBackend] Starting dev server for app ${id} on port ${port}`);
-        console.log(`[WebBackend] 🌐 Direct access: http://localhost:${port}`);
-        console.log(`[WebBackend] 🔗 Proxy access: /api/apps/${id}/proxy/`);
-        // "next dev" expects -p PORT
-        const devProcess = spawn('npm', ['run', 'dev', '--', '-p', String(port)], {
-            cwd: targetDir,
-            shell: true,
-            stdio: 'inherit' // For now let's pipe to stdout to see logs
-        });
-
-        // Wait a bit for server to start (naive check)
-        // Ideally we tail stdout for "Ready on" but using stdio:inherit makes that hard.
-        // We'll trust it starts or fails quickly.
-        // Creating the entry immediately.
-        runningApps.set(appId, {
-            process: devProcess,
-            port,
-            dir: targetDir,
-            startTime: Date.now()
-        });
-
-        devProcess.on('error', (err) => {
-            console.error(`[WebBackend] App ${id} failed to start:`, err);
-            runningApps.delete(appId);
-        });
-
-        devProcess.on('exit', (code) => {
-            console.log(`[WebBackend] App ${id} exited with code ${code}`);
-            runningApps.delete(appId);
-        });
+        // 4. Wait for container to be ready
+        console.log(`[WebBackend] Waiting for container to start...`);
+        await new Promise(resolve => setTimeout(resolve, 3000));
 
         res.json({
             success: true,
             data: {
                 success: true,
-                processId: devProcess.pid,
-                previewUrl: `/api/apps/${id}/proxy/`
+                containerName: `dyad-app-${appId}`,
+                previewUrl: `http://dyad1.ty-dev.site:${port}`
             }
         });
 
@@ -548,15 +505,7 @@ router.post("/:id/stop", async (req, res, next) => {
 
         console.log(`[WebBackend] Stopping app ${id}`);
 
-        if (runningApps.has(appId)) {
-            const running = runningApps.get(appId)!;
-            // Kill the process tree ideally, but for now simple kill
-            // On Windows, tree kill is often needed. 
-            // process.kill() might only kill the shell.
-            // Using tree-kill would be better but let's try standard kill first.
-            running.process.kill();
-            runningApps.delete(appId);
-        }
+        await dockerService.stopAppContainer(appId);
 
         res.json({
             success: true,

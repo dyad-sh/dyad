@@ -1,89 +1,28 @@
 version: '3.8'
 
 services:
-  # ==========================================================================
-  # Dyad Web Application
-  # ==========================================================================
   dyad:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: dyad-web
-    restart: unless-stopped
-    # ports:
-    #   - "3007:3007"  <-- Handled by Nginx now
-    volumes:
-      - dyad-data:/app/data
-    environment:
-      - NODE_ENV=production
-      - PORT=3007
-      - HOST=0.0.0.0
-      - DATA_DIR=/app/data
-      - CORS_ORIGIN=${CORS_ORIGIN:-*}
-      # AI Provider Keys
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - GOOGLE_GENERATIVE_AI_API_KEY=${GOOGLE_GENERATIVE_AI_API_KEY}
-      # Database
-      - DATABASE_URL=${DATABASE_URL}
-      # GitHub (optional)
-      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
-      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:3007/api/health" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
-    networks:
-      - dyad-network
-
-  # ==========================================================================
-  # Nginx Reverse Proxy (optional, for SSL termination)
-  # ==========================================================================
-  nginx:
-    image: nginx:alpine
-    container_name: dyad-nginx
-    restart: unless-stopped
+    build: .
+    container_name: dyad-server
     ports:
-      - "3007:80" # Main Entry Point
-      # - "443:443"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./certs:/etc/nginx/certs:ro
-    depends_on:
-      - dyad
-      - mcp-server
-    networks:
-      - dyad-network
-
-  # ==========================================================================
-  # MCP Server (optional sidecar)
-  # ==========================================================================
-  mcp-server:
-    build:
-      context: ./mcp-server
-      dockerfile: Dockerfile
-    container_name: dyad-mcp
-    restart: unless-stopped
-    # ports:
-    #   - "3008:3008" <-- Handled by Nginx now
-    volumes:
-      - dyad-data:/app/data:ro
+      - "3000:3000"
     environment:
-      - DYAD_DATA_DIR=/app/data
-      - DYAD_API_URL=http://dyad:3007
-      - MCP_HTTP_PORT=3008
-      - MCP_HTTP_HOST=0.0.0.0
-    depends_on:
-      - dyad
+      - DATABASE_URL=${DATABASE_URL}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - NODE_ENV=production
+    volumes:
+      # Mount Docker socket to manage app containers
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Shared volume for app files
+      - dyad-apps:/apps
     networks:
       - dyad-network
-
-volumes:
-  dyad-data:
-    driver: local
+    restart: unless-stopped
 
 networks:
   dyad-network:
     driver: bridge
+
+volumes:
+  dyad-apps:
+    driver: local

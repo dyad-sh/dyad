@@ -83,10 +83,46 @@ export function parseCodeBlocks(aiResponse: string): ParsedFile[] {
             }
         }
 
-        // Pattern 3: Markdown header with file path
-        const headerMatch = line.match(/^#{1,4}\s+([\w\/\.\-]+\.\w+)$/);
+        // Pattern 3: Markdown header with file path (with optional number prefix)
+        // Matches: ### src/App.tsx OR ### 1. src/App.tsx
+        const headerMatch = line.match(/^#{1,4}\s+(?:\d+\.\s*)?([\w\/\.\-]+\.\w+)$/);
         if (headerMatch) {
             const path = headerMatch[1];
+            i++; // Move to next line
+
+            // Skip empty lines
+            while (i < lines.length && lines[i].trim() === '') {
+                i++;
+            }
+
+            if (i < lines.length && lines[i].startsWith('```')) {
+                const langMatch = lines[i].match(/^```(\w+)?/);
+                const language = langMatch?.[1];
+                const contentLines: string[] = [];
+
+                i++; // Move past opening ```
+                while (i < lines.length && !lines[i].startsWith('```')) {
+                    contentLines.push(lines[i]);
+                    i++;
+                }
+
+                if (contentLines.length > 0) {
+                    files.push({
+                        path,
+                        content: contentLines.join('\n'),
+                        language,
+                    });
+                }
+                i++; // Skip closing ```
+                continue;
+            }
+        }
+
+        // Pattern 4: Numbered list with file path
+        // Matches: 1. src/App.tsx
+        const listMatch = line.match(/^\d+\.\s+([\w\/\.\-]+\.\w+)$/);
+        if (listMatch) {
+            const path = listMatch[1];
             i++; // Move to next line
 
             // Skip empty lines

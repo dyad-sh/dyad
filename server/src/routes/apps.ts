@@ -13,25 +13,43 @@ import { FileService } from "../services/fileService.js";
 
 const router = Router();
 
+import mime from 'mime-types';
+
+import fs from 'fs-extra';
+import path from 'path';
+import os from 'os';
+import { spawn, ChildProcess } from 'child_process';
+import portfinder from 'portfinder';
+import { createProxyMiddleware } from 'http-proxy-middleware';
+
+interface RunningApp {
+    process: ChildProcess;
+    port: number;
+    dir: string;
+    startTime: number;
+}
+
+const runningApps = new Map<number, RunningApp>();
+
+// Materialize app files from DB to disk
+async function writeAppToDisk(appId: number, targetDir: string): Promise<void> {
+    const fileService = new FileService();
+    const files = await fileService.listFiles(appId);
+
+    for (const filePath of files) {
+        const content = await fileService.getFile(appId, filePath);
+        if (content !== null) {
+            const fullPath = path.join(targetDir, filePath);
+            await fs.outputFile(fullPath, content);
+        }
+    }
+}
+
+
+// Helper for content types
 // Helper for content types
 function getContentType(filename: string): string {
-    const ext = filename.split('.').pop()?.toLowerCase() || '';
-    const types: Record<string, string> = {
-        'html': 'text/html',
-        'css': 'text/css',
-        'js': 'text/javascript',
-        'ts': 'text/typescript',
-        'json': 'application/json',
-        'png': 'image/png',
-        'jpg': 'image/jpeg',
-        'jpeg': 'image/jpeg',
-        'gif': 'image/gif',
-        'svg': 'image/svg+xml',
-        'ico': 'image/x-icon',
-        'txt': 'text/plain',
-        'md': 'text/markdown'
-    };
-    return types[ext] || 'text/plain';
+    return mime.lookup(filename) || 'text/plain';
 }
 
 // Validation schemas
@@ -258,6 +276,15 @@ router.post("/:id/files/write", async (req, res, next) => {
         const fileService = new FileService();
         await fileService.saveFile(Number(id), filePath, content);
 
+        // SYNC: If app is running, update file on disk to trigger HMR
+        const appId = Number(id);
+        if (runningApps.has(appId)) {
+            const running = runningApps.get(appId)!;
+            const fullPath = path.join(running.dir, filePath);
+            await fs.outputFile(fullPath, content);
+            console.log(`[WebBackend] Synced file ${filePath} to running app ${id} disk`);
+        }
+
         res.json({
             success: true,
             data: {
@@ -275,29 +302,87 @@ router.post("/:id/files/write", async (req, res, next) => {
 router.post("/:id/run", async (req, res, next) => {
     try {
         const { id } = req.params;
-        // Mock run - for web apps, "running" just means serving the files
-        console.log(`[WebBackend] Running app ${id}`);
+        const appId = Number(id);
 
-        // We could trigger a websocket event here to stream "logs"
+        console.log(`[WebBackend] Requested run for app ${id}`);
 
-        // Return the preview URL for the frontend iframe
-        // The frontend expects a URL to load in the preview pane
-        // Use a relative URL which the frontend will resolve against the API base
-        // If API is at /api, checking how frontend constructs it.
-        // Usually full URL is safer if host is known, but relative path works if proxying.
-        // Let's assume the frontend uses the data.url or similar.
+        // Check if already running
+        if (runningApps.has(appId)) {
+            const running = runningApps.get(appId)!;
+            console.log(`[WebBackend] App ${id} already running on port ${running.port}`);
+            res.json({
+                success: true,
+                data: {
+                    success: true,
+                    processId: running.process.pid,
+                    previewUrl: `/api/apps/${id}/proxy/`
+                }
+            });
+            return;
+        }
 
-        // Construct the preview URL pointing to our new preview route
-        const previewUrl = `/api/apps/${id}/preview/index.html`;
+        // 1. Prepare Directory
+        const targetDir = path.join(os.tmpdir(), 'dyad-apps', String(id));
+        await fs.emptyDir(targetDir);
+        await writeAppToDisk(appId, targetDir);
+
+        // 2. Find Port
+        const port = await portfinder.getPortPromise({ port: 3001 + Math.floor(Math.random() * 1000) });
+
+        // 3. Install Dependencies
+        console.log(`[WebBackend] Installing dependencies for app ${id} in ${targetDir}`);
+        const installProcess = spawn('npm', ['install'], {
+            cwd: targetDir,
+            shell: true,
+            stdio: 'inherit' // Pipe to server logs for now
+        });
+
+        await new Promise<void>((resolve, reject) => {
+            installProcess.on('close', (code) => {
+                if (code === 0) resolve();
+                else reject(new Error(`npm install failed with code ${code}`));
+            });
+        });
+
+        // 4. Run Dev Server
+        console.log(`[WebBackend] Starting dev server for app ${id} on port ${port}`);
+        // "next dev" expects -p PORT
+        const devProcess = spawn('npm', ['run', 'dev', '--', '-p', String(port)], {
+            cwd: targetDir,
+            shell: true,
+            stdio: 'inherit' // For now let's pipe to stdout to see logs
+        });
+
+        // Wait a bit for server to start (naive check)
+        // Ideally we tail stdout for "Ready on" but using stdio:inherit makes that hard.
+        // We'll trust it starts or fails quickly.
+        // Creating the entry immediately.
+        runningApps.set(appId, {
+            process: devProcess,
+            port,
+            dir: targetDir,
+            startTime: Date.now()
+        });
+
+        devProcess.on('error', (err) => {
+            console.error(`[WebBackend] App ${id} failed to start:`, err);
+            runningApps.delete(appId);
+        });
+
+        devProcess.on('exit', (code) => {
+            console.log(`[WebBackend] App ${id} exited with code ${code}`);
+            runningApps.delete(appId);
+        });
 
         res.json({
             success: true,
             data: {
                 success: true,
-                processId: 12345,
-                previewUrl // This is what the frontend needs
+                processId: devProcess.pid,
+                previewUrl: `/api/apps/${id}/proxy/`
             }
         });
+
     } catch (error) {
         next(error);
     }
@@ -353,8 +438,19 @@ router.get("/:id/preview/*", async (req, res, next) => {
 router.post("/:id/stop", async (req, res, next) => {
     try {
         const { id } = req.params;
-        // Mock stop
+        const appId = Number(id);
+
         console.log(`[WebBackend] Stopping app ${id}`);
+
+        if (runningApps.has(appId)) {
+            const running = runningApps.get(appId)!;
+            // Kill the process tree ideally, but for now simple kill
+            // On Windows, tree kill is often needed. 
+            // process.kill() might only kill the shell.
+            // Using tree-kill would be better but let's try standard kill first.
+            running.process.kill();
+            runningApps.delete(appId);
+        }
 
         res.json({
             success: true,

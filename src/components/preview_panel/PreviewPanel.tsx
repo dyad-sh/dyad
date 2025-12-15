@@ -134,7 +134,7 @@ export function PreviewPanel() {
               <Panel id="console" minSize={10} defaultSize={30}>
                 <PanelGroup direction="horizontal">
                   <Panel defaultSize={50} minSize={20}>
-                    <Terminal />
+                    <Terminal appId={selectedAppId} />
                   </Panel>
                   <PanelResizeHandle className="w-1 bg-border hover:bg-gray-400 transition-colors cursor-col-resize" />
                   <Panel defaultSize={50} minSize={20}>

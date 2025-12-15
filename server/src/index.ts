@@ -18,6 +18,7 @@ import { initializeDatabase } from "./db/index.js";
 // Routes
 import healthRoutes from "./routes/health.js";
 import appsRoutes from "./routes/apps.js";
+import templatesRoutes from "./routes/templates.js";
 import chatsRoutes from "./routes/chats.js";
 import settingsRoutes from "./routes/settings.js";
 import githubRoutes from "./routes/github.js";
@@ -25,6 +26,7 @@ import mcpRoutes from "./routes/mcp.js";
 import promptsRoutes from "./routes/prompts.js";
 import providersRoutes from "./routes/providers.js";
 import { setupChatWebSocket } from "./routes/chatStream.js";
+import { setupTerminalWebSocket } from "./routes/terminal.js";
 
 // Load environment variables
 dotenv.config();
@@ -45,6 +47,9 @@ async function main() {
     const wss = new WebSocketServer({ server, path: "/ws/chat" });
     setupChatWebSocket(wss);
 
+    const termWss = new WebSocketServer({ server, path: "/ws/terminal" });
+    setupTerminalWebSocket(termWss);
+
     // Middleware
     app.use(helmet({
         contentSecurityPolicy: false, // Disable for API
@@ -62,6 +67,7 @@ async function main() {
     app.use("/api/health", healthRoutes);
     app.use("/api/apps", appsRoutes);
     app.use("/api/chats", chatsRoutes);
+    app.use("/api/templates", templatesRoutes);
     app.use("/api/settings", settingsRoutes);
     app.use("/api/github", githubRoutes);
     app.use("/api/mcp", mcpRoutes);

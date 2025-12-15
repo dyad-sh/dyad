@@ -10,17 +10,48 @@ import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { google, createGoogleGenerativeAI } from "@ai-sdk/google";
 import { getDb } from "../db/index.js";
-import { language_model_providers, messages, chats, system_settings, language_models } from "../db/schema.js";
+import { language_model_providers, messages, chats, system_settings, language_models, apps } from "../db/schema.js";
 import { eq, and, not } from "drizzle-orm";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { parseCodeBlocks } from "../utils/codeBlockParser.js";
 import { FileService } from "../services/fileService.js";
+import { getTemplateSystemPrompt } from "../utils/templateUtils.js";
 
 const router = Router();
 
 // Active streams for cancellation
 const activeStreams = new Map<string, AbortController>();
+
+// Default system prompt for code generation
+const DEFAULT_SYSTEM_PROMPT = `You are Dyad, an AI assistant that helps build web applications.
+
+When generating code, you MUST follow this format so files are automatically created:
+
+For each file, use this EXACT format:
+\`\`\`language:path/to/file.ext
+// file content here
+\`\`\`
+
+Examples:
+\`\`\`typescript:src/App.tsx
+import React from 'react';
+export default function App() { return <div>Hello</div>; }
+\`\`\`
+
+\`\`\`css:src/styles.css
+.container { display: flex; }
+\`\`\`
+
+IMPORTANT RULES:
+1. Always include the file path after the language, separated by a colon
+2. Use relative paths starting from project root (src/, pages/, app/, etc.)
+3. Include complete, working code - not snippets
+4. Create all necessary files for the app to work
+5. For Next.js apps, use the app/ directory structure by default
+
+When asked to create an application, generate ALL required files with proper file paths.`;
+
 
 /**
  * Get the appropriate AI provider based on model string
@@ -144,6 +175,25 @@ router.post("/stream", async (req: Request, res: Response) => {
 
         const model = await getModelProvider(modelToUse);
 
+        // Get chat to find the app and its templateId
+        const chatResult = await db.select().from(chats).where(eq(chats.id, chatId)).limit(1);
+        let templateSystemPrompt = DEFAULT_SYSTEM_PROMPT;
+
+        if (chatResult.length > 0) {
+            const appId = chatResult[0].appId;
+            const appResult = await db.select().from(apps).where(eq(apps.id, appId)).limit(1);
+
+            if (appResult.length > 0 && appResult[0].templateId) {
+                const templateId = appResult[0].templateId;
+                // Load system prompt from template definition
+                const promptFromTemplate = getTemplateSystemPrompt(templateId);
+                if (promptFromTemplate) {
+                    templateSystemPrompt = promptFromTemplate;
+                    console.log(`[SSE] Using template system prompt for: ${templateId}`);
+                }
+            }
+        }
+
         // Get history
         const history = await db.select()
             .from(messages)
@@ -164,8 +214,11 @@ router.post("/stream", async (req: Request, res: Response) => {
 
         const currentMessage = { role: "user" as const, content: clientMessages[clientMessages.length - 1].content };
 
+        // Use custom system prompt, template system prompt, or default
+        const finalSystemPrompt = systemPrompt || templateSystemPrompt;
+
         const messagesWithSystem = [
-            ...(systemPrompt ? [{ role: "system" as const, content: systemPrompt }] : []),
+            { role: "system" as const, content: finalSystemPrompt },
             ...historyMessages,
             currentMessage
         ];
@@ -198,7 +251,10 @@ router.post("/stream", async (req: Request, res: Response) => {
 
         // Parse and save files
         try {
+            console.log(`[SSE] Attempting to parse code blocks from response (${fullResponse.length} chars)`);
             const parsedFiles = parseCodeBlocks(fullResponse);
+            console.log(`[SSE] Parsed ${parsedFiles.length} files:`, parsedFiles.map(f => f.path));
+
             if (parsedFiles.length > 0) {
                 const chat = await db.select().from(chats).where(eq(chats.id, chatId)).limit(1);
                 if (chat.length > 0) {
@@ -206,10 +262,13 @@ router.post("/stream", async (req: Request, res: Response) => {
                     const fileService = new FileService();
                     for (const file of parsedFiles) {
                         await fileService.saveFile(appId, file.path, file.content);
+                        console.log(`[SSE] Saved file: ${file.path} (${file.content.length} bytes)`);
                     }
                     res.write(`data: ${JSON.stringify({ type: "files_updated", count: parsedFiles.length, files: parsedFiles.map(f => f.path) })}\n\n`);
                     console.log(`[SSE] Saved ${parsedFiles.length} files for app ${appId}`);
                 }
+            } else {
+                console.log(`[SSE] No files found in response`);
             }
         } catch (fileError) {
             console.error("[SSE] Error parsing/saving files:", fileError);

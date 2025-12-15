@@ -55,10 +55,10 @@ export default function HomePage() {
   const [releaseUrl, setReleaseUrl] = useState("");
   const { theme } = useTheme();
   const queryClient = useQueryClient();
-  
+
   // Use ref to track if we've already updated the version to prevent infinite loop
   const hasUpdatedVersionRef = useRef(false);
-  
+
   useEffect(() => {
     const updateLastVersionLaunched = async () => {
       if (
@@ -134,6 +134,7 @@ export default function HomePage() {
       // Create the chat and navigate
       const result = await IpcClient.getInstance().createApp({
         name: generateCuteAppName(),
+        templateId: settings?.selectedTemplateId, // Use selected template from settings
       });
       if (
         settings?.selectedTemplateId &&

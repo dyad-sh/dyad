@@ -23,6 +23,7 @@ export const apps = pgTable("apps", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   path: text("path"), // Nullable for web mode where no file system exists
+  templateId: text("template_id"), // Template used to create this app (next, react, etc.)
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
   githubOrg: text("github_org"),

@@ -97,7 +97,7 @@ const UpdateAppSchema = z.object({
     isFavorite: z.boolean().optional(),
 });
 
-// Template Prompt Map
+// Template Prompt Map (initial user messages)
 const TEMPLATE_PROMPTS: Record<string, string> = {
     'react': 'Initialize a new React.js project using Vite and TypeScript. Set up a modern structure with Tailwind CSS, and create a beautiful landing page.',
     'next': 'Initialize a new Next.js project using App Router, TypeScript, and Tailwind CSS. Create a modern landing page.',
@@ -107,6 +107,7 @@ const TEMPLATE_PROMPTS: Record<string, string> = {
     'python': 'Initialize a Python project with Flask.',
     'portal-mini-store': 'Initialize a mini store portal using Next.js and Neon.' // Custom
 };
+
 
 /**
  * GET /api/apps - List all apps
@@ -175,6 +176,7 @@ router.post("/", async (req, res, next) => {
         const newApp = await db.insert(apps).values({
             name: body.name,
             path: webPath, // Provide path for web mode to satisfy NOT NULL constraint
+            templateId: body.templateId || null, // Save template ID for later use
         }).returning();
 
         // Create an initial chat for the app

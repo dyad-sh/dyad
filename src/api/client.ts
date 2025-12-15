@@ -374,8 +374,15 @@ export function createChatStream(
         }
     };
 
-    ws.onerror = () => {
+    ws.onerror = (event) => {
+        console.error("[WebSocket] Connection error:", event);
         callbacks.onError("WebSocket connection error");
+    };
+
+    ws.onclose = (event) => {
+        if (!event.wasClean) {
+            console.error(`[WebSocket] Connection closed unexpectedly. Code: ${event.code}, Reason: ${event.reason}`);
+        }
     };
 
     return {

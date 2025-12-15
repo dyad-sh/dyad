@@ -49,10 +49,19 @@ async function main() {
     });
 
     // WebSocket server for chat streaming
-    const wss = new WebSocketServer({ server, path: "/ws/chat" });
+    // Disable perMessageDeflate to prevent "Invalid frame header" errors through proxies
+    const wss = new WebSocketServer({
+        server,
+        path: "/ws/chat",
+        perMessageDeflate: false  // Cloudflare and some proxies don't handle compression well
+    });
     setupChatWebSocket(wss);
 
-    const termWss = new WebSocketServer({ server, path: "/ws/terminal" });
+    const termWss = new WebSocketServer({
+        server,
+        path: "/ws/terminal",
+        perMessageDeflate: false
+    });
     setupTerminalWebSocket(termWss);
 
     // Middleware

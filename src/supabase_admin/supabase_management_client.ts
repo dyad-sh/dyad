@@ -299,6 +299,7 @@ export async function deploySupabaseFunctions({
   const importMapObject = {
     imports: {
       // This resolves "_shared/" imports to the _shared directory
+      // From {functionName}/index.ts, ../_shared/ goes up to root then into _shared/
       "_shared/": "../_shared/",
     },
   };
@@ -387,13 +388,15 @@ async function collectFunctionFiles({
 
     if (!functionDirectory) {
       // Single file case - just return the file
+      // Prefix with functionName so relative imports like "../_shared/" resolve correctly
       const relativeFilePath = toPosixPath(
         path.relative(appPath, normalizedFunctionPath),
       );
-      const zipRelativePath = stripSupabaseFunctionsPrefix(
+      const strippedPath = stripSupabaseFunctionsPrefix(
         relativeFilePath,
         functionName,
       );
+      const zipRelativePath = path.posix.join(functionName, strippedPath);
       const content = await fsPromises.readFile(normalizedFunctionPath);
       return {
         files: [
@@ -433,14 +436,19 @@ async function collectFunctionFiles({
     );
   }
 
-  const statEntries = await listFilesWithStats(functionDirectory, "");
+  // Prefix function files with functionName so the directory structure allows
+  // relative imports like "../_shared/" to resolve correctly
+  const statEntries = await listFilesWithStats(functionDirectory, functionName);
   const signature = buildSignature(statEntries);
   const files = await loadZipEntries(statEntries);
 
   return {
     files,
     signature,
-    entrypointPath: toPosixPath(path.relative(functionDirectory, indexPath)),
+    entrypointPath: path.posix.join(
+      functionName,
+      toPosixPath(path.relative(functionDirectory, indexPath)),
+    ),
     cacheKey: functionDirectory,
   };
 }

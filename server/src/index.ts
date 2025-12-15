@@ -25,6 +25,7 @@ import githubRoutes from "./routes/github.js";
 import mcpRoutes from "./routes/mcp.js";
 import promptsRoutes from "./routes/prompts.js";
 import providersRoutes from "./routes/providers.js";
+import chatSSERoutes from "./routes/chatSSE.js";
 import { setupChatWebSocket } from "./routes/chatStream.js";
 import { setupTerminalWebSocket } from "./routes/terminal.js";
 
@@ -86,6 +87,7 @@ async function main() {
     app.use("/api/github", githubRoutes);
     app.use("/api/mcp", mcpRoutes);
     app.use("/api/prompts", promptsRoutes);
+    app.use("/api/chat", chatSSERoutes);  // SSE fallback for chat streaming
     app.use("/api", providersRoutes);
 
 

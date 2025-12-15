@@ -311,7 +311,8 @@ export const providersApi = {
 };
 
 // ============================================================================
-// Chat Streaming (WebSocket)
+// Chat Streaming (SSE - Server-Sent Events)
+// More reliable through Cloudflare/CDN than WebSocket
 // ============================================================================
 
 export interface ChatMessage {
@@ -333,64 +334,109 @@ export function createChatStream(
     model?: string,
     systemPrompt?: string
 ): { cancel: () => void } {
-    const ws = new WebSocket(`${WS_BASE_URL}/ws/chat`);
+    const abortController = new AbortController();
     let requestId: string | null = null;
 
-    ws.onopen = () => {
-        ws.send(JSON.stringify({
-            type: "start_stream",
-            chatId,
-            messages,
-            model,
-            systemPrompt,
-        }));
-    };
+    // Use SSE via fetch with streaming
+    const startStream = async () => {
+        try {
+            console.log("[SSE] Starting chat stream...");
+            const response = await fetch(`${API_BASE_URL}/chat/stream`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    chatId,
+                    messages,
+                    model,
+                    systemPrompt,
+                }),
+                signal: abortController.signal,
+            });
 
-    ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`HTTP ${response.status}: ${errorText}`);
+            }
 
-        switch (data.type) {
-            case "stream_started":
-                requestId = data.requestId;
-                break;
-            case "chunk":
-                callbacks.onChunk(data.content);
-                break;
-            case "files_updated":
-                callbacks.onFilesUpdated?.(data.files, data.count);
-                break;
-            case "end":
+            if (!response.body) {
+                throw new Error("Response body is null");
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+
+                if (done) {
+                    console.log("[SSE] Stream completed");
+                    break;
+                }
+
+                buffer += decoder.decode(value, { stream: true });
+
+                // Process complete SSE messages
+                const lines = buffer.split("\n");
+                buffer = lines.pop() || ""; // Keep incomplete line in buffer
+
+                for (const line of lines) {
+                    if (line.startsWith("data: ")) {
+                        try {
+                            const data = JSON.parse(line.slice(6));
+
+                            switch (data.type) {
+                                case "stream_started":
+                                    requestId = data.requestId;
+                                    console.log("[SSE] Stream started:", requestId);
+                                    break;
+                                case "chunk":
+                                    callbacks.onChunk(data.content);
+                                    break;
+                                case "files_updated":
+                                    callbacks.onFilesUpdated?.(data.files, data.count);
+                                    break;
+                                case "end":
+                                    callbacks.onEnd();
+                                    return;
+                                case "error":
+                                    callbacks.onError(data.error);
+                                    return;
+                            }
+                        } catch (parseError) {
+                            console.warn("[SSE] Failed to parse:", line);
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            if (error instanceof Error && error.name === "AbortError") {
+                console.log("[SSE] Stream cancelled");
                 callbacks.onEnd();
-                ws.close();
-                break;
-            case "error":
-                callbacks.onError(data.error);
-                ws.close();
-                break;
-            case "cancelled":
-                callbacks.onEnd();
-                ws.close();
-                break;
+            } else {
+                console.error("[SSE] Stream error:", error);
+                callbacks.onError(error instanceof Error ? error.message : "Stream error");
+            }
         }
     };
 
-    ws.onerror = (event) => {
-        console.error("[WebSocket] Connection error:", event);
-        callbacks.onError("WebSocket connection error");
-    };
-
-    ws.onclose = (event) => {
-        if (!event.wasClean) {
-            console.error(`[WebSocket] Connection closed unexpectedly. Code: ${event.code}, Reason: ${event.reason}`);
-        }
-    };
+    startStream();
 
     return {
         cancel: () => {
-            if (requestId && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: "cancel_stream", requestId }));
+            console.log("[SSE] Cancelling stream");
+            abortController.abort();
+
+            // Also notify server to cancel
+            if (requestId) {
+                fetch(`${API_BASE_URL}/chat/cancel`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ requestId }),
+                }).catch(() => { }); // Ignore errors on cancel
             }
-            ws.close();
         },
     };
 }

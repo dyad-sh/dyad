@@ -4,11 +4,18 @@ import { createLoggedHandler } from "./safe_handle";
 import { readSettings } from "../../main/settings"; // Assuming settings are read this way
 import { UserBudgetInfo, UserBudgetInfoSchema } from "../ipc_types";
 import { IS_TEST_BUILD } from "../utils/test_utils";
+import { z } from "zod";
+
+export const UserInfoResponseSchema = z.object({
+  usedCredits: z.number(),
+  totalCredits: z.number(),
+  budgetResetDate: z.string(), // ISO date string from API
+  userId: z.string(),
+});
+export type UserInfoResponse = z.infer<typeof UserInfoResponseSchema>;
 
 const logger = log.scope("pro_handlers");
 const handle = createLoggedHandler(logger);
-
-const CONVERSION_RATIO = (10 * 3) / 2;
 
 export function registerProHandlers() {
   // This method should try to avoid throwing errors because this is auxiliary
@@ -36,7 +43,7 @@ export function registerProHandlers() {
       return null;
     }
 
-    const url = "https://llm-gateway.dyad.sh/user/info";
+    const url = "https://api.dyad.sh/v1/user/info";
     const headers = {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
@@ -57,21 +64,28 @@ export function registerProHandlers() {
         return null;
       }
 
-      const data = await response.json();
-      const userInfoData = data["user_info"];
-      const userId = userInfoData["user_id"];
+      const rawData = await response.json();
+
+      // Validate the API response structure
+      const data = UserInfoResponseSchema.parse(rawData);
+
       // Turn user_abc1234 =>  "****1234"
       // Preserve the last 4 characters so we can correlate bug reports
       // with the user.
       const redactedUserId =
-        userId.length > 8 ? "****" + userId.slice(-4) : "<redacted>";
+        data.userId.length > 8 ? "****" + data.userId.slice(-4) : "<redacted>";
+
       logger.info("Successfully fetched user budget information.");
-      return UserBudgetInfoSchema.parse({
-        usedCredits: userInfoData["spend"] * CONVERSION_RATIO,
-        totalCredits: userInfoData["max_budget"] * CONVERSION_RATIO,
-        budgetResetDate: new Date(userInfoData["budget_reset_at"]),
+
+      // Transform to UserBudgetInfo format
+      const userBudgetInfo = UserBudgetInfoSchema.parse({
+        usedCredits: data.usedCredits,
+        totalCredits: data.totalCredits,
+        budgetResetDate: new Date(data.budgetResetDate),
         redactedUserId: redactedUserId,
       });
+
+      return userBudgetInfo;
     } catch (error: any) {
       logger.error(`Error fetching user budget: ${error.message}`, error);
       return null;

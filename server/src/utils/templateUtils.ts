@@ -2,8 +2,7 @@
  * Template utilities for loading templates and their system prompts
  */
 
-// @ts-ignore - shared folder is copied to ../shared in Docker build
-import { localTemplatesData, Template } from '../../../shared/templates';
+import { localTemplatesData, Template } from '../shared/templates.js';
 
 /**
  * Get template by ID

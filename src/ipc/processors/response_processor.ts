@@ -17,6 +17,7 @@ import {
   isServerFunction,
   isSharedServerModule,
   deployAllSupabaseFunctions,
+  extractFunctionNameFromPath,
 } from "../../supabase_admin/supabase_utils";
 import { UserSettings } from "../../lib/schemas";
 import {
@@ -49,13 +50,9 @@ interface Output {
   error: unknown;
 }
 
-function getFunctionNameFromPath(input: string): string {
-  return path.basename(path.extname(input) ? path.dirname(input) : input);
-}
-
 function getFunctionPath(appPath: string, filePath: string): string {
   // Get the function directory from a file path like "supabase/functions/hello/index.ts"
-  const functionName = getFunctionNameFromPath(filePath);
+  const functionName = extractFunctionNameFromPath(filePath);
   return path.join(appPath, "supabase", "functions", functionName);
 }
 
@@ -292,7 +289,7 @@ export async function processFullResponseActions(
         try {
           await deleteSupabaseFunction({
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
-            functionName: getFunctionNameFromPath(filePath),
+            functionName: extractFunctionNameFromPath(filePath),
           });
         } catch (error) {
           errors.push({
@@ -339,7 +336,7 @@ export async function processFullResponseActions(
         try {
           await deleteSupabaseFunction({
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
-            functionName: getFunctionNameFromPath(tag.from),
+            functionName: extractFunctionNameFromPath(tag.from),
           });
         } catch (error) {
           warnings.push({
@@ -353,7 +350,7 @@ export async function processFullResponseActions(
         try {
           await deploySupabaseFunctions({
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
-            functionName: getFunctionNameFromPath(tag.to),
+            functionName: extractFunctionNameFromPath(tag.to),
             appPath,
             functionPath: getFunctionPath(appPath, tag.to),
           });

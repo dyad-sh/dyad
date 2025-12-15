@@ -56,6 +56,7 @@ import {
   isServerFunction,
   isSharedServerModule,
   deployAllSupabaseFunctions,
+  extractFunctionNameFromPath,
 } from "@/supabase_admin/supabase_utils";
 import { getVercelTeamSlug } from "../utils/vercel_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
@@ -1083,7 +1084,7 @@ export function registerAppHandlers() {
         } else if (isServerFunction(filePath)) {
           // Regular function file - deploy just this function
           try {
-            const functionName = path.basename(path.dirname(filePath));
+            const functionName = extractFunctionNameFromPath(filePath);
             const functionPath = path.join(
               appPath,
               "supabase",

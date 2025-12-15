@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   isServerFunction,
   isSharedServerModule,
+  extractFunctionNameFromPath,
 } from "@/supabase_admin/supabase_utils";
 import {
   toPosixPath,
@@ -85,6 +86,90 @@ describe("isSharedServerModule", () => {
 
     it("should return false for _shared in wrong location", () => {
       expect(isSharedServerModule("src/_shared/utils.ts")).toBe(false);
+    });
+  });
+});
+
+describe("extractFunctionNameFromPath", () => {
+  describe("extracts function name correctly from nested paths", () => {
+    it("should extract function name from index.ts path", () => {
+      expect(
+        extractFunctionNameFromPath("supabase/functions/hello/index.ts"),
+      ).toBe("hello");
+    });
+
+    it("should extract function name from deeply nested path", () => {
+      expect(
+        extractFunctionNameFromPath("supabase/functions/hello/lib/utils.ts"),
+      ).toBe("hello");
+    });
+
+    it("should extract function name from very deeply nested path", () => {
+      expect(
+        extractFunctionNameFromPath(
+          "supabase/functions/hello/src/helpers/format.ts",
+        ),
+      ).toBe("hello");
+    });
+
+    it("should extract function name with dashes", () => {
+      expect(
+        extractFunctionNameFromPath("supabase/functions/send-email/index.ts"),
+      ).toBe("send-email");
+    });
+
+    it("should extract function name with underscores", () => {
+      expect(
+        extractFunctionNameFromPath("supabase/functions/my_function/index.ts"),
+      ).toBe("my_function");
+    });
+  });
+
+  describe("throws for invalid paths", () => {
+    it("should throw for _shared paths", () => {
+      expect(() =>
+        extractFunctionNameFromPath("supabase/functions/_shared/utils.ts"),
+      ).toThrow(/Function names starting with "_" are reserved/);
+    });
+
+    it("should throw for other _ prefixed directories", () => {
+      expect(() =>
+        extractFunctionNameFromPath("supabase/functions/_internal/utils.ts"),
+      ).toThrow(/Function names starting with "_" are reserved/);
+    });
+
+    it("should throw for non-supabase paths", () => {
+      expect(() =>
+        extractFunctionNameFromPath("src/components/Button.tsx"),
+      ).toThrow(/Invalid Supabase function path/);
+    });
+
+    it("should throw for supabase root files", () => {
+      expect(() => extractFunctionNameFromPath("supabase/config.toml")).toThrow(
+        /Invalid Supabase function path/,
+      );
+    });
+
+    it("should throw for partial matches", () => {
+      expect(() => extractFunctionNameFromPath("supabase/functions")).toThrow(
+        /Invalid Supabase function path/,
+      );
+    });
+  });
+
+  describe("handles edge cases", () => {
+    it("should handle backslashes (Windows paths)", () => {
+      expect(
+        extractFunctionNameFromPath(
+          "supabase\\functions\\hello\\lib\\utils.ts",
+        ),
+      ).toBe("hello");
+    });
+
+    it("should handle mixed slashes", () => {
+      expect(
+        extractFunctionNameFromPath("supabase/functions\\hello/lib\\utils.ts"),
+      ).toBe("hello");
     });
   });
 });

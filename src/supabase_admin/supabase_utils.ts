@@ -24,6 +24,40 @@ export function isSharedServerModule(filePath: string): boolean {
 }
 
 /**
+ * Extracts the function name from a Supabase function file path.
+ * Handles nested paths like "supabase/functions/hello/lib/utils.ts" → "hello"
+ *
+ * @param filePath - A path like "supabase/functions/{functionName}/..."
+ * @returns The function name
+ * @throws Error if the path is not a valid function path
+ */
+export function extractFunctionNameFromPath(filePath: string): string {
+  // Normalize path separators to forward slashes
+  const normalized = filePath.replace(/\\/g, "/");
+
+  // Match the pattern: supabase/functions/{functionName}/...
+  // The function name is the segment immediately after "supabase/functions/"
+  const match = normalized.match(/^supabase\/functions\/([^/]+)/);
+
+  if (!match) {
+    throw new Error(
+      `Invalid Supabase function path: ${filePath}. Expected format: supabase/functions/{functionName}/...`,
+    );
+  }
+
+  const functionName = match[1];
+
+  // Exclude _shared and other special directories
+  if (functionName.startsWith("_")) {
+    throw new Error(
+      `Invalid Supabase function path: ${filePath}. Function names starting with "_" are reserved for special directories.`,
+    );
+  }
+
+  return functionName;
+}
+
+/**
  * Deploys all Supabase edge functions found in the app's supabase/functions directory
  * @param appPath - The absolute path to the app directory
  * @param supabaseProjectId - The Supabase project ID

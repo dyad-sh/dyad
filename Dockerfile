@@ -10,12 +10,21 @@ FROM node:20-slim AS frontend-builder
 
 WORKDIR /app
 
-# Install build dependencies for better-sqlite3
+# Install build dependencies for better-sqlite3, curl, and git
 RUN apt-get update && apt-get install -y \
     python3 \
     make \
     g++ \
+    curl \
+    git \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Docker Compose
+RUN curl -L "https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose \
+    && chmod +x /usr/local/bin/docker-compose
+
+# Install pnpm
+RUN npm install -g pnpm
 
 # Copy package files
 COPY package*.json ./

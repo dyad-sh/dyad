@@ -572,85 +572,85 @@ router.post("/:id/copy", async (req, res, next) => {
 });
 
 // Proxy Middleware with HTML Injection
-const appProxy = createProxyMiddleware({
-    ws: true,
-    changeOrigin: true,
-    // logLevel: 'silent',
-    selfHandleResponse: true, // Enable manual response handling
-    onProxyReq: (proxyReq: any) => {
-        // Disable compression to allow string manipulation
-        proxyReq.setHeader('Accept-Encoding', 'identity');
-    },
+router.use('/:id/proxy', (req, res, next) => {
+    const { id } = req.params;
+    const appId = Number(id);
+    const running = runningApps.get(appId);
 
-    onProxyRes: (proxyRes: any, req: any, res: any) => {
-        let originalBody: Buffer[] = [];
-
-        proxyRes.on('data', (chunk: any) => {
-            originalBody.push(chunk);
-        });
-
-        proxyRes.on('end', () => {
-            const body = Buffer.concat(originalBody);
-            const contentType = proxyRes.headers['content-type'] || '';
-
-            // Check if HTML and inject scripts
-            if (contentType.includes('text/html')) {
-                try {
-                    const htmlString = body.toString('utf-8');
-                    const injectedHtml = injectHTML(htmlString);
-                    const newBody = Buffer.from(injectedHtml);
-
-                    // Update headers
-                    // We must treat headers carefully.
-                    Object.keys(proxyRes.headers).forEach(key => {
-                        if (key !== 'content-length' && key !== 'content-encoding' && key !== 'etag' && key !== 'transfer-encoding') {
-                            res.setHeader(key, proxyRes.headers[key] as string | string[]);
-                        }
-                    });
-
-                    res.setHeader('content-length', newBody.length);
-                    res.statusCode = proxyRes.statusCode || 200;
-                    res.end(newBody);
-                } catch (e) {
-                    // Fallback on error
-                    console.error('Injection failed:', e);
-                    res.statusCode = proxyRes.statusCode || 500;
-                    res.end(body);
-                }
-            } else {
-                // Pass through non-HTML content
-                Object.keys(proxyRes.headers).forEach(key => {
-                    // Filter transfer-encoding for chunked responses if we manually send body?
-                    // Verify if http-proxy-middleware handles this.
-                    // Generally safe to copy most headers.
-                    res.setHeader(key, proxyRes.headers[key] as string | string[]);
-                });
-                res.statusCode = proxyRes.statusCode || 200;
-                res.end(body);
-            }
-        });
-    },
-    router: (req: any) => {
-        const match = req.originalUrl?.match(/\/api\/apps\/(\d+)\/proxy/);
-        if (match) {
-            const appId = Number(match[1]);
-            const running = runningApps.get(appId);
-            if (running) {
-                return `http://localhost:${running.port}`;
-            }
-        }
-        return 'http://localhost:3000'; // Default fallback
-    },
-    pathRewrite: (pathStr: string, req: any) => {
-        return pathStr.replace(/\/api\/apps\/\d+\/proxy/, '');
-    },
-    onError: (err: any, req: any, res: any) => {
-        console.error('Proxy error:', err);
+    if (!running) {
         res.writeHead(502, { 'Content-Type': 'text/plain' });
         res.end('Bad Gateway: App not running or unreachable');
+        return;
     }
-} as any);
 
-router.use('/:id/proxy', appProxy);
+    const target = `http://localhost:${running.port}`;
+
+    // Create middleware dynamically for this target
+    const proxyMiddleware = createProxyMiddleware({
+        target,
+        ws: true,
+        changeOrigin: true,
+        // selfHandleResponse: true, // Not in v3 types, handled by manual response via proxyRes
+        pathRewrite: {
+            [`^/api/apps/${id}/proxy`]: '',
+        },
+        on: {
+            proxyReq: (proxyReq: any) => {
+                // Disable compression to allow string manipulation
+                proxyReq.setHeader('Accept-Encoding', 'identity');
+            },
+            proxyRes: (proxyRes: any, req: any, res: any) => {
+                let originalBody: Buffer[] = [];
+
+                proxyRes.on('data', (chunk: any) => {
+                    originalBody.push(chunk);
+                });
+
+                proxyRes.on('end', () => {
+                    const body = Buffer.concat(originalBody);
+                    const contentType = proxyRes.headers['content-type'] || '';
+
+                    // Check if HTML and inject scripts
+                    if (contentType.includes('text/html')) {
+                        try {
+                            const htmlString = body.toString('utf-8');
+                            const injectedHtml = injectHTML(htmlString);
+                            const newBody = Buffer.from(injectedHtml);
+
+                            // Update headers
+                            Object.keys(proxyRes.headers).forEach(key => {
+                                if (key !== 'content-length' && key !== 'content-encoding' && key !== 'etag' && key !== 'transfer-encoding') {
+                                    res.setHeader(key, proxyRes.headers[key] as string | string[]);
+                                }
+                            });
+
+                            res.setHeader('content-length', newBody.length);
+                            res.statusCode = proxyRes.statusCode || 200;
+                            res.end(newBody);
+                        } catch (e) {
+                            console.error('Injection failed:', e);
+                            res.statusCode = proxyRes.statusCode || 500;
+                            res.end(body);
+                        }
+                    } else {
+                        // Pass through non-HTML content
+                        Object.keys(proxyRes.headers).forEach(key => {
+                            res.setHeader(key, proxyRes.headers[key] as string | string[]);
+                        });
+                        res.statusCode = proxyRes.statusCode || 200;
+                        res.end(body);
+                    }
+                });
+            },
+            error: (err: any, req: any, res: any) => {
+                console.error('Proxy error:', err);
+                res.writeHead(502, { 'Content-Type': 'text/plain' });
+                res.end('Bad Gateway: App not running or unreachable');
+            }
+        },
+    });
+
+    return proxyMiddleware(req, res, next);
+});
 
 export default router;

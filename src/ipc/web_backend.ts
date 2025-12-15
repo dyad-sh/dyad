@@ -6,6 +6,7 @@ import {
     settingsApi,
     mcpApi,
     promptsApi,
+    templatesApi,
     createChatStream,
     ChatMessage,
     StreamCallbacks
@@ -231,7 +232,9 @@ export class WebBackend implements IBackendClient {
     async runApp(appId: number, onOutput: (output: AppOutput) => void): Promise<void> {
         const res = await appsApi.run(appId);
 
-        onOutput({ type: "info", message: "App started", appId, timestamp: Date.now() });
+        onOutput({
+            type: "info", message: "App started", appId, timestamp: Date.now()
+        });
 
         if (res.previewUrl) {
             // Emit the magic string that useRunApp listens for to set the preview Iframe URL
@@ -501,7 +504,16 @@ export class WebBackend implements IBackendClient {
     async openAndroid(): Promise<void> { }
     async checkProblems(): Promise<ProblemReport> { return { missingEnvVars: [], missingFiles: [] }; }
 
-    async getTemplates(): Promise<Template[]> { return []; }
+    async getTemplates(): Promise<Template[]> {
+        try {
+            return await templatesApi.list();
+        } catch (error) {
+            console.error("Failed to fetch templates:", error);
+            // Fallback (or re-throw)? returning [] allows app to run but hub is empty.
+            // Client.ts throws on error, so this catch handles API failure.
+            return [];
+        }
+    }
 
     // Prompts
     async listPrompts(): Promise<PromptDto[]> {

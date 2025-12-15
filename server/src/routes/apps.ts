@@ -450,6 +450,8 @@ router.post("/:id/run", async (req, res, next) => {
 
         // 4. Run Dev Server
         console.log(`[WebBackend] Starting dev server for app ${id} on port ${port}`);
+        console.log(`[WebBackend] 🌐 Direct access: http://localhost:${port}`);
+        console.log(`[WebBackend] 🔗 Proxy access: /api/apps/${id}/proxy/`);
         // "next dev" expects -p PORT
         const devProcess = spawn('npm', ['run', 'dev', '--', '-p', String(port)], {
             cwd: targetDir,

@@ -42,8 +42,8 @@ export const Terminal = ({ appId }: TerminalProps) => {
 
         // Connect WebSocket
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const host = 'localhost:3001'; // Should be dynamic in prod
-        const wsUrl = `${protocol}//${host}/ws/terminal?appId=${appId}`;
+        const host = window.location.host;
+        const wsUrl = import.meta.env.VITE_WS_URL || `${protocol}//${host}/ws/terminal?appId=${appId}`;
 
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;

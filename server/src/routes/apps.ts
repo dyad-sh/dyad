@@ -581,54 +581,55 @@ const appProxy = createProxyMiddleware({
         // Disable compression to allow string manipulation
         proxyReq.setHeader('Accept-Encoding', 'identity');
     },
-    onProxyRes: (proxyRes: any, req: any, res: any) => {
-        let originalBody: Buffer[] = [];
+} as any);
+onProxyRes: (proxyRes: any, req: any, res: any) => {
+    let originalBody: Buffer[] = [];
 
-        proxyRes.on('data', (chunk: any) => {
-            originalBody.push(chunk);
-        });
+    proxyRes.on('data', (chunk: any) => {
+        originalBody.push(chunk);
+    });
 
-        proxyRes.on('end', () => {
-            const body = Buffer.concat(originalBody);
-            const contentType = proxyRes.headers['content-type'] || '';
+    proxyRes.on('end', () => {
+        const body = Buffer.concat(originalBody);
+        const contentType = proxyRes.headers['content-type'] || '';
 
-            // Check if HTML and inject scripts
-            if (contentType.includes('text/html')) {
-                try {
-                    const htmlString = body.toString('utf-8');
-                    const injectedHtml = injectHTML(htmlString);
-                    const newBody = Buffer.from(injectedHtml);
+        // Check if HTML and inject scripts
+        if (contentType.includes('text/html')) {
+            try {
+                const htmlString = body.toString('utf-8');
+                const injectedHtml = injectHTML(htmlString);
+                const newBody = Buffer.from(injectedHtml);
 
-                    // Update headers
-                    // We must treat headers carefully.
-                    Object.keys(proxyRes.headers).forEach(key => {
-                        if (key !== 'content-length' && key !== 'content-encoding' && key !== 'etag' && key !== 'transfer-encoding') {
-                            res.setHeader(key, proxyRes.headers[key] as string | string[]);
-                        }
-                    });
-
-                    res.setHeader('content-length', newBody.length);
-                    res.statusCode = proxyRes.statusCode || 200;
-                    res.end(newBody);
-                } catch (e) {
-                    // Fallback on error
-                    console.error('Injection failed:', e);
-                    res.statusCode = proxyRes.statusCode || 500;
-                    res.end(body);
-                }
-            } else {
-                // Pass through non-HTML content
+                // Update headers
+                // We must treat headers carefully.
                 Object.keys(proxyRes.headers).forEach(key => {
-                    // Filter transfer-encoding for chunked responses if we manually send body?
-                    // Verify if http-proxy-middleware handles this.
-                    // Generally safe to copy most headers.
-                    res.setHeader(key, proxyRes.headers[key] as string | string[]);
+                    if (key !== 'content-length' && key !== 'content-encoding' && key !== 'etag' && key !== 'transfer-encoding') {
+                        res.setHeader(key, proxyRes.headers[key] as string | string[]);
+                    }
                 });
+
+                res.setHeader('content-length', newBody.length);
                 res.statusCode = proxyRes.statusCode || 200;
+                res.end(newBody);
+            } catch (e) {
+                // Fallback on error
+                console.error('Injection failed:', e);
+                res.statusCode = proxyRes.statusCode || 500;
                 res.end(body);
             }
-        });
-    },
+        } else {
+            // Pass through non-HTML content
+            Object.keys(proxyRes.headers).forEach(key => {
+                // Filter transfer-encoding for chunked responses if we manually send body?
+                // Verify if http-proxy-middleware handles this.
+                // Generally safe to copy most headers.
+                res.setHeader(key, proxyRes.headers[key] as string | string[]);
+            });
+            res.statusCode = proxyRes.statusCode || 200;
+            res.end(body);
+        }
+    });
+},
     router: (req: any) => {
         const match = req.originalUrl?.match(/\/api\/apps\/(\d+)\/proxy/);
         if (match) {
@@ -640,14 +641,14 @@ const appProxy = createProxyMiddleware({
         }
         return 'http://localhost:3000'; // Default fallback
     },
-    pathRewrite: (pathStr: string, req: any) => {
-        return pathStr.replace(/\/api\/apps\/\d+\/proxy/, '');
-    },
-    onError: (err: any, req: any, res: any) => {
-        console.error('Proxy error:', err);
-        res.writeHead(502, { 'Content-Type': 'text/plain' });
-        res.end('Bad Gateway: App not running or unreachable');
-    }
+        pathRewrite: (pathStr: string, req: any) => {
+            return pathStr.replace(/\/api\/apps\/\d+\/proxy/, '');
+        },
+            onError: (err: any, req: any, res: any) => {
+                console.error('Proxy error:', err);
+                res.writeHead(502, { 'Content-Type': 'text/plain' });
+                res.end('Bad Gateway: App not running or unreachable');
+            }
 });
 
 router.use('/:id/proxy', appProxy);

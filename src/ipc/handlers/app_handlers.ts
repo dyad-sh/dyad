@@ -52,7 +52,11 @@ import {
 } from "../utils/git_utils";
 import { safeSend } from "../utils/safe_sender";
 import { normalizePath } from "../../../shared/normalizePath";
-import { isServerFunction } from "@/supabase_admin/supabase_utils";
+import {
+  isServerFunction,
+  isSharedServerModule,
+  deployAllSupabaseFunctions,
+} from "@/supabase_admin/supabase_utils";
 import { getVercelTeamSlug } from "../utils/vercel_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import { AppSearchResult } from "@/lib/schemas";
@@ -1051,18 +1055,56 @@ export function registerAppHandlers() {
         throw new Error(`Failed to write file: ${error.message}`);
       }
 
-      if (isServerFunction(filePath) && app.supabaseProjectId) {
-        try {
-          await deploySupabaseFunctions({
-            supabaseProjectId: app.supabaseProjectId,
-            functionName: path.basename(path.dirname(filePath)),
-            content: content,
-          });
-        } catch (error) {
-          logger.error(`Error deploying Supabase function ${filePath}:`, error);
-          return {
-            warning: `File saved, but failed to deploy Supabase function: ${filePath}: ${error}`,
-          };
+      if (app.supabaseProjectId) {
+        // Check if shared module was modified - redeploy all functions
+        if (isSharedServerModule(filePath)) {
+          try {
+            logger.info(
+              `Shared module ${filePath} modified, redeploying all Supabase functions`,
+            );
+            const deployErrors = await deployAllSupabaseFunctions({
+              appPath,
+              supabaseProjectId: app.supabaseProjectId,
+            });
+            if (deployErrors.length > 0) {
+              return {
+                warning: `File saved, but some Supabase functions failed to deploy: ${deployErrors.join(", ")}`,
+              };
+            }
+          } catch (error) {
+            logger.error(
+              `Error redeploying Supabase functions after shared module change:`,
+              error,
+            );
+            return {
+              warning: `File saved, but failed to redeploy Supabase functions: ${error}`,
+            };
+          }
+        } else if (isServerFunction(filePath)) {
+          // Regular function file - deploy just this function
+          try {
+            const functionName = path.basename(path.dirname(filePath));
+            const functionPath = path.join(
+              appPath,
+              "supabase",
+              "functions",
+              functionName,
+            );
+            await deploySupabaseFunctions({
+              supabaseProjectId: app.supabaseProjectId,
+              functionName,
+              appPath,
+              functionPath,
+            });
+          } catch (error) {
+            logger.error(
+              `Error deploying Supabase function ${filePath}:`,
+              error,
+            );
+            return {
+              warning: `File saved, but failed to deploy Supabase function: ${filePath}: ${error}`,
+            };
+          }
         }
       }
       return {};

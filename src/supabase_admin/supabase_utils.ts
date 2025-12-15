@@ -5,8 +5,22 @@ import { deploySupabaseFunctions } from "./supabase_management_client";
 
 const logger = log.scope("supabase_utils");
 
-export function isServerFunction(filePath: string) {
-  return filePath.startsWith("supabase/functions/");
+/**
+ * Checks if a file path is a Supabase edge function
+ * (i.e., inside supabase/functions/ but NOT in _shared/)
+ */
+export function isServerFunction(filePath: string): boolean {
+  return (
+    filePath.startsWith("supabase/functions/") &&
+    !filePath.startsWith("supabase/functions/_shared/")
+  );
+}
+
+/**
+ * Checks if a file path is a shared module in supabase/functions/_shared/
+ */
+export function isSharedServerModule(filePath: string): boolean {
+  return filePath.startsWith("supabase/functions/_shared/");
 }
 
 /**
@@ -37,7 +51,10 @@ export async function deployAllSupabaseFunctions({
   try {
     // Read all directories in supabase/functions
     const entries = await fs.readdir(functionsDir, { withFileTypes: true });
-    const functionDirs = entries.filter((entry) => entry.isDirectory());
+    // Filter out _shared and other non-function directories
+    const functionDirs = entries.filter(
+      (entry) => entry.isDirectory() && !entry.name.startsWith("_"),
+    );
 
     logger.info(
       `Found ${functionDirs.length} functions to deploy in ${functionsDir}`,
@@ -46,7 +63,8 @@ export async function deployAllSupabaseFunctions({
     // Deploy each function
     for (const functionDir of functionDirs) {
       const functionName = functionDir.name;
-      const indexPath = path.join(functionsDir, functionName, "index.ts");
+      const functionPath = path.join(functionsDir, functionName);
+      const indexPath = path.join(functionPath, "index.ts");
 
       // Check if index.ts exists
       try {
@@ -59,13 +77,13 @@ export async function deployAllSupabaseFunctions({
       }
 
       try {
-        const content = await fs.readFile(indexPath, "utf-8");
         logger.info(`Deploying function: ${functionName}`);
 
         await deploySupabaseFunctions({
           supabaseProjectId,
           functionName,
-          content,
+          appPath,
+          functionPath,
         });
 
         logger.info(`Successfully deployed function: ${functionName}`);

@@ -35,7 +35,7 @@ import killPort from "kill-port";
 import util from "util";
 import log from "electron-log";
 import {
-  deploySupabaseFunctions,
+  deploySupabaseFunction,
   getSupabaseProjectName,
 } from "../../supabase_admin/supabase_management_client";
 import { createLoggedHandler } from "./safe_handle";
@@ -52,13 +52,22 @@ import {
 } from "../utils/git_utils";
 import { safeSend } from "../utils/safe_sender";
 import { normalizePath } from "../../../shared/normalizePath";
-import { isServerFunction } from "@/supabase_admin/supabase_utils";
+import {
+  isServerFunction,
+  isSharedServerModule,
+  deployAllSupabaseFunctions,
+  extractFunctionNameFromPath,
+} from "@/supabase_admin/supabase_utils";
 import { getVercelTeamSlug } from "../utils/vercel_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import { AppSearchResult } from "@/lib/schemas";
 
-const DEFAULT_COMMAND =
-  "(pnpm install && pnpm run dev --port 32100) || (npm install --legacy-peer-deps && npm run dev -- --port 32100)";
+import { getAppPort } from "../../../shared/ports";
+
+function getDefaultCommand(appId: number): string {
+  const port = getAppPort(appId);
+  return `(pnpm install && pnpm run dev --port ${port}) || (npm install --legacy-peer-deps && npm run dev -- --port ${port})`;
+}
 async function copyDir(
   source: string,
   destination: string,
@@ -145,7 +154,7 @@ async function executeAppLocalNode({
   installCommand?: string | null;
   startCommand?: string | null;
 }): Promise<void> {
-  const command = getCommand({ installCommand, startCommand });
+  const command = getCommand({ appId, installCommand, startCommand });
   const spawnedProcess = spawn(command, [], {
     cwd: appPath,
     shell: true,
@@ -413,6 +422,7 @@ RUN npm install -g pnpm
   });
 
   // Run the Docker container
+  const port = getAppPort(appId);
   const process = spawn(
     "docker",
     [
@@ -421,7 +431,7 @@ RUN npm install -g pnpm
       "--name",
       containerName,
       "-p",
-      "32100:32100",
+      `${port}:${port}`,
       "-v",
       `${appPath}:/app`,
       "-v",
@@ -433,7 +443,7 @@ RUN npm install -g pnpm
       `dyad-app-${appId}`,
       "sh",
       "-c",
-      getCommand({ installCommand, startCommand }),
+      getCommand({ appId, installCommand, startCommand }),
     ],
     {
       stdio: "pipe",
@@ -814,8 +824,8 @@ export function registerAppHandlers() {
 
         const appPath = getDyadAppPath(app.path);
         try {
-          // There may have been a previous run that left a process on port 32100.
-          await cleanUpPort(32100);
+          // There may have been a previous run that left a process on this port.
+          await cleanUpPort(getAppPort(appId));
           await executeApp({
             appPath,
             appId,
@@ -915,8 +925,8 @@ export function registerAppHandlers() {
             logger.log(`App ${appId} not running. Proceeding to start.`);
           }
 
-          // There may have been a previous run that left a process on port 32100.
-          await cleanUpPort(32100);
+          // There may have been a previous run that left a process on this port.
+          await cleanUpPort(getAppPort(appId));
 
           // Now start the app again
           const app = await db.query.apps.findFirst({
@@ -999,6 +1009,8 @@ export function registerAppHandlers() {
         content,
       }: { appId: number; filePath: string; content: string },
     ): Promise<EditAppFileReturnType> => {
+      // It should already be normalized, but just in case.
+      filePath = normalizePath(filePath);
       const app = await db.query.apps.findFirst({
         where: eq(apps.id, appId),
       });
@@ -1053,18 +1065,49 @@ export function registerAppHandlers() {
         throw new Error(`Failed to write file: ${error.message}`);
       }
 
-      if (isServerFunction(filePath) && app.supabaseProjectId) {
-        try {
-          await deploySupabaseFunctions({
-            supabaseProjectId: app.supabaseProjectId,
-            functionName: path.basename(path.dirname(filePath)),
-            content: content,
-          });
-        } catch (error) {
-          logger.error(`Error deploying Supabase function ${filePath}:`, error);
-          return {
-            warning: `File saved, but failed to deploy Supabase function: ${filePath}: ${error}`,
-          };
+      if (app.supabaseProjectId) {
+        // Check if shared module was modified - redeploy all functions
+        if (isSharedServerModule(filePath)) {
+          try {
+            logger.info(
+              `Shared module ${filePath} modified, redeploying all Supabase functions`,
+            );
+            const deployErrors = await deployAllSupabaseFunctions({
+              appPath,
+              supabaseProjectId: app.supabaseProjectId,
+            });
+            if (deployErrors.length > 0) {
+              return {
+                warning: `File saved, but some Supabase functions failed to deploy: ${deployErrors.join(", ")}`,
+              };
+            }
+          } catch (error) {
+            logger.error(
+              `Error redeploying Supabase functions after shared module change:`,
+              error,
+            );
+            return {
+              warning: `File saved, but failed to redeploy Supabase functions: ${error}`,
+            };
+          }
+        } else if (isServerFunction(filePath)) {
+          // Regular function file - deploy just this function
+          try {
+            const functionName = extractFunctionNameFromPath(filePath);
+            await deploySupabaseFunction({
+              supabaseProjectId: app.supabaseProjectId,
+              functionName,
+              appPath,
+            });
+          } catch (error) {
+            logger.error(
+              `Error deploying Supabase function ${filePath}:`,
+              error,
+            );
+            return {
+              warning: `File saved, but failed to deploy Supabase function: ${filePath}: ${error}`,
+            };
+          }
         }
       }
       return {};
@@ -1537,16 +1580,18 @@ export function registerAppHandlers() {
 }
 
 function getCommand({
+  appId,
   installCommand,
   startCommand,
 }: {
+  appId: number;
   installCommand?: string | null;
   startCommand?: string | null;
 }) {
   const hasCustomCommands = !!installCommand?.trim() && !!startCommand?.trim();
   return hasCustomCommands
     ? `${installCommand!.trim()} && ${startCommand!.trim()}`
-    : DEFAULT_COMMAND;
+    : getDefaultCommand(appId);
 }
 
 async function cleanUpPort(port: number) {

@@ -285,7 +285,6 @@ export async function deploySupabaseFunction({
 
   // 1) Collect function files
   const functionFiles = await collectFunctionFiles({
-    appPath,
     functionPath,
     functionName,
   });

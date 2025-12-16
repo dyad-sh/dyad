@@ -117,7 +117,6 @@ export async function deployAllSupabaseFunctions({
           supabaseProjectId,
           functionName,
           appPath,
-          functionPath,
         });
 
         logger.info(`Successfully deployed function: ${functionName}`);

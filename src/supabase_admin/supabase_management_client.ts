@@ -267,15 +267,20 @@ export async function deploySupabaseFunctions({
   supabaseProjectId,
   functionName,
   appPath,
-  functionPath,
 }: {
   supabaseProjectId: string;
   functionName: string;
   appPath: string;
-  functionPath: string;
 }): Promise<void> {
   logger.info(
     `Deploying Supabase function: ${functionName} to project: ${supabaseProjectId}`,
+  );
+
+  const functionPath = path.join(
+    appPath,
+    "supabase",
+    "functions",
+    functionName,
   );
 
   // 1) Collect function files

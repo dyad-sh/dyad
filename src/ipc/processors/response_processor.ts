@@ -50,12 +50,6 @@ interface Output {
   error: unknown;
 }
 
-function getFunctionPath(appPath: string, filePath: string): string {
-  // Get the function directory from a file path like "supabase/functions/hello/index.ts"
-  const functionName = extractFunctionNameFromPath(filePath);
-  return path.join(appPath, "supabase", "functions", functionName);
-}
-
 export async function dryRunSearchReplace({
   fullResponse,
   appPath,
@@ -352,7 +346,6 @@ export async function processFullResponseActions(
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
             functionName: extractFunctionNameFromPath(tag.to),
             appPath,
-            functionPath: getFunctionPath(appPath, tag.to),
           });
         } catch (error) {
           errors.push({
@@ -398,9 +391,8 @@ export async function processFullResponseActions(
           try {
             await deploySupabaseFunctions({
               supabaseProjectId: chatWithApp.app.supabaseProjectId!,
-              functionName: path.basename(path.dirname(filePath)),
+              functionName: extractFunctionNameFromPath(filePath),
               appPath,
-              functionPath: getFunctionPath(appPath, filePath),
             });
           } catch (error) {
             errors.push({
@@ -469,9 +461,8 @@ export async function processFullResponseActions(
         try {
           await deploySupabaseFunctions({
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
-            functionName: path.basename(path.dirname(filePath)),
+            functionName: extractFunctionNameFromPath(filePath),
             appPath,
-            functionPath: getFunctionPath(appPath, filePath),
           });
         } catch (error) {
           errors.push({

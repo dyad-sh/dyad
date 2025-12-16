@@ -1085,17 +1085,10 @@ export function registerAppHandlers() {
           // Regular function file - deploy just this function
           try {
             const functionName = extractFunctionNameFromPath(filePath);
-            const functionPath = path.join(
-              appPath,
-              "supabase",
-              "functions",
-              functionName,
-            );
             await deploySupabaseFunctions({
               supabaseProjectId: app.supabaseProjectId,
               functionName,
               appPath,
-              functionPath,
             });
           } catch (error) {
             logger.error(

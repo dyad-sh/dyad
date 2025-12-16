@@ -127,6 +127,7 @@ const validInvokeChannels = [
   "agent-tool:get-tools",
   "agent-tool:get-consents",
   "agent-tool:set-consent",
+  "agent-tool:consent-response",
   // Help
   "take-screenshot",
   // Help bot

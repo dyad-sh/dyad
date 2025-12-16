@@ -957,7 +957,7 @@ export class IpcClient {
     requestId: string,
     decision: "accept-once" | "accept-always" | "decline",
   ) {
-    this.ipcRenderer.send("agent-tool:consent-response", {
+    this.ipcRenderer.invoke("agent-tool:consent-response", {
       requestId,
       decision,
     });

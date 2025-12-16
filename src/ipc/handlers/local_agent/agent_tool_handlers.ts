@@ -2,7 +2,6 @@
  * IPC handlers for agent tool consent management
  */
 
-import { ipcMain } from "electron";
 import {
   getAllAgentToolConsents,
   setAgentToolConsent,
@@ -11,34 +10,35 @@ import {
   type Consent,
   type AgentToolName,
 } from "./agent_tool_consent";
+import { createLoggedHandler } from "../safe_handle";
+import log from "electron-log";
 
+const logger = log.scope("agent_tool_handlers");
+const handle = createLoggedHandler(logger);
 export function registerAgentToolHandlers() {
-  // Get all tool consents
-  ipcMain.handle("agent-tool:get-consents", async () => {
-    return getAllAgentToolConsents();
-  });
-
   // Get list of available tools
-  ipcMain.handle("agent-tool:get-tools", async () => {
+  handle("agent-tool:get-tools", async () => {
     return AGENT_TOOLS;
   });
 
+  // Get all tool consents
+  handle("agent-tool:get-consents", async () => {
+    return getAllAgentToolConsents();
+  });
+
   // Set consent for a single tool
-  ipcMain.handle(
+  handle(
     "agent-tool:set-consent",
-    async (
-      _event,
-      params: { toolName: AgentToolName; consent: Consent },
-    ) => {
+    async (_event, params: { toolName: AgentToolName; consent: Consent }) => {
       await setAgentToolConsent(params.toolName, params.consent);
       return { success: true };
     },
   );
 
   // Handle consent response from renderer
-  ipcMain.on(
+  handle(
     "agent-tool:consent-response",
-    (
+    async (
       _event,
       params: {
         requestId: string;
@@ -49,4 +49,3 @@ export function registerAgentToolHandlers() {
     },
   );
 }
-

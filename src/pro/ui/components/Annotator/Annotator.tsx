@@ -377,6 +377,7 @@ export const Annotator = ({
             spanRef={spanRef}
             inputRef={inputRef}
             color={input.color}
+            containerRef={containerRef}
           />
         ))}
 

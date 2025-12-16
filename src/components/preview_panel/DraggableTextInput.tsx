@@ -26,6 +26,7 @@ interface DraggableTextInputProps {
   spanRef: React.MutableRefObject<HTMLSpanElement[]>;
   inputRef: React.MutableRefObject<HTMLInputElement[]>;
   color: string;
+  containerRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 export const DraggableTextInput = ({
@@ -40,15 +41,33 @@ export const DraggableTextInput = ({
   spanRef,
   inputRef,
   color,
+  containerRef,
 }: DraggableTextInputProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const dragOffset = useRef({ x: 0, y: 0 });
+  const elementRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      if (isDragging) {
-        const newX = e.clientX - dragOffset.current.x;
-        const newY = e.clientY - dragOffset.current.y;
+      e.preventDefault();
+      e.stopPropagation();
+      if (isDragging && containerRef?.current && elementRef.current) {
+        const containerRect = containerRef.current.getBoundingClientRect();
+        const elementRect = elementRef.current.getBoundingClientRect();
+
+        let newX = e.clientX - dragOffset.current.x;
+        let newY = e.clientY - dragOffset.current.y;
+
+        // Constrain within container bounds
+        newX = Math.max(
+          0,
+          Math.min(newX, containerRect.width - elementRect.width),
+        );
+        newY = Math.max(
+          0,
+          Math.min(newY, containerRect.height - elementRect.height),
+        );
+
         // Calculate adjusted coordinates for the canvas
         const adjustedX = newX / scale;
         const adjustedY = newY / scale;
@@ -69,10 +88,11 @@ export const DraggableTextInput = ({
         document.removeEventListener("mouseup", handleMouseUp);
       };
     }
-  }, [isDragging, input.id, onMove, scale]);
+  }, [isDragging, input.id, onMove, scale, containerRef]);
 
   return (
     <div
+      ref={elementRef}
       className="absolute z-[999]"
       style={{
         left: `${input.x}px`,

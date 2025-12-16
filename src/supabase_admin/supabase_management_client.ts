@@ -17,7 +17,7 @@ const logger = log.scope("supabase_management_client");
 // Interfaces for file collection and caching
 // ─────────────────────────────────────────────────────────────────────
 
-export interface ZipFileEntry {
+interface ZipFileEntry {
   relativePath: string;
   content: Buffer;
   date: Date;
@@ -263,7 +263,7 @@ export async function listSupabaseBranches({
 // Deploy Supabase Functions with shared module support
 // ─────────────────────────────────────────────────────────────────────
 
-export async function deploySupabaseFunctions({
+export async function deploySupabaseFunction({
   supabaseProjectId,
   functionName,
   appPath,
@@ -368,11 +368,9 @@ export async function deploySupabaseFunctions({
 // ─────────────────────────────────────────────────────────────────────
 
 async function collectFunctionFiles({
-  appPath,
   functionPath,
   functionName,
 }: {
-  appPath: string;
   functionPath: string;
   functionName: string;
 }): Promise<FunctionFilesResult> {
@@ -383,44 +381,6 @@ async function collectFunctionFiles({
 
   if (stats.isDirectory()) {
     functionDirectory = normalizedFunctionPath;
-  } else {
-    functionDirectory = findFunctionDirectory(
-      normalizedFunctionPath,
-      functionName,
-    );
-
-    if (!functionDirectory) {
-      // Single file case - just return the file
-      // Prefix with functionName so relative imports like "../_shared/" resolve correctly
-      const relativeFilePath = toPosixPath(
-        path.relative(appPath, normalizedFunctionPath),
-      );
-      const strippedPath = stripSupabaseFunctionsPrefix(
-        relativeFilePath,
-        functionName,
-      );
-      const zipRelativePath = path.posix.join(functionName, strippedPath);
-      const content = await fsPromises.readFile(normalizedFunctionPath);
-      return {
-        files: [
-          {
-            relativePath: zipRelativePath,
-            content,
-            date: stats.mtime,
-          },
-        ],
-        signature: buildSignature([
-          {
-            absolutePath: normalizedFunctionPath,
-            relativePath: zipRelativePath,
-            mtimeMs: stats.mtimeMs,
-            size: stats.size,
-          },
-        ]),
-        entrypointPath: zipRelativePath,
-        cacheKey: normalizedFunctionPath,
-      };
-    }
   }
 
   if (!functionDirectory) {
@@ -555,34 +515,6 @@ async function loadZipEntries(
 
 export function toPosixPath(filePath: string): string {
   return filePath.split(path.sep).join(path.posix.sep);
-}
-
-export function findFunctionDirectory(
-  filePath: string,
-  functionName: string,
-): string | null {
-  let currentDir = path.dirname(filePath);
-
-  while (true) {
-    const parentDir = path.dirname(currentDir);
-    const normalized = toPosixPath(currentDir);
-
-    if (normalized.endsWith(`/supabase/functions/${functionName}`)) {
-      return currentDir;
-    }
-
-    if (!normalized.includes("/supabase/functions/")) {
-      break;
-    }
-
-    if (currentDir === parentDir) {
-      break;
-    }
-
-    currentDir = parentDir;
-  }
-
-  return null;
 }
 
 export function stripSupabaseFunctionsPrefix(

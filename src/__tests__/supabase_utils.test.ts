@@ -6,7 +6,6 @@ import {
 } from "@/supabase_admin/supabase_utils";
 import {
   toPosixPath,
-  findFunctionDirectory,
   stripSupabaseFunctionsPrefix,
   buildSignature,
   type FileStatEntry,
@@ -193,66 +192,6 @@ describe("toPosixPath", () => {
   // This test is for documentation - actual behavior depends on platform
   it("should handle path with no separators", () => {
     expect(toPosixPath("filename")).toBe("filename");
-  });
-});
-
-describe("findFunctionDirectory", () => {
-  describe("finds function directory from file paths", () => {
-    it("should find directory from index.ts path", () => {
-      const result = findFunctionDirectory(
-        "/app/supabase/functions/hello/index.ts",
-        "hello",
-      );
-      expect(result).toBe("/app/supabase/functions/hello");
-    });
-
-    it("should find directory from nested file path", () => {
-      const result = findFunctionDirectory(
-        "/app/supabase/functions/hello/lib/utils.ts",
-        "hello",
-      );
-      expect(result).toBe("/app/supabase/functions/hello");
-    });
-
-    it("should find directory from deeply nested path", () => {
-      const result = findFunctionDirectory(
-        "/app/supabase/functions/hello/src/helpers/format.ts",
-        "hello",
-      );
-      expect(result).toBe("/app/supabase/functions/hello");
-    });
-  });
-
-  describe("returns null for invalid paths", () => {
-    it("should return null when function name doesn't match", () => {
-      const result = findFunctionDirectory(
-        "/app/supabase/functions/hello/index.ts",
-        "world",
-      );
-      expect(result).toBe(null);
-    });
-
-    it("should return null for non-functions path", () => {
-      const result = findFunctionDirectory("/app/src/utils.ts", "hello");
-      expect(result).toBe(null);
-    });
-
-    it("should return null for _shared paths", () => {
-      const result = findFunctionDirectory(
-        "/app/supabase/functions/_shared/utils.ts",
-        "_shared",
-      );
-      // _shared doesn't match the pattern /supabase/functions/functionName
-      expect(result).toBe("/app/supabase/functions/_shared");
-    });
-
-    it("should return null for paths outside supabase", () => {
-      const result = findFunctionDirectory(
-        "/app/node_modules/something/index.ts",
-        "hello",
-      );
-      expect(result).toBe(null);
-    });
   });
 });
 

@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import log from "electron-log";
-import { deploySupabaseFunctions } from "./supabase_management_client";
+import { deploySupabaseFunction } from "./supabase_management_client";
 
 const logger = log.scope("supabase_utils");
 
@@ -113,7 +113,7 @@ export async function deployAllSupabaseFunctions({
       try {
         logger.info(`Deploying function: ${functionName}`);
 
-        await deploySupabaseFunctions({
+        await deploySupabaseFunction({
           supabaseProjectId,
           functionName,
           appPath,

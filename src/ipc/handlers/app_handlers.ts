@@ -35,7 +35,7 @@ import killPort from "kill-port";
 import util from "util";
 import log from "electron-log";
 import {
-  deploySupabaseFunctions,
+  deploySupabaseFunction,
   getSupabaseProjectName,
 } from "../../supabase_admin/supabase_management_client";
 import { createLoggedHandler } from "./safe_handle";
@@ -1002,6 +1002,8 @@ export function registerAppHandlers() {
         content,
       }: { appId: number; filePath: string; content: string },
     ): Promise<EditAppFileReturnType> => {
+      // It should already be normalized, but just in case.
+      filePath = normalizePath(filePath);
       const app = await db.query.apps.findFirst({
         where: eq(apps.id, appId),
       });
@@ -1085,7 +1087,7 @@ export function registerAppHandlers() {
           // Regular function file - deploy just this function
           try {
             const functionName = extractFunctionNameFromPath(filePath);
-            await deploySupabaseFunctions({
+            await deploySupabaseFunction({
               supabaseProjectId: app.supabaseProjectId,
               functionName,
               appPath,

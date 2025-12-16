@@ -10,7 +10,7 @@ import log from "electron-log";
 import { executeAddDependency } from "./executeAddDependency";
 import {
   deleteSupabaseFunction,
-  deploySupabaseFunctions,
+  deploySupabaseFunction,
   executeSupabaseSql,
 } from "../../supabase_admin/supabase_management_client";
 import {
@@ -342,7 +342,7 @@ export async function processFullResponseActions(
       // Deploy renamed function (skip if shared modules changed - will be handled later)
       if (isServerFunction(tag.to) && !sharedModulesChanged) {
         try {
-          await deploySupabaseFunctions({
+          await deploySupabaseFunction({
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
             functionName: extractFunctionNameFromPath(tag.to),
             appPath,
@@ -389,7 +389,7 @@ export async function processFullResponseActions(
         // If server function (not shared), redeploy (skip if shared modules changed)
         if (isServerFunction(filePath) && !sharedModulesChanged) {
           try {
-            await deploySupabaseFunctions({
+            await deploySupabaseFunction({
               supabaseProjectId: chatWithApp.app.supabaseProjectId!,
               functionName: extractFunctionNameFromPath(filePath),
               appPath,
@@ -459,7 +459,7 @@ export async function processFullResponseActions(
         !sharedModulesChanged
       ) {
         try {
-          await deploySupabaseFunctions({
+          await deploySupabaseFunction({
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
             functionName: extractFunctionNameFromPath(filePath),
             appPath,

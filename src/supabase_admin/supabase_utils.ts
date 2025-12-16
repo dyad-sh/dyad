@@ -1,12 +1,60 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import log from "electron-log";
-import { deploySupabaseFunctions } from "./supabase_management_client";
+import { deploySupabaseFunction } from "./supabase_management_client";
 
 const logger = log.scope("supabase_utils");
 
-export function isServerFunction(filePath: string) {
-  return filePath.startsWith("supabase/functions/");
+/**
+ * Checks if a file path is a Supabase edge function
+ * (i.e., inside supabase/functions/ but NOT in _shared/)
+ */
+export function isServerFunction(filePath: string): boolean {
+  return (
+    filePath.startsWith("supabase/functions/") &&
+    !filePath.startsWith("supabase/functions/_shared/")
+  );
+}
+
+/**
+ * Checks if a file path is a shared module in supabase/functions/_shared/
+ */
+export function isSharedServerModule(filePath: string): boolean {
+  return filePath.startsWith("supabase/functions/_shared/");
+}
+
+/**
+ * Extracts the function name from a Supabase function file path.
+ * Handles nested paths like "supabase/functions/hello/lib/utils.ts" → "hello"
+ *
+ * @param filePath - A path like "supabase/functions/{functionName}/..."
+ * @returns The function name
+ * @throws Error if the path is not a valid function path
+ */
+export function extractFunctionNameFromPath(filePath: string): string {
+  // Normalize path separators to forward slashes
+  const normalized = filePath.replace(/\\/g, "/");
+
+  // Match the pattern: supabase/functions/{functionName}/...
+  // The function name is the segment immediately after "supabase/functions/"
+  const match = normalized.match(/^supabase\/functions\/([^/]+)/);
+
+  if (!match) {
+    throw new Error(
+      `Invalid Supabase function path: ${filePath}. Expected format: supabase/functions/{functionName}/...`,
+    );
+  }
+
+  const functionName = match[1];
+
+  // Exclude _shared and other special directories
+  if (functionName.startsWith("_")) {
+    throw new Error(
+      `Invalid Supabase function path: ${filePath}. Function names starting with "_" are reserved for special directories.`,
+    );
+  }
+
+  return functionName;
 }
 
 /**
@@ -37,7 +85,10 @@ export async function deployAllSupabaseFunctions({
   try {
     // Read all directories in supabase/functions
     const entries = await fs.readdir(functionsDir, { withFileTypes: true });
-    const functionDirs = entries.filter((entry) => entry.isDirectory());
+    // Filter out _shared and other non-function directories
+    const functionDirs = entries.filter(
+      (entry) => entry.isDirectory() && !entry.name.startsWith("_"),
+    );
 
     logger.info(
       `Found ${functionDirs.length} functions to deploy in ${functionsDir}`,
@@ -46,7 +97,8 @@ export async function deployAllSupabaseFunctions({
     // Deploy each function
     for (const functionDir of functionDirs) {
       const functionName = functionDir.name;
-      const indexPath = path.join(functionsDir, functionName, "index.ts");
+      const functionPath = path.join(functionsDir, functionName);
+      const indexPath = path.join(functionPath, "index.ts");
 
       // Check if index.ts exists
       try {
@@ -59,13 +111,12 @@ export async function deployAllSupabaseFunctions({
       }
 
       try {
-        const content = await fs.readFile(indexPath, "utf-8");
         logger.info(`Deploying function: ${functionName}`);
 
-        await deploySupabaseFunctions({
+        await deploySupabaseFunction({
           supabaseProjectId,
           functionName,
-          content,
+          appPath,
         });
 
         logger.info(`Successfully deployed function: ${functionName}`);

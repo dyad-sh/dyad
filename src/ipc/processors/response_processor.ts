@@ -10,10 +10,15 @@ import log from "electron-log";
 import { executeAddDependency } from "./executeAddDependency";
 import {
   deleteSupabaseFunction,
-  deploySupabaseFunctions,
+  deploySupabaseFunction,
   executeSupabaseSql,
 } from "../../supabase_admin/supabase_management_client";
-import { isServerFunction } from "../../supabase_admin/supabase_utils";
+import {
+  isServerFunction,
+  isSharedServerModule,
+  deployAllSupabaseFunctions,
+  extractFunctionNameFromPath,
+} from "../../supabase_admin/supabase_utils";
 import { UserSettings } from "../../lib/schemas";
 import {
   gitCommit,
@@ -43,18 +48,6 @@ const logger = log.scope("response_processor");
 interface Output {
   message: string;
   error: unknown;
-}
-
-function getFunctionNameFromPath(input: string): string {
-  return path.basename(path.extname(input) ? path.dirname(input) : input);
-}
-
-async function readFileFromFunctionPath(input: string): Promise<string> {
-  // Sometimes, the path given is a directory, sometimes it's the file itself.
-  if (path.extname(input) === "") {
-    return readFile(path.join(input, "index.ts"), "utf8");
-  }
-  return readFile(input, "utf8");
 }
 
 export async function dryRunSearchReplace({
@@ -153,6 +146,8 @@ export async function processFullResponseActions(
   const renamedFiles: string[] = [];
   const deletedFiles: string[] = [];
   let hasChanges = false;
+  // Track if any shared modules were modified
+  let sharedModulesChanged = false;
 
   const warnings: Output[] = [];
   const errors: Output[] = [];
@@ -258,6 +253,11 @@ export async function processFullResponseActions(
     for (const filePath of dyadDeletePaths) {
       const fullFilePath = safeJoin(appPath, filePath);
 
+      // Track if this is a shared module
+      if (isSharedServerModule(filePath)) {
+        sharedModulesChanged = true;
+      }
+
       // Delete the file if it exists
       if (fs.existsSync(fullFilePath)) {
         if (fs.lstatSync(fullFilePath).isDirectory()) {
@@ -278,11 +278,12 @@ export async function processFullResponseActions(
       } else {
         logger.warn(`File to delete does not exist: ${fullFilePath}`);
       }
+      // Only delete individual functions, not shared modules
       if (isServerFunction(filePath)) {
         try {
           await deleteSupabaseFunction({
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
-            functionName: getFunctionNameFromPath(filePath),
+            functionName: extractFunctionNameFromPath(filePath),
           });
         } catch (error) {
           errors.push({
@@ -297,6 +298,11 @@ export async function processFullResponseActions(
     for (const tag of dyadRenameTags) {
       const fromPath = safeJoin(appPath, tag.from);
       const toPath = safeJoin(appPath, tag.to);
+
+      // Track if this involves shared modules
+      if (isSharedServerModule(tag.from) || isSharedServerModule(tag.to)) {
+        sharedModulesChanged = true;
+      }
 
       // Ensure target directory exists
       const dirPath = path.dirname(toPath);
@@ -319,11 +325,12 @@ export async function processFullResponseActions(
       } else {
         logger.warn(`Source file for rename does not exist: ${fromPath}`);
       }
+      // Only handle individual functions, not shared modules
       if (isServerFunction(tag.from)) {
         try {
           await deleteSupabaseFunction({
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
-            functionName: getFunctionNameFromPath(tag.from),
+            functionName: extractFunctionNameFromPath(tag.from),
           });
         } catch (error) {
           warnings.push({
@@ -332,12 +339,13 @@ export async function processFullResponseActions(
           });
         }
       }
-      if (isServerFunction(tag.to)) {
+      // Deploy renamed function (skip if shared modules changed - will be handled later)
+      if (isServerFunction(tag.to) && !sharedModulesChanged) {
         try {
-          await deploySupabaseFunctions({
+          await deploySupabaseFunction({
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
-            functionName: getFunctionNameFromPath(tag.to),
-            content: await readFileFromFunctionPath(toPath),
+            functionName: extractFunctionNameFromPath(tag.to),
+            appPath,
           });
         } catch (error) {
           errors.push({
@@ -353,6 +361,12 @@ export async function processFullResponseActions(
     for (const tag of dyadSearchReplaceTags) {
       const filePath = tag.path;
       const fullFilePath = safeJoin(appPath, filePath);
+
+      // Track if this is a shared module
+      if (isSharedServerModule(filePath)) {
+        sharedModulesChanged = true;
+      }
+
       try {
         if (!fs.existsSync(fullFilePath)) {
           // Do not show warning to user because we already attempt to do a <dyad-write> tag to fix it.
@@ -372,13 +386,13 @@ export async function processFullResponseActions(
         fs.writeFileSync(fullFilePath, result.content);
         writtenFiles.push(filePath);
 
-        // If server function, redeploy
-        if (isServerFunction(filePath)) {
+        // If server function (not shared), redeploy (skip if shared modules changed)
+        if (isServerFunction(filePath) && !sharedModulesChanged) {
           try {
-            await deploySupabaseFunctions({
+            await deploySupabaseFunction({
               supabaseProjectId: chatWithApp.app.supabaseProjectId!,
-              functionName: path.basename(path.dirname(filePath)),
-              content: result.content,
+              functionName: extractFunctionNameFromPath(filePath),
+              appPath,
             });
           } catch (error) {
             errors.push({
@@ -400,6 +414,11 @@ export async function processFullResponseActions(
       const filePath = tag.path;
       let content: string | Buffer = tag.content;
       const fullFilePath = safeJoin(appPath, filePath);
+
+      // Track if this is a shared module
+      if (isSharedServerModule(filePath)) {
+        sharedModulesChanged = true;
+      }
 
       // Check if content (stripped of whitespace) exactly matches a file ID and replace with actual file content
       if (fileUploadsMap) {
@@ -433,12 +452,17 @@ export async function processFullResponseActions(
       fs.writeFileSync(fullFilePath, content);
       logger.log(`Successfully wrote file: ${fullFilePath}`);
       writtenFiles.push(filePath);
-      if (isServerFunction(filePath) && typeof content === "string") {
+      // Deploy individual function (skip if shared modules changed - will be handled later)
+      if (
+        isServerFunction(filePath) &&
+        typeof content === "string" &&
+        !sharedModulesChanged
+      ) {
         try {
-          await deploySupabaseFunctions({
+          await deploySupabaseFunction({
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
-            functionName: path.basename(path.dirname(filePath)),
-            content: content,
+            functionName: extractFunctionNameFromPath(filePath),
+            appPath,
           });
         } catch (error) {
           errors.push({
@@ -446,6 +470,34 @@ export async function processFullResponseActions(
             error: error,
           });
         }
+      }
+    }
+
+    // If shared modules changed, redeploy all functions
+    if (sharedModulesChanged && chatWithApp.app.supabaseProjectId) {
+      try {
+        logger.info(
+          "Shared modules changed, redeploying all Supabase functions",
+        );
+        const deployErrors = await deployAllSupabaseFunctions({
+          appPath,
+          supabaseProjectId: chatWithApp.app.supabaseProjectId,
+        });
+        if (deployErrors.length > 0) {
+          for (const err of deployErrors) {
+            errors.push({
+              message:
+                "Failed to deploy Supabase function after shared module change",
+              error: err,
+            });
+          }
+        }
+      } catch (error) {
+        errors.push({
+          message:
+            "Failed to redeploy all Supabase functions after shared module change",
+          error: error,
+        });
       }
     }
 

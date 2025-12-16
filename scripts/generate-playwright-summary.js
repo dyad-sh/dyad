@@ -3,6 +3,13 @@
 
 const fs = require("fs");
 
+// Strip ANSI escape codes from terminal output
+function stripAnsi(str) {
+  if (!str) return str;
+  // eslint-disable-next-line no-control-regex
+  return str.replace(/\x1b\[[0-9;]*m/g, "").replace(/\u001b\[[0-9;]*m/g, "");
+}
+
 async function run({ github, context, core }) {
   // Read the JSON report
   const reportPath = "playwright-report/results.json";
@@ -89,9 +96,11 @@ async function run({ github, context, core }) {
                 status === "interrupted"
               ) {
                 resultsByOs[targetOs].failed++;
+                const errorMsg =
+                  result.error?.message?.split("\n")[0] || "Test failed";
                 resultsByOs[targetOs].failures.push({
                   title: `${suiteTitle} > ${spec.title}`,
-                  error: result.error?.message?.split("\n")[0] || "Test failed",
+                  error: stripAnsi(errorMsg),
                 });
               } else if (status === "skipped") {
                 resultsByOs[targetOs].skipped++;

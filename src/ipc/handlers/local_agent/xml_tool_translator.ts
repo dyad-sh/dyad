@@ -7,7 +7,7 @@
  * - Feeding back to model in native tool call format
  */
 
-import type { ToolCallPart, } from "ai";
+import type { ToolCallPart } from "ai";
 
 // Escape XML special characters in attribute values
 function escapeXmlAttr(str: string): string {
@@ -20,10 +20,7 @@ function escapeXmlAttr(str: string): string {
 
 // Escape XML content (less strict than attributes)
 function escapeXmlContent(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 /**
@@ -68,7 +65,9 @@ ${args.operations ?? ""}
       return `<dyad-read path="${escapeXmlAttr(String(args.path ?? ""))}"></dyad-read>`;
 
     case "list_files":
-      const dir = args.directory ? ` directory="${escapeXmlAttr(String(args.directory))}"` : "";
+      const dir = args.directory
+        ? ` directory="${escapeXmlAttr(String(args.directory))}"`
+        : "";
       return `<dyad-list-files${dir}></dyad-list-files>`;
 
     case "get_database_schema":
@@ -136,7 +135,6 @@ export function wrapThinking(text: string): string {
 }
 
 // Regex patterns for parsing XML tags
-
 
 interface ParsedToolCall {
   toolName: string;
@@ -292,7 +290,11 @@ function parseSpecificTag(
           toolCall: {
             toolName: "search_replace",
             toolCallId: generateId(),
-            args: { path: m[1], description: m[2] || "", operations: m[3].trim() },
+            args: {
+              path: m[1],
+              description: m[2] || "",
+              operations: m[3].trim(),
+            },
           },
         };
       }
@@ -313,7 +315,7 @@ function parseSpecificTag(
       break;
     }
     case "dyad-list-files": {
-      const m = /<dyad-list-files(?:\s+directory="([^"]*)")?>/. exec(fullMatch);
+      const m = /<dyad-list-files(?:\s+directory="([^"]*)")?>/.exec(fullMatch);
       if (m) {
         return {
           type: "tool-call",
@@ -383,7 +385,7 @@ export function parsedContentToToolCallParts(
         type: "tool-call",
         toolCallId: item.toolCall.toolCallId,
         toolName: item.toolCall.toolName,
-        args: item.toolCall.args,
+        input: item.toolCall.args,
       });
     } else if (item.type === "thinking" && item.content) {
       // Thinking blocks are converted to text for context
@@ -393,4 +395,3 @@ export function parsedContentToToolCallParts(
 
   return parts;
 }
-

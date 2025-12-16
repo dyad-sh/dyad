@@ -17,7 +17,7 @@ import {
   getGitUncommittedFiles,
 } from "../utils/git_utils";
 import {
-  deploySupabaseFunctions,
+  deploySupabaseFunction,
   deleteSupabaseFunction,
   executeSupabaseSql,
 } from "../../supabase_admin/supabase_management_client";
@@ -32,7 +32,6 @@ import { writeMigrationFile } from "../utils/file_utils";
 import { readSettings } from "../../main/settings";
 import { getSupabaseContext } from "../../supabase_admin/supabase_context";
 import { extractCodebase } from "../../utils/codebase";
-
 
 const readFile = fs.promises.readFile;
 const logger = log.scope("file_operations");
@@ -61,11 +60,6 @@ export function getSharedModulesChanged() {
 
 function getFunctionNameFromPath(input: string): string {
   return path.basename(path.extname(input) ? path.dirname(input) : input);
-}
-
-function getFunctionPath(appPath: string, filePath: string): string {
-  const functionName = getFunctionNameFromPath(filePath);
-  return path.join(appPath, "supabase", "functions", functionName);
 }
 
 /**
@@ -100,11 +94,10 @@ export async function executeWriteFile(
       !sharedModulesChanged
     ) {
       try {
-        await deploySupabaseFunctions({
+        await deploySupabaseFunction({
           supabaseProjectId: ctx.supabaseProjectId,
           functionName: path.basename(path.dirname(filePath)),
           appPath: ctx.appPath,
-          functionPath: getFunctionPath(ctx.appPath, filePath),
         });
       } catch (error) {
         return {
@@ -224,11 +217,10 @@ export async function executeRenameFile(
         }
         if (isServerFunction(toPath) && !sharedModulesChanged) {
           try {
-            await deploySupabaseFunctions({
+            await deploySupabaseFunction({
               supabaseProjectId: ctx.supabaseProjectId,
               functionName: getFunctionNameFromPath(toPath),
               appPath: ctx.appPath,
-              functionPath: getFunctionPath(ctx.appPath, toPath),
             });
           } catch (error) {
             return {
@@ -288,11 +280,10 @@ export async function executeSearchReplaceFile(
       !sharedModulesChanged
     ) {
       try {
-        await deploySupabaseFunctions({
+        await deploySupabaseFunction({
           supabaseProjectId: ctx.supabaseProjectId,
           functionName: path.basename(path.dirname(filePath)),
           appPath: ctx.appPath,
-          functionPath: getFunctionPath(ctx.appPath, filePath),
         });
       } catch (error) {
         return {
@@ -304,7 +295,10 @@ export async function executeSearchReplaceFile(
 
     return { success: true };
   } catch (error) {
-    return { success: false, error: `Failed to apply search-replace: ${error}` };
+    return {
+      success: false,
+      error: `Failed to apply search-replace: ${error}`,
+    };
   }
 }
 
@@ -320,6 +314,13 @@ export async function executeAddDependencies(
     const message = messageId
       ? await db.query.messages.findFirst({ where: eq(messages.id, messageId) })
       : undefined;
+
+    if (!message) {
+      return {
+        success: false,
+        error: "Message not found for adding dependencies",
+      };
+    }
 
     await executeAddDependency({
       packages,
@@ -405,7 +406,11 @@ export async function listFilesInApp(
 
     const { formattedOutput } = await extractCodebase({
       appPath: targetPath,
-      chatContext: null,
+      chatContext: {
+        contextPaths: [],
+        smartContextAutoIncludes: [],
+        excludePaths: [],
+      },
     });
 
     return { success: true, files: formattedOutput };
@@ -478,7 +483,12 @@ export async function commitAllChanges(
   packagesAdded: string[],
   sqlQueriesExecuted: number,
   chatSummary?: string,
-): Promise<{ success: boolean; commitHash?: string; extraFiles?: string[]; error?: string }> {
+): Promise<{
+  success: boolean;
+  commitHash?: string;
+  extraFiles?: string[];
+  error?: string;
+}> {
   const hasChanges =
     writtenFiles.length > 0 ||
     deletedFiles.length > 0 ||
@@ -518,7 +528,9 @@ export async function commitAllChanges(
     });
 
     // Check for uncommitted changes
-    const uncommittedFiles = await getGitUncommittedFiles({ path: ctx.appPath });
+    const uncommittedFiles = await getGitUncommittedFiles({
+      path: ctx.appPath,
+    });
 
     if (uncommittedFiles.length > 0) {
       await gitAddAll({ path: ctx.appPath });
@@ -531,6 +543,7 @@ export async function commitAllChanges(
       } catch (error) {
         logger.error(
           `Failed to commit extra files: ${uncommittedFiles.join(", ")}`,
+          error,
         );
       }
     }
@@ -544,4 +557,3 @@ export async function commitAllChanges(
     return { success: false, error: `Failed to commit changes: ${error}` };
   }
 }
-

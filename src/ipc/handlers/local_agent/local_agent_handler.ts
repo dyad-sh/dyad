@@ -4,7 +4,7 @@
  */
 
 import { IpcMainInvokeEvent } from "electron";
-import { streamText, ToolSet, } from "ai";
+import { streamText, ToolSet, stepCountIs } from "ai";
 import log from "electron-log";
 import { db } from "../../../db";
 import { chats, messages } from "../../../db/schema";
@@ -20,7 +20,7 @@ import { getMaxTokens, getTemperature } from "../../utils/token_utils";
 import { readAiRules } from "../../../prompts/system_prompt";
 import { constructLocalAgentPrompt } from "../../../prompts/local_agent_prompt";
 import { buildAgentToolSet, type ToolExecuteContext } from "./tool_definitions";
-import { } from "./xml_tool_translator";
+import {} from "./xml_tool_translator";
 import {
   resetSharedModulesFlag,
   deployAllFunctionsIfNeeded,
@@ -34,8 +34,6 @@ import { getCurrentCommitHash } from "../../utils/git_utils";
 import type { ChatStreamParams, ChatResponseEnd } from "../../ipc_types";
 
 const logger = log.scope("local_agent_handler");
-
-type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
 // Safely parse an MCP tool key
 function parseMcpToolKey(toolKey: string): {
@@ -148,12 +146,10 @@ export async function handleLocalAgentStream(
 
   try {
     // Build system prompt
-    const systemPrompt = constructLocalAgentPrompt(
-      await readAiRules(appPath),
-    );
+    const systemPrompt = constructLocalAgentPrompt(await readAiRules(appPath));
 
     // Get model client
-    const { modelClient, isEngineEnabled } = await getModelClient(
+    const { modelClient } = await getModelClient(
       settings.selectedModel,
       settings,
     );
@@ -193,7 +189,7 @@ export async function handleLocalAgentStream(
       system: systemPrompt,
       messages: messageHistory,
       tools: allTools,
-      maxSteps: 20, // Allow multiple tool call rounds
+      stopWhen: stepCountIs(20), // Allow multiple tool call rounds
       abortSignal: abortController.signal,
       onFinish: async (response) => {
         const totalTokens = response.usage?.totalTokens;
@@ -269,7 +265,7 @@ export async function handleLocalAgentStream(
           // We track which files were modified
           trackToolExecution(
             part.toolName,
-            part.args,
+            part.input as Record<string, unknown>,
             writtenFiles,
             deletedFiles,
             renamedFiles,
@@ -495,7 +491,8 @@ async function getMcpTools(
             );
 
             const res = await original.execute?.(args, execCtx);
-            const resultStr = typeof res === "string" ? res : JSON.stringify(res);
+            const resultStr =
+              typeof res === "string" ? res : JSON.stringify(res);
 
             toolCtx.onXmlChunk(
               `<dyad-mcp-tool-result server="${serverName}" tool="${toolName}">\n${resultStr}\n</dyad-mcp-tool-result>`,
@@ -512,4 +509,3 @@ async function getMcpTools(
 
   return mcpToolSet;
 }
-

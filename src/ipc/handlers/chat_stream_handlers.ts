@@ -86,7 +86,7 @@ import { AI_STREAMING_ERROR_MESSAGE_PREFIX } from "@/shared/texts";
 import { getCurrentCommitHash } from "../utils/git_utils";
 import {
   processChatMessagesWithVersionedFiles as getVersionedFiles,
-  VersionedFiles as VersionedFiles,
+  VersionedFiles,
 } from "../utils/versioned_codebase_context";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;

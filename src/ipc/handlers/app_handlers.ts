@@ -57,8 +57,12 @@ import { getVercelTeamSlug } from "../utils/vercel_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import { AppSearchResult } from "@/lib/schemas";
 
-const DEFAULT_COMMAND =
-  "(pnpm install && pnpm run dev --port 32100) || (npm install --legacy-peer-deps && npm run dev -- --port 32100)";
+import { getAppPort } from "../../../shared/ports";
+
+function getDefaultCommand(appId: number): string {
+  const port = getAppPort(appId);
+  return `(pnpm install && pnpm run dev --port ${port}) || (npm install --legacy-peer-deps && npm run dev -- --port ${port})`;
+}
 async function copyDir(
   source: string,
   destination: string,
@@ -145,7 +149,7 @@ async function executeAppLocalNode({
   installCommand?: string | null;
   startCommand?: string | null;
 }): Promise<void> {
-  const command = getCommand({ installCommand, startCommand });
+  const command = getCommand({ appId, installCommand, startCommand });
   const spawnedProcess = spawn(command, [], {
     cwd: appPath,
     shell: true,
@@ -413,6 +417,7 @@ RUN npm install -g pnpm
   });
 
   // Run the Docker container
+  const port = getAppPort(appId);
   const process = spawn(
     "docker",
     [
@@ -421,7 +426,7 @@ RUN npm install -g pnpm
       "--name",
       containerName,
       "-p",
-      "32100:32100",
+      `${port}:${port}`,
       "-v",
       `${appPath}:/app`,
       "-v",
@@ -433,7 +438,7 @@ RUN npm install -g pnpm
       `dyad-app-${appId}`,
       "sh",
       "-c",
-      getCommand({ installCommand, startCommand }),
+      getCommand({ appId, installCommand, startCommand }),
     ],
     {
       stdio: "pipe",
@@ -812,8 +817,8 @@ export function registerAppHandlers() {
 
         const appPath = getDyadAppPath(app.path);
         try {
-          // There may have been a previous run that left a process on port 32100.
-          await cleanUpPort(32100);
+          // There may have been a previous run that left a process on this port.
+          await cleanUpPort(getAppPort(appId));
           await executeApp({
             appPath,
             appId,
@@ -913,8 +918,8 @@ export function registerAppHandlers() {
             logger.log(`App ${appId} not running. Proceeding to start.`);
           }
 
-          // There may have been a previous run that left a process on port 32100.
-          await cleanUpPort(32100);
+          // There may have been a previous run that left a process on this port.
+          await cleanUpPort(getAppPort(appId));
 
           // Now start the app again
           const app = await db.query.apps.findFirst({
@@ -1535,16 +1540,18 @@ export function registerAppHandlers() {
 }
 
 function getCommand({
+  appId,
   installCommand,
   startCommand,
 }: {
+  appId: number;
   installCommand?: string | null;
   startCommand?: string | null;
 }) {
   const hasCustomCommands = !!installCommand?.trim() && !!startCommand?.trim();
   return hasCustomCommands
     ? `${installCommand!.trim()} && ${startCommand!.trim()}`
-    : DEFAULT_COMMAND;
+    : getDefaultCommand(appId);
 }
 
 async function cleanUpPort(port: number) {

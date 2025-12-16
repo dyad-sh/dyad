@@ -1,4 +1,5 @@
 import { IpcClient } from "@/ipc/ipc_client";
+import { getAppPort } from "../../shared/ports";
 
 import { v4 as uuidv4 } from "uuid";
 
@@ -29,7 +30,7 @@ export async function neonTemplateHook({
       },
       {
         key: "NEXT_PUBLIC_SERVER_URL",
-        value: "http://localhost:32100",
+        value: `http://localhost:${getAppPort(appId)}`,
       },
       {
         key: "GMAIL_USER",

@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { GithubBranchManager } from "@/components/GithubBranchManager";
 
 interface GitHubConnectorProps {
   appId: number | null;
@@ -250,11 +251,7 @@ function ConnectedGitHubConnector({
       >
         {app.githubOrg}/{app.githubRepo}
       </a>
-      {app.githubBranch && (
-        <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
-          Branch: <span className="font-mono">{app.githubBranch}</span>
-        </p>
-      )}
+      {app.githubBranch && <GithubBranchManager appId={appId} />}
       <div className="mt-2 flex gap-2">
         <Button
           onClick={() => handleSyncToGithub(false)}

@@ -850,7 +850,14 @@ export async function gitGetMergeConflicts({
   const settings = readSettings();
   if (settings.enableNativeGit) {
     // git diff --name-only --diff-filter=U
-    const result = await exec(["diff", "--name-only", "--diff-filter=U"], path);
+    const result = (await exec(
+      ["diff", "--name-only", "--diff-filter=U"],
+      path,
+    )) as unknown as {
+      stdout: string;
+      stderr: string;
+      exitCode: number;
+    };
     if (result.exitCode !== 0) {
       throw new Error(`Failed to get merge conflicts: ${result.stderr}`);
     }

@@ -211,39 +211,7 @@ export function GithubBranchManager({
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <GitBranch className="h-4 w-4 text-gray-500" />
-          <span className="font-medium text-sm">Current Branch:</span>
-          <span
-            data-testid="current-branch-display"
-            className="font-mono text-sm bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded"
-          >
-            {currentBranch || "..."}
-          </span>
-        </div>
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={loadBranches}
-                disabled={isLoading}
-                title="Refresh branches"
-                data-testid="refresh-branches-button"
-              >
-                <RefreshCw
-                  className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
-                />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Refresh branches</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </div>
-
+    <div className="space-y-2">
       <div className="flex gap-2">
         <Select
           value={currentBranch || ""}
@@ -263,23 +231,58 @@ export function GithubBranchManager({
           <SelectContent>
             {branches.map((branch) => (
               <SelectItem key={branch} value={branch}>
-                {branch}
+                <GitBranch className="h-4 w-4 text-gray-500" />
+                <span className="font-medium text-sm">Branch:</span>
+                <span
+                  data-testid="current-branch-display"
+                  className="font-mono text-sm bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded"
+                >
+                  {branch}
+                </span>
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
 
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={loadBranches}
+                disabled={isLoading}
+                title="Refresh branches"
+                data-testid="refresh-branches-button"
+              >
+                <RefreshCw
+                  className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
+                />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Refresh branches</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+
         <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-          <DialogTrigger asChild>
-            <Button
-              variant="outline"
-              size="icon"
-              title="Create new branch"
-              data-testid="create-branch-trigger"
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-          </DialogTrigger>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    title="Create new branch"
+                    data-testid="create-branch-trigger"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </DialogTrigger>
+              </TooltipTrigger>
+              <TooltipContent>Create new branch</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Create New Branch</DialogTitle>
@@ -405,7 +408,7 @@ export function GithubBranchManager({
       {/* List of other branches with delete option? Or just rely on Select? */}
       {/* Maybe a "Manage Branches" dialog if list is long, but for now Select is fine. */}
       {branches.length > 1 && (
-        <div className="mt-2 mb-2">
+        <div className="mt-2">
           <p className="text-xs text-gray-500 mb-2">Available Branches:</p>
           <div className="space-y-1 max-h-40 overflow-y-auto border rounded-md p-2">
             {branches.map((branch) => (

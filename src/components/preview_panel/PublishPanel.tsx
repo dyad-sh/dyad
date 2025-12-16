@@ -6,7 +6,6 @@ import { VercelConnector } from "@/components/VercelConnector";
 import { PortalMigrate } from "@/components/PortalMigrate";
 import { IpcClient } from "@/ipc/ipc_client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { GithubBranchManager } from "@/components/GithubBranchManager";
 import { GithubCollaboratorManager } from "@/components/GithubCollaboratorManager";
 import { GithubConflictResolver } from "@/components/GithubConflictResolver";
 import { toast } from "sonner";
@@ -114,7 +113,6 @@ export const PublishPanel = () => {
             />
             {app.githubOrg && app.githubRepo && (
               <div className="pt-4 border-t border-gray-100 dark:border-gray-800">
-                <GithubBranchManager appId={selectedAppId} />
                 <GithubCollaboratorManager appId={selectedAppId} />
               </div>
             )}

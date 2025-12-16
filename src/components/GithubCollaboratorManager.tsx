@@ -85,7 +85,7 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
   };
 
   return (
-    <Card>
+    <Card className="mt-2">
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-lg">
           <Users className="w-5 h-5" />

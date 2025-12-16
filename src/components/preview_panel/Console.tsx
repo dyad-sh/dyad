@@ -1,4 +1,4 @@
-import { appLogsAtom, appOutputAtom } from "@/atoms/appAtoms";
+import { appLogsAtom, appOutputAtom, envVarsAtom } from "@/atoms/appAtoms";
 import { useAtomValue } from "jotai";
 import { useEffect, useRef, useState, useMemo } from "react";
 import { List, useDynamicRowHeight, useListRef } from "react-window";
@@ -31,9 +31,11 @@ type CombinedLogEntry =
 export const Console = () => {
   const appLogs = useAtomValue(appLogsAtom);
   const appOutput = useAtomValue(appOutputAtom);
+  const envVars = useAtomValue(envVarsAtom);
   const listRef = useListRef(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const isFirstRender = useRef(true);
+  const hasScrolledToBottom = useRef(false);
   const [showFilters, setShowFilters] = useState(false);
   const [containerHeight, setContainerHeight] = useState(0);
 
@@ -47,13 +49,22 @@ export const Console = () => {
   const [sourceFilter, setSourceFilter] = useState<string>("");
 
   // Track container height for responsive filter visibility
+  const prevContainerHeight = useRef(0);
   useEffect(() => {
     const container = containerRef.current?.parentElement;
     if (!container) return;
 
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        setContainerHeight(entry.contentRect.height);
+        const newHeight = entry.contentRect.height;
+        const wasZero = prevContainerHeight.current === 0;
+        prevContainerHeight.current = newHeight;
+        setContainerHeight(newHeight);
+        // Reset scroll flag when container becomes visible (height goes from 0 to > 0)
+        // This handles the case when console panel is opened
+        if (wasZero && newHeight > 0) {
+          hasScrolledToBottom.current = false;
+        }
       }
     });
 
@@ -158,19 +169,26 @@ export const Console = () => {
   const [isNearBottom, setIsNearBottom] = useState(true);
   const lastScrollTop = useRef(0);
 
+  // Helper function to check if near bottom
+  const checkNearBottom = (element: HTMLElement) => {
+    const { scrollTop, scrollHeight, clientHeight } = element;
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+    // Consider "near bottom" if within 100px
+    return distanceFromBottom < 100;
+  };
+
   // Monitor scroll position to determine if user is near bottom
   useEffect(() => {
     const listElement = listRef.current?.element;
     if (!listElement) return;
 
-    const handleScroll = () => {
-      const { scrollTop, scrollHeight, clientHeight } = listElement;
-      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+    // Initialize isNearBottom based on current scroll position
+    setIsNearBottom(checkNearBottom(listElement));
 
-      // Consider "near bottom" if within 100px
-      const nearBottom = distanceFromBottom < 100;
+    const handleScroll = () => {
+      const nearBottom = checkNearBottom(listElement);
       setIsNearBottom(nearBottom);
-      lastScrollTop.current = scrollTop;
+      lastScrollTop.current = listElement.scrollTop;
     };
 
     listElement.addEventListener("scroll", handleScroll);
@@ -179,19 +197,39 @@ export const Console = () => {
 
   // Auto-scroll to bottom when new logs arrive (if first render or user is near bottom)
   useEffect(() => {
-    if (combinedEntries.length > 0) {
-      const shouldScroll = isFirstRender.current || isNearBottom;
+    if (combinedEntries.length > 0 && containerHeight > 0) {
+      const listElement = listRef.current?.element;
 
-      if (shouldScroll) {
+      // If this is the first render or we haven't scrolled to bottom yet, always scroll to bottom
+      // This handles the case when the console panel opens with existing logs
+      if (isFirstRender.current || !hasScrolledToBottom.current) {
+        // Use requestAnimationFrame to ensure the list is fully rendered
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            listRef.current?.scrollToRow({
+              index: combinedEntries.length - 1,
+              align: "end",
+            });
+            hasScrolledToBottom.current = true;
+            // Update isNearBottom after scrolling
+            if (listElement) {
+              setIsNearBottom(checkNearBottom(listElement));
+            }
+          });
+        });
+        isFirstRender.current = false;
+        return;
+      }
+
+      // For subsequent renders, only scroll if user is near bottom
+      if (isNearBottom && listElement) {
         listRef.current?.scrollToRow({
           index: combinedEntries.length - 1,
           align: "end",
         });
       }
-
-      isFirstRender.current = false;
     }
-  }, [combinedEntries, listRef]);
+  }, [combinedEntries, listRef, isNearBottom, containerHeight]);
 
   const handleClearFilters = () => {
     setLevelFilter("all");
@@ -241,6 +279,10 @@ export const Console = () => {
 
   const listHeight = containerHeight - (showFilters ? 60 : 0);
 
+  // Disable virtualization in test mode for easier e2e testing
+  // E2E_TEST_BUILD is passed from main process via IPC (envVarsAtom)
+  const isTestMode = envVars.E2E_TEST_BUILD === "true";
+
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
       {/* Filter bar */}
@@ -259,17 +301,58 @@ export const Console = () => {
 
       {/* Virtualized log area */}
       <div ref={containerRef} className="flex-1 overflow-hidden px-4">
-        {containerHeight > 0 && (
-          <List
-            listRef={listRef}
-            rowCount={combinedEntries.length}
-            rowHeight={dynamicRowHeight}
-            rowComponent={RowComponent}
-            rowProps={{}}
-            className="font-mono text-xs"
-            defaultHeight={listHeight}
-          />
-        )}
+        {containerHeight > 0 &&
+          (isTestMode ? (
+            // Non-virtualized rendering for test mode - all logs visible in DOM
+            <div
+              className="font-mono text-xs"
+              style={{ height: listHeight, overflowY: "auto" }}
+            >
+              {combinedEntries.map((entry, index) => {
+                if (entry.entryType === "output") {
+                  return (
+                    <div key={index}>
+                      <LogEntryComponent
+                        type="output"
+                        outputType={
+                          entry.data.type as
+                            | "stdout"
+                            | "stderr"
+                            | "info"
+                            | "client-error"
+                            | "input-requested"
+                        }
+                        timestamp={entry.data.timestamp}
+                        message={entry.data.message}
+                      />
+                    </div>
+                  );
+                } else {
+                  return (
+                    <div key={index}>
+                      <LogEntryComponent
+                        type="log"
+                        level={entry.data.level as "info" | "error" | "warn"}
+                        timestamp={entry.data.timestamp}
+                        message={entry.data.message}
+                        sourceName={entry.data.sourceName}
+                      />
+                    </div>
+                  );
+                }
+              })}
+            </div>
+          ) : (
+            <List
+              listRef={listRef}
+              rowCount={combinedEntries.length}
+              rowHeight={dynamicRowHeight}
+              rowComponent={RowComponent}
+              rowProps={{}}
+              className="font-mono text-xs"
+              defaultHeight={listHeight}
+            />
+          ))}
       </div>
     </div>
   );

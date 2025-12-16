@@ -77,6 +77,7 @@ export const LogEntryComponent = (props: LogEntryProps) => {
 
   return (
     <div
+      data-testid="log-entry"
       className={`px-2 py-1 my-1 rounded transition-colors group ${getBackgroundClass()}`}
     >
       <div className="flex items-start gap-2">
@@ -96,6 +97,7 @@ export const LogEntryComponent = (props: LogEntryProps) => {
           onClick={handleSendToChat}
           title="Send to chat"
           className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"
+          data-testid="send-to-chat"
         >
           <MessageSquare size={12} className="text-gray-500" />
         </button>

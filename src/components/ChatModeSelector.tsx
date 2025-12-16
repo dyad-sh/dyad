@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useSettings } from "@/hooks/useSettings";
 import type { ChatMode } from "@/lib/schemas";
+import { isDyadProEnabled } from "@/lib/schemas";
 import { cn } from "@/lib/utils";
 import { detectIsMac } from "@/hooks/useChatModeToggle";
 
@@ -19,6 +20,7 @@ export function ChatModeSelector() {
   const { settings, updateSettings } = useSettings();
 
   const selectedMode = settings?.selectedChatMode || "build";
+  const isProEnabled = settings ? isDyadProEnabled(settings) : false;
 
   const handleModeChange = (value: string) => {
     updateSettings({ selectedChatMode: value as ChatMode });
@@ -32,6 +34,8 @@ export function ChatModeSelector() {
         return "Ask";
       case "agent":
         return "Build (MCP)";
+      case "local-agent":
+        return "Agent v2";
       default:
         return "Build";
     }
@@ -89,6 +93,16 @@ export function ChatModeSelector() {
             </span>
           </div>
         </SelectItem>
+        {isProEnabled && (
+          <SelectItem value="local-agent">
+            <div className="flex flex-col items-start">
+              <span className="font-medium">Agent v2 (experimental)</span>
+              <span className="text-xs text-muted-foreground">
+                Tool-based agent with parallel execution
+              </span>
+            </div>
+          </SelectItem>
+        )}
       </SelectContent>
     </Select>
   );

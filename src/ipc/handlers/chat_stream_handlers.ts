@@ -58,6 +58,7 @@ import { mcpServers } from "../../db/schema";
 import { requireMcpToolConsent } from "../utils/mcp_consent";
 
 import { getExtraProviderOptions } from "../utils/thinking_utils";
+import { handleLocalAgentStream } from "./local_agent/local_agent_handler";
 
 import { safeSend } from "../utils/safe_sender";
 import { cleanFullResponse } from "../utils/cleanFullResponse";
@@ -606,7 +607,8 @@ ${componentSnippet}
         let systemPrompt = constructSystemPrompt({
           aiRules: await readAiRules(getDyadAppPath(updatedChat.app.path)),
           chatMode:
-            settings.selectedChatMode === "agent"
+            settings.selectedChatMode === "agent" ||
+            settings.selectedChatMode === "local-agent"
               ? "build"
               : settings.selectedChatMode,
           enableTurboEditsV2: isTurboEditsV2Enabled(settings),
@@ -1005,6 +1007,17 @@ This conversation includes one or more image attachments. When the user uploads 
           });
           return fullResponse;
         };
+
+        // Handle local-agent mode (Agent v2)
+        if (settings.selectedChatMode === "local-agent") {
+          const result = await handleLocalAgentStream(
+            event,
+            req,
+            abortController,
+          );
+          activeStreams.delete(req.chatId);
+          return result;
+        }
 
         if (settings.selectedChatMode === "agent") {
           const tools = await getMcpTools(event);

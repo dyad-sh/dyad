@@ -127,6 +127,13 @@
       "when": 1764804624402,
       "tag": "0017_sharp_corsair",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1765844303071,
+      "tag": "0018_agent_tool_consents",
+      "breakpoints": true
     }
   ]
 }

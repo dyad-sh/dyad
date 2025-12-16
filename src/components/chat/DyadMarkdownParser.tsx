@@ -26,6 +26,9 @@ import { DyadWebCrawl } from "./DyadWebCrawl";
 import { DyadCodeSearchResult } from "./DyadCodeSearchResult";
 import { DyadCodeSearch } from "./DyadCodeSearch";
 import { DyadRead } from "./DyadRead";
+import { DyadListFiles } from "./DyadListFiles";
+import { DyadDatabaseSchema } from "./DyadDatabaseSchema";
+import { DyadToolCall } from "./DyadToolCall";
 import { mapActionToButton } from "./ChatInput";
 import { SuggestedAction } from "@/lib/schemas";
 import { FixAllErrorsButton } from "./FixAllErrorsButton";
@@ -259,6 +262,11 @@ function parseCustomTags(content: string): ContentPiece[] {
     "dyad-command",
     "dyad-mcp-tool-call",
     "dyad-mcp-tool-result",
+    "dyad-list-files",
+    "dyad-database-schema",
+    "dyad-tool-call",
+    "dyad-tool-result",
+    "dyad-tool-error",
   ];
 
   const tagPattern = new RegExp(
@@ -603,6 +611,74 @@ function renderCustomTag(
         return <>{mapActionToButton(action)}</>;
       }
       return null;
+
+    case "dyad-list-files":
+      return (
+        <DyadListFiles
+          node={{
+            properties: {
+              directory: attributes.directory || "",
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadListFiles>
+      );
+
+    case "dyad-database-schema":
+      return (
+        <DyadDatabaseSchema
+          node={{
+            properties: {
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadDatabaseSchema>
+      );
+
+    case "dyad-tool-call":
+      return (
+        <DyadToolCall
+          node={{
+            properties: {
+              toolName: attributes.tool || "",
+            },
+          }}
+        >
+          {content}
+        </DyadToolCall>
+      );
+
+    case "dyad-tool-result":
+      return (
+        <DyadToolCall
+          node={{
+            properties: {
+              toolName: attributes.tool || "",
+              isResult: true,
+            },
+          }}
+        >
+          {content}
+        </DyadToolCall>
+      );
+
+    case "dyad-tool-error":
+      return (
+        <DyadToolCall
+          node={{
+            properties: {
+              toolName: attributes.tool || "",
+              isError: true,
+            },
+          }}
+        >
+          {content}
+        </DyadToolCall>
+      );
 
     default:
       return null;

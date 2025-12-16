@@ -126,12 +126,14 @@ export class IpcClient {
     }
   >;
   private mcpConsentHandlers: Map<string, (payload: any) => void>;
+  private agentConsentHandlers: Map<string, (payload: any) => void>;
   private constructor() {
     this.ipcRenderer = (window as any).electron.ipcRenderer as IpcRenderer;
     this.chatStreams = new Map();
     this.appStreams = new Map();
     this.helpStreams = new Map();
     this.mcpConsentHandlers = new Map();
+    this.agentConsentHandlers = new Map();
     // Set up listeners for stream events
     this.ipcRenderer.on("chat:response:chunk", (data) => {
       if (
@@ -262,6 +264,12 @@ export class IpcClient {
     // MCP tool consent request from main
     this.ipcRenderer.on("mcp:tool-consent-request", (payload) => {
       const handler = this.mcpConsentHandlers.get("consent");
+      if (handler) handler(payload);
+    });
+
+    // Agent tool consent request from main
+    this.ipcRenderer.on("agent-tool:consent-request", (payload) => {
+      const handler = this.agentConsentHandlers.get("consent");
       if (handler) handler(payload);
     });
   }
@@ -907,6 +915,49 @@ export class IpcClient {
     decision: "accept-once" | "accept-always" | "decline",
   ) {
     this.ipcRenderer.invoke("mcp:tool-consent-response", {
+      requestId,
+      decision,
+    });
+  }
+
+  // --- Agent Tool Methods ---
+  public async getAgentTools() {
+    return this.ipcRenderer.invoke("agent-tool:get-tools");
+  }
+
+  public async getAgentToolConsents() {
+    return this.ipcRenderer.invoke("agent-tool:get-consents");
+  }
+
+  public async setAgentToolConsent(
+    toolName: string,
+    consent: "ask" | "always" | "denied",
+  ) {
+    return this.ipcRenderer.invoke("agent-tool:set-consent", {
+      toolName,
+      consent,
+    });
+  }
+
+  public onAgentToolConsentRequest(
+    handler: (payload: {
+      requestId: string;
+      toolName: string;
+      toolDescription?: string | null;
+      inputPreview?: string | null;
+    }) => void,
+  ) {
+    this.agentConsentHandlers.set("consent", handler as any);
+    return () => {
+      this.agentConsentHandlers.delete("consent");
+    };
+  }
+
+  public respondToAgentConsentRequest(
+    requestId: string,
+    decision: "accept-once" | "accept-always" | "decline",
+  ) {
+    this.ipcRenderer.send("agent-tool:consent-response", {
       requestId,
       decision,
     });

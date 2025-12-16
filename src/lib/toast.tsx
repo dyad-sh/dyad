@@ -4,6 +4,7 @@ import React from "react";
 import { CustomErrorToast } from "../components/CustomErrorToast";
 import { InputRequestToast } from "../components/InputRequestToast";
 import { McpConsentToast } from "../components/McpConsentToast";
+import { AgentConsentToast } from "../components/AgentConsentToast";
 
 /**
  * Toast utility functions for consistent notifications across the app
@@ -124,6 +125,27 @@ export function showMcpConsentToast(args: {
       <McpConsentToast
         toastId={t}
         serverName={args.serverName}
+        toolName={args.toolName}
+        toolDescription={args.toolDescription}
+        inputPreview={args.inputPreview}
+        onDecision={args.onDecision}
+      />
+    ),
+    { duration: Infinity },
+  );
+  return toastId;
+}
+
+export function showAgentConsentToast(args: {
+  toolName: string;
+  toolDescription?: string | null;
+  inputPreview?: string | null;
+  onDecision: (d: "accept-once" | "accept-always" | "decline") => void;
+}) {
+  const toastId = toast.custom(
+    (t) => (
+      <AgentConsentToast
+        toastId={t}
         toolName={args.toolName}
         toolDescription={args.toolDescription}
         inputPreview={args.inputPreview}

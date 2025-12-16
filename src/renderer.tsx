@@ -11,7 +11,7 @@ import {
   QueryClientProvider,
   MutationCache,
 } from "@tanstack/react-query";
-import { showError, showMcpConsentToast } from "./lib/toast";
+import { showError, showMcpConsentToast, showAgentConsentToast } from "./lib/toast";
 import { IpcClient } from "./ipc/ipc_client";
 
 // @ts-ignore
@@ -119,6 +119,20 @@ function App() {
         toolDescription: payload.toolDescription,
         inputPreview: payload.inputPreview,
         onDecision: (d) => ipc.respondToMcpConsentRequest(payload.requestId, d),
+      });
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Agent v2 tool consent requests
+  useEffect(() => {
+    const ipc = IpcClient.getInstance();
+    const unsubscribe = ipc.onAgentToolConsentRequest((payload) => {
+      showAgentConsentToast({
+        toolName: payload.toolName,
+        toolDescription: payload.toolDescription,
+        inputPreview: payload.inputPreview,
+        onDecision: (d) => ipc.respondToAgentConsentRequest(payload.requestId, d),
       });
     });
     return () => unsubscribe();

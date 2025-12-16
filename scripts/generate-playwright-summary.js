@@ -35,6 +35,7 @@ async function run({ github, context, core }) {
       skipped: 0,
       flaky: 0,
       failures: [],
+      flakyTests: [],
     };
   if (hasWindows)
     resultsByOs["Windows"] = {
@@ -43,6 +44,7 @@ async function run({ github, context, core }) {
       skipped: 0,
       flaky: 0,
       failures: [],
+      flakyTests: [],
     };
 
   // Traverse suites and collect test results
@@ -54,11 +56,15 @@ async function run({ github, context, core }) {
 
       for (const spec of suite.specs || []) {
         for (const test of spec.tests || []) {
-          // Determine OS from attachments in results (they contain platform paths)
-          for (const result of test.results || []) {
-            let os = null;
+          const results = test.results || [];
+          if (results.length === 0) continue;
 
-            // Check attachment paths for OS indicators
+          // Use the final result (last retry attempt) to determine the test outcome
+          const finalResult = results[results.length - 1];
+
+          // Determine OS from attachments in any result (they contain platform paths)
+          let os = null;
+          for (const result of results) {
             for (const att of result.attachments || []) {
               const p = att.path || "";
               if (p.includes("darwin") || p.includes("macos")) {
@@ -70,45 +76,65 @@ async function run({ github, context, core }) {
                 break;
               }
             }
+            if (os) break;
 
             // Fallback: check error stack for OS paths
-            if (!os && result.error?.stack) {
-              if (result.error.stack.includes("/Users/")) os = "macOS";
-              else if (
+            if (result.error?.stack) {
+              if (result.error.stack.includes("/Users/")) {
+                os = "macOS";
+                break;
+              } else if (
                 result.error.stack.includes("C:\\") ||
                 result.error.stack.includes("D:\\")
-              )
-                os = "Windows";
-            }
-
-            // If we still don't know, assign to both (will be roughly split)
-            const osTargets = os ? [os] : Object.keys(resultsByOs);
-
-            for (const targetOs of osTargets) {
-              if (!resultsByOs[targetOs]) continue;
-              const status = result.status;
-
-              if (status === "passed") {
-                resultsByOs[targetOs].passed++;
-              } else if (
-                status === "failed" ||
-                status === "timedOut" ||
-                status === "interrupted"
               ) {
-                resultsByOs[targetOs].failed++;
-                const errorMsg =
-                  result.error?.message?.split("\n")[0] || "Test failed";
-                resultsByOs[targetOs].failures.push({
-                  title: `${suiteTitle} > ${spec.title}`,
-                  error: stripAnsi(errorMsg),
-                });
-              } else if (status === "skipped") {
-                resultsByOs[targetOs].skipped++;
+                os = "Windows";
+                break;
               }
             }
+          }
 
-            // Only count once per test (first result or last retry)
-            break;
+          // If we still don't know, assign to both (will be roughly split)
+          const osTargets = os ? [os] : Object.keys(resultsByOs);
+
+          // Check if this is a flaky test (passed eventually but had prior failures)
+          const hadPriorFailure = results
+            .slice(0, -1)
+            .some(
+              (r) =>
+                r.status === "failed" ||
+                r.status === "timedOut" ||
+                r.status === "interrupted",
+            );
+          const isFlaky = finalResult.status === "passed" && hadPriorFailure;
+
+          for (const targetOs of osTargets) {
+            if (!resultsByOs[targetOs]) continue;
+            const status = finalResult.status;
+
+            if (isFlaky) {
+              resultsByOs[targetOs].flaky++;
+              resultsByOs[targetOs].passed++;
+              resultsByOs[targetOs].flakyTests.push({
+                title: `${suiteTitle} > ${spec.title}`,
+                retries: results.length - 1,
+              });
+            } else if (status === "passed") {
+              resultsByOs[targetOs].passed++;
+            } else if (
+              status === "failed" ||
+              status === "timedOut" ||
+              status === "interrupted"
+            ) {
+              resultsByOs[targetOs].failed++;
+              const errorMsg =
+                finalResult.error?.message?.split("\n")[0] || "Test failed";
+              resultsByOs[targetOs].failures.push({
+                title: `${suiteTitle} > ${spec.title}`,
+                error: stripAnsi(errorMsg),
+              });
+            } else if (status === "skipped") {
+              resultsByOs[targetOs].skipped++;
+            }
           }
         }
       }
@@ -125,11 +151,13 @@ async function run({ github, context, core }) {
   // Calculate totals
   let totalPassed = 0,
     totalFailed = 0,
-    totalSkipped = 0;
+    totalSkipped = 0,
+    totalFlaky = 0;
   for (const os of Object.keys(resultsByOs)) {
     totalPassed += resultsByOs[os].passed;
     totalFailed += resultsByOs[os].failed;
     totalSkipped += resultsByOs[os].skipped;
+    totalFlaky += resultsByOs[os].flaky;
   }
 
   // Build the comment
@@ -138,23 +166,42 @@ async function run({ github, context, core }) {
 
   if (allPassed) {
     comment += "### ✅ All tests passed!\n\n";
-    comment += "| OS | Passed | Skipped |\n";
-    comment += "|:---|:---:|:---:|\n";
-    for (const [os, data] of Object.entries(resultsByOs)) {
-      const emoji = os === "macOS" ? "🍎" : "🪟";
-      comment += `| ${emoji} ${os} | ${data.passed} | ${data.skipped} |\n`;
-    }
-    comment += `\n**Total: ${totalPassed} tests passed**`;
-    if (totalSkipped > 0) comment += ` (${totalSkipped} skipped)`;
-  } else {
-    comment += "### ❌ Some tests failed\n\n";
-    comment += "| OS | Passed | Failed | Skipped |\n";
+    comment += "| OS | Passed | Flaky | Skipped |\n";
     comment += "|:---|:---:|:---:|:---:|\n";
     for (const [os, data] of Object.entries(resultsByOs)) {
       const emoji = os === "macOS" ? "🍎" : "🪟";
-      comment += `| ${emoji} ${os} | ${data.passed} | ${data.failed} | ${data.skipped} |\n`;
+      comment += `| ${emoji} ${os} | ${data.passed} | ${data.flaky} | ${data.skipped} |\n`;
+    }
+    comment += `\n**Total: ${totalPassed} tests passed**`;
+    if (totalFlaky > 0) comment += ` (${totalFlaky} flaky)`;
+    if (totalSkipped > 0) comment += ` (${totalSkipped} skipped)`;
+
+    // List flaky tests even when all passed
+    if (totalFlaky > 0) {
+      comment += "\n\n### ⚠️ Flaky Tests\n\n";
+      for (const [os, data] of Object.entries(resultsByOs)) {
+        if (data.flakyTests.length === 0) continue;
+        const emoji = os === "macOS" ? "🍎" : "🪟";
+        comment += `#### ${emoji} ${os}\n\n`;
+        for (const f of data.flakyTests.slice(0, 10)) {
+          comment += `- \`${f.title}\` (passed after ${f.retries} ${f.retries === 1 ? "retry" : "retries"})\n`;
+        }
+        if (data.flakyTests.length > 10) {
+          comment += `- ... and ${data.flakyTests.length - 10} more\n`;
+        }
+        comment += "\n";
+      }
+    }
+  } else {
+    comment += "### ❌ Some tests failed\n\n";
+    comment += "| OS | Passed | Failed | Flaky | Skipped |\n";
+    comment += "|:---|:---:|:---:|:---:|:---:|\n";
+    for (const [os, data] of Object.entries(resultsByOs)) {
+      const emoji = os === "macOS" ? "🍎" : "🪟";
+      comment += `| ${emoji} ${os} | ${data.passed} | ${data.failed} | ${data.flaky} | ${data.skipped} |\n`;
     }
     comment += `\n**Summary: ${totalPassed} passed, ${totalFailed} failed**`;
+    if (totalFlaky > 0) comment += `, ${totalFlaky} flaky`;
     if (totalSkipped > 0) comment += `, ${totalSkipped} skipped`;
 
     comment += "\n\n### Failed Tests\n\n";
@@ -172,6 +219,23 @@ async function run({ github, context, core }) {
         comment += `- ... and ${data.failures.length - 10} more\n`;
       }
       comment += "\n";
+    }
+
+    // List flaky tests
+    if (totalFlaky > 0) {
+      comment += "### ⚠️ Flaky Tests\n\n";
+      for (const [os, data] of Object.entries(resultsByOs)) {
+        if (data.flakyTests.length === 0) continue;
+        const emoji = os === "macOS" ? "🍎" : "🪟";
+        comment += `#### ${emoji} ${os}\n\n`;
+        for (const f of data.flakyTests.slice(0, 10)) {
+          comment += `- \`${f.title}\` (passed after ${f.retries} ${f.retries === 1 ? "retry" : "retries"})\n`;
+        }
+        if (data.flakyTests.length > 10) {
+          comment += `- ... and ${data.flakyTests.length - 10} more\n`;
+        }
+        comment += "\n";
+      }
     }
   }
 

@@ -353,8 +353,6 @@ export async function deploySupabaseFunctions({
   );
 
   if (response.status !== 201) {
-    const text = await response.text();
-    logger.error(`Supabase response: ${response.status} ${text}`);
     throw await createResponseError(response, "create function");
   }
 

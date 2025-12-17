@@ -7,14 +7,10 @@ import { PortalMigrate } from "@/components/PortalMigrate";
 import { IpcClient } from "@/ipc/ipc_client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { GithubCollaboratorManager } from "@/components/GithubCollaboratorManager";
-import { GithubConflictResolver } from "@/components/GithubConflictResolver";
-import { toast } from "sonner";
-import { useState } from "react"; // Added useState import
 
 export const PublishPanel = () => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { app, loading } = useLoadApp(selectedAppId);
-  const [conflicts, setConflicts] = useState<string[]>([]);
 
   if (loading) {
     return (
@@ -109,7 +105,6 @@ export const PublishPanel = () => {
               appId={selectedAppId}
               folderName={app.name}
               expanded={true}
-              onConflict={setConflicts}
             />
             {app.githubOrg && app.githubRepo && (
               <div className="pt-4 border-t border-gray-100 dark:border-gray-800">
@@ -118,20 +113,6 @@ export const PublishPanel = () => {
             )}
           </CardContent>
         </Card>
-
-        {conflicts.length > 0 && (
-          <GithubConflictResolver
-            appId={selectedAppId}
-            conflicts={conflicts}
-            onResolve={() => {
-              setConflicts([]);
-              toast.success(
-                "All conflicts resolved. Please commit your changes.",
-              );
-            }}
-            onCancel={() => setConflicts([])}
-          />
-        )}
 
         {/* Vercel Section */}
         <Card>

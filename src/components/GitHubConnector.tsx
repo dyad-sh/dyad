@@ -29,12 +29,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { GithubBranchManager } from "@/components/GithubBranchManager";
+import { GithubConflictResolver } from "@/components/GithubConflictResolver";
+import { showSuccess } from "@/lib/toast";
 
 interface GitHubConnectorProps {
   appId: number | null;
   folderName: string;
   expanded?: boolean;
-  onConflict?: (conflicts: string[]) => void;
 }
 
 interface GitHubRepo {
@@ -54,7 +55,6 @@ interface ConnectedGitHubConnectorProps {
   refreshApp: () => void;
   triggerAutoSync?: boolean;
   onAutoSyncComplete?: () => void;
-  onConflict?: (conflicts: string[]) => void;
 }
 
 export interface UnconnectedGitHubConnectorProps {
@@ -72,7 +72,6 @@ function ConnectedGitHubConnector({
   refreshApp,
   triggerAutoSync,
   onAutoSyncComplete,
-  onConflict,
 }: ConnectedGitHubConnectorProps) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -80,6 +79,7 @@ function ConnectedGitHubConnector({
   const [showForceDialog, setShowForceDialog] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [disconnectError, setDisconnectError] = useState<string | null>(null);
+  const [conflicts, setConflicts] = useState<string[]>([]);
   const [rebaseStatusMessage, setRebaseStatusMessage] = useState<string | null>(
     null,
   );
@@ -133,10 +133,9 @@ function ConnectedGitHubConnector({
             if (
               conflictsResult.success &&
               conflictsResult.conflicts &&
-              conflictsResult.conflicts.length > 0 &&
-              onConflict
+              conflictsResult.conflicts.length > 0
             ) {
-              onConflict(conflictsResult.conflicts);
+              setConflicts(conflictsResult.conflicts);
               setSyncError(
                 "Merge conflicts detected. Please resolve them below.",
               );
@@ -378,6 +377,18 @@ function ConnectedGitHubConnector({
             </Button>
           )}
         </div>
+      )}
+      {/* Conflict Resolver */}
+      {conflicts.length > 0 && (
+        <GithubConflictResolver
+          appId={appId}
+          conflicts={conflicts}
+          onResolve={() => {
+            setConflicts([]);
+            showSuccess("All conflicts resolved. Please commit your changes.");
+          }}
+          onCancel={() => setConflicts([])}
+        />
       )}
       {rebaseStatusMessage && (
         <p className="text-sm text-gray-700 dark:text-gray-300 mt-2">
@@ -742,6 +753,7 @@ export function UnconnectedGitHubConnector({
             </svg>
           )}
         </Button>
+
         {/* GitHub Connection Status/Instructions */}
         {(githubUserCode || githubStatusMessage || githubError) && (
           <div className="mt-6 p-4 border rounded-md bg-gray-50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600">
@@ -1057,7 +1069,6 @@ export function GitHubConnector({
   appId,
   folderName,
   expanded,
-  onConflict,
 }: GitHubConnectorProps) {
   const { app, refreshApp } = useLoadApp(appId);
   const { settings, refreshSettings } = useSettings();
@@ -1080,7 +1091,6 @@ export function GitHubConnector({
         refreshApp={refreshApp}
         triggerAutoSync={pendingAutoSync}
         onAutoSyncComplete={handleAutoSyncComplete}
-        onConflict={onConflict}
       />
     );
   } else {

@@ -103,8 +103,13 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
             value={inviteUsername}
             onChange={(e) => setInviteUsername(e.target.value)}
             disabled={isInviting}
+            data-testid="collaborator-invite-input"
           />
-          <Button type="submit" disabled={isInviting || !inviteUsername}>
+          <Button
+            type="submit"
+            data-testid="collaborator-invite-button"
+            disabled={isInviting || !inviteUsername}
+          >
             {isInviting ? (
               "Inviting..."
             ) : (

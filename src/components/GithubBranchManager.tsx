@@ -33,6 +33,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+
 import { Label } from "@/components/ui/label";
 import { showSuccess, showError } from "@/lib/toast";
 import {
@@ -41,6 +52,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { GithubConflictResolver } from "@/components/GithubConflictResolver";
 
 interface BranchManagerProps {
   appId: number;
@@ -58,7 +70,9 @@ export function GithubBranchManager({
   const [isCreating, setIsCreating] = useState(false);
   const [isSwitching, setIsSwitching] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [branchToDelete, setBranchToDelete] = useState<string | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [conflicts, setConflicts] = useState<string[]>([]);
 
   // New state for features
   const [sourceBranch, setSourceBranch] = useState<string>("");
@@ -138,21 +152,18 @@ export function GithubBranchManager({
     }
   };
 
-  const handleDeleteBranch = async (branch: string) => {
-    if (branch === currentBranch) {
-      showError("Cannot delete current branch");
-      return;
-    }
-    if (!confirm(`Are you sure you want to delete branch '${branch}'?`)) return;
+  const handleConfirmDeleteBranch = async () => {
+    if (!branchToDelete) return;
 
     setIsDeleting(true);
     try {
       const result = await IpcClient.getInstance().deleteGithubBranch(
         appId,
-        branch,
+        branchToDelete,
       );
       if (result.success) {
-        showSuccess(`Branch '${branch}' deleted`);
+        showSuccess(`Branch '${branchToDelete}' deleted`);
+        setBranchToDelete(null);
         await loadBranches();
       } else {
         showError(result.error || "Failed to delete branch");
@@ -202,6 +213,23 @@ export function GithubBranchManager({
         await loadBranches(); // Refresh to see any status changes if we implement them
       } else {
         showError(result.error || "Failed to merge branch");
+        const msg = (result.error || "").toLowerCase();
+        const isConflict =
+          msg.includes("conflict") || msg.includes("merge conflict");
+        // Show conflicts dialog
+        if (isConflict) {
+          // Fetch the actual conflicts
+          const conflictsResult =
+            await IpcClient.getInstance().getGithubMergeConflicts(appId);
+          if (
+            conflictsResult.success &&
+            conflictsResult.conflicts &&
+            conflictsResult.conflicts.length > 0
+          ) {
+            setConflicts(conflictsResult.conflicts);
+            return;
+          }
+        }
       }
     } catch (error: any) {
       showError(error.message || "Failed to merge branch");
@@ -405,8 +433,44 @@ export function GithubBranchManager({
         </DialogContent>
       </Dialog>
 
+      <AlertDialog
+        open={!!branchToDelete}
+        onOpenChange={(open) => !open && setBranchToDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Branch</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the branch '{branchToDelete}'. This
+              action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDeleteBranch}
+              disabled={isDeleting}
+            >
+              {isDeleting ? "Deleting..." : "Delete Branch"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Conflict Resolver */}
+      {conflicts.length > 0 && (
+        <GithubConflictResolver
+          appId={appId}
+          conflicts={conflicts}
+          onResolve={() => {
+            setConflicts([]);
+            showSuccess("All conflicts resolved. Please commit your changes.");
+          }}
+          onCancel={() => setConflicts([])}
+        />
+      )}
+
       {/* List of other branches with delete option? Or just rely on Select? */}
-      {/* Maybe a "Manage Branches" dialog if list is long, but for now Select is fine. */}
       {branches.length > 1 && (
         <div className="mt-2">
           <p className="text-xs text-gray-500 mb-2">Available Branches:</p>
@@ -456,7 +520,7 @@ export function GithubBranchManager({
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         className="text-red-600"
-                        onClick={() => handleDeleteBranch(branch)}
+                        onClick={() => setBranchToDelete(branch)}
                         data-testid="delete-branch-menu-item"
                       >
                         <Trash2 className="mr-2 h-4 w-4" />

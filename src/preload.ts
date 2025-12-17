@@ -154,6 +154,7 @@ const validInvokeChannels = [
   "github:rename-branch",
   "github:merge-branch",
   "github:get-conflicts",
+  "github:delete-branch",
   "github:resolve-conflict",
   "ai:resolve-conflict",
   "get-latest-security-review",

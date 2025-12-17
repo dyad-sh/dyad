@@ -33,7 +33,7 @@ import { registerHelpBotHandlers } from "./handlers/help_bot_handlers";
 import { registerMcpHandlers } from "./handlers/mcp_handlers";
 import { registerSecurityHandlers } from "./handlers/security_handlers";
 import { registerVisualEditingHandlers } from "../pro/main/ipc/handlers/visual_editing_handlers";
-import { registerAgentToolHandlers } from "./handlers/local_agent/agent_tool_handlers";
+import { registerAgentToolHandlers } from "../pro/main/ipc/handlers/local_agent/agent_tool_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category

@@ -3,7 +3,7 @@ import { ToolDefinition, ToolExecuteContext, escapeXmlAttr } from "./types";
 import {
   executeRenameFile,
   type FileOperationContext,
-} from "../../../processors/file_operations";
+} from "../processors/file_operations";
 
 const renameFileSchema = z.object({
   from: z.string().describe("The current file path"),

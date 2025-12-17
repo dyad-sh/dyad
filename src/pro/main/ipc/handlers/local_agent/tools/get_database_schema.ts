@@ -3,7 +3,7 @@ import { ToolDefinition, ToolExecuteContext } from "./types";
 import {
   getDatabaseSchema,
   type FileOperationContext,
-} from "../../../processors/file_operations";
+} from "../processors/file_operations";
 
 const getDatabaseSchemaSchema = z.object({});
 

@@ -3,7 +3,7 @@ import { ToolDefinition, ToolExecuteContext, escapeXmlAttr } from "./types";
 import {
   executeSupabaseSqlQuery,
   type FileOperationContext,
-} from "../../../processors/file_operations";
+} from "../processors/file_operations";
 
 const executeSqlSchema = z.object({
   query: z.string().describe("The SQL query to execute"),

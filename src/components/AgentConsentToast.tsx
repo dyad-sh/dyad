@@ -143,4 +143,3 @@ export function AgentConsentToast({
     </div>
   );
 }
-

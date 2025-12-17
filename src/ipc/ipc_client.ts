@@ -84,7 +84,7 @@ import type {
 } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
 import { DeepLinkData } from "./deep_link_data";
-import { AgentToolName } from "./handlers/local_agent/tool_definitions";
+import { AgentToolName } from "@/pro/main/ipc/handlers/local_agent/tool_definitions";
 
 export interface ChatStreamCallbacks {
   onUpdate: (messages: Message[]) => void;

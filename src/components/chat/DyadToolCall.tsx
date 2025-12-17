@@ -43,4 +43,3 @@ export function DyadToolCall({ node, children }: DyadToolCallProps) {
     </div>
   );
 }
-

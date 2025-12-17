@@ -6,18 +6,18 @@
 import { IpcMainInvokeEvent } from "electron";
 import { streamText, ToolSet, stepCountIs, ModelMessage } from "ai";
 import log from "electron-log";
-import { db } from "../../../db";
-import { chats, messages } from "../../../db/schema";
+import { db } from "@/db";
+import { chats, messages } from "@/db/schema";
 import { eq, and, isNull, lt } from "drizzle-orm";
 
-import { isDyadProEnabled } from "../../../lib/schemas";
-import { readSettings } from "../../../main/settings";
-import { getDyadAppPath } from "../../../paths/paths";
-import { getModelClient } from "../../utils/get_model_client";
-import { safeSend } from "../../utils/safe_sender";
-import { getMaxTokens, getTemperature } from "../../utils/token_utils";
-import { readAiRules } from "../../../prompts/system_prompt";
-import { constructLocalAgentPrompt } from "../../../prompts/local_agent_prompt";
+import { isDyadProEnabled } from "@/lib/schemas";
+import { readSettings } from "@/main/settings";
+import { getDyadAppPath } from "@/paths/paths";
+import { getModelClient } from "@/ipc/utils/get_model_client";
+import { safeSend } from "@/ipc/utils/safe_sender";
+import { getMaxTokens, getTemperature } from "@/ipc/utils/token_utils";
+import { readAiRules } from "@/prompts/system_prompt";
+import { constructLocalAgentPrompt } from "@/prompts/local_agent_prompt";
 import {
   AgentToolName,
   buildAgentToolSet,
@@ -28,13 +28,13 @@ import {
   deployAllFunctionsIfNeeded,
   commitAllChanges,
   type FileOperationContext,
-} from "../../processors/file_operations";
-import { mcpManager } from "../../utils/mcp_manager";
-import { mcpServers } from "../../../db/schema";
-import { requireMcpToolConsent } from "../../utils/mcp_consent";
-import { getAiMessagesJsonIfWithinLimit } from "../../utils/ai_messages_utils";
+} from "./processors/file_operations";
+import { mcpManager } from "@/ipc/utils/mcp_manager";
+import { mcpServers } from "@/db/schema";
+import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
+import { getAiMessagesJsonIfWithinLimit } from "@/ipc/utils/ai_messages_utils";
 
-import type { ChatStreamParams, ChatResponseEnd } from "../../ipc_types";
+import type { ChatStreamParams, ChatResponseEnd } from "@/ipc/ipc_types";
 import { ToolExecuteContext } from "./tools/types";
 
 const logger = log.scope("local_agent_handler");

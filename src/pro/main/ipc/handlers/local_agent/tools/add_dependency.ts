@@ -3,7 +3,7 @@ import { ToolDefinition, ToolExecuteContext, escapeXmlAttr } from "./types";
 import {
   executeAddDependencies,
   type FileOperationContext,
-} from "../../../processors/file_operations";
+} from "../processors/file_operations";
 
 const addDependencySchema = z.object({
   packages: z.array(z.string()).describe("Array of package names to install"),

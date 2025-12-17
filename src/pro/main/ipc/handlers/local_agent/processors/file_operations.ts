@@ -4,34 +4,34 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { db } from "../../db";
-import { messages } from "../../db/schema";
+import { db } from "../../../../../../db";
+import { messages } from "../../../../../../db/schema";
 import { eq } from "drizzle-orm";
 import log from "electron-log";
-import { safeJoin } from "../utils/path_utils";
+import { safeJoin } from "@/ipc/utils/path_utils";
 import {
   gitCommit,
   gitAdd,
   gitRemove,
   gitAddAll,
   getGitUncommittedFiles,
-} from "../utils/git_utils";
+} from "@/ipc/utils/git_utils";
 import {
   deploySupabaseFunction,
   deleteSupabaseFunction,
   executeSupabaseSql,
-} from "../../supabase_admin/supabase_management_client";
+} from "../../../../../../supabase_admin/supabase_management_client";
 import {
   isServerFunction,
   isSharedServerModule,
   deployAllSupabaseFunctions,
-} from "../../supabase_admin/supabase_utils";
-import { executeAddDependency } from "./executeAddDependency";
-import { applySearchReplace } from "../../pro/main/ipc/processors/search_replace_processor";
-import { writeMigrationFile } from "../utils/file_utils";
-import { readSettings } from "../../main/settings";
-import { getSupabaseContext } from "../../supabase_admin/supabase_context";
-import { extractCodebase } from "../../utils/codebase";
+} from "../../../../../../supabase_admin/supabase_utils";
+import { applySearchReplace } from "../../../../../../pro/main/ipc/processors/search_replace_processor";
+import { writeMigrationFile } from "../../../../../../ipc/utils/file_utils";
+import { readSettings } from "../../../../../../main/settings";
+import { getSupabaseContext } from "../../../../../../supabase_admin/supabase_context";
+import { extractCodebase } from "../../../../../../utils/codebase";
+import { executeAddDependency } from "@/ipc/processors/executeAddDependency";
 
 const readFile = fs.promises.readFile;
 const logger = log.scope("file_operations");

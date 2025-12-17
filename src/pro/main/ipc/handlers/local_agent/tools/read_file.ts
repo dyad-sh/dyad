@@ -3,7 +3,7 @@ import { ToolDefinition, ToolExecuteContext, escapeXmlAttr } from "./types";
 import {
   readFileForContext,
   type FileOperationContext,
-} from "../../../processors/file_operations";
+} from "../processors/file_operations";
 
 const readFileSchema = z.object({
   path: z.string().describe("The file path to read"),

@@ -10,9 +10,10 @@ import {
   getDefaultConsent,
   type AgentToolName,
 } from "./tool_definitions";
-import { createLoggedHandler } from "../safe_handle";
+import { createLoggedHandler } from "@/ipc/handlers/safe_handle";
 import log from "electron-log";
-import type { AgentTool, AgentToolConsent } from "../../ipc_types";
+import type { AgentTool } from "@/ipc/ipc_types";
+import type { AgentToolConsent } from "@/ipc/ipc_types";
 
 const logger = log.scope("agent_tool_handlers");
 const handle = createLoggedHandler(logger);

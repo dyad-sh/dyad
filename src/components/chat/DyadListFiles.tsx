@@ -37,4 +37,3 @@ export function DyadListFiles({ node, children }: DyadListFilesProps) {
     </div>
   );
 }
-

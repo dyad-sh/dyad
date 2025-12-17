@@ -3,7 +3,7 @@ import { ToolDefinition, ToolExecuteContext, escapeXmlAttr } from "./types";
 import {
   listFilesInApp,
   type FileOperationContext,
-} from "../../../processors/file_operations";
+} from "../processors/file_operations";
 
 const listFilesSchema = z.object({
   directory: z.string().optional().describe("Optional subdirectory to list"),

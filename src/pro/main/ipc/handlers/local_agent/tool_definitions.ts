@@ -4,7 +4,7 @@
  */
 
 import { IpcMainInvokeEvent } from "electron";
-import { readSettings, writeSettings } from "../../../main/settings";
+import { readSettings, writeSettings } from "@/main/settings";
 import { writeFileTool } from "./tools/write_file";
 import { deleteFileTool } from "./tools/delete_file";
 import { renameFileTool } from "./tools/rename_file";

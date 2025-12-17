@@ -481,68 +481,26 @@ export async function deployAllFunctionsIfNeeded(
  */
 export async function commitAllChanges(
   ctx: FileOperationContext,
-  writtenFiles: string[],
-  deletedFiles: string[],
-  renamedFiles: string[],
-  packagesAdded: string[],
-  sqlQueriesExecuted: number,
   chatSummary?: string,
 ): Promise<{
-  success: boolean;
   commitHash?: string;
-  extraFiles?: string[];
-  error?: string;
 }> {
-  const hasChanges =
-    writtenFiles.length > 0 ||
-    deletedFiles.length > 0 ||
-    renamedFiles.length > 0 ||
-    packagesAdded.length > 0;
-
-  if (!hasChanges) {
-    return { success: true };
-  }
-
   try {
-    // Stage all written files
-    for (const file of writtenFiles) {
-      await gitAdd({ path: ctx.appPath, filepath: file });
-    }
-
-    // Create commit message
-    const changes = [];
-    if (writtenFiles.length > 0)
-      changes.push(`wrote ${writtenFiles.length} file(s)`);
-    if (renamedFiles.length > 0)
-      changes.push(`renamed ${renamedFiles.length} file(s)`);
-    if (deletedFiles.length > 0)
-      changes.push(`deleted ${deletedFiles.length} file(s)`);
-    if (packagesAdded.length > 0)
-      changes.push(`added ${packagesAdded.join(", ")} package(s)`);
-    if (sqlQueriesExecuted > 0)
-      changes.push(`executed ${sqlQueriesExecuted} SQL queries`);
-
-    let message = chatSummary
-      ? `[dyad] ${chatSummary} - ${changes.join(", ")}`
-      : `[dyad] ${changes.join(", ")}`;
-
-    let commitHash = await gitCommit({
-      path: ctx.appPath,
-      message,
-    });
-
     // Check for uncommitted changes
     const uncommittedFiles = await getGitUncommittedFiles({
       path: ctx.appPath,
     });
+    const message = chatSummary
+      ? `[dyad] ${chatSummary}`
+      : `[dyad] (${uncommittedFiles.length} files changed)`;
+    let commitHash: string | undefined;
 
     if (uncommittedFiles.length > 0) {
       await gitAddAll({ path: ctx.appPath });
       try {
         commitHash = await gitCommit({
           path: ctx.appPath,
-          message: message + " + extra files edited outside of Dyad",
-          amend: true,
+          message: message,
         });
       } catch (error) {
         logger.error(
@@ -553,11 +511,10 @@ export async function commitAllChanges(
     }
 
     return {
-      success: true,
       commitHash,
-      extraFiles: uncommittedFiles.length > 0 ? uncommittedFiles : undefined,
     };
   } catch (error) {
-    return { success: false, error: `Failed to commit changes: ${error}` };
+    logger.error(`Failed to commit changes: ${error}`);
+    throw new Error(`Failed to commit changes: ${error}`);
   }
 }

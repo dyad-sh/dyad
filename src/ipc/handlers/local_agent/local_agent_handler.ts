@@ -138,11 +138,6 @@ export async function handleLocalAgentStream(
   resetSharedModulesFlag();
 
   let fullResponse = "";
-  const writtenFiles: string[] = [];
-  const deletedFiles: string[] = [];
-  const renamedFiles: string[] = [];
-  const packagesAdded: string[] = [];
-  let sqlQueriesExecuted = 0;
   let chatSummary: string | undefined;
 
   try {
@@ -272,17 +267,6 @@ export async function handleLocalAgentStream(
 
         case "tool-call":
           // Tool execution happens via execute callbacks
-          // We track which files were modified
-          trackToolExecution(
-            part.toolName,
-            part.input as Record<string, unknown>,
-            writtenFiles,
-            deletedFiles,
-            renamedFiles,
-            packagesAdded,
-            () => sqlQueriesExecuted++,
-            (summary) => (chatSummary = summary),
-          );
           break;
 
         case "tool-result":
@@ -325,15 +309,7 @@ export async function handleLocalAgentStream(
     await deployAllFunctionsIfNeeded(opCtx);
 
     // Commit all changes
-    const commitResult = await commitAllChanges(
-      opCtx,
-      writtenFiles,
-      deletedFiles,
-      renamedFiles,
-      packagesAdded,
-      sqlQueriesExecuted,
-      chatSummary,
-    );
+    const commitResult = await commitAllChanges(opCtx, chatSummary);
 
     if (commitResult.commitHash) {
       await db
@@ -359,11 +335,7 @@ export async function handleLocalAgentStream(
     // Send completion
     safeSend(event.sender, "chat:response:end", {
       chatId: req.chatId,
-      updatedFiles:
-        writtenFiles.length > 0 ||
-        deletedFiles.length > 0 ||
-        renamedFiles.length > 0,
-      extraFiles: commitResult.extraFiles,
+      updatedFiles: true,
     } satisfies ChatResponseEnd);
 
     return;
@@ -413,57 +385,6 @@ function sendResponseChunk(
     chatId,
     messages: currentMessages,
   });
-}
-
-function trackToolExecution(
-  toolName: string,
-  args: any,
-  writtenFiles: string[],
-  deletedFiles: string[],
-  renamedFiles: string[],
-  packagesAdded: string[],
-  onSqlExecuted: () => void,
-  onChatSummary: (summary: string) => void,
-) {
-  switch (toolName) {
-    case "write_file":
-      if (args.path && !writtenFiles.includes(args.path)) {
-        writtenFiles.push(args.path);
-      }
-      break;
-    case "delete_file":
-      if (args.path && !deletedFiles.includes(args.path)) {
-        deletedFiles.push(args.path);
-      }
-      break;
-    case "rename_file":
-      if (args.to && !renamedFiles.includes(args.to)) {
-        renamedFiles.push(args.to);
-      }
-      break;
-    case "search_replace":
-      if (args.path && !writtenFiles.includes(args.path)) {
-        writtenFiles.push(args.path);
-      }
-      break;
-    case "add_dependency":
-      if (Array.isArray(args.packages)) {
-        for (const pkg of args.packages) {
-          if (!packagesAdded.includes(pkg)) {
-            packagesAdded.push(pkg);
-          }
-        }
-      }
-      break;
-    case "execute_sql":
-      onSqlExecuted();
-      break;
-    case "set_chat_summary":
-      if (args.summary) {
-        onChatSummary(args.summary);
-      }
-      break;
-  }
 }
 
 async function getMcpTools(

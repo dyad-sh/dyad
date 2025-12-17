@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { integer, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
 import { relations } from "drizzle-orm";
+import type { ModelMessage } from "@ai-sdk/provider-utils";
 
 export const prompts = sqliteTable("prompts", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -79,6 +80,10 @@ export const messages = sqliteTable("messages", {
   requestId: text("request_id"),
   // Max tokens used for this message (only for assistant messages)
   maxTokensUsed: integer("max_tokens_used"),
+  // AI SDK ModelMessage array for preserving tool calls/results in agent mode
+  aiMessagesJson: text("ai_messages_json", { mode: "json" }).$type<
+    ModelMessage[] | null
+  >(),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),

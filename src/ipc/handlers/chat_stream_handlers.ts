@@ -88,6 +88,7 @@ import {
   processChatMessagesWithVersionedFiles as getVersionedFiles,
   VersionedFiles,
 } from "../utils/versioned_codebase_context";
+import { getAiMessagesJsonIfWithinLimit } from "../utils/ai_messages_utils";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
@@ -398,14 +399,15 @@ ${componentSnippet}
         }
       }
 
-      await db
+      const [insertedUserMessage] = await db
         .insert(messages)
         .values({
           chatId: req.chatId,
           role: "user",
           content: userPrompt,
         })
-        .returning();
+        .returning({ id: messages.id });
+      const userMessageId = insertedUserMessage.id;
       const settings = readSettings();
       // Only Dyad Pro requests have request ids.
       if (settings.enableDyadPro) {
@@ -770,17 +772,33 @@ This conversation includes one or more image attachments. When the user uploads 
         ];
 
         // Check if the last message should include attachments
-        if (chatMessages.length >= 2 && attachmentPaths.length > 0) {
+        if (chatMessages.length >= 2) {
           const lastUserIndex = chatMessages.length - 2;
           const lastUserMessage = chatMessages[lastUserIndex];
-
           if (lastUserMessage.role === "user") {
-            // Replace the last message with one that includes attachments
-            chatMessages[lastUserIndex] = await prepareMessageWithAttachments(
-              lastUserMessage,
-              attachmentPaths,
-            );
+            if (attachmentPaths.length > 0) {
+              // Replace the last message with one that includes attachments
+              chatMessages[lastUserIndex] = await prepareMessageWithAttachments(
+                lastUserMessage,
+                attachmentPaths,
+              );
+            }
+            // Insert into DB (with size guard)
+            const userAiMessagesJson = getAiMessagesJsonIfWithinLimit([
+              chatMessages[lastUserIndex],
+            ]);
+            if (userAiMessagesJson) {
+              await db
+                .update(messages)
+                .set({ aiMessagesJson: userAiMessagesJson })
+                .where(eq(messages.id, userMessageId));
+            }
           }
+        } else {
+          logger.warn(
+            "Unexpected number of chat messages:",
+            chatMessages.length,
+          );
         }
 
         if (isSummarizeIntent) {

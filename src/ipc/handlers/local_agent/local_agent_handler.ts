@@ -4,11 +4,11 @@
  */
 
 import { IpcMainInvokeEvent } from "electron";
-import { streamText, ToolSet, stepCountIs } from "ai";
+import { streamText, ToolSet, stepCountIs, ModelMessage } from "ai";
 import log from "electron-log";
 import { db } from "../../../db";
 import { chats, messages } from "../../../db/schema";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, lt } from "drizzle-orm";
 
 import { isDyadProEnabled } from "../../../lib/schemas";
 import { readSettings } from "../../../main/settings";
@@ -29,10 +29,49 @@ import {
 import { mcpManager } from "../../utils/mcp_manager";
 import { mcpServers } from "../../../db/schema";
 import { requireMcpToolConsent } from "../../utils/mcp_consent";
+import { getAiMessagesJsonIfWithinLimit } from "../../utils/ai_messages_utils";
 
 import type { ChatStreamParams, ChatResponseEnd } from "../../ipc_types";
 
 const logger = log.scope("local_agent_handler");
+
+// Type for a message from the database
+type DbMessage = {
+  id: number;
+  role: string;
+  content: string;
+  aiMessagesJson: ModelMessage[] | null;
+};
+
+/**
+ * Parse ai_messages_json with graceful fallback to simple content reconstruction.
+ * If aiMessagesJson is missing, malformed, or incompatible with the current AI SDK,
+ * falls back to constructing a basic message from role and content.
+ */
+function parseAiMessagesJson(msg: DbMessage): ModelMessage[] {
+  if (msg.aiMessagesJson) {
+    try {
+      const parsed = msg.aiMessagesJson;
+      // Basic validation: ensure it's an array with role properties
+      if (
+        Array.isArray(parsed) &&
+        parsed.every((m) => m && typeof m.role === "string")
+      ) {
+        return parsed;
+      }
+    } catch (e) {
+      // Log but don't throw - fall through to fallback
+      logger.warn(`Failed to parse ai_messages_json for message ${msg.id}:`, e);
+    }
+  }
+  // Fallback for legacy messages or parse failures
+  return [
+    {
+      role: msg.role as "user" | "assistant",
+      content: msg.content,
+    },
+  ];
+}
 
 // Safely parse an MCP tool key
 function parseMcpToolKey(toolKey: string): {
@@ -134,13 +173,10 @@ export async function handleLocalAgentStream(
     const mcpTools = await getMcpTools(event, toolCtx);
     const allTools: ToolSet = { ...agentTools, ...mcpTools };
 
-    // Prepare message history
-    const messageHistory = chat.messages
-      .filter((msg) => msg.content)
-      .map((msg) => ({
-        role: msg.role as "user" | "assistant",
-        content: msg.content,
-      }));
+    // Prepare message history with graceful fallback
+    const messageHistory: ModelMessage[] = chat.messages
+      .filter((msg) => msg.content || msg.aiMessagesJson)
+      .flatMap((msg) => parseAiMessagesJson(msg));
 
     // Stream the response
     const streamResult = streamText({
@@ -151,10 +187,22 @@ export async function handleLocalAgentStream(
       system: systemPrompt,
       messages: messageHistory,
       tools: allTools,
-      stopWhen: stepCountIs(20), // Allow multiple tool call rounds
+      stopWhen: stepCountIs(25), // Allow multiple tool call rounds
       abortSignal: abortController.signal,
       onFinish: async (response) => {
         const totalTokens = response.usage?.totalTokens;
+        const inputTokens = response.usage?.inputTokens;
+        const cachedInputTokens = response.usage?.cachedInputTokens;
+        logger.log(
+          "Total tokens used:",
+          totalTokens,
+          "Input tokens:",
+          inputTokens,
+          "Cached input tokens:",
+          cachedInputTokens,
+          "Cache hit ratio:",
+          cachedInputTokens ? (cachedInputTokens ?? 0) / (inputTokens ?? 0) : 0,
+        );
         if (typeof totalTokens === "number") {
           await db
             .update(messages)
@@ -253,6 +301,20 @@ export async function handleLocalAgentStream(
     if (inThinkingBlock) {
       fullResponse += "</think>\n";
       await updateResponseInDb(placeholderMessageId, fullResponse);
+    }
+
+    // Save the AI SDK messages for multi-turn tool call preservation
+    try {
+      const response = await streamResult.response;
+      const aiMessagesJson = getAiMessagesJsonIfWithinLimit(response.messages);
+      if (aiMessagesJson) {
+        await db
+          .update(messages)
+          .set({ aiMessagesJson })
+          .where(eq(messages.id, placeholderMessageId));
+      }
+    } catch (err) {
+      logger.warn("Failed to save AI messages JSON:", err);
     }
 
     // Deploy all Supabase functions if shared modules changed
@@ -470,4 +532,27 @@ async function getMcpTools(
   }
 
   return mcpToolSet;
+}
+
+const AI_MESSAGES_TTL_DAYS = 30;
+
+/**
+ * Clear ai_messages_json for messages older than TTL.
+ * Run on app startup to prevent database bloat.
+ */
+export async function cleanupOldAiMessagesJson() {
+  const cutoffSeconds =
+    Math.floor(Date.now() / 1000) - AI_MESSAGES_TTL_DAYS * 24 * 60 * 60;
+  const cutoffDate = new Date(cutoffSeconds * 1000);
+
+  try {
+    await db
+      .update(messages)
+      .set({ aiMessagesJson: null })
+      .where(lt(messages.createdAt, cutoffDate));
+
+    logger.log("Cleaned up old ai_messages_json entries");
+  } catch (err) {
+    logger.warn("Failed to cleanup old ai_messages_json:", err);
+  }
 }

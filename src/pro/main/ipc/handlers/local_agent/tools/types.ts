@@ -22,11 +22,7 @@ export function escapeXmlContent(str: string): string {
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-// ============================================================================
-// Tool Execute Context
-// ============================================================================
-
-export interface ToolExecuteContext {
+export interface AgentContext {
   event: IpcMainInvokeEvent;
   appPath: string;
   supabaseProjectId?: string | null;
@@ -48,5 +44,5 @@ export interface ToolDefinition<T = any> {
   readonly description: string;
   readonly inputSchema: z.ZodType<T>;
   readonly defaultConsent: AgentToolConsent;
-  execute: (args: T, ctx: ToolExecuteContext) => Promise<string>;
+  execute: (args: T, ctx: AgentContext) => Promise<string>;
 }

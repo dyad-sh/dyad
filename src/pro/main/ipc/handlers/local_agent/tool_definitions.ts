@@ -15,7 +15,7 @@ import { readFileTool } from "./tools/read_file";
 import { listFilesTool } from "./tools/list_files";
 import { getDatabaseSchemaTool } from "./tools/get_database_schema";
 import { setChatSummaryTool } from "./tools/set_chat_summary";
-import type { ToolDefinition, ToolExecuteContext } from "./tools/types";
+import type { ToolDefinition, AgentContext } from "./tools/types";
 import type { AgentToolConsent } from "@/ipc/ipc_types";
 // Combined tool definitions array
 export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
@@ -150,7 +150,7 @@ export async function requireAgentToolConsent(
 /**
  * Build ToolSet for AI SDK from tool definitions
  */
-export function buildAgentToolSet(ctx: ToolExecuteContext) {
+export function buildAgentToolSet(ctx: AgentContext) {
   const toolSet: Record<string, any> = {};
 
   for (const tool of TOOL_DEFINITIONS) {

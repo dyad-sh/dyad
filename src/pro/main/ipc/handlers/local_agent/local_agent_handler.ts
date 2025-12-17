@@ -27,7 +27,6 @@ import {
   resetSharedModulesFlag,
   deployAllFunctionsIfNeeded,
   commitAllChanges,
-  type FileOperationContext,
 } from "./processors/file_operations";
 import { mcpManager } from "@/ipc/utils/mcp_manager";
 import { mcpServers } from "@/db/schema";
@@ -35,7 +34,7 @@ import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
 import { getAiMessagesJsonIfWithinLimit } from "@/ipc/utils/ai_messages_utils";
 
 import type { ChatStreamParams, ChatResponseEnd } from "@/ipc/ipc_types";
-import { ToolExecuteContext } from "./tools/types";
+import { AgentContext } from "./tools/types";
 
 const logger = log.scope("local_agent_handler");
 
@@ -155,7 +154,7 @@ export async function handleLocalAgentStream(
     );
 
     // Build tool execute context
-    const toolCtx: ToolExecuteContext = {
+    const ctx: AgentContext = {
       event,
       appPath,
       supabaseProjectId: chat.app.supabaseProjectId,
@@ -179,8 +178,8 @@ export async function handleLocalAgentStream(
     };
 
     // Build tool set (agent tools + MCP tools)
-    const agentTools = buildAgentToolSet(toolCtx);
-    const mcpTools = await getMcpTools(event, toolCtx);
+    const agentTools = buildAgentToolSet(ctx);
+    const mcpTools = await getMcpTools(event, ctx);
     const allTools: ToolSet = { ...agentTools, ...mcpTools };
 
     // Prepare message history with graceful fallback
@@ -317,14 +316,10 @@ export async function handleLocalAgentStream(
     }
 
     // Deploy all Supabase functions if shared modules changed
-    const opCtx: FileOperationContext = {
-      appPath,
-      supabaseProjectId: chat.app.supabaseProjectId,
-    };
-    await deployAllFunctionsIfNeeded(opCtx);
+    await deployAllFunctionsIfNeeded(ctx);
 
     // Commit all changes
-    const commitResult = await commitAllChanges(opCtx, chatSummary);
+    const commitResult = await commitAllChanges(ctx, chatSummary);
 
     if (commitResult.commitHash) {
       await db
@@ -404,7 +399,7 @@ function sendResponseChunk(
 
 async function getMcpTools(
   event: IpcMainInvokeEvent,
-  toolCtx: ToolExecuteContext,
+  ctx: AgentContext,
 ): Promise<ToolSet> {
   const mcpToolSet: ToolSet = {};
 
@@ -446,7 +441,7 @@ async function getMcpTools(
             // Emit XML for UI
             const { serverName, toolName } = parseMcpToolKey(key);
             const content = JSON.stringify(args, null, 2);
-            toolCtx.onXmlChunk(
+            ctx.onXmlChunk(
               `<dyad-mcp-tool-call server="${serverName}" tool="${toolName}">\n${content}\n</dyad-mcp-tool-call>`,
             );
 
@@ -454,7 +449,7 @@ async function getMcpTools(
             const resultStr =
               typeof res === "string" ? res : JSON.stringify(res);
 
-            toolCtx.onXmlChunk(
+            ctx.onXmlChunk(
               `<dyad-mcp-tool-result server="${serverName}" tool="${toolName}">\n${resultStr}\n</dyad-mcp-tool-result>`,
             );
 

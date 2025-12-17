@@ -1,9 +1,6 @@
 import { z } from "zod";
-import { ToolDefinition, ToolExecuteContext, escapeXmlAttr } from "./types";
-import {
-  executeSupabaseSqlQuery,
-  type FileOperationContext,
-} from "../processors/file_operations";
+import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
+import { executeSupabaseSqlQuery } from "../processors/file_operations";
 
 const executeSqlSchema = z.object({
   query: z.string().describe("The SQL query to execute"),
@@ -16,7 +13,7 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
     description: "Execute SQL on the Supabase database",
     inputSchema: executeSqlSchema,
     defaultConsent: "ask",
-    execute: async (args, ctx: ToolExecuteContext) => {
+    execute: async (args, ctx: AgentContext) => {
       if (!ctx.supabaseProjectId) {
         throw new Error("Supabase is not connected to this app");
       }
@@ -37,13 +34,8 @@ ${args.query}
 </dyad-execute-sql>`,
       );
 
-      const opCtx: FileOperationContext = {
-        appPath: ctx.appPath,
-        supabaseProjectId: ctx.supabaseProjectId,
-      };
-
       const result = await executeSupabaseSqlQuery(
-        opCtx,
+        ctx,
         args.query,
         args.description,
       );

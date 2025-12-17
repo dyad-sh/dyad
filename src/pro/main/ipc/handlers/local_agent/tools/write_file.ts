@@ -1,9 +1,6 @@
 import { z } from "zod";
-import { ToolDefinition, ToolExecuteContext, escapeXmlAttr } from "./types";
-import {
-  executeWriteFile,
-  type FileOperationContext,
-} from "../processors/file_operations";
+import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
+import { executeWriteFile } from "../processors/file_operations";
 
 const writeFileSchema = z.object({
   path: z.string().describe("The file path relative to the app root"),
@@ -19,7 +16,7 @@ export const writeFileTool: ToolDefinition<z.infer<typeof writeFileSchema>> = {
   description: "Create or completely overwrite a file in the codebase",
   inputSchema: writeFileSchema,
   defaultConsent: "always",
-  execute: async (args, ctx: ToolExecuteContext) => {
+  execute: async (args, ctx: AgentContext) => {
     const allowed = await ctx.requireConsent({
       toolName: "write_file",
       toolDescription: "Create or overwrite a file",
@@ -35,12 +32,7 @@ ${args.content}
 </dyad-write>`,
     );
 
-    const opCtx: FileOperationContext = {
-      appPath: ctx.appPath,
-      supabaseProjectId: ctx.supabaseProjectId,
-    };
-
-    const result = await executeWriteFile(opCtx, args.path, args.content);
+    const result = await executeWriteFile(ctx, args.path, args.content);
     if (!result.success) {
       throw new Error(result.error);
     }

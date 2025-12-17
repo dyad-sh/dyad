@@ -1,9 +1,6 @@
 import { z } from "zod";
-import { ToolDefinition, ToolExecuteContext, escapeXmlAttr } from "./types";
-import {
-  executeAddDependencies,
-  type FileOperationContext,
-} from "../processors/file_operations";
+import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
+import { executeAddDependencies } from "../processors/file_operations";
 
 const addDependencySchema = z.object({
   packages: z.array(z.string()).describe("Array of package names to install"),
@@ -16,7 +13,7 @@ export const addDependencyTool: ToolDefinition<
   description: "Install npm packages",
   inputSchema: addDependencySchema,
   defaultConsent: "ask",
-  execute: async (args, ctx: ToolExecuteContext) => {
+  execute: async (args, ctx: AgentContext) => {
     const allowed = await ctx.requireConsent({
       toolName: "add_dependency",
       toolDescription: "Install npm packages",
@@ -30,13 +27,8 @@ export const addDependencyTool: ToolDefinition<
       `<dyad-add-dependency packages="${escapeXmlAttr(args.packages.join(" "))}"></dyad-add-dependency>`,
     );
 
-    const opCtx: FileOperationContext = {
-      appPath: ctx.appPath,
-      supabaseProjectId: ctx.supabaseProjectId,
-    };
-
     const result = await executeAddDependencies(
-      opCtx,
+      ctx,
       args.packages,
       ctx.messageId,
     );

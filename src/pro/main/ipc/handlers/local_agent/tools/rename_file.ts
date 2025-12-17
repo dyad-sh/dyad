@@ -1,9 +1,6 @@
 import { z } from "zod";
-import { ToolDefinition, ToolExecuteContext, escapeXmlAttr } from "./types";
-import {
-  executeRenameFile,
-  type FileOperationContext,
-} from "../processors/file_operations";
+import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
+import { executeRenameFile } from "../processors/file_operations";
 
 const renameFileSchema = z.object({
   from: z.string().describe("The current file path"),
@@ -16,7 +13,7 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
     description: "Rename or move a file in the codebase",
     inputSchema: renameFileSchema,
     defaultConsent: "always",
-    execute: async (args, ctx: ToolExecuteContext) => {
+    execute: async (args, ctx: AgentContext) => {
       const allowed = await ctx.requireConsent({
         toolName: "rename_file",
         toolDescription: "Rename or move a file",
@@ -30,12 +27,7 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
         `<dyad-rename from="${escapeXmlAttr(args.from)}" to="${escapeXmlAttr(args.to)}"></dyad-rename>`,
       );
 
-      const opCtx: FileOperationContext = {
-        appPath: ctx.appPath,
-        supabaseProjectId: ctx.supabaseProjectId,
-      };
-
-      const result = await executeRenameFile(opCtx, args.from, args.to);
+      const result = await executeRenameFile(ctx, args.from, args.to);
       if (!result.success) {
         throw new Error(result.error);
       }

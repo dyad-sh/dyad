@@ -1,9 +1,6 @@
 import { z } from "zod";
-import { ToolDefinition, ToolExecuteContext } from "./types";
-import {
-  getDatabaseSchema,
-  type FileOperationContext,
-} from "../processors/file_operations";
+import { ToolDefinition, AgentContext } from "./types";
+import { getDatabaseSchema } from "../processors/file_operations";
 
 const getDatabaseSchemaSchema = z.object({});
 
@@ -14,7 +11,7 @@ export const getDatabaseSchemaTool: ToolDefinition<
   description: "Fetch the database schema from Supabase",
   inputSchema: getDatabaseSchemaSchema,
   defaultConsent: "always",
-  execute: async (_args, ctx: ToolExecuteContext) => {
+  execute: async (_args, ctx: AgentContext) => {
     if (!ctx.supabaseProjectId) {
       throw new Error("Supabase is not connected to this app");
     }
@@ -30,12 +27,7 @@ export const getDatabaseSchemaTool: ToolDefinition<
 
     ctx.onXmlChunk(`<dyad-database-schema></dyad-database-schema>`);
 
-    const opCtx: FileOperationContext = {
-      appPath: ctx.appPath,
-      supabaseProjectId: ctx.supabaseProjectId,
-    };
-
-    const result = await getDatabaseSchema(opCtx);
+    const result = await getDatabaseSchema(ctx);
     if (!result.success) {
       throw new Error(result.error);
     }

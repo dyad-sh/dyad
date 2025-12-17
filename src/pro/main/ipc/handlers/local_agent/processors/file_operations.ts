@@ -32,14 +32,10 @@ import { readSettings } from "../../../../../../main/settings";
 import { getSupabaseContext } from "../../../../../../supabase_admin/supabase_context";
 import { extractCodebase } from "../../../../../../utils/codebase";
 import { executeAddDependency } from "@/ipc/processors/executeAddDependency";
+import type { AgentContext } from "../tools/types";
 
 const readFile = fs.promises.readFile;
 const logger = log.scope("file_operations");
-
-export interface FileOperationContext {
-  appPath: string;
-  supabaseProjectId?: string | null;
-}
 
 export interface FileOperationResult {
   success: boolean;
@@ -66,7 +62,7 @@ function getFunctionNameFromPath(input: string): string {
  * Write a file to the codebase
  */
 export async function executeWriteFile(
-  ctx: FileOperationContext,
+  ctx: Pick<AgentContext, "appPath" | "supabaseProjectId">,
   filePath: string,
   content: string | Buffer,
 ): Promise<FileOperationResult> {
@@ -117,7 +113,7 @@ export async function executeWriteFile(
  * Delete a file from the codebase
  */
 export async function executeDeleteFile(
-  ctx: FileOperationContext,
+  ctx: Pick<AgentContext, "appPath" | "supabaseProjectId">,
   filePath: string,
 ): Promise<FileOperationResult> {
   const fullFilePath = safeJoin(ctx.appPath, filePath);
@@ -171,7 +167,7 @@ export async function executeDeleteFile(
  * Rename/move a file in the codebase
  */
 export async function executeRenameFile(
-  ctx: FileOperationContext,
+  ctx: Pick<AgentContext, "appPath" | "supabaseProjectId">,
   fromPath: string,
   toPath: string,
 ): Promise<FileOperationResult> {
@@ -244,7 +240,7 @@ export async function executeRenameFile(
  * Apply search/replace edits to a file
  */
 export async function executeSearchReplaceFile(
-  ctx: FileOperationContext,
+  ctx: Pick<AgentContext, "appPath" | "supabaseProjectId">,
   filePath: string,
   search: string,
   replace: string,
@@ -310,7 +306,7 @@ export async function executeSearchReplaceFile(
  * Add npm dependencies
  */
 export async function executeAddDependencies(
-  ctx: FileOperationContext,
+  ctx: Pick<AgentContext, "appPath" | "supabaseProjectId">,
   packages: string[],
   messageId?: number,
 ): Promise<FileOperationResult> {
@@ -342,7 +338,7 @@ export async function executeAddDependencies(
  * Execute SQL on Supabase
  */
 export async function executeSupabaseSqlQuery(
-  ctx: FileOperationContext,
+  ctx: Pick<AgentContext, "appPath" | "supabaseProjectId">,
   query: string,
   description?: string,
 ): Promise<FileOperationResult> {
@@ -379,7 +375,7 @@ export async function executeSupabaseSqlQuery(
  * Read a file for context
  */
 export async function readFileForContext(
-  ctx: FileOperationContext,
+  ctx: Pick<AgentContext, "appPath" | "supabaseProjectId">,
   filePath: string,
 ): Promise<{ success: boolean; content?: string; error?: string }> {
   const fullFilePath = safeJoin(ctx.appPath, filePath);
@@ -400,7 +396,7 @@ export async function readFileForContext(
  * List files in the app directory
  */
 export async function listFilesInApp(
-  ctx: FileOperationContext,
+  ctx: Pick<AgentContext, "appPath" | "supabaseProjectId">,
   directory?: string,
 ): Promise<{ success: boolean; files?: string; error?: string }> {
   try {
@@ -427,7 +423,7 @@ export async function listFilesInApp(
  * Get database schema from Supabase
  */
 export async function getDatabaseSchema(
-  ctx: FileOperationContext,
+  ctx: Pick<AgentContext, "appPath" | "supabaseProjectId">,
 ): Promise<{ success: boolean; schema?: string; error?: string }> {
   if (!ctx.supabaseProjectId) {
     return { success: false, error: "Supabase is not connected to this app" };
@@ -447,7 +443,7 @@ export async function getDatabaseSchema(
  * Deploy all Supabase functions (after shared module changes)
  */
 export async function deployAllFunctionsIfNeeded(
-  ctx: FileOperationContext,
+  ctx: Pick<AgentContext, "appPath" | "supabaseProjectId">,
 ): Promise<FileOperationResult> {
   if (!ctx.supabaseProjectId || !sharedModulesChanged) {
     return { success: true };
@@ -480,7 +476,7 @@ export async function deployAllFunctionsIfNeeded(
  * Commit all changes
  */
 export async function commitAllChanges(
-  ctx: FileOperationContext,
+  ctx: Pick<AgentContext, "appPath" | "supabaseProjectId">,
   chatSummary?: string,
 ): Promise<{
   commitHash?: string;

@@ -1,9 +1,6 @@
 import { z } from "zod";
-import { ToolDefinition, ToolExecuteContext, escapeXmlAttr } from "./types";
-import {
-  executeSearchReplaceFile,
-  type FileOperationContext,
-} from "../processors/file_operations";
+import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
+import { executeSearchReplaceFile } from "../processors/file_operations";
 
 const searchReplaceSchema = z.object({
   path: z.string().describe("The file path to edit"),
@@ -29,7 +26,7 @@ export const searchReplaceTool: ToolDefinition<
     "Apply targeted search/replace edits to a file. This is the preferred tool for editing a file.",
   inputSchema: searchReplaceSchema,
   defaultConsent: "always",
-  execute: async (args, ctx: ToolExecuteContext) => {
+  execute: async (args, ctx: AgentContext) => {
     const allowed = await ctx.requireConsent({
       toolName: "search_replace",
       toolDescription: "Apply search/replace edits",
@@ -49,10 +46,6 @@ ${args.replace}
 </dyad-search-replace>`,
     );
 
-    const opCtx: FileOperationContext = {
-      appPath: ctx.appPath,
-      supabaseProjectId: ctx.supabaseProjectId,
-    };
     console.error(
       "EXECUTING SEARCH REPLACE FILE",
       args.path,
@@ -60,7 +53,7 @@ ${args.replace}
       args.replace,
     );
     const result = await executeSearchReplaceFile(
-      opCtx,
+      ctx,
       args.path,
       args.search,
       args.replace,

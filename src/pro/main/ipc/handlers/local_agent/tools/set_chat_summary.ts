@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ToolDefinition, ToolExecuteContext, escapeXmlContent } from "./types";
+import { ToolDefinition, AgentContext, escapeXmlContent } from "./types";
 
 const setChatSummarySchema = z.object({
   summary: z.string().describe("A short summary/title for the chat"),
@@ -12,7 +12,7 @@ export const setChatSummaryTool: ToolDefinition<
   description: "Set the title/summary for this chat",
   inputSchema: setChatSummarySchema,
   defaultConsent: "always",
-  execute: async (args, ctx: ToolExecuteContext) => {
+  execute: async (args, ctx: AgentContext) => {
     const allowed = await ctx.requireConsent({
       toolName: "set_chat_summary",
       toolDescription: "Set chat title",

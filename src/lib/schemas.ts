@@ -172,6 +172,7 @@ export const NeonSchema = z.object({
 export type Neon = z.infer<typeof NeonSchema>;
 
 export const ExperimentsSchema = z.object({
+  enableLocalAgent: z.boolean().optional(),
   // Deprecated
   enableSupabaseIntegration: z.boolean().describe("DEPRECATED").optional(),
   enableFileEditing: z.boolean().describe("DEPRECATED").optional(),

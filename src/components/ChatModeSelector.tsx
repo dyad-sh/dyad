@@ -93,7 +93,7 @@ export function ChatModeSelector() {
             </span>
           </div>
         </SelectItem>
-        {isProEnabled && (
+        {isProEnabled && settings?.experiments?.enableLocalAgent && (
           <SelectItem value="local-agent">
             <div className="flex flex-col items-start">
               <span className="font-medium">Agent v2 (experimental)</span>

@@ -19,7 +19,7 @@ testSkipIfWindows("local-agent - basic file write", async ({ po }) => {
   });
 });
 
-testSkipIfWindows.only("local-agent - read then edit", async ({ po }) => {
+testSkipIfWindows("local-agent - read then edit", async ({ po }) => {
   await po.setUpDyadPro();
   await po.importApp("minimal");
   await po.selectLocalAgentMode();

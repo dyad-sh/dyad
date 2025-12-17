@@ -26,23 +26,6 @@ import { toolCallToXml } from "./xml_tool_translator";
 
 export type Consent = "ask" | "always";
 
-// Default permissions for each tool
-// Read-only tools default to "always", write tools default to "ask"
-const DEFAULT_CONSENTS: Record<AgentToolName, Consent> = {
-  read_file: "always",
-  list_files: "always",
-  get_database_schema: "always",
-  write_file: "always",
-  delete_file: "always",
-  rename_file: "always",
-  search_replace: "always",
-  set_chat_summary: "always",
-  // These tools are ask by default because they
-  // can have more serious consequences.
-  add_dependency: "ask",
-  execute_sql: "ask",
-};
-
 // ============================================================================
 // Agent Tool Consent Management
 // ============================================================================
@@ -72,7 +55,8 @@ export function resolveAgentToolConsent(
 }
 
 export function getDefaultConsent(toolName: AgentToolName): Consent {
-  return DEFAULT_CONSENTS[toolName] ?? "ask";
+  const tool = TOOL_DEFINITIONS.find((t) => t.name === toolName);
+  return tool?.defaultConsent ?? "ask";
 }
 
 export function getAgentToolConsent(toolName: AgentToolName): Consent {
@@ -162,6 +146,7 @@ interface ToolDefinition {
   readonly name: string;
   readonly description: string;
   readonly inputSchema: z.ZodType<any>;
+  readonly defaultConsent: Consent;
   execute: (args: any, ctx: ToolExecuteContext) => Promise<string>;
 }
 
@@ -229,6 +214,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
     name: "write_file",
     description: "Create or completely overwrite a file in the codebase",
     inputSchema: writeFileSchema,
+    defaultConsent: "always",
     execute: async (args: z.infer<typeof writeFileSchema>, ctx) => {
       const allowed = await requireAgentToolConsent(ctx.event, {
         toolName: "write_file",
@@ -264,6 +250,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
     name: "delete_file",
     description: "Delete a file from the codebase",
     inputSchema: deleteFileSchema,
+    defaultConsent: "always",
     execute: async (args: z.infer<typeof deleteFileSchema>, ctx) => {
       const allowed = await requireAgentToolConsent(ctx.event, {
         toolName: "delete_file",
@@ -298,6 +285,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
     name: "rename_file",
     description: "Rename or move a file in the codebase",
     inputSchema: renameFileSchema,
+    defaultConsent: "always",
     execute: async (args: z.infer<typeof renameFileSchema>, ctx) => {
       const allowed = await requireAgentToolConsent(ctx.event, {
         toolName: "rename_file",
@@ -334,6 +322,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
     name: "add_dependency",
     description: "Install npm packages",
     inputSchema: addDependencySchema,
+    defaultConsent: "ask",
     execute: async (args: z.infer<typeof addDependencySchema>, ctx) => {
       const allowed = await requireAgentToolConsent(ctx.event, {
         toolName: "add_dependency",
@@ -374,6 +363,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
     name: "execute_sql",
     description: "Execute SQL on the Supabase database",
     inputSchema: executeSqlSchema,
+    defaultConsent: "ask",
     execute: async (args: z.infer<typeof executeSqlSchema>, ctx) => {
       if (!ctx.supabaseProjectId) {
         throw new Error("Supabase is not connected to this app");
@@ -418,6 +408,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
     description:
       "Apply targeted search/replace edits to a file. This is the preferred tool for editing a file.",
     inputSchema: searchReplaceSchema,
+    defaultConsent: "always",
     execute: async (args: z.infer<typeof searchReplaceSchema>, ctx) => {
       const allowed = await requireAgentToolConsent(ctx.event, {
         toolName: "search_replace",
@@ -458,6 +449,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
     name: "read_file",
     description: "Read the content of a file from the codebase",
     inputSchema: readFileSchema,
+    defaultConsent: "always",
     execute: async (args: z.infer<typeof readFileSchema>, ctx) => {
       const allowed = await requireAgentToolConsent(ctx.event, {
         toolName: "read_file",
@@ -492,6 +484,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
     name: "list_files",
     description: "List all files in the application directory",
     inputSchema: listFilesSchema,
+    defaultConsent: "always",
     execute: async (args: z.infer<typeof listFilesSchema>, ctx) => {
       const allowed = await requireAgentToolConsent(ctx.event, {
         toolName: "list_files",
@@ -528,6 +521,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
     name: "get_database_schema",
     description: "Fetch the database schema from Supabase",
     inputSchema: getDatabaseSchemaSchema,
+    defaultConsent: "always",
     execute: async (_args: z.infer<typeof getDatabaseSchemaSchema>, ctx) => {
       if (!ctx.supabaseProjectId) {
         throw new Error("Supabase is not connected to this app");
@@ -566,6 +560,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
     name: "set_chat_summary",
     description: "Set the title/summary for this chat",
     inputSchema: setChatSummarySchema,
+    defaultConsent: "always",
     execute: async (args: z.infer<typeof setChatSummarySchema>, ctx) => {
       const allowed = await requireAgentToolConsent(ctx.event, {
         toolName: "set_chat_summary",

@@ -57,8 +57,9 @@ ${args.query ?? ""}
 </dyad-execute-sql>`;
 
     case "search_replace":
+      const operations = `<<<<<<< SEARCH\n${args.search ?? ""}\n=======\n${args.replace ?? ""}\n>>>>>>> REPLACE`;
       return `<dyad-search-replace path="${escapeXmlAttr(String(args.path ?? ""))}" description="${escapeXmlAttr(String(args.description ?? ""))}">
-${args.operations ?? ""}
+${operations}
 </dyad-search-replace>`;
 
     case "read_file":

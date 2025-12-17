@@ -246,7 +246,8 @@ export async function executeRenameFile(
 export async function executeSearchReplaceFile(
   ctx: FileOperationContext,
   filePath: string,
-  operations: string,
+  search: string,
+  replace: string,
 ): Promise<FileOperationResult> {
   const fullFilePath = safeJoin(ctx.appPath, filePath);
 
@@ -261,6 +262,9 @@ export async function executeSearchReplaceFile(
     }
 
     const original = await readFile(fullFilePath, "utf8");
+    console.log("FILE PATH: ", filePath, "original*******", original);
+    // Construct the operations string in the expected format
+    const operations = `<<<<<<< SEARCH\n${search}\n=======\n${replace}\n>>>>>>> REPLACE`;
     const result = applySearchReplace(original, operations);
 
     if (!result.success || typeof result.content !== "string") {
@@ -400,20 +404,20 @@ export async function listFilesInApp(
   directory?: string,
 ): Promise<{ success: boolean; files?: string; error?: string }> {
   try {
-    const targetPath = directory
-      ? safeJoin(ctx.appPath, directory)
-      : ctx.appPath;
-
-    const { formattedOutput } = await extractCodebase({
-      appPath: targetPath,
+    const { files } = await extractCodebase({
+      appPath: ctx.appPath,
+      // TODO
       chatContext: {
-        contextPaths: [],
+        contextPaths: directory ? [{ globPath: directory + "/**" }] : [],
         smartContextAutoIncludes: [],
         excludePaths: [],
       },
     });
 
-    return { success: true, files: formattedOutput };
+    return {
+      success: true,
+      files: files.map((file) => " - " + file.path).join("\n"),
+    };
   } catch (error) {
     return { success: false, error: `Failed to list files: ${error}` };
   }

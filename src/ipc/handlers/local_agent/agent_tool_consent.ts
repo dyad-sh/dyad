@@ -202,4 +202,3 @@ export async function requireAgentToolConsent(
   }
   return response === "accept-once";
 }
-

@@ -221,6 +221,7 @@ async function processStreamChunks({
 
 export function registerChatStreamHandlers() {
   ipcMain.handle("chat:stream", async (event, req: ChatStreamParams) => {
+    let attachmentPaths: string[] = [];
     try {
       const fileUploadsState = FileUploadsState.getInstance();
       let dyadRequestId: string | undefined;
@@ -279,7 +280,6 @@ export function registerChatStreamHandlers() {
 
       // Process attachments if any
       let attachmentInfo = "";
-      let attachmentPaths: string[] = [];
 
       if (req.attachments && req.attachments.length > 0) {
         attachmentInfo = "\n\nAttachments:\n";
@@ -1010,13 +1010,10 @@ This conversation includes one or more image attachments. When the user uploads 
 
         // Handle local-agent mode (Agent v2)
         if (settings.selectedChatMode === "local-agent") {
-          const result = await handleLocalAgentStream(
-            event,
-            req,
-            abortController,
-          );
-          activeStreams.delete(req.chatId);
-          return result;
+          await handleLocalAgentStream(event, req, abortController, {
+            placeholderMessageId: placeholderAssistantMessage.id,
+          });
+          return;
         }
 
         if (settings.selectedChatMode === "agent") {
@@ -1427,6 +1424,22 @@ ${problemReport.problems
         }
       }
 
+      // Return the chat ID for backwards compatibility
+      return req.chatId;
+    } catch (error) {
+      logger.error("Error calling LLM:", error);
+      safeSend(event.sender, "chat:response:error", {
+        chatId: req.chatId,
+        error: `Sorry, there was an error processing your request: ${error}`,
+      });
+
+      // Clean up file uploads state on error
+      FileUploadsState.getInstance().clear(req.chatId);
+      return "error";
+    } finally {
+      // Clean up the abort controller
+      activeStreams.delete(req.chatId);
+
       // Clean up any temporary files
       if (attachmentPaths.length > 0) {
         for (const filePath of attachmentPaths) {
@@ -1447,20 +1460,6 @@ ${problemReport.problems
           }
         }
       }
-
-      // Return the chat ID for backwards compatibility
-      return req.chatId;
-    } catch (error) {
-      logger.error("Error calling LLM:", error);
-      safeSend(event.sender, "chat:response:error", {
-        chatId: req.chatId,
-        error: `Sorry, there was an error processing your request: ${error}`,
-      });
-      // Clean up the abort controller
-      activeStreams.delete(req.chatId);
-      // Clean up file uploads state on error
-      FileUploadsState.getInstance().clear(req.chatId);
-      return "error";
     }
   });
 

@@ -9,7 +9,6 @@ import log from "electron-log";
 import { db } from "../../../db";
 import { chats, messages } from "../../../db/schema";
 import { eq, and, isNull } from "drizzle-orm";
-import { v4 as uuidv4 } from "uuid";
 
 import { isDyadProEnabled } from "../../../lib/schemas";
 import { readSettings } from "../../../main/settings";
@@ -30,7 +29,7 @@ import {
 import { mcpManager } from "../../utils/mcp_manager";
 import { mcpServers } from "../../../db/schema";
 import { requireMcpToolConsent } from "../../utils/mcp_consent";
-import { getCurrentCommitHash } from "../../utils/git_utils";
+
 import type { ChatStreamParams, ChatResponseEnd } from "../../ipc_types";
 
 const logger = log.scope("local_agent_handler");
@@ -57,7 +56,8 @@ export async function handleLocalAgentStream(
   event: IpcMainInvokeEvent,
   req: ChatStreamParams,
   abortController: AbortController,
-): Promise<number | "error"> {
+  { placeholderMessageId }: { placeholderMessageId: number },
+): Promise<void> {
   const settings = readSettings();
 
   // Check Pro status
@@ -67,7 +67,7 @@ export async function handleLocalAgentStream(
       error:
         "Agent v2 requires Dyad Pro. Please enable Dyad Pro in Settings → Pro.",
     });
-    return "error";
+    return;
   }
 
   // Get the chat and app
@@ -88,49 +88,11 @@ export async function handleLocalAgentStream(
   const appPath = getDyadAppPath(chat.app.path);
 
   // Generate request ID
-  const dyadRequestId = uuidv4();
-
-  // Add user message
-  await db
-    .insert(messages)
-    .values({
-      chatId: req.chatId,
-      role: "user",
-      content: req.prompt,
-    })
-    .returning();
-
-  // Create placeholder assistant message
-  const [placeholderMessage] = await db
-    .insert(messages)
-    .values({
-      chatId: req.chatId,
-      role: "assistant",
-      content: "",
-      requestId: dyadRequestId,
-      sourceCommitHash: await getCurrentCommitHash({ path: appPath }),
-    })
-    .returning();
-
-  // Fetch updated chat
-  const updatedChat = await db.query.chats.findFirst({
-    where: eq(chats.id, req.chatId),
-    with: {
-      messages: {
-        orderBy: (messages, { asc }) => [asc(messages.createdAt)],
-      },
-      app: true,
-    },
-  });
-
-  if (!updatedChat) {
-    throw new Error(`Chat not found: ${req.chatId}`);
-  }
 
   // Send initial message update
   safeSend(event.sender, "chat:response:chunk", {
     chatId: req.chatId,
-    messages: updatedChat.messages,
+    messages: chat.messages,
   });
 
   // Reset shared modules tracking
@@ -159,11 +121,11 @@ export async function handleLocalAgentStream(
       event,
       appPath,
       supabaseProjectId: chat.app.supabaseProjectId,
-      messageId: placeholderMessage.id,
+      messageId: placeholderMessageId,
       onXmlChunk: (xml: string) => {
         fullResponse += xml + "\n";
-        updateResponseInDb(placeholderMessage.id, fullResponse);
-        sendResponseChunk(event, req.chatId, updatedChat, fullResponse);
+        updateResponseInDb(placeholderMessageId, fullResponse);
+        sendResponseChunk(event, req.chatId, chat, fullResponse);
       },
     };
 
@@ -173,7 +135,7 @@ export async function handleLocalAgentStream(
     const allTools: ToolSet = { ...agentTools, ...mcpTools };
 
     // Prepare message history
-    const messageHistory = updatedChat.messages
+    const messageHistory = chat.messages
       .filter((msg) => msg.content)
       .map((msg) => ({
         role: msg.role as "user" | "assistant",
@@ -197,7 +159,7 @@ export async function handleLocalAgentStream(
           await db
             .update(messages)
             .set({ maxTokensUsed: totalTokens })
-            .where(eq(messages.id, placeholderMessage.id))
+            .where(eq(messages.id, placeholderMessageId))
             .catch((err) => logger.error("Failed to save token count", err));
         }
       },
@@ -282,15 +244,15 @@ export async function handleLocalAgentStream(
 
       if (chunk) {
         fullResponse += chunk;
-        await updateResponseInDb(placeholderMessage.id, fullResponse);
-        sendResponseChunk(event, req.chatId, updatedChat, fullResponse);
+        await updateResponseInDb(placeholderMessageId, fullResponse);
+        sendResponseChunk(event, req.chatId, chat, fullResponse);
       }
     }
 
     // Close thinking block if still open
     if (inThinkingBlock) {
       fullResponse += "</think>\n";
-      await updateResponseInDb(placeholderMessage.id, fullResponse);
+      await updateResponseInDb(placeholderMessageId, fullResponse);
     }
 
     // Deploy all Supabase functions if shared modules changed
@@ -315,7 +277,7 @@ export async function handleLocalAgentStream(
       await db
         .update(messages)
         .set({ commitHash: commitResult.commitHash })
-        .where(eq(messages.id, placeholderMessage.id));
+        .where(eq(messages.id, placeholderMessageId));
     }
 
     // Update chat title if we have a summary
@@ -330,7 +292,7 @@ export async function handleLocalAgentStream(
     await db
       .update(messages)
       .set({ approvalState: "approved" })
-      .where(eq(messages.id, placeholderMessage.id));
+      .where(eq(messages.id, placeholderMessageId));
 
     // Send completion
     safeSend(event.sender, "chat:response:end", {
@@ -342,7 +304,7 @@ export async function handleLocalAgentStream(
       extraFiles: commitResult.extraFiles,
     } satisfies ChatResponseEnd);
 
-    return req.chatId;
+    return;
   } catch (error) {
     if (abortController.signal.aborted) {
       // Handle cancellation
@@ -350,9 +312,9 @@ export async function handleLocalAgentStream(
         await db
           .update(messages)
           .set({ content: `${fullResponse}\n\n[Response cancelled by user]` })
-          .where(eq(messages.id, placeholderMessage.id));
+          .where(eq(messages.id, placeholderMessageId));
       }
-      return req.chatId;
+      return;
     }
 
     logger.error("Local agent error:", error);
@@ -360,7 +322,7 @@ export async function handleLocalAgentStream(
       chatId: req.chatId,
       error: `Error: ${error}`,
     });
-    return "error";
+    return;
   }
 }
 

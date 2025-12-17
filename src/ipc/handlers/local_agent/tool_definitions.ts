@@ -35,17 +35,17 @@ interface ToolDefinition {
   name: AgentToolName;
   description: string;
   inputSchema: z.ZodType<any>;
-  execute: (
-    args: any,
-    ctx: ToolExecuteContext,
-  ) => Promise<string>;
+  execute: (args: any, ctx: ToolExecuteContext) => Promise<string>;
 }
 
 // Tool schemas
 const writeFileSchema = z.object({
   path: z.string().describe("The file path relative to the app root"),
   content: z.string().describe("The content to write to the file"),
-  description: z.string().optional().describe("Brief description of the change"),
+  description: z
+    .string()
+    .optional()
+    .describe("Brief description of the change"),
 });
 
 const deleteFileSchema = z.object({
@@ -68,8 +68,18 @@ const executeSqlSchema = z.object({
 
 const searchReplaceSchema = z.object({
   path: z.string().describe("The file path to edit"),
-  operations: z.string().describe("SEARCH/REPLACE blocks"),
-  description: z.string().optional().describe("Brief description of the changes"),
+  search: z
+    .string()
+    .describe(
+      "Content to search for in the file. This should match the existing code that will be replaced",
+    ),
+  replace: z
+    .string()
+    .describe("New content to replace the search content with"),
+  description: z
+    .string()
+    .optional()
+    .describe("Brief description of the changes"),
 });
 
 const readFileSchema = z.object({
@@ -103,11 +113,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       }
 
       // Emit XML for UI
-      ctx.onXmlChunk(toolCallToXml({
-        toolName: "write_file",
-        toolCallId: "",
-        args,
-      }));
+      ctx.onXmlChunk(
+        toolCallToXml({
+          toolName: "write_file",
+          toolCallId: "",
+          args,
+        }),
+      );
 
       const opCtx: FileOperationContext = {
         appPath: ctx.appPath,
@@ -135,11 +147,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         throw new Error("User denied permission for delete_file");
       }
 
-      ctx.onXmlChunk(toolCallToXml({
-        toolName: "delete_file",
-        toolCallId: "",
-        args,
-      }));
+      ctx.onXmlChunk(
+        toolCallToXml({
+          toolName: "delete_file",
+          toolCallId: "",
+          args,
+        }),
+      );
 
       const opCtx: FileOperationContext = {
         appPath: ctx.appPath,
@@ -167,11 +181,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         throw new Error("User denied permission for rename_file");
       }
 
-      ctx.onXmlChunk(toolCallToXml({
-        toolName: "rename_file",
-        toolCallId: "",
-        args,
-      }));
+      ctx.onXmlChunk(
+        toolCallToXml({
+          toolName: "rename_file",
+          toolCallId: "",
+          args,
+        }),
+      );
 
       const opCtx: FileOperationContext = {
         appPath: ctx.appPath,
@@ -182,7 +198,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       if (!result.success) {
         throw new Error(result.error);
       }
-      return result.warning || `Successfully renamed ${args.from} to ${args.to}`;
+      return (
+        result.warning || `Successfully renamed ${args.from} to ${args.to}`
+      );
     },
   },
   {
@@ -199,11 +217,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         throw new Error("User denied permission for add_dependency");
       }
 
-      ctx.onXmlChunk(toolCallToXml({
-        toolName: "add_dependency",
-        toolCallId: "",
-        args,
-      }));
+      ctx.onXmlChunk(
+        toolCallToXml({
+          toolName: "add_dependency",
+          toolCallId: "",
+          args,
+        }),
+      );
 
       const opCtx: FileOperationContext = {
         appPath: ctx.appPath,
@@ -218,7 +238,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       if (!result.success) {
         throw new Error(result.error);
       }
-      return result.warning || `Successfully installed ${args.packages.join(", ")}`;
+      return (
+        result.warning || `Successfully installed ${args.packages.join(", ")}`
+      );
     },
   },
   {
@@ -233,17 +255,20 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       const allowed = await requireAgentToolConsent(ctx.event, {
         toolName: "execute_sql",
         toolDescription: "Execute SQL on the database",
-        inputPreview: args.query.slice(0, 100) + (args.query.length > 100 ? "..." : ""),
+        inputPreview:
+          args.query.slice(0, 100) + (args.query.length > 100 ? "..." : ""),
       });
       if (!allowed) {
         throw new Error("User denied permission for execute_sql");
       }
 
-      ctx.onXmlChunk(toolCallToXml({
-        toolName: "execute_sql",
-        toolCallId: "",
-        args,
-      }));
+      ctx.onXmlChunk(
+        toolCallToXml({
+          toolName: "execute_sql",
+          toolCallId: "",
+          args,
+        }),
+      );
 
       const opCtx: FileOperationContext = {
         appPath: ctx.appPath,
@@ -263,7 +288,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "search_replace",
-    description: "Apply targeted search/replace edits to a file",
+    description:
+      "Apply targeted search/replace edits to a file. This is the preferred tool for editing a file.",
     inputSchema: searchReplaceSchema,
     execute: async (args: z.infer<typeof searchReplaceSchema>, ctx) => {
       const allowed = await requireAgentToolConsent(ctx.event, {
@@ -275,11 +301,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         throw new Error("User denied permission for search_replace");
       }
 
-      ctx.onXmlChunk(toolCallToXml({
-        toolName: "search_replace",
-        toolCallId: "",
-        args,
-      }));
+      ctx.onXmlChunk(
+        toolCallToXml({
+          toolName: "search_replace",
+          toolCallId: "",
+          args,
+        }),
+      );
 
       const opCtx: FileOperationContext = {
         appPath: ctx.appPath,
@@ -289,8 +317,10 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       const result = await executeSearchReplaceFile(
         opCtx,
         args.path,
-        args.operations,
+        args.search,
+        args.replace,
       );
+
       if (!result.success) {
         throw new Error(result.error);
       }
@@ -311,11 +341,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         throw new Error("User denied permission for read_file");
       }
 
-      ctx.onXmlChunk(toolCallToXml({
-        toolName: "read_file",
-        toolCallId: "",
-        args,
-      }));
+      ctx.onXmlChunk(
+        toolCallToXml({
+          toolName: "read_file",
+          toolCallId: "",
+          args,
+        }),
+      );
 
       const opCtx: FileOperationContext = {
         appPath: ctx.appPath,
@@ -337,17 +369,21 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       const allowed = await requireAgentToolConsent(ctx.event, {
         toolName: "list_files",
         toolDescription: "List files in the app",
-        inputPreview: args.directory ? `List ${args.directory}` : "List all files",
+        inputPreview: args.directory
+          ? `List ${args.directory}`
+          : "List all files",
       });
       if (!allowed) {
         throw new Error("User denied permission for list_files");
       }
 
-      ctx.onXmlChunk(toolCallToXml({
-        toolName: "list_files",
-        toolCallId: "",
-        args,
-      }));
+      ctx.onXmlChunk(
+        toolCallToXml({
+          toolName: "list_files",
+          toolCallId: "",
+          args,
+        }),
+      );
 
       const opCtx: FileOperationContext = {
         appPath: ctx.appPath,
@@ -379,11 +415,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         throw new Error("User denied permission for get_database_schema");
       }
 
-      ctx.onXmlChunk(toolCallToXml({
-        toolName: "get_database_schema",
-        toolCallId: "",
-        args: {},
-      }));
+      ctx.onXmlChunk(
+        toolCallToXml({
+          toolName: "get_database_schema",
+          toolCallId: "",
+          args: {},
+        }),
+      );
 
       const opCtx: FileOperationContext = {
         appPath: ctx.appPath,
@@ -411,11 +449,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         throw new Error("User denied permission for set_chat_summary");
       }
 
-      ctx.onXmlChunk(toolCallToXml({
-        toolName: "set_chat_summary",
-        toolCallId: "",
-        args,
-      }));
+      ctx.onXmlChunk(
+        toolCallToXml({
+          toolName: "set_chat_summary",
+          toolCallId: "",
+          args,
+        }),
+      );
 
       // The actual chat title update is handled by the local_agent_handler
       // based on parsing the XML response
@@ -433,7 +473,7 @@ export function buildAgentToolSet(ctx: ToolExecuteContext) {
   for (const tool of TOOL_DEFINITIONS) {
     toolSet[tool.name] = {
       description: tool.description,
-      parameters: tool.inputSchema,
+      inputSchema: tool.inputSchema,
       execute: async (args: any) => {
         return tool.execute(args, ctx);
       },
@@ -442,4 +482,3 @@ export function buildAgentToolSet(ctx: ToolExecuteContext) {
 
   return toolSet;
 }
-

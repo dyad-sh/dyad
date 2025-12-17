@@ -11,8 +11,10 @@ import {
   QueryClientProvider,
   MutationCache,
 } from "@tanstack/react-query";
-import { showError, showMcpConsentToast, showAgentConsentToast } from "./lib/toast";
+import { showError, showMcpConsentToast } from "./lib/toast";
 import { IpcClient } from "./ipc/ipc_client";
+import { useSetAtom } from "jotai";
+import { pendingAgentConsentAtom } from "./atoms/chatAtoms";
 
 // @ts-ignore
 console.log("Running in mode:", import.meta.env.MODE);
@@ -124,19 +126,20 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-  // Agent v2 tool consent requests
+  // Agent v2 tool consent requests - set atom instead of toast
+  const setPendingAgentConsent = useSetAtom(pendingAgentConsentAtom);
   useEffect(() => {
     const ipc = IpcClient.getInstance();
     const unsubscribe = ipc.onAgentToolConsentRequest((payload) => {
-      showAgentConsentToast({
+      setPendingAgentConsent({
+        requestId: payload.requestId,
         toolName: payload.toolName,
         toolDescription: payload.toolDescription,
         inputPreview: payload.inputPreview,
-        onDecision: (d) => ipc.respondToAgentConsentRequest(payload.requestId, d),
       });
     });
     return () => unsubscribe();
-  }, []);
+  }, [setPendingAgentConsent]);
 
   return <RouterProvider router={router} />;
 }

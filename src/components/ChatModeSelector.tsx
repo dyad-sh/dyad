@@ -35,7 +35,7 @@ export function ChatModeSelector() {
       case "agent":
         return "Build (MCP)";
       case "local-agent":
-        return "Agent v2";
+        return "Agent";
       default:
         return "Build";
     }
@@ -50,7 +50,7 @@ export function ChatModeSelector() {
             data-testid="chat-mode-selector"
             className={cn(
               "h-6 w-fit px-1.5 py-0 text-xs-sm font-medium shadow-none gap-0.5",
-              selectedMode === "build"
+              selectedMode === "build" || selectedMode === "local-agent"
                 ? "bg-background hover:bg-muted/50 focus:bg-muted/50"
                 : "bg-primary/10 hover:bg-primary/20 focus:bg-primary/20 text-primary border-primary/20 dark:bg-primary/20 dark:hover:bg-primary/30 dark:focus:bg-primary/30",
             )}
@@ -98,7 +98,7 @@ export function ChatModeSelector() {
             <div className="flex flex-col items-start">
               <span className="font-medium">Agent v2 (experimental)</span>
               <span className="text-xs text-muted-foreground">
-                Tool-based agent with parallel execution
+                More autonomous (note: may have bugs)
               </span>
             </div>
           </SelectItem>

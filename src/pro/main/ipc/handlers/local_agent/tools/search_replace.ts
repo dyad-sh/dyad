@@ -53,13 +53,19 @@ ${args.replace}
       appPath: ctx.appPath,
       supabaseProjectId: ctx.supabaseProjectId,
     };
-
+    console.error(
+      "EXECUTING SEARCH REPLACE FILE",
+      args.path,
+      args.search,
+      args.replace,
+    );
     const result = await executeSearchReplaceFile(
       opCtx,
       args.path,
       args.search,
       args.replace,
     );
+    console.error("**RESULT**", result);
 
     if (!result.success) {
       throw new Error(result.error);

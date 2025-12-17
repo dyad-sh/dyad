@@ -27,13 +27,13 @@ testSkipIfWindows(
     // Wait for console to be visible and auto-scroll to complete
     // Wait for at least one log entry to appear, then wait for the last one to be visible
     // This ensures auto-scroll has completed
-    await expect(po.page.getByTestId("log-entry").first()).toBeVisible({
+    await expect(po.page.getByTestId("console-entry").first()).toBeVisible({
       timeout: Timeout.MEDIUM,
     });
 
     // Wait for the last log entry to be visible (ensures auto-scroll to bottom)
     await expect(async () => {
-      const allLogs = po.page.getByTestId("log-entry");
+      const allLogs = po.page.getByTestId("console-entry");
       const count = await allLogs.count();
       expect(count).toBeGreaterThan(0);
       await expect(allLogs.last()).toBeVisible();
@@ -42,18 +42,18 @@ testSkipIfWindows(
     // Wait for all console logs to appear - use retry logic
     // Verify console.log appears
     await expect(async () => {
-      const logEntry = po.page
-        .getByTestId("log-entry")
+      const consoleEntry = po.page
+        .getByTestId("console-entry")
         .filter({ hasText: "[LOG] Hello from console.log" });
-      const count = await logEntry.count();
+      const count = await consoleEntry.count();
       expect(count).toBeGreaterThan(0);
-      await expect(logEntry.first()).toBeVisible();
+      await expect(consoleEntry.first()).toBeVisible();
     }).toPass({ timeout: Timeout.MEDIUM });
 
     // Verify console.info appears
     await expect(async () => {
       const infoEntry = po.page
-        .getByTestId("log-entry")
+        .getByTestId("console-entry")
         .filter({ hasText: "[INFO] Info message" });
       const count = await infoEntry.count();
       expect(count).toBeGreaterThan(0);
@@ -63,7 +63,7 @@ testSkipIfWindows(
     // Verify console.warn appears
     await expect(async () => {
       const warnEntry = po.page
-        .getByTestId("log-entry")
+        .getByTestId("console-entry")
         .filter({ hasText: "[WARN] Warning message" });
       const count = await warnEntry.count();
       expect(count).toBeGreaterThan(0);
@@ -73,7 +73,7 @@ testSkipIfWindows(
     // Verify console.error appears
     await expect(async () => {
       const errorEntry = po.page
-        .getByTestId("log-entry")
+        .getByTestId("console-entry")
         .filter({ hasText: "[ERROR] Test error message" });
       const count = await errorEntry.count();
       expect(count).toBeGreaterThan(0);
@@ -114,13 +114,13 @@ testSkipIfWindows(
     // Wait for console to be visible and auto-scroll to complete
     // Wait for at least one log entry to appear, then wait for the last one to be visible
     // This ensures auto-scroll has completed
-    await expect(po.page.getByTestId("log-entry").first()).toBeVisible({
+    await expect(po.page.getByTestId("console-entry").first()).toBeVisible({
       timeout: Timeout.MEDIUM,
     });
 
     // Wait for the last log entry to be visible (ensures auto-scroll to bottom)
     await expect(async () => {
-      const allLogs = po.page.getByTestId("log-entry");
+      const allLogs = po.page.getByTestId("console-entry");
       const count = await allLogs.count();
       expect(count).toBeGreaterThan(0);
       await expect(allLogs.last()).toBeVisible();
@@ -133,7 +133,7 @@ testSkipIfWindows(
     // Format: "→ GET https://jsonplaceholder.typicode.com/posts/1"
     await expect(async () => {
       const getRequestLocator = po.page
-        .getByTestId("log-entry")
+        .getByTestId("console-entry")
         .filter({ hasText: /→ GET.*jsonplaceholder\.typicode\.com\/posts\/1/ });
       const count = await getRequestLocator.count();
       expect(count).toBeGreaterThan(0);
@@ -143,11 +143,9 @@ testSkipIfWindows(
     // Wait for the GET response log to appear
     // Format: "[200] GET https://jsonplaceholder.typicode.com/posts/1 (durationms)"
     await expect(async () => {
-      const getResponseLocator = po.page
-        .getByTestId("log-entry")
-        .filter({
-          hasText: /\[200\].*GET.*jsonplaceholder\.typicode\.com\/posts\/1/,
-        });
+      const getResponseLocator = po.page.getByTestId("console-entry").filter({
+        hasText: /\[200\].*GET.*jsonplaceholder\.typicode\.com\/posts\/1/,
+      });
       const count = await getResponseLocator.count();
       expect(count).toBeGreaterThan(0);
       await expect(getResponseLocator.first()).toBeVisible();
@@ -157,7 +155,7 @@ testSkipIfWindows(
     // Format: "→ POST https://jsonplaceholder.typicode.com/posts"
     await expect(async () => {
       const postRequestLocator = po.page
-        .getByTestId("log-entry")
+        .getByTestId("console-entry")
         .filter({ hasText: /→ POST.*jsonplaceholder\.typicode\.com\/posts/ });
       const count = await postRequestLocator.count();
       expect(count).toBeGreaterThan(0);
@@ -167,11 +165,9 @@ testSkipIfWindows(
     // Wait for the POST response log to appear
     // Format: "[201] POST https://jsonplaceholder.typicode.com/posts (durationms)"
     await expect(async () => {
-      const postResponseLocator = po.page
-        .getByTestId("log-entry")
-        .filter({
-          hasText: /\[201\].*POST.*jsonplaceholder\.typicode\.com\/posts/,
-        });
+      const postResponseLocator = po.page.getByTestId("console-entry").filter({
+        hasText: /\[201\].*POST.*jsonplaceholder\.typicode\.com\/posts/,
+      });
       const count = await postResponseLocator.count();
       expect(count).toBeGreaterThan(0);
       await expect(postResponseLocator.first()).toBeVisible();
@@ -197,14 +193,14 @@ testSkipIfWindows(
     await consoleHeader.click();
 
     // Wait for the log entry to appear
-    const logEntry = await po.page.getByTestId("log-entry").last();
-    expect(logEntry).toBeVisible({ timeout: Timeout.EXTRA_LONG });
+    const consoleEntry = await po.page.getByTestId("console-entry").last();
+    expect(consoleEntry).toBeVisible({ timeout: Timeout.EXTRA_LONG });
 
     // Hover over the log entry to reveal the send to chat button
-    await logEntry.hover();
+    await consoleEntry.hover();
 
     // Click the send to chat button (MessageSquare icon)
-    const sendToChatButton = logEntry.getByTestId("send-to-chat");
+    const sendToChatButton = consoleEntry.getByTestId("send-to-chat");
     await sendToChatButton.click({ timeout: Timeout.EXTRA_LONG });
 
     // Check that the chat input now contains the log information

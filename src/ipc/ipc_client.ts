@@ -73,7 +73,7 @@ import type {
   ApplyVisualEditingChangesParams,
   AnalyseComponentParams,
 } from "./ipc_types";
-import type { LogEntry } from "../atoms/appAtoms";
+import type { ConsoleEntry } from "../atoms/appAtoms";
 import type { Template } from "../shared/templates";
 import type {
   AppChatContext,
@@ -972,7 +972,7 @@ export class IpcClient {
     projectId: string;
     timestampStart?: number;
     appId: number;
-  }): Promise<Array<LogEntry>> {
+  }): Promise<Array<ConsoleEntry>> {
     return this.ipcRenderer.invoke("supabase:get-edge-logs", params);
   }
 

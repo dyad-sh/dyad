@@ -1,7 +1,7 @@
 import {
   selectedAppIdAtom,
   appUrlAtom,
-  appLogsAtom,
+  appConsoleEntriesAtom,
   previewErrorMessageAtom,
 } from "@/atoms/appAtoms";
 import { useAtomValue, useSetAtom, useAtom } from "jotai";
@@ -171,7 +171,7 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
 export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { appUrl, originalUrl } = useAtomValue(appUrlAtom);
-  const setAppLogs = useSetAtom(appLogsAtom);
+  const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
   // State to trigger iframe reload
   const [reloadKey, setReloadKey] = useState(0);
   const [errorMessage, setErrorMessage] = useAtom(previewErrorMessageAtom);
@@ -352,7 +352,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         const formattedMessage = `[${level.toUpperCase()}] ${args.join(" ")}`;
         const logLevel =
           level === "error" ? "error" : level === "warn" ? "warn" : "info";
-        setAppLogs((prev) => [
+        setConsoleEntries((prev) => [
           ...prev,
           {
             level: logLevel,
@@ -369,7 +369,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       if (event.data?.type === "network-request") {
         const { method, url } = event.data;
         const formattedMessage = `→ ${method} ${url}`;
-        setAppLogs((prev) => [
+        setConsoleEntries((prev) => [
           ...prev,
           {
             level: "info",
@@ -387,7 +387,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         const { method, url, status, duration } = event.data;
         const formattedMessage = `[${status}] ${method} ${url} (${duration}ms)`;
         const level = status >= 400 ? "error" : status >= 300 ? "warn" : "info";
-        setAppLogs((prev) => [
+        setConsoleEntries((prev) => [
           ...prev,
           {
             level,
@@ -405,7 +405,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         const { method, url, status, error, duration } = event.data;
         const statusCode = status && status !== 0 ? `[${status}] ` : "";
         const formattedMessage = `${statusCode}${method} ${url} - ${error} (${duration}ms)`;
-        setAppLogs((prev) => [
+        setConsoleEntries((prev) => [
           ...prev,
           {
             level: "error",
@@ -552,7 +552,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         }\nStack trace: ${stack}`;
         console.error("Iframe error:", errorMessage);
         setErrorMessage({ message: errorMessage, source: "preview-app" });
-        setAppLogs((prev) => [
+        setConsoleEntries((prev) => [
           ...prev,
           {
             level: "error",
@@ -566,7 +566,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         console.debug(`Build error report: ${payload}`);
         const errorMessage = `${payload?.message} from file ${payload?.file}.\n\nSource code:\n${payload?.frame}`;
         setErrorMessage({ message: errorMessage, source: "preview-app" });
-        setAppLogs((prev) => [
+        setConsoleEntries((prev) => [
           ...prev,
           {
             level: "error",

@@ -16,7 +16,7 @@ import { handleSupabaseOAuthReturn } from "../../supabase_admin/supabase_return_
 import { safeSend } from "../utils/safe_sender";
 
 import { SetSupabaseAppProjectParams, SupabaseBranch } from "../ipc_types";
-import type { LogEntry } from "../../atoms/appAtoms";
+import type { ConsoleEntry } from "../../atoms/appAtoms";
 
 const logger = log.scope("supabase_handlers");
 const handle = createLoggedHandler(logger);
@@ -58,7 +58,7 @@ export function registerSupabaseHandlers() {
         timestampStart,
         appId,
       }: { projectId: string; timestampStart?: number; appId: number },
-    ): Promise<Array<LogEntry>> => {
+    ): Promise<Array<ConsoleEntry>> => {
       const response = await getSupabaseProjectLogs(projectId, timestampStart);
 
       if (response.error) {
@@ -71,7 +71,7 @@ export function registerSupabaseHandlers() {
 
       const rawLogs = response.result || [];
 
-      // Transform to LogEntry format
+      // Transform to ConsoleEntry format
       return rawLogs.map((log: any) => {
         const metadata = log.metadata?.[0] || {};
         const level = metadata.level || "info";

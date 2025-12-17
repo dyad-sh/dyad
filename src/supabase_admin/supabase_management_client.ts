@@ -139,24 +139,6 @@ export async function getSupabaseProjectLogs(
   projectId: string,
   timestampStart?: number,
 ): Promise<any> {
-  if (IS_TEST_BUILD) {
-    return {
-      result: [
-        {
-          event_message: "[test-function] Function executed successfully\n",
-          metadata: [
-            {
-              level: "info",
-              timestamp: new Date().toISOString(),
-            },
-          ],
-          timestamp: Date.now() * 1000,
-        },
-      ],
-      error: null,
-    };
-  }
-
   const supabase = await getSupabaseClient();
 
   // Build SQL query with optional timestamp filter

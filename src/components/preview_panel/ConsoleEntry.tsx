@@ -1,33 +1,22 @@
-import type { LogEntry } from "@/atoms/appAtoms";
 import { MessageSquare } from "lucide-react";
 import { useSetAtom } from "jotai";
 import { chatInputValueAtom } from "@/atoms/chatAtoms";
 
-interface BaseLogEntryProps {
+interface ConsoleEntryProps {
+  type: "server" | "client" | "edge-function";
+  level: "info" | "warn" | "error";
   timestamp: number;
   message: string;
   sourceName?: string;
 }
-
-interface OutputLogEntryProps extends BaseLogEntryProps {
-  type: "output";
-  outputType: "stdout" | "stderr" | "info" | "client-error" | "input-requested";
-}
-
-interface AppLogEntryProps extends BaseLogEntryProps {
-  type: "log";
-  level: LogEntry["level"];
-}
-
-type LogEntryProps = OutputLogEntryProps | AppLogEntryProps;
 
 const formatTimestamp = (timestamp: number) => {
   const date = new Date(timestamp);
   return date.toLocaleTimeString("en-US", { hour12: false });
 };
 
-export const LogEntryComponent = (props: LogEntryProps) => {
-  const { timestamp, message, sourceName } = props;
+export const ConsoleEntryComponent = (props: ConsoleEntryProps) => {
+  const { timestamp, message, sourceName, level } = props;
   const setChatInput = useSetAtom(chatInputValueAtom);
 
   const handleSendToChat = () => {
@@ -35,41 +24,20 @@ export const LogEntryComponent = (props: LogEntryProps) => {
       hour12: false,
     });
 
-    let formattedLog = "";
-
-    if (props.type === "output") {
-      if (
-        props.outputType === "stderr" ||
-        props.outputType === "client-error"
-      ) {
-        formattedLog = `[${time}] ERROR: ${message}`;
-      } else {
-        formattedLog = `[${time}] ${message}`;
-      }
-    } else {
-      const prefix = sourceName ? `[${sourceName}]` : "";
-      formattedLog = `[${time}] ${props.level.toUpperCase()} ${prefix}: ${message}`;
-    }
+    const prefix = sourceName ? `[${sourceName}]` : "";
+    const formattedLog = `[${time}] ${level.toUpperCase()} ${prefix}: ${message}`;
 
     setChatInput((prev) => {
       return `${prev}\n\`\`\`\n${formattedLog}\n\`\`\``;
     });
   };
 
-  // Determine styling based on log type
+  // Determine styling based on log level
   const getBackgroundClass = () => {
-    if (props.type === "output") {
-      return props.outputType === "stderr" ||
-        props.outputType === "client-error"
-        ? "bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-950/50"
-        : "hover:bg-gray-100 dark:hover:bg-gray-800";
-    }
-
-    // Log type
-    if (props.level === "error") {
+    if (level === "error") {
       return "bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-950/50";
     }
-    if (props.level === "warn") {
+    if (level === "warn") {
       return "bg-yellow-50 dark:bg-yellow-950/30 hover:bg-yellow-100 dark:hover:bg-yellow-950/50";
     }
     return "hover:bg-gray-100 dark:hover:bg-gray-800";
@@ -77,7 +45,7 @@ export const LogEntryComponent = (props: LogEntryProps) => {
 
   return (
     <div
-      data-testid="log-entry"
+      data-testid="console-entry"
       className={`px-2 py-1 my-1 rounded transition-colors group ${getBackgroundClass()}`}
     >
       <div className="flex items-start gap-2">

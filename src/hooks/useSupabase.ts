@@ -8,7 +8,7 @@ import {
   selectedSupabaseProjectAtom,
   lastLogTimestampAtom,
 } from "@/atoms/supabaseAtoms";
-import { appLogsAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
+import { appConsoleEntriesAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
 import { SetSupabaseAppProjectParams } from "@/ipc/ipc_types";
 
@@ -20,7 +20,7 @@ export function useSupabase() {
   const [selectedProject, setSelectedProject] = useAtom(
     selectedSupabaseProjectAtom,
   );
-  const setAppLogs = useSetAtom(appLogsAtom);
+  const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const [lastLogTimestamp, setLastLogTimestamp] = useAtom(lastLogTimestampAtom);
 
@@ -122,7 +122,7 @@ export function useSupabase() {
       }
       setLoading(true);
       try {
-        // Fetch logs - handler returns LogEntry[] already formatted
+        // Fetch logs - handler returns ConsoleEntry[] already formatted
         const logs = await ipcClient.getSupabaseEdgeLogs({
           projectId,
           timestampStart: lastTimestamp,
@@ -134,8 +134,8 @@ export function useSupabase() {
           return;
         }
 
-        // Logs are already in LogEntry format, just append them
-        setAppLogs((prev) => [...prev, ...logs]);
+        // Logs are already in ConsoleEntry format, just append them
+        setConsoleEntries((prev) => [...prev, ...logs]);
 
         // Update the last timestamp for this project
         const latestLog = logs.reduce((latest, log) =>
@@ -156,7 +156,7 @@ export function useSupabase() {
     },
     [
       ipcClient,
-      setAppLogs,
+      setConsoleEntries,
       setError,
       setLoading,
       selectedAppId,

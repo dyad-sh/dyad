@@ -1,36 +1,14 @@
-import { appLogsAtom, appOutputAtom, envVarsAtom } from "@/atoms/appAtoms";
+import { appConsoleEntriesAtom, envVarsAtom } from "@/atoms/appAtoms";
 import { useAtomValue } from "jotai";
 import { useEffect, useRef, useState, useMemo } from "react";
 import { List, useDynamicRowHeight, useListRef } from "react-window";
 import type { RowComponentProps } from "react-window";
-import { LogEntryComponent } from "./LogEntry";
+import { ConsoleEntryComponent } from "./ConsoleEntry";
 import { ConsoleFilters } from "./ConsoleFilters";
-
-// Type for combined log entries
-type CombinedLogEntry =
-  | {
-      entryType: "output";
-      data: {
-        type: string;
-        timestamp: number;
-        message: string;
-      };
-    }
-  | {
-      entryType: "log";
-      data: {
-        level: string;
-        timestamp: number;
-        message: string;
-        sourceName?: string;
-        type?: string;
-      };
-    };
 
 // Console component
 export const Console = () => {
-  const appLogs = useAtomValue(appLogsAtom);
-  const appOutput = useAtomValue(appOutputAtom);
+  const consoleEntries = useAtomValue(appConsoleEntriesAtom);
   const envVars = useAtomValue(envVarsAtom);
   const listRef = useListRef(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -83,81 +61,26 @@ export const Console = () => {
   // Get unique source names for filter dropdown
   const uniqueSources = useMemo(() => {
     const sources = new Set<string>();
-    appLogs.forEach((log) => {
-      if (log.sourceName) sources.add(log.sourceName);
+    consoleEntries.forEach((entry) => {
+      if (entry.sourceName) sources.add(entry.sourceName);
     });
     return Array.from(sources).sort();
-  }, [appLogs]);
+  }, [consoleEntries]);
 
-  // Filter logs
-  const filteredLogs = useMemo(() => {
-    return appLogs.filter((log) => {
-      if (levelFilter !== "all" && log.level !== levelFilter) return false;
-      if (typeFilter !== "all" && log.type !== typeFilter) return false;
+  // Filter console entries
+  const filteredEntries = useMemo(() => {
+    return consoleEntries.filter((entry) => {
+      if (levelFilter !== "all" && entry.level !== levelFilter) return false;
+      if (typeFilter !== "all" && entry.type !== typeFilter) return false;
       if (
         sourceFilter &&
         sourceFilter !== "all" &&
-        log.sourceName !== sourceFilter
+        entry.sourceName !== sourceFilter
       )
         return false;
       return true;
     });
-  }, [appLogs, levelFilter, typeFilter, sourceFilter]);
-
-  // Filter appOutput
-  const filteredOutput = useMemo(() => {
-    return appOutput.filter((output) => {
-      // Apply source filter - appOutput doesn't have sourceName, so always exclude when filter is active
-      if (sourceFilter && sourceFilter !== "all") {
-        return false;
-      }
-
-      // Apply level filter
-      if (levelFilter === "error") {
-        return output.type === "stderr" || output.type === "client-error";
-      }
-      if (levelFilter === "warn") {
-        return false; // No warn level for appOutput
-      }
-      if (levelFilter === "info") {
-        return (
-          output.type === "stdout" ||
-          output.type === "info" ||
-          output.type === "input-requested"
-        );
-      }
-
-      // Apply type filter if applicable
-      if (typeFilter === "client") {
-        return output.type === "client-error";
-      }
-      if (typeFilter === "server") {
-        return output.type === "stdout" || output.type === "stderr";
-      }
-      if (typeFilter === "edge-function") {
-        return false; // appOutput doesn't have edge function logs
-      }
-
-      return true;
-    });
-  }, [appOutput, levelFilter, typeFilter, sourceFilter]);
-
-  // Combine and sort all entries by timestamp
-  const combinedEntries = useMemo<CombinedLogEntry[]>(() => {
-    const entries: CombinedLogEntry[] = [
-      ...filteredOutput.map((output) => ({
-        entryType: "output" as const,
-        data: output,
-      })),
-      ...filteredLogs.map((log) => ({
-        entryType: "log" as const,
-        data: log,
-      })),
-    ];
-
-    // Sort by timestamp
-    return entries.sort((a, b) => a.data.timestamp - b.data.timestamp);
-  }, [filteredOutput, filteredLogs]);
+  }, [consoleEntries, levelFilter, typeFilter, sourceFilter]);
 
   // Use dynamic row height hook
   const dynamicRowHeight = useDynamicRowHeight({
@@ -195,19 +118,19 @@ export const Console = () => {
     return () => listElement.removeEventListener("scroll", handleScroll);
   }, [listRef]);
 
-  // Auto-scroll to bottom when new logs arrive (if first render or user is near bottom)
+  // Auto-scroll to bottom when new entries arrive (if first render or user is near bottom)
   useEffect(() => {
-    if (combinedEntries.length > 0 && containerHeight > 0) {
+    if (filteredEntries.length > 0 && containerHeight > 0) {
       const listElement = listRef.current?.element;
 
       // If this is the first render or we haven't scrolled to bottom yet, always scroll to bottom
-      // This handles the case when the console panel opens with existing logs
+      // This handles the case when the console panel opens with existing entries
       if (isFirstRender.current || !hasScrolledToBottom.current) {
         // Use requestAnimationFrame to ensure the list is fully rendered
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             listRef.current?.scrollToRow({
-              index: combinedEntries.length - 1,
+              index: filteredEntries.length - 1,
               align: "end",
             });
             hasScrolledToBottom.current = true;
@@ -224,12 +147,12 @@ export const Console = () => {
       // For subsequent renders, only scroll if user is near bottom
       if (isNearBottom && listElement) {
         listRef.current?.scrollToRow({
-          index: combinedEntries.length - 1,
+          index: filteredEntries.length - 1,
           align: "end",
         });
       }
     }
-  }, [combinedEntries, listRef, isNearBottom, containerHeight]);
+  }, [filteredEntries, listRef, isNearBottom, containerHeight]);
 
   const handleClearFilters = () => {
     setLevelFilter("all");
@@ -239,42 +162,22 @@ export const Console = () => {
 
   // Row renderer component
   const RowComponent = ({ index, style }: RowComponentProps) => {
-    const entry = combinedEntries[index];
+    const entry = filteredEntries[index];
     if (!entry) {
       return <div style={style} />;
     }
 
-    if (entry.entryType === "output") {
-      return (
-        <div style={style}>
-          <LogEntryComponent
-            type="output"
-            outputType={
-              entry.data.type as
-                | "stdout"
-                | "stderr"
-                | "info"
-                | "client-error"
-                | "input-requested"
-            }
-            timestamp={entry.data.timestamp}
-            message={entry.data.message}
-          />
-        </div>
-      );
-    } else {
-      return (
-        <div style={style}>
-          <LogEntryComponent
-            type="log"
-            level={entry.data.level as "info" | "error" | "warn"}
-            timestamp={entry.data.timestamp}
-            message={entry.data.message}
-            sourceName={entry.data.sourceName}
-          />
-        </div>
-      );
-    }
+    return (
+      <div style={style}>
+        <ConsoleEntryComponent
+          type={entry.type}
+          level={entry.level}
+          timestamp={entry.timestamp}
+          message={entry.message}
+          sourceName={entry.sourceName}
+        />
+      </div>
+    );
   };
 
   const listHeight = containerHeight - (showFilters ? 60 : 0);
@@ -295,7 +198,7 @@ export const Console = () => {
         onSourceFilterChange={setSourceFilter}
         onClearFilters={handleClearFilters}
         uniqueSources={uniqueSources}
-        totalLogs={filteredLogs.length + filteredOutput.length}
+        totalLogs={filteredEntries.length}
         showFilters={showFilters}
       />
 
@@ -308,44 +211,22 @@ export const Console = () => {
               className="font-mono text-xs"
               style={{ height: listHeight, overflowY: "auto" }}
             >
-              {combinedEntries.map((entry, index) => {
-                if (entry.entryType === "output") {
-                  return (
-                    <div key={index}>
-                      <LogEntryComponent
-                        type="output"
-                        outputType={
-                          entry.data.type as
-                            | "stdout"
-                            | "stderr"
-                            | "info"
-                            | "client-error"
-                            | "input-requested"
-                        }
-                        timestamp={entry.data.timestamp}
-                        message={entry.data.message}
-                      />
-                    </div>
-                  );
-                } else {
-                  return (
-                    <div key={index}>
-                      <LogEntryComponent
-                        type="log"
-                        level={entry.data.level as "info" | "error" | "warn"}
-                        timestamp={entry.data.timestamp}
-                        message={entry.data.message}
-                        sourceName={entry.data.sourceName}
-                      />
-                    </div>
-                  );
-                }
-              })}
+              {filteredEntries.map((entry, index) => (
+                <div key={index}>
+                  <ConsoleEntryComponent
+                    type={entry.type}
+                    level={entry.level}
+                    timestamp={entry.timestamp}
+                    message={entry.message}
+                    sourceName={entry.sourceName}
+                  />
+                </div>
+              ))}
             </div>
           ) : (
             <List
               listRef={listRef}
-              rowCount={combinedEntries.length}
+              rowCount={filteredEntries.length}
               rowHeight={dynamicRowHeight}
               rowComponent={RowComponent}
               rowProps={{}}

@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { atom } from "jotai";
 import { IpcClient } from "@/ipc/ipc_client";
 import {
-  appOutputAtom,
+  appConsoleEntriesAtom,
   appUrlAtom,
   currentAppAtom,
   previewPanelKeyAtom,
@@ -18,7 +18,7 @@ const useRunAppLoadingAtom = atom(false);
 export function useRunApp() {
   const [loading, setLoading] = useAtom(useRunAppLoadingAtom);
   const [app, setApp] = useAtom(currentAppAtom);
-  const setAppOutput = useSetAtom(appOutputAtom);
+  const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
   const [, setAppUrlObj] = useAtom(appUrlAtom);
   const setPreviewPanelKey = useSetAtom(previewPanelKeyAtom);
   const appId = useAtomValue(selectedAppIdAtom);
@@ -65,13 +65,26 @@ export function useRunApp() {
         return; // Don't add to regular output
       }
 
-      // Add to regular app output
-      setAppOutput((prev) => [...prev, output]);
+      // Add to console entries
+      const level =
+        output.type === "stderr" || output.type === "client-error"
+          ? "error"
+          : "info";
+      setConsoleEntries((prev) => [
+        ...prev,
+        {
+          level,
+          type: "server",
+          message: output.message,
+          timestamp: output.timestamp,
+          appId: output.appId,
+        },
+      ]);
 
       // Process proxy server output
       processProxyServerOutput(output);
     },
-    [setAppOutput],
+    [setConsoleEntries],
   );
   const runApp = useCallback(
     async (appId: number) => {
@@ -88,13 +101,14 @@ export function useRunApp() {
           return prevAppUrlObj; // No change needed
         });
 
-        setAppOutput((prev) => [
+        setConsoleEntries((prev) => [
           ...prev,
           {
+            level: "info",
+            type: "server",
             message: "Trying to restart app...",
-            type: "stdout",
-            appId,
             timestamp: Date.now(),
+            appId,
           },
         ]);
         const app = await ipcClient.getApp(appId);
@@ -166,13 +180,14 @@ export function useRunApp() {
 
         // Clear the URL and add restart message
         setAppUrlObj({ appUrl: null, appId: null, originalUrl: null });
-        setAppOutput((prev) => [
+        setConsoleEntries((prev) => [
           ...prev,
           {
+            level: "info",
+            type: "server",
             message: "Restarting app...",
-            type: "stdout",
-            appId,
             timestamp: Date.now(),
+            appId,
           },
         ]);
 
@@ -211,7 +226,7 @@ export function useRunApp() {
     [
       appId,
       setApp,
-      setAppOutput,
+      setConsoleEntries,
       setAppUrlObj,
       setPreviewPanelKey,
       processAppOutput,

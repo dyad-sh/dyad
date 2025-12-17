@@ -1,7 +1,6 @@
 import { useAtom, useAtomValue } from "jotai";
 import {
-  appLogsAtom,
-  appOutputAtom,
+  appConsoleEntriesAtom,
   previewModeAtom,
   previewPanelKeyAtom,
   selectedAppIdAtom,
@@ -59,20 +58,12 @@ export function PreviewPanel() {
   const { loadEdgeLogs } = useSupabase();
   const runningAppIdRef = useRef<number | null>(null);
   const key = useAtomValue(previewPanelKeyAtom);
-  const appLogs = useAtomValue(appLogsAtom);
-  const appOutput = useAtomValue(appOutputAtom);
+  const consoleEntries = useAtomValue(appConsoleEntriesAtom);
 
   const latestMessage =
-    appLogs.length > 0 && appOutput.length > 0
-      ? appLogs[appLogs.length - 1].timestamp >
-        appOutput[appOutput.length - 1].timestamp
-        ? appLogs[appLogs.length - 1]?.message
-        : appOutput[appOutput.length - 1]?.message
-      : appLogs.length > 0
-        ? appLogs[appLogs.length - 1]?.message
-        : appOutput.length > 0
-          ? appOutput[appOutput.length - 1]?.message
-          : undefined;
+    consoleEntries.length > 0
+      ? consoleEntries[consoleEntries.length - 1]?.message
+      : undefined;
 
   useEffect(() => {
     const previousAppId = runningAppIdRef.current;

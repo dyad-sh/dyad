@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { ToolDefinition, AgentContext, escapeXmlContent } from "./types";
+import {
+  ToolDefinition,
+  AgentContext,
+  escapeXmlContent,
+  StreamingArgsParser,
+} from "./types";
 
 const setChatSummarySchema = z.object({
   summary: z.string().describe("A short summary/title for the chat"),
@@ -12,6 +17,17 @@ export const setChatSummaryTool: ToolDefinition<
   description: "Set the title/summary for this chat",
   inputSchema: setChatSummarySchema,
   defaultConsent: "always",
+
+  buildXml: (argsText: string, _isComplete: boolean): string | undefined => {
+    const parser = new StreamingArgsParser();
+    parser.push(argsText);
+
+    const summary = parser.tryGetStringField("summary");
+    if (summary === undefined) return undefined;
+
+    return `<dyad-chat-summary>${escapeXmlContent(summary)}</dyad-chat-summary>`;
+  },
+
   execute: async (args, ctx: AgentContext) => {
     const allowed = await ctx.requireConsent({
       toolName: "set_chat_summary",
@@ -21,10 +37,6 @@ export const setChatSummaryTool: ToolDefinition<
     if (!allowed) {
       throw new Error("User denied permission for set_chat_summary");
     }
-
-    ctx.onXmlChunk(
-      `<dyad-chat-summary>${escapeXmlContent(args.summary)}</dyad-chat-summary>`,
-    );
 
     // The actual chat title update is handled by the local_agent_handler
     // based on parsing the XML response

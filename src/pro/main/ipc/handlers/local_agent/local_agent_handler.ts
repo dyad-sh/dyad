@@ -35,8 +35,45 @@ import { getAiMessagesJsonIfWithinLimit } from "@/ipc/utils/ai_messages_utils";
 
 import type { ChatStreamParams, ChatResponseEnd } from "@/ipc/ipc_types";
 import { AgentContext } from "./tools/types";
+import { TOOL_DEFINITIONS } from "./tool_definitions";
 
 const logger = log.scope("local_agent_handler");
+
+// ============================================================================
+// Tool Streaming State Management
+// ============================================================================
+
+/**
+ * Track streaming state per tool call ID
+ */
+interface ToolStreamingEntry {
+  toolName: string;
+  argsAccumulated: string;
+}
+const toolStreamingEntries = new Map<string, ToolStreamingEntry>();
+
+function getOrCreateStreamingEntry(
+  id: string,
+  toolName?: string,
+): ToolStreamingEntry | undefined {
+  let entry = toolStreamingEntries.get(id);
+  if (!entry && toolName) {
+    entry = {
+      toolName,
+      argsAccumulated: "",
+    };
+    toolStreamingEntries.set(id, entry);
+  }
+  return entry;
+}
+
+function cleanupStreamingEntry(id: string): void {
+  toolStreamingEntries.delete(id);
+}
+
+function findToolDefinition(toolName: string) {
+  return TOOL_DEFINITIONS.find((t) => t.name === toolName);
+}
 
 // Type for a message from the database
 type DbMessage = {
@@ -138,6 +175,7 @@ export async function handleLocalAgentStream(
   });
 
   let fullResponse = "";
+  let streamingPreview = ""; // Temporary preview for current tool, not persisted
   let chatSummary: string | undefined;
 
   try {
@@ -157,8 +195,20 @@ export async function handleLocalAgentStream(
       supabaseProjectId: chat.app.supabaseProjectId,
       messageId: placeholderMessageId,
       isSharedModulesChanged: false,
-      onXmlChunk: (xml: string) => {
-        fullResponse += xml + "\n";
+      onXmlStream: (accumulatedXml: string) => {
+        // Stream accumulated XML to UI without persisting
+        streamingPreview = accumulatedXml;
+        sendResponseChunk(
+          event,
+          req.chatId,
+          chat,
+          fullResponse + streamingPreview,
+        );
+      },
+      onXmlComplete: (finalXml: string) => {
+        // Write final XML to DB and UI
+        fullResponse += finalXml + "\n";
+        streamingPreview = ""; // Clear preview
         updateResponseInDb(placeholderMessageId, fullResponse);
         sendResponseChunk(event, req.chatId, chat, fullResponse);
       },
@@ -287,6 +337,44 @@ export async function handleLocalAgentStream(
             inThinkingBlock = false;
           }
           break;
+
+        case "tool-input-start": {
+          // Initialize streaming state for this tool call
+          getOrCreateStreamingEntry(part.id, part.toolName);
+          break;
+        }
+
+        case "tool-input-delta": {
+          // Accumulate args and stream XML preview
+          const entry = getOrCreateStreamingEntry(part.id);
+          if (entry) {
+            entry.argsAccumulated += part.delta;
+            const toolDef = findToolDefinition(entry.toolName);
+            if (toolDef?.buildXml) {
+              const xml = toolDef.buildXml(entry.argsAccumulated, false);
+              if (xml) {
+                ctx.onXmlStream(xml);
+              }
+            }
+          }
+          break;
+        }
+
+        case "tool-input-end": {
+          // Build final XML and persist
+          const entry = getOrCreateStreamingEntry(part.id);
+          if (entry) {
+            const toolDef = findToolDefinition(entry.toolName);
+            if (toolDef?.buildXml) {
+              const xml = toolDef.buildXml(entry.argsAccumulated, true);
+              if (xml) {
+                ctx.onXmlComplete(xml);
+              }
+            }
+          }
+          cleanupStreamingEntry(part.id);
+          break;
+        }
 
         case "tool-call":
           // Tool execution happens via execute callbacks
@@ -447,10 +535,10 @@ async function getMcpTools(
 
             if (!ok) throw new Error(`User declined running tool ${key}`);
 
-            // Emit XML for UI
+            // Emit XML for UI (MCP tools don't stream, so use onXmlComplete directly)
             const { serverName, toolName } = parseMcpToolKey(key);
             const content = JSON.stringify(args, null, 2);
-            ctx.onXmlChunk(
+            ctx.onXmlComplete(
               `<dyad-mcp-tool-call server="${serverName}" tool="${toolName}">\n${content}\n</dyad-mcp-tool-call>`,
             );
 
@@ -458,7 +546,7 @@ async function getMcpTools(
             const resultStr =
               typeof res === "string" ? res : JSON.stringify(res);
 
-            ctx.onXmlChunk(
+            ctx.onXmlComplete(
               `<dyad-mcp-tool-result server="${serverName}" tool="${toolName}">\n${resultStr}\n</dyad-mcp-tool-result>`,
             );
 

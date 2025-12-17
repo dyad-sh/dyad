@@ -4,6 +4,8 @@ import { getSupabaseContext } from "../../../../../../supabase_admin/supabase_co
 
 const getDatabaseSchemaSchema = z.object({});
 
+const XML_TAG = "<dyad-database-schema></dyad-database-schema>";
+
 export const getDatabaseSchemaTool: ToolDefinition<
   z.infer<typeof getDatabaseSchemaSchema>
 > = {
@@ -11,6 +13,12 @@ export const getDatabaseSchemaTool: ToolDefinition<
   description: "Fetch the database schema from Supabase",
   inputSchema: getDatabaseSchemaSchema,
   defaultConsent: "always",
+
+  buildXml: (_argsText: string, _isComplete: boolean): string => {
+    // This tool has no inputs, so always return the same XML
+    return XML_TAG;
+  },
+
   execute: async (_args, ctx: AgentContext) => {
     if (!ctx.supabaseProjectId) {
       throw new Error("Supabase is not connected to this app");
@@ -24,8 +32,6 @@ export const getDatabaseSchemaTool: ToolDefinition<
     if (!allowed) {
       throw new Error("User denied permission for get_database_schema");
     }
-
-    ctx.onXmlChunk(`<dyad-database-schema></dyad-database-schema>`);
 
     const schema = await getSupabaseContext({
       supabaseProjectId: ctx.supabaseProjectId,

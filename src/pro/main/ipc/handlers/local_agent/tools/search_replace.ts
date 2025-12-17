@@ -2,7 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import log from "electron-log";
-import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
+import {
+  ToolDefinition,
+  AgentContext,
+  escapeXmlAttr,
+  StreamingArgsParser,
+} from "./types";
 import { safeJoin } from "@/ipc/utils/path_utils";
 import { deploySupabaseFunction } from "../../../../../../supabase_admin/supabase_management_client";
 import {
@@ -38,6 +43,35 @@ export const searchReplaceTool: ToolDefinition<
     "Apply targeted search/replace edits to a file. This is the preferred tool for editing a file.",
   inputSchema: searchReplaceSchema,
   defaultConsent: "always",
+
+  buildXml: (argsText: string, isComplete: boolean): string | undefined => {
+    const parser = new StreamingArgsParser();
+    parser.push(argsText);
+
+    const filePath = parser.tryGetStringField("path");
+    if (!filePath) return undefined;
+
+    const description = parser.tryGetStringField("description") ?? "";
+    const search = parser.tryGetStringField("search") ?? "";
+    const replace = parser.tryGetStringField("replace");
+
+    let xml = `<dyad-search-replace path="${escapeXmlAttr(filePath)}" description="${escapeXmlAttr(description)}">\n<<<<<<< SEARCH\n${search}`;
+
+    // Add separator and replace content if replace has started
+    if (replace !== undefined) {
+      xml += `\n=======\n${replace}`;
+    }
+
+    if (isComplete) {
+      if (replace === undefined) {
+        xml += "\n=======\n";
+      }
+      xml += "\n>>>>>>> REPLACE\n</dyad-search-replace>";
+    }
+
+    return xml;
+  },
+
   execute: async (args, ctx: AgentContext) => {
     const allowed = await ctx.requireConsent({
       toolName: "search_replace",
@@ -47,23 +81,6 @@ export const searchReplaceTool: ToolDefinition<
     if (!allowed) {
       throw new Error("User denied permission for search_replace");
     }
-
-    ctx.onXmlChunk(
-      `<dyad-search-replace path="${escapeXmlAttr(args.path)}" description="${escapeXmlAttr(args.description ?? "")}">
-<<<<<<< SEARCH
-${args.search}
-=======
-${args.replace}
->>>>>>> REPLACE
-</dyad-search-replace>`,
-    );
-
-    console.error(
-      "EXECUTING SEARCH REPLACE FILE",
-      args.path,
-      args.search,
-      args.replace,
-    );
 
     const fullFilePath = safeJoin(ctx.appPath, args.path);
 
@@ -77,7 +94,6 @@ ${args.replace}
     }
 
     const original = await readFile(fullFilePath, "utf8");
-    console.log("FILE PATH: ", args.path, "original*******", original);
     // Construct the operations string in the expected format
     const operations = `<<<<<<< SEARCH\n${args.search}\n=======\n${args.replace}\n>>>>>>> REPLACE`;
     const result = applySearchReplace(original, operations);
@@ -90,7 +106,6 @@ ${args.replace}
 
     fs.writeFileSync(fullFilePath, result.content);
     logger.log(`Successfully applied search-replace to: ${fullFilePath}`);
-    console.error("**RESULT**", result);
 
     // Deploy Supabase function if applicable
     if (

@@ -2,7 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import log from "electron-log";
-import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
+import {
+  ToolDefinition,
+  AgentContext,
+  escapeXmlAttr,
+  StreamingArgsParser,
+} from "./types";
 import { safeJoin } from "@/ipc/utils/path_utils";
 import { gitAdd, gitRemove } from "@/ipc/utils/git_utils";
 import {
@@ -31,6 +36,18 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
     description: "Rename or move a file in the codebase",
     inputSchema: renameFileSchema,
     defaultConsent: "always",
+
+    buildXml: (argsText: string, _isComplete: boolean): string | undefined => {
+      const parser = new StreamingArgsParser();
+      parser.push(argsText);
+
+      const fromPath = parser.tryGetStringField("from");
+      const toPath = parser.tryGetStringField("to");
+      if (!fromPath || !toPath) return undefined;
+
+      return `<dyad-rename from="${escapeXmlAttr(fromPath)}" to="${escapeXmlAttr(toPath)}"></dyad-rename>`;
+    },
+
     execute: async (args, ctx: AgentContext) => {
       const allowed = await ctx.requireConsent({
         toolName: "rename_file",
@@ -40,10 +57,6 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
       if (!allowed) {
         throw new Error("User denied permission for rename_file");
       }
-
-      ctx.onXmlChunk(
-        `<dyad-rename from="${escapeXmlAttr(args.from)}" to="${escapeXmlAttr(args.to)}"></dyad-rename>`,
-      );
 
       const fromFullPath = safeJoin(ctx.appPath, args.from);
       const toFullPath = safeJoin(ctx.appPath, args.to);

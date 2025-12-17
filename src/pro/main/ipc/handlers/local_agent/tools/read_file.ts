@@ -1,6 +1,11 @@
 import fs from "node:fs";
 import { z } from "zod";
-import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
+import {
+  ToolDefinition,
+  AgentContext,
+  escapeXmlAttr,
+  StreamingArgsParser,
+} from "./types";
 import { safeJoin } from "@/ipc/utils/path_utils";
 
 const readFile = fs.promises.readFile;
@@ -14,6 +19,17 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
   description: "Read the content of a file from the codebase",
   inputSchema: readFileSchema,
   defaultConsent: "always",
+
+  buildXml: (argsText: string, _isComplete: boolean): string | undefined => {
+    const parser = new StreamingArgsParser();
+    parser.push(argsText);
+
+    const filePath = parser.tryGetStringField("path");
+    if (!filePath) return undefined;
+
+    return `<dyad-read path="${escapeXmlAttr(filePath)}"></dyad-read>`;
+  },
+
   execute: async (args, ctx: AgentContext) => {
     const allowed = await ctx.requireConsent({
       toolName: "read_file",
@@ -23,10 +39,6 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
     if (!allowed) {
       throw new Error("User denied permission for read_file");
     }
-
-    ctx.onXmlChunk(
-      `<dyad-read path="${escapeXmlAttr(args.path)}"></dyad-read>`,
-    );
 
     const fullFilePath = safeJoin(ctx.appPath, args.path);
 

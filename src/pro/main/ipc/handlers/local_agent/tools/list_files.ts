@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
+import {
+  ToolDefinition,
+  AgentContext,
+  escapeXmlAttr,
+  StreamingArgsParser,
+} from "./types";
 import { extractCodebase } from "../../../../../../utils/codebase";
 
 const listFilesSchema = z.object({
@@ -11,6 +16,17 @@ export const listFilesTool: ToolDefinition<z.infer<typeof listFilesSchema>> = {
   description: "List all files in the application directory",
   inputSchema: listFilesSchema,
   defaultConsent: "always",
+
+  buildXml: (argsText: string, _isComplete: boolean): string => {
+    const parser = new StreamingArgsParser();
+    parser.push(argsText);
+
+    const directory = parser.tryGetStringField("directory");
+    const dirAttr = directory ? ` directory="${escapeXmlAttr(directory)}"` : "";
+
+    return `<dyad-list-files${dirAttr}></dyad-list-files>`;
+  },
+
   execute: async (args, ctx: AgentContext) => {
     const allowed = await ctx.requireConsent({
       toolName: "list_files",
@@ -22,11 +38,6 @@ export const listFilesTool: ToolDefinition<z.infer<typeof listFilesSchema>> = {
     if (!allowed) {
       throw new Error("User denied permission for list_files");
     }
-
-    const dirAttr = args.directory
-      ? ` directory="${escapeXmlAttr(args.directory)}"`
-      : "";
-    ctx.onXmlChunk(`<dyad-list-files${dirAttr}></dyad-list-files>`);
 
     const { files } = await extractCodebase({
       appPath: ctx.appPath,

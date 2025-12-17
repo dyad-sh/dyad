@@ -16,6 +16,25 @@ export const addDependencyTool: ToolDefinition<
   description: "Install npm packages",
   inputSchema: addDependencySchema,
   defaultConsent: "ask",
+
+  buildXml: (argsText: string, _isComplete: boolean): string | undefined => {
+    // For arrays, we need to detect when we have packages
+    // The format is: {"packages": ["pkg1", "pkg2"]}
+    const packagesMatch = argsText.match(/"packages"\s*:\s*\[([^\]]*)\]/);
+    if (!packagesMatch) return undefined;
+
+    // Extract packages from the match
+    const packagesStr = packagesMatch[1];
+    const packages = packagesStr
+      .split(",")
+      .map((p) => p.trim().replace(/^"|"$/g, ""))
+      .filter((p) => p);
+
+    if (packages.length === 0) return undefined;
+
+    return `<dyad-add-dependency packages="${escapeXmlAttr(packages.join(" "))}"></dyad-add-dependency>`;
+  },
+
   execute: async (args, ctx: AgentContext) => {
     const allowed = await ctx.requireConsent({
       toolName: "add_dependency",
@@ -25,10 +44,6 @@ export const addDependencyTool: ToolDefinition<
     if (!allowed) {
       throw new Error("User denied permission for add_dependency");
     }
-
-    ctx.onXmlChunk(
-      `<dyad-add-dependency packages="${escapeXmlAttr(args.packages.join(" "))}"></dyad-add-dependency>`,
-    );
 
     const message = ctx.messageId
       ? await db.query.messages.findFirst({

@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
+import {
+  ToolDefinition,
+  AgentContext,
+  escapeXmlAttr,
+  StreamingArgsParser,
+} from "./types";
 import { executeSupabaseSql } from "../../../../../../supabase_admin/supabase_management_client";
 import { writeMigrationFile } from "../../../../../../ipc/utils/file_utils";
 import { readSettings } from "../../../../../../main/settings";
@@ -15,6 +20,24 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
     description: "Execute SQL on the Supabase database",
     inputSchema: executeSqlSchema,
     defaultConsent: "ask",
+
+    buildXml: (argsText: string, isComplete: boolean): string | undefined => {
+      const parser = new StreamingArgsParser();
+      parser.push(argsText);
+
+      // Check if query has started
+      if (!parser.hasField("query")) return undefined;
+
+      const description = parser.tryGetStringField("description") ?? "";
+      const query = parser.tryGetStringField("query") ?? "";
+
+      let xml = `<dyad-execute-sql description="${escapeXmlAttr(description)}">\n${query}`;
+      if (isComplete) {
+        xml += "\n</dyad-execute-sql>";
+      }
+      return xml;
+    },
+
     execute: async (args, ctx: AgentContext) => {
       if (!ctx.supabaseProjectId) {
         throw new Error("Supabase is not connected to this app");
@@ -29,12 +52,6 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
       if (!allowed) {
         throw new Error("User denied permission for execute_sql");
       }
-
-      ctx.onXmlChunk(
-        `<dyad-execute-sql description="${escapeXmlAttr(args.description ?? "")}">
-${args.query}
-</dyad-execute-sql>`,
-      );
 
       await executeSupabaseSql({
         supabaseProjectId: ctx.supabaseProjectId,

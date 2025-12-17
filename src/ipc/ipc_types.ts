@@ -582,3 +582,10 @@ export interface AnalyseComponentParams {
   appId: number;
   componentId: string;
 }
+
+// --- Agent Tool Types ---
+export interface AgentTool {
+  name: string;
+  description: string;
+  isAllowedByDefault: boolean;
+}

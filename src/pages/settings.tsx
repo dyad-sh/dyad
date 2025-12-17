@@ -130,6 +130,17 @@ export default function SettingsPage() {
             </div>
           </div>
 
+          {/* Agent v2 Permissions */}
+          <div
+            id="agent-permissions"
+            className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6"
+          >
+            <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+              Agent Permissions
+            </h2>
+            <AgentToolsSettings />
+          </div>
+
           {/* Tools (MCP) */}
           <div
             id="tools-mcp"
@@ -139,17 +150,6 @@ export default function SettingsPage() {
               Tools (MCP)
             </h2>
             <ToolsMcpSettings />
-          </div>
-
-          {/* Agent v2 Permissions */}
-          <div
-            id="agent-permissions"
-            className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6"
-          >
-            <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
-              Agent v2 Permissions
-            </h2>
-            <AgentToolsSettings />
           </div>
 
           {/* Experiments Section */}

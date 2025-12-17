@@ -6,19 +6,25 @@ import {
   getAllAgentToolConsents,
   setAgentToolConsent,
   resolveAgentToolConsent,
-  AGENT_TOOLS,
+  TOOL_DEFINITIONS,
+  getDefaultConsent,
   type Consent,
   type AgentToolName,
-} from "./agent_tool_consent";
+} from "./tool_definitions";
 import { createLoggedHandler } from "../safe_handle";
 import log from "electron-log";
+import type { AgentTool } from "../../ipc_types";
 
 const logger = log.scope("agent_tool_handlers");
 const handle = createLoggedHandler(logger);
 export function registerAgentToolHandlers() {
   // Get list of available tools
-  handle("agent-tool:get-tools", async () => {
-    return AGENT_TOOLS;
+  handle("agent-tool:get-tools", async (): Promise<AgentTool[]> => {
+    return TOOL_DEFINITIONS.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      isAllowedByDefault: getDefaultConsent(tool.name) === "always",
+    }));
   });
 
   // Get all tool consents
@@ -30,7 +36,7 @@ export function registerAgentToolHandlers() {
   handle(
     "agent-tool:set-consent",
     async (_event, params: { toolName: AgentToolName; consent: Consent }) => {
-      await setAgentToolConsent(params.toolName, params.consent);
+      setAgentToolConsent(params.toolName, params.consent);
       return { success: true };
     },
   );

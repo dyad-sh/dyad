@@ -5,10 +5,7 @@
 
 import { z } from "zod";
 import { IpcMainInvokeEvent } from "electron";
-import {
-  requireAgentToolConsent,
-  type AgentToolName,
-} from "./agent_tool_consent";
+import { readSettings, writeSettings } from "../../../main/settings";
 import {
   executeWriteFile,
   executeDeleteFile,
@@ -23,6 +20,136 @@ import {
 } from "../../processors/file_operations";
 import { toolCallToXml } from "./xml_tool_translator";
 
+// ============================================================================
+// Agent Tool Consent Types & Constants
+// ============================================================================
+
+export type Consent = "ask" | "always";
+
+// Default permissions for each tool
+// Read-only tools default to "always", write tools default to "ask"
+const DEFAULT_CONSENTS: Record<AgentToolName, Consent> = {
+  read_file: "always",
+  list_files: "always",
+  get_database_schema: "always",
+  write_file: "always",
+  delete_file: "always",
+  rename_file: "always",
+  search_replace: "always",
+  set_chat_summary: "always",
+  // These tools are ask by default because they
+  // can have more serious consequences.
+  add_dependency: "ask",
+  execute_sql: "ask",
+};
+
+// ============================================================================
+// Agent Tool Consent Management
+// ============================================================================
+
+const pendingConsentResolvers = new Map<
+  string,
+  (d: "accept-once" | "accept-always" | "decline") => void
+>();
+
+export function waitForAgentToolConsent(
+  requestId: string,
+): Promise<"accept-once" | "accept-always" | "decline"> {
+  return new Promise((resolve) => {
+    pendingConsentResolvers.set(requestId, resolve);
+  });
+}
+
+export function resolveAgentToolConsent(
+  requestId: string,
+  decision: "accept-once" | "accept-always" | "decline",
+) {
+  const resolver = pendingConsentResolvers.get(requestId);
+  if (resolver) {
+    pendingConsentResolvers.delete(requestId);
+    resolver(decision);
+  }
+}
+
+export function getDefaultConsent(toolName: AgentToolName): Consent {
+  return DEFAULT_CONSENTS[toolName] ?? "ask";
+}
+
+export function getAgentToolConsent(toolName: AgentToolName): Consent {
+  const settings = readSettings();
+  const stored = settings.agentToolConsents?.[toolName];
+  if (stored === "ask" || stored === "always") {
+    return stored;
+  }
+  return getDefaultConsent(toolName);
+}
+
+export function setAgentToolConsent(
+  toolName: AgentToolName,
+  consent: Consent,
+): void {
+  const settings = readSettings();
+  writeSettings({
+    agentToolConsents: {
+      ...settings.agentToolConsents,
+      [toolName]: consent,
+    },
+  });
+}
+
+export function getAllAgentToolConsents(): Record<AgentToolName, Consent> {
+  const settings = readSettings();
+  const stored = settings.agentToolConsents ?? {};
+  const result: Record<string, Consent> = {};
+
+  // Start with defaults, override with stored values
+  for (const tool of TOOL_DEFINITIONS) {
+    const storedConsent = stored[tool.name];
+    if (storedConsent === "ask" || storedConsent === "always") {
+      result[tool.name] = storedConsent;
+    } else {
+      result[tool.name] = getDefaultConsent(tool.name);
+    }
+  }
+
+  return result as Record<AgentToolName, Consent>;
+}
+
+export async function requireAgentToolConsent(
+  event: IpcMainInvokeEvent,
+  params: {
+    toolName: AgentToolName;
+    toolDescription?: string | null;
+    inputPreview?: string | null;
+  },
+): Promise<boolean> {
+  const current = getAgentToolConsent(params.toolName);
+
+  if (current === "always") return true;
+
+  // Ask renderer for a decision via event bridge
+  const requestId = `agent:${params.toolName}:${Date.now()}`;
+  (event.sender as any).send("agent-tool:consent-request", {
+    requestId,
+    ...params,
+  });
+
+  const response = await waitForAgentToolConsent(requestId);
+
+  if (response === "accept-always") {
+    setAgentToolConsent(params.toolName, "always");
+    return true;
+  }
+  if (response === "decline") {
+    return false;
+  }
+  return response === "accept-once";
+}
+
+// ============================================================================
+// Tool Execute Context & Definitions
+// ============================================================================
+
 export interface ToolExecuteContext {
   event: IpcMainInvokeEvent;
   appPath: string;
@@ -32,9 +159,9 @@ export interface ToolExecuteContext {
 }
 
 interface ToolDefinition {
-  name: AgentToolName;
-  description: string;
-  inputSchema: z.ZodType<any>;
+  readonly name: string;
+  readonly description: string;
+  readonly inputSchema: z.ZodType<any>;
   execute: (args: any, ctx: ToolExecuteContext) => Promise<string>;
 }
 
@@ -97,7 +224,7 @@ const setChatSummarySchema = z.object({
 });
 
 // Tool implementations
-export const TOOL_DEFINITIONS: ToolDefinition[] = [
+export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   {
     name: "write_file",
     description: "Create or completely overwrite a file in the codebase",
@@ -463,6 +590,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     },
   },
 ];
+
+// Derive AgentToolName from TOOL_DEFINITIONS
+export type AgentToolName = (typeof TOOL_DEFINITIONS)[number]["name"];
 
 /**
  * Build ToolSet for AI SDK from tool definitions

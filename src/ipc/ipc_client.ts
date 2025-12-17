@@ -72,6 +72,7 @@ import type {
   SelectNodeFolderResult,
   ApplyVisualEditingChangesParams,
   AnalyseComponentParams,
+  AgentTool,
 } from "./ipc_types";
 import type { Template } from "../shared/templates";
 import type {
@@ -921,7 +922,7 @@ export class IpcClient {
   }
 
   // --- Agent Tool Methods ---
-  public async getAgentTools() {
+  public async getAgentTools(): Promise<AgentTool[]> {
     return this.ipcRenderer.invoke("agent-tool:get-tools");
   }
 

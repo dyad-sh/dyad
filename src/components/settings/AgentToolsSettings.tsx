@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   Select,
   SelectContent,
@@ -6,16 +6,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
+
 import {
   useAgentTools,
   type AgentToolName,
+  type AgentTool,
   type Consent,
 } from "@/hooks/useAgentTools";
-import { Loader2 } from "lucide-react";
+import { Loader2, ChevronRight } from "lucide-react";
 
 export function AgentToolsSettings() {
   const { tools, consents, isLoading, setConsent } = useAgentTools();
+  const [showAutoApproved, setShowAutoApproved] = useState(false);
 
   const handleConsentChange = (toolName: AgentToolName, consent: Consent) => {
     setConsent({ toolName, consent });
@@ -29,61 +31,59 @@ export function AgentToolsSettings() {
     );
   }
 
-  const readTools = tools?.filter((t) => t.category === "read") || [];
-  const writeTools = tools?.filter((t) => t.category === "write") || [];
+  const autoApprovedTools =
+    tools?.filter((t: AgentTool) => t.isAllowedByDefault) || [];
+  const requiresApprovalTools =
+    tools?.filter((t: AgentTool) => !t.isAllowedByDefault) || [];
 
   return (
     <div className="space-y-6">
       <p className="text-sm text-muted-foreground">
-        Configure permissions for Agent v2 built-in tools. Read-only tools are
-        safe to always allow. Write tools modify your codebase and require more
-        careful consideration.
+        Configure permissions for Agent built-in tools.
       </p>
 
-      {/* Read-only tools */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <h3 className="text-sm font-medium">Read-Only Tools</h3>
-          <Badge variant="secondary" className="text-xs">
-            Safe
-          </Badge>
-        </div>
-        <div className="space-y-2">
-          {readTools.map((tool) => (
-            <ToolConsentRow
-              key={tool.name}
-              name={tool.name}
-              description={tool.description}
-              consent={consents?.[tool.name] || "always"}
-              onConsentChange={(consent) =>
-                handleConsentChange(tool.name, consent)
-              }
-            />
-          ))}
-        </div>
+      {/* Requires approval tools */}
+      <div className="space-y-2">
+        {requiresApprovalTools.map((tool: AgentTool) => (
+          <ToolConsentRow
+            key={tool.name}
+            name={tool.name}
+            description={tool.description}
+            consent={consents?.[tool.name as AgentToolName] || "ask"}
+            onConsentChange={(consent) =>
+              handleConsentChange(tool.name as AgentToolName, consent)
+            }
+          />
+        ))}
       </div>
 
-      {/* Write tools */}
+      {/* Auto-approved tools (collapsed by default) */}
       <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <h3 className="text-sm font-medium">Write Tools</h3>
-          <Badge variant="outline" className="text-xs">
-            Modifies Codebase
-          </Badge>
-        </div>
-        <div className="space-y-2">
-          {writeTools.map((tool) => (
-            <ToolConsentRow
-              key={tool.name}
-              name={tool.name}
-              description={tool.description}
-              consent={consents?.[tool.name] || "ask"}
-              onConsentChange={(consent) =>
-                handleConsentChange(tool.name, consent)
-              }
-            />
-          ))}
-        </div>
+        <button
+          type="button"
+          onClick={() => setShowAutoApproved(!showAutoApproved)}
+          className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ChevronRight
+            className={`size-4 transition-transform ${showAutoApproved ? "rotate-90" : ""}`}
+          />
+          <span>Default allowed tools ({autoApprovedTools.length})</span>
+        </button>
+        {showAutoApproved && (
+          <div className="space-y-2 pl-6">
+            {autoApprovedTools.map((tool: AgentTool) => (
+              <ToolConsentRow
+                key={tool.name}
+                name={tool.name}
+                description={tool.description}
+                consent={consents?.[tool.name as AgentToolName] || "always"}
+                onConsentChange={(consent) =>
+                  handleConsentChange(tool.name as AgentToolName, consent)
+                }
+              />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -119,7 +119,6 @@ function ToolConsentRow({
           <SelectContent>
             <SelectItem value="ask">Ask</SelectItem>
             <SelectItem value="always">Always allow</SelectItem>
-            <SelectItem value="denied">Deny</SelectItem>
           </SelectContent>
         </Select>
       </div>

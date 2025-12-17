@@ -27,6 +27,7 @@ export interface AgentContext {
   appPath: string;
   supabaseProjectId?: string | null;
   messageId?: number;
+  isSharedModulesChanged?: boolean;
   onXmlChunk: (xml: string) => void;
   requireConsent: (params: {
     toolName: string;

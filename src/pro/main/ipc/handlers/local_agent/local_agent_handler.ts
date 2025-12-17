@@ -24,7 +24,6 @@ import {
   requireAgentToolConsent,
 } from "./tool_definitions";
 import {
-  resetSharedModulesFlag,
   deployAllFunctionsIfNeeded,
   commitAllChanges,
 } from "./processors/file_operations";
@@ -137,9 +136,6 @@ export async function handleLocalAgentStream(
     messages: chat.messages,
   });
 
-  // Reset shared modules tracking
-  resetSharedModulesFlag();
-
   let fullResponse = "";
   let chatSummary: string | undefined;
 
@@ -159,6 +155,7 @@ export async function handleLocalAgentStream(
       appPath,
       supabaseProjectId: chat.app.supabaseProjectId,
       messageId: placeholderMessageId,
+      isSharedModulesChanged: false,
       onXmlChunk: (xml: string) => {
         fullResponse += xml + "\n";
         updateResponseInDb(placeholderMessageId, fullResponse);

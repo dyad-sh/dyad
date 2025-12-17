@@ -43,17 +43,6 @@ export interface FileOperationResult {
   warning?: string;
 }
 
-// Track shared module changes across operations
-let sharedModulesChanged = false;
-
-export function resetSharedModulesFlag() {
-  sharedModulesChanged = false;
-}
-
-export function getSharedModulesChanged() {
-  return sharedModulesChanged;
-}
-
 function getFunctionNameFromPath(input: string): string {
   return path.basename(path.extname(input) ? path.dirname(input) : input);
 }
@@ -62,7 +51,10 @@ function getFunctionNameFromPath(input: string): string {
  * Write a file to the codebase
  */
 export async function executeWriteFile(
-  ctx: Pick<AgentContext, "appPath" | "supabaseProjectId">,
+  ctx: Pick<
+    AgentContext,
+    "appPath" | "supabaseProjectId" | "isSharedModulesChanged"
+  >,
   filePath: string,
   content: string | Buffer,
 ): Promise<FileOperationResult> {
@@ -70,7 +62,7 @@ export async function executeWriteFile(
 
   // Track if this is a shared module
   if (isSharedServerModule(filePath)) {
-    sharedModulesChanged = true;
+    ctx.isSharedModulesChanged = true;
   }
 
   try {
@@ -87,7 +79,7 @@ export async function executeWriteFile(
       ctx.supabaseProjectId &&
       isServerFunction(filePath) &&
       typeof content === "string" &&
-      !sharedModulesChanged
+      !ctx.isSharedModulesChanged
     ) {
       try {
         await deploySupabaseFunction({
@@ -113,14 +105,17 @@ export async function executeWriteFile(
  * Delete a file from the codebase
  */
 export async function executeDeleteFile(
-  ctx: Pick<AgentContext, "appPath" | "supabaseProjectId">,
+  ctx: Pick<
+    AgentContext,
+    "appPath" | "supabaseProjectId" | "isSharedModulesChanged"
+  >,
   filePath: string,
 ): Promise<FileOperationResult> {
   const fullFilePath = safeJoin(ctx.appPath, filePath);
 
   // Track if this is a shared module
   if (isSharedServerModule(filePath)) {
-    sharedModulesChanged = true;
+    ctx.isSharedModulesChanged = true;
   }
 
   try {
@@ -167,7 +162,10 @@ export async function executeDeleteFile(
  * Rename/move a file in the codebase
  */
 export async function executeRenameFile(
-  ctx: Pick<AgentContext, "appPath" | "supabaseProjectId">,
+  ctx: Pick<
+    AgentContext,
+    "appPath" | "supabaseProjectId" | "isSharedModulesChanged"
+  >,
   fromPath: string,
   toPath: string,
 ): Promise<FileOperationResult> {
@@ -176,7 +174,7 @@ export async function executeRenameFile(
 
   // Track if this involves shared modules
   if (isSharedServerModule(fromPath) || isSharedServerModule(toPath)) {
-    sharedModulesChanged = true;
+    ctx.isSharedModulesChanged = true;
   }
 
   try {
@@ -211,7 +209,7 @@ export async function executeRenameFile(
             );
           }
         }
-        if (isServerFunction(toPath) && !sharedModulesChanged) {
+        if (isServerFunction(toPath) && !ctx.isSharedModulesChanged) {
           try {
             await deploySupabaseFunction({
               supabaseProjectId: ctx.supabaseProjectId,
@@ -240,7 +238,10 @@ export async function executeRenameFile(
  * Apply search/replace edits to a file
  */
 export async function executeSearchReplaceFile(
-  ctx: Pick<AgentContext, "appPath" | "supabaseProjectId">,
+  ctx: Pick<
+    AgentContext,
+    "appPath" | "supabaseProjectId" | "isSharedModulesChanged"
+  >,
   filePath: string,
   search: string,
   replace: string,
@@ -249,7 +250,7 @@ export async function executeSearchReplaceFile(
 
   // Track if this is a shared module
   if (isSharedServerModule(filePath)) {
-    sharedModulesChanged = true;
+    ctx.isSharedModulesChanged = true;
   }
 
   try {
@@ -277,7 +278,7 @@ export async function executeSearchReplaceFile(
     if (
       ctx.supabaseProjectId &&
       isServerFunction(filePath) &&
-      !sharedModulesChanged
+      !ctx.isSharedModulesChanged
     ) {
       try {
         await deploySupabaseFunction({
@@ -443,9 +444,12 @@ export async function getDatabaseSchema(
  * Deploy all Supabase functions (after shared module changes)
  */
 export async function deployAllFunctionsIfNeeded(
-  ctx: Pick<AgentContext, "appPath" | "supabaseProjectId">,
+  ctx: Pick<
+    AgentContext,
+    "appPath" | "supabaseProjectId" | "isSharedModulesChanged"
+  >,
 ): Promise<FileOperationResult> {
-  if (!ctx.supabaseProjectId || !sharedModulesChanged) {
+  if (!ctx.supabaseProjectId || !ctx.isSharedModulesChanged) {
     return { success: true };
   }
 

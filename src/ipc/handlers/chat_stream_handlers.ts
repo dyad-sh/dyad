@@ -53,11 +53,10 @@ import { readFile, writeFile, unlink } from "fs/promises";
 import { getMaxTokens, getTemperature } from "../utils/token_utils";
 import { MAX_CHAT_TURNS_IN_CONTEXT } from "@/constants/settings_constants";
 import { validateChatContext } from "../utils/context_paths_utils";
-import { GoogleGenerativeAIProviderOptions } from "@ai-sdk/google";
+import { getProviderOptions, getAiHeaders } from "../utils/provider_options";
 import { mcpServers } from "../../db/schema";
 import { requireMcpToolConsent } from "../utils/mcp_consent";
 
-import { getExtraProviderOptions } from "../utils/thinking_utils";
 import { handleLocalAgentStream } from "../../pro/main/ipc/handlers/local_agent/local_agent_handler";
 
 import { safeSend } from "../utils/safe_sender";
@@ -73,7 +72,6 @@ import {
 } from "../utils/dyad_tag_parser";
 import { fileExists } from "../utils/file_utils";
 import { FileUploadsState } from "../utils/file_uploads_state";
-import { OpenAIResponsesProviderOptions } from "@ai-sdk/openai";
 import { extractMentionedAppsCodebases } from "../utils/mention_apps";
 import { parseAppMentions } from "@/shared/parse_mention_apps";
 import { prompts as promptsTable } from "../../db/schema";
@@ -853,65 +851,22 @@ This conversation includes one or more image attachments. When the user uploads 
           const smartContextMode: SmartContextMode = isDeepContextEnabled
             ? "deep"
             : "balanced";
-          // Build provider options with correct Google/Vertex thinking config gating
-          const providerOptions: Record<string, any> = {
-            "dyad-engine": {
-              dyadAppId: updatedChat.app.id,
-              dyadRequestId,
-              dyadDisableFiles,
-              dyadSmartContextMode: smartContextMode,
-              dyadFiles: versionedFiles ? undefined : files,
-              dyadVersionedFiles: versionedFiles,
-              dyadMentionedApps: mentionedAppsCodebases.map(
-                ({ files, appName }) => ({
-                  appName,
-                  files,
-                }),
-              ),
-            },
-            "dyad-gateway": getExtraProviderOptions(
-              modelClient.builtinProviderId,
-              settings,
-            ),
-            openai: {
-              reasoningSummary: "auto",
-            } satisfies OpenAIResponsesProviderOptions,
-          };
-
-          // Conditionally include Google thinking config only for supported models
-          const selectedModelName = settings.selectedModel.name || "";
-          const providerId = modelClient.builtinProviderId;
-          const isVertex = providerId === "vertex";
-          const isGoogle = providerId === "google";
-          const isAnthropic = providerId === "anthropic";
-          const isPartnerModel = selectedModelName.includes("/");
-          const isGeminiModel = selectedModelName.startsWith("gemini");
-          const isFlashLite = selectedModelName.includes("flash-lite");
-
-          // Keep Google provider behavior unchanged: always include includeThoughts
-          if (isGoogle) {
-            providerOptions.google = {
-              thinkingConfig: {
-                includeThoughts: true,
-              },
-            } satisfies GoogleGenerativeAIProviderOptions;
-          }
-
-          // Vertex-specific fix: only enable thinking on supported Gemini models
-          if (isVertex && isGeminiModel && !isFlashLite && !isPartnerModel) {
-            providerOptions.google = {
-              thinkingConfig: {
-                includeThoughts: true,
-              },
-            } satisfies GoogleGenerativeAIProviderOptions;
-          }
+          const providerOptions = getProviderOptions({
+            dyadAppId: updatedChat.app.id,
+            dyadRequestId,
+            dyadDisableFiles,
+            smartContextMode,
+            files,
+            versionedFiles,
+            mentionedAppsCodebases,
+            builtinProviderId: modelClient.builtinProviderId,
+            settings,
+          });
 
           const streamResult = streamText({
-            headers: isAnthropic
-              ? {
-                  "anthropic-beta": "context-1m-2025-08-07",
-                }
-              : undefined,
+            headers: getAiHeaders({
+              builtinProviderId: modelClient.builtinProviderId,
+            }),
             maxOutputTokens: await getMaxTokens(settings.selectedModel),
             temperature: await getTemperature(settings.selectedModel),
             maxRetries: 2,

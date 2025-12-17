@@ -16,6 +16,7 @@ import { getDyadAppPath } from "@/paths/paths";
 import { getModelClient } from "@/ipc/utils/get_model_client";
 import { safeSend } from "@/ipc/utils/safe_sender";
 import { getMaxTokens, getTemperature } from "@/ipc/utils/token_utils";
+import { getProviderOptions, getAiHeaders } from "@/ipc/utils/provider_options";
 import { readAiRules } from "@/prompts/system_prompt";
 import { constructLocalAgentPrompt } from "@/prompts/local_agent_prompt";
 import {
@@ -187,6 +188,17 @@ export async function handleLocalAgentStream(
     // Stream the response
     const streamResult = streamText({
       model: modelClient.model,
+      headers: getAiHeaders({
+        builtinProviderId: modelClient.builtinProviderId,
+      }),
+      providerOptions: getProviderOptions({
+        dyadAppId: chat.app.id,
+        dyadDisableFiles: true, // Local agent uses tools, not file injection
+        files: [],
+        mentionedAppsCodebases: [],
+        builtinProviderId: modelClient.builtinProviderId,
+        settings,
+      }),
       maxOutputTokens: await getMaxTokens(settings.selectedModel),
       temperature: await getTemperature(settings.selectedModel),
       maxRetries: 2,

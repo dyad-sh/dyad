@@ -17,7 +17,11 @@
       if (arg === null) return "null";
       if (arg === undefined) return "undefined";
       if (typeof arg === "object") {
-        return JSON.stringify(arg, null, 2);
+        try {
+          return JSON.stringify(arg, null, 2);
+        } catch (error) {
+          throw new Error("Failed to stringify argument: " + error.message);
+        }
       }
       return String(arg);
     });

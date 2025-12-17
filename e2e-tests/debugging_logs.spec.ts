@@ -194,7 +194,7 @@ testSkipIfWindows(
 
     // Wait for the log entry to appear
     const consoleEntry = await po.page.getByTestId("console-entry").last();
-    expect(consoleEntry).toBeVisible({ timeout: Timeout.EXTRA_LONG });
+    await expect(consoleEntry).toBeVisible({ timeout: Timeout.EXTRA_LONG });
 
     // Hover over the log entry to reveal the send to chat button
     await consoleEntry.hover();

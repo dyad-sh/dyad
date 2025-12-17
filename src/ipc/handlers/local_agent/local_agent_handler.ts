@@ -18,8 +18,11 @@ import { safeSend } from "../../utils/safe_sender";
 import { getMaxTokens, getTemperature } from "../../utils/token_utils";
 import { readAiRules } from "../../../prompts/system_prompt";
 import { constructLocalAgentPrompt } from "../../../prompts/local_agent_prompt";
-import { buildAgentToolSet, type ToolExecuteContext } from "./tool_definitions";
-import {} from "./xml_tool_translator";
+import {
+  AgentToolName,
+  buildAgentToolSet,
+  requireAgentToolConsent,
+} from "./tool_definitions";
 import {
   resetSharedModulesFlag,
   deployAllFunctionsIfNeeded,
@@ -32,6 +35,7 @@ import { requireMcpToolConsent } from "../../utils/mcp_consent";
 import { getAiMessagesJsonIfWithinLimit } from "../../utils/ai_messages_utils";
 
 import type { ChatStreamParams, ChatResponseEnd } from "../../ipc_types";
+import { ToolExecuteContext } from "./tools/types";
 
 const logger = log.scope("local_agent_handler");
 
@@ -160,6 +164,17 @@ export async function handleLocalAgentStream(
         fullResponse += xml + "\n";
         updateResponseInDb(placeholderMessageId, fullResponse);
         sendResponseChunk(event, req.chatId, chat, fullResponse);
+      },
+      requireConsent: async (params: {
+        toolName: string;
+        toolDescription?: string | null;
+        inputPreview?: string | null;
+      }) => {
+        return requireAgentToolConsent(event, {
+          toolName: params.toolName as AgentToolName,
+          toolDescription: params.toolDescription,
+          inputPreview: params.inputPreview,
+        });
       },
     };
 

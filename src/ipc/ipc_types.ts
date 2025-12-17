@@ -589,3 +589,9 @@ export interface AgentTool {
   description: string;
   isAllowedByDefault: boolean;
 }
+
+// ============================================================================
+// Consent Types
+// ============================================================================
+
+export type AgentToolConsent = "ask" | "always";

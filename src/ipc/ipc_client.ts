@@ -73,6 +73,7 @@ import type {
   ApplyVisualEditingChangesParams,
   AnalyseComponentParams,
   AgentTool,
+  AgentToolConsent,
 } from "./ipc_types";
 import type { Template } from "../shared/templates";
 import type {
@@ -83,6 +84,7 @@ import type {
 } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
 import { DeepLinkData } from "./deep_link_data";
+import { AgentToolName } from "./handlers/local_agent/tool_definitions";
 
 export interface ChatStreamCallbacks {
   onUpdate: (messages: Message[]) => void;
@@ -926,7 +928,9 @@ export class IpcClient {
     return this.ipcRenderer.invoke("agent-tool:get-tools");
   }
 
-  public async getAgentToolConsents() {
+  public async getAgentToolConsents(): Promise<
+    Record<AgentToolName, AgentToolConsent>
+  > {
     return this.ipcRenderer.invoke("agent-tool:get-consents");
   }
 

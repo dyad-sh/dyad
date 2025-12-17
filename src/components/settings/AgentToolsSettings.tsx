@@ -11,15 +11,18 @@ import {
   useAgentTools,
   type AgentToolName,
   type AgentTool,
-  type Consent,
 } from "@/hooks/useAgentTools";
 import { Loader2, ChevronRight } from "lucide-react";
+import type { AgentToolConsent } from "@/ipc/ipc_types";
 
 export function AgentToolsSettings() {
   const { tools, consents, isLoading, setConsent } = useAgentTools();
   const [showAutoApproved, setShowAutoApproved] = useState(false);
 
-  const handleConsentChange = (toolName: AgentToolName, consent: Consent) => {
+  const handleConsentChange = (
+    toolName: AgentToolName,
+    consent: AgentToolConsent,
+  ) => {
     setConsent({ toolName, consent });
   };
 
@@ -97,8 +100,8 @@ function ToolConsentRow({
 }: {
   name: string;
   description: string;
-  consent: Consent;
-  onConsentChange: (consent: Consent) => void;
+  consent: AgentToolConsent;
+  onConsentChange: (consent: AgentToolConsent) => void;
 }) {
   return (
     <div className="border rounded p-3">
@@ -111,7 +114,7 @@ function ToolConsentRow({
         </div>
         <Select
           value={consent}
-          onValueChange={(v) => onConsentChange(v as Consent)}
+          onValueChange={(v) => onConsentChange(v as AgentToolConsent)}
         >
           <SelectTrigger className="w-[140px] h-8">
             <SelectValue />

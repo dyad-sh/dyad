@@ -1,6 +1,9 @@
+import fs from "node:fs";
 import { z } from "zod";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
-import { readFileForContext } from "../processors/file_operations";
+import { safeJoin } from "@/ipc/utils/path_utils";
+
+const readFile = fs.promises.readFile;
 
 const readFileSchema = z.object({
   path: z.string().describe("The file path to read"),
@@ -25,10 +28,13 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
       `<dyad-read path="${escapeXmlAttr(args.path)}"></dyad-read>`,
     );
 
-    const result = await readFileForContext(ctx, args.path);
-    if (!result.success) {
-      throw new Error(result.error);
+    const fullFilePath = safeJoin(ctx.appPath, args.path);
+
+    if (!fs.existsSync(fullFilePath)) {
+      throw new Error(`File does not exist: ${args.path}`);
     }
-    return result.content || "";
+
+    const content = await readFile(fullFilePath, "utf8");
+    return content || "";
   },
 };

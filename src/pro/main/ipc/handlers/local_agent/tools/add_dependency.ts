@@ -1,6 +1,9 @@
 import { z } from "zod";
+import { eq } from "drizzle-orm";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
-import { executeAddDependencies } from "../processors/file_operations";
+import { db } from "../../../../../../db";
+import { messages } from "../../../../../../db/schema";
+import { executeAddDependency } from "@/ipc/processors/executeAddDependency";
 
 const addDependencySchema = z.object({
   packages: z.array(z.string()).describe("Array of package names to install"),
@@ -27,16 +30,22 @@ export const addDependencyTool: ToolDefinition<
       `<dyad-add-dependency packages="${escapeXmlAttr(args.packages.join(" "))}"></dyad-add-dependency>`,
     );
 
-    const result = await executeAddDependencies(
-      ctx,
-      args.packages,
-      ctx.messageId,
-    );
-    if (!result.success) {
-      throw new Error(result.error);
+    const message = ctx.messageId
+      ? await db.query.messages.findFirst({
+          where: eq(messages.id, ctx.messageId),
+        })
+      : undefined;
+
+    if (!message) {
+      throw new Error("Message not found for adding dependencies");
     }
-    return (
-      result.warning || `Successfully installed ${args.packages.join(", ")}`
-    );
+
+    await executeAddDependency({
+      packages: args.packages,
+      message,
+      appPath: ctx.appPath,
+    });
+
+    return `Successfully installed ${args.packages.join(", ")}`;
   },
 };

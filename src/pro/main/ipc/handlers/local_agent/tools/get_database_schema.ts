@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ToolDefinition, AgentContext } from "./types";
-import { getDatabaseSchema } from "../processors/file_operations";
+import { getSupabaseContext } from "../../../../../../supabase_admin/supabase_context";
 
 const getDatabaseSchemaSchema = z.object({});
 
@@ -27,10 +27,10 @@ export const getDatabaseSchemaTool: ToolDefinition<
 
     ctx.onXmlChunk(`<dyad-database-schema></dyad-database-schema>`);
 
-    const result = await getDatabaseSchema(ctx);
-    if (!result.success) {
-      throw new Error(result.error);
-    }
-    return result.schema || "";
+    const schema = await getSupabaseContext({
+      supabaseProjectId: ctx.supabaseProjectId,
+    });
+
+    return schema || "";
   },
 };

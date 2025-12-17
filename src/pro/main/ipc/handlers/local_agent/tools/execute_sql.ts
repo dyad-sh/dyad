@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
-import { executeSupabaseSqlQuery } from "../processors/file_operations";
+import { executeSupabaseSql } from "../../../../../../supabase_admin/supabase_management_client";
+import { writeMigrationFile } from "../../../../../../ipc/utils/file_utils";
+import { readSettings } from "../../../../../../main/settings";
 
 const executeSqlSchema = z.object({
   query: z.string().describe("The SQL query to execute"),
@@ -34,14 +36,21 @@ ${args.query}
 </dyad-execute-sql>`,
       );
 
-      const result = await executeSupabaseSqlQuery(
-        ctx,
-        args.query,
-        args.description,
-      );
-      if (!result.success) {
-        throw new Error(result.error);
+      await executeSupabaseSql({
+        supabaseProjectId: ctx.supabaseProjectId,
+        query: args.query,
+      });
+
+      // Write migration file if enabled
+      const settings = readSettings();
+      if (settings.enableSupabaseWriteSqlMigration) {
+        try {
+          await writeMigrationFile(ctx.appPath, args.query, args.description);
+        } catch (error) {
+          return `SQL executed, but failed to write migration file: ${error}`;
+        }
       }
-      return result.warning || "Successfully executed SQL query";
+
+      return "Successfully executed SQL query";
     },
   };

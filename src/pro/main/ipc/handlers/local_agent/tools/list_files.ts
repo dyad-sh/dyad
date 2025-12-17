@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
-import { listFilesInApp } from "../processors/file_operations";
+import { extractCodebase } from "../../../../../../utils/codebase";
 
 const listFilesSchema = z.object({
   directory: z.string().optional().describe("Optional subdirectory to list"),
@@ -28,10 +28,18 @@ export const listFilesTool: ToolDefinition<z.infer<typeof listFilesSchema>> = {
       : "";
     ctx.onXmlChunk(`<dyad-list-files${dirAttr}></dyad-list-files>`);
 
-    const result = await listFilesInApp(ctx, args.directory);
-    if (!result.success) {
-      throw new Error(result.error);
-    }
-    return result.files || "";
+    const { files } = await extractCodebase({
+      appPath: ctx.appPath,
+      // TODO
+      chatContext: {
+        contextPaths: args.directory
+          ? [{ globPath: args.directory + "/**" }]
+          : [],
+        smartContextAutoIncludes: [],
+        excludePaths: [],
+      },
+    });
+
+    return files.map((file) => " - " + file.path).join("\n") || "";
   },
 };

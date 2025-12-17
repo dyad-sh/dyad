@@ -24,5 +24,6 @@
   "enableAutoFixProblems": false,
   "enableAutoUpdate": true,
   "releaseChannel": "stable",
+  "isRunning": true,
   "isTestMode": true
 }

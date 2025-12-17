@@ -243,34 +243,46 @@ async function run({ github, context, core }) {
   const runId = process.env.GITHUB_RUN_ID;
   comment += `\n---\n📊 [View full report](${repoUrl}/actions/runs/${runId})`;
 
-  // Post or update comment on PR
+  // Post or update comment on PR (only works for PRs from the same repo, not forks)
+  // For forked PRs, GitHub Actions doesn't grant write permissions for security reasons
   if (context.eventName === "pull_request") {
-    const { data: comments } = await github.rest.issues.listComments({
-      owner: context.repo.owner,
-      repo: context.repo.repo,
-      issue_number: context.issue.number,
-    });
+    const isFork =
+      context.payload.pull_request?.head?.repo?.fork === true ||
+      context.payload.pull_request?.head?.repo?.full_name !==
+        `${context.repo.owner}/${context.repo.repo}`;
 
-    const botComment = comments.find(
-      (c) =>
-        c.user?.type === "Bot" &&
-        c.body?.includes("🎭 Playwright Test Results"),
-    );
-
-    if (botComment) {
-      await github.rest.issues.updateComment({
-        owner: context.repo.owner,
-        repo: context.repo.repo,
-        comment_id: botComment.id,
-        body: comment,
-      });
-    } else {
-      await github.rest.issues.createComment({
+    if (!isFork) {
+      const { data: comments } = await github.rest.issues.listComments({
         owner: context.repo.owner,
         repo: context.repo.repo,
         issue_number: context.issue.number,
-        body: comment,
       });
+
+      const botComment = comments.find(
+        (c) =>
+          c.user?.type === "Bot" &&
+          c.body?.includes("🎭 Playwright Test Results"),
+      );
+
+      if (botComment) {
+        await github.rest.issues.updateComment({
+          owner: context.repo.owner,
+          repo: context.repo.repo,
+          comment_id: botComment.id,
+          body: comment,
+        });
+      } else {
+        await github.rest.issues.createComment({
+          owner: context.repo.owner,
+          repo: context.repo.repo,
+          issue_number: context.issue.number,
+          body: comment,
+        });
+      }
+    } else {
+      core.warning(
+        "PR is from a forked repository. Comments cannot be posted due to GitHub security restrictions. Summary is available in the Actions tab.",
+      );
     }
   }
 

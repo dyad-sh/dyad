@@ -152,8 +152,22 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       maxOutputTokens: 65_536 - 1,
       // Gemini context window = input token + output token
       contextWindow: 1_048_576,
+      // Recommended by Google: https://ai.google.dev/gemini-api/docs/gemini-3?thinking=high#temperature
       temperature: 1.0,
       dollarSigns: 4,
+    },
+    // https://ai.google.dev/gemini-api/docs/models#gemini-3-pro
+    {
+      name: "gemini-3-flash-preview",
+      displayName: "Gemini 3 Flash (Preview)",
+      description: "Powerful coding model at a good price",
+      // See Flash 2.5 comment below (go 1 below just to be safe, even though it seems OK now).
+      maxOutputTokens: 65_536 - 1,
+      // Gemini context window = input token + output token
+      contextWindow: 1_048_576,
+      // Recommended by Google: https://ai.google.dev/gemini-api/docs/gemini-3?thinking=high#temperature
+      temperature: 1.0,
+      dollarSigns: 2,
     },
     // https://ai.google.dev/gemini-api/docs/models#gemini-2.5-pro-preview-03-25
     {

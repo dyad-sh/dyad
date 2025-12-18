@@ -71,7 +71,7 @@ function determineIssueNumber({ context }) {
       context.payload?.workflow_run?.pull_requests?.[0]?.number;
     if (prFromPayload) return prFromPayload;
   } else {
-    throw new Error("This script should only be run in a workflow_run")
+    throw new Error("This script should only be run in a workflow_run");
   }
 
   return null;

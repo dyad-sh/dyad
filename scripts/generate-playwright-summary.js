@@ -66,12 +66,12 @@ function determineIssueNumber({ context }) {
   const envNumber = process.env.PR_NUMBER;
   if (envNumber) return Number(envNumber);
 
-  if (context.eventName === "pull_request") return context.issue.number;
-
   if (context.eventName === "workflow_run") {
     const prFromPayload =
       context.payload?.workflow_run?.pull_requests?.[0]?.number;
     if (prFromPayload) return prFromPayload;
+  } else {
+    throw new Error("This script should only be run in a workflow_run")
   }
 
   return null;
@@ -310,9 +310,8 @@ async function run({ github, context, core }) {
 
   // Post or update comment on PR
   const prNumber = determineIssueNumber({ context });
-  const skipComment = process.env.SKIP_PR_COMMENT === "true";
 
-  if (prNumber && !skipComment) {
+  if (prNumber) {
     const { data: comments } = await github.rest.issues.listComments({
       owner: context.repo.owner,
       repo: context.repo.repo,
@@ -342,8 +341,6 @@ async function run({ github, context, core }) {
     }
   } else if (!prNumber) {
     console.log("No pull request detected; skipping PR comment");
-  } else if (skipComment) {
-    console.log("Skipping PR comment because SKIP_PR_COMMENT is set");
   }
 
   // Always output to job summary

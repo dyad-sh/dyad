@@ -151,10 +151,3 @@ jobs:
           name: html-report--attempt-${{ github.run_attempt }}
           path: playwright-report
           retention-days: 3
-
-      - name: Generate test summary comment
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { run } = require('./scripts/generate-playwright-summary.js');
-            await run({ github, context, core });

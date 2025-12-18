@@ -1,7 +1,7 @@
 import { ipcMain } from "electron";
 import { db } from "../../db";
 import { apps, chats, messages } from "../../db/schema";
-import { desc, eq, and, like } from "drizzle-orm";
+import { desc, eq, and, like, sql } from "drizzle-orm";
 import type { ChatSearchResult, ChatSummary } from "../../lib/schemas";
 import { createLoggedHandler } from "./safe_handle";
 
@@ -58,12 +58,15 @@ export function registerChatHandlers() {
     return chat.id;
   });
 
-  ipcMain.handle("get-chat", async (_, chatId: number) => {
+  ipcMain.handle("get-chat", async (_, chatId: number, limit?: number) => {
     const chat = await db.query.chats.findFirst({
       where: eq(chats.id, chatId),
       with: {
         messages: {
-          orderBy: (messages, { asc }) => [asc(messages.createdAt)],
+          orderBy: (messages, { desc }) => [desc(messages.createdAt)],
+          // Limit to most recent messages to prevent crash with large chats
+          // Default to 100 messages if not specified
+          limit: limit ?? 100,
         },
       },
     });
@@ -72,8 +75,33 @@ export function registerChatHandlers() {
       throw new Error("Chat not found");
     }
 
-    return chat;
+    // Reverse messages to maintain chronological order (oldest first)
+    // since we queried in descending order to get the most recent
+    return {
+      ...chat,
+      messages: chat.messages.reverse(),
+    };
   });
+
+  handle(
+    "get-older-messages",
+    async (_, chatId: number, beforeMessageId: number, limit: number = 100) => {
+      // Fetch messages older than the given message ID
+      const olderMessages = await db.query.messages.findMany({
+        where: and(
+          eq(messages.chatId, chatId),
+          // Get messages with ID less than beforeMessageId (older messages)
+          // Using createdAt for ordering since ID might not be sequential
+          sql`${messages.id} < ${beforeMessageId}`,
+        ),
+        orderBy: [desc(messages.createdAt)],
+        limit,
+      });
+
+      // Reverse to maintain chronological order (oldest first)
+      return olderMessages.reverse();
+    },
+  );
 
   handle("get-chats", async (_, appId?: number): Promise<ChatSummary[]> => {
     // If appId is provided, filter chats for that app

@@ -314,9 +314,28 @@ export class IpcClient {
     return this.ipcRenderer.invoke("set-app-env-vars", params);
   }
 
-  public async getChat(chatId: number): Promise<Chat> {
+  public async getChat(chatId: number, limit?: number): Promise<Chat> {
     try {
-      const data = await this.ipcRenderer.invoke("get-chat", chatId);
+      const data = await this.ipcRenderer.invoke("get-chat", chatId, limit);
+      return data;
+    } catch (error) {
+      showError(error);
+      throw error;
+    }
+  }
+
+  public async getOlderMessages(
+    chatId: number,
+    beforeMessageId: number,
+    limit: number = 100,
+  ): Promise<Message[]> {
+    try {
+      const data = await this.ipcRenderer.invoke(
+        "get-older-messages",
+        chatId,
+        beforeMessageId,
+        limit,
+      );
       return data;
     } catch (error) {
       showError(error);

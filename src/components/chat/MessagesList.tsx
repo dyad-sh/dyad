@@ -24,10 +24,11 @@ import { useCountTokens } from "@/hooks/useCountTokens";
 interface MessagesListProps {
   messages: Message[];
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
+  onLoadOlder?: (beforeMessageId: number) => Promise<number | undefined>;
 }
 
 export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
-  function MessagesList({ messages, messagesEndRef }, ref) {
+  function MessagesList({ messages, messagesEndRef, onLoadOlder }, ref) {
     const appId = useAtomValue(selectedAppIdAtom);
     const { versions, revertVersion } = useVersions(appId);
     const { streamMessage, isStreaming } = useStreamChat();
@@ -36,6 +37,8 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
     const setMessagesById = useSetAtom(chatMessagesByIdAtom);
     const [isUndoLoading, setIsUndoLoading] = useState(false);
     const [isRetryLoading, setIsRetryLoading] = useState(false);
+    const [isLoadingOlder, setIsLoadingOlder] = useState(false);
+    const [hasMoreMessages, setHasMoreMessages] = useState(true);
     const selectedChatId = useAtomValue(selectedChatIdAtom);
     const { userBudget } = useUserBudgetInfo();
     // Only fetch token count when not streaming
@@ -43,6 +46,24 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
       !isStreaming ? selectedChatId : null,
       "",
     );
+
+    const handleLoadMore = async () => {
+      if (!onLoadOlder || messages.length === 0 || isLoadingOlder) return;
+
+      const firstMessageId = messages[0].id;
+      setIsLoadingOlder(true);
+
+      try {
+        const loadedCount = await onLoadOlder(firstMessageId);
+        if (loadedCount === 0) {
+          setHasMoreMessages(false);
+        }
+      } catch (error) {
+        console.error("Error loading older messages:", error);
+      } finally {
+        setIsLoadingOlder(false);
+      }
+    };
 
     const renderSetupBanner = () => {
       const selectedModel = settings?.selectedModel;
@@ -65,6 +86,26 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         ref={ref}
         data-testid="messages-list"
       >
+        {/* Load More button for older messages */}
+        {onLoadOlder && messages.length > 0 && hasMoreMessages && (
+          <div className="flex justify-center mb-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleLoadMore}
+              disabled={isLoadingOlder}
+            >
+              {isLoadingOlder ? (
+                <>
+                  <Loader2 size={16} className="mr-2 animate-spin" />
+                  Loading older messages...
+                </>
+              ) : (
+                "Load older messages"
+              )}
+            </Button>
+          </div>
+        )}
         {messages.length > 0
           ? messages.map((message, index) => (
               <ChatMessage

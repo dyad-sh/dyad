@@ -85,20 +85,48 @@ export const CodeHighlight = memo(
     const code = String(children).trim();
     const language = className?.match(/language-(\w+)/)?.[1];
     const isInline = node ? isInlineCode(node) : false;
-    //handle copying code to clipboard with transition effect
     const [copied, setCopied] = useState(false);
+    const [isVisible, setIsVisible] = useState(false);
+    const containerRef = React.useRef<HTMLDivElement>(null);
+
     const handleCopy = () => {
       navigator.clipboard.writeText(code);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000); // revert after 2s
+      setTimeout(() => setCopied(false), 2000);
     };
 
     const { isDarkMode } = useTheme();
     const highlighter = useHighlighter();
 
+    // Use IntersectionObserver to defer highlighting until visible
+    useEffect(() => {
+      if (isInline || !containerRef.current) return;
+
+      const observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting && !isVisible) {
+              setIsVisible(true);
+            }
+          });
+        },
+        {
+          rootMargin: "100px", // Start loading 100px before entering viewport
+          threshold: 0.01,
+        },
+      );
+
+      observer.observe(containerRef.current);
+
+      return () => {
+        observer.disconnect();
+      };
+    }, [isInline, isVisible]);
+
     return !isInline ? (
       <div
-        className="shiki not-prose relative [&_pre]:overflow-auto 
+        ref={containerRef}
+        className="shiki not-prose relative [&_pre]:overflow-auto
       [&_pre]:rounded-lg [&_pre]:px-6 [&_pre]:py-7"
       >
         {language ? (
@@ -118,7 +146,7 @@ export const CodeHighlight = memo(
             )}
           </div>
         ) : null}
-        {highlighter ? (
+        {highlighter && isVisible ? (
           <ShikiHighlighter
             highlighter={highlighter}
             language={language}

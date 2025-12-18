@@ -124,6 +124,7 @@ export function ChatPanel({
       // no-op when no chat
       return;
     }
+    // Load with default limit of 100 to prevent crash with large chats
     const chat = await IpcClient.getInstance().getChat(chatId);
     setMessagesById((prev) => {
       const next = new Map(prev);
@@ -131,6 +132,37 @@ export function ChatPanel({
       return next;
     });
   }, [chatId, setMessagesById]);
+
+  const loadOlderMessages = useCallback(
+    async (beforeMessageId: number) => {
+      if (!chatId) return;
+
+      try {
+        const olderMessages = await IpcClient.getInstance().getOlderMessages(
+          chatId,
+          beforeMessageId,
+          100,
+        );
+
+        if (olderMessages.length > 0) {
+          setMessagesById((prev) => {
+            const next = new Map(prev);
+            const currentMessages = prev.get(chatId) ?? [];
+            // Prepend older messages to the beginning
+            next.set(chatId, [...olderMessages, ...currentMessages]);
+            return next;
+          });
+        }
+
+        return olderMessages.length;
+      } catch (error) {
+        console.error("Error loading older messages:", error);
+        setError("Failed to load older messages");
+        return 0;
+      }
+    },
+    [chatId, setMessagesById],
+  );
 
   useEffect(() => {
     fetchChatMessages();
@@ -172,6 +204,7 @@ export function ChatPanel({
                 messages={messages}
                 messagesEndRef={messagesEndRef}
                 ref={messagesContainerRef}
+                onLoadOlder={loadOlderMessages}
               />
 
               {/* Scroll to bottom button */}

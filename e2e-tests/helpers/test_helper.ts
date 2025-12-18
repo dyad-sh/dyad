@@ -341,7 +341,11 @@ export class PageObject {
 
   async selectChatMode(mode: "build" | "ask" | "agent") {
     await this.page.getByTestId("chat-mode-selector").click();
-    await this.page.getByRole("option", { name: mode }).click();
+    await this.page
+      .getByRole("option", {
+        name: mode === "agent" ? "Build with MCP (experimental)" : mode,
+      })
+      .click();
   }
 
   async openContextFilesPicker() {

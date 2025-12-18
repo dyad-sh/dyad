@@ -292,10 +292,12 @@ const server = http.createServer((clientReq, clientRes) => {
         "service-worker-allowed": "/",
         "cache-control": "no-cache",
       });
-      return void clientRes.end(dyadSwContent);
+      clientRes.end(dyadSwContent);
+      return;
     } else {
       clientRes.writeHead(404, { "content-type": "text/plain" });
-      return void clientRes.end("Service Worker file not found");
+      clientRes.end("Service Worker file not found");
+      return;
     }
   }
 

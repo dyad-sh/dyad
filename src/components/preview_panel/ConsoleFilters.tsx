@@ -2,11 +2,23 @@ import { Filter, X } from "lucide-react";
 
 interface ConsoleFiltersProps {
   levelFilter: "all" | "info" | "warn" | "error";
-  typeFilter: "all" | "server" | "client" | "edge-function";
+  typeFilter:
+    | "all"
+    | "server"
+    | "client"
+    | "edge-function"
+    | "network-requests"
+    | "build-time";
   sourceFilter: string;
   onLevelFilterChange: (value: "all" | "info" | "warn" | "error") => void;
   onTypeFilterChange: (
-    value: "all" | "server" | "client" | "edge-function",
+    value:
+      | "all"
+      | "server"
+      | "client"
+      | "edge-function"
+      | "network-requests"
+      | "build-time",
   ) => void;
   onSourceFilterChange: (value: string) => void;
   onClearFilters: () => void;
@@ -57,7 +69,13 @@ export const ConsoleFilters = ({
         value={typeFilter}
         onChange={(e) =>
           onTypeFilterChange(
-            e.target.value as "all" | "server" | "client" | "edge-function",
+            e.target.value as
+              | "all"
+              | "server"
+              | "client"
+              | "edge-function"
+              | "network-requests"
+              | "build-time",
           )
         }
         className="text-xs px-2 py-1 border border-border rounded bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
@@ -66,6 +84,8 @@ export const ConsoleFilters = ({
         <option value="server">Server</option>
         <option value="client">Client</option>
         <option value="edge-function">Edge Function</option>
+        <option value="network-requests">Network Requests</option>
+        <option value="build-time">Build Time</option>
       </select>
 
       {/* Source filter */}

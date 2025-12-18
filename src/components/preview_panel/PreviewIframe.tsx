@@ -373,7 +373,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           ...prev,
           {
             level: "info",
-            type: "server",
+            type: "network-requests",
             message: formattedMessage,
             timestamp: Date.now(),
             appId: selectedAppId!,
@@ -391,7 +391,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           ...prev,
           {
             level,
-            type: "server",
+            type: "network-requests",
             message: formattedMessage,
             timestamp: Date.now(),
             appId: selectedAppId!,
@@ -409,7 +409,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           ...prev,
           {
             level: "error",
-            type: "server",
+            type: "network-requests",
             message: formattedMessage,
             timestamp: Date.now(),
             appId: selectedAppId!,

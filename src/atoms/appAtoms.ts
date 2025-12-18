@@ -14,7 +14,12 @@ export const selectedVersionIdAtom = atom<string | null>(null);
 
 export interface ConsoleEntry {
   level: "info" | "warn" | "error";
-  type: "server" | "client" | "edge-function";
+  type:
+    | "server"
+    | "client"
+    | "edge-function"
+    | "network-requests"
+    | "build-time";
   message: string;
   timestamp: number;
   sourceName?: string;

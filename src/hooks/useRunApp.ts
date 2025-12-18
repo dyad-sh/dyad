@@ -74,7 +74,7 @@ export function useRunApp() {
         ...prev,
         {
           level,
-          type: "server",
+          type: "build-time",
           message: output.message,
           timestamp: output.timestamp,
           appId: output.appId,
@@ -105,7 +105,7 @@ export function useRunApp() {
           ...prev,
           {
             level: "info",
-            type: "server",
+            type: "build-time",
             message: "Trying to restart app...",
             timestamp: Date.now(),
             appId,
@@ -184,7 +184,7 @@ export function useRunApp() {
           ...prev,
           {
             level: "info",
-            type: "server",
+            type: "build-time",
             message: "Restarting app...",
             timestamp: Date.now(),
             appId,

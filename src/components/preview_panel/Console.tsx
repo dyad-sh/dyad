@@ -16,13 +16,23 @@ export const Console = () => {
   const hasScrolledToBottom = useRef(false);
   const [showFilters, setShowFilters] = useState(false);
   const [containerHeight, setContainerHeight] = useState(0);
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [expandedEntries, setExpandedEntries] = useState<Set<string>>(
+    new Set(),
+  );
+  const [listVersion, setListVersion] = useState(0);
 
   // Filter states
   const [levelFilter, setLevelFilter] = useState<
     "all" | "info" | "warn" | "error"
   >("all");
   const [typeFilter, setTypeFilter] = useState<
-    "all" | "server" | "client" | "edge-function"
+    | "all"
+    | "server"
+    | "client"
+    | "edge-function"
+    | "network-requests"
+    | "build-time"
   >("all");
   const [sourceFilter, setSourceFilter] = useState<string>("");
 
@@ -35,9 +45,11 @@ export const Console = () => {
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const newHeight = entry.contentRect.height;
+        const newWidth = entry.contentRect.width;
         const wasZero = prevContainerHeight.current === 0;
         prevContainerHeight.current = newHeight;
         setContainerHeight(newHeight);
+        setContainerWidth(newWidth);
         // Reset scroll flag when container becomes visible (height goes from 0 to > 0)
         // This handles the case when console panel is opened
         if (wasZero && newHeight > 0) {
@@ -83,9 +95,11 @@ export const Console = () => {
   }, [consoleEntries, levelFilter, typeFilter, sourceFilter]);
 
   // Use dynamic row height hook
+  // Include containerWidth as dependency to recalculate when text wraps
+  // Include listVersion to recalculate when items are expanded/collapsed
   const dynamicRowHeight = useDynamicRowHeight({
-    defaultRowHeight: 24,
-    key: "console-log-entries",
+    defaultRowHeight: 100,
+    key: `console-log-entries-${containerWidth}-${listVersion}`,
   });
 
   // Track if user is near bottom for auto-scroll
@@ -160,12 +174,35 @@ export const Console = () => {
     setSourceFilter("");
   };
 
+  // Generate unique key for each entry
+  const getEntryKey = (entry: (typeof filteredEntries)[0], index: number) => {
+    return `${entry.timestamp}-${index}`;
+  };
+
+  // Toggle expansion state for an entry
+  const toggleExpanded = (key: string) => {
+    setExpandedEntries((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+    // Increment version to force list recalculation
+    setListVersion((v) => v + 1);
+  };
+
   // Row renderer component
   const RowComponent = ({ index, style }: RowComponentProps) => {
     const entry = filteredEntries[index];
     if (!entry) {
       return <div style={style} />;
     }
+
+    const entryKey = getEntryKey(entry, index);
+    const isExpanded = expandedEntries.has(entryKey);
 
     return (
       <div style={style}>
@@ -175,6 +212,9 @@ export const Console = () => {
           timestamp={entry.timestamp}
           message={entry.message}
           sourceName={entry.sourceName}
+          typeFilter={typeFilter}
+          isExpanded={isExpanded}
+          onToggleExpand={() => toggleExpanded(entryKey)}
         />
       </div>
     );
@@ -183,6 +223,10 @@ export const Console = () => {
   const listHeight = containerHeight - (showFilters ? 60 : 0);
 
   // Disable virtualization in test mode for easier e2e testing
+  // Virtualization only renders visible DOM elements, which creates issues for E2E tests:
+  // 1. Off-screen logs don't exist in the DOM and can't be queried by test selectors
+  // 2. Tests would need complex scrolling logic to bring elements into view before interaction
+  // 3. Race conditions and timing issues occur when waiting for virtualized elements to render after scrolling
   // E2E_TEST_BUILD is passed from main process via IPC (envVarsAtom)
   const isTestMode = envVars.E2E_TEST_BUILD === "true";
 
@@ -211,17 +255,25 @@ export const Console = () => {
               className="font-mono text-xs"
               style={{ height: listHeight, overflowY: "auto" }}
             >
-              {filteredEntries.map((entry, index) => (
-                <div key={index}>
-                  <ConsoleEntryComponent
-                    type={entry.type}
-                    level={entry.level}
-                    timestamp={entry.timestamp}
-                    message={entry.message}
-                    sourceName={entry.sourceName}
-                  />
-                </div>
-              ))}
+              {filteredEntries.map((entry, index) => {
+                const entryKey = getEntryKey(entry, index);
+                const isExpanded = expandedEntries.has(entryKey);
+
+                return (
+                  <div key={index}>
+                    <ConsoleEntryComponent
+                      type={entry.type}
+                      level={entry.level}
+                      timestamp={entry.timestamp}
+                      message={entry.message}
+                      sourceName={entry.sourceName}
+                      typeFilter={typeFilter}
+                      isExpanded={isExpanded}
+                      onToggleExpand={() => toggleExpanded(entryKey)}
+                    />
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <List

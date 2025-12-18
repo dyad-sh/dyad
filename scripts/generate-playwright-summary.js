@@ -10,6 +10,73 @@ function stripAnsi(str) {
   return str.replace(/\x1b\[[0-9;]*m/g, "").replace(/\u001b\[[0-9;]*m/g, "");
 }
 
+function ensureOsBucket(resultsByOs, os) {
+  if (!os) return;
+  if (!resultsByOs[os]) {
+    resultsByOs[os] = {
+      passed: 0,
+      failed: 0,
+      skipped: 0,
+      flaky: 0,
+      failures: [],
+      flakyTests: [],
+    };
+  }
+}
+
+function detectOperatingSystemsFromReport(report) {
+  const detected = new Set();
+
+  function traverseSuites(suites = []) {
+    for (const suite of suites) {
+      for (const spec of suite.specs || []) {
+        for (const test of spec.tests || []) {
+          for (const result of test.results || []) {
+            for (const attachment of result.attachments || []) {
+              const p = attachment.path || "";
+              if (p.includes("darwin") || p.includes("macos")) {
+                detected.add("macOS");
+              } else if (p.includes("win32") || p.includes("windows")) {
+                detected.add("Windows");
+              }
+            }
+
+            const stack = result.error?.stack || "";
+            if (stack.includes("/Users/")) {
+              detected.add("macOS");
+            } else if (stack.includes("C:\\") || stack.includes("D:\\")) {
+              detected.add("Windows");
+            }
+          }
+        }
+      }
+
+      if (suite.suites?.length) {
+        traverseSuites(suite.suites);
+      }
+    }
+  }
+
+  traverseSuites(report?.suites);
+
+  return detected;
+}
+
+function determineIssueNumber({ context }) {
+  const envNumber = process.env.PR_NUMBER;
+  if (envNumber) return Number(envNumber);
+
+  if (context.eventName === "pull_request") return context.issue.number;
+
+  if (context.eventName === "workflow_run") {
+    const prFromPayload =
+      context.payload?.workflow_run?.pull_requests?.[0]?.number;
+    if (prFromPayload) return prFromPayload;
+  }
+
+  return null;
+}
+
 async function run({ github, context, core }) {
   // Read the JSON report
   const reportPath = "playwright-report/results.json";
@@ -28,24 +95,18 @@ async function run({ github, context, core }) {
 
   // Initialize per-OS results
   const resultsByOs = {};
-  if (hasMacOS)
-    resultsByOs["macOS"] = {
-      passed: 0,
-      failed: 0,
-      skipped: 0,
-      flaky: 0,
-      failures: [],
-      flakyTests: [],
-    };
-  if (hasWindows)
-    resultsByOs["Windows"] = {
-      passed: 0,
-      failed: 0,
-      skipped: 0,
-      flaky: 0,
-      failures: [],
-      flakyTests: [],
-    };
+  if (hasMacOS) ensureOsBucket(resultsByOs, "macOS");
+  if (hasWindows) ensureOsBucket(resultsByOs, "Windows");
+
+  if (Object.keys(resultsByOs).length === 0) {
+    const detected = detectOperatingSystemsFromReport(report);
+    if (detected.size === 0) {
+      ensureOsBucket(resultsByOs, "macOS");
+      ensureOsBucket(resultsByOs, "Windows");
+    } else {
+      for (const os of detected) ensureOsBucket(resultsByOs, os);
+    }
+  }
 
   // Traverse suites and collect test results
   function traverseSuites(suites, parentTitle = "") {
@@ -94,7 +155,11 @@ async function run({ github, context, core }) {
           }
 
           // If we still don't know, assign to both (will be roughly split)
-          const osTargets = os ? [os] : Object.keys(resultsByOs);
+          const osTargets = os
+            ? [os]
+            : Object.keys(resultsByOs).length > 0
+              ? Object.keys(resultsByOs)
+              : ["macOS", "Windows"];
 
           // Check if this is a flaky test (passed eventually but had prior failures)
           const hadPriorFailure = results
@@ -108,7 +173,7 @@ async function run({ github, context, core }) {
           const isFlaky = finalResult.status === "passed" && hadPriorFailure;
 
           for (const targetOs of osTargets) {
-            if (!resultsByOs[targetOs]) continue;
+            ensureOsBucket(resultsByOs, targetOs);
             const status = finalResult.status;
 
             if (isFlaky) {
@@ -240,15 +305,18 @@ async function run({ github, context, core }) {
   }
 
   const repoUrl = `https://github.com/${process.env.GITHUB_REPOSITORY}`;
-  const runId = process.env.GITHUB_RUN_ID;
+  const runId = process.env.PLAYWRIGHT_RUN_ID || process.env.GITHUB_RUN_ID;
   comment += `\n---\n📊 [View full report](${repoUrl}/actions/runs/${runId})`;
 
   // Post or update comment on PR
-  if (context.eventName === "pull_request") {
+  const prNumber = determineIssueNumber({ context });
+  const skipComment = process.env.SKIP_PR_COMMENT === "true";
+
+  if (prNumber && !skipComment) {
     const { data: comments } = await github.rest.issues.listComments({
       owner: context.repo.owner,
       repo: context.repo.repo,
-      issue_number: context.issue.number,
+      issue_number: prNumber,
     });
 
     const botComment = comments.find(
@@ -268,10 +336,14 @@ async function run({ github, context, core }) {
       await github.rest.issues.createComment({
         owner: context.repo.owner,
         repo: context.repo.repo,
-        issue_number: context.issue.number,
+        issue_number: prNumber,
         body: comment,
       });
     }
+  } else if (!prNumber) {
+    console.log("No pull request detected; skipping PR comment");
+  } else if (skipComment) {
+    console.log("Skipping PR comment because SKIP_PR_COMMENT is set");
   }
 
   // Always output to job summary

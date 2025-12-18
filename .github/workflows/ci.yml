@@ -152,8 +152,10 @@ jobs:
           path: playwright-report
           retention-days: 3
 
-      - name: Generate test summary comment
+      - name: Generate test summary
         uses: actions/github-script@v7
+        env:
+          SKIP_PR_COMMENT: "true"
         with:
           script: |
             const { run } = require('./scripts/generate-playwright-summary.js');

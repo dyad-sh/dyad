@@ -2,12 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import log from "electron-log";
-import {
-  ToolDefinition,
-  AgentContext,
-  escapeXmlAttr,
-  StreamingArgsParser,
-} from "./types";
+import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { safeJoin } from "@/ipc/utils/path_utils";
 import { deploySupabaseFunction } from "../../../../../../supabase_admin/supabase_management_client";
 import {
@@ -44,26 +39,18 @@ export const searchReplaceTool: ToolDefinition<
   inputSchema: searchReplaceSchema,
   defaultConsent: "always",
 
-  buildXml: (argsText: string, isComplete: boolean): string | undefined => {
-    const parser = new StreamingArgsParser();
-    parser.push(argsText);
+  buildXml: (args, isComplete) => {
+    if (!args.path) return undefined;
 
-    const filePath = parser.tryGetStringField("path");
-    if (!filePath) return undefined;
-
-    const description = parser.tryGetStringField("description") ?? "";
-    const search = parser.tryGetStringField("search") ?? "";
-    const replace = parser.tryGetStringField("replace");
-
-    let xml = `<dyad-search-replace path="${escapeXmlAttr(filePath)}" description="${escapeXmlAttr(description)}">\n<<<<<<< SEARCH\n${search}`;
+    let xml = `<dyad-search-replace path="${escapeXmlAttr(args.path)}" description="${escapeXmlAttr(args.description ?? "")}">\n<<<<<<< SEARCH\n${args.search ?? ""}`;
 
     // Add separator and replace content if replace has started
-    if (replace !== undefined) {
-      xml += `\n=======\n${replace}`;
+    if (args.replace !== undefined) {
+      xml += `\n=======\n${args.replace}`;
     }
 
     if (isComplete) {
-      if (replace === undefined) {
+      if (args.replace == undefined) {
         xml += "\n=======\n";
       }
       xml += "\n>>>>>>> REPLACE\n</dyad-search-replace>";

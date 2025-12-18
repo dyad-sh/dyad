@@ -34,7 +34,7 @@ import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
 import { getAiMessagesJsonIfWithinLimit } from "@/ipc/utils/ai_messages_utils";
 
 import type { ChatStreamParams, ChatResponseEnd } from "@/ipc/ipc_types";
-import { AgentContext } from "./tools/types";
+import { AgentContext, parsePartialJson } from "./tools/types";
 import { TOOL_DEFINITIONS } from "./tool_definitions";
 
 const logger = log.scope("local_agent_handler");
@@ -351,7 +351,8 @@ export async function handleLocalAgentStream(
             entry.argsAccumulated += part.delta;
             const toolDef = findToolDefinition(entry.toolName);
             if (toolDef?.buildXml) {
-              const xml = toolDef.buildXml(entry.argsAccumulated, false);
+              const argsPartial = parsePartialJson(entry.argsAccumulated);
+              const xml = toolDef.buildXml(argsPartial, false);
               if (xml) {
                 ctx.onXmlStream(xml);
               }
@@ -366,7 +367,8 @@ export async function handleLocalAgentStream(
           if (entry) {
             const toolDef = findToolDefinition(entry.toolName);
             if (toolDef?.buildXml) {
-              const xml = toolDef.buildXml(entry.argsAccumulated, true);
+              const argsPartial = parsePartialJson(entry.argsAccumulated);
+              const xml = toolDef.buildXml(argsPartial, true);
               if (xml) {
                 ctx.onXmlComplete(xml);
               }

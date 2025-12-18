@@ -2,12 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import log from "electron-log";
-import {
-  ToolDefinition,
-  AgentContext,
-  escapeXmlAttr,
-  StreamingArgsParser,
-} from "./types";
+import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { safeJoin } from "@/ipc/utils/path_utils";
 import { gitRemove } from "@/ipc/utils/git_utils";
 import { deleteSupabaseFunction } from "../../../../../../supabase_admin/supabase_management_client";
@@ -33,14 +28,9 @@ export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
     inputSchema: deleteFileSchema,
     defaultConsent: "always",
 
-    buildXml: (argsText: string, _isComplete: boolean): string | undefined => {
-      const parser = new StreamingArgsParser();
-      parser.push(argsText);
-
-      const filePath = parser.tryGetStringField("path");
-      if (!filePath) return undefined;
-
-      return `<dyad-delete path="${escapeXmlAttr(filePath)}"></dyad-delete>`;
+    buildXml: (args, _isComplete) => {
+      if (!args.path) return undefined;
+      return `<dyad-delete path="${escapeXmlAttr(args.path)}"></dyad-delete>`;
     },
 
     execute: async (args, ctx: AgentContext) => {

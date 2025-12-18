@@ -2,12 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import log from "electron-log";
-import {
-  ToolDefinition,
-  AgentContext,
-  escapeXmlAttr,
-  StreamingArgsParser,
-} from "./types";
+import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { safeJoin } from "@/ipc/utils/path_utils";
 import { deploySupabaseFunction } from "../../../../../../supabase_admin/supabase_management_client";
 import {
@@ -32,17 +27,10 @@ export const writeFileTool: ToolDefinition<z.infer<typeof writeFileSchema>> = {
   inputSchema: writeFileSchema,
   defaultConsent: "always",
 
-  buildXml: (argsText: string, isComplete: boolean): string | undefined => {
-    const parser = new StreamingArgsParser();
-    parser.push(argsText);
+  buildXml: (args, isComplete) => {
+    if (!args.path) return undefined;
 
-    const filePath = parser.tryGetStringField("path");
-    if (!filePath) return undefined;
-
-    const description = parser.tryGetStringField("description") ?? "";
-    const content = parser.tryGetStringField("content") ?? "";
-
-    let xml = `<dyad-write path="${escapeXmlAttr(filePath)}" description="${escapeXmlAttr(description)}">\n${content}`;
+    let xml = `<dyad-write path="${escapeXmlAttr(args.path)}" description="${escapeXmlAttr(args.description ?? "")}">\n${args.content ?? ""}`;
     if (isComplete) {
       xml += "\n</dyad-write>";
     }

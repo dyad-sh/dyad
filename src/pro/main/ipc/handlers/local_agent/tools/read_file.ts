@@ -1,11 +1,6 @@
 import fs from "node:fs";
 import { z } from "zod";
-import {
-  ToolDefinition,
-  AgentContext,
-  escapeXmlAttr,
-  StreamingArgsParser,
-} from "./types";
+import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { safeJoin } from "@/ipc/utils/path_utils";
 
 const readFile = fs.promises.readFile;
@@ -20,14 +15,9 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
   inputSchema: readFileSchema,
   defaultConsent: "always",
 
-  buildXml: (argsText: string, _isComplete: boolean): string | undefined => {
-    const parser = new StreamingArgsParser();
-    parser.push(argsText);
-
-    const filePath = parser.tryGetStringField("path");
-    if (!filePath) return undefined;
-
-    return `<dyad-read path="${escapeXmlAttr(filePath)}"></dyad-read>`;
+  buildXml: (args, _isComplete) => {
+    if (!args.path) return undefined;
+    return `<dyad-read path="${escapeXmlAttr(args.path)}"></dyad-read>`;
   },
 
   execute: async (args, ctx: AgentContext) => {

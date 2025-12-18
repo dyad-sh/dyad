@@ -2,12 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import log from "electron-log";
-import {
-  ToolDefinition,
-  AgentContext,
-  escapeXmlAttr,
-  StreamingArgsParser,
-} from "./types";
+import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { safeJoin } from "@/ipc/utils/path_utils";
 import { gitAdd, gitRemove } from "@/ipc/utils/git_utils";
 import {
@@ -37,15 +32,9 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
     inputSchema: renameFileSchema,
     defaultConsent: "always",
 
-    buildXml: (argsText: string, _isComplete: boolean): string | undefined => {
-      const parser = new StreamingArgsParser();
-      parser.push(argsText);
-
-      const fromPath = parser.tryGetStringField("from");
-      const toPath = parser.tryGetStringField("to");
-      if (!fromPath || !toPath) return undefined;
-
-      return `<dyad-rename from="${escapeXmlAttr(fromPath)}" to="${escapeXmlAttr(toPath)}"></dyad-rename>`;
+    buildXml: (args, _isComplete) => {
+      if (!args.from || !args.to) return undefined;
+      return `<dyad-rename from="${escapeXmlAttr(args.from)}" to="${escapeXmlAttr(args.to)}"></dyad-rename>`;
     },
 
     execute: async (args, ctx: AgentContext) => {

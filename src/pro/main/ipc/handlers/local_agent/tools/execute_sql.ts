@@ -1,10 +1,5 @@
 import { z } from "zod";
-import {
-  ToolDefinition,
-  AgentContext,
-  escapeXmlAttr,
-  StreamingArgsParser,
-} from "./types";
+import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { executeSupabaseSql } from "../../../../../../supabase_admin/supabase_management_client";
 import { writeMigrationFile } from "../../../../../../ipc/utils/file_utils";
 import { readSettings } from "../../../../../../main/settings";
@@ -21,17 +16,10 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
     inputSchema: executeSqlSchema,
     defaultConsent: "ask",
 
-    buildXml: (argsText: string, isComplete: boolean): string | undefined => {
-      const parser = new StreamingArgsParser();
-      parser.push(argsText);
+    buildXml: (args, isComplete) => {
+      if (args.query == undefined) return undefined;
 
-      // Check if query has started
-      if (!parser.hasField("query")) return undefined;
-
-      const description = parser.tryGetStringField("description") ?? "";
-      const query = parser.tryGetStringField("query") ?? "";
-
-      let xml = `<dyad-execute-sql description="${escapeXmlAttr(description)}">\n${query}`;
+      let xml = `<dyad-execute-sql description="${escapeXmlAttr(args.description ?? "")}">\n${args.query}`;
       if (isComplete) {
         xml += "\n</dyad-execute-sql>";
       }

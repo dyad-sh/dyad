@@ -1,10 +1,5 @@
 import { z } from "zod";
-import {
-  ToolDefinition,
-  AgentContext,
-  escapeXmlAttr,
-  StreamingArgsParser,
-} from "./types";
+import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { extractCodebase } from "../../../../../../utils/codebase";
 
 const listFilesSchema = z.object({
@@ -17,13 +12,10 @@ export const listFilesTool: ToolDefinition<z.infer<typeof listFilesSchema>> = {
   inputSchema: listFilesSchema,
   defaultConsent: "always",
 
-  buildXml: (argsText: string, _isComplete: boolean): string => {
-    const parser = new StreamingArgsParser();
-    parser.push(argsText);
-
-    const directory = parser.tryGetStringField("directory");
-    const dirAttr = directory ? ` directory="${escapeXmlAttr(directory)}"` : "";
-
+  buildXml: (args, _isComplete) => {
+    const dirAttr = args.directory
+      ? ` directory="${escapeXmlAttr(args.directory)}"`
+      : "";
     return `<dyad-list-files${dirAttr}></dyad-list-files>`;
   },
 

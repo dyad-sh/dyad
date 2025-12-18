@@ -17,22 +17,9 @@ export const addDependencyTool: ToolDefinition<
   inputSchema: addDependencySchema,
   defaultConsent: "ask",
 
-  buildXml: (argsText: string, _isComplete: boolean): string | undefined => {
-    // For arrays, we need to detect when we have packages
-    // The format is: {"packages": ["pkg1", "pkg2"]}
-    const packagesMatch = argsText.match(/"packages"\s*:\s*\[([^\]]*)\]/);
-    if (!packagesMatch) return undefined;
-
-    // Extract packages from the match
-    const packagesStr = packagesMatch[1];
-    const packages = packagesStr
-      .split(",")
-      .map((p) => p.trim().replace(/^"|"$/g, ""))
-      .filter((p) => p);
-
-    if (packages.length === 0) return undefined;
-
-    return `<dyad-add-dependency packages="${escapeXmlAttr(packages.join(" "))}"></dyad-add-dependency>`;
+  buildXml: (args, _isComplete) => {
+    if (!args.packages || args.packages.length === 0) return undefined;
+    return `<dyad-add-dependency packages="${escapeXmlAttr(args.packages.join(" "))}"></dyad-add-dependency>`;
   },
 
   execute: async (args, ctx: AgentContext) => {

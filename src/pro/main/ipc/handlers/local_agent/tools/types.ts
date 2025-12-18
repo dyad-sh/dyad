@@ -4,6 +4,7 @@
 
 import { z } from "zod";
 import { IpcMainInvokeEvent } from "electron";
+import { jsonrepair } from "jsonrepair";
 import { AgentToolConsent } from "@/ipc/ipc_types";
 
 // ============================================================================
@@ -46,97 +47,26 @@ export interface AgentContext {
 }
 
 // ============================================================================
-// Streaming Args Parser
+// Partial JSON Parser
 // ============================================================================
 
 /**
- * Helper class for parsing streaming JSON arguments.
- * Accumulates JSON text and extracts field values as they become available.
+ * Parse partial/streaming JSON into a partial object using jsonrepair.
+ * Handles incomplete JSON gracefully during streaming.
  */
-export class StreamingArgsParser {
-  private accumulated = "";
-  private lastContentLength = 0;
-
-  /**
-   * Push a delta chunk of JSON text
-   */
-  push(delta: string): void {
-    this.accumulated += delta;
+export function parsePartialJson<T extends Record<string, unknown>>(
+  jsonText: string,
+): Partial<T> {
+  if (!jsonText.trim()) {
+    return {} as Partial<T>;
   }
 
-  /**
-   * Get the full accumulated JSON text
-   */
-  getAccumulated(): string {
-    return this.accumulated;
-  }
-
-  /**
-   * Try to extract a string field value from the partial JSON.
-   * Returns undefined if the field hasn't started yet.
-   * Returns the partial value if the field is being streamed.
-   */
-  tryGetStringField(field: string): string | undefined {
-    // Look for "field": "value or "field":"value
-    const pattern = new RegExp(`"${field}"\\s*:\\s*"`);
-    const match = this.accumulated.match(pattern);
-    if (!match) return undefined;
-
-    const startIndex = match.index! + match[0].length;
-    const rest = this.accumulated.slice(startIndex);
-
-    // Find the end of the string (unescaped quote)
-    let value = "";
-    let i = 0;
-    while (i < rest.length) {
-      if (rest[i] === "\\") {
-        // Escaped character - include both the backslash and next char
-        value += rest[i] + (rest[i + 1] || "");
-        i += 2;
-      } else if (rest[i] === '"') {
-        // End of string
-        break;
-      } else {
-        value += rest[i];
-        i++;
-      }
-    }
-
-    // Unescape common JSON escapes
-    return value
-      .replace(/\\n/g, "\n")
-      .replace(/\\r/g, "\r")
-      .replace(/\\t/g, "\t")
-      .replace(/\\"/g, '"')
-      .replace(/\\\\/g, "\\");
-  }
-
-  /**
-   * Get new content since last call.
-   * Useful for streaming the "content" field progressively.
-   */
-  getContentDelta(field: string): string | undefined {
-    const fullContent = this.tryGetStringField(field);
-    if (fullContent === undefined) return undefined;
-
-    const delta = fullContent.slice(this.lastContentLength);
-    this.lastContentLength = fullContent.length;
-    return delta;
-  }
-
-  /**
-   * Check if a field has started streaming (the key is present)
-   */
-  hasField(field: string): boolean {
-    return this.accumulated.includes(`"${field}"`);
-  }
-
-  /**
-   * Reset the parser state
-   */
-  reset(): void {
-    this.accumulated = "";
-    this.lastContentLength = 0;
+  try {
+    const repaired = jsonrepair(jsonText);
+    return JSON.parse(repaired) as Partial<T>;
+  } catch {
+    // If jsonrepair fails, return empty object
+    return {} as Partial<T>;
   }
 }
 
@@ -152,12 +82,12 @@ export interface ToolDefinition<T = any> {
   execute: (args: T, ctx: AgentContext) => Promise<string>;
 
   /**
-   * Build XML from accumulated JSON args.
+   * Build XML from parsed partial args.
    * Called by the handler during streaming and on completion.
    *
-   * @param argsText - The accumulated JSON args text so far
+   * @param args - Partial args parsed from accumulated JSON (type inferred from inputSchema)
    * @param isComplete - True if this is the final call (include closing tags)
    * @returns The XML string, or undefined if not enough args yet
    */
-  buildXml?: (argsText: string, isComplete: boolean) => string | undefined;
+  buildXml?: (args: Partial<T>, isComplete: boolean) => string | undefined;
 }

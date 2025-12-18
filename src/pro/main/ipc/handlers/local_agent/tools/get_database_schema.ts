@@ -14,7 +14,7 @@ export const getDatabaseSchemaTool: ToolDefinition<
   inputSchema: getDatabaseSchemaSchema,
   defaultConsent: "always",
 
-  buildXml: (_argsText: string, _isComplete: boolean): string => {
+  buildXml: (_args, _isComplete) => {
     // This tool has no inputs, so always return the same XML
     return XML_TAG;
   },

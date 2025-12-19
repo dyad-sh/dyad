@@ -17,9 +17,11 @@ import {
   ChartColumnIncreasing,
   SendHorizontalIcon,
   Lock,
+  Mic,
+  Square,
 } from "lucide-react";
 import type React from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useSettings } from "@/hooks/useSettings";
 import { IpcClient } from "@/ipc/ipc_client";
@@ -76,6 +78,7 @@ import { LexicalChatInput } from "./LexicalChatInput";
 import { useChatModeToggle } from "@/hooks/useChatModeToggle";
 import { VisualEditingChangesDialog } from "@/components/preview_panel/VisualEditingChangesDialog";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
+import { useVoskVoiceToText } from "@/hooks/useVoskVoiceToText";
 
 const showTokenBarAtom = atom(false);
 
@@ -120,6 +123,38 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     handlePaste,
   } = useAttachments();
 
+  const voiceBaseValueRef = useRef<string>("");
+  const lastPartialRef = useRef<string>("");
+
+  const handleVoiceResult = useCallback(
+    (text: string, isFinal: boolean) =>
+      setInputValue((prev) => {
+        const base = voiceBaseValueRef.current || prev.trimEnd() || prev || "";
+        const next = base ? `${base} ${text}` : text;
+        if (isFinal) {
+          voiceBaseValueRef.current = next.trimEnd();
+          lastPartialRef.current = "";
+        } else {
+          lastPartialRef.current = text;
+        }
+        return next;
+      }),
+    [setInputValue],
+  );
+
+  const {
+    startRecording: startVoiceCapture,
+    stopRecording: stopVoiceCapture,
+    isRecording: isVoiceRecording,
+    isInitializing: isVoiceLoading,
+    partialText: voicePartialText,
+    error: voiceError,
+    resetError: resetVoiceError,
+  } = useVoskVoiceToText({
+    onFinalResult: (text) => handleVoiceResult(text, true),
+    onPartialResult: (text) => handleVoiceResult(text, false),
+  });
+
   // Use the hook to fetch the proposal
   const {
     proposalResult,
@@ -145,6 +180,19 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       setShowError(true);
     }
   }, [error]);
+
+  useEffect(() => {
+    if (isStreaming && isVoiceRecording) {
+      stopVoiceCapture();
+    }
+  }, [isStreaming, isVoiceRecording, stopVoiceCapture]);
+
+  useEffect(() => {
+    if (!isVoiceRecording) {
+      lastPartialRef.current = "";
+      voiceBaseValueRef.current = "";
+    }
+  }, [isVoiceRecording]);
 
   const fetchChatMessages = useCallback(async () => {
     if (!chatId) {
@@ -207,6 +255,27 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const dismissError = () => {
     setShowError(false);
   };
+
+  const handleVoiceToggle = useCallback(async () => {
+    resetVoiceError();
+    if (isVoiceRecording) {
+      stopVoiceCapture();
+      return;
+    }
+    try {
+      voiceBaseValueRef.current = inputValue.trimEnd();
+      lastPartialRef.current = "";
+      await startVoiceCapture();
+    } catch (err) {
+      console.error("Voice capture failed", err);
+    }
+  }, [
+    inputValue,
+    isVoiceRecording,
+    resetVoiceError,
+    startVoiceCapture,
+    stopVoiceCapture,
+  ]);
 
   const handleApprove = async () => {
     if (!chatId || !messageId || isApproving || isRejecting || isStreaming)
@@ -397,27 +466,66 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               disableSendButton={disableSendButton}
             />
 
-            {isStreaming ? (
-              <button
-                onClick={handleCancel}
-                className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg"
-                title="Cancel generation"
-              >
-                <StopCircleIcon size={20} />
-              </button>
-            ) : (
-              <button
-                onClick={handleSubmit}
-                disabled={
-                  (!inputValue.trim() && attachments.length === 0) ||
-                  disableSendButton
-                }
-                className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
-                title="Send message"
-              >
-                <SendHorizontalIcon size={20} />
-              </button>
-            )}
+            <div className="flex flex-col items-end gap-1 mt-1 mr-1">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleVoiceToggle}
+                  disabled={isVoiceLoading || isStreaming}
+                  className={`px-2 py-2 hover:bg-(--background-darkest) rounded-lg ${
+                    isVoiceRecording
+                      ? "bg-(--background-darkest) text-purple-500"
+                      : "text-(--sidebar-accent-fg)"
+                  } disabled:opacity-50`}
+                  title={
+                    isVoiceRecording ? "Stop voice input" : "Start voice input"
+                  }
+                  aria-pressed={isVoiceRecording}
+                  data-testid="voice-toggle"
+                >
+                  {isVoiceLoading ? (
+                    <Loader2 size={18} className="animate-spin" />
+                  ) : isVoiceRecording ? (
+                    <Square size={18} />
+                  ) : (
+                    <Mic size={18} />
+                  )}
+                </button>
+
+                {isStreaming ? (
+                  <button
+                    onClick={handleCancel}
+                    className="px-2 py-2 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg"
+                    title="Cancel generation"
+                  >
+                    <StopCircleIcon size={20} />
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleSubmit}
+                    disabled={
+                      (!inputValue.trim() && attachments.length === 0) ||
+                      disableSendButton
+                    }
+                    className="px-2 py-2 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
+                    title="Send message"
+                  >
+                    <SendHorizontalIcon size={20} />
+                  </button>
+                )}
+              </div>
+              {voiceError ? (
+                <span className="text-xs text-red-500 max-w-[220px] text-right break-words">
+                  {voiceError}
+                </span>
+              ) : (
+                voicePartialText && (
+                  <span className="text-xs text-muted-foreground max-w-[220px] text-right break-words">
+                    {isVoiceRecording ? "Listening: " : ""}
+                    {voicePartialText}
+                  </span>
+                )
+              )}
+            </div>
           </div>
           <div className="pl-2 pr-1 flex items-center justify-between pb-2">
             <div className="flex items-center">

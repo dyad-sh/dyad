@@ -16,7 +16,7 @@ test("file tree search finds matches by name and content", async ({ po }) => {
 
   // Name search should surface the file even without a content match
   await searchInput.fill("App");
-  await expect(po.page.getByText("app.tsx")).toBeVisible({
+  await expect(po.page.getByText("App.tsx")).toBeVisible({
     timeout: Timeout.MEDIUM,
   });
 

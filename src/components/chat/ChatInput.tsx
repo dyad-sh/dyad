@@ -123,22 +123,27 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     handlePaste,
   } = useAttachments();
 
-  const voiceBaseValueRef = useRef<string>("");
+  const voiceCommittedRef = useRef<string>("");
   const lastPartialRef = useRef<string>("");
 
-  const handleVoiceResult = useCallback(
-    (text: string, isFinal: boolean) =>
-      setInputValue((prev) => {
-        const base = voiceBaseValueRef.current || prev.trimEnd() || prev || "";
-        const next = base ? `${base} ${text}` : text;
-        if (isFinal) {
-          voiceBaseValueRef.current = next.trimEnd();
-          lastPartialRef.current = "";
-        } else {
-          lastPartialRef.current = text;
-        }
-        return next;
-      }),
+  const applyVoicePartial = useCallback(
+    (partial: string) => {
+      lastPartialRef.current = partial;
+      const base = voiceCommittedRef.current;
+      const combined = [base, partial].filter(Boolean).join(" ").trim();
+      setInputValue(combined);
+    },
+    [setInputValue],
+  );
+
+  const applyVoiceFinal = useCallback(
+    (finalText: string) => {
+      const base = voiceCommittedRef.current;
+      const next = [base, finalText].filter(Boolean).join(" ").trim();
+      voiceCommittedRef.current = next;
+      lastPartialRef.current = "";
+      setInputValue(next);
+    },
     [setInputValue],
   );
 
@@ -151,8 +156,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     error: voiceError,
     resetError: resetVoiceError,
   } = useVoskVoiceToText({
-    onFinalResult: (text) => handleVoiceResult(text, true),
-    onPartialResult: (text) => handleVoiceResult(text, false),
+    onFinalResult: (text) => applyVoiceFinal(text),
+    onPartialResult: (text) => applyVoicePartial(text),
   });
 
   // Use the hook to fetch the proposal
@@ -190,7 +195,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   useEffect(() => {
     if (!isVoiceRecording) {
       lastPartialRef.current = "";
-      voiceBaseValueRef.current = "";
+      voiceCommittedRef.current = "";
     }
   }, [isVoiceRecording]);
 
@@ -263,7 +268,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       return;
     }
     try {
-      voiceBaseValueRef.current = inputValue.trimEnd();
+      voiceCommittedRef.current = inputValue.trim();
       lastPartialRef.current = "";
       await startVoiceCapture();
     } catch (err) {

@@ -258,13 +258,18 @@ export class PageObject {
     await this.selectTestModel();
   }
 
-  async setUpDyadPro({ autoApprove = false }: { autoApprove?: boolean } = {}) {
+  async setUpDyadPro({
+    autoApprove = false,
+    localAgent = false,
+  }: { autoApprove?: boolean; localAgent?: boolean } = {}) {
     await this.baseSetup();
     await this.goToSettingsTab();
     if (autoApprove) {
       await this.toggleAutoApprove();
     }
-    await this.toggleLocalAgentMode();
+    if (localAgent) {
+      await this.toggleLocalAgentMode();
+    }
     await this.setUpDyadProvider();
     await this.goToAppsTab();
   }

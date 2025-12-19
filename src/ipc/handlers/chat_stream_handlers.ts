@@ -663,6 +663,8 @@ ${componentSnippet}
         } else if (
           // Neon projects don't need Supabase.
           !updatedChat.app?.neonProjectId &&
+          // In local agent mode, we will suggest supabase as part of the add-integration tool
+          settings.selectedChatMode !== "local-agent" &&
           // If in security review mode, we don't need to mention supabase is available.
           !isSecurityReviewIntent
         ) {

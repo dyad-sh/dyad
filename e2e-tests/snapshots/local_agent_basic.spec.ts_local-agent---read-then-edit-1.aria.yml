@@ -15,7 +15,7 @@
 - paragraph: tc=local-agent/read-then-edit
 - paragraph: Let me first read the current file contents to understand what we're working with.
 - img
-- text: Index.tsx Read src/pages/Index.tsx
+- text: App.tsx Read src/App.tsx
 - paragraph: Now I'll update the welcome message to say Hello World instead.
 - img
 - text: Search & Replace App.tsx

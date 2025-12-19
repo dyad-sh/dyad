@@ -9,7 +9,7 @@ export const fixture: LocalAgentFixture = {
         {
           name: "read_file",
           args: {
-            path: "src/pages/Index.tsx",
+            path: "src/App.tsx",
           },
         },
       ],

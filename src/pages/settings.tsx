@@ -195,7 +195,7 @@ export default function SettingsPage() {
                       });
                     }}
                   />
-                  <Label htmlFor="enable-local-agent">Enable Local Agent</Label>
+                  <Label htmlFor="enable-local-agent">Enable Agent v2</Label>
                 </div>
                 <div className="text-sm text-gray-500 dark:text-gray-400">
                   Enables the local agent with enhanced capabilities and tool

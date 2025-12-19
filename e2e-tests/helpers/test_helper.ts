@@ -264,6 +264,7 @@ export class PageObject {
     if (autoApprove) {
       await this.toggleAutoApprove();
     }
+    await this.toggleLocalAgentMode();
     await this.setUpDyadProvider();
     await this.goToAppsTab();
   }
@@ -980,6 +981,10 @@ export class PageObject {
     await this.page.getByRole("switch", { name: "Auto-approve" }).click();
   }
 
+  async toggleLocalAgentMode() {
+    await this.page.getByRole("switch", { name: "Enable Agent v2" }).click();
+  }
+
   async toggleNativeGit() {
     await this.page.getByRole("switch", { name: "Enable Native Git" }).click();
   }
@@ -1103,6 +1108,34 @@ export class PageObject {
 
   async sleep(ms: number) {
     await new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  ////////////////////////////////
+  // Agent Tool Consent Banner
+  ////////////////////////////////
+
+  getAgentConsentBanner() {
+    return this.page
+      .getByRole("button", { name: "Always allow" })
+      .locator("..");
+  }
+
+  async waitForAgentConsentBanner(timeout = Timeout.MEDIUM) {
+    await expect(
+      this.page.getByRole("button", { name: "Always allow" }),
+    ).toBeVisible({ timeout });
+  }
+
+  async clickAgentConsentAlwaysAllow() {
+    await this.page.getByRole("button", { name: "Always allow" }).click();
+  }
+
+  async clickAgentConsentAllowOnce() {
+    await this.page.getByRole("button", { name: "Allow once" }).click();
+  }
+
+  async clickAgentConsentDecline() {
+    await this.page.getByRole("button", { name: "Decline" }).click();
   }
 }
 

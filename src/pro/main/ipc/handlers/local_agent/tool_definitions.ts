@@ -4,6 +4,7 @@
  */
 
 import { IpcMainInvokeEvent } from "electron";
+import crypto from "node:crypto";
 import { readSettings, writeSettings } from "@/main/settings";
 import { writeFileTool } from "./tools/write_file";
 import { deleteFileTool } from "./tools/delete_file";
@@ -134,7 +135,7 @@ export async function requireAgentToolConsent(
   if (current === "always") return true;
 
   // Ask renderer for a decision via event bridge
-  const requestId = `agent:${params.toolName}:${Date.now()}`;
+  const requestId = `agent:${params.toolName}:${crypto.randomUUID()}`;
   (event.sender as any).send("agent-tool:consent-request", {
     requestId,
     ...params,

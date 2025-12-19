@@ -22,6 +22,7 @@ import {
   AgentToolName,
   buildAgentToolSet,
   requireAgentToolConsent,
+  clearPendingConsentsForChat,
 } from "./tool_definitions";
 import {
   deployAllFunctionsIfNeeded,
@@ -249,6 +250,8 @@ export async function handleLocalAgentStream(
     for await (const part of streamResult.fullStream) {
       if (abortController.signal.aborted) {
         logger.log(`Stream aborted for chat ${req.chatId}`);
+        // Clean up pending consent requests to prevent stale UI banners
+        clearPendingConsentsForChat(req.chatId);
         break;
       }
 
@@ -395,6 +398,10 @@ export async function handleLocalAgentStream(
 
     return;
   } catch (error) {
+    // Clean up any pending consent requests for this chat to prevent
+    // stale UI banners and orphaned promises
+    clearPendingConsentsForChat(req.chatId);
+
     if (abortController.signal.aborted) {
       // Handle cancellation
       if (fullResponse) {

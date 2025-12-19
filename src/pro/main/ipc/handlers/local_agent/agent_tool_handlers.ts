@@ -12,8 +12,11 @@ import {
 } from "./tool_definitions";
 import { createLoggedHandler } from "@/ipc/handlers/safe_handle";
 import log from "electron-log";
-import type { AgentTool } from "@/ipc/ipc_types";
-import type { AgentToolConsent } from "@/ipc/ipc_types";
+import type {
+  AgentTool,
+  SetAgentToolConsentParams,
+  AgentToolConsentResponseParams,
+} from "@/ipc/ipc_types";
 
 const logger = log.scope("agent_tool_handlers");
 const handle = createLoggedHandler(logger);
@@ -32,11 +35,8 @@ export function registerAgentToolHandlers() {
   // Set consent for a single tool
   handle(
     "agent-tool:set-consent",
-    async (
-      _event,
-      params: { toolName: AgentToolName; consent: AgentToolConsent },
-    ) => {
-      setAgentToolConsent(params.toolName, params.consent);
+    async (_event, params: SetAgentToolConsentParams) => {
+      setAgentToolConsent(params.toolName as AgentToolName, params.consent);
       return { success: true };
     },
   );
@@ -44,13 +44,7 @@ export function registerAgentToolHandlers() {
   // Handle consent response from renderer
   handle(
     "agent-tool:consent-response",
-    async (
-      _event,
-      params: {
-        requestId: string;
-        decision: "accept-once" | "accept-always" | "decline";
-      },
-    ) => {
+    async (_event, params: AgentToolConsentResponseParams) => {
       resolveAgentToolConsent(params.requestId, params.decision);
     },
   );

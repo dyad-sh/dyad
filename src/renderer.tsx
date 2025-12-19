@@ -145,6 +145,18 @@ function App() {
     return () => unsubscribe();
   }, [setPendingAgentConsents]);
 
+  // Clear pending agent consents when a chat stream ends or errors
+  // This prevents stale consent banners from remaining visible after cancellation
+  useEffect(() => {
+    const ipc = IpcClient.getInstance();
+    const unsubscribe = ipc.onChatStreamEnd((chatId) => {
+      setPendingAgentConsents((prev) =>
+        prev.filter((consent) => consent.chatId !== chatId),
+      );
+    });
+    return () => unsubscribe();
+  }, [setPendingAgentConsents]);
+
   return <RouterProvider router={router} />;
 }
 

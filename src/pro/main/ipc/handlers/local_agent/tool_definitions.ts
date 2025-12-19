@@ -49,16 +49,19 @@ export type AgentToolName = (typeof TOOL_DEFINITIONS)[number]["name"];
 // Agent Tool Consent Management
 // ============================================================================
 
-const pendingConsentResolvers = new Map<
-  string,
-  (d: "accept-once" | "accept-always" | "decline") => void
->();
+interface PendingConsentEntry {
+  chatId: number;
+  resolve: (d: "accept-once" | "accept-always" | "decline") => void;
+}
+
+const pendingConsentResolvers = new Map<string, PendingConsentEntry>();
 
 export function waitForAgentToolConsent(
   requestId: string,
+  chatId: number,
 ): Promise<"accept-once" | "accept-always" | "decline"> {
   return new Promise((resolve) => {
-    pendingConsentResolvers.set(requestId, resolve);
+    pendingConsentResolvers.set(requestId, { chatId, resolve });
   });
 }
 
@@ -66,10 +69,25 @@ export function resolveAgentToolConsent(
   requestId: string,
   decision: "accept-once" | "accept-always" | "decline",
 ) {
-  const resolver = pendingConsentResolvers.get(requestId);
-  if (resolver) {
+  const entry = pendingConsentResolvers.get(requestId);
+  if (entry) {
     pendingConsentResolvers.delete(requestId);
-    resolver(decision);
+    entry.resolve(decision);
+  }
+}
+
+/**
+ * Clean up all pending consent requests for a given chat.
+ * Called when a stream is cancelled/aborted to prevent orphaned promises
+ * and stale UI banners.
+ */
+export function clearPendingConsentsForChat(chatId: number): void {
+  for (const [requestId, entry] of pendingConsentResolvers) {
+    if (entry.chatId === chatId) {
+      pendingConsentResolvers.delete(requestId);
+      // Resolve with decline so the tool execution fails gracefully
+      entry.resolve("decline");
+    }
   }
 }
 
@@ -81,7 +99,7 @@ export function getDefaultConsent(toolName: AgentToolName): AgentToolConsent {
 export function getAgentToolConsent(toolName: AgentToolName): AgentToolConsent {
   const settings = readSettings();
   const stored = settings.agentToolConsents?.[toolName];
-  if (stored === "ask" || stored === "always") {
+  if (stored) {
     return stored;
   }
   return getDefaultConsent(toolName);
@@ -111,7 +129,7 @@ export function getAllAgentToolConsents(): Record<
   // Start with defaults, override with stored values
   for (const tool of TOOL_DEFINITIONS) {
     const storedConsent = stored[tool.name];
-    if (storedConsent === "ask" || storedConsent === "always") {
+    if (storedConsent) {
       result[tool.name] = storedConsent;
     } else {
       result[tool.name] = getDefaultConsent(tool.name as AgentToolName);
@@ -141,7 +159,7 @@ export async function requireAgentToolConsent(
     ...params,
   });
 
-  const response = await waitForAgentToolConsent(requestId);
+  const response = await waitForAgentToolConsent(requestId, params.chatId);
 
   if (response === "accept-always") {
     setAgentToolConsent(params.toolName, "always");

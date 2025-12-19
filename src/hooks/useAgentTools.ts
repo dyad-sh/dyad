@@ -28,7 +28,7 @@ export function useAgentTools() {
       consent: AgentToolConsent;
     }) => {
       const ipcClient = IpcClient.getInstance();
-      return ipcClient.setAgentToolConsent(params.toolName, params.consent);
+      return ipcClient.setAgentToolConsent(params);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agent-tools"] });

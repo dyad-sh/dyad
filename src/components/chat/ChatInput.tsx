@@ -319,10 +319,10 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               consent={pendingAgentConsent}
               queueTotal={consentsForThisChat.length}
               onDecision={(decision) => {
-                IpcClient.getInstance().respondToAgentConsentRequest(
-                  pendingAgentConsent.requestId,
+                IpcClient.getInstance().respondToAgentConsentRequest({
+                  requestId: pendingAgentConsent.requestId,
                   decision,
-                );
+                });
                 // Remove this consent from the queue by requestId
                 setPendingAgentConsents((prev) =>
                   prev.filter(
@@ -331,10 +331,10 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                 );
               }}
               onClose={() => {
-                IpcClient.getInstance().respondToAgentConsentRequest(
-                  pendingAgentConsent.requestId,
-                  "decline",
-                );
+                IpcClient.getInstance().respondToAgentConsentRequest({
+                  requestId: pendingAgentConsent.requestId,
+                  decision: "decline",
+                });
                 // Remove this consent from the queue by requestId
                 setPendingAgentConsents((prev) =>
                   prev.filter(

@@ -591,6 +591,29 @@ export interface AgentTool {
   consent: AgentToolConsent;
 }
 
+export interface SetAgentToolConsentParams {
+  toolName: string;
+  consent: AgentToolConsent;
+}
+
+export interface AgentToolConsentRequestPayload {
+  requestId: string;
+  chatId: number;
+  toolName: string;
+  toolDescription?: string | null;
+  inputPreview?: string | null;
+}
+
+export type AgentToolConsentDecision =
+  | "accept-once"
+  | "accept-always"
+  | "decline";
+
+export interface AgentToolConsentResponseParams {
+  requestId: string;
+  decision: AgentToolConsentDecision;
+}
+
 // ============================================================================
 // Consent Types
 // ============================================================================

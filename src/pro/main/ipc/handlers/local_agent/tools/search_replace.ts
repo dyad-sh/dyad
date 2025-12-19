@@ -39,6 +39,8 @@ export const searchReplaceTool: ToolDefinition<
   inputSchema: searchReplaceSchema,
   defaultConsent: "always",
 
+  getConsentPreview: (args) => `Edit ${args.path}`,
+
   buildXml: (args, isComplete) => {
     if (!args.path) return undefined;
 
@@ -60,15 +62,6 @@ export const searchReplaceTool: ToolDefinition<
   },
 
   execute: async (args, ctx: AgentContext) => {
-    const allowed = await ctx.requireConsent({
-      toolName: "search_replace",
-      toolDescription: "Apply search/replace edits",
-      inputPreview: `Edit ${args.path}`,
-    });
-    if (!allowed) {
-      throw new Error("User denied permission for search_replace");
-    }
-
     const fullFilePath = safeJoin(ctx.appPath, args.path);
 
     // Track if this is a shared module

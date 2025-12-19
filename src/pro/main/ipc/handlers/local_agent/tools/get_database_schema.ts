@@ -15,6 +15,8 @@ export const getDatabaseSchemaTool: ToolDefinition<
   defaultConsent: "always",
   isEnabled: (ctx) => !!ctx.supabaseProjectId,
 
+  getConsentPreview: () => "Get Supabase schema",
+
   buildXml: (_args, _isComplete) => {
     // This tool has no inputs, so always return the same XML
     return XML_TAG;
@@ -23,15 +25,6 @@ export const getDatabaseSchemaTool: ToolDefinition<
   execute: async (_args, ctx: AgentContext) => {
     if (!ctx.supabaseProjectId) {
       throw new Error("Supabase is not connected to this app");
-    }
-
-    const allowed = await ctx.requireConsent({
-      toolName: "get_database_schema",
-      toolDescription: "Fetch database schema",
-      inputPreview: "Get Supabase schema",
-    });
-    if (!allowed) {
-      throw new Error("User denied permission for get_database_schema");
     }
 
     const schema = await getSupabaseContext({

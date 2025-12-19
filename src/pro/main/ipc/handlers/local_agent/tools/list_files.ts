@@ -13,6 +13,9 @@ export const listFilesTool: ToolDefinition<z.infer<typeof listFilesSchema>> = {
   inputSchema: listFilesSchema,
   defaultConsent: "always",
 
+  getConsentPreview: (args) =>
+    args.directory ? `List ${args.directory}` : "List all files",
+
   buildXml: (args, _isComplete) => {
     const dirAttr = args.directory
       ? ` directory="${escapeXmlAttr(args.directory)}"`
@@ -21,17 +24,6 @@ export const listFilesTool: ToolDefinition<z.infer<typeof listFilesSchema>> = {
   },
 
   execute: async (args, ctx: AgentContext) => {
-    const allowed = await ctx.requireConsent({
-      toolName: "list_files",
-      toolDescription: "List files in the app",
-      inputPreview: args.directory
-        ? `List ${args.directory}`
-        : "List all files",
-    });
-    if (!allowed) {
-      throw new Error("User denied permission for list_files");
-    }
-
     const { files } = await extractCodebase({
       appPath: ctx.appPath,
       // TODO

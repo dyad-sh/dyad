@@ -217,6 +217,17 @@ export function buildAgentToolSet(ctx: AgentContext) {
       execute: async (args: any) => {
         try {
           const processedArgs = await processArgPlaceholders(args, ctx);
+
+          // Check consent before executing the tool
+          const allowed = await ctx.requireConsent({
+            toolName: tool.name,
+            toolDescription: tool.description,
+            inputPreview: tool.getConsentPreview?.(processedArgs) ?? null,
+          });
+          if (!allowed) {
+            throw new Error(`User denied permission for ${tool.name}`);
+          }
+
           return await tool.execute(processedArgs, ctx);
         } catch (error) {
           const errorMessage =

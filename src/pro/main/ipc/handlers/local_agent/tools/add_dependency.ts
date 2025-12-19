@@ -17,21 +17,14 @@ export const addDependencyTool: ToolDefinition<
   inputSchema: addDependencySchema,
   defaultConsent: "ask",
 
+  getConsentPreview: (args) => `Install ${args.packages.join(", ")}`,
+
   buildXml: (args, _isComplete) => {
     if (!args.packages || args.packages.length === 0) return undefined;
     return `<dyad-add-dependency packages="${escapeXmlAttr(args.packages.join(" "))}"></dyad-add-dependency>`;
   },
 
   execute: async (args, ctx: AgentContext) => {
-    const allowed = await ctx.requireConsent({
-      toolName: "add_dependency",
-      toolDescription: "Install npm packages",
-      inputPreview: `Install ${args.packages.join(", ")}`,
-    });
-    if (!allowed) {
-      throw new Error("User denied permission for add_dependency");
-    }
-
     const message = ctx.messageId
       ? await db.query.messages.findFirst({
           where: eq(messages.id, ctx.messageId),

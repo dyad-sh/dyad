@@ -17,6 +17,8 @@ export const setChatSummaryTool: ToolDefinition<
   inputSchema: setChatSummarySchema,
   defaultConsent: "always",
 
+  getConsentPreview: (args) => args.summary,
+
   buildXml: (args, _isComplete) => {
     if (args.summary == undefined) return undefined;
     // No XML needed for this tool
@@ -24,15 +26,6 @@ export const setChatSummaryTool: ToolDefinition<
   },
 
   execute: async (args, ctx: AgentContext) => {
-    const allowed = await ctx.requireConsent({
-      toolName: "set_chat_summary",
-      toolDescription: "Set chat title",
-      inputPreview: args.summary,
-    });
-    if (!allowed) {
-      throw new Error("User denied permission for set_chat_summary");
-    }
-
     if (args.summary) {
       await db
         .update(chats)

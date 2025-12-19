@@ -17,6 +17,9 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
     defaultConsent: "ask",
     isEnabled: (ctx) => !!ctx.supabaseProjectId,
 
+    getConsentPreview: (args) =>
+      args.query.slice(0, 100) + (args.query.length > 100 ? "..." : ""),
+
     buildXml: (args, isComplete) => {
       if (args.query == undefined) return undefined;
 
@@ -30,16 +33,6 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
     execute: async (args, ctx: AgentContext) => {
       if (!ctx.supabaseProjectId) {
         throw new Error("Supabase is not connected to this app");
-      }
-
-      const allowed = await ctx.requireConsent({
-        toolName: "execute_sql",
-        toolDescription: "Execute SQL on the database",
-        inputPreview:
-          args.query.slice(0, 100) + (args.query.length > 100 ? "..." : ""),
-      });
-      if (!allowed) {
-        throw new Error("User denied permission for execute_sql");
       }
 
       await executeSupabaseSql({

@@ -17,21 +17,14 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
   inputSchema: readFileSchema,
   defaultConsent: "always",
 
+  getConsentPreview: (args) => `Read ${args.path}`,
+
   buildXml: (args, _isComplete) => {
     if (!args.path) return undefined;
     return `<dyad-read path="${escapeXmlAttr(args.path)}"></dyad-read>`;
   },
 
   execute: async (args, ctx: AgentContext) => {
-    const allowed = await ctx.requireConsent({
-      toolName: "read_file",
-      toolDescription: "Read a file",
-      inputPreview: `Read ${args.path}`,
-    });
-    if (!allowed) {
-      throw new Error("User denied permission for read_file");
-    }
-
     const fullFilePath = safeJoin(ctx.appPath, args.path);
 
     if (!fs.existsSync(fullFilePath)) {

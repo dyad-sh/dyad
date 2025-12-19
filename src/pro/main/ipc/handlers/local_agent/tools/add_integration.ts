@@ -19,21 +19,14 @@ export const addIntegrationTool: ToolDefinition<
   defaultConsent: "always",
   isEnabled: (ctx) => !ctx.supabaseProjectId,
 
+  getConsentPreview: (args) => `Add ${args.provider} integration`,
+
   buildXml: (args, _isComplete) => {
     if (!args.provider) return undefined;
     return `<dyad-add-integration provider="${escapeXmlAttr(args.provider)}"></dyad-add-integration>`;
   },
 
-  execute: async (args, ctx) => {
-    const allowed = await ctx.requireConsent({
-      toolName: "add_integration",
-      toolDescription: "Add integration provider",
-      inputPreview: `Add ${args.provider} integration`,
-    });
-    if (!allowed) {
-      throw new Error("User denied permission for add_integration");
-    }
-
+  execute: async (args) => {
     // The actual integration setup is handled by the UI when user clicks the button
     // This tool just emits the XML that renders the integration prompt
     return `Integration prompt for ${args.provider} displayed. User can click to set up the integration.`;

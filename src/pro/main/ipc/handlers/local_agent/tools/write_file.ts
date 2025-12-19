@@ -27,6 +27,8 @@ export const writeFileTool: ToolDefinition<z.infer<typeof writeFileSchema>> = {
   inputSchema: writeFileSchema,
   defaultConsent: "always",
 
+  getConsentPreview: (args) => `Write to ${args.path}`,
+
   buildXml: (args, isComplete) => {
     if (!args.path) return undefined;
 
@@ -38,15 +40,6 @@ export const writeFileTool: ToolDefinition<z.infer<typeof writeFileSchema>> = {
   },
 
   execute: async (args, ctx: AgentContext) => {
-    const allowed = await ctx.requireConsent({
-      toolName: "write_file",
-      toolDescription: "Create or overwrite a file",
-      inputPreview: `Write to ${args.path}`,
-    });
-    if (!allowed) {
-      throw new Error("User denied permission for write_file");
-    }
-
     const fullFilePath = safeJoin(ctx.appPath, args.path);
 
     // Track if this is a shared module

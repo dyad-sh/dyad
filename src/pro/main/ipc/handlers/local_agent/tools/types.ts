@@ -90,6 +90,15 @@ export interface ToolDefinition<T = any> {
   isEnabled?: (ctx: AgentContext) => boolean;
 
   /**
+   * Returns a preview string describing what the tool will do with the given args.
+   * Used for consent prompts. If not provided, no inputPreview will be shown.
+   *
+   * @param args - The parsed args for the tool call
+   * @returns A human-readable description of the operation
+   */
+  getConsentPreview?: (args: T) => string;
+
+  /**
    * Build XML from parsed partial args.
    * Called by the handler during streaming and on completion.
    *

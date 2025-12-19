@@ -28,21 +28,14 @@ export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
     inputSchema: deleteFileSchema,
     defaultConsent: "always",
 
+    getConsentPreview: (args) => `Delete ${args.path}`,
+
     buildXml: (args, _isComplete) => {
       if (!args.path) return undefined;
       return `<dyad-delete path="${escapeXmlAttr(args.path)}"></dyad-delete>`;
     },
 
     execute: async (args, ctx: AgentContext) => {
-      const allowed = await ctx.requireConsent({
-        toolName: "delete_file",
-        toolDescription: "Delete a file",
-        inputPreview: `Delete ${args.path}`,
-      });
-      if (!allowed) {
-        throw new Error("User denied permission for delete_file");
-      }
-
       const fullFilePath = safeJoin(ctx.appPath, args.path);
 
       // Track if this is a shared module

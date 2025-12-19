@@ -32,21 +32,14 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
     inputSchema: renameFileSchema,
     defaultConsent: "always",
 
+    getConsentPreview: (args) => `Rename ${args.from} to ${args.to}`,
+
     buildXml: (args, _isComplete) => {
       if (!args.from || !args.to) return undefined;
       return `<dyad-rename from="${escapeXmlAttr(args.from)}" to="${escapeXmlAttr(args.to)}"></dyad-rename>`;
     },
 
     execute: async (args, ctx: AgentContext) => {
-      const allowed = await ctx.requireConsent({
-        toolName: "rename_file",
-        toolDescription: "Rename or move a file",
-        inputPreview: `Rename ${args.from} to ${args.to}`,
-      });
-      if (!allowed) {
-        throw new Error("User denied permission for rename_file");
-      }
-
       const fromFullPath = safeJoin(ctx.appPath, args.from);
       const toFullPath = safeJoin(ctx.appPath, args.to);
 

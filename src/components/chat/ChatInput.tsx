@@ -94,6 +94,10 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const [showTokenBar, setShowTokenBar] = useAtom(showTokenBarAtom);
+  const toggleShowTokenBar = useCallback(
+    () => setShowTokenBar((prev) => !prev),
+    [setShowTokenBar],
+  );
   const [selectedComponents, setSelectedComponents] = useAtom(
     selectedComponentsPreviewAtom,
   );
@@ -433,7 +437,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
-                    onClick={() => setShowTokenBar(!showTokenBar)}
+                    onClick={toggleShowTokenBar}
                     variant="ghost"
                     className={`has-[>svg]:px-2 ${
                       showTokenBar ? "text-purple-500 bg-purple-100" : ""

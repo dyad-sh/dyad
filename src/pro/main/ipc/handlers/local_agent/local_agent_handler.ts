@@ -7,7 +7,12 @@ import { IpcMainInvokeEvent } from "electron";
 import { streamText, ToolSet, stepCountIs, ModelMessage } from "ai";
 import log from "electron-log";
 import { db } from "@/db";
-import { chats, messages } from "@/db/schema";
+import {
+  AI_MESSAGES_SDK_VERSION,
+  AiMessagesJsonV5,
+  chats,
+  messages,
+} from "@/db/schema";
 import { eq, lt } from "drizzle-orm";
 
 import { isDyadProEnabled } from "@/lib/schemas";
@@ -84,7 +89,7 @@ type DbMessage = {
   id: number;
   role: string;
   content: string;
-  aiMessagesJson: ModelMessage[] | null;
+  aiMessagesJson: AiMessagesJsonV5 | ModelMessage[] | null;
 };
 
 /**
@@ -96,12 +101,27 @@ function parseAiMessagesJson(msg: DbMessage): ModelMessage[] {
   if (msg.aiMessagesJson) {
     try {
       const parsed = msg.aiMessagesJson;
-      // Basic validation: ensure it's an array with role properties
+      // Legacy shape: stored directly as a ModelMessage[]
       if (
         Array.isArray(parsed) &&
         parsed.every((m) => m && typeof m.role === "string")
       ) {
         return parsed;
+      }
+
+      // Current shape: { messages: ModelMessage[]; sdkVersion: "ai@v5" }
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        "sdkVersion" in parsed &&
+        (parsed as any).sdkVersion === AI_MESSAGES_SDK_VERSION &&
+        "messages" in parsed &&
+        Array.isArray((parsed as any).messages) &&
+        (parsed as any).messages.every(
+          (m: any) => m && typeof m.role === "string",
+        )
+      ) {
+        return (parsed as any).messages as ModelMessage[];
       }
     } catch (e) {
       // Log but don't throw - fall through to fallback

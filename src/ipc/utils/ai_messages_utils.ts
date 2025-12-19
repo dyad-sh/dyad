@@ -1,3 +1,4 @@
+import { AI_MESSAGES_SDK_VERSION, AiMessagesJsonV5 } from "@/db/schema";
 import type { ModelMessage } from "ai";
 import log from "electron-log";
 
@@ -12,14 +13,19 @@ export const MAX_AI_MESSAGES_SIZE = 1_000_000;
  */
 export function getAiMessagesJsonIfWithinLimit(
   aiMessages: ModelMessage[],
-): ModelMessage[] | undefined {
+): AiMessagesJsonV5 | undefined {
   if (!aiMessages || aiMessages.length === 0) {
     return undefined;
   }
 
-  const jsonStr = JSON.stringify(aiMessages);
+  const payload: AiMessagesJsonV5 = {
+    messages: aiMessages,
+    sdkVersion: AI_MESSAGES_SDK_VERSION,
+  };
+
+  const jsonStr = JSON.stringify(payload);
   if (jsonStr.length <= MAX_AI_MESSAGES_SIZE) {
-    return aiMessages;
+    return payload;
   }
 
   logger.warn(

@@ -7,13 +7,8 @@ import { IpcMainInvokeEvent } from "electron";
 import { streamText, ToolSet, stepCountIs, ModelMessage } from "ai";
 import log from "electron-log";
 import { db } from "@/db";
-import {
-  AI_MESSAGES_SDK_VERSION,
-  AiMessagesJsonV5,
-  chats,
-  messages,
-} from "@/db/schema";
-import { eq, lt } from "drizzle-orm";
+import { chats, messages } from "@/db/schema";
+import { eq } from "drizzle-orm";
 
 import { isDyadProEnabled } from "@/lib/schemas";
 import { readSettings } from "@/main/settings";
@@ -45,6 +40,8 @@ import {
   escapeXmlContent,
 } from "./tools/types";
 import { TOOL_DEFINITIONS } from "./tool_definitions";
+import { parseAiMessagesJson } from "@/ipc/utils/ai_messages_utils";
+import { parseMcpToolKey, sanitizeMcpName } from "@/ipc/utils/mcp_tool_utils";
 
 const logger = log.scope("local_agent_handler");
 
@@ -82,74 +79,6 @@ function cleanupStreamingEntry(id: string): void {
 
 function findToolDefinition(toolName: string) {
   return TOOL_DEFINITIONS.find((t) => t.name === toolName);
-}
-
-// Type for a message from the database
-type DbMessage = {
-  id: number;
-  role: string;
-  content: string;
-  aiMessagesJson: AiMessagesJsonV5 | ModelMessage[] | null;
-};
-
-/**
- * Parse ai_messages_json with graceful fallback to simple content reconstruction.
- * If aiMessagesJson is missing, malformed, or incompatible with the current AI SDK,
- * falls back to constructing a basic message from role and content.
- */
-function parseAiMessagesJson(msg: DbMessage): ModelMessage[] {
-  if (msg.aiMessagesJson) {
-    try {
-      const parsed = msg.aiMessagesJson;
-      // Legacy shape: stored directly as a ModelMessage[]
-      if (
-        Array.isArray(parsed) &&
-        parsed.every((m) => m && typeof m.role === "string")
-      ) {
-        return parsed;
-      }
-
-      // Current shape: { messages: ModelMessage[]; sdkVersion: "ai@v5" }
-      if (
-        parsed &&
-        typeof parsed === "object" &&
-        "sdkVersion" in parsed &&
-        (parsed as any).sdkVersion === AI_MESSAGES_SDK_VERSION &&
-        "messages" in parsed &&
-        Array.isArray((parsed as any).messages) &&
-        (parsed as any).messages.every(
-          (m: any) => m && typeof m.role === "string",
-        )
-      ) {
-        return (parsed as any).messages as ModelMessage[];
-      }
-    } catch (e) {
-      // Log but don't throw - fall through to fallback
-      logger.warn(`Failed to parse ai_messages_json for message ${msg.id}:`, e);
-    }
-  }
-  // Fallback for legacy messages or parse failures
-  return [
-    {
-      role: msg.role as "user" | "assistant",
-      content: msg.content,
-    },
-  ];
-}
-
-// Safely parse an MCP tool key
-function parseMcpToolKey(toolKey: string): {
-  serverName: string;
-  toolName: string;
-} {
-  const separator = "__";
-  const lastIndex = toolKey.lastIndexOf(separator);
-  if (lastIndex === -1) {
-    return { serverName: "", toolName: toolKey };
-  }
-  const serverName = toolKey.slice(0, lastIndex);
-  const toolName = toolKey.slice(lastIndex + separator.length);
-  return { serverName, toolName };
 }
 
 /**
@@ -530,7 +459,7 @@ async function getMcpTools(
       const toolSet = await client.tools();
 
       for (const [name, tool] of Object.entries(toolSet)) {
-        const key = `${String(s.name || "").replace(/[^a-zA-Z0-9_-]/g, "-")}__${String(name).replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+        const key = `${sanitizeMcpName(s.name || "")}__${sanitizeMcpName(name)}`;
         const original = tool;
 
         mcpToolSet[key] = {
@@ -579,8 +508,7 @@ async function getMcpTools(
               ctx.onXmlComplete(
                 `<dyad-output type="error" message="MCP tool '${key}' failed: ${escapeXmlAttr(errorMessage)}">${escapeXmlContent(errorStack || errorMessage)}</dyad-output>`,
               );
-              // Return error message so the AI can understand what happened
-              return `Error executing MCP tool ${key}: ${errorMessage}`;
+              throw error;
             }
           },
         };
@@ -591,27 +519,4 @@ async function getMcpTools(
   }
 
   return mcpToolSet;
-}
-
-const AI_MESSAGES_TTL_DAYS = 30;
-
-/**
- * Clear ai_messages_json for messages older than TTL.
- * Run on app startup to prevent database bloat.
- */
-export async function cleanupOldAiMessagesJson() {
-  const cutoffSeconds =
-    Math.floor(Date.now() / 1000) - AI_MESSAGES_TTL_DAYS * 24 * 60 * 60;
-  const cutoffDate = new Date(cutoffSeconds * 1000);
-
-  try {
-    await db
-      .update(messages)
-      .set({ aiMessagesJson: null })
-      .where(lt(messages.createdAt, cutoffDate));
-
-    logger.log("Cleaned up old ai_messages_json entries");
-  } catch (err) {
-    logger.warn("Failed to cleanup old ai_messages_json:", err);
-  }
 }

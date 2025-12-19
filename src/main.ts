@@ -28,7 +28,7 @@ import {
   startPerformanceMonitoring,
   stopPerformanceMonitoring,
 } from "./utils/performance_monitor";
-import { cleanupOldAiMessagesJson } from "./pro/main/ipc/handlers/local_agent/local_agent_handler";
+import { cleanupOldAiMessagesJson } from "./pro/main/ipc/handlers/local_agent/ai_messages_cleanup";
 import fs from "fs";
 
 log.errorHandler.startCatching();

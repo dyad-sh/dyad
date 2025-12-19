@@ -33,3 +33,55 @@ export function getAiMessagesJsonIfWithinLimit(
   );
   return undefined;
 }
+
+// Type for a message from the database used by parseAiMessagesJson
+export type DbMessageForParsing = {
+  id: number;
+  role: string;
+  content: string;
+  aiMessagesJson: AiMessagesJsonV5 | ModelMessage[] | null;
+};
+
+/**
+ * Parse ai_messages_json with graceful fallback to simple content reconstruction.
+ * If aiMessagesJson is missing, malformed, or incompatible with the current AI SDK,
+ * falls back to constructing a basic message from role and content.
+ *
+ * This is a pure function - it doesn't log or have side effects.
+ */
+export function parseAiMessagesJson(msg: DbMessageForParsing): ModelMessage[] {
+  if (msg.aiMessagesJson) {
+    const parsed = msg.aiMessagesJson;
+
+    // Legacy shape: stored directly as a ModelMessage[]
+    if (
+      Array.isArray(parsed) &&
+      parsed.every((m) => m && typeof m.role === "string")
+    ) {
+      return parsed;
+    }
+
+    // Current shape: { messages: ModelMessage[]; sdkVersion: "ai@v5" }
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      "sdkVersion" in parsed &&
+      (parsed as AiMessagesJsonV5).sdkVersion === AI_MESSAGES_SDK_VERSION &&
+      "messages" in parsed &&
+      Array.isArray((parsed as AiMessagesJsonV5).messages) &&
+      (parsed as AiMessagesJsonV5).messages.every(
+        (m: ModelMessage) => m && typeof m.role === "string",
+      )
+    ) {
+      return (parsed as AiMessagesJsonV5).messages;
+    }
+  }
+
+  // Fallback for legacy messages, missing data, or incompatible formats
+  return [
+    {
+      role: msg.role as "user" | "assistant",
+      content: msg.content,
+    },
+  ];
+}

@@ -18,7 +18,7 @@ import { formatDistanceToNow, format } from "date-fns";
 import { useVersions } from "@/hooks/useVersions";
 import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, memo } from "react";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import {
   Tooltip,
@@ -299,4 +299,16 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
   );
 };
 
-export default ChatMessage;
+export default memo(ChatMessage, (prevProps, nextProps) => {
+  // Return true if props are equal (skip re-render), false if different (re-render)
+  return (
+    prevProps.message.id === nextProps.message.id &&
+    prevProps.message.content === nextProps.message.content &&
+    prevProps.message.role === nextProps.message.role &&
+    prevProps.message.approvalState === nextProps.message.approvalState &&
+    prevProps.message.commitHash === nextProps.message.commitHash &&
+    prevProps.isLastMessage === nextProps.isLastMessage &&
+    prevProps.message.createdAt === nextProps.message.createdAt &&
+    prevProps.message.requestId === nextProps.message.requestId
+  );
+});

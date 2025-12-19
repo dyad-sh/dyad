@@ -22,7 +22,8 @@ export function useChats(appId: number | null) {
     };
 
     fetchChats();
-  }, [appId, setChats, setLoading]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appId]);
 
   const refreshChats = async () => {
     try {

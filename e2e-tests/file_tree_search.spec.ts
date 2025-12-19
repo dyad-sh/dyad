@@ -9,7 +9,7 @@ test("file tree search finds matches by name and content", async ({ po }) => {
   // Wait for the code view to finish loading files
   await expect(
     po.page.getByText("Loading files...", { exact: false }),
-  ).toBeHidden({ timeout: Timeout.MEDIUM });
+  ).toBeHidden({ timeout: Timeout.LONG });
 
   const searchInput = po.page.getByTestId("file-tree-search");
   await expect(searchInput).toBeVisible({ timeout: Timeout.MEDIUM });

@@ -136,6 +136,18 @@ export interface App {
   resolvedPath?: string;
 }
 
+export interface AppFileSearchResult {
+  path: string;
+  matchesName: boolean;
+  matchesContent: boolean;
+  snippet?: {
+    before: string;
+    match: string;
+    after: string;
+    line: number;
+  };
+}
+
 export interface Version {
   oid: string;
   message: string;

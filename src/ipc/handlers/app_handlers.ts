@@ -12,6 +12,7 @@ import type {
   ConsoleEntry,
   ChangeAppLocationParams,
   ChangeAppLocationResult,
+  AppFileSearchResult,
 } from "../ipc_types";
 import fs from "node:fs";
 import path from "node:path";
@@ -68,6 +69,7 @@ import { AppSearchResult } from "@/lib/schemas";
 
 import { getAppPort } from "../../../shared/ports";
 
+const MAX_FILE_SEARCH_SIZE = 1024 * 1024;
 function getDefaultCommand(appId: number): string {
   const port = getAppPort(appId);
   return `(pnpm install && pnpm run dev --port ${port}) || (npm install --legacy-peer-deps && npm run dev -- --port ${port})`;
@@ -1588,6 +1590,88 @@ export function registerAppHandlers() {
   );
 
   handle(
+    "search-app-files",
+    async (
+      _,
+      { appId, query }: { appId: number; query: string },
+    ): Promise<AppFileSearchResult[]> => {
+      const trimmedQuery = query.trim();
+      if (!trimmedQuery) {
+        return [];
+      }
+
+      const appRecord = await db.query.apps.findFirst({
+        where: eq(apps.id, appId),
+      });
+
+      if (!appRecord) {
+        throw new Error("App not found");
+      }
+
+      const appPath = getDyadAppPath(appRecord.path);
+
+      let files: string[] = [];
+
+      try {
+        files = getFilesRecursively(appPath, appPath).map((path) =>
+          normalizePath(path),
+        );
+      } catch (error) {
+        logger.error(`Error reading files for app ${appId}:`, error);
+        throw new Error("Failed to read app files");
+      }
+
+      const lowerQuery = trimmedQuery.toLowerCase();
+      const results: AppFileSearchResult[] = [];
+
+      for (const relativePath of files) {
+        const fullPath = path.join(appPath, relativePath);
+        if (!fullPath.startsWith(appPath)) {
+          continue;
+        }
+
+        const matchesName = relativePath.toLowerCase().includes(lowerQuery);
+        let matchesContent = false;
+        let snippet: AppFileSearchResult["snippet"];
+
+        if (!matchesName && isSearchableFile(fullPath)) {
+          try {
+            const content = fs.readFileSync(fullPath, "utf-8");
+            if (!isLikelyTextFile(content)) {
+              continue;
+            }
+            const contentSnippet = getContentSnippet(
+              content,
+              trimmedQuery,
+              lowerQuery,
+            );
+            if (contentSnippet) {
+              matchesContent = true;
+              snippet = contentSnippet;
+            }
+          } catch (error) {
+            logger.warn(
+              `Failed to search file contents for ${relativePath}:`,
+              error,
+            );
+          }
+        }
+
+        if (matchesName || matchesContent) {
+          results.push({
+            path: normalizePath(relativePath),
+            matchesName,
+            matchesContent,
+            snippet,
+          });
+        }
+      }
+
+      return results;
+    },
+  );
+
+  handle(
     "search-app",
     async (_, searchQuery: string): Promise<AppSearchResult[]> => {
       // Use parameterized query to prevent SQL injection
@@ -1847,6 +1931,60 @@ export function registerAppHandlers() {
       });
     },
   );
+}
+
+function isSearchableFile(fullPath: string) {
+  try {
+    const stats = fs.statSync(fullPath);
+    if (!stats.isFile()) {
+      return false;
+    }
+    return stats.size <= MAX_FILE_SEARCH_SIZE;
+  } catch (error) {
+    logger.warn(`Skipping ${fullPath} while searching files:`, error);
+    return false;
+  }
+}
+
+function isLikelyTextFile(content: string) {
+  return !content.includes("\u0000");
+}
+
+function sanitizeSnippetText(text: string) {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function getContentSnippet(
+  content: string,
+  query: string,
+  lowerQuery: string,
+): AppFileSearchResult["snippet"] | null {
+  const lowerContent = content.toLowerCase();
+  const matchIndex = lowerContent.indexOf(lowerQuery);
+
+  if (matchIndex === -1) {
+    return null;
+  }
+
+  const radius = 80;
+  const start = Math.max(0, matchIndex - radius);
+  const end = Math.min(content.length, matchIndex + query.length + radius);
+  const beforeRaw = content.slice(start, matchIndex);
+  const match = content.slice(matchIndex, matchIndex + query.length);
+  const afterRaw = content.slice(matchIndex + query.length, end);
+
+  const before =
+    (start > 0 ? "..." : "") + sanitizeSnippetText(beforeRaw ?? "");
+  const after =
+    sanitizeSnippetText(afterRaw ?? "") + (end < content.length ? "..." : "");
+  const line = content.slice(0, matchIndex).split(/\r?\n/).length;
+
+  return {
+    before,
+    match,
+    after,
+    line,
+  };
 }
 
 function getCommand({

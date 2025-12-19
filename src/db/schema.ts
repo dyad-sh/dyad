@@ -232,13 +232,3 @@ export const mcpToolConsents = sqliteTable(
   },
   (table) => [unique("uniq_mcp_consent").on(table.serverId, table.toolName)],
 );
-
-// --- Agent v2 tool consents ---
-export const agentToolConsents = sqliteTable("agent_tool_consents", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  toolName: text("tool_name").notNull().unique(),
-  consent: text("consent").notNull().default("ask"), // ask | always | denied
-  updatedAt: integer("updated_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-});

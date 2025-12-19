@@ -40,7 +40,7 @@ testSkipIfWindows("local-agent - mention apps", async ({ po }) => {
 /**
  * Test for MCP tool calls in local-agent mode
  */
-testSkipIfWindows.only("local-agent - mcp tool call", async ({ po }) => {
+testSkipIfWindows("local-agent - mcp tool call", async ({ po }) => {
   await po.setUpDyadPro();
   await po.goToSettingsTab();
   await po.page.getByRole("button", { name: "Tools (MCP)" }).click();

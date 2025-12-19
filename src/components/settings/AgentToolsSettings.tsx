@@ -16,7 +16,7 @@ import { Loader2, ChevronRight } from "lucide-react";
 import type { AgentToolConsent } from "@/ipc/ipc_types";
 
 export function AgentToolsSettings() {
-  const { tools, consents, isLoading, setConsent } = useAgentTools();
+  const { tools, isLoading, setConsent } = useAgentTools();
   const [showAutoApproved, setShowAutoApproved] = useState(false);
 
   const handleConsentChange = (
@@ -52,7 +52,7 @@ export function AgentToolsSettings() {
             key={tool.name}
             name={tool.name}
             description={tool.description}
-            consent={consents?.[tool.name as AgentToolName] || "ask"}
+            consent={tool.consent}
             onConsentChange={(consent) =>
               handleConsentChange(tool.name as AgentToolName, consent)
             }
@@ -79,7 +79,7 @@ export function AgentToolsSettings() {
                 key={tool.name}
                 name={tool.name}
                 description={tool.description}
-                consent={consents?.[tool.name as AgentToolName] || "always"}
+                consent={tool.consent}
                 onConsentChange={(consent) =>
                   handleConsentChange(tool.name as AgentToolName, consent)
                 }

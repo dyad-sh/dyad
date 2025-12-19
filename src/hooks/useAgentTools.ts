@@ -1,5 +1,5 @@
 /**
- * Hook for managing agent tool consents
+ * Hook for managing agent tools and their consents
  */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -22,14 +22,6 @@ export function useAgentTools() {
     },
   });
 
-  const consentsQuery = useQuery({
-    queryKey: ["agent-tool-consents"],
-    queryFn: async () => {
-      const ipcClient = IpcClient.getInstance();
-      return ipcClient.getAgentToolConsents();
-    },
-  });
-
   const setConsentMutation = useMutation({
     mutationFn: async (params: {
       toolName: AgentToolName;
@@ -39,14 +31,13 @@ export function useAgentTools() {
       return ipcClient.setAgentToolConsent(params.toolName, params.consent);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["agent-tool-consents"] });
+      queryClient.invalidateQueries({ queryKey: ["agent-tools"] });
     },
   });
 
   return {
     tools: toolsQuery.data,
-    consents: consentsQuery.data,
-    isLoading: toolsQuery.isLoading || consentsQuery.isLoading,
+    isLoading: toolsQuery.isLoading,
     setConsent: setConsentMutation.mutateAsync,
   };
 }

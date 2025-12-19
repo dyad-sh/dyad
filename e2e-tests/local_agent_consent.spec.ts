@@ -1,3 +1,4 @@
+import { expect } from "@playwright/test";
 import { testSkipIfWindows } from "./helpers/test_helper";
 
 /**
@@ -26,6 +27,10 @@ testSkipIfWindows(
     await po.waitForChatCompletion();
 
     await po.snapshotMessages();
+
+    // Send prompt that triggers add_dependency (should not require consent this time)
+    await po.sendPrompt("tc=local-agent/add-dependency");
+    await expect(po.getAgentConsentBanner()).not.toBeVisible();
   },
 );
 

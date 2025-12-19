@@ -18,18 +18,15 @@ import type { AgentToolConsent } from "@/ipc/ipc_types";
 const logger = log.scope("agent_tool_handlers");
 const handle = createLoggedHandler(logger);
 export function registerAgentToolHandlers() {
-  // Get list of available tools
+  // Get list of available tools with their consent settings
   handle("agent-tool:get-tools", async (): Promise<AgentTool[]> => {
+    const consents = getAllAgentToolConsents();
     return TOOL_DEFINITIONS.map((tool) => ({
       name: tool.name,
       description: tool.description,
       isAllowedByDefault: getDefaultConsent(tool.name) === "always",
+      consent: consents[tool.name],
     }));
-  });
-
-  // Get all tool consents
-  handle("agent-tool:get-consents", async () => {
-    return getAllAgentToolConsents();
   });
 
   // Set consent for a single tool

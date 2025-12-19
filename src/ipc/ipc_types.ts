@@ -588,6 +588,7 @@ export interface AgentTool {
   name: string;
   description: string;
   isAllowedByDefault: boolean;
+  consent: AgentToolConsent;
 }
 
 // ============================================================================

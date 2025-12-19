@@ -87,7 +87,6 @@ import {
   VersionedFiles,
 } from "../utils/versioned_codebase_context";
 import { getAiMessagesJsonIfWithinLimit } from "../utils/ai_messages_utils";
-import { constructLocalAgentPrompt } from "@/prompts/local_agent_prompt";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
@@ -607,17 +606,14 @@ ${componentSnippet}
 
         const aiRules = await readAiRules(getDyadAppPath(updatedChat.app.path));
 
-        let systemPrompt =
-          settings.selectedChatMode === "local-agent"
-            ? constructLocalAgentPrompt(aiRules)
-            : constructSystemPrompt({
-                aiRules,
-                chatMode:
-                  settings.selectedChatMode === "agent"
-                    ? "build"
-                    : settings.selectedChatMode,
-                enableTurboEditsV2: isTurboEditsV2Enabled(settings),
-              });
+        let systemPrompt = constructSystemPrompt({
+          aiRules,
+          chatMode:
+            settings.selectedChatMode === "agent"
+              ? "build"
+              : settings.selectedChatMode,
+          enableTurboEditsV2: isTurboEditsV2Enabled(settings),
+        });
 
         // Add information about mentioned apps if any
         if (otherAppsCodebaseInfo) {
@@ -789,15 +785,17 @@ This conversation includes one or more image attachments. When the user uploads 
                 attachmentPaths,
               );
             }
-            // Insert into DB (with size guard)
-            const userAiMessagesJson = getAiMessagesJsonIfWithinLimit([
-              chatMessages[lastUserIndex],
-            ]);
-            if (userAiMessagesJson) {
-              await db
-                .update(messages)
-                .set({ aiMessagesJson: userAiMessagesJson })
-                .where(eq(messages.id, userMessageId));
+            if (settings.selectedChatMode === "local-agent") {
+              // Insert into DB (with size guard)
+              const userAiMessagesJson = getAiMessagesJsonIfWithinLimit([
+                chatMessages[lastUserIndex],
+              ]);
+              if (userAiMessagesJson) {
+                await db
+                  .update(messages)
+                  .set({ aiMessagesJson: userAiMessagesJson })
+                  .where(eq(messages.id, userMessageId));
+              }
             }
           }
         } else {

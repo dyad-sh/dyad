@@ -1,26 +1,80 @@
-import { appConsoleEntriesAtom, envVarsAtom } from "@/atoms/appAtoms";
+import {
+  appConsoleEntriesAtom,
+  envVarsAtom,
+  type ConsoleEntry,
+} from "@/atoms/appAtoms";
 import { useAtomValue } from "jotai";
-import { useEffect, useRef, useState, useMemo } from "react";
-import { List, useDynamicRowHeight, useListRef } from "react-window";
-import type { RowComponentProps } from "react-window";
+import { useEffect, useRef, useState, useMemo, useCallback, memo } from "react";
+import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
 import { ConsoleEntryComponent } from "./ConsoleEntry";
 import { ConsoleFilters } from "./ConsoleFilters";
+
+// Placeholder component shown during fast scrolling
+const ScrollSeekPlaceholder = () => {
+  return (
+    <div className="font-mono text-xs py-2 px-4 border-b border-gray-200 dark:border-gray-700">
+      <div className="h-4 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
+    </div>
+  );
+};
+
+// Wrapper component for console items - memoized to prevent unnecessary re-renders
+interface ConsoleItemProps {
+  index: number;
+  entry: ConsoleEntry | undefined;
+  expandedEntries: Set<string>;
+  typeFilter: string;
+  getEntryKey: (entry: ConsoleEntry | undefined, index: number) => string;
+  toggleExpanded: (key: string, index: number) => void;
+}
+
+const ConsoleItem = memo(
+  ({
+    index,
+    entry,
+    expandedEntries,
+    typeFilter,
+    getEntryKey,
+    toggleExpanded,
+  }: ConsoleItemProps) => {
+    if (!entry) {
+      return <div />;
+    }
+
+    const entryKey = getEntryKey(entry, index);
+    const isExpanded = expandedEntries.has(entryKey);
+
+    return (
+      <div>
+        <ConsoleEntryComponent
+          type={entry.type}
+          level={entry.level}
+          timestamp={entry.timestamp}
+          message={entry.message}
+          sourceName={entry.sourceName}
+          typeFilter={typeFilter}
+          isExpanded={isExpanded}
+          onToggleExpand={() => toggleExpanded(entryKey, index)}
+        />
+      </div>
+    );
+  },
+);
+
+ConsoleItem.displayName = "ConsoleItem";
 
 // Console component
 export const Console = () => {
   const consoleEntries = useAtomValue(appConsoleEntriesAtom);
   const envVars = useAtomValue(envVarsAtom);
-  const listRef = useListRef(null);
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const isFirstRender = useRef(true);
   const hasScrolledToBottom = useRef(false);
   const [showFilters, setShowFilters] = useState(false);
   const [containerHeight, setContainerHeight] = useState(0);
-  const [containerWidth, setContainerWidth] = useState(0);
   const [expandedEntries, setExpandedEntries] = useState<Set<string>>(
     new Set(),
   );
-  const [listVersion, setListVersion] = useState(0);
 
   // Filter states
   const [levelFilter, setLevelFilter] = useState<
@@ -38,6 +92,20 @@ export const Console = () => {
 
   // Track container height for responsive filter visibility
   const prevContainerHeight = useRef(0);
+
+  // Track if user is near bottom (within 100px) for auto-scroll
+  const [isNearBottom, setIsNearBottom] = useState(true);
+  // Track if initial scroll has completed to prevent glitches during first interaction
+  const initialScrollDone = useRef(false);
+  // Track if user is actively scrolling to prevent auto-scroll conflicts
+  const [isScrolling, setIsScrolling] = useState(false);
+
+  const handleClearFilters = () => {
+    setLevelFilter("all");
+    setTypeFilter("all");
+    setSourceFilter("");
+  };
+
   useEffect(() => {
     const container = containerRef.current?.parentElement;
     if (!container) return;
@@ -45,11 +113,9 @@ export const Console = () => {
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const newHeight = entry.contentRect.height;
-        const newWidth = entry.contentRect.width;
         const wasZero = prevContainerHeight.current === 0;
         prevContainerHeight.current = newHeight;
         setContainerHeight(newHeight);
-        setContainerWidth(newWidth);
         // Reset scroll flag when container becomes visible (height goes from 0 to > 0)
         // This handles the case when console panel is opened
         if (wasZero && newHeight > 0) {
@@ -94,93 +160,17 @@ export const Console = () => {
     });
   }, [consoleEntries, levelFilter, typeFilter, sourceFilter]);
 
-  // Use dynamic row height hook
-  // Include containerWidth as dependency to recalculate when text wraps
-  // Include listVersion to recalculate when items are expanded/collapsed
-  const dynamicRowHeight = useDynamicRowHeight({
-    defaultRowHeight: 100,
-    key: `console-log-entries-${containerWidth}-${listVersion}`,
-  });
-
-  // Track if user is near bottom for auto-scroll
-  const [isNearBottom, setIsNearBottom] = useState(true);
-  const lastScrollTop = useRef(0);
-
-  // Helper function to check if near bottom
-  const checkNearBottom = (element: HTMLElement) => {
-    const { scrollTop, scrollHeight, clientHeight } = element;
-    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-    // Consider "near bottom" if within 100px
-    return distanceFromBottom < 100;
-  };
-
-  // Monitor scroll position to determine if user is near bottom
-  useEffect(() => {
-    const listElement = listRef.current?.element;
-    if (!listElement) return;
-
-    // Initialize isNearBottom based on current scroll position
-    setIsNearBottom(checkNearBottom(listElement));
-
-    const handleScroll = () => {
-      const nearBottom = checkNearBottom(listElement);
-      setIsNearBottom(nearBottom);
-      lastScrollTop.current = listElement.scrollTop;
-    };
-
-    listElement.addEventListener("scroll", handleScroll);
-    return () => listElement.removeEventListener("scroll", handleScroll);
-  }, [listRef]);
-
-  // Auto-scroll to bottom when new entries arrive (if first render or user is near bottom)
-  useEffect(() => {
-    if (filteredEntries.length > 0 && containerHeight > 0) {
-      const listElement = listRef.current?.element;
-
-      // If this is the first render or we haven't scrolled to bottom yet, always scroll to bottom
-      // This handles the case when the console panel opens with existing entries
-      if (isFirstRender.current || !hasScrolledToBottom.current) {
-        // Use requestAnimationFrame to ensure the list is fully rendered
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            listRef.current?.scrollToRow({
-              index: filteredEntries.length - 1,
-              align: "end",
-            });
-            hasScrolledToBottom.current = true;
-            // Update isNearBottom after scrolling
-            if (listElement) {
-              setIsNearBottom(checkNearBottom(listElement));
-            }
-          });
-        });
-        isFirstRender.current = false;
-        return;
-      }
-
-      // For subsequent renders, only scroll if user is near bottom
-      if (isNearBottom && listElement) {
-        listRef.current?.scrollToRow({
-          index: filteredEntries.length - 1,
-          align: "end",
-        });
-      }
-    }
-  }, [filteredEntries, listRef, isNearBottom, containerHeight]);
-
-  const handleClearFilters = () => {
-    setLevelFilter("all");
-    setTypeFilter("all");
-    setSourceFilter("");
-  };
-
   // Generate unique key for each entry
-  const getEntryKey = (entry: (typeof filteredEntries)[0], index: number) => {
-    return `${entry.timestamp}-${index}`;
-  };
+  const getEntryKey = useCallback(
+    (entry: (typeof filteredEntries)[0] | undefined, index: number) => {
+      if (!entry) return `entry-${index}`;
+      return `${entry.timestamp}-${index}`;
+    },
+    [],
+  );
 
   // Toggle expansion state for an entry
-  const toggleExpanded = (key: string) => {
+  const toggleExpanded = useCallback((key: string) => {
     setExpandedEntries((prev) => {
       const next = new Set(prev);
       if (next.has(key)) {
@@ -190,35 +180,24 @@ export const Console = () => {
       }
       return next;
     });
-    // Increment version to force list recalculation
-    setListVersion((v) => v + 1);
-  };
+  }, []);
 
-  // Row renderer component
-  const RowComponent = ({ index, style }: RowComponentProps) => {
-    const entry = filteredEntries[index];
-    if (!entry) {
-      return <div style={style} />;
-    }
-
-    const entryKey = getEntryKey(entry, index);
-    const isExpanded = expandedEntries.has(entryKey);
-
-    return (
-      <div style={style}>
-        <ConsoleEntryComponent
-          type={entry.type}
-          level={entry.level}
-          timestamp={entry.timestamp}
-          message={entry.message}
-          sourceName={entry.sourceName}
+  // Item renderer function for react-virtuoso
+  const ItemContent = useCallback(
+    (index: number) => {
+      return (
+        <ConsoleItem
+          index={index}
+          entry={filteredEntries[index]}
+          expandedEntries={expandedEntries}
           typeFilter={typeFilter}
-          isExpanded={isExpanded}
-          onToggleExpand={() => toggleExpanded(entryKey)}
+          getEntryKey={getEntryKey}
+          toggleExpanded={toggleExpanded}
         />
-      </div>
-    );
-  };
+      );
+    },
+    [filteredEntries, expandedEntries, typeFilter, getEntryKey, toggleExpanded],
+  );
 
   const listHeight = containerHeight - (showFilters ? 60 : 0);
 
@@ -260,7 +239,7 @@ export const Console = () => {
                 const isExpanded = expandedEntries.has(entryKey);
 
                 return (
-                  <div key={index}>
+                  <div key={entryKey}>
                     <ConsoleEntryComponent
                       type={entry.type}
                       level={entry.level}
@@ -276,14 +255,49 @@ export const Console = () => {
               })}
             </div>
           ) : (
-            <List
-              listRef={listRef}
-              rowCount={filteredEntries.length}
-              rowHeight={dynamicRowHeight}
-              rowComponent={RowComponent}
-              rowProps={{}}
+            <Virtuoso
+              ref={virtuosoRef}
+              style={{ height: listHeight }}
+              totalCount={filteredEntries.length}
+              itemContent={ItemContent}
+              defaultItemHeight={100}
               className="font-mono text-xs"
-              defaultHeight={listHeight}
+              initialTopMostItemIndex={
+                filteredEntries.length > 0 ? filteredEntries.length - 1 : 0
+              }
+              followOutput={
+                isNearBottom && initialScrollDone.current && !isScrolling
+                  ? "auto"
+                  : false
+              }
+              atBottomThreshold={100}
+              atBottomStateChange={(atBottom) => {
+                // atBottomThreshold makes this fire when within 100px of bottom
+                setIsNearBottom(atBottom);
+                if (atBottom) {
+                  hasScrolledToBottom.current = true;
+                  // Mark initial scroll as done after first time we reach bottom
+                  if (!initialScrollDone.current) {
+                    initialScrollDone.current = true;
+                  }
+                }
+              }}
+              // Detect when user is scrolling to prevent auto-scroll conflicts
+              isScrolling={(scrolling) => {
+                setIsScrolling(scrolling);
+              }}
+              // Overscan: render additional items beyond viewport for smoother scrolling
+              // main: items ahead in scroll direction, reverse: items behind
+              overscan={{ main: 600, reverse: 200 }}
+              increaseViewportBy={{ top: 400, bottom: 400 }}
+              // Configure scroll seek placeholders for fast scrolling
+              scrollSeekConfiguration={{
+                enter: (velocity) => Math.abs(velocity) > 1000,
+                exit: (velocity) => Math.abs(velocity) < 100,
+              }}
+              components={{
+                ScrollSeekPlaceholder,
+              }}
             />
           ))}
       </div>

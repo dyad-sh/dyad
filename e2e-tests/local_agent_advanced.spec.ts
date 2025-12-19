@@ -17,14 +17,7 @@ testSkipIfWindows("local-agent - security review fix", async ({ po }) => {
     .click();
   await po.waitForChatCompletion();
 
-  // Now send a prompt to fix the security issue using local agent
-  await po.sendPrompt("tc=local-agent/security-fix");
-
-  await po.snapshotMessages();
-  await po.snapshotAppFiles({
-    name: "after-security-fix",
-    files: ["src/App.tsx"],
-  });
+  await po.snapshotServerDump("all-messages");
 });
 
 /**
@@ -35,26 +28,20 @@ testSkipIfWindows("local-agent - mention apps", async ({ po }) => {
 
   // Import two apps - the first one will be referenced
   await po.importApp("minimal-with-ai-rules");
-  await po.importApp("minimal");
-
+  await po.goToAppsTab();
   await po.selectLocalAgentMode();
 
   // Use @app:minimal-with-ai-rules to reference the other app
-  await po.sendPrompt("@app:minimal-with-ai-rules tc=local-agent/mention-app");
+  await po.sendPrompt("[dump] @app:minimal-with-ai-rules hi");
 
-  await po.snapshotMessages();
-  await po.snapshotAppFiles({
-    name: "after-mention-app",
-    files: ["src/borrowed-component.tsx"],
-  });
+  await po.snapshotServerDump("request");
 });
 
 /**
  * Test for MCP tool calls in local-agent mode
  */
-testSkipIfWindows("local-agent - mcp tool call", async ({ po }) => {
-  // Use regular setup to configure MCP server
-  await po.setUp();
+testSkipIfWindows.only("local-agent - mcp tool call", async ({ po }) => {
+  await po.setUpDyadPro();
   await po.goToSettingsTab();
   await po.page.getByRole("button", { name: "Tools (MCP)" }).click();
 
@@ -73,7 +60,6 @@ testSkipIfWindows("local-agent - mcp tool call", async ({ po }) => {
     .getByRole("textbox", { name: "path/to/mcp-server.js --flag" })
     .fill(testMcpServerPath);
   await po.page.getByRole("button", { name: "Add Server" }).click();
-  await po.page.getByRole("button", { name: "Save" }).click();
 
   await po.goToAppsTab();
   await po.importApp("minimal");

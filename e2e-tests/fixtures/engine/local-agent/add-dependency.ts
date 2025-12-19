@@ -15,7 +15,7 @@ export const fixture: LocalAgentFixture = {
       ],
     },
     {
-      text: "I've successfully added lodash to your project. You can now import it in your code.",
+      text: "Dependency added done.",
     },
   ],
 };

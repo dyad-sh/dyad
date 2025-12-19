@@ -1,0 +1,16 @@
+- paragraph: "@app:minimal-with-ai-rules tc=local-agent/mention-app"
+- img
+- text: file1.txt
+- button "Edit":
+  - img
+- img
+- text: file1.txt
+- paragraph: More EOM
+- button:
+  - img
+- img
+- text: less than a minute ago
+- button "Request ID":
+  - img
+- button "Retry":
+  - img

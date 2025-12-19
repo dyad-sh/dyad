@@ -990,7 +990,12 @@ This conversation includes one or more image attachments. When the user uploads 
         };
 
         // Handle local-agent mode (Agent v2)
-        if (settings.selectedChatMode === "local-agent") {
+        // Mentioned apps can't be handled by the local agent (defer to balanced smart context
+        // in build mode)
+        if (
+          settings.selectedChatMode === "local-agent" &&
+          !mentionedAppsCodebases.length
+        ) {
           await handleLocalAgentStream(event, req, abortController, {
             placeholderMessageId: placeholderAssistantMessage.id,
             systemPrompt,

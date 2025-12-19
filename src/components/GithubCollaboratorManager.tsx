@@ -10,8 +10,24 @@ import {
 } from "@/components/ui/card";
 import { SimpleAvatar } from "@/components/ui/SimpleAvatar";
 import { IpcClient } from "@/ipc/ipc_client";
-import { Trash2, UserPlus, Users } from "lucide-react";
+import {
+  Trash2,
+  UserPlus,
+  Users,
+  ChevronsDownUp,
+  ChevronsUpDown,
+} from "lucide-react";
 import { showSuccess, showError } from "@/lib/toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface Collaborator {
   login: string;
@@ -32,6 +48,10 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [inviteUsername, setInviteUsername] = useState("");
   const [isInviting, setIsInviting] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [collaboratorToDelete, setCollaboratorToDelete] = useState<
+    string | null
+  >(null);
 
   const loadCollaborators = async () => {
     setIsLoading(true);
@@ -68,110 +88,161 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
     }
   };
 
-  const handleRemove = async (username: string) => {
-    if (
-      !confirm(`Are you sure you want to remove ${username} from this project?`)
-    ) {
-      return;
-    }
+  const handleRemove = async () => {
+    if (!collaboratorToDelete) return;
 
     try {
-      await IpcClient.getInstance().removeCollaborator(appId, username);
-      showSuccess(`Removed ${username} from the project.`);
+      await IpcClient.getInstance().removeCollaborator(
+        appId,
+        collaboratorToDelete,
+      );
+      showSuccess(`Removed ${collaboratorToDelete} from the project.`);
       loadCollaborators();
     } catch (error: any) {
       showError(error.message);
+    } finally {
+      setCollaboratorToDelete(null);
     }
   };
 
   return (
-    <Card className="mt-2">
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <Users className="w-5 h-5" />
-          Collaborators
-        </CardTitle>
-        <CardDescription>
-          Manage who has access to this project via GitHub.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Invite Form */}
-        <form onSubmit={handleInvite} className="flex gap-2">
-          <Input
-            placeholder="GitHub username"
-            value={inviteUsername}
-            onChange={(e) => setInviteUsername(e.target.value)}
-            disabled={isInviting}
-            data-testid="collaborator-invite-input"
-          />
-          <Button
-            type="submit"
-            data-testid="collaborator-invite-button"
-            disabled={isInviting || !inviteUsername}
-          >
-            {isInviting ? (
-              "Inviting..."
-            ) : (
-              <>
-                <UserPlus className="w-4 h-4 mr-2" />
-                Invite
-              </>
-            )}
-          </Button>
-        </form>
-
-        {/* Collaborators List */}
-        <div className="space-y-2 mt-4">
-          <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">
-            Current Team
-          </h3>
-          {isLoading ? (
-            <div className="text-sm text-center py-4 text-gray-500">
-              Loading collaborators...
+    <Card
+      className="transition-all duration-200"
+      onMouseEnter={() => setIsExpanded(true)}
+      onMouseLeave={() => setIsExpanded(false)}
+      onFocusCapture={() => setIsExpanded(true)}
+      onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          setIsExpanded(false);
+        }
+      }}
+    >
+      <CardHeader
+        className="p-2 cursor-pointer"
+        onClick={() => setIsExpanded((prev) => !prev)}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Users className="w-5 h-5" />
+            <div>
+              <CardTitle className="text-sm">Collaborators</CardTitle>
+              <CardDescription className="text-xs">
+                Manage who has access to this project via GitHub.
+              </CardDescription>
             </div>
-          ) : collaborators.length === 0 ? (
-            <div className="text-sm text-center py-4 text-gray-500 bg-gray-50 dark:bg-gray-800/50 rounded-md">
-              No collaborators found.
-            </div>
+          </div>
+          {isExpanded ? (
+            <ChevronsDownUp className="w-5 h-5 text-gray-500" />
           ) : (
-            <div className="space-y-2">
-              {collaborators.map((collab) => (
-                <div
-                  key={collab.login}
-                  className="flex items-center justify-between p-2 rounded-md border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900"
-                >
-                  <div className="flex items-center gap-3">
-                    <SimpleAvatar
-                      src={collab.avatar_url}
-                      alt={collab.login}
-                      fallbackText={collab.login.slice(0, 2).toUpperCase()}
-                    />
-                    <div>
-                      <p className="text-sm font-medium">{collab.login}</p>
-                      <p className="text-xs text-gray-500">
-                        {collab.permissions.admin
-                          ? "Admin"
-                          : collab.permissions.push
-                            ? "Editor"
-                            : "Viewer"}
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
-                    onClick={() => handleRemove(collab.login)}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </div>
-              ))}
-            </div>
+            <ChevronsUpDown className="w-5 h-5 text-gray-500" />
           )}
         </div>
-      </CardContent>
+      </CardHeader>
+      <div
+        className={`overflow-hidden transition-[max-height,opacity] duration-200 ease-in-out ${
+          isExpanded ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0"
+        }`}
+      >
+        <CardContent className="space-y-4">
+          {/* Invite Form */}
+          <form onSubmit={handleInvite} className="flex gap-2">
+            <Input
+              placeholder="GitHub username"
+              value={inviteUsername}
+              onChange={(e) => setInviteUsername(e.target.value)}
+              disabled={isInviting}
+              data-testid="collaborator-invite-input"
+            />
+            <Button
+              type="submit"
+              data-testid="collaborator-invite-button"
+              disabled={isInviting || !inviteUsername}
+            >
+              {isInviting ? (
+                "Inviting..."
+              ) : (
+                <>
+                  <UserPlus className="w-4 h-4 mr-2" />
+                  Invite
+                </>
+              )}
+            </Button>
+          </form>
+
+          {/* Collaborators List */}
+          <div className="space-y-2 mt-4">
+            <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">
+              Current Team
+            </h3>
+            {isLoading ? (
+              <div className="text-sm text-center py-4 text-gray-500">
+                Loading collaborators...
+              </div>
+            ) : collaborators.length === 0 ? (
+              <div className="text-sm text-center py-4 text-gray-500 bg-gray-50 dark:bg-gray-800/50 rounded-md">
+                No collaborators found.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {collaborators.map((collab) => (
+                  <div
+                    key={collab.login}
+                    className="flex items-center justify-between p-2 rounded-md border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900"
+                  >
+                    <div className="flex items-center gap-3">
+                      <SimpleAvatar
+                        src={collab.avatar_url}
+                        alt={collab.login}
+                        fallbackText={collab.login.slice(0, 2).toUpperCase()}
+                      />
+                      <div>
+                        <p className="text-sm font-medium">{collab.login}</p>
+                        <p className="text-xs text-gray-500">
+                          {collab.permissions.admin
+                            ? "Admin"
+                            : collab.permissions.push
+                              ? "Editor"
+                              : "Viewer"}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                      onClick={() => setCollaboratorToDelete(collab.login)}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </div>
+
+      <AlertDialog
+        open={!!collaboratorToDelete}
+        onOpenChange={(open) => {
+          if (!open) setCollaboratorToDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove collaborator?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove{" "}
+              <span className="font-medium">{collaboratorToDelete}</span> from
+              this project? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRemove}>Remove</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }

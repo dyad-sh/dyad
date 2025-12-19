@@ -10,6 +10,9 @@ import {
 } from "@/components/ui/select";
 import { IpcClient } from "@/ipc/ipc_client";
 import {
+  ChevronsDownUp,
+  ChevronsUpDown,
+  Network,
   GitBranch,
   Plus,
   Trash2,
@@ -54,6 +57,14 @@ import {
 } from "@/components/ui/tooltip";
 import { GithubConflictResolver } from "@/components/GithubConflictResolver";
 
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+
 interface BranchManagerProps {
   appId: number;
   onBranchChange?: () => void;
@@ -81,6 +92,8 @@ export function GithubBranchManager({
   const [isRenaming, setIsRenaming] = useState(false);
   const [branchToMerge, setBranchToMerge] = useState<string | null>(null);
   const [isMerging, setIsMerging] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isBranchMenuOpen, setIsBranchMenuOpen] = useState(false);
 
   const loadBranches = async () => {
     setIsLoading(true);
@@ -259,7 +272,7 @@ export function GithubBranchManager({
           <SelectContent>
             {branches.map((branch) => (
               <SelectItem key={branch} value={branch}>
-                <GitBranch className="h-4 w-4 text-gray-500" />
+                <Network className="h-4 w-4 text-gray-500" />
                 <span className="font-medium text-sm">Branch:</span>
                 <span
                   data-testid="current-branch-display"
@@ -470,70 +483,122 @@ export function GithubBranchManager({
         />
       )}
 
-      {/* List of other branches with delete option? Or just rely on Select? */}
-      {branches.length > 1 && (
-        <div className="mt-2">
-          <p className="text-xs text-gray-500 mb-2">Available Branches:</p>
-          <div className="space-y-1 max-h-40 overflow-y-auto border rounded-md p-2">
-            {branches.map((branch) => (
-              <div
-                key={branch}
-                className="flex items-center justify-between text-sm py-1 px-2 hover:bg-gray-50 dark:hover:bg-gray-800 rounded"
-                data-testid={`branch-item-${branch}`}
-              >
-                <span
-                  className={
-                    branch === currentBranch ? "font-bold text-blue-600" : ""
-                  }
-                >
-                  {branch}
-                </span>
-                {branch !== currentBranch && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        data-testid={`branch-actions-${branch}`}
-                      >
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        onClick={() => setBranchToMerge(branch)}
-                        data-testid="merge-branch-menu-item"
-                      >
-                        <GitMerge className="mr-2 h-4 w-4" />
-                        Merge into {currentBranch}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => {
-                          setBranchToRename(branch);
-                          setRenameBranchName(branch);
-                        }}
-                        data-testid="rename-branch-menu-item"
-                      >
-                        <Edit2 className="mr-2 h-4 w-4" />
-                        Rename
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        className="text-red-600"
-                        onClick={() => setBranchToDelete(branch)}
-                        data-testid="delete-branch-menu-item"
-                      >
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
+      <Card
+        className="mt-2 transition-all duration-200"
+        onMouseEnter={() => setIsExpanded(true)}
+        onMouseLeave={() => {
+          if (!isBranchMenuOpen) setIsExpanded(false);
+        }}
+        onFocusCapture={() => setIsExpanded(true)}
+        onBlurCapture={(event) => {
+          if (isBranchMenuOpen) return;
+          if (
+            !event.currentTarget.contains(event.relatedTarget as Node | null)
+          ) {
+            setIsExpanded(false);
+          }
+        }}
+      >
+        <CardHeader
+          className="p-2 cursor-pointer"
+          onClick={() => setIsExpanded((prev) => !prev)}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <GitBranch className="w-5 h-5" />
+              <div>
+                <CardTitle className="text-sm">Branches</CardTitle>
+                <CardDescription className="text-xs">
+                  Manage your branches, merge, delete, and more.
+                </CardDescription>
               </div>
-            ))}
+            </div>
+            {isExpanded ? (
+              <ChevronsDownUp className="w-5 h-5 text-gray-500" />
+            ) : (
+              <ChevronsUpDown className="w-5 h-5 text-gray-500" />
+            )}
           </div>
+        </CardHeader>
+        <div
+          className={`overflow-hidden transition-[max-height,opacity] duration-200 ease-in-out ${
+            isExpanded ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0"
+          }`}
+        >
+          <CardContent className="space-y-4 pt-0">
+            {/* List of other branches with delete option? Or just rely on Select? */}
+            {branches.length > 1 && (
+              <div className="mt-2">
+                <div className="space-y-1 max-h-40 overflow-y-auto border rounded-md p-2">
+                  {branches.map((branch) => (
+                    <div
+                      key={branch}
+                      className="flex items-center justify-between text-sm py-1 px-2 hover:bg-gray-50 dark:hover:bg-gray-800 rounded"
+                      data-testid={`branch-item-${branch}`}
+                    >
+                      <span
+                        className={
+                          branch === currentBranch
+                            ? "font-bold text-blue-600"
+                            : ""
+                        }
+                      >
+                        {branch}
+                      </span>
+                      {branch !== currentBranch && (
+                        <DropdownMenu
+                          onOpenChange={(open) => {
+                            setIsBranchMenuOpen(open);
+                            if (open) setIsExpanded(true);
+                          }}
+                        >
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              data-testid={`branch-actions-${branch}`}
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => setBranchToMerge(branch)}
+                              data-testid="merge-branch-menu-item"
+                            >
+                              <GitMerge className="mr-2 h-4 w-4" />
+                              Merge into {currentBranch}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setBranchToRename(branch);
+                                setRenameBranchName(branch);
+                              }}
+                              data-testid="rename-branch-menu-item"
+                            >
+                              <Edit2 className="mr-2 h-4 w-4" />
+                              Rename
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-red-600"
+                              onClick={() => setBranchToDelete(branch)}
+                              data-testid="delete-branch-menu-item"
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
         </div>
-      )}
+      </Card>
     </div>
   );
 }

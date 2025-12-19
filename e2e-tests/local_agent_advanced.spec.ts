@@ -26,7 +26,7 @@ testSkipIfWindows("local-agent - security review fix", async ({ po }) => {
 testSkipIfWindows("local-agent - mention apps", async ({ po }) => {
   await po.setUpDyadPro();
 
-  // Import two apps - the first one will be referenced
+  // Import app and reference it.
   await po.importApp("minimal-with-ai-rules");
   await po.goToAppsTab();
   await po.selectLocalAgentMode();

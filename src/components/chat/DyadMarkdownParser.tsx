@@ -28,10 +28,36 @@ import { DyadCodeSearch } from "./DyadCodeSearch";
 import { DyadRead } from "./DyadRead";
 import { DyadListFiles } from "./DyadListFiles";
 import { DyadDatabaseSchema } from "./DyadDatabaseSchema";
-import { DyadToolCall } from "./DyadToolCall";
 import { mapActionToButton } from "./ChatInput";
 import { SuggestedAction } from "@/lib/schemas";
 import { FixAllErrorsButton } from "./FixAllErrorsButton";
+
+const DYAD_CUSTOM_TAGS = [
+  "dyad-write",
+  "dyad-rename",
+  "dyad-delete",
+  "dyad-add-dependency",
+  "dyad-execute-sql",
+  "dyad-add-integration",
+  "dyad-output",
+  "dyad-problem-report",
+  "dyad-chat-summary",
+  "dyad-edit",
+  "dyad-search-replace",
+  "dyad-codebase-context",
+  "dyad-web-search-result",
+  "dyad-web-search",
+  "dyad-web-crawl",
+  "dyad-code-search-result",
+  "dyad-code-search",
+  "dyad-read",
+  "think",
+  "dyad-command",
+  "dyad-mcp-tool-call",
+  "dyad-mcp-tool-result",
+  "dyad-list-files",
+  "dyad-database-schema",
+];
 
 interface DyadMarkdownParserProps {
   content: string;
@@ -165,35 +191,12 @@ function preprocessUnclosedTags(content: string): {
   processedContent: string;
   inProgressTags: Map<string, Set<number>>;
 } {
-  const customTagNames = [
-    "dyad-write",
-    "dyad-rename",
-    "dyad-delete",
-    "dyad-add-dependency",
-    "dyad-execute-sql",
-    "dyad-add-integration",
-    "dyad-output",
-    "dyad-problem-report",
-    "dyad-chat-summary",
-    "dyad-edit",
-    "dyad-search-replace",
-    "dyad-codebase-context",
-    "dyad-web-search-result",
-    "dyad-web-search",
-    "dyad-web-crawl",
-    "dyad-read",
-    "think",
-    "dyad-command",
-    "dyad-mcp-tool-call",
-    "dyad-mcp-tool-result",
-  ];
-
   let processedContent = content;
   // Map to track which tags are in progress and their positions
   const inProgressTags = new Map<string, Set<number>>();
 
   // For each tag type, check if there are unclosed tags
-  for (const tagName of customTagNames) {
+  for (const tagName of DYAD_CUSTOM_TAGS) {
     // Count opening and closing tags
     const openTagPattern = new RegExp(`<${tagName}(?:\\s[^>]*)?>`, "g");
     const closeTagPattern = new RegExp(`</${tagName}>`, "g");
@@ -239,38 +242,8 @@ function preprocessUnclosedTags(content: string): {
 function parseCustomTags(content: string): ContentPiece[] {
   const { processedContent, inProgressTags } = preprocessUnclosedTags(content);
 
-  const customTagNames = [
-    "dyad-write",
-    "dyad-rename",
-    "dyad-delete",
-    "dyad-add-dependency",
-    "dyad-execute-sql",
-    "dyad-add-integration",
-    "dyad-output",
-    "dyad-problem-report",
-    "dyad-chat-summary",
-    "dyad-edit",
-    "dyad-search-replace",
-    "dyad-codebase-context",
-    "dyad-web-search-result",
-    "dyad-web-search",
-    "dyad-web-crawl",
-    "dyad-code-search-result",
-    "dyad-code-search",
-    "dyad-read",
-    "think",
-    "dyad-command",
-    "dyad-mcp-tool-call",
-    "dyad-mcp-tool-result",
-    "dyad-list-files",
-    "dyad-database-schema",
-    "dyad-tool-call",
-    "dyad-tool-result",
-    "dyad-tool-error",
-  ];
-
   const tagPattern = new RegExp(
-    `<(${customTagNames.join("|")})\\s*([^>]*)>(.*?)<\\/\\1>`,
+    `<(${DYAD_CUSTOM_TAGS.join("|")})\\s*([^>]*)>(.*?)<\\/\\1>`,
     "gs",
   );
 
@@ -637,47 +610,6 @@ function renderCustomTag(
         >
           {content}
         </DyadDatabaseSchema>
-      );
-
-    case "dyad-tool-call":
-      return (
-        <DyadToolCall
-          node={{
-            properties: {
-              toolName: attributes.tool || "",
-            },
-          }}
-        >
-          {content}
-        </DyadToolCall>
-      );
-
-    case "dyad-tool-result":
-      return (
-        <DyadToolCall
-          node={{
-            properties: {
-              toolName: attributes.tool || "",
-              isResult: true,
-            },
-          }}
-        >
-          {content}
-        </DyadToolCall>
-      );
-
-    case "dyad-tool-error":
-      return (
-        <DyadToolCall
-          node={{
-            properties: {
-              toolName: attributes.tool || "",
-              isError: true,
-            },
-          }}
-        >
-          {content}
-        </DyadToolCall>
       );
 
     default:

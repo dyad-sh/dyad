@@ -2,6 +2,7 @@ import path from "node:path";
 import fs from "node:fs";
 import log from "electron-log";
 import { TURBO_EDITS_V2_SYSTEM_PROMPT } from "../pro/main/prompts/turbo_edits_v2_prompt";
+import { constructLocalAgentPrompt } from "./local_agent_prompt";
 
 const logger = log.scope("system_prompt");
 
@@ -509,9 +510,13 @@ export const constructSystemPrompt = ({
   enableTurboEditsV2,
 }: {
   aiRules: string | undefined;
-  chatMode?: "build" | "ask" | "agent";
+  chatMode?: "build" | "ask" | "agent" | "local-agent";
   enableTurboEditsV2: boolean;
 }) => {
+  if (chatMode === "local-agent") {
+    return constructLocalAgentPrompt(aiRules);
+  }
+
   const systemPrompt = getSystemPromptForChatMode({
     chatMode,
     enableTurboEditsV2,

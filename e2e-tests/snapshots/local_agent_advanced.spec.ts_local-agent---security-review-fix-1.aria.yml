@@ -1,0 +1,199 @@
+- paragraph: /security-review
+- paragraph: OK, let's review the security.
+- paragraph: Here are variations with different severity levels.
+- paragraph: Purposefully putting medium on top to make sure the severity levels are sorted correctly.
+- heading "Medium Severity" [level=2]
+- text: "<dyad-security-finding title=\"Unvalidated File Upload Extensions\" level=\"medium\"> **What**: The file upload endpoint accepts any file type without validating extensions or content, only checking file size"
+- paragraph:
+  - strong: Risk
+  - text: ": An attacker could upload malicious files (e.g., .exe, .php) that might be executed if the server is misconfigured, or upload extremely large files to consume storage space"
+- paragraph:
+  - strong: Potential Solutions
+  - text: ":"
+- list:
+  - listitem:
+    - text: Implement a whitelist of allowed file extensions (e.g.,
+    - code: "`.jpg`"
+    - text: ","
+    - code: "`.png`"
+    - text: ","
+    - code: "`.pdf`"
+    - text: )
+  - listitem: Validate file content type using magic numbers, not just the extension
+  - listitem: Store uploaded files outside the web root with random filenames
+  - listitem: Implement virus scanning for uploaded files using ClamAV or similar
+- paragraph:
+  - strong: Relevant Files
+  - text: ":"
+  - code: "`src/api/upload.ts`"
+- text: "</dyad-security-finding> <dyad-security-finding title=\"Missing CSRF Protection on State-Changing Operations\" level=\"medium\"> **What**: POST, PUT, and DELETE endpoints don't implement CSRF tokens, making them vulnerable to cross-site request forgery attacks"
+- paragraph:
+  - strong: Risk
+  - text: ": An attacker could trick authenticated users into unknowingly performing actions like changing their email, making purchases, or deleting data by visiting a malicious website"
+- paragraph:
+  - strong: Potential Solutions
+  - text: ":"
+- list:
+  - listitem:
+    - text: Implement CSRF tokens using a library like
+    - code: "`csurf`"
+    - text: for Express
+  - listitem:
+    - text: Set
+    - code: "`SameSite=Strict`"
+    - text: or
+    - code: "`SameSite=Lax`"
+    - text: on session cookies
+  - listitem:
+    - text: Verify the
+    - code: "`Origin`"
+    - text: or
+    - code: "`Referer`"
+    - text: header for sensitive operations
+  - listitem: For API-only applications, consider using custom headers that browsers can't set cross-origin
+- paragraph:
+  - strong: Relevant Files
+  - text: ":"
+  - code: "`src/middleware/auth.ts`"
+  - text: ","
+  - code: "`src/api/*.ts`"
+- text: </dyad-security-finding>
+- heading "Critical Severity" [level=2]
+- text: "<dyad-security-finding title=\"SQL Injection in User Lookup\" level=\"critical\"> **What**: User input flows directly into database queries without validation, allowing attackers to execute arbitrary SQL commands"
+- paragraph:
+  - strong: Risk
+  - text: ": An attacker could steal all customer data, delete your entire database, or take over admin accounts by manipulating the URL"
+- paragraph:
+  - strong: Potential Solutions
+  - text: ":"
+- list:
+  - listitem:
+    - text: "Use parameterized queries:"
+    - code: "`db.query('SELECT * FROM users WHERE id = ?', [userId])`"
+  - listitem:
+    - text: Add input validation to ensure
+    - code: "`userId`"
+    - text: is a number
+  - listitem: Implement an ORM like Prisma or TypeORM that prevents SQL injection by default
+- paragraph:
+  - strong: Relevant Files
+  - text: ":"
+  - code: "`src/api/users.ts`"
+- text: "</dyad-security-finding> <dyad-security-finding title=\"Hardcoded AWS Credentials in Source Code\" level=\"critical\"> **What**: AWS access keys are stored directly in the codebase and committed to version control, exposing full cloud infrastructure access"
+- paragraph:
+  - strong: Risk
+  - text: ": Anyone with repository access (including former employees or compromised accounts) could spin up expensive resources, access S3 buckets with customer data, or destroy production infrastructure"
+- paragraph:
+  - strong: Potential Solutions
+  - text: ":"
+- list:
+  - listitem: Immediately rotate the exposed credentials in AWS IAM
+  - listitem:
+    - text: Use environment variables and add
+    - code: "`.env`"
+    - text: to
+    - code: "`.gitignore`"
+  - listitem: Implement AWS Secrets Manager or similar vault solution
+  - listitem:
+    - text: Scan git history and purge the credentials using tools like
+    - code: "`git-filter-repo`"
+- paragraph:
+  - strong: Relevant Files
+  - text: ":"
+  - code: "`src/config/aws.ts`"
+  - text: ","
+  - code: "`src/services/s3-uploader.ts`"
+- text: </dyad-security-finding>
+- heading "High Severity" [level=2]
+- text: "<dyad-security-finding title=\"Missing Authentication on Admin Endpoints\" level=\"high\"> **What**: Administrative API endpoints can be accessed without authentication, relying only on URL obscurity"
+- paragraph:
+  - strong: Risk
+  - text: ": An attacker who discovers these endpoints could modify user permissions, access sensitive reports, or change system configurations without credentials"
+- paragraph:
+  - strong: Potential Solutions
+  - text: ":"
+- list:
+  - listitem:
+    - text: Add authentication middleware to all
+    - code: "`/admin/*`"
+    - text: routes
+  - listitem: Implement role-based access control (RBAC) to verify admin permissions
+  - listitem: Add audit logging for all administrative actions
+  - listitem: Consider implementing rate limiting on admin endpoints
+- paragraph:
+  - strong: Relevant Files
+  - text: ":"
+  - code: "`src/api/admin/users.ts`"
+  - text: ","
+  - code: "`src/api/admin/settings.ts`"
+- text: "</dyad-security-finding> <dyad-security-finding title=\"JWT Secret Using Default Value\" level=\"high\"> **What**: The application uses a hardcoded default JWT secret (\"your-secret-key\") for signing authentication tokens"
+- paragraph:
+  - strong: Risk
+  - text: ": Attackers can forge valid JWT tokens to impersonate any user, including administrators, granting them unauthorized access to user accounts and sensitive data"
+- paragraph:
+  - strong: Potential Solutions
+  - text: ":"
+- list:
+  - listitem:
+    - text: "Generate a strong random secret:"
+    - code: "/`openssl rand -base64 \\d+`/"
+  - listitem: Store the secret in environment variables
+  - listitem: Rotate the JWT secret, which will invalidate all existing sessions
+  - listitem: Consider using RS256 (asymmetric) instead of HS256 for better security
+- paragraph:
+  - strong: Relevant Files
+  - text: ":"
+  - code: "`src/auth/jwt.ts`"
+- text: </dyad-security-finding>
+- heading "Low Severity" [level=2]
+- text: "<dyad-security-finding title=\"Verbose Error Messages Expose Stack Traces\" level=\"low\"> **What**: Production error responses include full stack traces and internal file paths that are sent to end users"
+- paragraph:
+  - strong: Risk
+  - text: ": Attackers can use this information to map your application structure, identify frameworks and versions, and find potential attack vectors more easily"
+- paragraph:
+  - strong: Potential Solutions
+  - text: ":"
+- list:
+  - listitem: Configure different error handlers for production vs development
+  - listitem: Log detailed errors server-side but send generic messages to clients
+  - listitem:
+    - text: "Use an error handling middleware:"
+    - code: "`if (process.env.NODE_ENV === 'production') { /* hide details */ }`"
+  - listitem: Implement centralized error logging with tools like Sentry
+- paragraph:
+  - strong: Relevant Files
+  - text: ":"
+  - code: "`src/middleware/error-handler.ts`"
+- text: "</dyad-security-finding> <dyad-security-finding title=\"Missing Security Headers\" level=\"low\"> **What**: The application doesn't set recommended security headers like `X-Frame-Options`, `X-Content-Type-Options`, and `Strict-Transport-Security`"
+- paragraph:
+  - strong: Risk
+  - text: ": Users may be vulnerable to clickjacking attacks, MIME-type sniffing, or man-in-the-middle attacks, though exploitation requires specific conditions"
+- paragraph:
+  - strong: Potential Solutions
+  - text: ":"
+- list:
+  - listitem:
+    - text: "Use Helmet.js middleware:"
+    - code: "`app.use(helmet())`"
+  - listitem: Configure headers manually in your web server (nginx/Apache) or application
+  - listitem:
+    - text: Set
+    - code: "`Content-Security-Policy`"
+    - text: to prevent XSS attacks
+  - listitem: Enable HSTS to enforce HTTPS connections
+- paragraph:
+  - strong: Relevant Files
+  - text: ":"
+  - code: "`src/app.ts`"
+  - text: ","
+  - code: "`nginx.conf`"
+- text: </dyad-security-finding>
+- paragraph: /\[\[dyad-dump-path=\/Users\/will\/Documents\/GitHub\/dyad-zero\/testing\/fake-llm-server\/dist\/generated\/\d+\.json\]\]/
+- button:
+  - img
+- img
+- text: less than a minute ago
+- button "Request ID":
+  - img
+- button "Retry":
+  - img

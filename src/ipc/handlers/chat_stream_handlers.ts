@@ -53,11 +53,11 @@ import { readFile, writeFile, unlink } from "fs/promises";
 import { getMaxTokens, getTemperature } from "../utils/token_utils";
 import { MAX_CHAT_TURNS_IN_CONTEXT } from "@/constants/settings_constants";
 import { validateChatContext } from "../utils/context_paths_utils";
-import { GoogleGenerativeAIProviderOptions } from "@ai-sdk/google";
+import { getProviderOptions, getAiHeaders } from "../utils/provider_options";
 import { mcpServers } from "../../db/schema";
 import { requireMcpToolConsent } from "../utils/mcp_consent";
 
-import { getExtraProviderOptions } from "../utils/thinking_utils";
+import { handleLocalAgentStream } from "../../pro/main/ipc/handlers/local_agent/local_agent_handler";
 
 import { safeSend } from "../utils/safe_sender";
 import { cleanFullResponse } from "../utils/cleanFullResponse";
@@ -72,7 +72,6 @@ import {
 } from "../utils/dyad_tag_parser";
 import { fileExists } from "../utils/file_utils";
 import { FileUploadsState } from "../utils/file_uploads_state";
-import { OpenAIResponsesProviderOptions } from "@ai-sdk/openai";
 import { extractMentionedAppsCodebases } from "../utils/mention_apps";
 import { parseAppMentions } from "@/shared/parse_mention_apps";
 import { prompts as promptsTable } from "../../db/schema";
@@ -85,8 +84,9 @@ import { AI_STREAMING_ERROR_MESSAGE_PREFIX } from "@/shared/texts";
 import { getCurrentCommitHash } from "../utils/git_utils";
 import {
   processChatMessagesWithVersionedFiles as getVersionedFiles,
-  VersionedFiles as VersionedFiles,
+  VersionedFiles,
 } from "../utils/versioned_codebase_context";
+import { getAiMessagesJsonIfWithinLimit } from "../utils/ai_messages_utils";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
@@ -220,6 +220,7 @@ async function processStreamChunks({
 
 export function registerChatStreamHandlers() {
   ipcMain.handle("chat:stream", async (event, req: ChatStreamParams) => {
+    let attachmentPaths: string[] = [];
     try {
       const fileUploadsState = FileUploadsState.getInstance();
       let dyadRequestId: string | undefined;
@@ -278,7 +279,6 @@ export function registerChatStreamHandlers() {
 
       // Process attachments if any
       let attachmentInfo = "";
-      let attachmentPaths: string[] = [];
 
       if (req.attachments && req.attachments.length > 0) {
         attachmentInfo = "\n\nAttachments:\n";
@@ -397,14 +397,15 @@ ${componentSnippet}
         }
       }
 
-      await db
+      const [insertedUserMessage] = await db
         .insert(messages)
         .values({
           chatId: req.chatId,
           role: "user",
           content: userPrompt,
         })
-        .returning();
+        .returning({ id: messages.id });
+      const userMessageId = insertedUserMessage.id;
       const settings = readSettings();
       // Only Dyad Pro requests have request ids.
       if (settings.enableDyadPro) {
@@ -603,8 +604,10 @@ ${componentSnippet}
           );
         }
 
+        const aiRules = await readAiRules(getDyadAppPath(updatedChat.app.path));
+
         let systemPrompt = constructSystemPrompt({
-          aiRules: await readAiRules(getDyadAppPath(updatedChat.app.path)),
+          aiRules,
           chatMode:
             settings.selectedChatMode === "agent"
               ? "build"
@@ -651,12 +654,17 @@ ${componentSnippet}
             "\n\n" +
             SUPABASE_AVAILABLE_SYSTEM_PROMPT +
             "\n\n" +
-            (await getSupabaseContext({
-              supabaseProjectId: updatedChat.app.supabaseProjectId,
-            }));
+            // For local agent, we will explicitly fetch the database context when needed.
+            (settings.selectedChatMode === "local-agent"
+              ? ""
+              : await getSupabaseContext({
+                  supabaseProjectId: updatedChat.app.supabaseProjectId,
+                }));
         } else if (
           // Neon projects don't need Supabase.
           !updatedChat.app?.neonProjectId &&
+          // In local agent mode, we will suggest supabase as part of the add-integration tool
+          settings.selectedChatMode !== "local-agent" &&
           // If in security review mode, we don't need to mention supabase is available.
           !isSecurityReviewIntent
         ) {
@@ -768,17 +776,35 @@ This conversation includes one or more image attachments. When the user uploads 
         ];
 
         // Check if the last message should include attachments
-        if (chatMessages.length >= 2 && attachmentPaths.length > 0) {
+        if (chatMessages.length >= 2) {
           const lastUserIndex = chatMessages.length - 2;
           const lastUserMessage = chatMessages[lastUserIndex];
-
           if (lastUserMessage.role === "user") {
-            // Replace the last message with one that includes attachments
-            chatMessages[lastUserIndex] = await prepareMessageWithAttachments(
-              lastUserMessage,
-              attachmentPaths,
-            );
+            if (attachmentPaths.length > 0) {
+              // Replace the last message with one that includes attachments
+              chatMessages[lastUserIndex] = await prepareMessageWithAttachments(
+                lastUserMessage,
+                attachmentPaths,
+              );
+            }
+            if (settings.selectedChatMode === "local-agent") {
+              // Insert into DB (with size guard)
+              const userAiMessagesJson = getAiMessagesJsonIfWithinLimit([
+                chatMessages[lastUserIndex],
+              ]);
+              if (userAiMessagesJson) {
+                await db
+                  .update(messages)
+                  .set({ aiMessagesJson: userAiMessagesJson })
+                  .where(eq(messages.id, userMessageId));
+              }
+            }
           }
+        } else {
+          logger.warn(
+            "Unexpected number of chat messages:",
+            chatMessages.length,
+          );
         }
 
         if (isSummarizeIntent) {
@@ -833,65 +859,22 @@ This conversation includes one or more image attachments. When the user uploads 
           const smartContextMode: SmartContextMode = isDeepContextEnabled
             ? "deep"
             : "balanced";
-          // Build provider options with correct Google/Vertex thinking config gating
-          const providerOptions: Record<string, any> = {
-            "dyad-engine": {
-              dyadAppId: updatedChat.app.id,
-              dyadRequestId,
-              dyadDisableFiles,
-              dyadSmartContextMode: smartContextMode,
-              dyadFiles: versionedFiles ? undefined : files,
-              dyadVersionedFiles: versionedFiles,
-              dyadMentionedApps: mentionedAppsCodebases.map(
-                ({ files, appName }) => ({
-                  appName,
-                  files,
-                }),
-              ),
-            },
-            "dyad-gateway": getExtraProviderOptions(
-              modelClient.builtinProviderId,
-              settings,
-            ),
-            openai: {
-              reasoningSummary: "auto",
-            } satisfies OpenAIResponsesProviderOptions,
-          };
-
-          // Conditionally include Google thinking config only for supported models
-          const selectedModelName = settings.selectedModel.name || "";
-          const providerId = modelClient.builtinProviderId;
-          const isVertex = providerId === "vertex";
-          const isGoogle = providerId === "google";
-          const isAnthropic = providerId === "anthropic";
-          const isPartnerModel = selectedModelName.includes("/");
-          const isGeminiModel = selectedModelName.startsWith("gemini");
-          const isFlashLite = selectedModelName.includes("flash-lite");
-
-          // Keep Google provider behavior unchanged: always include includeThoughts
-          if (isGoogle) {
-            providerOptions.google = {
-              thinkingConfig: {
-                includeThoughts: true,
-              },
-            } satisfies GoogleGenerativeAIProviderOptions;
-          }
-
-          // Vertex-specific fix: only enable thinking on supported Gemini models
-          if (isVertex && isGeminiModel && !isFlashLite && !isPartnerModel) {
-            providerOptions.google = {
-              thinkingConfig: {
-                includeThoughts: true,
-              },
-            } satisfies GoogleGenerativeAIProviderOptions;
-          }
+          const providerOptions = getProviderOptions({
+            dyadAppId: updatedChat.app.id,
+            dyadRequestId,
+            dyadDisableFiles,
+            smartContextMode,
+            files,
+            versionedFiles,
+            mentionedAppsCodebases,
+            builtinProviderId: modelClient.builtinProviderId,
+            settings,
+          });
 
           const streamResult = streamText({
-            headers: isAnthropic
-              ? {
-                  "anthropic-beta": "context-1m-2025-08-07",
-                }
-              : undefined,
+            headers: getAiHeaders({
+              builtinProviderId: modelClient.builtinProviderId,
+            }),
             maxOutputTokens: await getMaxTokens(settings.selectedModel),
             temperature: await getTemperature(settings.selectedModel),
             maxRetries: 2,
@@ -1005,6 +988,20 @@ This conversation includes one or more image attachments. When the user uploads 
           });
           return fullResponse;
         };
+
+        // Handle local-agent mode (Agent v2)
+        // Mentioned apps can't be handled by the local agent (defer to balanced smart context
+        // in build mode)
+        if (
+          settings.selectedChatMode === "local-agent" &&
+          !mentionedAppsCodebases.length
+        ) {
+          await handleLocalAgentStream(event, req, abortController, {
+            placeholderMessageId: placeholderAssistantMessage.id,
+            systemPrompt,
+          });
+          return;
+        }
 
         if (settings.selectedChatMode === "agent") {
           const tools = await getMcpTools(event);
@@ -1414,6 +1411,22 @@ ${problemReport.problems
         }
       }
 
+      // Return the chat ID for backwards compatibility
+      return req.chatId;
+    } catch (error) {
+      logger.error("Error calling LLM:", error);
+      safeSend(event.sender, "chat:response:error", {
+        chatId: req.chatId,
+        error: `Sorry, there was an error processing your request: ${error}`,
+      });
+
+      // Clean up file uploads state on error
+      FileUploadsState.getInstance().clear(req.chatId);
+      return "error";
+    } finally {
+      // Clean up the abort controller
+      activeStreams.delete(req.chatId);
+
       // Clean up any temporary files
       if (attachmentPaths.length > 0) {
         for (const filePath of attachmentPaths) {
@@ -1434,20 +1447,6 @@ ${problemReport.problems
           }
         }
       }
-
-      // Return the chat ID for backwards compatibility
-      return req.chatId;
-    } catch (error) {
-      logger.error("Error calling LLM:", error);
-      safeSend(event.sender, "chat:response:error", {
-        chatId: req.chatId,
-        error: `Sorry, there was an error processing your request: ${error}`,
-      });
-      // Clean up the abort controller
-      activeStreams.delete(req.chatId);
-      // Clean up file uploads state on error
-      FileUploadsState.getInstance().clear(req.chatId);
-      return "error";
     }
   });
 

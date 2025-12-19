@@ -2,6 +2,10 @@ import { Request, Response } from "express";
 import fs from "fs";
 import path from "path";
 import { CANNED_MESSAGE, createStreamChunk } from ".";
+import {
+  handleLocalAgentFixture,
+  extractLocalAgentFixture,
+} from "./localAgentHandler";
 
 let globalCounter = 0;
 
@@ -21,6 +25,35 @@ export const createChatCompletionHandler =
           code: "rate_limit_exceeded",
         },
       });
+    }
+
+    // Check for local-agent fixture requests (tc=local-agent/*)
+    // This needs to be checked on the first user message, not the last (which might be tool results)
+    const lastUserMessage = messages
+      .slice()
+      .reverse()
+      .find((m: any) => m.role === "user");
+    if (lastUserMessage) {
+      // Handle both string content and array content (AI SDK format)
+      let textContent = "";
+      if (typeof lastUserMessage.content === "string") {
+        textContent = lastUserMessage.content;
+      } else if (Array.isArray(lastUserMessage.content)) {
+        const textPart = lastUserMessage.content.find(
+          (p: any) => p.type === "text",
+        );
+        if (textPart) {
+          textContent = textPart.text;
+        }
+      }
+
+      const localAgentFixture = extractLocalAgentFixture(textContent);
+      console.error(
+        `[local-agent] Checking message: "${textContent.slice(0, 50)}", fixture: ${localAgentFixture}`,
+      );
+      if (localAgentFixture) {
+        return handleLocalAgentFixture(req, res, localAgentFixture);
+      }
     }
 
     let messageContent = CANNED_MESSAGE;
@@ -208,7 +241,8 @@ export default Index;
       lastMessage &&
       lastMessage.content &&
       typeof lastMessage.content === "string" &&
-      lastMessage.content.startsWith("tc=")
+      lastMessage.content.startsWith("tc=") &&
+      !lastMessage.content.startsWith("tc=local-agent/")
     ) {
       const testCaseName = lastMessage.content.slice(3).split("[")[0].trim(); // Remove "tc=" prefix
       console.error(`* Loading test case: ${testCaseName}`);

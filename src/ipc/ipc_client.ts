@@ -72,6 +72,10 @@ import type {
   SelectNodeFolderResult,
   ApplyVisualEditingChangesParams,
   AnalyseComponentParams,
+  AgentTool,
+  SetAgentToolConsentParams,
+  AgentToolConsentRequestPayload,
+  AgentToolConsentResponseParams,
 } from "./ipc_types";
 import type { Template } from "../shared/templates";
 import type {
@@ -126,12 +130,17 @@ export class IpcClient {
     }
   >;
   private mcpConsentHandlers: Map<string, (payload: any) => void>;
+  private agentConsentHandlers: Map<string, (payload: any) => void>;
+  // Global handlers called for any chat stream completion (used for cleanup)
+  private globalChatStreamEndHandlers: Set<(chatId: number) => void>;
   private constructor() {
     this.ipcRenderer = (window as any).electron.ipcRenderer as IpcRenderer;
     this.chatStreams = new Map();
     this.appStreams = new Map();
     this.helpStreams = new Map();
     this.mcpConsentHandlers = new Map();
+    this.agentConsentHandlers = new Map();
+    this.globalChatStreamEndHandlers = new Set();
     // Set up listeners for stream events
     this.ipcRenderer.on("chat:response:chunk", (data) => {
       if (
@@ -191,6 +200,10 @@ export class IpcClient {
           ),
         );
       }
+      // Notify global handlers (used for cleanup like clearing pending consents)
+      for (const handler of this.globalChatStreamEndHandlers) {
+        handler(chatId);
+      }
     });
 
     this.ipcRenderer.on("chat:response:error", (payload) => {
@@ -211,6 +224,10 @@ export class IpcClient {
             `[IPC] No callbacks found for chat ${chatId} on error`,
             this.chatStreams,
           );
+        }
+        // Notify global handlers (used for cleanup like clearing pending consents)
+        for (const handler of this.globalChatStreamEndHandlers) {
+          handler(chatId);
         }
       } else {
         console.error("[IPC] Invalid error data received:", payload);
@@ -262,6 +279,12 @@ export class IpcClient {
     // MCP tool consent request from main
     this.ipcRenderer.on("mcp:tool-consent-request", (payload) => {
       const handler = this.mcpConsentHandlers.get("consent");
+      if (handler) handler(payload);
+    });
+
+    // Agent tool consent request from main
+    this.ipcRenderer.on("agent-tool:consent-request", (payload) => {
+      const handler = this.agentConsentHandlers.get("consent");
       if (handler) handler(payload);
     });
   }
@@ -910,6 +933,40 @@ export class IpcClient {
       requestId,
       decision,
     });
+  }
+
+  // --- Agent Tool Methods ---
+  public async getAgentTools(): Promise<AgentTool[]> {
+    return this.ipcRenderer.invoke("agent-tool:get-tools");
+  }
+
+  public async setAgentToolConsent(params: SetAgentToolConsentParams) {
+    return this.ipcRenderer.invoke("agent-tool:set-consent", params);
+  }
+
+  public onAgentToolConsentRequest(
+    handler: (payload: AgentToolConsentRequestPayload) => void,
+  ) {
+    this.agentConsentHandlers.set("consent", handler as any);
+    return () => {
+      this.agentConsentHandlers.delete("consent");
+    };
+  }
+
+  public respondToAgentConsentRequest(params: AgentToolConsentResponseParams) {
+    this.ipcRenderer.invoke("agent-tool:consent-response", params);
+  }
+
+  /**
+   * Subscribe to be notified when any chat stream ends (either successfully or with an error).
+   * Useful for cleanup tasks like clearing pending consent requests.
+   * @returns Unsubscribe function
+   */
+  public onChatStreamEnd(handler: (chatId: number) => void): () => void {
+    this.globalChatStreamEndHandlers.add(handler);
+    return () => {
+      this.globalChatStreamEndHandlers.delete(handler);
+    };
   }
 
   // Get proposal details

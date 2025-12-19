@@ -1,0 +1,18 @@
+=== src/utils/math.ts ===
+export function add(a: number, b: number): number {
+  return a + b;
+}
+
+export function subtract(a: number, b: number): number {
+  return a - b;
+}
+
+
+=== src/utils/string.ts ===
+export function capitalize(str: string): string {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+export function lowercase(str: string): string {
+  return str.toLowerCase();
+}

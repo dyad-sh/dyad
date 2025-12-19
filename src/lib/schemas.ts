@@ -142,7 +142,7 @@ export type RuntimeMode = z.infer<typeof RuntimeModeSchema>;
 export const RuntimeMode2Schema = z.enum(["host", "docker"]);
 export type RuntimeMode2 = z.infer<typeof RuntimeMode2Schema>;
 
-export const ChatModeSchema = z.enum(["build", "ask", "agent"]);
+export const ChatModeSchema = z.enum(["build", "ask", "agent", "local-agent"]);
 export type ChatMode = z.infer<typeof ChatModeSchema>;
 
 export const GitHubSecretsSchema = z.object({
@@ -172,6 +172,7 @@ export const NeonSchema = z.object({
 export type Neon = z.infer<typeof NeonSchema>;
 
 export const ExperimentsSchema = z.object({
+  enableLocalAgent: z.boolean().optional(),
   // Deprecated
   enableSupabaseIntegration: z.boolean().describe("DEPRECATED").optional(),
   enableFileEditing: z.boolean().describe("DEPRECATED").optional(),
@@ -220,12 +221,17 @@ export const SmartContextModeSchema = z.enum([
   "deep",
 ]);
 export type SmartContextMode = z.infer<typeof SmartContextModeSchema>;
+
+export const AgentToolConsentSchema = z.enum(["ask", "always"]);
+export type AgentToolConsent = z.infer<typeof AgentToolConsentSchema>;
+
 /**
  * Zod schema for user settings
  */
 export const UserSettingsSchema = z.object({
   selectedModel: LargeLanguageModelSchema,
   providerSettings: z.record(z.string(), ProviderSettingSchema),
+  agentToolConsents: z.record(z.string(), AgentToolConsentSchema).optional(),
   githubUser: GithubUserSchema.optional(),
   githubAccessToken: SecretSchema.optional(),
   vercelAccessToken: SecretSchema.optional(),

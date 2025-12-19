@@ -1,0 +1,34 @@
+- paragraph: /Generate an AI_RULES\.md file for this app\. Describe the tech stack in 5-\d+ bullet points and describe clear rules about what libraries to use for what\./
+- img
+- text: file1.txt
+- button "Edit":
+  - img
+- img
+- text: file1.txt
+- paragraph: More EOM
+- button:
+  - img
+- img
+- text: less than a minute ago
+- button "Request ID":
+  - img
+- paragraph: tc=local-agent/add-dependency
+- paragraph: I'll add a dependency to your project.
+- img
+- text: Do you want to install these packages? @dyad-sh/supabase-management-js Make sure these packages are what you want.
+- img
+- text: "Error Tool 'add_dependency' failed: User denied permission for add_dependency..."
+- img
+- button "Copy":
+  - img
+- button "Fix with AI":
+  - img
+- paragraph: Dependency added done.
+- button:
+  - img
+- img
+- text: less than a minute ago
+- button "Request ID":
+  - img
+- button "Retry":
+  - img

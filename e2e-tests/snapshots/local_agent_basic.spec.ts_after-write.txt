@@ -1,4 +1,0 @@
-=== src/hello.ts ===
-export function hello() {
-  return "Hello, World!";
-}

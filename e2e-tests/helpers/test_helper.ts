@@ -344,10 +344,14 @@ export class PageObject {
     await this.page.getByTestId("chat-mode-selector").click();
     // local-agent appears as "Agent v2 (experimental)" in the UI
     const optionName =
-      mode === "local-agent" ? "Agent v2 (experimental)" : mode;
+      mode === "local-agent"
+        ? "Agent v2 (experimental)"
+        : mode === "agent"
+          ? "Build with MCP (experimental)"
+          : mode;
     await this.page
       .getByRole("option", {
-        name: optionName === "agent" ? "Build with MCP (experimental)" : mode,
+        name: optionName,
       })
       .click();
   }

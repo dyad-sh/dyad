@@ -10,9 +10,9 @@ testSkipIfWindows("local-agent - basic file write", async ({ po }) => {
   await po.importApp("minimal");
   await po.selectLocalAgentMode();
 
-  await po.sendPrompt("tc=local-agent/basic-write");
+  await po.sendPrompt("[dump] tc=local-agent/basic-write");
 
-  await po.snapshotMessages();
+  await po.snapshotServerDump("request");
   await po.snapshotAppFiles({
     name: "after-write",
     files: ["src/hello.ts"],
@@ -25,7 +25,6 @@ testSkipIfWindows("local-agent - read then edit", async ({ po }) => {
   await po.selectLocalAgentMode();
 
   await po.sendPrompt("tc=local-agent/read-then-edit");
-  await po.sleep(10_000);
   await po.snapshotMessages();
   await po.snapshotAppFiles({
     name: "after-edit",

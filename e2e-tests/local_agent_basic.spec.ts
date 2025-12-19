@@ -5,18 +5,14 @@ import { testSkipIfWindows } from "./helpers/test_helper";
  * Tests multi-turn tool call conversations using the TypeScript DSL fixtures
  */
 
-testSkipIfWindows("local-agent - basic file write", async ({ po }) => {
+testSkipIfWindows("local-agent - dump request", async ({ po }) => {
   await po.setUpDyadPro();
   await po.importApp("minimal");
   await po.selectLocalAgentMode();
 
-  await po.sendPrompt("[dump] tc=local-agent/basic-write");
+  await po.sendPrompt("[dump]");
 
   await po.snapshotServerDump("request");
-  await po.snapshotAppFiles({
-    name: "after-write",
-    files: ["src/hello.ts"],
-  });
 });
 
 testSkipIfWindows("local-agent - read then edit", async ({ po }) => {

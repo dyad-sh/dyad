@@ -18,7 +18,7 @@
       },
       {
         "role": "user",
-        "content": "[dump] tc=local-agent/basic-write"
+        "content": "[dump]"
       }
     ],
     "tools": [

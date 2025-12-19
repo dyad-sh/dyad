@@ -24,7 +24,7 @@ const logMocks = vi.hoisted(() => {
 
 const drizzleMocks = vi.hoisted(() => {
   return {
-    lt: vi.fn(() => "LT_EXPR"),
+    lt: vi.fn<(a: unknown, b: unknown) => string>(() => "LT_EXPR"),
   };
 });
 

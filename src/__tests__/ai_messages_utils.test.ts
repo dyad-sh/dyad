@@ -40,7 +40,7 @@ describe("parseAiMessagesJson", () => {
             type: "tool-call",
             toolCallId: "call-123",
             toolName: "read_file",
-            args: { path: "/src/index.ts" },
+            input: { path: "/src/index.ts" },
           },
         ],
       };
@@ -309,7 +309,7 @@ describe("getAiMessagesJsonIfWithinLimit", () => {
             type: "tool-call",
             toolCallId: "call-abc",
             toolName: "write_file",
-            args: { path: "/test.ts", content: "console.log('test')" },
+            input: { path: "/test.ts", content: "console.log('test')" },
           },
         ],
       },

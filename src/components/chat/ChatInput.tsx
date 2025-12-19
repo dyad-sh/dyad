@@ -27,7 +27,7 @@ import {
   chatInputValueAtom,
   chatMessagesByIdAtom,
   selectedChatIdAtom,
-  pendingAgentConsentAtom,
+  pendingAgentConsentsAtom,
 } from "@/atoms/chatAtoms";
 import { atom, useAtom, useSetAtom, useAtomValue } from "jotai";
 import { useStreamChat } from "@/hooks/useStreamChat";
@@ -107,9 +107,14 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     currentComponentCoordinatesAtom,
   );
   const setPendingVisualChanges = useSetAtom(pendingVisualChangesAtom);
-  const [pendingAgentConsent, setPendingAgentConsent] = useAtom(
-    pendingAgentConsentAtom,
+  const [pendingAgentConsents, setPendingAgentConsents] = useAtom(
+    pendingAgentConsentsAtom,
   );
+  // Get the first consent in the queue for this chat (if any)
+  const consentsForThisChat = pendingAgentConsents.filter(
+    (c) => c.chatId === chatId,
+  );
+  const pendingAgentConsent = consentsForThisChat[0] ?? null;
   const { checkProblems } = useCheckProblems(appId);
   const { refreshAppIframe } = useRunApp();
   // Use the attachments hook
@@ -312,19 +317,30 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           {pendingAgentConsent && (
             <AgentConsentBanner
               consent={pendingAgentConsent}
+              queueTotal={consentsForThisChat.length}
               onDecision={(decision) => {
                 IpcClient.getInstance().respondToAgentConsentRequest(
                   pendingAgentConsent.requestId,
                   decision,
                 );
-                setPendingAgentConsent(null);
+                // Remove this consent from the queue by requestId
+                setPendingAgentConsents((prev) =>
+                  prev.filter(
+                    (c) => c.requestId !== pendingAgentConsent.requestId,
+                  ),
+                );
               }}
               onClose={() => {
                 IpcClient.getInstance().respondToAgentConsentRequest(
                   pendingAgentConsent.requestId,
                   "decline",
                 );
-                setPendingAgentConsent(null);
+                // Remove this consent from the queue by requestId
+                setPendingAgentConsents((prev) =>
+                  prev.filter(
+                    (c) => c.requestId !== pendingAgentConsent.requestId,
+                  ),
+                );
               }}
             />
           )}

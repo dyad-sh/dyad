@@ -13,6 +13,7 @@ export const getDatabaseSchemaTool: ToolDefinition<
   description: "Fetch the database schema from Supabase",
   inputSchema: getDatabaseSchemaSchema,
   defaultConsent: "always",
+  isEnabled: (ctx) => !!ctx.supabaseProjectId,
 
   buildXml: (_args, _isComplete) => {
     // This tool has no inputs, so always return the same XML

@@ -947,6 +947,7 @@ export class IpcClient {
   public onAgentToolConsentRequest(
     handler: (payload: {
       requestId: string;
+      chatId: number;
       toolName: string;
       toolDescription?: string | null;
       inputPreview?: string | null;

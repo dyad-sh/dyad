@@ -26,9 +26,11 @@ export function escapeXmlContent(str: string): string {
 export interface AgentContext {
   event: IpcMainInvokeEvent;
   appPath: string;
+  chatId: number;
   supabaseProjectId?: string | null;
   messageId?: number;
   isSharedModulesChanged?: boolean;
+  chatSummary?: string;
   /**
    * Streams accumulated XML to UI without persisting to DB (for live preview).
    * Call this repeatedly with the full accumulated XML so far.
@@ -80,6 +82,12 @@ export interface ToolDefinition<T = any> {
   readonly inputSchema: z.ZodType<T>;
   readonly defaultConsent: AgentToolConsent;
   execute: (args: T, ctx: AgentContext) => Promise<string>;
+
+  /**
+   * If defined, returns whether the tool should be available in the current context.
+   * If it returns false, the tool will be filtered out.
+   */
+  isEnabled?: (ctx: AgentContext) => boolean;
 
   /**
    * Build XML from parsed partial args.

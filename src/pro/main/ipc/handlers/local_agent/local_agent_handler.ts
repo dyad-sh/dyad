@@ -8,7 +8,7 @@ import { streamText, ToolSet, stepCountIs, ModelMessage } from "ai";
 import log from "electron-log";
 import { db } from "@/db";
 import { chats, messages } from "@/db/schema";
-import { eq, and, isNull, lt } from "drizzle-orm";
+import { eq, lt } from "drizzle-orm";
 
 import { isDyadProEnabled } from "@/lib/schemas";
 import { readSettings } from "@/main/settings";
@@ -17,8 +17,7 @@ import { getModelClient } from "@/ipc/utils/get_model_client";
 import { safeSend } from "@/ipc/utils/safe_sender";
 import { getMaxTokens, getTemperature } from "@/ipc/utils/token_utils";
 import { getProviderOptions, getAiHeaders } from "@/ipc/utils/provider_options";
-import { readAiRules } from "@/prompts/system_prompt";
-import { constructLocalAgentPrompt } from "@/prompts/local_agent_prompt";
+
 import {
   AgentToolName,
   buildAgentToolSet,
@@ -34,7 +33,12 @@ import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
 import { getAiMessagesJsonIfWithinLimit } from "@/ipc/utils/ai_messages_utils";
 
 import type { ChatStreamParams, ChatResponseEnd } from "@/ipc/ipc_types";
-import { AgentContext, parsePartialJson } from "./tools/types";
+import {
+  AgentContext,
+  parsePartialJson,
+  escapeXmlAttr,
+  escapeXmlContent,
+} from "./tools/types";
 import { TOOL_DEFINITIONS } from "./tool_definitions";
 
 const logger = log.scope("local_agent_handler");
@@ -135,7 +139,10 @@ export async function handleLocalAgentStream(
   event: IpcMainInvokeEvent,
   req: ChatStreamParams,
   abortController: AbortController,
-  { placeholderMessageId }: { placeholderMessageId: number },
+  {
+    placeholderMessageId,
+    systemPrompt,
+  }: { placeholderMessageId: number; systemPrompt: string },
 ): Promise<void> {
   const settings = readSettings();
 
@@ -176,12 +183,8 @@ export async function handleLocalAgentStream(
 
   let fullResponse = "";
   let streamingPreview = ""; // Temporary preview for current tool, not persisted
-  let chatSummary: string | undefined;
 
   try {
-    // Build system prompt
-    const systemPrompt = constructLocalAgentPrompt(await readAiRules(appPath));
-
     // Get model client
     const { modelClient } = await getModelClient(
       settings.selectedModel,
@@ -192,6 +195,7 @@ export async function handleLocalAgentStream(
     const ctx: AgentContext = {
       event,
       appPath,
+      chatId: chat.id,
       supabaseProjectId: chat.app.supabaseProjectId,
       messageId: placeholderMessageId,
       isSharedModulesChanged: false,
@@ -218,6 +222,7 @@ export async function handleLocalAgentStream(
         inputPreview?: string | null;
       }) => {
         return requireAgentToolConsent(event, {
+          chatId: chat.id,
           toolName: params.toolName as AgentToolName,
           toolDescription: params.toolDescription,
           inputPreview: params.inputPreview,
@@ -418,21 +423,13 @@ export async function handleLocalAgentStream(
     await deployAllFunctionsIfNeeded(ctx);
 
     // Commit all changes
-    const commitResult = await commitAllChanges(ctx, chatSummary);
+    const commitResult = await commitAllChanges(ctx, ctx.chatSummary);
 
     if (commitResult.commitHash) {
       await db
         .update(messages)
         .set({ commitHash: commitResult.commitHash })
         .where(eq(messages.id, placeholderMessageId));
-    }
-
-    // Update chat title if we have a summary
-    if (chatSummary) {
-      await db
-        .update(chats)
-        .set({ title: chatSummary })
-        .where(and(eq(chats.id, req.chatId), isNull(chats.title)));
     }
 
     // Mark as approved (auto-approve for local-agent)
@@ -520,39 +517,51 @@ async function getMcpTools(
           description: original?.description,
           inputSchema: original?.inputSchema,
           execute: async (args: any, execCtx: any) => {
-            const inputPreview =
-              typeof args === "string"
-                ? args
-                : Array.isArray(args)
-                  ? args.join(" ")
-                  : JSON.stringify(args).slice(0, 500);
+            try {
+              const inputPreview =
+                typeof args === "string"
+                  ? args
+                  : Array.isArray(args)
+                    ? args.join(" ")
+                    : JSON.stringify(args).slice(0, 500);
 
-            const ok = await requireMcpToolConsent(event, {
-              serverId: s.id,
-              serverName: s.name,
-              toolName: name,
-              toolDescription: original?.description,
-              inputPreview,
-            });
+              const ok = await requireMcpToolConsent(event, {
+                serverId: s.id,
+                serverName: s.name,
+                toolName: name,
+                toolDescription: original?.description,
+                inputPreview,
+              });
 
-            if (!ok) throw new Error(`User declined running tool ${key}`);
+              if (!ok) throw new Error(`User declined running tool ${key}`);
 
-            // Emit XML for UI (MCP tools don't stream, so use onXmlComplete directly)
-            const { serverName, toolName } = parseMcpToolKey(key);
-            const content = JSON.stringify(args, null, 2);
-            ctx.onXmlComplete(
-              `<dyad-mcp-tool-call server="${serverName}" tool="${toolName}">\n${content}\n</dyad-mcp-tool-call>`,
-            );
+              // Emit XML for UI (MCP tools don't stream, so use onXmlComplete directly)
+              const { serverName, toolName } = parseMcpToolKey(key);
+              const content = JSON.stringify(args, null, 2);
+              ctx.onXmlComplete(
+                `<dyad-mcp-tool-call server="${serverName}" tool="${toolName}">\n${content}\n</dyad-mcp-tool-call>`,
+              );
 
-            const res = await original.execute?.(args, execCtx);
-            const resultStr =
-              typeof res === "string" ? res : JSON.stringify(res);
+              const res = await original.execute?.(args, execCtx);
+              const resultStr =
+                typeof res === "string" ? res : JSON.stringify(res);
 
-            ctx.onXmlComplete(
-              `<dyad-mcp-tool-result server="${serverName}" tool="${toolName}">\n${resultStr}\n</dyad-mcp-tool-result>`,
-            );
+              ctx.onXmlComplete(
+                `<dyad-mcp-tool-result server="${serverName}" tool="${toolName}">\n${resultStr}\n</dyad-mcp-tool-result>`,
+              );
 
-            return resultStr;
+              return resultStr;
+            } catch (error) {
+              const errorMessage =
+                error instanceof Error ? error.message : String(error);
+              const errorStack =
+                error instanceof Error && error.stack ? error.stack : "";
+              ctx.onXmlComplete(
+                `<dyad-output type="error" message="MCP tool '${key}' failed: ${escapeXmlAttr(errorMessage)}">${escapeXmlContent(errorStack || errorMessage)}</dyad-output>`,
+              );
+              // Return error message so the AI can understand what happened
+              return `Error executing MCP tool ${key}: ${errorMessage}`;
+            }
           },
         };
       }

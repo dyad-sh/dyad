@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { ToolDefinition, AgentContext, escapeXmlContent } from "./types";
+import { ToolDefinition, AgentContext } from "./types";
+import { db } from "@/db";
+import { chats } from "@/db/schema";
+import { and, eq, isNull } from "drizzle-orm";
 
 const setChatSummarySchema = z.object({
   summary: z.string().describe("A short summary/title for the chat"),
@@ -16,7 +19,8 @@ export const setChatSummaryTool: ToolDefinition<
 
   buildXml: (args, _isComplete) => {
     if (args.summary == undefined) return undefined;
-    return `<dyad-chat-summary>${escapeXmlContent(args.summary)}</dyad-chat-summary>`;
+    // No XML needed for this tool
+    return ``;
   },
 
   execute: async (args, ctx: AgentContext) => {
@@ -29,8 +33,14 @@ export const setChatSummaryTool: ToolDefinition<
       throw new Error("User denied permission for set_chat_summary");
     }
 
-    // The actual chat title update is handled by the local_agent_handler
-    // based on parsing the XML response
+    if (args.summary) {
+      await db
+        .update(chats)
+        .set({ title: args.summary })
+        .where(and(eq(chats.id, ctx.chatId), isNull(chats.title)));
+      ctx.chatSummary = args.summary;
+    }
+
     return `Chat summary set to: ${args.summary}`;
   },
 };

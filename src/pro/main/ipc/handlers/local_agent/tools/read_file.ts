@@ -11,7 +11,9 @@ const readFileSchema = z.object({
 
 export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
   name: "read_file",
-  description: "Read the content of a file from the codebase",
+  description: `Read the content of a file from the codebase.
+  
+- You have the capability to call multiple tools in a single response. It is always better to speculatively read multiple files as a batch that are potentially useful.`,
   inputSchema: readFileSchema,
   defaultConsent: "always",
 

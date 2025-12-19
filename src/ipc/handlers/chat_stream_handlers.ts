@@ -87,6 +87,7 @@ import {
   VersionedFiles,
 } from "../utils/versioned_codebase_context";
 import { getAiMessagesJsonIfWithinLimit } from "../utils/ai_messages_utils";
+import { constructLocalAgentPrompt } from "@/prompts/local_agent_prompt";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
@@ -604,15 +605,19 @@ ${componentSnippet}
           );
         }
 
-        let systemPrompt = constructSystemPrompt({
-          aiRules: await readAiRules(getDyadAppPath(updatedChat.app.path)),
-          chatMode:
-            settings.selectedChatMode === "agent" ||
-            settings.selectedChatMode === "local-agent"
-              ? "build"
-              : settings.selectedChatMode,
-          enableTurboEditsV2: isTurboEditsV2Enabled(settings),
-        });
+        const aiRules = await readAiRules(getDyadAppPath(updatedChat.app.path));
+
+        let systemPrompt =
+          settings.selectedChatMode === "local-agent"
+            ? constructLocalAgentPrompt(aiRules)
+            : constructSystemPrompt({
+                aiRules,
+                chatMode:
+                  settings.selectedChatMode === "agent"
+                    ? "build"
+                    : settings.selectedChatMode,
+                enableTurboEditsV2: isTurboEditsV2Enabled(settings),
+              });
 
         // Add information about mentioned apps if any
         if (otherAppsCodebaseInfo) {
@@ -653,9 +658,12 @@ ${componentSnippet}
             "\n\n" +
             SUPABASE_AVAILABLE_SYSTEM_PROMPT +
             "\n\n" +
-            (await getSupabaseContext({
-              supabaseProjectId: updatedChat.app.supabaseProjectId,
-            }));
+            // For local agent, we will explicitly fetch the database context when needed.
+            (settings.selectedChatMode === "local-agent"
+              ? ""
+              : await getSupabaseContext({
+                  supabaseProjectId: updatedChat.app.supabaseProjectId,
+                }));
         } else if (
           // Neon projects don't need Supabase.
           !updatedChat.app?.neonProjectId &&
@@ -985,6 +993,7 @@ This conversation includes one or more image attachments. When the user uploads 
         if (settings.selectedChatMode === "local-agent") {
           await handleLocalAgentStream(event, req, abortController, {
             placeholderMessageId: placeholderAssistantMessage.id,
+            systemPrompt,
           });
           return;
         }

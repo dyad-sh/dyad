@@ -17,6 +17,7 @@ export const addIntegrationTool: ToolDefinition<
     "Add an integration provider to the app (e.g., Supabase for auth, database, or server-side functions). Once you have called this tool, stop and do not call any more tools because you need to wait for the user to set up the integration.",
   inputSchema: addIntegrationSchema,
   defaultConsent: "always",
+  isEnabled: (ctx) => !ctx.supabaseProjectId,
 
   buildXml: (args, _isComplete) => {
     if (!args.provider) return undefined;

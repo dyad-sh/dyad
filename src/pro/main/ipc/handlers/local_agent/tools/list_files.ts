@@ -8,7 +8,8 @@ const listFilesSchema = z.object({
 
 export const listFilesTool: ToolDefinition<z.infer<typeof listFilesSchema>> = {
   name: "list_files",
-  description: "List all files in the application directory",
+  description:
+    "List all files in the application directory recursively. If you are not sure, list all files by omitting the directory parameter.",
   inputSchema: listFilesSchema,
   defaultConsent: "always",
 

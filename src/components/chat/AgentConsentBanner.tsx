@@ -13,12 +13,15 @@ interface AgentConsentBannerProps {
   consent: PendingAgentConsent;
   onDecision: (decision: "accept-once" | "accept-always" | "decline") => void;
   onClose: () => void;
+  /** Total number of consents in the queue */
+  queueTotal?: number;
 }
 
 export function AgentConsentBanner({
   consent,
   onDecision,
   onClose,
+  queueTotal = 1,
 }: AgentConsentBannerProps) {
   const { toolName, toolDescription, inputPreview } = consent;
 
@@ -60,6 +63,11 @@ export function AgentConsentBanner({
           <Bot className="w-4 h-4 text-muted-foreground flex-shrink-0" />
           <span className="text-sm font-medium">
             Allow <span className="font-mono">{toolName}</span> to run?
+            {queueTotal > 1 && (
+              <span className="ml-1.5 text-xs text-muted-foreground font-normal">
+                (1 of {queueTotal})
+              </span>
+            )}
           </span>
           {toolDescription && (
             <TooltipProvider>

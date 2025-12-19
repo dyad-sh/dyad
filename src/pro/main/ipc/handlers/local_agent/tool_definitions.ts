@@ -16,8 +16,14 @@ import { listFilesTool } from "./tools/list_files";
 import { getDatabaseSchemaTool } from "./tools/get_database_schema";
 import { setChatSummaryTool } from "./tools/set_chat_summary";
 import { addIntegrationTool } from "./tools/add_integration";
-import type { ToolDefinition, AgentContext } from "./tools/types";
+import {
+  escapeXmlAttr,
+  escapeXmlContent,
+  type ToolDefinition,
+  type AgentContext,
+} from "./tools/types";
 import type { AgentToolConsent } from "@/ipc/ipc_types";
+import { getSupabaseClientCode } from "@/supabase_admin/supabase_context";
 // Combined tool definitions array
 export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   writeFileTool,
@@ -117,6 +123,7 @@ export function getAllAgentToolConsents(): Record<
 export async function requireAgentToolConsent(
   event: IpcMainInvokeEvent,
   params: {
+    chatId: number;
     toolName: AgentToolName;
     toolDescription?: string | null;
     inputPreview?: string | null;
@@ -150,17 +157,77 @@ export async function requireAgentToolConsent(
 // ============================================================================
 
 /**
+ * Process placeholders in tool args (e.g. $$SUPABASE_CLIENT_CODE$$)
+ * Recursively processes all string values in the args object.
+ */
+async function processArgPlaceholders<T extends Record<string, any>>(
+  args: T,
+  ctx: AgentContext,
+): Promise<T> {
+  if (!ctx.supabaseProjectId) {
+    return args;
+  }
+
+  // Check if any string values contain the placeholder
+  const argsStr = JSON.stringify(args);
+  if (!argsStr.includes("$$SUPABASE_CLIENT_CODE$$")) {
+    return args;
+  }
+
+  // Fetch the replacement value once
+  const supabaseClientCode = await getSupabaseClientCode({
+    projectId: ctx.supabaseProjectId,
+  });
+
+  // Process all string values in args
+  const processValue = (value: any): any => {
+    if (typeof value === "string") {
+      return value.replace(/\$\$SUPABASE_CLIENT_CODE\$\$/g, supabaseClientCode);
+    }
+    if (Array.isArray(value)) {
+      return value.map(processValue);
+    }
+    if (value && typeof value === "object") {
+      const result: Record<string, any> = {};
+      for (const [k, v] of Object.entries(value)) {
+        result[k] = processValue(v);
+      }
+      return result;
+    }
+    return value;
+  };
+
+  return processValue(args) as T;
+}
+
+/**
  * Build ToolSet for AI SDK from tool definitions
  */
 export function buildAgentToolSet(ctx: AgentContext) {
   const toolSet: Record<string, any> = {};
 
   for (const tool of TOOL_DEFINITIONS) {
+    if (tool.isEnabled && !tool.isEnabled(ctx)) {
+      continue;
+    }
+
     toolSet[tool.name] = {
       description: tool.description,
       inputSchema: tool.inputSchema,
       execute: async (args: any) => {
-        return tool.execute(args, ctx);
+        try {
+          const processedArgs = await processArgPlaceholders(args, ctx);
+          return await tool.execute(processedArgs, ctx);
+        } catch (error) {
+          const errorMessage =
+            error instanceof Error ? error.message : String(error);
+          const errorStack =
+            error instanceof Error && error.stack ? error.stack : "";
+          ctx.onXmlComplete(
+            `<dyad-output type="error" message="Tool '${tool.name}' failed: ${escapeXmlAttr(errorMessage)}">${escapeXmlContent(errorStack || errorMessage)}</dyad-output>`,
+          );
+          throw error;
+        }
       },
     };
   }

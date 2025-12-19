@@ -80,12 +80,16 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
 
         {/* Content */}
         <div className="flex flex-1 overflow-hidden">
-          <div className="w-1/3 overflow-auto border-r">
+          <div className="w-1/3 border-r overflow-hidden flex flex-col min-h-0">
             <FileTree appId={app.id ?? null} files={app.files} />
           </div>
           <div className="w-2/3">
             {selectedFile ? (
-              <FileEditor appId={app.id ?? null} filePath={selectedFile.path} />
+              <FileEditor
+                appId={app.id ?? null}
+                filePath={selectedFile.path}
+                initialLine={selectedFile.line ?? null}
+              />
             ) : (
               <div className="text-center py-4 text-gray-500">
                 Select a file to view

@@ -68,8 +68,94 @@ import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils"
 import { AppSearchResult } from "@/lib/schemas";
 
 import { getAppPort } from "../../../shared/ports";
+import os from "node:os";
 
 const MAX_FILE_SEARCH_SIZE = 1024 * 1024;
+const RIPGREP_EXCLUDED_GLOBS = ["!node_modules/**", "!.git/**", "!.next/**"];
+
+// Replace node_modules.asar with node_modules.asar.unpacked for Electron packaged apps
+// This is necessary because native binaries are unpacked from the asar archive
+function getRgExecutablePath(): string {
+  const isWindows = os.platform() === "win32";
+  const executableName = isWindows ? "rg.exe" : "rg";
+  if (!app.isPackaged) {
+    // Dev: app.getAppPath() is the project root (same pattern as dugite)
+    return path.join(
+      app.getAppPath(),
+      "node_modules",
+      "@vscode",
+      "ripgrep",
+      "bin",
+      executableName,
+    );
+  }
+  // Packaged app: ripgrep is bundled via extraResource
+  // Since we extract "node_modules/@vscode/ripgrep", it's at resources/@vscode/ripgrep
+  return path.join(
+    process.resourcesPath,
+    "@vscode",
+    "ripgrep",
+    "bin",
+    executableName,
+  );
+}
+
+const logger = log.scope("app_handlers");
+const handle = createLoggedHandler(logger);
+
+function sanitizeSnippetText(text: string) {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Converts a byte offset in UTF-8 encoded string to a character index.
+ * Ripgrep provides byte offsets, but JavaScript strings use character indices.
+ * This handles multi-byte UTF-8 characters (emojis, CJK, accented characters) correctly.
+ */
+function byteOffsetToCharIndex(text: string, byteOffset: number): number {
+  // Cap the byte offset to the actual byte length of the string
+  const totalBytes = Buffer.from(text, "utf8").length;
+  const safeByteOffset = Math.min(byteOffset, totalBytes);
+
+  // Find the character index by checking byte counts at each position
+  // This correctly handles multi-byte characters
+  for (let i = 0; i <= text.length; i++) {
+    const bytesUpToIndex = Buffer.from(text.slice(0, i), "utf8").length;
+    if (bytesUpToIndex >= safeByteOffset) {
+      return i;
+    }
+  }
+
+  return text.length;
+}
+
+function buildSnippetFromMatch({
+  lineText,
+  start,
+  end,
+  lineNumber,
+}: {
+  lineText: string;
+  start: number;
+  end: number;
+  lineNumber: number;
+}): NonNullable<AppFileSearchResult["snippets"]>[number] {
+  const safeLine = lineText.replace(/\r?\n$/, "");
+  // Convert byte offsets to character indices for proper UTF-8 handling
+  const startChar = byteOffsetToCharIndex(safeLine, start);
+  const endChar = byteOffsetToCharIndex(safeLine, end);
+  const before = sanitizeSnippetText(safeLine.slice(0, startChar));
+  const match = sanitizeSnippetText(safeLine.slice(startChar, endChar));
+  const after = sanitizeSnippetText(safeLine.slice(endChar));
+
+  return {
+    before,
+    match,
+    after,
+    line: lineNumber,
+  };
+}
+
 function getDefaultCommand(appId: number): string {
   const port = getAppPort(appId);
   return `(pnpm install && pnpm run dev --port ${port}) || (npm install --legacy-peer-deps && npm run dev -- --port ${port})`;
@@ -96,9 +182,6 @@ async function copyDir(
     },
   });
 }
-
-const logger = log.scope("app_handlers");
-const handle = createLoggedHandler(logger);
 
 let proxyWorker: Worker | null = null;
 
@@ -587,6 +670,123 @@ async function stopDockerContainersOnPort(port: number): Promise<void> {
   } catch (e) {
     logger.warn(`Failed stopping Docker containers on port ${port}: ${e}`);
   }
+}
+
+async function searchAppFilesWithRipgrep({
+  appPath,
+  query,
+}: {
+  appPath: string;
+  query: string;
+}): Promise<AppFileSearchResult[]> {
+  return new Promise((resolve, reject) => {
+    const results = new Map<string, AppFileSearchResult>();
+    const args = [
+      "--json",
+      "--no-config",
+      "--ignore-case",
+      "--fixed-strings",
+      "--max-filesize",
+      `${MAX_FILE_SEARCH_SIZE}`,
+      ...RIPGREP_EXCLUDED_GLOBS.flatMap((glob) => ["--glob", glob]),
+      query,
+      ".",
+    ];
+
+    const rg = spawn(getRgExecutablePath(), args, { cwd: appPath });
+    let buffer = "";
+
+    rg.stdout.on("data", (data) => {
+      buffer += data.toString();
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const event = JSON.parse(line);
+          if (event.type !== "match" || !event.data) {
+            continue;
+          }
+
+          const matchPath = event.data.path?.text as string;
+          if (!matchPath) continue;
+
+          const absolutePath = path.isAbsolute(matchPath)
+            ? matchPath
+            : path.join(appPath, matchPath);
+          const relativePath = normalizePath(
+            path.relative(appPath, absolutePath),
+          );
+          if (relativePath.startsWith("..")) {
+            continue; // outside app directory
+          }
+
+          const lineText = event.data.lines?.text as string;
+          const lineNumber = event.data.line_number as number;
+          const submatch = event.data.submatches?.[0];
+          if (
+            typeof lineText !== "string" ||
+            typeof lineNumber !== "number" ||
+            !submatch
+          ) {
+            continue;
+          }
+
+          const snippet = buildSnippetFromMatch({
+            lineText,
+            start: submatch.start,
+            end: submatch.end,
+            lineNumber,
+          });
+
+          const existing = results.get(relativePath);
+          if (!existing) {
+            results.set(relativePath, {
+              path: relativePath,
+              matchesContent: true,
+              snippets: [snippet],
+            });
+          } else {
+            // Add snippet to existing result if it doesn't already exist (avoid duplicates)
+            if (!existing.snippets) {
+              existing.snippets = [];
+            }
+            // Only add if this line number isn't already in the snippets
+            const existingLine = existing.snippets.find(
+              (s) => s.line === snippet.line,
+            );
+            if (!existingLine) {
+              existing.snippets.push(snippet);
+            }
+          }
+        } catch (error) {
+          logger.warn("Failed to parse ripgrep output line:", line, error);
+        }
+      }
+    });
+
+    rg.stderr.on("data", (data) => {
+      const message = data.toString();
+      if (message.toLowerCase().includes("binary file skipped")) {
+        return;
+      }
+      logger.debug("ripgrep stderr:", message);
+    });
+
+    rg.on("close", (code) => {
+      // rg exits with code 1 when no matches are found; treat as success
+      if (code !== 0 && code !== 1) {
+        reject(new Error(`ripgrep exited with code ${code}`));
+        return;
+      }
+      resolve(Array.from(results.values()));
+    });
+
+    rg.on("error", (error) => {
+      reject(error);
+    });
+  });
 }
 
 export function registerAppHandlers() {
@@ -1610,64 +1810,13 @@ export function registerAppHandlers() {
 
       const appPath = getDyadAppPath(appRecord.path);
 
-      let files: string[] = [];
+      // Search file contents with ripgrep
+      const contentMatches = await searchAppFilesWithRipgrep({
+        appPath,
+        query: trimmedQuery,
+      });
 
-      try {
-        files = getFilesRecursively(appPath, appPath).map((path) =>
-          normalizePath(path),
-        );
-      } catch (error) {
-        logger.error(`Error reading files for app ${appId}:`, error);
-        throw new Error("Failed to read app files");
-      }
-
-      const lowerQuery = trimmedQuery.toLowerCase();
-      const results: AppFileSearchResult[] = [];
-
-      for (const relativePath of files) {
-        const fullPath = path.join(appPath, relativePath);
-        if (!fullPath.startsWith(appPath)) {
-          continue;
-        }
-
-        const matchesName = relativePath.toLowerCase().includes(lowerQuery);
-        let matchesContent = false;
-        let snippet: AppFileSearchResult["snippet"];
-
-        if (!matchesName && isSearchableFile(fullPath)) {
-          try {
-            const content = fs.readFileSync(fullPath, "utf-8");
-            if (!isLikelyTextFile(content)) {
-              continue;
-            }
-            const contentSnippet = getContentSnippet(
-              content,
-              trimmedQuery,
-              lowerQuery,
-            );
-            if (contentSnippet) {
-              matchesContent = true;
-              snippet = contentSnippet;
-            }
-          } catch (error) {
-            logger.warn(
-              `Failed to search file contents for ${relativePath}:`,
-              error,
-            );
-          }
-        }
-
-        if (matchesName || matchesContent) {
-          results.push({
-            path: normalizePath(relativePath),
-            matchesName,
-            matchesContent,
-            snippet,
-          });
-        }
-      }
-
-      return results;
+      return contentMatches;
     },
   );
 
@@ -1931,60 +2080,6 @@ export function registerAppHandlers() {
       });
     },
   );
-}
-
-function isSearchableFile(fullPath: string) {
-  try {
-    const stats = fs.statSync(fullPath);
-    if (!stats.isFile()) {
-      return false;
-    }
-    return stats.size <= MAX_FILE_SEARCH_SIZE;
-  } catch (error) {
-    logger.warn(`Skipping ${fullPath} while searching files:`, error);
-    return false;
-  }
-}
-
-function isLikelyTextFile(content: string) {
-  return !content.includes("\u0000");
-}
-
-function sanitizeSnippetText(text: string) {
-  return text.replace(/\s+/g, " ").trim();
-}
-
-function getContentSnippet(
-  content: string,
-  query: string,
-  lowerQuery: string,
-): AppFileSearchResult["snippet"] | null {
-  const lowerContent = content.toLowerCase();
-  const matchIndex = lowerContent.indexOf(lowerQuery);
-
-  if (matchIndex === -1) {
-    return null;
-  }
-
-  const radius = 80;
-  const start = Math.max(0, matchIndex - radius);
-  const end = Math.min(content.length, matchIndex + query.length + radius);
-  const beforeRaw = content.slice(start, matchIndex);
-  const match = content.slice(matchIndex, matchIndex + query.length);
-  const afterRaw = content.slice(matchIndex + query.length, end);
-
-  const before =
-    (start > 0 ? "..." : "") + sanitizeSnippetText(beforeRaw ?? "");
-  const after =
-    sanitizeSnippetText(afterRaw ?? "") + (end < content.length ? "..." : "");
-  const line = content.slice(0, matchIndex).split(/\r?\n/).length;
-
-  return {
-    before,
-    match,
-    after,
-    line,
-  };
 }
 
 function getCommand({

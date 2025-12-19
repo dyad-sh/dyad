@@ -1,5 +1,13 @@
-import React from "react";
-import { Folder, FolderOpen, Loader2, Search, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Folder,
+  FolderOpen,
+  Loader2,
+  Search,
+  X,
+} from "lucide-react";
 import { selectedFileAtom } from "@/atoms/viewAtoms";
 import { useSetAtom } from "jotai";
 import { Input } from "@/components/ui/input";
@@ -19,9 +27,9 @@ interface TreeNode {
 }
 
 const useDebouncedValue = <T,>(value: T, delay = 200) => {
-  const [debouncedValue, setDebouncedValue] = React.useState(value);
+  const [debouncedValue, setDebouncedValue] = useState(value);
 
-  React.useEffect(() => {
+  useEffect(() => {
     const handler = setTimeout(() => setDebouncedValue(value), delay);
     return () => clearTimeout(handler);
   }, [value, delay]);
@@ -92,8 +100,26 @@ const buildFileTree = (files: string[]): TreeNode[] => {
 
 // File tree component
 export const FileTree = ({ appId, files }: FileTreeProps) => {
-  const [searchValue, setSearchValue] = React.useState("");
-  const debouncedSearch = useDebouncedValue(searchValue, 250);
+  const [searchValue, setSearchValue] = useState("");
+  const prevAppIdRef = useRef<number | null>(appId);
+
+  // Reset search when appId changes to prevent unnecessary IPC calls with old search term
+  const effectiveSearchValue = useMemo(() => {
+    const appIdChanged = prevAppIdRef.current !== appId;
+    if (appIdChanged) {
+      prevAppIdRef.current = appId;
+      return "";
+    }
+    return searchValue;
+  }, [appId, searchValue]);
+  // Sync state with effective value when appId changes
+  useEffect(() => {
+    if (effectiveSearchValue === "" && searchValue !== "") {
+      setSearchValue("");
+    }
+  }, [effectiveSearchValue, searchValue]);
+
+  const debouncedSearch = useDebouncedValue(effectiveSearchValue, 250);
   const isSearchMode = debouncedSearch.trim().length > 0;
 
   const {
@@ -102,7 +128,7 @@ export const FileTree = ({ appId, files }: FileTreeProps) => {
     error: searchError,
   } = useSearchAppFiles(appId, debouncedSearch);
 
-  const matchesByPath = React.useMemo(() => {
+  const matchesByPath = useMemo(() => {
     const map = new Map<string, AppFileSearchResult>();
     for (const result of searchResults) {
       map.set(result.path, result);
@@ -110,17 +136,34 @@ export const FileTree = ({ appId, files }: FileTreeProps) => {
     return map;
   }, [searchResults]);
 
-  const visibleFiles = React.useMemo(() => {
+  const visibleFiles = useMemo(() => {
     if (!isSearchMode) {
       return files;
     }
     return files.filter((filePath) => matchesByPath.has(filePath));
   }, [files, isSearchMode, matchesByPath]);
 
-  const treeData = React.useMemo(
-    () => buildFileTree(visibleFiles),
-    [visibleFiles],
-  );
+  const treeData = useMemo(() => buildFileTree(visibleFiles), [visibleFiles]);
+
+  // In search mode, create a flat list of matching files with match counts
+  const searchResultsList = useMemo(() => {
+    if (!isSearchMode) {
+      return [];
+    }
+    return Array.from(matchesByPath.entries())
+      .map(([path, result]) => ({
+        path,
+        matchCount: result.snippets?.length ?? 0,
+        result,
+      }))
+      .sort((a, b) => {
+        // Sort by match count (descending), then by path (ascending)
+        if (b.matchCount !== a.matchCount) {
+          return b.matchCount - a.matchCount;
+        }
+        return a.path.localeCompare(b.path);
+      });
+  }, [isSearchMode, matchesByPath]);
 
   return (
     <div className="file-tree mt-2 flex h-full flex-col">
@@ -133,7 +176,7 @@ export const FileTree = ({ appId, files }: FileTreeProps) => {
           <Input
             value={searchValue}
             onChange={(event) => setSearchValue(event.target.value)}
-            placeholder="Search files or content"
+            placeholder="Search file contents"
             className="h-8 pl-7 pr-16 text-sm"
             data-testid="file-tree-search"
             disabled={!appId}
@@ -171,9 +214,23 @@ export const FileTree = ({ appId, files }: FileTreeProps) => {
             {searchError.message}
           </div>
         )}
-        {isSearchMode && !searchLoading && matchesByPath.size === 0 ? (
+        {isSearchMode &&
+        !searchLoading &&
+        !searchError &&
+        matchesByPath.size === 0 ? (
           <div className="px-3 py-2 text-xs text-muted-foreground">
             No files matched your search.
+          </div>
+        ) : isSearchMode ? (
+          <div className="px-2 py-1">
+            {searchResultsList.map(({ path, matchCount, result }) => (
+              <SearchResultItem
+                key={path}
+                path={path}
+                matchCount={matchCount}
+                result={result}
+              />
+            ))}
           </div>
         ) : (
           <TreeNodes
@@ -237,6 +294,86 @@ interface TreeNodeProps {
   searchQuery: string;
 }
 
+// Search result item component (flat list in search mode)
+interface SearchResultItemProps {
+  path: string;
+  matchCount: number;
+  result: AppFileSearchResult;
+}
+
+const SearchResultItem = ({
+  path,
+  matchCount,
+  result,
+}: SearchResultItemProps) => {
+  const setSelectedFile = useSetAtom(selectedFileAtom);
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  const handleFileClick = () => {
+    setIsExpanded(!isExpanded);
+  };
+
+  const handleSnippetClick = (line: number) => {
+    setSelectedFile({
+      path,
+      line,
+    });
+  };
+
+  return (
+    <div className="py-1">
+      <div
+        className="flex items-center rounded px-1.5 py-1 text-sm hover:bg-(--sidebar) cursor-pointer"
+        onClick={handleFileClick}
+      >
+        {/* Chevron */}
+        <span className="text-muted-foreground mr-1.5 flex-shrink-0">
+          {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </span>
+
+        {/* Path */}
+        <span className="truncate flex-1">{path}</span>
+
+        {/* Count badge (right-aligned, circular) */}
+        <span
+          className="
+      ml-auto
+      flex h-5 min-w-[1.25rem] items-center justify-center
+      rounded-full
+      bg-muted
+      text-xs font-medium
+      text-muted-foreground
+    "
+        >
+          {matchCount}
+        </span>
+      </div>
+
+      {isExpanded &&
+        result.snippets &&
+        result.snippets.length > 0 &&
+        result.snippets.map((snippet, index) => (
+          <div
+            key={`${snippet.line}-${index}`}
+            className="ml-12 mr-2 py-0.5 text-xs cursor-pointer hover:bg-muted/50 transition-colors"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleSnippetClick(snippet.line);
+            }}
+          >
+            <div className="font-mono text-[11px] leading-tight text-foreground truncate">
+              <span className="text-muted-foreground">{snippet.before}</span>
+              <mark className="bg-primary/20 text-foreground font-medium px-0.5 rounded">
+                {snippet.match}
+              </mark>
+              <span className="text-muted-foreground">{snippet.after}</span>
+            </div>
+          </div>
+        ))}
+    </div>
+  );
+};
+
 // Individual tree node component
 const TreeNode = ({
   node,
@@ -245,11 +382,11 @@ const TreeNode = ({
   isSearchMode,
   searchQuery,
 }: TreeNodeProps) => {
-  const [expanded, setExpanded] = React.useState(level < 2);
+  const [expanded, setExpanded] = useState(level < 2);
   const setSelectedFile = useSetAtom(selectedFileAtom);
   const match = isSearchMode ? matchesByPath.get(node.path) : undefined;
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (isSearchMode && node.isDirectory) {
       setExpanded(true);
     }
@@ -261,6 +398,7 @@ const TreeNode = ({
     } else {
       setSelectedFile({
         path: node.path,
+        line: match?.snippets?.[0]?.line ?? null,
       });
     }
   };
@@ -276,30 +414,35 @@ const TreeNode = ({
             {expanded ? <FolderOpen size={16} /> : <Folder size={16} />}
           </span>
         )}
-        <span className="truncate">
+        <span className="truncate flex-1">
           {isSearchMode ? highlightMatch(node.name, searchQuery) : node.name}
         </span>
-        {match && match.matchesContent && (
-          <span className="ml-2 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] uppercase text-primary">
-            content
-          </span>
-        )}
       </div>
 
-      {match?.matchesContent && match.snippet && (
-        <div className="ml-6 mr-2 mt-1 border-l pl-2 text-xs text-muted-foreground">
-          <div className="font-mono text-[10px] uppercase tracking-wide text-primary">
-            line {match.snippet.line}
+      {match?.matchesContent &&
+        match.snippets &&
+        match.snippets.length > 0 &&
+        match.snippets.map((snippet, index) => (
+          <div
+            key={`${snippet.line}-${index}`}
+            className="ml-6 mr-2 py-0.5 text-xs cursor-pointer hover:bg-muted/50 transition-colors"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedFile({
+                path: node.path,
+                line: snippet.line,
+              });
+            }}
+          >
+            <div className="font-mono text-[11px] leading-tight text-foreground truncate">
+              <span className="text-muted-foreground">{snippet.before}</span>
+              <mark className="bg-primary/20 text-foreground font-medium px-0.5 rounded">
+                {snippet.match}
+              </mark>
+              <span className="text-muted-foreground">{snippet.after}</span>
+            </div>
           </div>
-          <div className="line-clamp-2 leading-relaxed">
-            {match.snippet.before}
-            <mark className="bg-transparent text-foreground underline decoration-primary">
-              {match.snippet.match}
-            </mark>
-            {match.snippet.after}
-          </div>
-        </div>
-      )}
+        ))}
 
       {node.isDirectory && expanded && node.children.length > 0 && (
         <TreeNodes

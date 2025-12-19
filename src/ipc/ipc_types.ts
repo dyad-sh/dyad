@@ -138,14 +138,13 @@ export interface App {
 
 export interface AppFileSearchResult {
   path: string;
-  matchesName: boolean;
   matchesContent: boolean;
-  snippet?: {
+  snippets?: Array<{
     before: string;
     match: string;
     after: string;
     line: number;
-  };
+  }>;
 }
 
 export interface Version {

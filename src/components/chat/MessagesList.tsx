@@ -2,7 +2,6 @@ import type React from "react";
 import type { Message } from "@/ipc/ipc_types";
 import { forwardRef, useState, useRef, useCallback } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
-import { motion } from "framer-motion";
 import ChatMessage from "./ChatMessage";
 import { OpenRouterSetupBanner, SetupBanner } from "../SetupBanner";
 
@@ -314,17 +313,10 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
             !settings?.enableDyadPro &&
             !userBudget &&
             messages.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.3, ease: "easeOut" }}
-              >
-                <PromoMessage
-                  seed={messages.length * (appId ?? 1) * (selectedChatId ?? 1)}
-                />
-              </motion.div>
+              <PromoMessage
+                seed={messages.length * (appId ?? 1) * (selectedChatId ?? 1)}
+              />
             )}
-
           <div ref={messagesEndRef} />
           {renderSetupBanner()}
         </div>

@@ -286,10 +286,7 @@ export const Console = () => {
               isScrolling={(scrolling) => {
                 setIsScrolling(scrolling);
               }}
-              // Overscan: render additional items beyond viewport for smoother scrolling
-              // main: items ahead in scroll direction, reverse: items behind
-              overscan={{ main: 600, reverse: 200 }}
-              increaseViewportBy={{ top: 400, bottom: 400 }}
+              increaseViewportBy={{ top: 500, bottom: 500 }}
               // Configure scroll seek placeholders for fast scrolling
               scrollSeekConfiguration={{
                 enter: (velocity) => Math.abs(velocity) > 1000,

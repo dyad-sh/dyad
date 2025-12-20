@@ -95,17 +95,17 @@ export const ConsoleEntryComponent = (props: ConsoleEntryProps) => {
         >
           {formatTimestamp(timestamp)}
         </span>
-        {typeFilter == "all" && type && (
-          <span className="text-purple-500 shrink-0 text-[10px] px-1 py-0.5 bg-gray-200 dark:bg-gray-700 rounded">
-            {type}
-          </span>
-        )}
-        {sourceName && (
-          <span className="text-gray-500 shrink-0 text-[10px] px-1 py-0.5 bg-gray-200 dark:bg-gray-700 rounded">
-            {sourceName}
-          </span>
-        )}
         <span className="flex-1 whitespace-pre-wrap break-all">
+          {sourceName && (
+            <span className="text-gray-500 shrink-0 text-[10px] px-1 py-0.5 mr-2 bg-gray-200 dark:bg-gray-700 rounded">
+              {sourceName}
+            </span>
+          )}
+          {typeFilter == "all" && type && (
+            <span className="text-purple-500 shrink-0 text-[10px] px-1 py-0.5 mr-2 bg-gray-200 dark:bg-gray-700 rounded">
+              {type}
+            </span>
+          )}
           {displayMessage}
           {isTruncated && (
             <button

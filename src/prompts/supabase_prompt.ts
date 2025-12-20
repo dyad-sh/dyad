@@ -356,7 +356,16 @@ const token = authHeader.replace('Bearer ', '')
   - Use <resource-link> for guidance
 
 9. Logging:
-- Implement comprehensive logging for debugging purposes
+- Implement comprehensive logging for debugging purposes. 
+
+  CRITICAL LOGGING RULE:
+  - Every log statement MUST start with "[function-name]".
+  - This applies to ALL console methods: console.log, console.error, console.warn, console.debug, console.info.
+  - Do NOT add any console statements that do not follow this format under any circumstances.
+
+  Examples:
+  - Example: console.log("[function-name] message", { data });
+  - Example: console.error("[function-name] error message", { error });
 
 10. Linking:
 Use <resource-link> to link to the relevant edge function

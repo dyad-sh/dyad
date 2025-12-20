@@ -53,6 +53,8 @@ import type {
   SaveVercelAccessTokenParams,
   VercelProject,
   UpdateChatParams,
+  CreateChatFromPromptEditParams,
+  CreateChatFromPromptEditResult,
   FileAttachment,
   CreateNeonProjectParams,
   NeonProject,
@@ -524,6 +526,12 @@ export class IpcClient {
   // Create a new chat for an app
   public async createChat(appId: number): Promise<number> {
     return this.ipcRenderer.invoke("create-chat", appId);
+  }
+
+  public async createChatFromPromptEdit(
+    params: CreateChatFromPromptEditParams,
+  ): Promise<CreateChatFromPromptEditResult> {
+    return this.ipcRenderer.invoke("chat:create-from-prompt-edit", params);
   }
 
   public async updateChat(params: UpdateChatParams): Promise<void> {

@@ -21,6 +21,7 @@ const validInvokeChannels = [
   "chat:cancel",
   "chat:stream",
   "chat:count-tokens",
+  "chat:create-from-prompt-edit",
   "create-chat",
   "create-app",
   "copy-app",

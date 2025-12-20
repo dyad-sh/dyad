@@ -14,6 +14,8 @@ import {
   Check,
   Info,
   Bot,
+  Loader2,
+  Pencil,
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 import { useVersions } from "@/hooks/useVersions";
@@ -27,6 +29,11 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "../ui/tooltip";
+import { Button } from "../ui/button";
+import { Textarea } from "../ui/textarea";
+import { IpcClient } from "@/ipc/ipc_client";
+import { useNavigate } from "@tanstack/react-router";
+import { showInfo, showError } from "@/lib/toast";
 
 interface ChatMessageProps {
   message: Message;
@@ -34,9 +41,52 @@ interface ChatMessageProps {
 }
 
 const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
-  const { isStreaming } = useStreamChat();
+  const { streamMessage, isStreaming } = useStreamChat();
   const appId = useAtomValue(selectedAppIdAtom);
   const { versions: liveVersions } = useVersions(appId);
+
+  //handle prompt edit start
+  const [isEditing, setIsEditing] = useState(false);
+  const [editContent, setEditContent] = useState(message.content);
+  const [isSaving, setIsSaving] = useState(false);
+  const selectedChatId = message.chatId;
+  const navigate = useNavigate();
+  const handleSaveEdit = async () => {
+    if (
+      !selectedChatId ||
+      !appId ||
+      !message.id ||
+      editContent.trim() === message.content.trim()
+    ) {
+      setIsEditing(false);
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      // Update message in backend
+      const result = await IpcClient.getInstance().createChatFromPromptEdit({
+        appId,
+        chatId: selectedChatId,
+        messageId: message.id,
+      });
+      showInfo(
+        "A new chat will continue from this edited prompt with earlier history.",
+      );
+      await navigate({ to: "/chat", search: { id: result.chatId } });
+      await streamMessage({
+        prompt: editContent.trim(),
+        chatId: result.chatId,
+      });
+      setIsEditing(false);
+    } catch (error) {
+      showError;
+      "Failed to save edit: " + (error as Error).message;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+  //handle prompt edit end
   //handle copy chat
   const { copyMessageContent, copied } = useCopyToClipboard();
   const handleCopyFormatted = async () => {
@@ -96,10 +146,71 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
             message.role === "assistant" ? "" : "ml-24 bg-(--sidebar-accent)"
           }`}
         >
-          {message.role === "assistant" &&
-          !message.content &&
-          isStreaming &&
-          isLastMessage ? (
+          {isEditing ? (
+            <div className="flex flex-col gap-2">
+              <Textarea
+                data-testid="chat-message-edit-textarea"
+                className="w-full p-2 border rounded-md"
+                value={editContent}
+                autoFocus
+                onChange={(event) => setEditContent(event.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    setEditContent(message.content.trim());
+                    setIsEditing(false);
+                  }
+                  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                    e.preventDefault();
+                    handleSaveEdit();
+                  }
+                }}
+              />
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs text-muted-foreground">
+                  A new chat will be created with history up to this prompt.
+                </span>
+
+                <div className="flex gap-2">
+                  <Button
+                    className="px-2 py-1"
+                    size="sm"
+                    variant="ghost"
+                    type="button"
+                    onClick={() => {
+                      setEditContent(message.content.trim());
+                      setIsEditing(false);
+                    }}
+                    disabled={isSaving}
+                  >
+                    Cancel
+                  </Button>
+
+                  <Button
+                    className="px-2 py-1"
+                    size="sm"
+                    type="button"
+                    onClick={handleSaveEdit}
+                    disabled={
+                      isSaving ||
+                      !editContent.trim() ||
+                      editContent.trim() === message.content.trim()
+                    }
+                  >
+                    {isSaving ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      "Save"
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : message.role === "assistant" &&
+            !message.content &&
+            isStreaming &&
+            isLastMessage ? (
             <div className="flex h-6 items-center space-x-2 p-2">
               <motion.div
                 className="h-3 w-3 rounded-full bg-(--primary) dark:bg-blue-500"
@@ -215,6 +326,44 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
             </div>
           ) : null}
         </div>
+
+        {!isEditing && message.role === "user" && (
+          <div className="flex items-center justify-end space-x-2 text-xs mt-1">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={handleCopyFormatted}
+                    className="flex items-center space-x-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
+                  >
+                    {copied ? (
+                      <Check className="h-4 w-4 text-green-500" />
+                    ) : (
+                      <Copy className="h-4 w-4" />
+                    )}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>{copied ? "Copied!" : "Copy"}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    className="flex items-center space-x-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
+                    onClick={() => setIsEditing(true)}
+                    disabled={isStreaming}
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Edit Message</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+        )}
+
         {/* Timestamp and commit info for assistant messages - only visible on hover */}
         {message.role === "assistant" && message.createdAt && (
           <div className="mt-1 flex flex-wrap items-center justify-start space-x-2 text-xs text-gray-500 dark:text-gray-400 ">

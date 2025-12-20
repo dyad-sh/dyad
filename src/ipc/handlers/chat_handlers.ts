@@ -113,33 +113,40 @@ export function registerChatHandlers() {
         }
       }
 
-      const [newChat] = await db
-        .insert(chats)
-        .values({
-          appId,
-          initialCommitHash,
-        })
-        .returning();
+      const { newChat, messagesToCopy } = db.transaction((tx) => {
+        const [newChat] = tx
+          .insert(chats)
+          .values({
+            appId,
+            initialCommitHash,
+          })
+          .returning()
+          .all();
 
-      const messagesToCopy = chat.messages.slice(0, targetIndex);
+        const messagesToCopy = chat.messages.slice(0, targetIndex);
 
-      if (messagesToCopy.length) {
-        await db.insert(messages).values(
-          messagesToCopy.map((message) => ({
-            chatId: newChat.id,
-            role: message.role,
-            content: message.content,
-            approvalState: message.approvalState,
-            sourceCommitHash: message.sourceCommitHash,
-            commitHash: message.commitHash,
-            requestId: message.requestId,
-            maxTokensUsed: message.maxTokensUsed,
-            createdAt: message.createdAt
-              ? new Date(message.createdAt)
-              : undefined,
-          })),
-        );
-      }
+        if (messagesToCopy.length) {
+          tx.insert(messages)
+            .values(
+              messagesToCopy.map((message) => ({
+                chatId: newChat.id,
+                role: message.role,
+                content: message.content,
+                approvalState: message.approvalState,
+                sourceCommitHash: message.sourceCommitHash,
+                commitHash: message.commitHash,
+                requestId: message.requestId,
+                maxTokensUsed: message.maxTokensUsed,
+                createdAt: message.createdAt
+                  ? new Date(message.createdAt)
+                  : undefined,
+              })),
+            )
+            .run();
+        }
+
+        return { newChat, messagesToCopy };
+      });
 
       logger.info(
         "Created chat from prompt edit",

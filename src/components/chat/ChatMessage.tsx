@@ -80,8 +80,7 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
       });
       setIsEditing(false);
     } catch (error) {
-      showError;
-      "Failed to save edit: " + (error as Error).message;
+      showError("Failed to save edit: " + (error as Error).message);
     } finally {
       setIsSaving(false);
     }

@@ -1,5 +1,5 @@
 import { db } from "../../db";
-import { apps, messages, versions } from "../../db/schema";
+import { apps, chats, messages, versions } from "../../db/schema";
 import { desc, eq, and, gt } from "drizzle-orm";
 import type {
   Version,
@@ -209,29 +209,43 @@ export function registerVersionHandlers() {
 
         // If we found a message with this commit hash, delete all subsequent messages (but keep this message)
         if (messageWithCommit) {
-          const chatId = messageWithCommit.chatId;
-
-          // Find all messages in this chat with IDs > the one with our commit hash
+          // Find all messages with IDs > the one with our commit hash
           const messagesToDelete = await db.query.messages.findMany({
-            where: and(
-              eq(messages.chatId, chatId),
-              gt(messages.id, messageWithCommit.id),
-            ),
+            where: gt(messages.id, messageWithCommit.id),
             orderBy: desc(messages.id),
           });
 
           logger.log(
-            `Deleting ${messagesToDelete.length} messages after commit ${previousVersionId} from chat ${chatId}`,
+            `Deleting ${messagesToDelete.length} messages after commit ${previousVersionId}`,
           );
 
           // Delete the messages
           if (messagesToDelete.length > 0) {
             await db
               .delete(messages)
+              .where(gt(messages.id, messageWithCommit.id));
+          }
+
+          // Find all the chats that were created after the message with our commit hash
+          const chatsToDelete = await db.query.chats.findMany({
+            where: and(
+              eq(chats.appId, appId),
+              gt(chats.createdAt, messageWithCommit.createdAt),
+            ),
+          });
+
+          logger.log(
+            `Deleting ${chatsToDelete.length} chats after commit ${previousVersionId}`,
+          );
+
+          // Deleting chats
+          if (chatsToDelete.length > 0) {
+            await db
+              .delete(chats)
               .where(
                 and(
-                  eq(messages.chatId, chatId),
-                  gt(messages.id, messageWithCommit.id),
+                  eq(chats.appId, appId),
+                  gt(chats.createdAt, messageWithCommit.createdAt),
                 ),
               );
           }

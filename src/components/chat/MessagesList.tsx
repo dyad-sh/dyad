@@ -1,7 +1,7 @@
-import type React from "react";
+import React from "react";
 import type { Message } from "@/ipc/ipc_types";
-import { forwardRef, useState, useRef, useCallback } from "react";
-import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
+import { forwardRef, useState, useCallback, useMemo } from "react";
+import { Virtuoso } from "react-virtuoso";
 import ChatMessage from "./ChatMessage";
 import { OpenRouterSetupBanner, SetupBanner } from "../SetupBanner";
 
@@ -27,27 +27,286 @@ interface MessagesListProps {
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
 }
 
+// Memoize ChatMessage at module level to prevent recreation on every render
+const MemoizedChatMessage = React.memo(ChatMessage);
+
+// Context type for Virtuoso
+interface FooterContext {
+  messages: Message[];
+  messagesEndRef: React.RefObject<HTMLDivElement | null>;
+  isStreaming: boolean;
+  tokenCountResult: ReturnType<typeof useCountTokens>["result"];
+  isUndoLoading: boolean;
+  isRetryLoading: boolean;
+  setIsUndoLoading: (loading: boolean) => void;
+  setIsRetryLoading: (loading: boolean) => void;
+  versions: ReturnType<typeof useVersions>["versions"];
+  revertVersion: ReturnType<typeof useVersions>["revertVersion"];
+  streamMessage: ReturnType<typeof useStreamChat>["streamMessage"];
+  selectedChatId: number | null;
+  appId: number | null;
+  setMessagesById: ReturnType<typeof useSetAtom<typeof chatMessagesByIdAtom>>;
+  settings: ReturnType<typeof useSettings>["settings"];
+  userBudget: ReturnType<typeof useUserBudgetInfo>["userBudget"];
+  renderSetupBanner: () => React.ReactNode;
+}
+
+// Footer component for Virtuoso - receives context via props
+const FooterComponent = forwardRef<HTMLDivElement, { context?: FooterContext }>(
+  function Footer({ context }, ref) {
+    if (!context) return null;
+
+    const {
+      messages,
+      messagesEndRef,
+      isStreaming,
+      tokenCountResult,
+      isUndoLoading,
+      isRetryLoading,
+      setIsUndoLoading,
+      setIsRetryLoading,
+      versions,
+      revertVersion,
+      streamMessage,
+      selectedChatId,
+      appId,
+      setMessagesById,
+      settings,
+      userBudget,
+      renderSetupBanner,
+    } = context;
+
+    return (
+      <div ref={ref} className="px-4 pt-2 pointer-events-none">
+        {/* Show context limit banner when close to token limit */}
+        {!isStreaming && tokenCountResult && (
+          <ContextLimitBanner
+            totalTokens={tokenCountResult.actualMaxTokens}
+            contextWindow={tokenCountResult.contextWindow}
+          />
+        )}
+
+        {!isStreaming && (
+          <div className="flex max-w-3xl mx-auto gap-2 pointer-events-auto">
+            {!!messages.length &&
+              messages[messages.length - 1].role === "assistant" &&
+              messages[messages.length - 1].commitHash && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={isUndoLoading}
+                  onClick={async () => {
+                    if (!selectedChatId || !appId) {
+                      console.error("No chat selected or app ID not available");
+                      return;
+                    }
+
+                    setIsUndoLoading(true);
+                    try {
+                      if (messages.length >= 3) {
+                        const previousAssistantMessage =
+                          messages[messages.length - 3];
+                        if (
+                          previousAssistantMessage?.role === "assistant" &&
+                          previousAssistantMessage?.commitHash
+                        ) {
+                          console.debug(
+                            "Reverting to previous assistant version",
+                          );
+                          await revertVersion({
+                            versionId: previousAssistantMessage.commitHash,
+                          });
+                          const chat =
+                            await IpcClient.getInstance().getChat(
+                              selectedChatId,
+                            );
+                          setMessagesById((prev) => {
+                            const next = new Map(prev);
+                            next.set(selectedChatId, chat.messages);
+                            return next;
+                          });
+                        }
+                      } else {
+                        const chat =
+                          await IpcClient.getInstance().getChat(selectedChatId);
+                        if (chat.initialCommitHash) {
+                          await revertVersion({
+                            versionId: chat.initialCommitHash,
+                          });
+                          try {
+                            await IpcClient.getInstance().deleteMessages(
+                              selectedChatId,
+                            );
+                            setMessagesById((prev) => {
+                              const next = new Map(prev);
+                              next.set(selectedChatId, []);
+                              return next;
+                            });
+                          } catch (err) {
+                            showError(err);
+                          }
+                        } else {
+                          showWarning(
+                            "No initial commit hash found for chat. Need to manually undo code changes",
+                          );
+                        }
+                      }
+                    } catch (error) {
+                      console.error("Error during undo operation:", error);
+                      showError("Failed to undo changes");
+                    } finally {
+                      setIsUndoLoading(false);
+                    }
+                  }}
+                >
+                  {isUndoLoading ? (
+                    <Loader2 size={16} className="mr-1 animate-spin" />
+                  ) : (
+                    <Undo size={16} />
+                  )}
+                  Undo
+                </Button>
+              )}
+            {!!messages.length && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isRetryLoading}
+                onClick={async () => {
+                  if (!selectedChatId) {
+                    console.error("No chat selected");
+                    return;
+                  }
+
+                  setIsRetryLoading(true);
+                  try {
+                    // The last message is usually an assistant, but it might not be.
+                    const lastVersion = versions[0];
+                    const lastMessage = messages[messages.length - 1];
+                    let shouldRedo = true;
+                    if (
+                      lastVersion.oid === lastMessage.commitHash &&
+                      lastMessage.role === "assistant"
+                    ) {
+                      const previousAssistantMessage =
+                        messages[messages.length - 3];
+                      if (
+                        previousAssistantMessage?.role === "assistant" &&
+                        previousAssistantMessage?.commitHash
+                      ) {
+                        console.debug(
+                          "Reverting to previous assistant version",
+                        );
+                        await revertVersion({
+                          versionId: previousAssistantMessage.commitHash,
+                        });
+                        shouldRedo = false;
+                      } else {
+                        const chat =
+                          await IpcClient.getInstance().getChat(selectedChatId);
+                        if (chat.initialCommitHash) {
+                          console.debug(
+                            "Reverting to initial commit hash",
+                            chat.initialCommitHash,
+                          );
+                          await revertVersion({
+                            versionId: chat.initialCommitHash,
+                          });
+                        } else {
+                          showWarning(
+                            "No initial commit hash found for chat. Need to manually undo code changes",
+                          );
+                        }
+                      }
+                    }
+
+                    // Find the last user message
+                    const lastUserMessage = [...messages]
+                      .reverse()
+                      .find((message) => message.role === "user");
+                    if (!lastUserMessage) {
+                      console.error("No user message found");
+                      return;
+                    }
+                    // Need to do a redo, if we didn't delete the message from a revert.
+                    const redo = shouldRedo;
+                    console.debug("Streaming message with redo", redo);
+
+                    streamMessage({
+                      prompt: lastUserMessage.content,
+                      chatId: selectedChatId,
+                      redo,
+                    });
+                  } catch (error) {
+                    console.error("Error during retry operation:", error);
+                    showError("Failed to retry message");
+                  } finally {
+                    setIsRetryLoading(false);
+                  }
+                }}
+              >
+                {isRetryLoading ? (
+                  <Loader2 size={16} className="mr-1 animate-spin" />
+                ) : (
+                  <RefreshCw size={16} />
+                )}
+                Retry
+              </Button>
+            )}
+          </div>
+        )}
+
+        {isStreaming &&
+          !settings?.enableDyadPro &&
+          !userBudget &&
+          messages.length > 0 && (
+            <PromoMessage
+              seed={messages.length * (appId ?? 1) * (selectedChatId ?? 1)}
+            />
+          )}
+        <div ref={messagesEndRef} />
+        <div className="pointer-events-auto">{renderSetupBanner()}</div>
+      </div>
+    );
+  },
+);
+
 export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
   function MessagesList({ messages, messagesEndRef }, ref) {
     const appId = useAtomValue(selectedAppIdAtom);
     const { versions, revertVersion } = useVersions(appId);
     const { streamMessage, isStreaming } = useStreamChat();
     const { isAnyProviderSetup, isProviderSetup } = useLanguageModelProviders();
-    const { settings } = useSettings();
+    const { settings, envVars } = useSettings();
     const setMessagesById = useSetAtom(chatMessagesByIdAtom);
     const [isUndoLoading, setIsUndoLoading] = useState(false);
     const [isRetryLoading, setIsRetryLoading] = useState(false);
     const selectedChatId = useAtomValue(selectedChatIdAtom);
     const { userBudget } = useUserBudgetInfo();
-    const virtuosoRef = useRef<VirtuosoHandle>(null);
 
+    // Virtualization only renders visible DOM elements, which creates issues for E2E tests:
+    // 1. Off-screen logs don't exist in the DOM and can't be queried by test selectors
+    // 2. Tests would need complex scrolling logic to bring elements into view before interaction
+    // 3. Race conditions and timing issues occur when waiting for virtualized elements to render after scrolling
+    // E2E_TEST_BUILD is passed from main process via IPC (envVarsAtom)
+    const isTestMode = envVars.E2E_TEST_BUILD === "true";
     // Only fetch token count when not streaming
     const { result: tokenCountResult } = useCountTokens(
       !isStreaming ? selectedChatId : null,
       "",
     );
 
-    const renderSetupBanner = () => {
+    // Wrap state setters in useCallback to stabilize references
+    const handleSetIsUndoLoading = useCallback((loading: boolean) => {
+      setIsUndoLoading(loading);
+    }, []);
+
+    const handleSetIsRetryLoading = useCallback((loading: boolean) => {
+      setIsRetryLoading(loading);
+    }, []);
+
+    // Stabilize renderSetupBanner with proper dependencies
+    const renderSetupBanner = useCallback(() => {
       const selectedModel = settings?.selectedModel;
       if (
         selectedModel?.name === "free" &&
@@ -60,22 +319,72 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         return <SetupBanner />;
       }
       return null;
-    };
+    }, [
+      settings?.selectedModel?.name,
+      settings?.selectedModel?.provider,
+      isProviderSetup,
+      isAnyProviderSetup,
+    ]);
 
     // Memoized item renderer for virtualized list
+    // Empty dependency array - Virtuoso handles updates internally
     const itemContent = useCallback(
       (index: number, message: Message) => {
         const isLastMessage = index === messages.length - 1;
-        // Use message.id for stable key if available, otherwise fall back to index
-        const messageKey = message.id || index;
+        const messageKey = message.id;
 
         return (
           <div className="px-4" key={messageKey}>
-            <ChatMessage message={message} isLastMessage={isLastMessage} />
+            <MemoizedChatMessage
+              message={message}
+              isLastMessage={isLastMessage}
+            />
           </div>
         );
       },
       [messages.length],
+    );
+
+    // Create context object for Footer component with stable references
+    const footerContext = useMemo<FooterContext>(
+      () => ({
+        messages,
+        messagesEndRef,
+        isStreaming,
+        tokenCountResult,
+        isUndoLoading,
+        isRetryLoading,
+        setIsUndoLoading: handleSetIsUndoLoading,
+        setIsRetryLoading: handleSetIsRetryLoading,
+        versions,
+        revertVersion,
+        streamMessage,
+        selectedChatId,
+        appId,
+        setMessagesById,
+        settings,
+        userBudget,
+        renderSetupBanner,
+      }),
+      [
+        messages,
+        messagesEndRef,
+        isStreaming,
+        tokenCountResult,
+        isUndoLoading,
+        isRetryLoading,
+        handleSetIsUndoLoading,
+        handleSetIsRetryLoading,
+        versions,
+        revertVersion,
+        streamMessage,
+        selectedChatId,
+        appId,
+        setMessagesById,
+        settings,
+        userBudget,
+        renderSetupBanner,
+      ],
     );
 
     // Render empty state or setup banner
@@ -107,219 +416,46 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
       );
     }
 
+    // In test mode, render all messages without virtualization
+    // so E2E tests can query all messages in the DOM
+    if (isTestMode) {
+      return (
+        <div
+          className="absolute inset-0 p-4 overflow-y-auto"
+          ref={ref}
+          data-testid="messages-list"
+        >
+          {messages.map((message, index) => {
+            const isLastMessage = index === messages.length - 1;
+            return (
+              <div className="px-4" key={message.id}>
+                <MemoizedChatMessage
+                  message={message}
+                  isLastMessage={isLastMessage}
+                />
+              </div>
+            );
+          })}
+          <FooterComponent context={footerContext} />
+        </div>
+      );
+    }
+
     return (
       <div
         className="absolute inset-0 p-4"
         ref={ref}
         data-testid="messages-list"
       >
-        <div className="h-full pb-[30px]">
-          <Virtuoso
-            ref={virtuosoRef}
-            data={messages}
-            increaseViewportBy={{ top: 1000, bottom: 1000 }}
-            initialTopMostItemIndex={messages.length - 1}
-            itemContent={itemContent}
-          />
-        </div>
-
-        {/* Footer content - positioned absolutely at bottom */}
-        <div className="absolute px-4 pt-2 bottom-0 left-0 right-0 pointer-events-none bg-background/95 backdrop-blur-sm">
-          {/* Show context limit banner when close to token limit */}
-          {!isStreaming && tokenCountResult && (
-            <ContextLimitBanner
-              totalTokens={tokenCountResult.actualMaxTokens}
-              contextWindow={tokenCountResult.contextWindow}
-            />
-          )}
-
-          {!isStreaming && (
-            <div className="flex max-w-3xl mx-auto gap-2">
-              {!!messages.length &&
-                messages[messages.length - 1].role === "assistant" &&
-                messages[messages.length - 1].commitHash && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={isUndoLoading}
-                    onClick={async () => {
-                      if (!selectedChatId || !appId) {
-                        console.error(
-                          "No chat selected or app ID not available",
-                        );
-                        return;
-                      }
-
-                      setIsUndoLoading(true);
-                      try {
-                        if (messages.length >= 3) {
-                          const previousAssistantMessage =
-                            messages[messages.length - 3];
-                          if (
-                            previousAssistantMessage?.role === "assistant" &&
-                            previousAssistantMessage?.commitHash
-                          ) {
-                            console.debug(
-                              "Reverting to previous assistant version",
-                            );
-                            await revertVersion({
-                              versionId: previousAssistantMessage.commitHash,
-                            });
-                            const chat =
-                              await IpcClient.getInstance().getChat(
-                                selectedChatId,
-                              );
-                            setMessagesById((prev) => {
-                              const next = new Map(prev);
-                              next.set(selectedChatId, chat.messages);
-                              return next;
-                            });
-                          }
-                        } else {
-                          const chat =
-                            await IpcClient.getInstance().getChat(
-                              selectedChatId,
-                            );
-                          if (chat.initialCommitHash) {
-                            await revertVersion({
-                              versionId: chat.initialCommitHash,
-                            });
-                            try {
-                              await IpcClient.getInstance().deleteMessages(
-                                selectedChatId,
-                              );
-                              setMessagesById((prev) => {
-                                const next = new Map(prev);
-                                next.set(selectedChatId, []);
-                                return next;
-                              });
-                            } catch (err) {
-                              showError(err);
-                            }
-                          } else {
-                            showWarning(
-                              "No initial commit hash found for chat. Need to manually undo code changes",
-                            );
-                          }
-                        }
-                      } catch (error) {
-                        console.error("Error during undo operation:", error);
-                        showError("Failed to undo changes");
-                      } finally {
-                        setIsUndoLoading(false);
-                      }
-                    }}
-                  >
-                    {isUndoLoading ? (
-                      <Loader2 size={16} className="mr-1 animate-spin" />
-                    ) : (
-                      <Undo size={16} />
-                    )}
-                    Undo
-                  </Button>
-                )}
-              {!!messages.length && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={isRetryLoading}
-                  onClick={async () => {
-                    if (!selectedChatId) {
-                      console.error("No chat selected");
-                      return;
-                    }
-
-                    setIsRetryLoading(true);
-                    try {
-                      // The last message is usually an assistant, but it might not be.
-                      const lastVersion = versions[0];
-                      const lastMessage = messages[messages.length - 1];
-                      let shouldRedo = true;
-                      if (
-                        lastVersion.oid === lastMessage.commitHash &&
-                        lastMessage.role === "assistant"
-                      ) {
-                        const previousAssistantMessage =
-                          messages[messages.length - 3];
-                        if (
-                          previousAssistantMessage?.role === "assistant" &&
-                          previousAssistantMessage?.commitHash
-                        ) {
-                          console.debug(
-                            "Reverting to previous assistant version",
-                          );
-                          await revertVersion({
-                            versionId: previousAssistantMessage.commitHash,
-                          });
-                          shouldRedo = false;
-                        } else {
-                          const chat =
-                            await IpcClient.getInstance().getChat(
-                              selectedChatId,
-                            );
-                          if (chat.initialCommitHash) {
-                            console.debug(
-                              "Reverting to initial commit hash",
-                              chat.initialCommitHash,
-                            );
-                            await revertVersion({
-                              versionId: chat.initialCommitHash,
-                            });
-                          } else {
-                            showWarning(
-                              "No initial commit hash found for chat. Need to manually undo code changes",
-                            );
-                          }
-                        }
-                      }
-
-                      // Find the last user message
-                      const lastUserMessage = [...messages]
-                        .reverse()
-                        .find((message) => message.role === "user");
-                      if (!lastUserMessage) {
-                        console.error("No user message found");
-                        return;
-                      }
-                      // Need to do a redo, if we didn't delete the message from a revert.
-                      const redo = shouldRedo;
-                      console.debug("Streaming message with redo", redo);
-
-                      streamMessage({
-                        prompt: lastUserMessage.content,
-                        chatId: selectedChatId,
-                        redo,
-                      });
-                    } catch (error) {
-                      console.error("Error during retry operation:", error);
-                      showError("Failed to retry message");
-                    } finally {
-                      setIsRetryLoading(false);
-                    }
-                  }}
-                >
-                  {isRetryLoading ? (
-                    <Loader2 size={16} className="mr-1 animate-spin" />
-                  ) : (
-                    <RefreshCw size={16} />
-                  )}
-                  Retry
-                </Button>
-              )}
-            </div>
-          )}
-
-          {isStreaming &&
-            !settings?.enableDyadPro &&
-            !userBudget &&
-            messages.length > 0 && (
-              <PromoMessage
-                seed={messages.length * (appId ?? 1) * (selectedChatId ?? 1)}
-              />
-            )}
-          <div ref={messagesEndRef} />
-          {renderSetupBanner()}
-        </div>
+        <Virtuoso
+          data={messages}
+          increaseViewportBy={{ top: 1000, bottom: 500 }}
+          initialTopMostItemIndex={messages.length - 1}
+          followOutput="smooth"
+          itemContent={itemContent}
+          components={{ Footer: FooterComponent }}
+          context={footerContext}
+        />
       </div>
     );
   },

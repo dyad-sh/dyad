@@ -364,6 +364,7 @@ ${extractConflictSnippet(fileContent)}`,
             <Button
               onClick={handleSaveResolution}
               disabled={isResolving || isAiResolving}
+              data-testid="finish-resolution-button"
             >
               {currentConflictIndex < conflicts.length - 1
                 ? "Next Conflict"

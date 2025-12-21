@@ -189,6 +189,7 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
                 {collaborators.map((collab) => (
                   <div
                     key={collab.login}
+                    data-testid={`collaborator-item-${collab.login}`}
                     className="flex items-center justify-between p-2 rounded-md border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900"
                   >
                     <div className="flex items-center gap-3">
@@ -212,6 +213,7 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
                       variant="ghost"
                       size="icon"
                       className="text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                      data-testid={`collaborator-remove-button-${collab.login}`}
                       onClick={() => setCollaboratorToDelete(collab.login)}
                     >
                       <Trash2 className="w-4 h-4" />
@@ -240,8 +242,15 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleRemove}>Remove</AlertDialogAction>
+            <AlertDialogCancel data-testid="confirm-remove-collaborator-cancel">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              data-testid="confirm-remove-collaborator"
+              onClick={handleRemove}
+            >
+              Remove
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

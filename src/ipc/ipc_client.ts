@@ -919,7 +919,7 @@ export class IpcClient {
   public async mergeGithubBranch(
     appId: number,
     branch: string,
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<{ success: boolean; error?: string; isConflict?: boolean }> {
     return this.ipcRenderer.invoke("github:merge-branch", { appId, branch });
   }
 

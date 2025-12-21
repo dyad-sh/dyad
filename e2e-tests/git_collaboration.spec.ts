@@ -3,8 +3,68 @@ import { test } from "./helpers/test_helper";
 import fs from "fs";
 import path from "path";
 import { execSync } from "child_process";
+import type { PageObject } from "./helpers/test_helper";
+async function createGitConflict(po: PageObject) {
+  await po.setUp({ nativeGit: true }); // Conflicts are easier to handle with native git usually
+  await po.sendPrompt("tc=basic");
+
+  await po.getTitleBarAppNameButton().click();
+  await po.githubConnector.connect();
+
+  const repoName = "test-git-conflict-" + Date.now();
+  await po.githubConnector.fillCreateRepoName(repoName);
+  await po.githubConnector.clickCreateRepoButton();
+  await expect(po.page.getByTestId("github-connected-repo")).toBeVisible({
+    timeout: 20000,
+  });
+
+  const appPath = await po.getCurrentAppPath();
+  if (!appPath) throw new Error("App path not found");
+
+  // Setup conflict
+  const conflictFile = "conflict.txt";
+  const conflictFilePath = path.join(appPath, conflictFile);
+
+  // 1. Create file on main
+  fs.writeFileSync(conflictFilePath, "Line 1\nLine 2\nLine 3");
+  execSync(`git add ${conflictFile} && git commit -m "Add conflict file"`, {
+    cwd: appPath,
+  });
+
+  // 2. Create feature branch
+  const featureBranch = "feature-conflict";
+  execSync(`git checkout -b ${featureBranch}`, { cwd: appPath });
+  fs.writeFileSync(conflictFilePath, "Line 1\nLine 2 Modified Feature\nLine 3");
+  execSync(`git add ${conflictFile} && git commit -m "Modify on feature"`, {
+    cwd: appPath,
+  });
+
+  // 3. Switch back to main and modify
+  execSync(`git checkout main`, { cwd: appPath });
+  fs.writeFileSync(conflictFilePath, "Line 1\nLine 2 Modified Main\nLine 3");
+  execSync(`git add ${conflictFile} && git commit -m "Modify on main"`, {
+    cwd: appPath,
+  });
+
+  // 4. Try to merge feature into main via UI
+  await po.goToChatTab();
+  await po.getTitleBarAppNameButton().click(); // Open Publish Panel
+
+  // We need to merge 'feature-conflict' into 'main'.
+  // Find the branch in the list.
+
+  //open branches accordion
+  const branchesCard = po.page.getByTestId("branches-header");
+  await branchesCard.hover();
+
+  await po.page.getByTestId(`branch-actions-${featureBranch}`).click();
+  await po.page.getByTestId("merge-branch-menu-item").click();
+  await po.page.getByTestId("merge-branch-submit-button").click();
+  return { conflictFile, conflictFilePath };
+}
 
 test.describe("Git Collaboration", () => {
+  //create git conflict helper function
   test("should create, switch, rename, merge, and delete branches", async ({
     po,
   }) => {
@@ -119,91 +179,25 @@ test.describe("Git Collaboration", () => {
     await po.page.keyboard.press("Escape");
   });
 
-  test("should resolve merge conflicts", async ({ po }) => {
-    await po.setUp({ nativeGit: true }); // Conflicts are easier to handle with native git usually
-    await po.sendPrompt("tc=basic");
-
-    await po.getTitleBarAppNameButton().click();
-    await po.githubConnector.connect();
-
-    const repoName = "test-git-conflict-" + Date.now();
-    await po.githubConnector.fillCreateRepoName(repoName);
-    await po.githubConnector.clickCreateRepoButton();
-    await expect(po.page.getByTestId("github-connected-repo")).toBeVisible({
-      timeout: 20000,
-    });
-
-    const appPath = await po.getCurrentAppPath();
-    if (!appPath) throw new Error("App path not found");
-
-    // Setup conflict
-    const conflictFile = "conflict.txt";
-    const conflictFilePath = path.join(appPath, conflictFile);
-
-    // 1. Create file on main
-    fs.writeFileSync(conflictFilePath, "Line 1\nLine 2\nLine 3");
-    execSync(`git add ${conflictFile} && git commit -m "Add conflict file"`, {
-      cwd: appPath,
-    });
-
-    // 2. Create feature branch
-    const featureBranch = "feature-conflict";
-    execSync(`git checkout -b ${featureBranch}`, { cwd: appPath });
-    fs.writeFileSync(
-      conflictFilePath,
-      "Line 1\nLine 2 Modified Feature\nLine 3",
-    );
-    execSync(`git add ${conflictFile} && git commit -m "Modify on feature"`, {
-      cwd: appPath,
-    });
-
-    // 3. Switch back to main and modify
-    execSync(`git checkout main`, { cwd: appPath });
-    fs.writeFileSync(conflictFilePath, "Line 1\nLine 2 Modified Main\nLine 3");
-    execSync(`git add ${conflictFile} && git commit -m "Modify on main"`, {
-      cwd: appPath,
-    });
-
-    // 4. Try to merge feature into main via UI
-    await po.goToChatTab();
-    await po.getTitleBarAppNameButton().click(); // Open Publish Panel
-
-    // We need to merge 'feature-conflict' into 'main'.
-    // Find the branch in the list.
-
-    //open branches accordion
-    const branchesCard = po.page.getByTestId("branches-header");
-    await branchesCard.hover();
-
-    await po.page.getByTestId(`branch-actions-${featureBranch}`).click();
-    await po.page.getByTestId("merge-branch-menu-item").click();
-    await po.page.getByTestId("merge-branch-submit-button").click();
-
-    // 5. Verify Conflict Dialog appears
+  test("should resolve merge conflicts with AI", async ({ po }) => {
+    await createGitConflict(po);
+    // Verify Conflict Dialog appears
     await expect(po.page.getByText("Resolve Conflicts")).toBeVisible({
       timeout: 10000,
     });
     //use AI to resolve conflicts
     await po.page.getByRole("button", { name: "Auto-Resolve with AI" }).click();
     await po.waitForToastWithText(`AI suggested a resolution`);
-
-    // 6. Resolve Conflict
-    // We can use the manual editor in the dialog.
-    // The editor is a Monaco editor. `po.editFileContent` targets `.monaco-editor textarea`.
-    // Since the dialog is open, this should work.
-    // const resolvedContent = "Line 1\nLine 2 Resolved\nLine 3";
-    // await po.editFileContent(resolvedContent);
-
-    // // Click Finish Resolution
-    // await po.page.getByTestId("finish-resolution-button").click();
-
-    // // 7. Verify Merge Success
-    // await po.waitForToastWithText(`Resolved ${conflictFile}`);
-    // await expect(po.page.getByText("Resolve Conflicts")).not.toBeVisible();
-
-    // // Verify file content on disk
-    // const content = fs.readFileSync(conflictFilePath, "utf-8");
-    // expect(content).toBe(resolvedContent);
+  });
+  test("should resolve merge conflicts manually", async ({ po }) => {
+    await createGitConflict(po);
+    // Verify Conflict Dialog appears
+    await expect(po.page.getByText("Resolve Conflicts")).toBeVisible({
+      timeout: 10000,
+    });
+    //use Manual resolution
+    await po.page.getByRole("button", { name: "Manual Git Resolve" }).click();
+    await po.waitForToastWithText(`Applied manual conflict resolution`);
   });
 });
 
@@ -230,21 +224,19 @@ test("should invite and remove collaborators", async ({ po }) => {
   const fakeUser = "test-user-123";
   await po.page.getByTestId("collaborator-invite-input").fill(fakeUser);
   await po.page.getByTestId("collaborator-invite-button").click();
-
-  // Since this is a real GitHub API call (mocked or not), we expect a toast.
-  // If it's mocked, it should succeed. If it's real, it might fail if user doesn't exist or auth fails.
-  // Assuming the backend mocks or handles this gracefully for tests.
-  // If the backend actually calls GitHub, this test might be flaky without network mocking.
-  // However, based on the task, I should assume the environment allows this or I should check for error toast.
-
   // Let's check for a toast.
   await po.waitForToast();
 
-  // If the user was added (mocked), they should appear in the list.
-  // If not, we might just verify the invite flow didn't crash.
-  // For now, let's assume we can see the user in the list if the backend mocks it.
-  // If the backend is real, we might not see them immediately or at all if invalid.
+  // verify collaborator appears in the list
+  await expect(
+    po.page.getByTestId(`collaborator-item-${fakeUser}`),
+  ).toBeVisible();
 
-  // NOTE: Without a mocked backend for GitHub API, this test is hard to verify fully.
-  // But we can verify the UI interactions.
+  // Delete collaborator
+  await po.page.getByTestId(`collaborator-remove-button-${fakeUser}`).click();
+  await po.page.getByTestId("confirm-remove-collaborator").click();
+  await po.waitForToast("success");
+  await expect(
+    po.page.getByTestId(`collaborator-item-${fakeUser}`),
+  ).not.toBeVisible({ timeout: 5000 });
 });

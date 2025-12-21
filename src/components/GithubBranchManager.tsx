@@ -48,7 +48,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 import { Label } from "@/components/ui/label";
-import { showSuccess, showError } from "@/lib/toast";
+import { showSuccess, showError, showInfo } from "@/lib/toast";
 import {
   Tooltip,
   TooltipContent,
@@ -303,15 +303,21 @@ export function GithubBranchManager({
         appId,
         branchToMerge,
       );
+      const msg = (result.error || "").toLowerCase();
+      const isConflict =
+        result.isConflict ||
+        msg.includes("conflict") ||
+        msg.includes("merge conflict");
       if (result.success) {
         showSuccess(`Merged '${branchToMerge}' into '${currentBranch}'`);
         setBranchToMerge(null);
         await loadBranches(); // Refresh to see any status changes if we implement them
       } else {
-        showError(result.error || "Failed to merge branch");
-        const msg = (result.error || "").toLowerCase();
-        const isConflict =
-          msg.includes("conflict") || msg.includes("merge conflict");
+        if (!isConflict) {
+          showError(result.error || "Failed to merge branch");
+        } else {
+          showInfo("Merge conflict detected. Please resolve below.");
+        }
         // Show conflicts dialog
         if (isConflict) {
           // Fetch the actual conflicts

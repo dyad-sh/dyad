@@ -618,7 +618,14 @@ async function handlePushToGithub(
         });
       } catch (pullError: any) {
         // Check if it's a conflict
-        const errorMessage = pullError.message || "";
+        const errorMessage = pullError?.message || "";
+        const isMissingRemoteBranch =
+          pullError?.code === "MissingRefError" ||
+          pullError?.code === "NotFoundError" ||
+          errorMessage.includes("couldn't find remote ref") ||
+          errorMessage.includes("not found") ||
+          // isomorphic-git throws a TypeError when the remote repo is empty
+          errorMessage.includes("Cannot read properties of null");
         if (
           errorMessage.includes("conflict") ||
           errorMessage.includes("Merge conflict")
@@ -631,11 +638,13 @@ async function handlePushToGithub(
           };
         }
         // If it's just that remote doesn't have the branch yet, we can ignore and push
-        if (
-          !errorMessage.includes("couldn't find remote ref") &&
-          !errorMessage.includes("not found")
-        ) {
+        if (!isMissingRemoteBranch) {
           throw pullError;
+        } else {
+          logger.debug(
+            "[GitHub Handler] Remote branch missing during pull, continuing with push",
+            errorMessage,
+          );
         }
       }
     }
@@ -903,7 +912,16 @@ async function handleMergeBranch(
     });
     return { success: true };
   } catch (err: any) {
-    return { success: false, error: err.message || "Failed to merge branch." };
+    const errorMessage = err?.message || "Failed to merge branch.";
+    const isConflict =
+      typeof errorMessage === "string" &&
+      (errorMessage.toLowerCase().includes("conflict") ||
+        errorMessage.toLowerCase().includes("merge conflict"));
+    return {
+      success: false,
+      error: errorMessage,
+      isConflict,
+    };
   }
 }
 

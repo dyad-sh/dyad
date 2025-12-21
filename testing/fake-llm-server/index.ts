@@ -14,6 +14,7 @@ import {
   handleGitPush,
   handleGetPushEvents,
   handleClearPushEvents,
+  handleRepoCollaborators,
 } from "./githubHandler";
 
 // Create Express app
@@ -178,6 +179,18 @@ app.get("/github/api/user/repos", handleUserRepos);
 app.post("/github/api/user/repos", handleUserRepos);
 app.get("/github/api/repos/:owner/:repo", handleRepo);
 app.get("/github/api/repos/:owner/:repo/branches", handleRepoBranches);
+app.get(
+  "/github/api/repos/:owner/:repo/collaborators",
+  handleRepoCollaborators,
+);
+app.put(
+  "/github/api/repos/:owner/:repo/collaborators/:username",
+  handleRepoCollaborators,
+);
+app.delete(
+  "/github/api/repos/:owner/:repo/collaborators/:username",
+  handleRepoCollaborators,
+);
 app.post("/github/api/orgs/:org/repos", handleOrgRepos);
 
 // GitHub test endpoints for verifying push operations

@@ -39,7 +39,11 @@ test.describe("Git Collaboration", () => {
     await po.page.getByTestId("create-branch-trigger").click();
     await po.page.getByTestId("new-branch-name-input").fill(featureBranch);
     await po.page.getByTestId("create-branch-submit-button").click();
+
     // Verify we are on the new branch
+    //open branches accordion
+    const branchesCard = po.page.getByTestId("branches-header");
+    await branchesCard.hover();
     await expect(
       po.page.getByTestId(`branch-item-${featureBranch}`),
     ).toBeVisible();
@@ -71,6 +75,7 @@ test.describe("Git Collaboration", () => {
     // 3. Rename Branch
     // Rename feature-2 to feature-2-renamed
     const renamedBranch = "feature-2-renamed";
+    await branchesCard.hover();
     await po.page.getByTestId(`branch-actions-${featureBranch2}`).click();
     await po.page.getByTestId("rename-branch-menu-item").click();
     await po.page.getByTestId("rename-branch-input").fill(renamedBranch);
@@ -88,6 +93,7 @@ test.describe("Git Collaboration", () => {
 
     // 4. Merge Branch
     // Merge feature-1 into main (we are currently on main)
+    await branchesCard.hover();
     await po.page.getByTestId(`branch-actions-${featureBranch}`).click();
     await po.page.getByTestId("merge-branch-menu-item").click();
     await po.page.getByTestId("merge-branch-submit-button").click();
@@ -98,6 +104,7 @@ test.describe("Git Collaboration", () => {
 
     // 5. Delete Branch
     // Delete feature-1
+    await branchesCard.hover();
     await po.page.getByTestId(`branch-actions-${featureBranch}`).click();
     await po.page.getByTestId("delete-branch-menu-item").click();
     // Confirm delete (native confirm dialog handling might be needed or custom dialog)
@@ -163,6 +170,11 @@ test.describe("Git Collaboration", () => {
 
     // We need to merge 'feature-conflict' into 'main'.
     // Find the branch in the list.
+
+    //open branches accordion
+    const branchesCard = po.page.getByTestId("branches-header");
+    await branchesCard.hover();
+
     await po.page.getByTestId(`branch-actions-${featureBranch}`).click();
     await po.page.getByTestId("merge-branch-menu-item").click();
     await po.page.getByTestId("merge-branch-submit-button").click();
@@ -207,6 +219,9 @@ test("should invite and remove collaborators", async ({ po }) => {
   await expect(po.page.getByTestId("github-connected-repo")).toBeVisible({
     timeout: 20000,
   });
+  //open collaborators accordion
+  const collaboratorsCard = po.page.getByTestId("collaborators-header");
+  await collaboratorsCard.hover();
 
   // Wait for Collaborator Manager
   await expect(po.page.getByTestId("collaborator-invite-input")).toBeVisible();

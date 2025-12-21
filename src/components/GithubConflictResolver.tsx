@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { IpcClient } from "@/ipc/ipc_client";
-import { AlertTriangle, Wand2 } from "lucide-react";
-import { toast } from "sonner";
+import { AlertTriangle, Wand2, Hand } from "lucide-react";
+import { showError, showSuccess } from "@/lib/toast";
 import {
   Dialog,
   DialogContent,
@@ -35,16 +35,20 @@ export function GithubConflictResolver({
   const [fileContent, setFileContent] = useState("");
   const [isResolving, setIsResolving] = useState(false);
   const [isAiResolving, setIsAiResolving] = useState(false);
+  const [isManualResolving, setIsManualResolving] = useState(false);
   const [aiChatId, setAiChatId] = useAtom(selectedChatIdAtom);
   const [aiMessageId, setAiMessageId] = useState<number | null>(null);
   const [aiResolution, setAiResolution] = useState<string | null>(null);
+  const [resolvedContentOverride, setResolvedContentOverride] = useState<
+    string | null
+  >(null);
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
 
   const currentFile = conflicts[currentConflictIndex];
 
   useEffect(() => {
     loadFileContent();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setResolvedContentOverride(null);
   }, [currentFile, appId]);
 
   const ensureChatId = async () => {
@@ -53,7 +57,7 @@ export function GithubConflictResolver({
     setAiChatId(newChatId);
     return newChatId;
   };
-
+  // Extracts a snippet around the conflict markers for AI context
   const extractConflictSnippet = (content: string) => {
     const start = content.indexOf("<<<<<<<");
     if (start === -1) return content.slice(0, 1000);
@@ -62,6 +66,7 @@ export function GithubConflictResolver({
     return content.slice(start, sliceEnd).slice(0, 1500);
   };
 
+  // Refresh chat messages for a given chat ID
   const refreshChatMessages = async (chatId: number) => {
     try {
       const chat = await IpcClient.getInstance().getChat(chatId);
@@ -86,11 +91,13 @@ export function GithubConflictResolver({
       setFileContent(content);
       setAiResolution(null);
       setAiMessageId(null);
+      setResolvedContentOverride(null);
     } catch (error: any) {
-      toast.error(`Failed to load file ${currentFile}: ${error.message}`);
+      showError(`Failed to load file ${currentFile}: ${error.message}`);
     }
   };
 
+  // Extracts the current and incoming parts of a Git conflict
   const extractConflictParts = (content: string) => {
     const start = content.indexOf("<<<<<<<");
     const sep = content.indexOf("=======", start + 7);
@@ -103,6 +110,7 @@ export function GithubConflictResolver({
     return { current, incoming };
   };
 
+  // Handles AI-based conflict resolution
   const handleAiResolve = async () => {
     setIsAiResolving(true);
     try {
@@ -133,22 +141,53 @@ ${extractConflictSnippet(fileContent)}`,
             }
           },
           onEnd: () => {
-            toast.success("AI suggested a resolution");
+            showSuccess("AI suggested a resolution");
             refreshChatMessages(chatId);
             setIsAiResolving(false);
           },
           onError: (error) => {
-            toast.error(error || "Failed to resolve with AI");
+            showError(error || "Failed to resolve with AI");
             setIsAiResolving(false);
           },
         },
       );
     } catch (error: any) {
-      toast.error(error.message || "Failed to resolve with AI");
+      showError(error.message || "Failed to resolve with AI");
       setIsAiResolving(false);
     }
   };
 
+  // Handles manual Git conflict resolution
+  const handleManualResolve = async () => {
+    setIsManualResolving(true);
+    try {
+      const result = await IpcClient.getInstance().resolveGithubConflict(
+        appId,
+        currentFile,
+      );
+
+      if (!result.success || !result.resolution) {
+        throw new Error(result.error || "Failed to resolve conflict");
+      }
+
+      await IpcClient.getInstance().editAppFile(
+        appId,
+        currentFile,
+        result.resolution,
+      );
+
+      setAiResolution(null);
+      setAiMessageId(null);
+      setFileContent(result.resolution);
+      setResolvedContentOverride(result.resolution);
+      showSuccess("Applied manual conflict resolution");
+    } catch (error: any) {
+      showError(error.message || "Failed to resolve conflict manually");
+    }
+    setIsManualResolving(false);
+  };
+
+  // Handles saving the resolved content
   const handleSaveResolution = async () => {
     setIsResolving(true);
     try {
@@ -159,7 +198,7 @@ ${extractConflictSnippet(fileContent)}`,
       // Persist the latest saved content
       await IpcClient.getInstance().editAppFile(appId, currentFile, latest);
 
-      toast.success(`Resolved ${currentFile}`);
+      showSuccess(`Resolved ${currentFile}`);
 
       if (currentConflictIndex < conflicts.length - 1) {
         setCurrentConflictIndex(currentConflictIndex + 1);
@@ -167,15 +206,16 @@ ${extractConflictSnippet(fileContent)}`,
         onResolve();
       }
     } catch (error: any) {
-      toast.error(error.message || "Failed to save resolution");
+      showError(error.message || "Failed to save resolution");
     } finally {
       setIsResolving(false);
     }
   };
 
+  // Applies the AI-suggested resolution to the file
   const handleApplyAiResolution = async () => {
     if (!aiChatId || !aiMessageId) {
-      toast.error("No AI suggestion to approve yet.");
+      showError("No AI suggestion to approve yet.");
       return;
     }
     setIsResolving(true);
@@ -186,9 +226,9 @@ ${extractConflictSnippet(fileContent)}`,
       });
       await loadFileContent();
       await refreshChatMessages(aiChatId);
-      toast.success("Applied AI suggestion via approval.");
+      showSuccess("Applied AI suggestion via approval.");
     } catch (error: any) {
-      toast.error(error?.message || "Failed to approve AI suggestion");
+      showError(error?.message || "Failed to approve AI suggestion");
     } finally {
       setIsResolving(false);
     }
@@ -233,6 +273,18 @@ ${extractConflictSnippet(fileContent)}`,
               >
                 <Wand2 className="h-3 w-3" />
                 {isAiResolving ? "AI Resolving..." : "Auto-Resolve with AI"}
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleManualResolve}
+                disabled={isManualResolving}
+                className="gap-2"
+              >
+                <Hand className="h-3 w-3" />
+                {isManualResolving
+                  ? "Manual Resolving..."
+                  : "Manual Git Resolve"}
               </Button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -308,14 +360,16 @@ ${extractConflictSnippet(fileContent)}`,
           <Button variant="outline" onClick={onCancel}>
             Cancel
           </Button>
-          <Button
-            onClick={handleSaveResolution}
-            disabled={isResolving || isAiResolving}
-          >
-            {currentConflictIndex < conflicts.length - 1
-              ? "Next Conflict"
-              : "Finish Resolution"}
-          </Button>
+          {!aiResolution && !resolvedContentOverride && (
+            <Button
+              onClick={handleSaveResolution}
+              disabled={isResolving || isAiResolving}
+            >
+              {currentConflictIndex < conflicts.length - 1
+                ? "Next Conflict"
+                : "Finish Resolution"}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

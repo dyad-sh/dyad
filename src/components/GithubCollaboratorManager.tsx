@@ -125,7 +125,9 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
           <div className="flex items-center gap-3">
             <Users className="w-5 h-5" />
             <div>
-              <CardTitle className="text-sm">Collaborators</CardTitle>
+              <CardTitle className="text-sm" data-testid="collaborators-header">
+                Collaborators
+              </CardTitle>
               <CardDescription className="text-xs">
                 Manage who has access to this project via GitHub.
               </CardDescription>

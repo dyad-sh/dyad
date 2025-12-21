@@ -145,19 +145,102 @@ export function GithubBranchManager({
 
   const handleSwitchBranch = async (branch: string) => {
     if (branch === currentBranch) return;
+    const isRebaseInProgress = (message?: string) => {
+      if (!message) return false;
+      const lower = message.toLowerCase();
+      return (
+        lower.includes("rebase in progress") ||
+        lower.includes("rebase-apply") ||
+        lower.includes("rebase --continue") ||
+        lower.includes("rebase --abort")
+      );
+    };
+    const isMergeInProgress = (message?: string) => {
+      if (!message) return false;
+      const lower = message.toLowerCase();
+      return (
+        lower.includes("merge in progress") ||
+        lower.includes("merging is not possible") ||
+        lower.includes("you have not concluded your merge") ||
+        lower.includes("unmerged files")
+      );
+    };
+
     setIsSwitching(true);
     try {
-      const result = await IpcClient.getInstance().switchGithubBranch(
-        appId,
-        branch,
-      );
-      if (result.success) {
+      const switchBranch = async () =>
+        IpcClient.getInstance().switchGithubBranch(appId, branch);
+
+      const initialResult = await switchBranch();
+
+      if (initialResult.success) {
         showSuccess(`Switched to branch '${branch}'`);
         setCurrentBranch(branch);
         onBranchChange?.();
-      } else {
-        showError(result.error || "Failed to switch branch");
+        return;
       }
+
+      const errorMessage =
+        initialResult.error ||
+        "Failed to switch branch due to an unknown error";
+
+      if (isRebaseInProgress(errorMessage)) {
+        const abortResult =
+          await IpcClient.getInstance().abortGithubRebase(appId);
+        if (!abortResult.success) {
+          showError(
+            abortResult.error ||
+              "Failed to abort ongoing rebase before switching branches",
+          );
+          return;
+        }
+
+        const retryResult = await switchBranch();
+        if (retryResult.success) {
+          showSuccess(
+            `Aborted ongoing rebase and switched to branch '${branch}'`,
+          );
+          setCurrentBranch(branch);
+          onBranchChange?.();
+          return;
+        }
+
+        showError(
+          retryResult.error ||
+            "Failed to switch branch after aborting rebase. Please try again.",
+        );
+        return;
+      }
+
+      if (isMergeInProgress(errorMessage)) {
+        const abortResult =
+          await IpcClient.getInstance().abortGithubMerge(appId);
+        if (!abortResult.success) {
+          showError(
+            abortResult.error ||
+              "Failed to abort ongoing merge before switching branches",
+          );
+          return;
+        }
+
+        const retryResult = await switchBranch();
+        if (retryResult.success) {
+          showSuccess(
+            `Aborted ongoing merge and switched to branch '${branch}'`,
+          );
+          setCurrentBranch(branch);
+          onBranchChange?.();
+          return;
+        }
+
+        showError(
+          retryResult.error ||
+            "Failed to switch branch after aborting merge. Please try again.",
+        );
+        return;
+      }
+
+      showError(errorMessage);
     } catch (error: any) {
       showError(error.message || "Failed to switch branch");
     } finally {
@@ -507,7 +590,9 @@ export function GithubBranchManager({
             <div className="flex items-center gap-3">
               <GitBranch className="w-5 h-5" />
               <div>
-                <CardTitle className="text-sm">Branches</CardTitle>
+                <CardTitle className="text-sm" data-testid="branches-header">
+                  Branches
+                </CardTitle>
                 <CardDescription className="text-xs">
                   Manage your branches, merge, delete, and more.
                 </CardDescription>

@@ -844,6 +844,14 @@ export class IpcClient {
     });
   }
 
+  public async abortGithubMerge(
+    appId: number,
+  ): Promise<{ success: boolean; error?: string }> {
+    return this.ipcRenderer.invoke("github:merge-abort", {
+      appId,
+    });
+  }
+
   public async continueGithubRebase(
     appId: number,
   ): Promise<{ success: boolean; error?: string }> {
@@ -933,7 +941,10 @@ export class IpcClient {
     appId: number,
     filePath: string,
   ): Promise<{ success: boolean; resolution?: string; error?: string }> {
-    return this.ipcRenderer.invoke("ai:resolve-conflict", { appId, filePath });
+    return this.ipcRenderer.invoke("github:resolve-conflict", {
+      appId,
+      file: filePath,
+    });
   }
 
   // --- End GitHub Repo Management ---

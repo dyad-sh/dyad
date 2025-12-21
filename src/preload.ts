@@ -62,6 +62,7 @@ const validInvokeChannels = [
   "github:connect-existing-repo",
   "github:push",
   "github:rebase-abort",
+  "github:merge-abort",
   "github:rebase-continue",
   "github:disconnect",
   "neon:create-project",
@@ -156,7 +157,6 @@ const validInvokeChannels = [
   "github:get-conflicts",
   "github:delete-branch",
   "github:resolve-conflict",
-  "ai:resolve-conflict",
   "get-latest-security-review",
   // Test-only channels
   // These should ALWAYS be guarded with IS_TEST_BUILD in the main process.

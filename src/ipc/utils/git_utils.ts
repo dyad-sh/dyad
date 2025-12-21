@@ -592,6 +592,17 @@ export async function gitRebaseContinue({
   );
 }
 
+export async function gitMergeAbort({ path }: GitBaseParams): Promise<void> {
+  const settings = readSettings();
+  if (!settings.enableNativeGit) {
+    throw new Error(
+      "Merge abort requires native Git. Enable native Git in settings.",
+    );
+  }
+
+  await execOrThrow(["merge", "--abort"], path, "Failed to abort merge");
+}
+
 export async function gitCurrentBranch({
   path,
 }: GitBaseParams): Promise<string | null> {

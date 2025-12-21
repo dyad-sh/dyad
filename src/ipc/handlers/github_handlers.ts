@@ -8,6 +8,7 @@ import {
   gitPull,
   gitRebaseAbort,
   gitRebaseContinue,
+  gitMergeAbort,
   gitFetch,
   gitCreateBranch,
   gitDeleteBranch,
@@ -710,6 +711,25 @@ async function handleAbortRebase(
   }
 }
 
+async function handleAbortMerge(
+  event: IpcMainInvokeEvent,
+  { appId }: { appId: number },
+) {
+  try {
+    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+    if (!app) throw new Error("App not found");
+    const appPath = getDyadAppPath(app.path);
+
+    await gitMergeAbort({ path: appPath });
+    return { success: true };
+  } catch (err: any) {
+    return {
+      success: false,
+      error: err.message || "Failed to abort merge.",
+    };
+  }
+}
+
 async function handleContinueRebase(
   event: IpcMainInvokeEvent,
   { appId }: { appId: number },
@@ -1185,6 +1205,7 @@ export function registerGithubHandlers() {
   ipcMain.handle("github:push", handlePushToGithub);
   ipcMain.handle("github:pull", handlePullFromGithub);
   ipcMain.handle("github:rebase-abort", handleAbortRebase);
+  ipcMain.handle("github:merge-abort", handleAbortMerge);
   ipcMain.handle("github:rebase-continue", handleContinueRebase);
   ipcMain.handle("github:fetch", handleFetchFromGithub);
   ipcMain.handle("github:create-branch", handleCreateBranch);

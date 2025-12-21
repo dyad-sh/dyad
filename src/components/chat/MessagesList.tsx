@@ -52,142 +52,57 @@ interface FooterContext {
 }
 
 // Footer component for Virtuoso - receives context via props
-const FooterComponent = forwardRef<HTMLDivElement, { context?: FooterContext }>(
-  function Footer({ context }) {
-    if (!context) return null;
+function FooterComponent({ context }: { context?: FooterContext }) {
+  if (!context) return null;
 
-    const {
-      messages,
-      messagesEndRef,
-      isStreaming,
-      tokenCountResult,
-      isUndoLoading,
-      isRetryLoading,
-      setIsUndoLoading,
-      setIsRetryLoading,
-      versions,
-      revertVersion,
-      streamMessage,
-      selectedChatId,
-      appId,
-      setMessagesById,
-      settings,
-      userBudget,
-      renderSetupBanner,
-    } = context;
+  const {
+    messages,
+    messagesEndRef,
+    isStreaming,
+    tokenCountResult,
+    isUndoLoading,
+    isRetryLoading,
+    setIsUndoLoading,
+    setIsRetryLoading,
+    versions,
+    revertVersion,
+    streamMessage,
+    selectedChatId,
+    appId,
+    setMessagesById,
+    settings,
+    userBudget,
+    renderSetupBanner,
+  } = context;
 
-    return (
-      <>
-        {/* Show context limit banner when close to token limit */}
-        {!isStreaming && tokenCountResult && (
-          <ContextLimitBanner
-            totalTokens={tokenCountResult.actualMaxTokens}
-            contextWindow={tokenCountResult.contextWindow}
-          />
-        )}
+  return (
+    <>
+      {/* Show context limit banner when close to token limit */}
+      {!isStreaming && tokenCountResult && (
+        <ContextLimitBanner
+          totalTokens={tokenCountResult.actualMaxTokens}
+          contextWindow={tokenCountResult.contextWindow}
+        />
+      )}
 
-        {!isStreaming && (
-          <div className="flex max-w-3xl mx-auto gap-2">
-            {!!messages.length &&
-              messages[messages.length - 1].role === "assistant" &&
-              messages[messages.length - 1].commitHash && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={isUndoLoading}
-                  onClick={async () => {
-                    if (!selectedChatId || !appId) {
-                      console.error("No chat selected or app ID not available");
-                      return;
-                    }
-
-                    setIsUndoLoading(true);
-                    try {
-                      if (messages.length >= 3) {
-                        const previousAssistantMessage =
-                          messages[messages.length - 3];
-                        if (
-                          previousAssistantMessage?.role === "assistant" &&
-                          previousAssistantMessage?.commitHash
-                        ) {
-                          console.debug(
-                            "Reverting to previous assistant version",
-                          );
-                          await revertVersion({
-                            versionId: previousAssistantMessage.commitHash,
-                          });
-                          const chat =
-                            await IpcClient.getInstance().getChat(
-                              selectedChatId,
-                            );
-                          setMessagesById((prev) => {
-                            const next = new Map(prev);
-                            next.set(selectedChatId, chat.messages);
-                            return next;
-                          });
-                        }
-                      } else {
-                        const chat =
-                          await IpcClient.getInstance().getChat(selectedChatId);
-                        if (chat.initialCommitHash) {
-                          await revertVersion({
-                            versionId: chat.initialCommitHash,
-                          });
-                          try {
-                            await IpcClient.getInstance().deleteMessages(
-                              selectedChatId,
-                            );
-                            setMessagesById((prev) => {
-                              const next = new Map(prev);
-                              next.set(selectedChatId, []);
-                              return next;
-                            });
-                          } catch (err) {
-                            showError(err);
-                          }
-                        } else {
-                          showWarning(
-                            "No initial commit hash found for chat. Need to manually undo code changes",
-                          );
-                        }
-                      }
-                    } catch (error) {
-                      console.error("Error during undo operation:", error);
-                      showError("Failed to undo changes");
-                    } finally {
-                      setIsUndoLoading(false);
-                    }
-                  }}
-                >
-                  {isUndoLoading ? (
-                    <Loader2 size={16} className="mr-1 animate-spin" />
-                  ) : (
-                    <Undo size={16} />
-                  )}
-                  Undo
-                </Button>
-              )}
-            {!!messages.length && (
+      {!isStreaming && (
+        <div className="flex max-w-3xl mx-auto gap-2">
+          {!!messages.length &&
+            messages[messages.length - 1].role === "assistant" &&
+            messages[messages.length - 1].commitHash && (
               <Button
                 variant="outline"
                 size="sm"
-                disabled={isRetryLoading}
+                disabled={isUndoLoading}
                 onClick={async () => {
-                  if (!selectedChatId) {
-                    console.error("No chat selected");
+                  if (!selectedChatId || !appId) {
+                    console.error("No chat selected or app ID not available");
                     return;
                   }
 
-                  setIsRetryLoading(true);
+                  setIsUndoLoading(true);
                   try {
-                    // The last message is usually an assistant, but it might not be.
-                    const lastVersion = versions[0];
-                    const lastMessage = messages[messages.length - 1];
-                    let shouldRedo = true;
-                    if (
-                      lastVersion.oid === lastMessage.commitHash &&
-                      lastMessage.role === "assistant"
-                    ) {
+                    if (messages.length >= 3) {
                       const previousAssistantMessage =
                         messages[messages.length - 3];
                       if (
@@ -200,76 +115,155 @@ const FooterComponent = forwardRef<HTMLDivElement, { context?: FooterContext }>(
                         await revertVersion({
                           versionId: previousAssistantMessage.commitHash,
                         });
-                        shouldRedo = false;
-                      } else {
                         const chat =
                           await IpcClient.getInstance().getChat(selectedChatId);
-                        if (chat.initialCommitHash) {
-                          console.debug(
-                            "Reverting to initial commit hash",
-                            chat.initialCommitHash,
+                        setMessagesById((prev) => {
+                          const next = new Map(prev);
+                          next.set(selectedChatId, chat.messages);
+                          return next;
+                        });
+                      }
+                    } else {
+                      const chat =
+                        await IpcClient.getInstance().getChat(selectedChatId);
+                      if (chat.initialCommitHash) {
+                        await revertVersion({
+                          versionId: chat.initialCommitHash,
+                        });
+                        try {
+                          await IpcClient.getInstance().deleteMessages(
+                            selectedChatId,
                           );
-                          await revertVersion({
-                            versionId: chat.initialCommitHash,
+                          setMessagesById((prev) => {
+                            const next = new Map(prev);
+                            next.set(selectedChatId, []);
+                            return next;
                           });
-                        } else {
-                          showWarning(
-                            "No initial commit hash found for chat. Need to manually undo code changes",
-                          );
+                        } catch (err) {
+                          showError(err);
                         }
+                      } else {
+                        showWarning(
+                          "No initial commit hash found for chat. Need to manually undo code changes",
+                        );
                       }
                     }
-
-                    // Find the last user message
-                    const lastUserMessage = [...messages]
-                      .reverse()
-                      .find((message) => message.role === "user");
-                    if (!lastUserMessage) {
-                      console.error("No user message found");
-                      return;
-                    }
-                    // Need to do a redo, if we didn't delete the message from a revert.
-                    const redo = shouldRedo;
-                    console.debug("Streaming message with redo", redo);
-
-                    streamMessage({
-                      prompt: lastUserMessage.content,
-                      chatId: selectedChatId,
-                      redo,
-                    });
                   } catch (error) {
-                    console.error("Error during retry operation:", error);
-                    showError("Failed to retry message");
+                    console.error("Error during undo operation:", error);
+                    showError("Failed to undo changes");
                   } finally {
-                    setIsRetryLoading(false);
+                    setIsUndoLoading(false);
                   }
                 }}
               >
-                {isRetryLoading ? (
+                {isUndoLoading ? (
                   <Loader2 size={16} className="mr-1 animate-spin" />
                 ) : (
-                  <RefreshCw size={16} />
+                  <Undo size={16} />
                 )}
-                Retry
+                Undo
               </Button>
             )}
-          </div>
-        )}
+          {!!messages.length && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isRetryLoading}
+              onClick={async () => {
+                if (!selectedChatId) {
+                  console.error("No chat selected");
+                  return;
+                }
 
-        {isStreaming &&
-          !settings?.enableDyadPro &&
-          !userBudget &&
-          messages.length > 0 && (
-            <PromoMessage
-              seed={messages.length * (appId ?? 1) * (selectedChatId ?? 1)}
-            />
+                setIsRetryLoading(true);
+                try {
+                  // The last message is usually an assistant, but it might not be.
+                  const lastVersion = versions[0];
+                  const lastMessage = messages[messages.length - 1];
+                  let shouldRedo = true;
+                  if (
+                    lastVersion.oid === lastMessage.commitHash &&
+                    lastMessage.role === "assistant"
+                  ) {
+                    const previousAssistantMessage =
+                      messages[messages.length - 3];
+                    if (
+                      previousAssistantMessage?.role === "assistant" &&
+                      previousAssistantMessage?.commitHash
+                    ) {
+                      console.debug("Reverting to previous assistant version");
+                      await revertVersion({
+                        versionId: previousAssistantMessage.commitHash,
+                      });
+                      shouldRedo = false;
+                    } else {
+                      const chat =
+                        await IpcClient.getInstance().getChat(selectedChatId);
+                      if (chat.initialCommitHash) {
+                        console.debug(
+                          "Reverting to initial commit hash",
+                          chat.initialCommitHash,
+                        );
+                        await revertVersion({
+                          versionId: chat.initialCommitHash,
+                        });
+                      } else {
+                        showWarning(
+                          "No initial commit hash found for chat. Need to manually undo code changes",
+                        );
+                      }
+                    }
+                  }
+
+                  // Find the last user message
+                  const lastUserMessage = [...messages]
+                    .reverse()
+                    .find((message) => message.role === "user");
+                  if (!lastUserMessage) {
+                    console.error("No user message found");
+                    return;
+                  }
+                  // Need to do a redo, if we didn't delete the message from a revert.
+                  const redo = shouldRedo;
+                  console.debug("Streaming message with redo", redo);
+
+                  streamMessage({
+                    prompt: lastUserMessage.content,
+                    chatId: selectedChatId,
+                    redo,
+                  });
+                } catch (error) {
+                  console.error("Error during retry operation:", error);
+                  showError("Failed to retry message");
+                } finally {
+                  setIsRetryLoading(false);
+                }
+              }}
+            >
+              {isRetryLoading ? (
+                <Loader2 size={16} className="mr-1 animate-spin" />
+              ) : (
+                <RefreshCw size={16} />
+              )}
+              Retry
+            </Button>
           )}
-        <div ref={messagesEndRef} />
-        {renderSetupBanner()}
-      </>
-    );
-  },
-);
+        </div>
+      )}
+
+      {isStreaming &&
+        !settings?.enableDyadPro &&
+        !userBudget &&
+        messages.length > 0 && (
+          <PromoMessage
+            seed={messages.length * (appId ?? 1) * (selectedChatId ?? 1)}
+          />
+        )}
+      <div ref={messagesEndRef} />
+      {renderSetupBanner()}
+    </>
+  );
+}
 
 export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
   function MessagesList({ messages, messagesEndRef }, ref) {
@@ -327,7 +321,6 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
     ]);
 
     // Memoized item renderer for virtualized list
-    // Empty dependency array - Virtuoso handles updates internally
     const itemContent = useCallback(
       (index: number, message: Message) => {
         const isLastMessage = index === messages.length - 1;

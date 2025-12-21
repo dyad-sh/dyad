@@ -1,6 +1,6 @@
 import { db } from "../../db";
 import { apps, chats, messages, versions } from "../../db/schema";
-import { desc, eq, and, gt } from "drizzle-orm";
+import { desc, eq, and, gt, inArray } from "drizzle-orm";
 import type {
   Version,
   BranchResult,
@@ -209,21 +209,38 @@ export function registerVersionHandlers() {
 
         // If we found a message with this commit hash, delete all subsequent messages (but keep this message)
         if (messageWithCommit) {
-          // Find all messages with IDs > the one with our commit hash
-          const messagesToDelete = await db.query.messages.findMany({
-            where: gt(messages.id, messageWithCommit.id),
-            orderBy: desc(messages.id),
+          // Get all chats belonging to this app to ensure we only delete messages from this app
+          const appChats = await db.query.chats.findMany({
+            where: eq(chats.appId, appId),
+            columns: { id: true },
           });
+          const chatIdList = appChats.map((c) => c.id);
 
-          logger.log(
-            `Deleting ${messagesToDelete.length} messages after commit ${previousVersionId}`,
-          );
+          if (chatIdList.length > 0) {
+            // Find all messages in this app's chats with IDs > the one with our commit hash
+            const messagesToDelete = await db.query.messages.findMany({
+              where: and(
+                inArray(messages.chatId, chatIdList),
+                gt(messages.id, messageWithCommit.id),
+              ),
+              orderBy: desc(messages.id),
+            });
 
-          // Delete the messages
-          if (messagesToDelete.length > 0) {
-            await db
-              .delete(messages)
-              .where(gt(messages.id, messageWithCommit.id));
+            logger.log(
+              `Deleting ${messagesToDelete.length} messages after commit ${previousVersionId} for app ${appId}`,
+            );
+
+            // Delete the messages
+            if (messagesToDelete.length > 0) {
+              await db
+                .delete(messages)
+                .where(
+                  and(
+                    inArray(messages.chatId, chatIdList),
+                    gt(messages.id, messageWithCommit.id),
+                  ),
+                );
+            }
           }
 
           // Find all the chats that were created after the message with our commit hash

@@ -794,6 +794,7 @@ export function registerAppHandlers() {
         envVars[provider.envVarName] = getEnvVar(provider.envVarName);
       }
     }
+    envVars.E2E_TEST_BUILD = process.env.E2E_TEST_BUILD;
     return envVars;
   });
 

@@ -53,7 +53,7 @@ interface FooterContext {
 
 // Footer component for Virtuoso - receives context via props
 const FooterComponent = forwardRef<HTMLDivElement, { context?: FooterContext }>(
-  function Footer({ context }, ref) {
+  function Footer({ context }) {
     if (!context) return null;
 
     const {
@@ -77,7 +77,7 @@ const FooterComponent = forwardRef<HTMLDivElement, { context?: FooterContext }>(
     } = context;
 
     return (
-      <div ref={ref} className="px-4 pt-2 pointer-events-none">
+      <>
         {/* Show context limit banner when close to token limit */}
         {!isStreaming && tokenCountResult && (
           <ContextLimitBanner
@@ -87,7 +87,7 @@ const FooterComponent = forwardRef<HTMLDivElement, { context?: FooterContext }>(
         )}
 
         {!isStreaming && (
-          <div className="flex max-w-3xl mx-auto gap-2 pointer-events-auto">
+          <div className="flex max-w-3xl mx-auto gap-2">
             {!!messages.length &&
               messages[messages.length - 1].role === "assistant" &&
               messages[messages.length - 1].commitHash && (
@@ -265,8 +265,8 @@ const FooterComponent = forwardRef<HTMLDivElement, { context?: FooterContext }>(
             />
           )}
         <div ref={messagesEndRef} />
-        <div className="pointer-events-auto">{renderSetupBanner()}</div>
-      </div>
+        {renderSetupBanner()}
+      </>
     );
   },
 );
@@ -429,10 +429,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
             const isLastMessage = index === messages.length - 1;
             return (
               <div className="px-4" key={message.id}>
-                <MemoizedChatMessage
-                  message={message}
-                  isLastMessage={isLastMessage}
-                />
+                <ChatMessage message={message} isLastMessage={isLastMessage} />
               </div>
             );
           })}

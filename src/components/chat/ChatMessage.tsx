@@ -18,7 +18,7 @@ import { formatDistanceToNow, format } from "date-fns";
 import { useVersions } from "@/hooks/useVersions";
 import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import { useEffect, useMemo, useRef, useState, memo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import {
   Tooltip,
@@ -299,4 +299,4 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
   );
 };
 
-export default memo(ChatMessage);
+export default ChatMessage;

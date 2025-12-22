@@ -1,7 +1,7 @@
 {
   "name": "dyad",
   "productName": "dyad",
-  "version": "0.30.0-beta.1",
+  "version": "0.31.0-beta.1",
   "description": "Free, local, open-source AI app builder",
   "main": ".vite/build/main.js",
   "repository": {
@@ -148,6 +148,7 @@
     "html-to-image": "^1.11.13",
     "isomorphic-git": "^1.30.1",
     "jotai": "^2.12.2",
+    "jsonrepair": "^3.13.1",
     "kill-port": "^2.0.1",
     "konva": "^10.0.12",
     "lexical": "^0.33.1",

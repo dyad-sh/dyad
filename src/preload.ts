@@ -124,6 +124,10 @@ const validInvokeChannels = [
   "mcp:set-tool-consent",
   // MCP consent response from renderer to main
   "mcp:tool-consent-response",
+  // Agent Tools (Local Agent v2)
+  "agent-tool:get-tools",
+  "agent-tool:set-consent",
+  "agent-tool:consent-response",
   // Help
   "take-screenshot",
   // Help bot
@@ -162,6 +166,8 @@ const validReceiveChannels = [
   "help:chat:response:error",
   // MCP consent request from main to renderer
   "mcp:tool-consent-request",
+  // Agent tool consent request from main to renderer
+  "agent-tool:consent-request",
 ] as const;
 
 type ValidInvokeChannel = (typeof validInvokeChannels)[number];

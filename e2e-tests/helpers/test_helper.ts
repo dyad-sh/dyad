@@ -258,11 +258,17 @@ export class PageObject {
     await this.selectTestModel();
   }
 
-  async setUpDyadPro({ autoApprove = false }: { autoApprove?: boolean } = {}) {
+  async setUpDyadPro({
+    autoApprove = false,
+    localAgent = false,
+  }: { autoApprove?: boolean; localAgent?: boolean } = {}) {
     await this.baseSetup();
     await this.goToSettingsTab();
     if (autoApprove) {
       await this.toggleAutoApprove();
+    }
+    if (localAgent) {
+      await this.toggleLocalAgentMode();
     }
     await this.setUpDyadProvider();
     await this.goToAppsTab();
@@ -339,9 +345,24 @@ export class PageObject {
     await this.page.getByRole("button", { name: "Import" }).click();
   }
 
-  async selectChatMode(mode: "build" | "ask" | "agent") {
+  async selectChatMode(mode: "build" | "ask" | "agent" | "local-agent") {
     await this.page.getByTestId("chat-mode-selector").click();
-    await this.page.getByRole("option", { name: mode }).click();
+    // local-agent appears as "Agent v2 (experimental)" in the UI
+    const optionName =
+      mode === "local-agent"
+        ? "Agent v2 (experimental)"
+        : mode === "agent"
+          ? "Build with MCP (experimental)"
+          : mode;
+    await this.page
+      .getByRole("option", {
+        name: optionName,
+      })
+      .click();
+  }
+
+  async selectLocalAgentMode() {
+    await this.selectChatMode("local-agent");
   }
 
   async openContextFilesPicker() {
@@ -969,6 +990,10 @@ export class PageObject {
     await this.page.getByRole("switch", { name: "Auto-approve" }).click();
   }
 
+  async toggleLocalAgentMode() {
+    await this.page.getByRole("switch", { name: "Enable Agent v2" }).click();
+  }
+
   async toggleNativeGit() {
     await this.page.getByRole("switch", { name: "Enable Native Git" }).click();
   }
@@ -1092,6 +1117,34 @@ export class PageObject {
 
   async sleep(ms: number) {
     await new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  ////////////////////////////////
+  // Agent Tool Consent Banner
+  ////////////////////////////////
+
+  getAgentConsentBanner() {
+    return this.page
+      .getByRole("button", { name: "Always allow" })
+      .locator("..");
+  }
+
+  async waitForAgentConsentBanner(timeout = Timeout.MEDIUM) {
+    await expect(
+      this.page.getByRole("button", { name: "Always allow" }),
+    ).toBeVisible({ timeout });
+  }
+
+  async clickAgentConsentAlwaysAllow() {
+    await this.page.getByRole("button", { name: "Always allow" }).click();
+  }
+
+  async clickAgentConsentAllowOnce() {
+    await this.page.getByRole("button", { name: "Allow once" }).click();
+  }
+
+  async clickAgentConsentDecline() {
+    await this.page.getByRole("button", { name: "Decline" }).click();
   }
 }
 

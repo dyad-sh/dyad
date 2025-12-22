@@ -28,6 +28,7 @@ import {
   startPerformanceMonitoring,
   stopPerformanceMonitoring,
 } from "./utils/performance_monitor";
+import { cleanupOldAiMessagesJson } from "./pro/main/ipc/handlers/local_agent/ai_messages_cleanup";
 import fs from "fs";
 
 log.errorHandler.startCatching();
@@ -85,6 +86,10 @@ export async function onReady() {
     logger.error("Error initializing backup manager", e);
   }
   initializeDatabase();
+
+  // Cleanup old ai_messages_json entries to prevent database bloat
+  cleanupOldAiMessagesJson();
+
   const settings = readSettings();
 
   // Check if app was force-closed

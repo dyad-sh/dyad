@@ -27,6 +27,7 @@ import {
   chatInputValueAtom,
   chatMessagesByIdAtom,
   selectedChatIdAtom,
+  pendingAgentConsentsAtom,
 } from "@/atoms/chatAtoms";
 import { atom, useAtom, useSetAtom, useAtomValue } from "jotai";
 import { useStreamChat } from "@/hooks/useStreamChat";
@@ -63,6 +64,7 @@ import { showExtraFilesToast } from "@/lib/toast";
 import { useSummarizeInNewChat } from "./SummarizeInNewChatButton";
 import { ChatInputControls } from "../ChatInputControls";
 import { ChatErrorBox } from "./ChatErrorBox";
+import { AgentConsentBanner } from "./AgentConsentBanner";
 import {
   selectedComponentsPreviewAtom,
   previewIframeRefAtom,
@@ -105,6 +107,14 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     currentComponentCoordinatesAtom,
   );
   const setPendingVisualChanges = useSetAtom(pendingVisualChangesAtom);
+  const [pendingAgentConsents, setPendingAgentConsents] = useAtom(
+    pendingAgentConsentsAtom,
+  );
+  // Get the first consent in the queue for this chat (if any)
+  const consentsForThisChat = pendingAgentConsents.filter(
+    (c) => c.chatId === chatId,
+  );
+  const pendingAgentConsent = consentsForThisChat[0] ?? null;
   const { checkProblems } = useCheckProblems(appId);
   const { refreshAppIframe } = useRunApp();
   // Use the attachments hook
@@ -132,6 +142,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
   const lastMessage = (chatId ? (messagesById.get(chatId) ?? []) : []).at(-1);
   const disableSendButton =
+    settings?.selectedChatMode !== "local-agent" &&
     lastMessage?.role === "assistant" &&
     !lastMessage.approvalState &&
     !!proposal &&
@@ -302,10 +313,43 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
-          {/* Only render ChatInputActions if proposal is loaded */}
-          {proposal &&
+          {/* Show agent consent banner if there's a pending consent request */}
+          {pendingAgentConsent && (
+            <AgentConsentBanner
+              consent={pendingAgentConsent}
+              queueTotal={consentsForThisChat.length}
+              onDecision={(decision) => {
+                IpcClient.getInstance().respondToAgentConsentRequest({
+                  requestId: pendingAgentConsent.requestId,
+                  decision,
+                });
+                // Remove this consent from the queue by requestId
+                setPendingAgentConsents((prev) =>
+                  prev.filter(
+                    (c) => c.requestId !== pendingAgentConsent.requestId,
+                  ),
+                );
+              }}
+              onClose={() => {
+                IpcClient.getInstance().respondToAgentConsentRequest({
+                  requestId: pendingAgentConsent.requestId,
+                  decision: "decline",
+                });
+                // Remove this consent from the queue by requestId
+                setPendingAgentConsents((prev) =>
+                  prev.filter(
+                    (c) => c.requestId !== pendingAgentConsent.requestId,
+                  ),
+                );
+              }}
+            />
+          )}
+          {/* Only render ChatInputActions if proposal is loaded and no pending consent */}
+          {!pendingAgentConsent &&
+            proposal &&
             proposalResult?.chatId === chatId &&
-            settings.selectedChatMode !== "ask" && (
+            settings.selectedChatMode !== "ask" &&
+            settings.selectedChatMode !== "local-agent" && (
               <ChatInputActions
                 proposal={proposal}
                 onApprove={handleApprove}

@@ -612,3 +612,40 @@ export interface AnalyseComponentParams {
   appId: number;
   componentId: string;
 }
+
+// --- Agent Tool Types ---
+export interface AgentTool {
+  name: string;
+  description: string;
+  isAllowedByDefault: boolean;
+  consent: AgentToolConsent;
+}
+
+export interface SetAgentToolConsentParams {
+  toolName: string;
+  consent: AgentToolConsent;
+}
+
+export interface AgentToolConsentRequestPayload {
+  requestId: string;
+  chatId: number;
+  toolName: string;
+  toolDescription?: string | null;
+  inputPreview?: string | null;
+}
+
+export type AgentToolConsentDecision =
+  | "accept-once"
+  | "accept-always"
+  | "decline";
+
+export interface AgentToolConsentResponseParams {
+  requestId: string;
+  decision: AgentToolConsentDecision;
+}
+
+// ============================================================================
+// Consent Types
+// ============================================================================
+
+export type AgentToolConsent = "ask" | "always";

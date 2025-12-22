@@ -22,3 +22,14 @@ export const chatStreamCountByIdAtom = atom<Map<number, number>>(new Map());
 export const recentStreamChatIdsAtom = atom<Set<number>>(new Set<number>());
 
 export const attachmentsAtom = atom<FileAttachment[]>([]);
+
+// Agent tool consent request queue
+export interface PendingAgentConsent {
+  requestId: string;
+  chatId: number;
+  toolName: string;
+  toolDescription?: string | null;
+  inputPreview?: string | null;
+}
+
+export const pendingAgentConsentsAtom = atom<PendingAgentConsent[]>([]);

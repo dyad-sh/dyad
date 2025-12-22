@@ -271,7 +271,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
     const { versions, revertVersion } = useVersions(appId);
     const { streamMessage, isStreaming } = useStreamChat();
     const { isAnyProviderSetup, isProviderSetup } = useLanguageModelProviders();
-    const { settings, envVars } = useSettings();
+    const { settings } = useSettings();
     const setMessagesById = useSetAtom(chatMessagesByIdAtom);
     const [isUndoLoading, setIsUndoLoading] = useState(false);
     const [isRetryLoading, setIsRetryLoading] = useState(false);
@@ -282,8 +282,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
     // 1. Off-screen logs don't exist in the DOM and can't be queried by test selectors
     // 2. Tests would need complex scrolling logic to bring elements into view before interaction
     // 3. Race conditions and timing issues occur when waiting for virtualized elements to render after scrolling
-    // E2E_TEST_BUILD is passed from main process via IPC (envVarsAtom)
-    const isTestMode = envVars.E2E_TEST_BUILD === "true";
+    const isTestMode = settings?.isTestMode;
     // Only fetch token count when not streaming
     const { result: tokenCountResult } = useCountTokens(
       !isStreaming ? selectedChatId : null,

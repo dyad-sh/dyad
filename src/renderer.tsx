@@ -157,6 +157,15 @@ function App() {
     return () => unsubscribe();
   }, [setPendingAgentConsents]);
 
+  // Forward telemetry events from main process to PostHog
+  useEffect(() => {
+    const ipc = IpcClient.getInstance();
+    const unsubscribe = ipc.onTelemetryEvent(({ eventName, properties }) => {
+      posthog.capture(eventName, properties);
+    });
+    return () => unsubscribe();
+  }, []);
+
   return <RouterProvider router={router} />;
 }
 

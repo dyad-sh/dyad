@@ -125,7 +125,6 @@ export function PreviewPanel() {
       loadEdgeLogs(projectId).catch((error) => {
         console.error("Failed to load edge logs:", error);
       });
-      console.log("polling");
     }, 5000);
 
     return () => clearInterval(intervalId);

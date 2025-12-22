@@ -19,8 +19,8 @@
       if (typeof arg === "object") {
         try {
           return JSON.stringify(arg, null, 2);
-        } catch (error) {
-          throw new Error("Failed to stringify argument: " + error.message);
+        } catch {
+          return "[Object: unable to stringify]";
         }
       }
       return String(arg);

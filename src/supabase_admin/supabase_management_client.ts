@@ -188,11 +188,9 @@ FROM function_logs`;
   if (timestampStart) {
     // Convert milliseconds to microseconds and wrap in TIMESTAMP_MICROS for BigQuery
     sqlQuery += `\nWHERE timestamp > TIMESTAMP_MICROS(${timestampStart * 1000})`;
-    console.log("start time exist  :", timestampStart);
   }
 
-  console.log("start time doesnt exist :", timestampStart);
-  sqlQuery += `\nORDER BY timestamp DESC
+  sqlQuery += `\nORDER BY timestamp ASC
 LIMIT 1000`;
 
   // Calculate time range for API parameters

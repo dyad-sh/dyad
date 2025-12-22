@@ -24,7 +24,7 @@ Join our growing community of AI app builders on **Reddit**: [r/dyadbuilders](ht
 
 ## 🛠️ Contributing
 
-**Dyad** is open-source (Apache 2.0 licensed).
+**Dyad** is open-source (see License info below).
 
 If you're interested in contributing to dyad, please read our [contributing](./CONTRIBUTING.md) doc.
 

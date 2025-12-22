@@ -525,12 +525,13 @@ export async function gitPush({
   forceWithLease,
 }: GitPushParams): Promise<void> {
   const settings = readSettings();
+  const targetBranch = branch || "main";
 
   if (settings.enableNativeGit) {
     // Dugite version
     try {
       // Push using the configured origin remote (which already has auth in URL)
-      const args = ["push", "origin", `main:${branch}`];
+      const args = ["push", "origin", `${targetBranch}:${targetBranch}`];
       if (forceWithLease) {
         args.push("--force-with-lease");
       } else if (force) {
@@ -553,8 +554,8 @@ export async function gitPush({
       http,
       dir: path,
       remote: "origin",
-      ref: "main",
-      remoteRef: branch,
+      ref: targetBranch,
+      remoteRef: targetBranch,
       onAuth: () => ({
         username: accessToken,
         password: "x-oauth-basic",

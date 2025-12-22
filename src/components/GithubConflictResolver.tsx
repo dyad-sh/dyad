@@ -17,6 +17,7 @@ import type { FileAttachment } from "@/ipc/ipc_types";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
 import { useAtom, useSetAtom } from "jotai";
+import { useProposal } from "@/hooks/useProposal";
 
 interface ConflictResolverProps {
   appId: number;
@@ -43,6 +44,8 @@ export function GithubConflictResolver({
     string | null
   >(null);
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
+  const { refreshProposal } = useProposal(aiChatId || undefined);
+  const [latestContent, setLatestContent] = useState<string | null>(null);
 
   const currentFile = conflicts[currentConflictIndex];
 
@@ -89,6 +92,7 @@ export function GithubConflictResolver({
         currentFile,
       );
       setFileContent(content);
+      setLatestContent(content);
       setAiResolution(null);
       setAiMessageId(null);
       setResolvedContentOverride(null);
@@ -180,7 +184,9 @@ ${extractConflictSnippet(fileContent)}`,
       setAiMessageId(null);
       setFileContent(result.resolution);
       setResolvedContentOverride(result.resolution);
+      setLatestContent(result.resolution);
       showSuccess("Applied manual conflict resolution");
+      onResolve();
     } catch (error: any) {
       showError(error.message || "Failed to resolve conflict manually");
     }
@@ -191,12 +197,10 @@ ${extractConflictSnippet(fileContent)}`,
   const handleSaveResolution = async () => {
     setIsResolving(true);
     try {
-      const latest = await IpcClient.getInstance().readAppFile(
-        appId,
-        currentFile,
-      );
-      // Persist the latest saved content
-      await IpcClient.getInstance().editAppFile(appId, currentFile, latest);
+      const latest =
+        latestContent ??
+        (await IpcClient.getInstance().readAppFile(appId, currentFile));
+      setLatestContent(latest);
 
       showSuccess(`Resolved ${currentFile}`);
 
@@ -226,7 +230,11 @@ ${extractConflictSnippet(fileContent)}`,
       });
       await loadFileContent();
       await refreshChatMessages(aiChatId);
+      setAiResolution(null);
+      setAiMessageId(null);
+      refreshProposal();
       showSuccess("Applied AI suggestion via approval.");
+      onResolve();
     } catch (error: any) {
       showError(error?.message || "Failed to approve AI suggestion");
     } finally {

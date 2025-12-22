@@ -80,6 +80,7 @@ import type {
   AgentToolConsentRequestPayload,
   AgentToolConsentResponseParams,
   TelemetryEventPayload,
+  GithubSyncOptions,
 } from "./ipc_types";
 import type { ConsoleEntry } from "../atoms/appAtoms";
 import type { Template } from "../shared/templates";
@@ -824,10 +825,9 @@ export class IpcClient {
   // Sync (push) local repo to GitHub
   public async syncGithubRepo(
     appId: number,
-    force?: boolean,
-    rebase?: boolean,
-    forceWithLease?: boolean,
+    options: GithubSyncOptions = {},
   ): Promise<{ success: boolean; error?: string; isConflict?: boolean }> {
+    const { force, rebase, forceWithLease } = options;
     return this.ipcRenderer.invoke("github:push", {
       appId,
       force,

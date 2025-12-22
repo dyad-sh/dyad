@@ -60,7 +60,7 @@ async function createGitConflict(po: PageObject) {
   await po.page.getByTestId(`branch-actions-${featureBranch}`).click();
   await po.page.getByTestId("merge-branch-menu-item").click();
   await po.page.getByTestId("merge-branch-submit-button").click();
-  return { conflictFile, conflictFilePath };
+  return { conflictFile };
 }
 
 test.describe("Git Collaboration", () => {
@@ -198,6 +198,22 @@ test.describe("Git Collaboration", () => {
     //use Manual resolution
     await po.page.getByRole("button", { name: "Manual Git Resolve" }).click();
     await po.waitForToastWithText(`Applied manual conflict resolution`);
+  });
+
+  test("should resolve merge conflicts manually with text editor", async ({
+    po,
+  }) => {
+    const { conflictFile } = await createGitConflict(po);
+    await expect(po.page.getByText("Resolve Conflicts")).toBeVisible({
+      timeout: 10000,
+    });
+
+    const resolvedContent = "Line 1\nLine 2 Resolved\nLine 3";
+    await po.editFileContent(resolvedContent);
+    await po.page.getByTestId("finish-resolution-button").click();
+
+    await po.waitForToastWithText(`Resolved ${conflictFile}`);
+    await expect(po.page.getByText("Resolve Conflicts")).not.toBeVisible();
   });
 });
 

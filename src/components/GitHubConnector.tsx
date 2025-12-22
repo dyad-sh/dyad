@@ -31,6 +31,7 @@ import { Label } from "@/components/ui/label";
 import { GithubBranchManager } from "@/components/GithubBranchManager";
 import { GithubConflictResolver } from "@/components/GithubConflictResolver";
 import { showSuccess } from "@/lib/toast";
+import type { GithubSyncOptions } from "@/ipc/ipc_types";
 
 interface GitHubConnectorProps {
   appId: number | null;
@@ -103,11 +104,11 @@ function ConnectedGitHubConnector({
   };
 
   const handleSyncToGithub = useCallback(
-    async (
-      force: boolean = false,
-      rebase: boolean = false,
-      forceWithLease: boolean = false,
-    ) => {
+    async ({
+      force = false,
+      rebase = false,
+      forceWithLease = false,
+    }: GithubSyncOptions = {}) => {
       setIsSyncing(true);
       setSyncError(null);
       setSyncSuccess(false);
@@ -116,12 +117,11 @@ function ConnectedGitHubConnector({
       setRebaseInProgress(false);
 
       try {
-        const result = await IpcClient.getInstance().syncGithubRepo(
-          appId,
+        const result = await IpcClient.getInstance().syncGithubRepo(appId, {
           force,
           rebase,
           forceWithLease,
-        );
+        });
         if (result.success) {
           setSyncSuccess(true);
           setRebaseInProgress(false);
@@ -208,7 +208,11 @@ function ConnectedGitHubConnector({
   const handleSafeForcePush = useCallback(async () => {
     setRebaseAction("safe-push");
     try {
-      await handleSyncToGithub(false, false, true);
+      await handleSyncToGithub({
+        force: false,
+        rebase: false,
+        forceWithLease: true,
+      });
     } finally {
       setRebaseAction(null);
     }
@@ -218,7 +222,7 @@ function ConnectedGitHubConnector({
   useEffect(() => {
     if (triggerAutoSync && !autoSyncTriggeredRef.current) {
       autoSyncTriggeredRef.current = true;
-      handleSyncToGithub(false).finally(() => {
+      handleSyncToGithub().finally(() => {
         onAutoSyncComplete?.();
       });
     } else if (!triggerAutoSync) {
@@ -253,7 +257,7 @@ function ConnectedGitHubConnector({
       {app.githubBranch && <GithubBranchManager appId={appId} />}
       <div className="mt-2 flex gap-2">
         <Button
-          onClick={() => handleSyncToGithub(false)}
+          onClick={() => handleSyncToGithub()}
           disabled={isRebaseActionPending}
         >
           {isSyncing ? (
@@ -366,7 +370,7 @@ function ConnectedGitHubConnector({
           )}
           {showRebaseAndSync && (
             <Button
-              onClick={() => handleSyncToGithub(false, true)}
+              onClick={() => handleSyncToGithub({ rebase: true })}
               variant="outline"
               size="sm"
               disabled={isRebaseActionPending}
@@ -442,7 +446,7 @@ function ConnectedGitHubConnector({
             </Button>
             <Button
               variant="destructive"
-              onClick={() => handleSyncToGithub(true)}
+              onClick={() => handleSyncToGithub({ force: true })}
               disabled={isSyncing}
             >
               {isSyncing ? "Force Pushing..." : "Force Push"}

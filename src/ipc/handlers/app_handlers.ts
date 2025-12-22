@@ -794,8 +794,6 @@ export function registerAppHandlers() {
         envVars[provider.envVarName] = getEnvVar(provider.envVarName);
       }
     }
-    // Include E2E_TEST_BUILD for test mode detection in renderer
-    envVars.E2E_TEST_BUILD = process.env.E2E_TEST_BUILD;
     return envVars;
   });
 

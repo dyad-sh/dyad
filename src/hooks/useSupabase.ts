@@ -110,26 +110,28 @@ export function useSupabase() {
   const loadEdgeLogs = useCallback(
     async (projectId: string) => {
       if (!selectedAppId) return;
+
+      // Use last timestamp if available, otherwise fetch logs from the past 10 minutes
       const lastTimestamp = lastLogTimestamp[projectId];
-      if (!lastTimestamp) {
-        setLastLogTimestamp(
-          (prev): Record<string, number> => ({
-            ...prev,
-            [projectId]: Date.now(),
-          }),
-        );
-        return;
-      }
+      const timestampStart = lastTimestamp ?? Date.now() - 10 * 60 * 1000; // 10 minutes ago
+
       setLoading(true);
       try {
         // Fetch logs - handler returns ConsoleEntry[] already formatted
         const logs = await ipcClient.getSupabaseEdgeLogs({
           projectId,
-          timestampStart: lastTimestamp,
+          timestampStart,
           appId: selectedAppId,
         });
 
         if (logs.length === 0) {
+          // Even if no logs, set the timestamp so we don't keep looking back 10 minutes
+          if (!lastTimestamp) {
+            setLastLogTimestamp((prev) => ({
+              ...prev,
+              [projectId]: Date.now(),
+            }));
+          }
           setError(null);
           return;
         }

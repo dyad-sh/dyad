@@ -196,10 +196,10 @@ LIMIT 1000`;
   // Calculate time range for API parameters
   const now = new Date();
   const isoTimestampEnd = now.toISOString();
-  // Default to last 5 seconds if no start timestamp provided
+  // Default to last 10 minutes if no start timestamp provided
   const isoTimestampStart = timestampStart
     ? new Date(timestampStart).toISOString()
-    : new Date(now.getTime() - 5 * 1000).toISOString();
+    : new Date(now.getTime() - 10 * 60 * 1000).toISOString();
 
   // Encode SQL query for URL
   const encodedSql = encodeURIComponent(sqlQuery);

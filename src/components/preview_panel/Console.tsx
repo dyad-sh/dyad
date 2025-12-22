@@ -1,13 +1,10 @@
-import {
-  appConsoleEntriesAtom,
-  envVarsAtom,
-  type ConsoleEntry,
-} from "@/atoms/appAtoms";
+import { appConsoleEntriesAtom, type ConsoleEntry } from "@/atoms/appAtoms";
 import { useAtomValue } from "jotai";
 import { useEffect, useRef, useState, useMemo, useCallback, memo } from "react";
 import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
 import { ConsoleEntryComponent } from "./ConsoleEntry";
 import { ConsoleFilters } from "./ConsoleFilters";
+import { useSettings } from "@/hooks/useSettings";
 
 // Placeholder component shown during fast scrolling
 const ScrollSeekPlaceholder = () => {
@@ -66,7 +63,7 @@ ConsoleItem.displayName = "ConsoleItem";
 // Console component
 export const Console = () => {
   const consoleEntries = useAtomValue(appConsoleEntriesAtom);
-  const envVars = useAtomValue(envVarsAtom);
+  const { settings } = useSettings();
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const hasScrolledToBottom = useRef(false);
@@ -145,19 +142,21 @@ export const Console = () => {
     return Array.from(sources).sort();
   }, [consoleEntries]);
 
-  // Filter console entries
+  // Filter and sort console entries by timestamp
   const filteredEntries = useMemo(() => {
-    return consoleEntries.filter((entry) => {
-      if (levelFilter !== "all" && entry.level !== levelFilter) return false;
-      if (typeFilter !== "all" && entry.type !== typeFilter) return false;
-      if (
-        sourceFilter &&
-        sourceFilter !== "all" &&
-        entry.sourceName !== sourceFilter
-      )
-        return false;
-      return true;
-    });
+    return consoleEntries
+      .filter((entry) => {
+        if (levelFilter !== "all" && entry.level !== levelFilter) return false;
+        if (typeFilter !== "all" && entry.type !== typeFilter) return false;
+        if (
+          sourceFilter &&
+          sourceFilter !== "all" &&
+          entry.sourceName !== sourceFilter
+        )
+          return false;
+        return true;
+      })
+      .sort((a, b) => a.timestamp - b.timestamp);
   }, [consoleEntries, levelFilter, typeFilter, sourceFilter]);
 
   // Generate unique key for each entry
@@ -206,8 +205,7 @@ export const Console = () => {
   // 1. Off-screen logs don't exist in the DOM and can't be queried by test selectors
   // 2. Tests would need complex scrolling logic to bring elements into view before interaction
   // 3. Race conditions and timing issues occur when waiting for virtualized elements to render after scrolling
-  // E2E_TEST_BUILD is passed from main process via IPC (envVarsAtom)
-  const isTestMode = envVars.E2E_TEST_BUILD === "true";
+  const isTestMode = settings?.isTestMode;
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">

@@ -42,6 +42,21 @@ interface FunctionFilesResult {
   cacheKey: string;
 }
 
+export interface DeployedFunctionResponse {
+  id: string;
+  slug: string;
+  name: string;
+  status: "ACTIVE" | "REMOVED" | "THROTTLED";
+  version: number;
+  created_at?: number;
+  updated_at?: number;
+  verify_jwt?: boolean;
+  import_map?: boolean;
+  entrypoint_path?: string;
+  import_map_path?: string;
+  ezbr_sha256?: string;
+}
+
 // Caches for shared files to avoid re-reading unchanged files
 const sharedFilesCache = new Map<string, CachedSharedFiles>();
 
@@ -267,11 +282,13 @@ export async function deploySupabaseFunction({
   supabaseProjectId,
   functionName,
   appPath,
+  bundleOnly = false,
 }: {
   supabaseProjectId: string;
   functionName: string;
   appPath: string;
-}): Promise<void> {
+  bundleOnly?: boolean;
+}): Promise<DeployedFunctionResponse> {
   logger.info(
     `Deploying Supabase function: ${functionName} to project: ${supabaseProjectId}`,
   );
@@ -301,11 +318,7 @@ export async function deploySupabaseFunction({
   const importMapRelPath = path.posix.join(entryDir, "import_map.json");
 
   const importMapObject = {
-    imports: {
-      // This resolves "_shared/" imports to the _shared directory
-      // From {functionName}/index.ts, ../_shared/ goes up to root then into _shared/
-      "_shared/": "../_shared/",
-    },
+    imports: {},
   };
 
   // Add the import map file into the upload list
@@ -324,7 +337,7 @@ export async function deploySupabaseFunction({
     entrypoint_path: entrypointPath,
     name: functionName,
     verify_jwt: false,
-    import_map: importMapRelPath,
+    import_map_path: importMapRelPath,
   };
 
   formData.append("metadata", JSON.stringify(metadata));
@@ -338,28 +351,63 @@ export async function deploySupabaseFunction({
   }
 
   // 6) Perform the deploy request
-  const response = await fetch(
-    `https://api.supabase.com/v1/projects/${encodeURIComponent(
-      supabaseProjectId,
-    )}/functions/deploy?slug=${encodeURIComponent(functionName)}`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${(supabase as any).options.accessToken}`,
-      },
-      body: formData,
+  const deployUrl = `https://api.supabase.com/v1/projects/${encodeURIComponent(
+    supabaseProjectId,
+  )}/functions/deploy?slug=${encodeURIComponent(functionName)}${bundleOnly ? "&bundleOnly=true" : ""}`;
+
+  const response = await fetch(deployUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${(supabase as any).options.accessToken}`,
     },
-  );
+    body: formData,
+  });
 
   if (response.status !== 201) {
     throw await createResponseError(response, "create function");
   }
 
+  const result: DeployedFunctionResponse = await response.json();
+
   logger.info(
-    `Deployed Supabase function: ${functionName} to project: ${supabaseProjectId}`,
+    `Deployed Supabase function: ${functionName} to project: ${supabaseProjectId}${bundleOnly ? " (bundle only)" : ""}`,
   );
 
-  await response.json();
+  return result;
+}
+
+export async function bulkUpdateFunctions({
+  supabaseProjectId,
+  functions,
+}: {
+  supabaseProjectId: string;
+  functions: DeployedFunctionResponse[];
+}): Promise<void> {
+  logger.info(
+    `Bulk updating ${functions.length} functions for project: ${supabaseProjectId}`,
+  );
+
+  const supabase = await getSupabaseClient();
+
+  const response = await fetch(
+    `https://api.supabase.com/v1/projects/${encodeURIComponent(supabaseProjectId)}/functions`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${(supabase as any).options.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(functions),
+    },
+  );
+
+  if (response.status !== 200) {
+    throw await createResponseError(response, "bulk update functions");
+  }
+
+  logger.info(
+    `Successfully bulk updated ${functions.length} functions for project: ${supabaseProjectId}`,
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────

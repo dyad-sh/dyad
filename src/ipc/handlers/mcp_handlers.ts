@@ -160,4 +160,35 @@ export function registerMcpHandlers() {
       resolveConsent(data.requestId, data.decision);
     },
   );
+
+  // Call MCP tool
+  handle(
+    "mcp:call-tool",
+    async (
+      _event: IpcMainInvokeEvent,
+      params: {
+        serverName: string;
+        toolName: string;
+        args: Record<string, unknown>;
+      },
+    ) => {
+      // Find server by name
+      const servers = await db.select().from(mcpServers).where(eq(mcpServers.name, params.serverName));
+      if (servers.length === 0) {
+        throw new Error(`MCP server not found: ${params.serverName}`);
+      }
+      const server = servers[0];
+
+      // Get client for this server
+      const client = await mcpManager.getClient(server.id);
+
+      // Call the tool
+      const result = await client.callTool({
+        name: params.toolName,
+        arguments: params.args,
+      });
+
+      return result;
+    },
+  );
 }

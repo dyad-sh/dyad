@@ -927,6 +927,18 @@ export class IpcClient {
     return this.ipcRenderer.invoke("mcp:set-tool-consent", params);
   }
 
+  public async callMcpTool(
+    serverName: string,
+    toolName: string,
+    args: Record<string, unknown>
+  ) {
+    return this.ipcRenderer.invoke("mcp:call-tool", {
+      serverName,
+      toolName,
+      args,
+    });
+  }
+
   public onMcpToolConsentRequest(
     handler: (payload: {
       requestId: string;

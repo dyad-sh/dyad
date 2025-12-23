@@ -1543,7 +1543,9 @@ ${problemReport.problems
     // Clean up uploads state for this chat
     try {
       FileUploadsState.getInstance().clear(chatId);
-    } catch {}
+    } catch (error) {
+      // Ignore cleanup errors
+    }
 
     return true;
   });
@@ -1763,6 +1765,7 @@ async function getMcpTools(event: IpcMainInvokeEvent): Promise<ToolSet> {
                 : Array.isArray(args)
                   ? args.join(" ")
                   : JSON.stringify(args).slice(0, 500);
+
             const ok = await requireMcpToolConsent(event, {
               serverId: s.id,
               serverName: s.name,
@@ -1774,7 +1777,19 @@ async function getMcpTools(event: IpcMainInvokeEvent): Promise<ToolSet> {
             if (!ok) throw new Error(`User declined running tool ${key}`);
             const res = await mcpTool.execute(args, execCtx);
 
-            return typeof res === "string" ? res : JSON.stringify(res);
+            // Use callTool with the correct API
+            const result = await client.callTool({ name, arguments: args });
+
+            // Extract content from MCP response
+            if (result.content && Array.isArray(result.content)) {
+              const textContent = result.content
+                .filter((c) => c.type === "text")
+                .map((c) => (c as { text: string }).text)
+                .join("\n");
+              return textContent || JSON.stringify(result.content);
+            }
+
+            return JSON.stringify(result);
           },
         };
       }

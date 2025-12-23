@@ -16,6 +16,7 @@ import { handleDyadProReturn } from "./main/pro";
 import { IS_TEST_BUILD } from "./ipc/utils/test_utils";
 import { BackupManager } from "./backup_manager";
 import { getDatabasePath, initializeDatabase } from "./db";
+import { runSeeds } from "./db/seed";
 import { UserSettings } from "./lib/schemas";
 import { handleNeonOAuthReturn } from "./neon_admin/neon_return_handler";
 import {
@@ -90,6 +91,7 @@ export async function onReady() {
   // Cleanup old ai_messages_json entries to prevent database bloat
   cleanupOldAiMessagesJson();
 
+  await runSeeds(); // Seed default data (like blockchain-guide MCP server)
   const settings = readSettings();
 
   // Check if app was force-closed

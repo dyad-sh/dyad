@@ -102,3 +102,6 @@ sqlite.db
 userData/
 .env.local
 .idea/
+
+# Auto Claude data directory
+.auto-claude/

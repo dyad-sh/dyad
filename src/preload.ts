@@ -126,6 +126,7 @@ const validInvokeChannels = [
   "mcp:list-tools",
   "mcp:get-tool-consents",
   "mcp:set-tool-consent",
+  "mcp:call-tool",
   // MCP consent response from renderer to main
   "mcp:tool-consent-response",
   // Agent Tools (Local Agent v2)

@@ -41,6 +41,11 @@ import { MultiChainTranslationCard } from "@/components/MultiChainTranslationCar
 import { generateTranslationPrompt } from "@/prompts/translation_prompts";
 import { BLOCKCHAIN_LANGUAGES } from "@/lib/blockchain_languages_registry";
 import { CreateAppDialog } from "@/components/CreateAppDialog";
+import {
+  documentPhase,
+  buildEnrichedPrompt,
+  getContextSummary
+} from "@/lib/translation_pipeline";
 
 // Adding an export for attachments
 export interface HomeSubmitOptions {
@@ -310,8 +315,19 @@ export default function HomePage() {
       }
     }
 
-    // Get the dynamic translation prompt for this language pair
+    // PHASE 1: DOCUMENT - Gather MCP context for target ecosystem
+    console.log("📚 Starting document phase for", targetLanguage);
+    const context = await documentPhase(targetLanguage, (msg) => {
+      console.log("📚 Document phase:", msg);
+    });
+    console.log(getContextSummary(context));
+
+    // Get the dynamic translation prompt for this language pair and enrich with MCP context
     const basePrompt = generateTranslationPrompt(sourceLanguage, targetLanguage);
+    const enrichedPrompt = buildEnrichedPrompt(basePrompt, context, {
+      includeFullDocs: false, // Use preview to avoid token limits
+      docsPreviewSize: 50000,  // 50KB preview
+    });
 
     // For Solana, add specific file path instruction
     const solanaPathInstruction = targetLanguage === "solana_rust"
@@ -339,7 +355,7 @@ Use this exact path in your <dyad-write> tag.`
         ...(contractFiles.length > 0 ? [`- Main contract(s): ${contractFiles.map(f => `\`${f}\``).join(', ')}`] : []),
       ].join('\n');
 
-      translationPrompt = `${basePrompt}
+      translationPrompt = `${enrichedPrompt}
 
 ---
 
@@ -381,7 +397,7 @@ The transpiled code is already in the codebase. Focus on review, testing, and en
           ? `**See attached ${BLOCKCHAIN_LANGUAGES[sourceLanguage]?.fileExtension || 'source'} files for the contract code.**`
           : '';
 
-      translationPrompt = `${basePrompt}
+      translationPrompt = `${enrichedPrompt}
 
 ---
 

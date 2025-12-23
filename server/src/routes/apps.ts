@@ -62,9 +62,10 @@ function getAppPreviewUrl(appId: number, port?: number, req?: any): string {
         const host = req.get('host'); // e.g. dyad1.ty-dev.site
         if (host && !host.includes('localhost') && !host.includes('127.0.0.1')) {
             // Heuristic: if host is domain.com, app subdomain is app-dyad-{id}.domain.com
-            // This assumes wildcard DNS is set up for *.domain.com
+            // Ensure we strip 'dyad1.' if present to avoid app-dyad-72.dyad1.ty-dev.site
+            const rootDomain = host.replace('dyad1.', '');
             // FORCE HTTPS to avoid mixed content
-            return `https://app-dyad-${appId}.${host}`;
+            return `https://app-dyad-${appId}.${rootDomain}`;
         }
     }
 

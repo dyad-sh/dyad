@@ -17,8 +17,8 @@ http:
     dyad-apps-service:
       loadBalancer:
         servers:
-          # Container name 'dyad-server' and Port 3007 based on docker-compose.yml
-          - url: "http://dyad-server:3007"
+          # Point to Nginx container which handles the subdomain logic
+          - url: "http://dyad-nginx:80"
 
   middlewares:
     dyad-apps-headers:

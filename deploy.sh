@@ -52,15 +52,17 @@ check_prereqs() {
 # Build command
 build() {
     print_header "Building Docker Images"
-    docker compose build --no-cache
+    docker compose build
     print_success "Build complete"
 }
 
 # Start command
 start() {
-    print_header "Starting Dyad Web Application"
+    print_header "Starting Dyad Web Application (Server + Nginx)"
     docker compose up -d
-    print_success "Dyad is running at http://localhost:3007"
+    print_success "Dyad is running."
+    print_success "- Backend: http://localhost:3007"
+    print_success "- App Subdomains: https://app-dyad-{id}.ty-dev.site"
 }
 
 # Start with nginx

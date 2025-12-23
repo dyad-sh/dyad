@@ -1,0 +1,56 @@
+version: '3.8'
+
+networks:
+  coolify:
+    external: true
+
+services:
+  # The main Node.js backend
+  dyad-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dyad-server
+    restart: unless-stopped
+    ports:
+      - "3007:3007"
+    networks:
+      - coolify
+    volumes:
+      - dyad-data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=3007
+      - HOST=0.0.0.0
+      - DATA_DIR=/app/data
+      - CORS_ORIGIN=*
+      # Database
+      - DATABASE_URL=${DATABASE_URL}
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:3007/api/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # Nginx Reverse Proxy for Subdomains
+  nginx:
+    image: nginx:alpine
+    container_name: dyad-nginx
+    restart: unless-stopped
+    networks:
+      - coolify
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx-apps-subdomain.conf:/etc/nginx/conf.d/dyad-apps.conf:ro
+      # Logs
+      - ./logs/nginx:/var/log/nginx
+    depends_on:
+      - dyad-server
+
+volumes:
+  dyad-data:
+    driver: local

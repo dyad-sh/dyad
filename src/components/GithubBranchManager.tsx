@@ -320,16 +320,29 @@ export function GithubBranchManager({
         }
         // Show conflicts dialog
         if (isConflict) {
-          // Fetch the actual conflicts
-          const conflictsResult =
-            await IpcClient.getInstance().getGithubMergeConflicts(appId);
-          if (
-            conflictsResult.success &&
-            conflictsResult.conflicts &&
-            conflictsResult.conflicts.length > 0
-          ) {
-            setConflicts(conflictsResult.conflicts);
-            return;
+          try {
+            const conflictsResult =
+              await IpcClient.getInstance().getGithubMergeConflicts(appId);
+
+            if (
+              conflictsResult.success &&
+              conflictsResult.conflicts &&
+              conflictsResult.conflicts.length > 0
+            ) {
+              setConflicts(conflictsResult.conflicts);
+              return;
+            }
+            setConflicts([]);
+            showError(
+              conflictsResult.error ||
+                "Merge conflict detected, but no conflicting files were returned. Please check git status and try again.",
+            );
+          } catch (error: any) {
+            setConflicts([]);
+            showError(
+              error.message ||
+                "Merge conflict detected, but failed to fetch conflicting files. Please try again.",
+            );
           }
         }
       }

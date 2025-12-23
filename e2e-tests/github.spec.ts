@@ -64,7 +64,7 @@ test("create and sync to new repo - custom branch", async ({ po }) => {
   await po.getTitleBarAppNameButton().click();
   await po.githubConnector.connect();
 
-  await po.githubConnector.fillCreateRepoName("test-new-repo");
+  await po.githubConnector.fillCreateRepoName("test-new-repo-custom");
   await po.githubConnector.fillNewRepoBranchName("new-branch");
 
   // Click create repo button
@@ -78,7 +78,7 @@ test("create and sync to new repo - custom branch", async ({ po }) => {
 
   // Verify the push was received for the correct custom branch
   await po.githubConnector.verifyPushEvent({
-    repo: "test-new-repo",
+    repo: "test-new-repo-custom",
     branch: "new-branch",
     operation: "create",
   });
@@ -91,7 +91,7 @@ test("disconnect from repo", async ({ po }) => {
   await po.getTitleBarAppNameButton().click();
   await po.githubConnector.connect();
 
-  await po.githubConnector.fillCreateRepoName("test-new-repo");
+  await po.githubConnector.fillCreateRepoName("test-new-repo-disconnect");
   await po.githubConnector.clickCreateRepoButton();
 
   await po.githubConnector.clickDisconnectRepoButton();

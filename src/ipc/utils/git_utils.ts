@@ -528,9 +528,7 @@ export async function gitPush({
   const targetBranch = branch || "main";
 
   if (settings.enableNativeGit) {
-    // Dugite version
     try {
-      // Push using the configured origin remote (which already has auth in URL)
       const args = ["push", "origin", `${targetBranch}:${targetBranch}`];
       if (forceWithLease) {
         args.push("--force-with-lease");
@@ -538,31 +536,37 @@ export async function gitPush({
         args.push("--force");
       }
       const result = await exec(args, path);
-
       if (result.exitCode !== 0) {
         const errorMsg = result.stderr.toString() || result.stdout.toString();
         throw new Error(`Git push failed: ${errorMsg}`);
       }
+      return;
     } catch (error: any) {
       logger.error("Error during git push:", error);
       throw new Error(`Git push failed: ${error.message}`);
     }
-  } else {
-    // isomorphic-git version
-    await git.push({
-      fs,
-      http,
-      dir: path,
-      remote: "origin",
-      ref: targetBranch,
-      remoteRef: targetBranch,
-      onAuth: () => ({
-        username: accessToken,
-        password: "x-oauth-basic",
-      }),
-      force: !!(force || forceWithLease),
-    });
   }
+
+  // isomorphic-git cannot provide "force-with-lease" safety guarantees.
+  if (forceWithLease) {
+    throw new Error(
+      "gitPush: 'forceWithLease' is not supported when native git is disabled. " +
+        "Falling back to plain force could overwrite remote commits. Enable native git or use 'force' explicitly.",
+    );
+  }
+  await git.push({
+    fs,
+    http,
+    dir: path,
+    remote: "origin",
+    ref: targetBranch,
+    remoteRef: targetBranch,
+    onAuth: () => ({
+      username: accessToken,
+      password: "x-oauth-basic",
+    }),
+    force: !!force,
+  });
 }
 
 export async function gitRebaseAbort({ path }: GitBaseParams): Promise<void> {
@@ -765,27 +769,33 @@ export async function gitPull({
   const settings = readSettings();
   if (settings.enableNativeGit) {
     const args = ["pull", remote, branch];
-    if (rebase) {
-      args.push("--rebase");
-    }
+    if (rebase) args.push("--rebase");
     await execOrThrow(args, path, "Failed to pull from remote");
-  } else {
-    await git.pull({
-      fs,
-      http,
-      dir: path,
-      remote,
-      ref: branch,
-      singleBranch: true,
-      author: author || (await getGitAuthor()),
-      onAuth: accessToken
-        ? () => ({
-            username: accessToken,
-            password: "x-oauth-basic",
-          })
-        : undefined,
-    });
+    return;
   }
+
+  if (rebase) {
+    throw new Error(
+      "gitPull: 'rebase' is not supported when native git is disabled. " +
+        "Enable native git or omit 'rebase' to avoid unexpected history.",
+    );
+  }
+
+  await git.pull({
+    fs,
+    http,
+    dir: path,
+    remote,
+    ref: branch,
+    singleBranch: true,
+    author: author || (await getGitAuthor()),
+    onAuth: accessToken
+      ? () => ({
+          username: accessToken,
+          password: "x-oauth-basic",
+        })
+      : undefined,
+  });
 }
 
 export async function gitMerge({
@@ -823,17 +833,22 @@ export async function gitCreateBranch({
       path,
       `Failed to create branch ${branch}`,
     );
-  } else {
-    await git.branch({
-      fs,
-      dir: path,
-      ref: branch,
-      checkout: false, // Just create, don't switch yet (unless we want to?)
-      // isomorphic-git branch doesn't support 'from' directly in the same way, it branches from HEAD usually.
-      // If 'from' is not HEAD, we might need to checkout 'from' first or use plumbing.
-      // For simplicity, let's assume branching from current HEAD for now or implement checkout logic if needed.
-    });
+    return;
   }
+  // isomorphic-git: branch creation uses the current HEAD; it does not honor "from"
+  // in the same way as native `git branch <name> <from>`.
+  if (from !== "HEAD") {
+    throw new Error(
+      `gitCreateBranch: 'from' is not supported when native git is disabled (from=${from}). ` +
+        `Branches would be created from HEAD instead.`,
+    );
+  }
+  await git.branch({
+    fs,
+    dir: path,
+    ref: branch,
+    checkout: false,
+  });
 }
 
 export async function gitDeleteBranch({
@@ -878,11 +893,9 @@ export async function gitGetMergeConflicts({
       .split("\n")
       .map((s) => s.trim())
       .filter((s) => s.length > 0);
-  } else {
-    // Actually, isomorphic-git doesn't have a direct "getConflicts" helper.
-    // We might need to iterate statusMatrix.
-    // Let's assume for now we iterate and look for specific patterns, or just return empty if not supported yet.
-    // TODO: Implement proper conflict detection for isomorphic-git
-    return [];
   }
+  //throw error("gitGetMergeConflicts requires native Git. Enable native Git in settings.");
+  throw new Error(
+    "Git conflicts requires native Git. Enable native Git in settings.",
+  );
 }

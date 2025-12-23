@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { IpcClient } from "@/ipc/ipc_client";
 import { AlertTriangle, Wand2, Hand } from "lucide-react";
@@ -46,12 +46,20 @@ export function GithubConflictResolver({
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const { refreshProposal } = useProposal(aiChatId || undefined);
   const [latestContent, setLatestContent] = useState<string | null>(null);
-
   const currentFile = conflicts[currentConflictIndex];
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
+    isMountedRef.current = true;
+
+    // run per file/app change
     loadFileContent();
     setResolvedContentOverride(null);
+
+    // cleanup only runs on unmount
+    return () => {
+      isMountedRef.current = false;
+    };
   }, [currentFile, appId]);
 
   const ensureChatId = async () => {
@@ -134,6 +142,7 @@ ${extractConflictSnippet(fileContent)}`,
           chatId,
           attachments: [attachment],
           onUpdate: (messages) => {
+            if (!isMountedRef.current) return;
             const lastAssistant = [...messages]
               .reverse()
               .find((msg) => msg.role === "assistant");
@@ -145,11 +154,13 @@ ${extractConflictSnippet(fileContent)}`,
             }
           },
           onEnd: () => {
+            if (!isMountedRef.current) return;
             showSuccess("AI suggested a resolution");
             refreshChatMessages(chatId);
             setIsAiResolving(false);
           },
           onError: (error) => {
+            if (!isMountedRef.current) return;
             showError(error || "Failed to resolve with AI");
             setIsAiResolving(false);
           },

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -53,7 +53,7 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
     string | null
   >(null);
 
-  const loadCollaborators = async () => {
+  const loadCollaborators = useCallback(async () => {
     setIsLoading(true);
     try {
       const collabs = await IpcClient.getInstance().listCollaborators(appId);
@@ -64,11 +64,12 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [appId]);
 
+  // Now the effect depends on loadCollaborators, which only changes when appId changes
   useEffect(() => {
     loadCollaborators();
-  }, [appId]);
+  }, [loadCollaborators]);
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();

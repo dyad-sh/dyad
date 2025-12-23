@@ -2,11 +2,19 @@
 - text: testuser/existing-app
 - combobox:
   - img
-  - text: "Branch: main"
+  - text: "Branch: new-branch"
 - button "Refresh branches":
   - img
 - button "Create new branch":
   - img
+- img
+- heading "Branches" [level=3]
+- paragraph: Manage your branches, merge, delete, and more.
+- img
+- text: main
+- button:
+  - img
+- text: new-branch
 - button "Sync to GitHub"
 - button "Disconnect from repo"
 - paragraph: Successfully pushed to GitHub!

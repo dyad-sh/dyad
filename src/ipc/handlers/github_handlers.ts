@@ -102,6 +102,38 @@ export async function getGithubUser(): Promise<GithubUser | null> {
   }
 }
 
+async function prepareLocalBranch({
+  appId,
+  branch,
+}: {
+  appId: number;
+  branch?: string;
+}) {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) {
+    throw new Error("App not found");
+  }
+  const appPath = getDyadAppPath(app.path);
+  const targetBranch = branch || "main";
+
+  try {
+    const localBranches = await gitListBranches({ path: appPath });
+    if (!localBranches.includes(targetBranch)) {
+      await gitCreateBranch({
+        path: appPath,
+        branch: targetBranch,
+      });
+    }
+    await gitCheckout({ path: appPath, ref: targetBranch });
+  } catch (gitError: any) {
+    logger.error("[GitHub Handler] Failed to prepare local branch:", gitError);
+    throw new Error(
+      gitError?.message ||
+        "Failed to prepare local branch for the connected repository.",
+    );
+  }
+}
+
 // function event.sender.send(channel: string, data: any) {
 //   if (currentFlowState?.window && !currentFlowState.window.isDestroyed()) {
 //     currentFlowState.window.webContents.send(channel, data);
@@ -518,6 +550,7 @@ async function handleCreateRepo(
 
     throw new Error(errorMessage);
   }
+  await prepareLocalBranch({ appId, branch });
   // Store org, repo, and branch in the app's DB row (apps table)
   await updateAppGithubRepo({ appId, org: owner, repo, branch });
 }
@@ -557,6 +590,8 @@ async function handleConnectToExistingRepo(
         `Repository not found or access denied: ${errorData.message}`,
       );
     }
+
+    await prepareLocalBranch({ appId, branch });
 
     // Store org, repo, and branch in the app's DB row
     await updateAppGithubRepo({ appId, org: owner, repo, branch });
@@ -1277,15 +1312,23 @@ async function handleResolveConflict(
 
     const appPath = getDyadAppPath(app.path);
     const filePath = path.join(appPath, file);
+    // Prevent path traversal attacks
+    const resolvedPath = path.resolve(filePath);
+    const resolvedAppPath = path.resolve(appPath);
+    if (!resolvedPath.startsWith(resolvedAppPath + path.sep)) {
+      throw new Error("Invalid file path");
+    }
 
     if (!fs.existsSync(filePath)) {
       throw new Error("File not found");
     }
 
     const content = fs.readFileSync(filePath, "utf-8");
+    // Normalize Windows CRLF to LF so the regex matches reliably
+    const normalized = content.replace(/\r\n/g, "\n");
 
     // Prefer local (HEAD) changes in conflict blocks.
-    const resolution = content.replace(
+    const resolution = normalized.replace(
       /<<<<<<< HEAD\n([\s\S]*?)=======\n([\s\S]*?)>>>>>>> .*?\n/g,
       (_match, headContent) => headContent,
     );

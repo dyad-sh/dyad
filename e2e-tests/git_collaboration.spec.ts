@@ -68,7 +68,7 @@ test.describe("Git Collaboration", () => {
   test("should create, switch, rename, merge, and delete branches", async ({
     po,
   }) => {
-    await po.setUp();
+    await po.setUp({ nativeGit: true });
     await po.sendPrompt("tc=basic");
 
     await po.getTitleBarAppNameButton().click();
@@ -215,44 +215,45 @@ test.describe("Git Collaboration", () => {
     await po.waitForToastWithText(`Resolved ${conflictFile}`);
     await expect(po.page.getByText("Resolve Conflicts")).not.toBeVisible();
   });
-});
+  test("should invite and remove collaborators", async ({ po }) => {
+    await po.setUp({ nativeGit: true });
+    await po.sendPrompt("tc=basic");
+    await po.selectPreviewMode("publish");
+    await po.githubConnector.connect();
 
-test("should invite and remove collaborators", async ({ po }) => {
-  await po.setUp();
-  await po.sendPrompt("tc=basic");
-  await po.selectPreviewMode("publish");
-  await po.githubConnector.connect();
+    const repoName = "test-git-collab-invite-" + Date.now();
+    await po.githubConnector.fillCreateRepoName(repoName);
+    await po.githubConnector.clickCreateRepoButton();
+    await expect(po.page.getByTestId("github-connected-repo")).toBeVisible({
+      timeout: 20000,
+    });
+    //open collaborators accordion
+    const collaboratorsCard = po.page.getByTestId("collaborators-header");
+    await collaboratorsCard.hover();
 
-  const repoName = "test-git-collab-invite-" + Date.now();
-  await po.githubConnector.fillCreateRepoName(repoName);
-  await po.githubConnector.clickCreateRepoButton();
-  await expect(po.page.getByTestId("github-connected-repo")).toBeVisible({
-    timeout: 20000,
+    // Wait for Collaborator Manager
+    await expect(
+      po.page.getByTestId("collaborator-invite-input"),
+    ).toBeVisible();
+
+    // Invite a fake user
+    const fakeUser = "test-user-123";
+    await po.page.getByTestId("collaborator-invite-input").fill(fakeUser);
+    await po.page.getByTestId("collaborator-invite-button").click();
+    // Let's check for a toast.
+    await po.waitForToast();
+
+    // verify collaborator appears in the list
+    await expect(
+      po.page.getByTestId(`collaborator-item-${fakeUser}`),
+    ).toBeVisible();
+
+    // Delete collaborator
+    await po.page.getByTestId(`collaborator-remove-button-${fakeUser}`).click();
+    await po.page.getByTestId("confirm-remove-collaborator").click();
+    await po.waitForToast("success");
+    await expect(
+      po.page.getByTestId(`collaborator-item-${fakeUser}`),
+    ).not.toBeVisible({ timeout: 5000 });
   });
-  //open collaborators accordion
-  const collaboratorsCard = po.page.getByTestId("collaborators-header");
-  await collaboratorsCard.hover();
-
-  // Wait for Collaborator Manager
-  await expect(po.page.getByTestId("collaborator-invite-input")).toBeVisible();
-
-  // Invite a fake user
-  const fakeUser = "test-user-123";
-  await po.page.getByTestId("collaborator-invite-input").fill(fakeUser);
-  await po.page.getByTestId("collaborator-invite-button").click();
-  // Let's check for a toast.
-  await po.waitForToast();
-
-  // verify collaborator appears in the list
-  await expect(
-    po.page.getByTestId(`collaborator-item-${fakeUser}`),
-  ).toBeVisible();
-
-  // Delete collaborator
-  await po.page.getByTestId(`collaborator-remove-button-${fakeUser}`).click();
-  await po.page.getByTestId("confirm-remove-collaborator").click();
-  await po.waitForToast("success");
-  await expect(
-    po.page.getByTestId(`collaborator-item-${fakeUser}`),
-  ).not.toBeVisible({ timeout: 5000 });
 });

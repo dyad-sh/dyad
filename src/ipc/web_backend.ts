@@ -240,7 +240,7 @@ export class WebBackend implements IBackendClient {
             // Emit the magic string that useRunApp listens for to set the preview Iframe URL
             onOutput({
                 type: "info",
-                message: `[dyad-proxy-server]started=[${res.previewUrl}]`,
+                message: `[dyad-proxy-server]started=[${res.previewUrl}] original=[${res.previewUrl}]`,
                 appId,
                 timestamp: Date.now()
             });

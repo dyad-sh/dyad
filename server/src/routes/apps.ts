@@ -52,9 +52,20 @@ async function detectPackageManager(): Promise<'pnpm' | 'npm'> {
 }
 
 // Helper function to generate app preview URL
-function getAppPreviewUrl(appId: number, port?: number): string {
+function getAppPreviewUrl(appId: number, port?: number, req?: any): string {
     const baseDomain = process.env.APP_BASE_DOMAIN || 'localhost';
     const protocol = process.env.APP_PROTOCOL || 'http';
+
+    // If we have a request object, try to infer the domain from the Host header
+    // This repairs cases where APP_BASE_DOMAIN is not set but we are accessed via a domain
+    if (baseDomain === 'localhost' && req) {
+        const host = req.get('host'); // e.g. dyad1.ty-dev.site
+        if (host && !host.includes('localhost') && !host.includes('127.0.0.1')) {
+            // Heuristic: if host is domain.com, app subdomain is app{id}.domain.com
+            // This assumes wildcard DNS is set up for *.domain.com
+            return `${protocol}://app${appId}.${host}`;
+        }
+    }
 
     // In development or if no base domain, use localhost with port
     if (baseDomain === 'localhost' && port) {
@@ -542,7 +553,7 @@ router.post("/:id/run", async (req, res, next) => {
             data: {
                 success: true,
                 processId: devProcess.pid,
-                previewUrl: getAppPreviewUrl(appId, port)
+                previewUrl: getAppPreviewUrl(appId, port, req)
             }
         });
 

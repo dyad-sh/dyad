@@ -619,3 +619,8 @@ export interface AgentToolConsentResponseParams {
 // ============================================================================
 
 export type AgentToolConsent = "ask" | "always";
+
+export interface TelemetryEventPayload {
+  eventName: string;
+  properties?: Record<string, unknown>;
+}

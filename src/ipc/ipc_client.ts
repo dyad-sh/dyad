@@ -76,6 +76,7 @@ import type {
   SetAgentToolConsentParams,
   AgentToolConsentRequestPayload,
   AgentToolConsentResponseParams,
+  TelemetryEventPayload,
 } from "./ipc_types";
 import type { Template } from "../shared/templates";
 import type {
@@ -131,12 +132,7 @@ export class IpcClient {
   >;
   private mcpConsentHandlers: Map<string, (payload: any) => void>;
   private agentConsentHandlers: Map<string, (payload: any) => void>;
-  private telemetryEventHandlers: Set<
-    (payload: {
-      eventName: string;
-      properties?: Record<string, unknown>;
-    }) => void
-  >;
+  private telemetryEventHandlers: Set<(payload: TelemetryEventPayload) => void>;
   // Global handlers called for any chat stream completion (used for cleanup)
   private globalChatStreamEndHandlers: Set<(chatId: number) => void>;
   private constructor() {
@@ -299,12 +295,7 @@ export class IpcClient {
     this.ipcRenderer.on("telemetry:event", (payload) => {
       if (payload && typeof payload === "object" && "eventName" in payload) {
         for (const handler of this.telemetryEventHandlers) {
-          handler(
-            payload as {
-              eventName: string;
-              properties?: Record<string, unknown>;
-            },
-          );
+          handler(payload as TelemetryEventPayload);
         }
       }
     });
@@ -996,10 +987,7 @@ export class IpcClient {
    * @returns Unsubscribe function
    */
   public onTelemetryEvent(
-    handler: (payload: {
-      eventName: string;
-      properties?: Record<string, unknown>;
-    }) => void,
+    handler: (payload: TelemetryEventPayload) => void,
   ): () => void {
     this.telemetryEventHandlers.add(handler);
     return () => {

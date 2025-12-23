@@ -1,12 +1,8 @@
 import { BrowserWindow } from "electron";
 import log from "electron-log";
+import { TelemetryEventPayload } from "../ipc_types";
 
 const logger = log.scope("telemetry");
-
-export interface TelemetryEventPayload {
-  eventName: string;
-  properties?: Record<string, unknown>;
-}
 
 /**
  * Sends a telemetry event from the main process to the renderer,

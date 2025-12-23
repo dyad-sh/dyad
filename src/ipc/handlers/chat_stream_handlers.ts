@@ -39,6 +39,7 @@ import { streamTestResponse } from "./testing_chat_handlers";
 import { getTestResponse } from "./testing_chat_handlers";
 import { getModelClient, ModelClient } from "../utils/get_model_client";
 import log from "electron-log";
+import { sendTelemetryEvent } from "../utils/telemetry";
 import {
   getSupabaseContext,
   getSupabaseClientCode,
@@ -1071,6 +1072,15 @@ This conversation includes one or more image attachments. When the user uploads 
               fullResponse,
               appPath: getDyadAppPath(updatedChat.app.path),
             });
+            sendTelemetryEvent("search_replace:fix", {
+              attemptNumber: 0,
+              success: issues.length === 0,
+              issueCount: issues.length,
+              errors: issues.map((i) => ({
+                filePath: i.filePath,
+                error: i.error,
+              })),
+            });
 
             let searchReplaceFixAttempts = 0;
             const originalFullResponse = fullResponse;
@@ -1140,6 +1150,16 @@ ${formattedSearchReplaceIssues}`,
               issues = await dryRunSearchReplace({
                 fullResponse: result.incrementalResponse,
                 appPath: getDyadAppPath(updatedChat.app.path),
+              });
+
+              sendTelemetryEvent("search_replace:fix", {
+                attemptNumber: searchReplaceFixAttempts,
+                success: issues.length === 0,
+                issueCount: issues.length,
+                errors: issues.map((i) => ({
+                  filePath: i.filePath,
+                  error: i.error,
+                })),
               });
             }
           }

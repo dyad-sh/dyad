@@ -549,3 +549,72 @@ export interface SelectNodeFolderResult {
   canceled?: boolean;
   selectedPath: string | null;
 }
+export interface AppSearchResult {
+  id: number;
+  name: string;
+  path: string;
+  lastModified: number;
+}
+
+export interface ChatSearchResult {
+  id: number;
+  appId: number;
+  title: string;
+  createdAt: Date;
+  matchedMessageContent: string | null;
+}
+
+export interface ChatSummary {
+  id: number;
+  appId: number;
+  title: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ContextPathResults {
+  files: string[];
+  symbols: string[];
+}
+
+export interface DeepLinkData {
+  type: string;
+  payload: any;
+}
+
+export interface GitHubDeviceFlowErrorData {
+  error: string;
+  errorDescription: string;
+  errorUri: string;
+}
+
+export interface GitHubDeviceFlowSuccessData {
+  accessToken: string;
+  tokenType: string;
+  scope: string;
+}
+
+export interface GitHubDeviceFlowUpdateData {
+  deviceCode: string;
+  userCode: string;
+  verificationUri: string;
+  expiresIn: number;
+  interval: number;
+}
+
+export interface ProposalResult {
+  id: number;
+  status: string;
+}
+
+export interface Template {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export interface UserSettings {
+  theme: string;
+  telemetryEnabled: boolean;
+  defaultModel: string;
+}

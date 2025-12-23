@@ -112,9 +112,8 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
         >
           <ChevronRight
             size={14}
-            className={`mt-0.5 transform transition-transform ${
-              isCollapsed ? "" : "rotate-90"
-            }`}
+            className={`mt-0.5 transform transition-transform ${isCollapsed ? "" : "rotate-90"
+              }`}
           />
           {isCollapsed ? getTruncatedError() : error.message}
         </div>
@@ -233,10 +232,10 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         // Parse the single selected component
         const component = event.data.component
           ? parseComponentSelection({
-              type: "dyad-component-selected",
-              id: event.data.component.id,
-              name: event.data.component.name,
-            })
+            type: "dyad-component-selected",
+            id: event.data.component.id,
+            name: event.data.component.name,
+          })
           : null;
 
         if (!component) return;
@@ -265,12 +264,12 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
       const { type, payload } = event.data as {
         type:
-          | "window-error"
-          | "unhandled-rejection"
-          | "iframe-sourcemapped-error"
-          | "build-error-report"
-          | "pushState"
-          | "replaceState";
+        | "window-error"
+        | "unhandled-rejection"
+        | "iframe-sourcemapped-error"
+        | "build-error-report"
+        | "pushState"
+        | "replaceState";
         payload?: {
           message?: string;
           stack?: string;
@@ -290,9 +289,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           type === "iframe-sourcemapped-error"
             ? payload?.stack?.split("\n").slice(0, 1).join("\n")
             : payload?.stack;
-        const errorMessage = `Error ${
-          payload?.message || payload?.reason
-        }\nStack trace: ${stack}`;
+        const errorMessage = `Error ${payload?.message || payload?.reason
+          }\nStack trace: ${stack}`;
         console.error("Iframe error:", errorMessage);
         setErrorMessage({ message: errorMessage, source: "preview-app" });
         setAppOutput((prev) => [
@@ -504,11 +502,10 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               <TooltipTrigger asChild>
                 <button
                   onClick={handleActivateComponentSelector}
-                  className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
-                    isPicking
+                  className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${isPicking
                       ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
                       : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
-                  }`}
+                    }`}
                   disabled={
                     loading || !selectedAppId || !isComponentSelectorInitialized
                   }
@@ -561,7 +558,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 <span className="truncate flex-1 mr-2 min-w-0">
                   {navigationHistory[currentHistoryPosition]
                     ? new URL(navigationHistory[currentHistoryPosition])
-                        .pathname
+                      .pathname
                     : "/"}
                 </span>
                 <ChevronDown size={14} className="flex-shrink-0" />
@@ -606,6 +603,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               }
             }}
             className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
+            disabled={!originalUrl}
           >
             <ExternalLink size={16} />
           </button>

@@ -50,6 +50,8 @@ const SettingsSchema = z.object({
     anthropicApiKey: z.string().optional(),
     openaiApiKey: z.string().optional(),
     googleApiKey: z.string().optional(),
+    openrouterApiKey: z.string().optional(),
+    megaLlmApiKey: z.string().optional(),
     githubClientId: z.string().optional(),
     githubClientSecret: z.string().optional(),
 
@@ -69,7 +71,7 @@ const PROVIDER_IDS = {
 router.get("/", async (req, res, next) => {
     try {
         const settingsPath = getSettingsPath();
-        let settings = defaultSettings;
+        let settings: any = defaultSettings;
 
         if (fs.existsSync(settingsPath)) {
             settings = { ...defaultSettings, ...JSON.parse(fs.readFileSync(settingsPath, "utf-8")) };
@@ -87,7 +89,25 @@ router.get("/", async (req, res, next) => {
                     if (provider.id === "openai") settings = { ...settings, openaiApiKey: provider.apiKey } as any;
                     if (provider.id === "anthropic") settings = { ...settings, anthropicApiKey: provider.apiKey } as any;
                     if (provider.id === "google") settings = { ...settings, googleApiKey: provider.apiKey } as any;
+                    if (provider.id === "megallm") settings = { ...settings, megaLlmApiKey: provider.apiKey } as any;
                 }
+            }
+
+            // Fallback to Environment Variables if not in DB
+            if (!settings.openaiApiKey && process.env.OPENAI_API_KEY) {
+                settings = { ...settings, openaiApiKey: process.env.OPENAI_API_KEY } as any;
+            }
+            if (!settings.anthropicApiKey && process.env.ANTHROPIC_API_KEY) {
+                settings = { ...settings, anthropicApiKey: process.env.ANTHROPIC_API_KEY } as any;
+            }
+            if (!settings.googleApiKey && process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
+                settings = { ...settings, googleApiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY } as any;
+            }
+            if (!settings.openrouterApiKey && process.env.OPENROUTER_API_KEY) {
+                settings = { ...settings, openrouterApiKey: process.env.OPENROUTER_API_KEY } as any;
+            }
+            if (!settings.megaLlmApiKey && process.env.MEGALLM_API_KEY) {
+                settings = { ...settings, megaLlmApiKey: process.env.MEGALLM_API_KEY } as any;
             }
 
             for (const setting of sysSettings) {
@@ -95,6 +115,15 @@ router.get("/", async (req, res, next) => {
                 if (setting.key === "GITHUB_CLIENT_SECRET") settings = { ...settings, githubClientSecret: setting.value } as any;
                 if (setting.key === "defaultModel") settings = { ...settings, defaultModel: setting.value } as any;
             }
+
+            // Check Env Vars for System Settings too
+            if (!settings.githubClientId && process.env.GITHUB_CLIENT_ID) {
+                settings = { ...settings, githubClientId: process.env.GITHUB_CLIENT_ID } as any;
+            }
+            if (!settings.githubClientSecret && process.env.GITHUB_CLIENT_SECRET) {
+                settings = { ...settings, githubClientSecret: process.env.GITHUB_CLIENT_SECRET } as any;
+            }
+
         } catch (e) {
             console.error("Failed to fetch providers from DB:", e);
             // Non-fatal, return file settings
@@ -130,7 +159,7 @@ router.put("/", async (req, res, next) => {
         }
 
         // Separate keys from general settings
-        const { openaiApiKey, anthropicApiKey, googleApiKey, githubClientId, githubClientSecret, ...generalSettings } = body;
+        const { openaiApiKey, anthropicApiKey, googleApiKey, openrouterApiKey, megaLlmApiKey, githubClientId, githubClientSecret, ...generalSettings } = body;
 
         // Merge with new settings (excluding keys from JSON file ideally, but keeping backwards compat logic if needed)
         // We will strip keys from saving to JSON to ensure they only live in DB if that's the goal, 
@@ -140,6 +169,8 @@ router.put("/", async (req, res, next) => {
         delete (settingsToSave as any).openaiApiKey;
         delete (settingsToSave as any).anthropicApiKey;
         delete (settingsToSave as any).googleApiKey;
+        delete (settingsToSave as any).openrouterApiKey;
+        delete (settingsToSave as any).megaLlmApiKey;
 
         // Write back general settings
         fs.writeFileSync(settingsPath, JSON.stringify(settingsToSave, null, 2));
@@ -169,6 +200,8 @@ router.put("/", async (req, res, next) => {
             if (openaiApiKey !== undefined) await upsertKey("openai", "OpenAI", openaiApiKey, "https://api.openai.com/v1");
             if (anthropicApiKey !== undefined) await upsertKey("anthropic", "Anthropic", anthropicApiKey, "https://api.anthropic.com");
             if (googleApiKey !== undefined) await upsertKey("google", "Google Gemini", googleApiKey, "https://generativelanguage.googleapis.com");
+            if (openrouterApiKey !== undefined) await upsertKey("openrouter", "OpenRouter", openrouterApiKey, "https://openrouter.ai/api/v1");
+            if (megaLlmApiKey !== undefined) await upsertKey("megallm", "MegaLLM", megaLlmApiKey, "https://ai.megallm.io/v1");
 
             // Save System Settings
             const upsertSystemSetting = async (key: string, value?: string, description?: string) => {

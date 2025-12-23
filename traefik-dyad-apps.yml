@@ -51,6 +51,8 @@ http:
 # 2. Proxy status: Enabled (orange cloud)
 # 3. SSL/TLS mode: Full or Full (strict)
 #
-# SSL Certificate:
-# Traefik will automatically request a wildcard certificate from Let's Encrypt
-# using the HTTP challenge. Make sure port 80 is accessible.
+# SSL Certificate (IMPORTANT):
+# Wildcard certificates (*.domain.com) REQUIRE DNS-01 challenge.
+# They CANNOT be generated with the default HTTP-01 challenge.
+# Ensure your Traefik is configured with a DNS provider (e.g., Cloudflare)
+# in its main static configuration (traefik.yml) to issue these certs.

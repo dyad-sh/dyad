@@ -452,13 +452,34 @@ router.post("/:id/run", async (req, res, next) => {
         const installProcess = spawn(packageManager, ['install'], {
             cwd: targetDir,
             shell: true,
-            stdio: 'inherit' // Pipe to server logs for now
+            stdio: ['ignore', 'pipe', 'pipe'] // Capture output instead of inheriting
+        });
+
+        let installOutput = '';
+        let installError = '';
+
+        installProcess.stdout?.on('data', (data) => {
+            installOutput += data.toString();
+            // Optional: still log to console if you want real-time server logs
+            console.log(`[WebBackend] install stdout: ${data}`);
+        });
+
+        installProcess.stderr?.on('data', (data) => {
+            installError += data.toString();
+            console.error(`[WebBackend] install stderr: ${data}`);
         });
 
         await new Promise<void>((resolve, reject) => {
             installProcess.on('close', (code) => {
                 if (code === 0) resolve();
-                else reject(new Error(`${packageManager} install failed with code ${code}`));
+                else {
+                    // Combine output and error for context
+                    const fullError = `Install failed with code ${code}.\nStderr: ${installError}\nStdout: ${installOutput}`;
+                    reject(new Error(fullError));
+                }
+            });
+            installProcess.on('error', (err) => {
+                reject(new Error(`Spawn failed: ${err.message}`));
             });
         });
 

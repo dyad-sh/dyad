@@ -480,7 +480,7 @@ router.post("/:id/run", async (req, res, next) => {
                 data: {
                     success: true,
                     processId: running.process.pid,
-                    previewUrl: `/api/apps/${id}/proxy/`
+                    previewUrl: getAppPreviewUrl(appId, running.port, req)
                 }
             });
             return;
@@ -519,7 +519,7 @@ router.post("/:id/run", async (req, res, next) => {
         // 4. Run Dev Server
         console.log(`[WebBackend] Starting dev server for app ${id} on port ${port}`);
         console.log(`[WebBackend] 🌐 Direct access: http://localhost:${port}`);
-        console.log(`[WebBackend] 🔗 Proxy access: /api/apps/${id}/proxy/`);
+        console.log(`[WebBackend] 🔗 Public access: ${getAppPreviewUrl(appId, port, req)}`);
         // "next dev" expects -p PORT
         const devProcess = spawn('npm', ['run', 'dev', '--', '-p', String(port)], {
             cwd: targetDir,
@@ -557,8 +557,13 @@ router.post("/:id/run", async (req, res, next) => {
             }
         });
 
-    } catch (error) {
-        next(error);
+    } catch (error: any) {
+        console.error(`[WebBackend] Failed to run app ${req.params.id}:`, error);
+        res.status(500).json({
+            success: false,
+            error: error.message || "Unknown error",
+            details: error.stack
+        });
     }
 });
 

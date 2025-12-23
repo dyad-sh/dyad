@@ -80,6 +80,7 @@ const validInvokeChannels = [
   "get-system-debug-info",
   "supabase:list-projects",
   "supabase:list-branches",
+  "supabase:get-edge-logs",
   "supabase:set-app-project",
   "supabase:unset-app-project",
   "local-models:list-ollama",

@@ -77,6 +77,7 @@ import type {
   AgentToolConsentRequestPayload,
   AgentToolConsentResponseParams,
 } from "./ipc_types";
+import type { ConsoleEntry } from "../atoms/appAtoms";
 import type { Template } from "../shared/templates";
 import type {
   AppChatContext,
@@ -1022,6 +1023,14 @@ export class IpcClient {
     projectId: string;
   }): Promise<SupabaseBranch[]> {
     return this.ipcRenderer.invoke("supabase:list-branches", params);
+  }
+
+  public async getSupabaseEdgeLogs(params: {
+    projectId: string;
+    timestampStart?: number;
+    appId: number;
+  }): Promise<Array<ConsoleEntry>> {
+    return this.ipcRenderer.invoke("supabase:get-edge-logs", params);
   }
 
   public async setSupabaseAppProject(

@@ -13,3 +13,6 @@ export const supabaseErrorAtom = atom<Error | null>(null);
 
 // Define atom for storing the currently selected Supabase project
 export const selectedSupabaseProjectAtom = atom<string | null>(null);
+
+// Define atom for tracking the last log timestamp per project (for incremental log loading)
+export const lastLogTimestampAtom = atom<Record<string, number>>({});

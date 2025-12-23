@@ -1,12 +1,14 @@
 import { useCallback } from "react";
-import { useAtom } from "jotai";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
   supabaseProjectsAtom,
   supabaseBranchesAtom,
   supabaseLoadingAtom,
   supabaseErrorAtom,
   selectedSupabaseProjectAtom,
+  lastLogTimestampAtom,
 } from "@/atoms/supabaseAtoms";
+import { appConsoleEntriesAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
 import { SetSupabaseAppProjectParams } from "@/ipc/ipc_types";
 
@@ -18,6 +20,9 @@ export function useSupabase() {
   const [selectedProject, setSelectedProject] = useAtom(
     selectedSupabaseProjectAtom,
   );
+  const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
+  const selectedAppId = useAtomValue(selectedAppIdAtom);
+  const [lastLogTimestamp, setLastLogTimestamp] = useAtom(lastLogTimestampAtom);
 
   const ipcClient = IpcClient.getInstance();
 
@@ -99,6 +104,70 @@ export function useSupabase() {
   );
 
   /**
+   * Load edge function logs for a Supabase project
+   * Uses timestamp tracking to only fetch new logs on subsequent calls
+   */
+  const loadEdgeLogs = useCallback(
+    async (projectId: string) => {
+      if (!selectedAppId) return;
+
+      // Use last timestamp if available, otherwise fetch logs from the past 10 minutes
+      const lastTimestamp = lastLogTimestamp[projectId];
+      const timestampStart = lastTimestamp ?? Date.now() - 10 * 60 * 1000; // 10 minutes ago
+
+      setLoading(true);
+      try {
+        // Fetch logs - handler returns ConsoleEntry[] already formatted
+        const logs = await ipcClient.getSupabaseEdgeLogs({
+          projectId,
+          timestampStart,
+          appId: selectedAppId,
+        });
+
+        if (logs.length === 0) {
+          // Even if no logs, set the timestamp so we don't keep looking back 10 minutes
+          if (!lastTimestamp) {
+            setLastLogTimestamp((prev) => ({
+              ...prev,
+              [projectId]: Date.now(),
+            }));
+          }
+          setError(null);
+          return;
+        }
+
+        // Logs are already in ConsoleEntry format, just append them
+        setConsoleEntries((prev) => [...prev, ...logs]);
+
+        // Update the last timestamp for this project
+        const latestLog = logs.reduce((latest, log) =>
+          log.timestamp > latest.timestamp ? log : latest,
+        );
+        setLastLogTimestamp((prev) => ({
+          ...prev,
+          [projectId]: latestLog.timestamp,
+        }));
+
+        setError(null);
+      } catch (error) {
+        console.error("Error loading Supabase edge logs:", error);
+        setError(error instanceof Error ? error : new Error(String(error)));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [
+      ipcClient,
+      setConsoleEntries,
+      setError,
+      setLoading,
+      selectedAppId,
+      lastLogTimestamp,
+      setLastLogTimestamp,
+    ],
+  );
+
+  /**
    * Select a project for current use
    */
   const selectProject = useCallback(
@@ -116,6 +185,7 @@ export function useSupabase() {
     selectedProject,
     loadProjects,
     loadBranches,
+    loadEdgeLogs,
     setAppProject,
     unsetAppProject,
     selectProject,

@@ -34,23 +34,6 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-  # Nginx Reverse Proxy for Subdomains
-  nginx:
-    image: nginx:alpine
-    container_name: dyad-nginx
-    restart: unless-stopped
-    networks:
-      - coolify
-    ports:
-      - "80:80"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx-apps-subdomain.conf:/etc/nginx/conf.d/dyad-apps.conf:ro
-      # Logs
-      - ./logs/nginx:/var/log/nginx
-    depends_on:
-      - dyad-server
-
 volumes:
   dyad-data:
     driver: local

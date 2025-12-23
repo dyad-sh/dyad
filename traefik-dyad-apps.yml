@@ -17,8 +17,8 @@ http:
     dyad-apps-service:
       loadBalancer:
         servers:
-          # Point to Nginx container which handles the subdomain logic
-          - url: "http://dyad-nginx:80"
+          # Point directly to Node.js backend (Middleware handles routing)
+          - url: "http://dyad-server:3007"
 
   middlewares:
     dyad-apps-headers:

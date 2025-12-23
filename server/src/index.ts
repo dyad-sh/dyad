@@ -76,6 +76,28 @@ async function main() {
     app.use(compression());
     app.use(express.json({ limit: "10mb" }));
     app.use(express.urlencoded({ extended: true }));
+
+    // -------------------------------------------------------------------------
+    // Subdomain Routing Middleware (Replaces Nginx)
+    // -------------------------------------------------------------------------
+    app.use((req, res, next) => {
+        const host = req.get('host');
+        if (!host) return next();
+
+        // Match: app-dyad-{id}.domain.com
+        // Regex captures the ID (group 1)
+        const match = host.match(/^app-dyad-(\d+)\./);
+
+        if (match && match[1]) {
+            const appId = match[1];
+            // Rewrite URL: /some/path -> /api/apps/{id}/proxy/some/path
+            // We prepend the proxy internal route
+            req.url = `/api/apps/${appId}/proxy${req.url}`;
+            console.log(`[Router] Rewrote subdomain ${host} -> ${req.url}`);
+        }
+        next();
+    });
+
     app.use(requestLogger);
 
     // API Routes

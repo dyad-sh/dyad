@@ -58,7 +58,7 @@ build() {
 
 # Start command
 start() {
-    print_header "Starting Dyad Web Application (Server + Nginx)"
+    print_header "Starting Dyad Web Application (Server - Node Native)"
     docker compose up -d
     print_success "Dyad is running."
     print_success "- Backend: http://localhost:3007"

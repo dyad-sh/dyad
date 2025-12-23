@@ -28,6 +28,7 @@ import {
 } from "../utils/process_manager";
 import { getEnvVar } from "../utils/read_env";
 import { readSettings } from "../../main/settings";
+import { addLog } from "../../main/log_store";
 
 import fixPath from "fix-path";
 
@@ -241,7 +242,6 @@ function listenToProcess({
     );
 
     // Add to central log store
-    const { addLog } = await import("../../main/log_store");
     addLog({
       level: "info",
       type: "server",
@@ -303,7 +303,6 @@ function listenToProcess({
     );
 
     // Add to central log store
-    const { addLog } = await import("../../main/log_store");
     addLog({
       level: "error",
       type: "server",

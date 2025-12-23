@@ -1,5 +1,9 @@
 import { z } from "zod";
 import { ToolDefinition, AgentContext } from "./types";
+import { db } from "@/db";
+import { chats } from "@/db/schema";
+import { eq } from "drizzle-orm";
+import { getLogs } from "@/main/log_store";
 
 const readLogsSchema = z.object({
   timeWindow: z
@@ -151,10 +155,6 @@ export const readLogsTool: ToolDefinition<z.infer<typeof readLogsSchema>> = {
   execute: async (args, ctx: AgentContext) => {
     try {
       // Get the chat to find the appId
-      const { db } = await import("@/db");
-      const { chats } = await import("@/db/schema");
-      const { eq } = await import("drizzle-orm");
-
       const chat = await db.query.chats.findFirst({
         where: eq(chats.id, ctx.chatId),
         with: { app: true },
@@ -167,7 +167,6 @@ export const readLogsTool: ToolDefinition<z.infer<typeof readLogsSchema>> = {
       const appId = chat.app.id;
 
       // Get logs directly from central log store (no UI coupling!)
-      const { getLogs } = await import("@/main/log_store");
       const allLogs = getLogs(appId);
 
       // Apply time filter (default: last 5 minutes)

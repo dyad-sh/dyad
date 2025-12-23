@@ -1,0 +1,56 @@
+# Traefik Configuration for Dyad App Subdomains
+# File: /data/coolify/proxy/dynamic/dyad-apps.yml
+
+# This file configures Traefik to route wildcard subdomains to Dyad apps
+# Place this file in /data/coolify/proxy/dynamic/ directory
+
+http:
+  routers:
+    # Router for app subdomains (app66.dyad1.ty-dev.site, app67.dyad1.ty-dev.site, etc.)
+    dyad-apps:
+      rule: "HostRegexp(`{subdomain:app[0-9]+}.dyad1.ty-dev.site`)"
+      entryPoints:
+        - https
+      service: dyad-apps-service
+      tls:
+        certResolver: letsencrypt
+        domains:
+          - main: "dyad1.ty-dev.site"
+            sans:
+              - "*.dyad1.ty-dev.site"
+      middlewares:
+        - dyad-apps-headers
+
+  services:
+    # Service pointing to Dyad container
+    dyad-apps-service:
+      loadBalancer:
+        servers:
+          # Replace 'dyad-container-name' with your actual Dyad container name
+          # The port should match your Dyad server port (default 3000)
+          - url: "http://dyad-container-name:3000"
+
+  middlewares:
+    # Headers middleware for WebSocket and CORS
+    dyad-apps-headers:
+      headers:
+        customRequestHeaders:
+          X-Forwarded-Proto: "https"
+        customResponseHeaders:
+          Access-Control-Allow-Origin: "*"
+          Access-Control-Allow-Methods: "GET,POST,PUT,DELETE,OPTIONS"
+          Access-Control-Allow-Headers: "Content-Type,Authorization"
+
+# Instructions:
+# 1. Save this file to /data/coolify/proxy/dynamic/dyad-apps.yml
+# 2. Traefik will automatically reload the configuration (watch=true)
+# 3. No restart needed!
+#
+# DNS Configuration (Cloudflare):
+# 1. Add wildcard A record: *.dyad1.ty-dev.site → <server IP>
+# 2. Proxy status: Enabled (orange cloud)
+# 3. SSL/TLS mode: Full or Full (strict)
+#
+# SSL Certificate:
+# Traefik will automatically request a wildcard certificate from Let's Encrypt
+# using the HTTP challenge. Make sure port 80 is accessible.

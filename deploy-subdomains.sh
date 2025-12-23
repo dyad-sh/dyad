@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# Deployment script for Dyad subdomain system
+# This script helps deploy the Traefik configuration on the server
+
+echo "=========================================="
+echo "Dyad Subdomain System - Deployment"
+echo "=========================================="
+echo ""
+
+echo "📋 Checklist:"
+echo "✅ DNS configured (*.dyad1.ty-dev.site)"
+echo "✅ Code changes committed"
+echo ""
+
+echo "🚀 Next steps to run ON THE SERVER:"
+echo ""
+echo "1. Create Traefik configuration file:"
+echo "   sudo nano /data/coolify/proxy/dynamic/dyad-apps.yml"
+echo ""
+echo "2. Copy content from traefik-dyad-apps.yml"
+echo "   IMPORTANT: Replace 'dyad-container-name' with actual container name"
+echo ""
+echo "3. Find your Dyad container name:"
+echo "   docker ps | grep dyad"
+echo ""
+echo "4. Add environment variables to your deployment:"
+echo "   APP_BASE_DOMAIN=dyad1.ty-dev.site"
+echo "   APP_PROTOCOL=https"
+echo ""
+echo "5. Redeploy Dyad via Coolify or restart container"
+echo ""
+echo "6. Verify Traefik loaded the config:"
+echo "   docker logs coolify-proxy | grep dyad-apps"
+echo ""
+echo "7. Test with a new app!"
+echo ""
+echo "=========================================="
+echo "For detailed instructions, see deployment-guide.md"
+echo "=========================================="

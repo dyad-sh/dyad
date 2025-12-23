@@ -51,6 +51,20 @@ async function detectPackageManager(): Promise<'pnpm' | 'npm'> {
     }
 }
 
+// Helper function to generate app preview URL
+function getAppPreviewUrl(appId: number, port?: number): string {
+    const baseDomain = process.env.APP_BASE_DOMAIN || 'localhost';
+    const protocol = process.env.APP_PROTOCOL || 'http';
+
+    // In development or if no base domain, use localhost with port
+    if (baseDomain === 'localhost' && port) {
+        return `${protocol}://localhost:${port}`;
+    }
+
+    // In production, use subdomain
+    return `${protocol}://app${appId}.${baseDomain}`;
+}
+
 // Load shim files for injection
 let dyadShimContent = '';
 let dyadComponentSelectorClientContent = '';
@@ -485,7 +499,7 @@ router.post("/:id/run", async (req, res, next) => {
             data: {
                 success: true,
                 processId: devProcess.pid,
-                previewUrl: `/api/apps/${id}/proxy/`
+                previewUrl: getAppPreviewUrl(appId, port)
             }
         });
 

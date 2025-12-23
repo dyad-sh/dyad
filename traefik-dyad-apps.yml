@@ -1,37 +1,27 @@
-# Traefik Configuration for Dyad App Subdomains
+# Traefik Configuration for Dyad App Subdomains (TLS OnDemand)
 # File: /data/coolify/proxy/dynamic/dyad-apps.yml
-
-# This file configures Traefik to route wildcard subdomains to Dyad apps
-# Place this file in /data/coolify/proxy/dynamic/ directory
 
 http:
   routers:
-    # Router for app subdomains (app66.dyad1.ty-dev.site, app67.dyad1.ty-dev.site, etc.)
     dyad-apps:
+      # Match subdomains like app72.dyad1.ty-dev.site
       rule: "HostRegexp(`{subdomain:app[0-9]+}.dyad1.ty-dev.site`)"
       entryPoints:
         - https
       service: dyad-apps-service
       tls:
         certResolver: letsencrypt
-        domains:
-          - main: "dyad1.ty-dev.site"
-            sans:
-              - "*.dyad1.ty-dev.site"
-      middlewares:
-        - dyad-apps-headers
+        # Use OnDemand option defined below instead of Wildcard
+        options: ondemand
 
   services:
-    # Service pointing to Dyad container
     dyad-apps-service:
       loadBalancer:
         servers:
-          # Replace 'dyad-container-name' with your actual Dyad container name
-          # The port should match your Dyad server port (default 3000)
-          - url: "http://dyad-container-name:3000"
+          # Container name 'dyad-server' and Port 3001 based on docker-compose.yml
+          - url: "http://dyad-server:3001"
 
   middlewares:
-    # Headers middleware for WebSocket and CORS
     dyad-apps-headers:
       headers:
         customRequestHeaders:
@@ -41,18 +31,11 @@ http:
           Access-Control-Allow-Methods: "GET,POST,PUT,DELETE,OPTIONS"
           Access-Control-Allow-Headers: "Content-Type,Authorization"
 
-# Instructions:
-# 1. Save this file to /data/coolify/proxy/dynamic/dyad-apps.yml
-# 2. Traefik will automatically reload the configuration (watch=true)
-# 3. No restart needed!
-#
-# DNS Configuration (Cloudflare):
-# 1. Add wildcard A record: *.dyad1.ty-dev.site → <server IP>
-# 2. Proxy status: Enabled (orange cloud)
-# 3. SSL/TLS mode: Full or Full (strict)
-#
-# SSL Certificate (IMPORTANT):
-# Wildcard certificates (*.domain.com) REQUIRE DNS-01 challenge.
-# They CANNOT be generated with the default HTTP-01 challenge.
-# Ensure your Traefik is configured with a DNS provider (e.g., Cloudflare)
-# in its main static configuration (traefik.yml) to issue these certs.
+tls:
+  options:
+    ondemand:
+      onDemand:
+        # Ask allows Traefik to check if it should issue a cert.
+        # Ideally enable this and point to an API: http://dyad-server:3001/api/check-domain
+        # For now, commented out to ensure it works immediately (but less secure against spam)
+        # ask: http://dyad-server:3001/api/allow-cert

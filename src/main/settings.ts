@@ -58,6 +58,7 @@ export function readSettings(): UserSettings {
     };
     const supabase = combinedSettings.supabase;
     if (supabase) {
+      // Decrypt legacy tokens (kept but ignored)
       if (supabase.refreshToken) {
         const encryptionType = supabase.refreshToken.encryptionType;
         if (encryptionType) {
@@ -74,6 +75,30 @@ export function readSettings(): UserSettings {
             value: decrypt(supabase.accessToken),
             encryptionType,
           };
+        }
+      }
+      // Decrypt tokens for each account in the accounts map
+      if (supabase.accounts) {
+        for (const accountKey in supabase.accounts) {
+          const account = supabase.accounts[accountKey];
+          if (account.accessToken) {
+            const encryptionType = account.accessToken.encryptionType;
+            if (encryptionType) {
+              account.accessToken = {
+                value: decrypt(account.accessToken),
+                encryptionType,
+              };
+            }
+          }
+          if (account.refreshToken) {
+            const encryptionType = account.refreshToken.encryptionType;
+            if (encryptionType) {
+              account.refreshToken = {
+                value: decrypt(account.refreshToken),
+                encryptionType,
+              };
+            }
+          }
         }
       }
     }
@@ -163,6 +188,7 @@ export function writeSettings(settings: Partial<UserSettings>): void {
       );
     }
     if (newSettings.supabase) {
+      // Encrypt legacy tokens (kept for backwards compat)
       if (newSettings.supabase.accessToken) {
         newSettings.supabase.accessToken = encrypt(
           newSettings.supabase.accessToken.value,
@@ -172,6 +198,18 @@ export function writeSettings(settings: Partial<UserSettings>): void {
         newSettings.supabase.refreshToken = encrypt(
           newSettings.supabase.refreshToken.value,
         );
+      }
+      // Encrypt tokens for each account in the accounts map
+      if (newSettings.supabase.accounts) {
+        for (const accountKey in newSettings.supabase.accounts) {
+          const account = newSettings.supabase.accounts[accountKey];
+          if (account.accessToken) {
+            account.accessToken = encrypt(account.accessToken.value);
+          }
+          if (account.refreshToken) {
+            account.refreshToken = encrypt(account.refreshToken.value);
+          }
+        }
       }
     }
     if (newSettings.neon) {

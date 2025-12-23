@@ -8,6 +8,8 @@ import {
 } from "@dyad-sh/supabase-management-js";
 import log from "electron-log";
 import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
+import { buildSupabaseAccountKey } from "./supabase_account_key";
+import type { SupabaseAccount } from "../lib/schemas";
 
 const fsPromises = fs.promises;
 
@@ -170,6 +172,153 @@ export async function getSupabaseClient(): Promise<SupabaseManagementAPI> {
 
   return new SupabaseManagementAPI({
     accessToken: supabaseAccessToken,
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Multi-account support
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Checks if an account's token is expired or about to expire.
+ */
+function isAccountTokenExpired(account: SupabaseAccount): boolean {
+  if (!account.expiresIn || !account.tokenTimestamp) return true;
+
+  const currentTime = Math.floor(Date.now() / 1000);
+  // Check if the token is expired or about to expire (within 5 minutes)
+  return currentTime >= account.tokenTimestamp + account.expiresIn - 300;
+}
+
+/**
+ * Refreshes the Supabase access token for a specific account.
+ */
+async function refreshSupabaseTokenForAccount(
+  userId: string,
+  organizationId: string,
+): Promise<void> {
+  const settings = readSettings();
+  const accountKey = buildSupabaseAccountKey(userId, organizationId);
+  const account = settings.supabase?.accounts?.[accountKey];
+
+  if (!account) {
+    throw new Error(
+      `Supabase account not found for ${userId}:${organizationId}. Please authenticate first.`,
+    );
+  }
+
+  if (!isAccountTokenExpired(account)) {
+    return;
+  }
+
+  const refreshToken = account.refreshToken?.value;
+  if (!refreshToken) {
+    throw new Error(
+      "Supabase refresh token not found. Please authenticate first.",
+    );
+  }
+
+  try {
+    const response = await fetch(
+      "https://supabase-oauth.dyad.sh/api/connect-supabase/refresh",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ refreshToken }),
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `Supabase token refresh failed. Try going to Settings to disconnect Supabase and then reconnect. Error status: ${response.statusText}`,
+      );
+    }
+
+    const {
+      accessToken,
+      refreshToken: newRefreshToken,
+      expiresIn,
+    } = await response.json();
+
+    // Update the specific account in settings
+    const existingAccounts = settings.supabase?.accounts ?? {};
+    writeSettings({
+      supabase: {
+        ...settings.supabase,
+        accounts: {
+          ...existingAccounts,
+          [accountKey]: {
+            ...account,
+            accessToken: {
+              value: accessToken,
+            },
+            refreshToken: {
+              value: newRefreshToken,
+            },
+            expiresIn,
+            tokenTimestamp: Math.floor(Date.now() / 1000),
+          },
+        },
+      },
+    });
+  } catch (error) {
+    logger.error(
+      `Error refreshing Supabase token for account ${accountKey}:`,
+      error,
+    );
+    throw error;
+  }
+}
+
+/**
+ * Gets a Supabase Management API client for a specific account.
+ */
+export async function getSupabaseClientForAccount(
+  userId: string,
+  organizationId: string,
+): Promise<SupabaseManagementAPI> {
+  const settings = readSettings();
+  const accountKey = buildSupabaseAccountKey(userId, organizationId);
+  const account = settings.supabase?.accounts?.[accountKey];
+
+  if (!account) {
+    throw new Error(
+      `Supabase account not found for ${userId}:${organizationId}. Please authenticate first.`,
+    );
+  }
+
+  const accessToken = account.accessToken?.value;
+  if (!accessToken) {
+    throw new Error(
+      `Supabase access token not found for account ${accountKey}. Please authenticate first.`,
+    );
+  }
+
+  // Check if token needs refreshing
+  if (isAccountTokenExpired(account)) {
+    await withLock(`refresh-supabase-token-${accountKey}`, () =>
+      refreshSupabaseTokenForAccount(userId, organizationId),
+    );
+    // Get updated settings after refresh
+    const updatedSettings = readSettings();
+    const updatedAccount = updatedSettings.supabase?.accounts?.[accountKey];
+    const newAccessToken = updatedAccount?.accessToken?.value;
+
+    if (!newAccessToken) {
+      throw new Error(
+        `Failed to refresh Supabase access token for account ${accountKey}`,
+      );
+    }
+
+    return new SupabaseManagementAPI({
+      accessToken: newAccessToken,
+    });
+  }
+
+  return new SupabaseManagementAPI({
+    accessToken,
   });
 }
 

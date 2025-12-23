@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
+  supabaseAccountsAtom,
   supabaseProjectsAtom,
   supabaseBranchesAtom,
   supabaseLoadingAtom,
@@ -10,9 +11,13 @@ import {
 } from "@/atoms/supabaseAtoms";
 import { appConsoleEntriesAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
-import { SetSupabaseAppProjectParams } from "@/ipc/ipc_types";
+import {
+  SetSupabaseAppProjectParams,
+  DeleteSupabaseAccountParams,
+} from "@/ipc/ipc_types";
 
 export function useSupabase() {
+  const [accounts, setAccounts] = useAtom(supabaseAccountsAtom);
   const [projects, setProjects] = useAtom(supabaseProjectsAtom);
   const [branches, setBranches] = useAtom(supabaseBranchesAtom);
   const [loading, setLoading] = useAtom(supabaseLoadingAtom);
@@ -27,12 +32,52 @@ export function useSupabase() {
   const ipcClient = IpcClient.getInstance();
 
   /**
-   * Load Supabase projects from the API
+   * Load all connected Supabase accounts
+   */
+  const loadAccounts = useCallback(async () => {
+    setLoading(true);
+    try {
+      const accountList = await ipcClient.listSupabaseAccounts();
+      setAccounts(accountList);
+      setError(null);
+    } catch (error) {
+      console.error("Error loading Supabase accounts:", error);
+      setError(error instanceof Error ? error : new Error(String(error)));
+    } finally {
+      setLoading(false);
+    }
+  }, [ipcClient, setAccounts, setError, setLoading]);
+
+  /**
+   * Delete a Supabase account connection
+   */
+  const deleteAccount = useCallback(
+    async (params: DeleteSupabaseAccountParams) => {
+      setLoading(true);
+      try {
+        await ipcClient.deleteSupabaseAccount(params);
+        // Refresh accounts list after deletion
+        const accountList = await ipcClient.listSupabaseAccounts();
+        setAccounts(accountList);
+        setError(null);
+      } catch (error) {
+        console.error("Error deleting Supabase account:", error);
+        setError(error instanceof Error ? error : new Error(String(error)));
+        throw error;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [ipcClient, setAccounts, setError, setLoading],
+  );
+
+  /**
+   * Load Supabase projects from all connected accounts
    */
   const loadProjects = useCallback(async () => {
     setLoading(true);
     try {
-      const projectList = await ipcClient.listSupabaseProjects();
+      const projectList = await ipcClient.listAllSupabaseProjects();
       setProjects(projectList);
       setError(null);
     } catch (error) {
@@ -178,11 +223,14 @@ export function useSupabase() {
   );
 
   return {
+    accounts,
     projects,
     branches,
     loading,
     error,
     selectedProject,
+    loadAccounts,
+    deleteAccount,
     loadProjects,
     loadBranches,
     loadEdgeLogs,

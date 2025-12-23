@@ -69,6 +69,9 @@ import type {
   CloneRepoParams,
   SupabaseBranch,
   SetSupabaseAppProjectParams,
+  SupabaseAccountInfo,
+  SupabaseProjectWithAccount,
+  DeleteSupabaseAccountParams,
   SelectNodeFolderResult,
   ApplyVisualEditingChangesParams,
   AnalyseComponentParams,
@@ -1041,6 +1044,27 @@ export class IpcClient {
   // --- End Proposal Management ---
 
   // --- Supabase Management ---
+
+  // List all connected Supabase accounts
+  public async listSupabaseAccounts(): Promise<SupabaseAccountInfo[]> {
+    return this.ipcRenderer.invoke("supabase:list-accounts");
+  }
+
+  // Delete a Supabase account connection
+  public async deleteSupabaseAccount(
+    params: DeleteSupabaseAccountParams,
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("supabase:delete-account", params);
+  }
+
+  // List all projects from all connected accounts
+  public async listAllSupabaseProjects(): Promise<
+    SupabaseProjectWithAccount[]
+  > {
+    return this.ipcRenderer.invoke("supabase:list-all-projects");
+  }
+
+  // Legacy: list projects (for backwards compat)
   public async listSupabaseProjects(): Promise<any[]> {
     return this.ipcRenderer.invoke("supabase:list-projects");
   }

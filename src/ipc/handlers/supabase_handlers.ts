@@ -4,18 +4,30 @@ import { eq } from "drizzle-orm";
 import { apps } from "../../db/schema";
 import {
   getSupabaseClient,
+  getSupabaseClientForAccount,
   listSupabaseBranches,
   getSupabaseProjectLogs,
 } from "../../supabase_admin/supabase_management_client";
 import { extractFunctionName } from "../../supabase_admin/supabase_utils";
+import {
+  buildSupabaseAccountKey,
+  parseSupabaseAccountKey,
+} from "../../supabase_admin/supabase_account_key";
 import {
   createLoggedHandler,
   createTestOnlyLoggedHandler,
 } from "./safe_handle";
 import { handleSupabaseOAuthReturn } from "../../supabase_admin/supabase_return_handler";
 import { safeSend } from "../utils/safe_sender";
+import { readSettings, writeSettings } from "../../main/settings";
 
-import { SetSupabaseAppProjectParams, SupabaseBranch } from "../ipc_types";
+import {
+  SetSupabaseAppProjectParams,
+  SupabaseBranch,
+  SupabaseAccountInfo,
+  SupabaseProjectWithAccount,
+  DeleteSupabaseAccountParams,
+} from "../ipc_types";
 import type { ConsoleEntry } from "../../atoms/appAtoms";
 
 const logger = log.scope("supabase_handlers");
@@ -23,6 +35,84 @@ const handle = createLoggedHandler(logger);
 const testOnlyHandle = createTestOnlyLoggedHandler(logger);
 
 export function registerSupabaseHandlers() {
+  // List all connected Supabase accounts
+  handle("supabase:list-accounts", async (): Promise<SupabaseAccountInfo[]> => {
+    const settings = readSettings();
+    const accounts = settings.supabase?.accounts ?? {};
+
+    return Object.values(accounts).map((account) => ({
+      userId: account.userId,
+      organizationId: account.organizationId,
+      organizationName: account.organizationName,
+      userEmail: account.userEmail,
+    }));
+  });
+
+  // Delete a Supabase account connection
+  handle(
+    "supabase:delete-account",
+    async (_, { userId, organizationId }: DeleteSupabaseAccountParams) => {
+      const settings = readSettings();
+      const accountKey = buildSupabaseAccountKey(userId, organizationId);
+      const accounts = { ...settings.supabase?.accounts };
+
+      if (!accounts[accountKey]) {
+        throw new Error(`Supabase account ${accountKey} not found`);
+      }
+
+      delete accounts[accountKey];
+
+      writeSettings({
+        supabase: {
+          ...settings.supabase,
+          accounts,
+        },
+      });
+
+      logger.info(`Deleted Supabase account ${accountKey}`);
+    },
+  );
+
+  // List all projects from all connected accounts
+  handle(
+    "supabase:list-all-projects",
+    async (): Promise<SupabaseProjectWithAccount[]> => {
+      const settings = readSettings();
+      const accounts = settings.supabase?.accounts ?? {};
+      const allProjects: SupabaseProjectWithAccount[] = [];
+
+      for (const accountKey of Object.keys(accounts)) {
+        const { userId, organizationId } = parseSupabaseAccountKey(accountKey);
+        try {
+          const client = await getSupabaseClientForAccount(
+            userId,
+            organizationId,
+          );
+          const projects = await client.getProjects();
+
+          for (const project of projects) {
+            allProjects.push({
+              id: project.id,
+              name: project.name,
+              region: project.region,
+              organizationId: project.organization_id,
+              userId,
+            });
+          }
+        } catch (error) {
+          logger.error(
+            `Failed to fetch projects for account ${accountKey}:`,
+            error,
+          );
+          // Continue with other accounts even if one fails
+        }
+      }
+
+      return allProjects;
+    },
+  );
+
+  // Legacy: list projects from the first available account (for backwards compat)
   handle("supabase:list-projects", async () => {
     const supabase = await getSupabaseClient();
     return supabase.getProjects();
@@ -96,18 +186,26 @@ export function registerSupabaseHandlers() {
     "supabase:set-app-project",
     async (
       _,
-      { projectId, appId, parentProjectId }: SetSupabaseAppProjectParams,
+      {
+        projectId,
+        appId,
+        parentProjectId,
+        userId,
+        organizationId,
+      }: SetSupabaseAppProjectParams,
     ) => {
       await db
         .update(apps)
         .set({
           supabaseProjectId: projectId,
           supabaseParentProjectId: parentProjectId,
+          supabaseUserId: userId,
+          supabaseOrganizationId: organizationId,
         })
         .where(eq(apps.id, appId));
 
       logger.info(
-        `Associated app ${appId} with Supabase project ${projectId} ${parentProjectId ? `and parent project ${parentProjectId}` : ""}`,
+        `Associated app ${appId} with Supabase project ${projectId} (account: ${userId}:${organizationId})${parentProjectId ? ` and parent project ${parentProjectId}` : ""}`,
       );
     },
   );
@@ -116,7 +214,12 @@ export function registerSupabaseHandlers() {
   handle("supabase:unset-app-project", async (_, { app }: { app: number }) => {
     await db
       .update(apps)
-      .set({ supabaseProjectId: null, supabaseParentProjectId: null })
+      .set({
+        supabaseProjectId: null,
+        supabaseParentProjectId: null,
+        supabaseUserId: null,
+        supabaseOrganizationId: null,
+      })
       .where(eq(apps.id, app));
 
     logger.info(`Removed Supabase project association for app ${app}`);
@@ -128,11 +231,18 @@ export function registerSupabaseHandlers() {
       event,
       { appId, fakeProjectId }: { appId: number; fakeProjectId: string },
     ) => {
-      // Call handleSupabaseOAuthReturn with fake data
+      const fakeUserId = "fake-user-id";
+      const fakeOrgId = "fake-org-id";
+
+      // Call handleSupabaseOAuthReturn with fake data including userId and organizationId
       handleSupabaseOAuthReturn({
         token: "fake-access-token",
         refreshToken: "fake-refresh-token",
         expiresIn: 3600, // 1 hour
+        userId: fakeUserId,
+        organizationId: fakeOrgId,
+        organizationName: "Fake Organization",
+        userEmail: "fake@test.com",
       });
       logger.info(
         `Called handleSupabaseOAuthReturn with fake data for app ${appId} during testing.`,
@@ -143,6 +253,8 @@ export function registerSupabaseHandlers() {
         .update(apps)
         .set({
           supabaseProjectId: fakeProjectId,
+          supabaseUserId: fakeUserId,
+          supabaseOrganizationId: fakeOrgId,
         })
         .where(eq(apps.id, appId));
       logger.info(

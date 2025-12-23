@@ -22,6 +22,8 @@ import { spawn, ChildProcess } from 'child_process';
 import portfinder from 'portfinder';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 
+import net from 'net';
+
 interface RunningApp {
     process: ChildProcess;
     port: number;
@@ -30,6 +32,7 @@ interface RunningApp {
 }
 
 const runningApps = new Map<number, RunningApp>();
+const startingApps = new Map<number, Promise<any>>();
 
 // Package manager detection
 async function detectPackageManager(): Promise<'pnpm' | 'npm'> {
@@ -155,6 +158,38 @@ const TEMPLATE_PROMPTS: Record<string, string> = {
     'portal-mini-store': 'Initialize a mini store portal using Next.js and Neon.' // Custom
 };
 
+// Helper: Wait for port to be reachable
+function waitForPort(port: number, retries = 20, timeout = 1000): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const tryConnect = (attempt: number) => {
+            if (attempt > retries) {
+                return reject(new Error(`Timeout waiting for port ${port}`));
+            }
+
+            const socket = new net.Socket();
+            socket.setTimeout(timeout);
+
+            socket.on('connect', () => {
+                socket.destroy();
+                resolve();
+            });
+
+            socket.on('timeout', () => {
+                socket.destroy();
+                setTimeout(() => tryConnect(attempt + 1), 500);
+            });
+
+            socket.on('error', (err) => {
+                socket.destroy();
+                setTimeout(() => tryConnect(attempt + 1), 500);
+            });
+
+            socket.connect(port, '127.0.0.1');
+        };
+        tryConnect(0);
+    });
+}
+
 // Auto-healing install helper
 async function installDependencies(targetDir: string, appId: number): Promise<void> {
     const packageManager = await detectPackageManager();
@@ -194,15 +229,34 @@ async function installDependencies(targetDir: string, appId: number): Promise<vo
         await runInstall();
     } catch (error: any) {
         console.warn(`[WebBackend] Install failed for App ${appId}. Attempting auto-healing cleanup...`);
-        console.warn(`[WebBackend] Error was: ${error.message.split('\n')[0]}`); // Log just the first line of error
+        console.warn(`[WebBackend] Error was: ${error.message.split('\n')[0]}`);
 
-        // Auto-healing: Delete node_modules and package-lock.json
+        // Auto-healing: Robust deletion mechanism
         try {
             const nodeModulesPath = path.join(targetDir, 'node_modules');
             const lockFilePath = path.join(targetDir, 'package-lock.json');
 
-            if (await fs.pathExists(nodeModulesPath)) await fs.remove(nodeModulesPath);
-            if (await fs.pathExists(lockFilePath)) await fs.remove(lockFilePath);
+            // Robust delete helper
+            const robustDelete = async (p: string) => {
+                if (!await fs.pathExists(p)) return;
+                for (let i = 0; i < 5; i++) { // 5 retries
+                    try {
+                        await fs.remove(p);
+                        return;
+                    } catch (e: any) {
+                        if (e.code === 'ENOTEMPTY' || e.code === 'EBUSY') {
+                            await new Promise(r => setTimeout(r, 1000 * (i + 1))); // Incremental backoff
+                            continue;
+                        }
+                        throw e;
+                    }
+                }
+                // Final attempt with force if supported or throw
+                await fs.remove(p);
+            };
+
+            await robustDelete(nodeModulesPath);
+            await robustDelete(lockFilePath);
 
             console.log(`[WebBackend] Cleanup complete (node_modules + lockfile). Retrying installation...`);
 
@@ -473,7 +527,15 @@ router.post("/:id/run", async (req, res, next) => {
 
         console.log(`[WebBackend] Requested run for app ${id}`);
 
-        // Check if already running
+        // Check if already starting
+        if (startingApps.has(appId)) {
+            console.log(`[WebBackend] App ${id} is already starting... joining request`);
+            const result = await startingApps.get(appId);
+            res.json(result);
+            return;
+        }
+
+        // Check if already running (and healthy)
         if (runningApps.has(appId)) {
             const running = runningApps.get(appId)!;
             console.log(`[WebBackend] App ${id} already running on port ${running.port}`);
@@ -488,76 +550,89 @@ router.post("/:id/run", async (req, res, next) => {
             return;
         }
 
-        // 1. Prepare Directory
-        const targetDir = path.join(os.tmpdir(), 'dyad-apps', String(id));
-        await fs.emptyDir(targetDir);
-        await writeAppToDisk(appId, targetDir);
+        // Start new process logic wrapped in promise
+        const startPromise = (async () => {
+            try {
+                // 1. Prepare Directory
+                const targetDir = path.join(os.tmpdir(), 'dyad-apps', String(id));
+                await fs.emptyDir(targetDir);
+                await writeAppToDisk(appId, targetDir);
 
-        // 2. Find Port
-        const port = await portfinder.getPortPromise({ port: 32000 + Math.floor(Math.random() * 1000) });
+                // 2. Find Port
+                const port = await portfinder.getPortPromise({ port: 32000 + Math.floor(Math.random() * 1000) });
 
-        // Check if package.json exists before installing
-        if (!await fs.pathExists(path.join(targetDir, 'package.json'))) {
-            // Check how many files were written
-            const fileService = new FileService();
-            const files = await fileService.listFiles(appId);
+                // Check if package.json exists before installing
+                if (!await fs.pathExists(path.join(targetDir, 'package.json'))) {
+                    // Check how many files were written
+                    const fileService = new FileService();
+                    const files = await fileService.listFiles(appId);
 
-            if (files.length === 0) {
-                throw createError("No files found. Please ask AI to generate code first.", 400, "NO_FILES");
-            } else {
-                const fileList = files.join(', ');
-                console.error(`[WebBackend] App ${id} has ${files.length} files but no package.json: ${fileList}`);
-                throw createError(
-                    `App has ${files.length} files but package.json is missing. Files: ${fileList}. Please ask AI to create package.json.`,
-                    400,
-                    "MISSING_PACKAGE_JSON"
-                );
+                    if (files.length === 0) {
+                        throw createError("No files found. Please ask AI to generate code first.", 400, "NO_FILES");
+                    } else {
+                        const fileList = files.join(', ');
+                        console.error(`[WebBackend] App ${id} has ${files.length} files but no package.json: ${fileList}`);
+                        throw createError(
+                            `App has ${files.length} files but package.json is missing. Files: ${fileList}. Please ask AI to create package.json.`,
+                            400,
+                            "MISSING_PACKAGE_JSON"
+                        );
+                    }
+                }
+
+                // 3. Install Dependencies
+                await installDependencies(targetDir, appId);
+
+                // 4. Run Dev Server
+                console.log(`[WebBackend] Starting dev server for app ${id} on port ${port}`);
+                console.log(`[WebBackend] 🌐 Direct access: http://localhost:${port}`);
+                console.log(`[WebBackend] 🔗 Public access: ${getAppPreviewUrl(appId, port, req)}`);
+                // "next dev" expects -p PORT
+                const devProcess = spawn('npm', ['run', 'dev', '--', '-p', String(port)], {
+                    cwd: targetDir,
+                    shell: true,
+                    stdio: 'inherit' // For now let's pipe to stdout to see logs
+                });
+
+                devProcess.on('error', (err) => {
+                    console.error(`[WebBackend] App ${id} failed to start:`, err);
+                    runningApps.delete(appId);
+                });
+
+                devProcess.on('exit', (code) => {
+                    console.log(`[WebBackend] App ${id} exited with code ${code}`);
+                    runningApps.delete(appId);
+                });
+
+                // Wait for port to be ready before returning
+                console.log(`[WebBackend] Waiting for app ${id} to listen on port ${port}...`);
+                await waitForPort(port);
+                console.log(`[WebBackend] App ${id} is ready!`);
+
+                runningApps.set(appId, {
+                    process: devProcess,
+                    port,
+                    dir: targetDir,
+                    startTime: Date.now()
+                });
+
+                return {
+                    success: true,
+                    data: {
+                        success: true,
+                        processId: devProcess.pid,
+                        previewUrl: getAppPreviewUrl(appId, port, req)
+                    }
+                };
+            } finally {
+                // Remove lock
+                startingApps.delete(appId);
             }
-        }
+        })();
 
-        // 3. Install Dependencies
-        await installDependencies(targetDir, appId);
-
-        // 4. Run Dev Server
-        console.log(`[WebBackend] Starting dev server for app ${id} on port ${port}`);
-        console.log(`[WebBackend] 🌐 Direct access: http://localhost:${port}`);
-        console.log(`[WebBackend] 🔗 Public access: ${getAppPreviewUrl(appId, port, req)}`);
-        // "next dev" expects -p PORT
-        const devProcess = spawn('npm', ['run', 'dev', '--', '-p', String(port)], {
-            cwd: targetDir,
-            shell: true,
-            stdio: 'inherit' // For now let's pipe to stdout to see logs
-        });
-
-        // Wait a bit for server to start (naive check)
-        // Ideally we tail stdout for "Ready on" but using stdio:inherit makes that hard.
-        // We'll trust it starts or fails quickly.
-        // Creating the entry immediately.
-        runningApps.set(appId, {
-            process: devProcess,
-            port,
-            dir: targetDir,
-            startTime: Date.now()
-        });
-
-        devProcess.on('error', (err) => {
-            console.error(`[WebBackend] App ${id} failed to start:`, err);
-            runningApps.delete(appId);
-        });
-
-        devProcess.on('exit', (code) => {
-            console.log(`[WebBackend] App ${id} exited with code ${code}`);
-            runningApps.delete(appId);
-        });
-
-        res.json({
-            success: true,
-            data: {
-                success: true,
-                processId: devProcess.pid,
-                previewUrl: getAppPreviewUrl(appId, port, req)
-            }
-        });
+        startingApps.set(appId, startPromise);
+        const responseData = await startPromise;
+        res.json(responseData);
 
     } catch (error: any) {
         console.error(`[WebBackend] Failed to run app ${req.params.id}:`, error);

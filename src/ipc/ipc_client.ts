@@ -76,6 +76,7 @@ import type {
   SetAgentToolConsentParams,
   AgentToolConsentRequestPayload,
   AgentToolConsentResponseParams,
+  TelemetryEventPayload,
 } from "./ipc_types";
 import type { ConsoleEntry } from "../atoms/appAtoms";
 import type { Template } from "../shared/templates";
@@ -132,6 +133,7 @@ export class IpcClient {
   >;
   private mcpConsentHandlers: Map<string, (payload: any) => void>;
   private agentConsentHandlers: Map<string, (payload: any) => void>;
+  private telemetryEventHandlers: Set<(payload: TelemetryEventPayload) => void>;
   // Global handlers called for any chat stream completion (used for cleanup)
   private globalChatStreamEndHandlers: Set<(chatId: number) => void>;
   private constructor() {
@@ -141,6 +143,7 @@ export class IpcClient {
     this.helpStreams = new Map();
     this.mcpConsentHandlers = new Map();
     this.agentConsentHandlers = new Map();
+    this.telemetryEventHandlers = new Set();
     this.globalChatStreamEndHandlers = new Set();
     // Set up listeners for stream events
     this.ipcRenderer.on("chat:response:chunk", (data) => {
@@ -287,6 +290,15 @@ export class IpcClient {
     this.ipcRenderer.on("agent-tool:consent-request", (payload) => {
       const handler = this.agentConsentHandlers.get("consent");
       if (handler) handler(payload);
+    });
+
+    // Telemetry events from main to renderer
+    this.ipcRenderer.on("telemetry:event", (payload) => {
+      if (payload && typeof payload === "object" && "eventName" in payload) {
+        for (const handler of this.telemetryEventHandlers) {
+          handler(payload as TelemetryEventPayload);
+        }
+      }
     });
   }
 
@@ -967,6 +979,20 @@ export class IpcClient {
     this.globalChatStreamEndHandlers.add(handler);
     return () => {
       this.globalChatStreamEndHandlers.delete(handler);
+    };
+  }
+
+  /**
+   * Subscribe to telemetry events from the main process.
+   * Used to forward events to PostHog in the renderer.
+   * @returns Unsubscribe function
+   */
+  public onTelemetryEvent(
+    handler: (payload: TelemetryEventPayload) => void,
+  ): () => void {
+    this.telemetryEventHandlers.add(handler);
+    return () => {
+      this.telemetryEventHandlers.delete(handler);
     };
   }
 

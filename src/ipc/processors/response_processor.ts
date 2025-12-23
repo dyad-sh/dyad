@@ -79,6 +79,9 @@ export async function dryRunSearchReplace({
           error:
             "Unable to apply search-replace to file because: " + result.error,
         });
+        logger.warn(
+          `Unable to apply search-replace to file ${filePath} because: ${result.error}. Original content:\n${original}\n Diff content:\n${tag.content}`,
+        );
         continue;
       }
     } catch (error) {

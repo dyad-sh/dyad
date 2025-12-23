@@ -350,18 +350,21 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       if (event.data?.type === "console-log") {
         const { level, args } = event.data;
         const formattedMessage = `[${level.toUpperCase()}] ${args.join(" ")}`;
-        const logLevel =
+        const logLevel: "info" | "warn" | "error" =
           level === "error" ? "error" : level === "warn" ? "warn" : "info";
-        setConsoleEntries((prev) => [
-          ...prev,
-          {
-            level: logLevel,
-            type: "client",
-            message: formattedMessage,
-            timestamp: Date.now(),
-            appId: selectedAppId!,
-          },
-        ]);
+        const logEntry = {
+          level: logLevel,
+          type: "client" as const,
+          message: formattedMessage,
+          timestamp: Date.now(),
+          appId: selectedAppId!,
+        };
+
+        // Send to central log store
+        IpcClient.getInstance().addLog(logEntry);
+
+        // Also update UI state
+        setConsoleEntries((prev) => [...prev, logEntry]);
         return;
       }
 
@@ -369,16 +372,19 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       if (event.data?.type === "network-request") {
         const { method, url } = event.data;
         const formattedMessage = `→ ${method} ${url}`;
-        setConsoleEntries((prev) => [
-          ...prev,
-          {
-            level: "info",
-            type: "network-requests",
-            message: formattedMessage,
-            timestamp: Date.now(),
-            appId: selectedAppId!,
-          },
-        ]);
+        const logEntry = {
+          level: "info" as const,
+          type: "network-requests" as const,
+          message: formattedMessage,
+          timestamp: Date.now(),
+          appId: selectedAppId!,
+        };
+
+        // Send to central log store
+        IpcClient.getInstance().addLog(logEntry);
+
+        // Also update UI state
+        setConsoleEntries((prev) => [...prev, logEntry]);
         return;
       }
 
@@ -386,17 +392,21 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       if (event.data?.type === "network-response") {
         const { method, url, status, duration } = event.data;
         const formattedMessage = `[${status}] ${method} ${url} (${duration}ms)`;
-        const level = status >= 400 ? "error" : status >= 300 ? "warn" : "info";
-        setConsoleEntries((prev) => [
-          ...prev,
-          {
-            level,
-            type: "network-requests",
-            message: formattedMessage,
-            timestamp: Date.now(),
-            appId: selectedAppId!,
-          },
-        ]);
+        const level: "info" | "warn" | "error" =
+          status >= 400 ? "error" : status >= 300 ? "warn" : "info";
+        const logEntry = {
+          level,
+          type: "network-requests" as const,
+          message: formattedMessage,
+          timestamp: Date.now(),
+          appId: selectedAppId!,
+        };
+
+        // Send to central log store
+        IpcClient.getInstance().addLog(logEntry);
+
+        // Also update UI state
+        setConsoleEntries((prev) => [...prev, logEntry]);
         return;
       }
 

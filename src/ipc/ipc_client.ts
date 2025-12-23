@@ -1477,4 +1477,12 @@ export class IpcClient {
   ): Promise<{ isDynamic: boolean; hasStaticText: boolean }> {
     return this.ipcRenderer.invoke("analyze-component", params);
   }
+
+  // --- Console Logs ---
+  public addLog(entry: ConsoleEntry): void {
+    // Fire and forget - send log to central store
+    this.ipcRenderer.invoke("add-log", entry).catch((err) => {
+      console.error("Failed to add log to central store:", err);
+    });
+  }
 }

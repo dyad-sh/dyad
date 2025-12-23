@@ -3,7 +3,7 @@ import { ToolDefinition, AgentContext } from "./types";
 import { db } from "@/db";
 import { chats } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { getLogs } from "@/main/log_store";
+import { getLogs, ConsoleEntry } from "@/lib/log_store";
 
 const readLogsSchema = z.object({
   timeWindow: z
@@ -45,20 +45,6 @@ const readLogsSchema = z.object({
     .optional()
     .describe("Maximum number of logs to return (default: 50, max: 200)"),
 });
-
-interface ConsoleEntry {
-  level: "info" | "warn" | "error";
-  type:
-    | "server"
-    | "client"
-    | "edge-function"
-    | "network-requests"
-    | "build-time";
-  message: string;
-  timestamp: number;
-  sourceName?: string;
-  appId: number;
-}
 
 function getTimeCutoff(timeWindow: string): number {
   const now = Date.now();
@@ -123,7 +109,7 @@ function formatLogsForAI(logs: ConsoleEntry[]): string {
 export const readLogsTool: ToolDefinition<z.infer<typeof readLogsSchema>> = {
   name: "read_logs",
   description:
-    "Read console logs from the app preview at the moment this tool is called. Includes client logs, server logs, edge function logs, and network requests. Use this to debug errors, investigate issues, or understand app behavior. IMPORTANT: Logs are a snapshot from when you call this tool - they will NOT update while you are writing code or making changes. Use filters (searchTerm, type, level) to narrow down relevant logs on the first call.",
+    "Read console logs from the Console at the moment this tool is called. Includes client logs, server logs, edge function logs, and network requests. Use this to debug errors, investigate issues, or understand app behavior. IMPORTANT: Logs are a snapshot from when you call this tool - they will NOT update while you are writing code or making changes. Use filters (searchTerm, type, level) to narrow down relevant logs on the first call.",
   inputSchema: readLogsSchema,
   defaultConsent: "always",
 

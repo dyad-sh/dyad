@@ -28,7 +28,7 @@ import {
 } from "../utils/process_manager";
 import { getEnvVar } from "../utils/read_env";
 import { readSettings } from "../../main/settings";
-import { addLog } from "../../main/log_store";
+import { addLog } from "../../lib/log_store";
 
 import fixPath from "fix-path";
 
@@ -1607,7 +1607,7 @@ export function registerAppHandlers() {
 
   // Handler for adding logs to central store from renderer
   ipcMain.handle("add-log", async (_, entry: any) => {
-    const { addLog } = await import("../../main/log_store");
+    const { addLog } = await import("../../lib/log_store");
     addLog(entry);
   });
 }

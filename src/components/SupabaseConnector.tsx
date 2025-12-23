@@ -73,7 +73,8 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   } = useSupabase();
 
   // Check if there are any connected organizations
-  const hasConnectedOrganizations = organizations.length > 0;
+  const isConnected =
+    !!settings?.supabase?.accessToken || organizations.length > 0;
 
   useEffect(() => {
     // Load organizations and projects when the component mounts
@@ -82,10 +83,10 @@ export function SupabaseConnector({ appId }: { appId: number }) {
 
   useEffect(() => {
     // Load projects when organizations are available
-    if (hasConnectedOrganizations) {
+    if (isConnected) {
       loadProjects();
     }
-  }, [hasConnectedOrganizations, loadProjects]);
+  }, [isConnected, loadProjects]);
 
   const handleProjectSelect = async (projectValue: string) => {
     try {
@@ -177,7 +178,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   };
 
   // Connected and has project set
-  if (hasConnectedOrganizations && app?.supabaseProjectName) {
+  if (isConnected && app?.supabaseProjectName) {
     return (
       <Card className="mt-1">
         <CardHeader>
@@ -273,7 +274,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   }
 
   // Connected organizations exist, show project selector
-  if (hasConnectedOrganizations) {
+  if (isConnected) {
     // Build current project value for the select
     const currentProjectValue =
       app?.supabaseOrganizationId && app?.supabaseProjectId

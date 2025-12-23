@@ -4,15 +4,14 @@
 http:
   routers:
     dyad-apps:
-      # Match subdomains like app72.dyad1.ty-dev.site
-      rule: "HostRegexp(`{subdomain:app[0-9]+}.dyad1.ty-dev.site`)"
+      # Match subdomains like app-dyad-72.dyad1.ty-dev.site (flat structure)
+      rule: "HostRegexp(`{subdomain:app-dyad-[0-9]+}.dyad1.ty-dev.site`) || HostRegexp(`{subdomain:app-dyad-[0-9]+}.ty-dev.site`)"
       entryPoints:
         - https
       service: dyad-apps-service
       tls:
         certResolver: letsencrypt
-        # Use OnDemand option defined below instead of Wildcard
-        options: ondemand
+        # options: ondemand (Removed for Cloudflare Universal SSL compatibility)
 
   services:
     dyad-apps-service:

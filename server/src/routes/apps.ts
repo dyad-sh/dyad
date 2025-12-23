@@ -61,10 +61,10 @@ function getAppPreviewUrl(appId: number, port?: number, req?: any): string {
     if (baseDomain === 'localhost' && req) {
         const host = req.get('host'); // e.g. dyad1.ty-dev.site
         if (host && !host.includes('localhost') && !host.includes('127.0.0.1')) {
-            // Heuristic: if host is domain.com, app subdomain is app{id}.domain.com
+            // Heuristic: if host is domain.com, app subdomain is app-dyad-{id}.domain.com
             // This assumes wildcard DNS is set up for *.domain.com
             // FORCE HTTPS to avoid mixed content
-            return `https://app${appId}.${host}`;
+            return `https://app-dyad-${appId}.${host}`;
         }
     }
 
@@ -74,7 +74,7 @@ function getAppPreviewUrl(appId: number, port?: number, req?: any): string {
     }
 
     // In production, use subdomain
-    return `${protocol}://app${appId}.${baseDomain}`;
+    return `${protocol}://app-dyad-${appId}.${baseDomain}`;
 }
 
 // Load shim files for injection

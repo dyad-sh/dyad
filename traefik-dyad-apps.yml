@@ -18,8 +18,8 @@ http:
     dyad-apps-service:
       loadBalancer:
         servers:
-          # Container name 'dyad-server' and Port 3001 based on docker-compose.yml
-          - url: "http://dyad-server:3001"
+          # Container name 'dyad-server' and Port 3007 based on docker-compose.yml
+          - url: "http://dyad-server:3007"
 
   middlewares:
     dyad-apps-headers:
@@ -36,6 +36,6 @@ tls:
     ondemand:
       onDemand:
         # Ask allows Traefik to check if it should issue a cert.
-        # Ideally enable this and point to an API: http://dyad-server:3001/api/check-domain
+        # Ideally enable this and point to an API: http://dyad-server:3007/api/check-domain
         # For now, commented out to ensure it works immediately (but less secure against spam)
-        # ask: http://dyad-server:3001/api/allow-cert
+        # ask: http://dyad-server:3007/api/allow-cert

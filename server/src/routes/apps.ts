@@ -63,7 +63,8 @@ function getAppPreviewUrl(appId: number, port?: number, req?: any): string {
         if (host && !host.includes('localhost') && !host.includes('127.0.0.1')) {
             // Heuristic: if host is domain.com, app subdomain is app{id}.domain.com
             // This assumes wildcard DNS is set up for *.domain.com
-            return `${protocol}://app${appId}.${host}`;
+            // FORCE HTTPS to avoid mixed content
+            return `https://app${appId}.${host}`;
         }
     }
 

@@ -8,12 +8,12 @@ services:
     container_name: dyad-server
     restart: unless-stopped
     ports:
-      - "3001:3001"
+      - "3007:3007"
     volumes:
       - dyad-data:/app/data
     environment:
       - NODE_ENV=production
-      - PORT=3001
+      - PORT=3007
       - HOST=0.0.0.0
       - DATA_DIR=/app/data
       - CORS_ORIGIN=${CORS_ORIGIN:-*}
@@ -24,7 +24,7 @@ services:
       # Database
       - DATABASE_URL=${DATABASE_URL}
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:3001/api/health" ]
+      test: [ "CMD", "curl", "-f", "http://localhost:3007/api/health" ]
       interval: 30s
       timeout: 10s
       retries: 3

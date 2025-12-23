@@ -8,14 +8,14 @@ npm install
 npm run dev
 ```
 
-The server will start at `http://localhost:3001`.
+The server will start at `http://localhost:3007`.
 
 ## Environment Variables
 
 Create a `.env` file in the `server` directory:
 
 ```env
-PORT=3001
+PORT=3007
 HOST=0.0.0.0
 DATA_DIR=./data
 CORS_ORIGIN=http://localhost:5173
@@ -40,7 +40,7 @@ GOOGLE_GENERATIVE_AI_API_KEY=...
 
 ## WebSocket
 
-Chat streaming is available at `ws://localhost:3001/ws/chat`.
+Chat streaming is available at `ws://localhost:3007/ws/chat`.
 
 ### Message Format
 

@@ -147,6 +147,7 @@ export async function handleLocalAgentStream(
       appPath,
       chatId: chat.id,
       supabaseProjectId: chat.app.supabaseProjectId,
+      supabaseOrganizationId: chat.app.supabaseOrganizationId,
       messageId: placeholderMessageId,
       isSharedModulesChanged: false,
       onXmlStream: (accumulatedXml: string) => {

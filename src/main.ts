@@ -361,8 +361,6 @@ async function handleDeepLinkReturn(url: string) {
       );
       return;
     }
-    // Organization
-    // Members
     await handleSupabaseOAuthReturn({ token, refreshToken, expiresIn });
     // Send message to renderer to trigger re-render
     mainWindow?.webContents.send("deep-link-received", {

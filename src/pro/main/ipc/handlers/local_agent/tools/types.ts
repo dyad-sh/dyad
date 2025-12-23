@@ -27,10 +27,10 @@ export interface AgentContext {
   event: IpcMainInvokeEvent;
   appPath: string;
   chatId: number;
-  supabaseProjectId?: string | null;
-  supabaseOrganizationId?: string | null;
-  messageId?: number;
-  isSharedModulesChanged?: boolean;
+  supabaseProjectId: string | null;
+  supabaseOrganizationId: string | null;
+  messageId: number;
+  isSharedModulesChanged: boolean;
   chatSummary?: string;
   /**
    * Streams accumulated XML to UI without persisting to DB (for live preview).

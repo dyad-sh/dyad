@@ -64,9 +64,10 @@ export function SupabaseIntegration() {
   };
 
   // Check if there are any connected organizations
-  const hasConnectedOrganizations = organizations.length > 0;
+  const isConnected =
+    !!settings?.supabase?.accessToken || organizations.length > 0;
 
-  if (!hasConnectedOrganizations) {
+  if (!isConnected) {
     return null;
   }
 

@@ -14,7 +14,6 @@ import {
   createLoggedHandler,
   createTestOnlyLoggedHandler,
 } from "./safe_handle";
-import { handleSupabaseOAuthReturn } from "../../supabase_admin/supabase_return_handler";
 import { safeSend } from "../utils/safe_sender";
 import { readSettings, writeSettings } from "../../main/settings";
 
@@ -254,14 +253,31 @@ export function registerSupabaseHandlers() {
     ) => {
       const fakeOrgId = "fake-org-id";
 
-      // Call handleSupabaseOAuthReturn with fake data
-      await handleSupabaseOAuthReturn({
-        token: "fake-access-token",
-        refreshToken: "fake-refresh-token",
-        expiresIn: 3600, // 1 hour
+      // Directly store fake credentials in the organizations map
+      // We don't call handleSupabaseOAuthReturn because it attempts a real API call
+      // which fails with fake tokens, causing credentials to be stored in legacy format
+      const settings = readSettings();
+      const existingOrgs = settings.supabase?.organizations ?? {};
+      writeSettings({
+        supabase: {
+          ...settings.supabase,
+          organizations: {
+            ...existingOrgs,
+            [fakeOrgId]: {
+              accessToken: {
+                value: "fake-access-token",
+              },
+              refreshToken: {
+                value: "fake-refresh-token",
+              },
+              expiresIn: 3600,
+              tokenTimestamp: Math.floor(Date.now() / 1000),
+            },
+          },
+        },
       });
       logger.info(
-        `Called handleSupabaseOAuthReturn with fake data for app ${appId} during testing.`,
+        `Stored fake Supabase credentials for organization ${fakeOrgId} for app ${appId} during testing.`,
       );
 
       // Set the supabase project for the currently selected app

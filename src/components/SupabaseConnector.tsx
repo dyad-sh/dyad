@@ -234,7 +234,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                       projectId: branch.projectRef,
                       parentProjectId: branch.parentProjectRef,
                       appId,
-                      organizationId: app.supabaseOrganizationId!,
+                      organizationId: app.supabaseOrganizationId,
                     });
                     toast.success("Branch selected");
                     await refreshApp();

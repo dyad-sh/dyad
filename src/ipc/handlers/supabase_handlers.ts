@@ -262,7 +262,7 @@ export function registerSupabaseHandlers() {
       const fakeOrgId = "fake-org-id";
 
       // Call handleSupabaseOAuthReturn with fake data
-      handleSupabaseOAuthReturn({
+      await handleSupabaseOAuthReturn({
         token: "fake-access-token",
         refreshToken: "fake-refresh-token",
         expiresIn: 3600, // 1 hour

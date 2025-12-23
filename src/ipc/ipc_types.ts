@@ -561,7 +561,7 @@ export interface SetSupabaseAppProjectParams {
   projectId: string;
   parentProjectId?: string;
   appId: number;
-  organizationId: string;
+  organizationId: string | null;
 }
 
 export interface DeleteSupabaseOrganizationParams {

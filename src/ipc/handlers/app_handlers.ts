@@ -1080,6 +1080,7 @@ export function registerAppHandlers() {
             const deployErrors = await deployAllSupabaseFunctions({
               appPath,
               supabaseProjectId: app.supabaseProjectId,
+              supabaseOrganizationId: app.supabaseOrganizationId ?? null,
             });
             if (deployErrors.length > 0) {
               return {
@@ -1103,7 +1104,7 @@ export function registerAppHandlers() {
               supabaseProjectId: app.supabaseProjectId,
               functionName,
               appPath,
-              organizationId: app.supabaseOrganizationId ?? undefined,
+              organizationId: app.supabaseOrganizationId ?? null,
             });
           } catch (error) {
             logger.error(

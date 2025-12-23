@@ -661,7 +661,7 @@ ${componentSnippet}
               : await getSupabaseContext({
                   supabaseProjectId: updatedChat.app.supabaseProjectId,
                   organizationId:
-                    updatedChat.app.supabaseOrganizationId ?? undefined,
+                    updatedChat.app.supabaseOrganizationId ?? null,
                 }));
         } else if (
           // Neon projects don't need Supabase.
@@ -956,8 +956,7 @@ This conversation includes one or more image attachments. When the user uploads 
           ) {
             const supabaseClientCode = await getSupabaseClientCode({
               projectId: updatedChat.app?.supabaseProjectId,
-              organizationId:
-                updatedChat.app?.supabaseOrganizationId ?? undefined,
+              organizationId: updatedChat.app?.supabaseOrganizationId ?? null,
             });
             fullResponse = fullResponse.replace(
               "$$SUPABASE_CLIENT_CODE$$",

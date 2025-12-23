@@ -81,7 +81,6 @@ const validInvokeChannels = [
   "supabase:list-organizations",
   "supabase:delete-organization",
   "supabase:list-all-projects",
-  "supabase:list-projects",
   "supabase:list-branches",
   "supabase:get-edge-logs",
   "supabase:set-app-project",

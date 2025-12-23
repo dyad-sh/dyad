@@ -97,7 +97,7 @@ export function useSupabase() {
       try {
         const list = await ipcClient.listSupabaseBranches({
           projectId,
-          organizationId,
+          organizationId: organizationId ?? null,
         });
         setBranches(Array.isArray(list) ? list : []);
         setError(null);
@@ -170,7 +170,7 @@ export function useSupabase() {
           projectId,
           timestampStart,
           appId: selectedAppId,
-          organizationId,
+          organizationId: organizationId ?? null,
         });
 
         if (logs.length === 0) {

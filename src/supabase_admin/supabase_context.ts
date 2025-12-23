@@ -7,7 +7,7 @@ async function getPublishableKey({
   organizationId,
 }: {
   projectId: string;
-  organizationId?: string;
+  organizationId: string | null;
 }) {
   if (IS_TEST_BUILD) {
     return "test-publishable-key";
@@ -42,7 +42,7 @@ export const getSupabaseClientCode = async function ({
   organizationId,
 }: {
   projectId: string;
-  organizationId?: string;
+  organizationId: string | null;
 }) {
   const publishableKey = await getPublishableKey({ projectId, organizationId });
   return `
@@ -63,7 +63,7 @@ export async function getSupabaseContext({
   organizationId,
 }: {
   supabaseProjectId: string;
-  organizationId?: string;
+  organizationId: string | null;
 }) {
   if (IS_TEST_BUILD) {
     if (supabaseProjectId === "test-branch-project-id") {

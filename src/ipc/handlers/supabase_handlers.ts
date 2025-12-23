@@ -3,7 +3,6 @@ import { db } from "../../db";
 import { eq } from "drizzle-orm";
 import { apps } from "../../db/schema";
 import {
-  getSupabaseClient,
   getSupabaseClientForOrganization,
   listSupabaseBranches,
   getSupabaseProjectLogs,
@@ -129,12 +128,6 @@ export function registerSupabaseHandlers() {
     return allProjects;
   });
 
-  // Legacy: list projects from the first available account (for backwards compat)
-  handle("supabase:list-projects", async () => {
-    const supabase = await getSupabaseClient();
-    return supabase.getProjects();
-  });
-
   // List branches for a Supabase project (database branches)
   handle(
     "supabase:list-branches",
@@ -147,7 +140,7 @@ export function registerSupabaseHandlers() {
     ): Promise<Array<SupabaseBranch>> => {
       const branches = await listSupabaseBranches({
         supabaseProjectId: projectId,
-        organizationId,
+        organizationId: organizationId ?? null,
       });
       return branches.map((branch) => ({
         id: branch.id,
@@ -173,13 +166,13 @@ export function registerSupabaseHandlers() {
         projectId: string;
         timestampStart?: number;
         appId: number;
-        organizationId?: string;
+        organizationId: string | null;
       },
     ): Promise<Array<ConsoleEntry>> => {
       const response = await getSupabaseProjectLogs(
         projectId,
         timestampStart,
-        organizationId,
+        organizationId ?? undefined,
       );
 
       if (response.error) {

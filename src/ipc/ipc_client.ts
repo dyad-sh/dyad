@@ -1064,14 +1064,9 @@ export class IpcClient {
     return this.ipcRenderer.invoke("supabase:list-all-projects");
   }
 
-  // Legacy: list projects (for backwards compat)
-  public async listSupabaseProjects(): Promise<any[]> {
-    return this.ipcRenderer.invoke("supabase:list-projects");
-  }
-
   public async listSupabaseBranches(params: {
     projectId: string;
-    organizationId?: string;
+    organizationId: string | null;
   }): Promise<SupabaseBranch[]> {
     return this.ipcRenderer.invoke("supabase:list-branches", params);
   }
@@ -1080,7 +1075,7 @@ export class IpcClient {
     projectId: string;
     timestampStart?: number;
     appId: number;
-    organizationId?: string;
+    organizationId: string | null;
   }): Promise<Array<ConsoleEntry>> {
     return this.ipcRenderer.invoke("supabase:get-edge-logs", params);
   }

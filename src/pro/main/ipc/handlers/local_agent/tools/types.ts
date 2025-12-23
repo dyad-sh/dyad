@@ -28,6 +28,7 @@ export interface AgentContext {
   appPath: string;
   chatId: number;
   supabaseProjectId?: string | null;
+  supabaseOrganizationId?: string | null;
   messageId?: number;
   isSharedModulesChanged?: boolean;
   chatSummary?: string;

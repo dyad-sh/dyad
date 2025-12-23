@@ -142,7 +142,7 @@ export async function refreshSupabaseToken(): Promise<void> {
 // Function to get the Supabase Management API client
 export async function getSupabaseClient({
   organizationId,
-}: { organizationId?: string } = {}): Promise<SupabaseManagementAPI> {
+}: { organizationId?: string | null } = {}): Promise<SupabaseManagementAPI> {
   // If organizationId provided, use organization-specific credentials
   if (organizationId) {
     return getSupabaseClientForOrganization(organizationId);
@@ -539,7 +539,7 @@ export async function executeSupabaseSql({
 }: {
   supabaseProjectId: string;
   query: string;
-  organizationId?: string;
+  organizationId: string | null;
 }): Promise<string> {
   if (IS_TEST_BUILD) {
     return "{}";
@@ -557,7 +557,7 @@ export async function deleteSupabaseFunction({
 }: {
   supabaseProjectId: string;
   functionName: string;
-  organizationId?: string;
+  organizationId: string | null;
 }): Promise<void> {
   logger.info(
     `Deleting Supabase function: ${functionName} from project: ${supabaseProjectId}`,
@@ -574,7 +574,7 @@ export async function listSupabaseBranches({
   organizationId,
 }: {
   supabaseProjectId: string;
-  organizationId?: string;
+  organizationId: string | null;
 }): Promise<
   Array<{
     id: string;
@@ -641,7 +641,7 @@ export async function deploySupabaseFunction({
   functionName: string;
   appPath: string;
   bundleOnly?: boolean;
-  organizationId?: string;
+  organizationId: string | null;
 }): Promise<DeployedFunctionResponse> {
   logger.info(
     `Deploying Supabase function: ${functionName} to project: ${supabaseProjectId}`,
@@ -737,7 +737,7 @@ export async function bulkUpdateFunctions({
 }: {
   supabaseProjectId: string;
   functions: DeployedFunctionResponse[];
-  organizationId?: string;
+  organizationId: string | null;
 }): Promise<void> {
   logger.info(
     `Bulk updating ${functions.length} functions for project: ${supabaseProjectId}`,

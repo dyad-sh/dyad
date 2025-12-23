@@ -76,6 +76,7 @@ export function registerTokenCountHandlers() {
         systemPrompt += "\n\n" + SUPABASE_AVAILABLE_SYSTEM_PROMPT;
         supabaseContext = await getSupabaseContext({
           supabaseProjectId: chat.app.supabaseProjectId,
+          organizationId: chat.app.supabaseOrganizationId ?? undefined,
         });
       } else if (
         // Neon projects don't need Supabase.

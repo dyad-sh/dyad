@@ -1071,6 +1071,7 @@ export class IpcClient {
 
   public async listSupabaseBranches(params: {
     projectId: string;
+    organizationId?: string;
   }): Promise<SupabaseBranch[]> {
     return this.ipcRenderer.invoke("supabase:list-branches", params);
   }
@@ -1079,6 +1080,7 @@ export class IpcClient {
     projectId: string;
     timestampStart?: number;
     appId: number;
+    organizationId?: string;
   }): Promise<Array<ConsoleEntry>> {
     return this.ipcRenderer.invoke("supabase:get-edge-logs", params);
   }

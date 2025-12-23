@@ -140,10 +140,14 @@ export function registerSupabaseHandlers() {
     "supabase:list-branches",
     async (
       _,
-      { projectId }: { projectId: string },
+      {
+        projectId,
+        organizationId,
+      }: { projectId: string; organizationId?: string },
     ): Promise<Array<SupabaseBranch>> => {
       const branches = await listSupabaseBranches({
         supabaseProjectId: projectId,
+        organizationId,
       });
       return branches.map((branch) => ({
         id: branch.id,
@@ -164,9 +168,19 @@ export function registerSupabaseHandlers() {
         projectId,
         timestampStart,
         appId,
-      }: { projectId: string; timestampStart?: number; appId: number },
+        organizationId,
+      }: {
+        projectId: string;
+        timestampStart?: number;
+        appId: number;
+        organizationId?: string;
+      },
     ): Promise<Array<ConsoleEntry>> => {
-      const response = await getSupabaseProjectLogs(projectId, timestampStart);
+      const response = await getSupabaseProjectLogs(
+        projectId,
+        timestampStart,
+        organizationId,
+      );
 
       if (response.error) {
         const errorMsg =

@@ -23,6 +23,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useDeepLink } from "@/contexts/DeepLinkContext";
@@ -147,9 +148,12 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     app?.supabaseParentProjectId || app?.supabaseProjectId;
   useEffect(() => {
     if (projectIdForBranches) {
-      loadBranches(projectIdForBranches);
+      loadBranches(
+        projectIdForBranches,
+        app?.supabaseOrganizationId ?? undefined,
+      );
     }
-  }, [projectIdForBranches, loadBranches]);
+  }, [projectIdForBranches, loadBranches, app?.supabaseOrganizationId]);
 
   const handleUnsetProject = async () => {
     try {
@@ -200,8 +204,14 @@ export function SupabaseConnector({ appId }: { appId: number }) {
               </div>
             </Button>
           </CardTitle>
-          <CardDescription>
-            This app is connected to project: {app.supabaseProjectName}
+          <CardDescription className="flex flex-col gap-1.5 text-sm">
+            This app is connected to project:{" "}
+            <Badge
+              variant="secondary"
+              className="ml-2 text-base font-bold px-3 py-1"
+            >
+              {app.supabaseProjectName}
+            </Badge>
           </CardDescription>
         </CardHeader>
         <CardContent>

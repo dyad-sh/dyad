@@ -732,6 +732,7 @@ export function registerAppHandlers() {
     if (app.supabaseProjectId && hasSupabaseCredentials) {
       supabaseProjectName = await getSupabaseProjectName(
         app.supabaseParentProjectId || app.supabaseProjectId,
+        app.supabaseOrganizationId ?? undefined,
       );
     }
 
@@ -1102,6 +1103,7 @@ export function registerAppHandlers() {
               supabaseProjectId: app.supabaseProjectId,
               functionName,
               appPath,
+              organizationId: app.supabaseOrganizationId ?? undefined,
             });
           } catch (error) {
             logger.error(

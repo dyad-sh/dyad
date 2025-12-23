@@ -92,10 +92,13 @@ export function useSupabase() {
    * Load branches for a Supabase project
    */
   const loadBranches = useCallback(
-    async (projectId: string) => {
+    async (projectId: string, organizationId?: string) => {
       setLoading(true);
       try {
-        const list = await ipcClient.listSupabaseBranches({ projectId });
+        const list = await ipcClient.listSupabaseBranches({
+          projectId,
+          organizationId,
+        });
         setBranches(Array.isArray(list) ? list : []);
         setError(null);
       } catch (error) {
@@ -153,7 +156,7 @@ export function useSupabase() {
    * Uses timestamp tracking to only fetch new logs on subsequent calls
    */
   const loadEdgeLogs = useCallback(
-    async (projectId: string) => {
+    async (projectId: string, organizationId?: string) => {
       if (!selectedAppId) return;
 
       // Use last timestamp if available, otherwise fetch logs from the past 10 minutes
@@ -167,6 +170,7 @@ export function useSupabase() {
           projectId,
           timestampStart,
           appId: selectedAppId,
+          organizationId,
         });
 
         if (logs.length === 0) {

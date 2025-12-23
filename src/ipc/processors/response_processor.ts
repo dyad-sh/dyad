@@ -185,6 +185,7 @@ export async function processFullResponseActions(
           await executeSupabaseSql({
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
             query: query.content,
+            organizationId: chatWithApp.app.supabaseOrganizationId ?? undefined,
           });
 
           // Only write migration file if SQL execution succeeded
@@ -287,6 +288,7 @@ export async function processFullResponseActions(
           await deleteSupabaseFunction({
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
             functionName: extractFunctionNameFromPath(filePath),
+            organizationId: chatWithApp.app.supabaseOrganizationId ?? undefined,
           });
         } catch (error) {
           errors.push({
@@ -334,6 +336,7 @@ export async function processFullResponseActions(
           await deleteSupabaseFunction({
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
             functionName: extractFunctionNameFromPath(tag.from),
+            organizationId: chatWithApp.app.supabaseOrganizationId ?? undefined,
           });
         } catch (error) {
           warnings.push({
@@ -349,6 +352,7 @@ export async function processFullResponseActions(
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
             functionName: extractFunctionNameFromPath(tag.to),
             appPath,
+            organizationId: chatWithApp.app.supabaseOrganizationId ?? undefined,
           });
         } catch (error) {
           errors.push({
@@ -396,6 +400,8 @@ export async function processFullResponseActions(
               supabaseProjectId: chatWithApp.app.supabaseProjectId!,
               functionName: extractFunctionNameFromPath(filePath),
               appPath,
+              organizationId:
+                chatWithApp.app.supabaseOrganizationId ?? undefined,
             });
           } catch (error) {
             errors.push({
@@ -466,6 +472,7 @@ export async function processFullResponseActions(
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
             functionName: extractFunctionNameFromPath(filePath),
             appPath,
+            organizationId: chatWithApp.app.supabaseOrganizationId ?? undefined,
           });
         } catch (error) {
           errors.push({

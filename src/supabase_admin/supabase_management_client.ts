@@ -140,7 +140,15 @@ export async function refreshSupabaseToken(): Promise<void> {
 }
 
 // Function to get the Supabase Management API client
-export async function getSupabaseClient(): Promise<SupabaseManagementAPI> {
+export async function getSupabaseClient({
+  organizationId,
+}: { organizationId?: string } = {}): Promise<SupabaseManagementAPI> {
+  // If organizationId provided, use organization-specific credentials
+  if (organizationId) {
+    return getSupabaseClientForOrganization(organizationId);
+  }
+
+  // Otherwise fall back to legacy single-account credentials
   const settings = readSettings();
 
   // Check if Supabase token exists in settings
@@ -453,12 +461,13 @@ export async function getOrganizationDetails(
 
 export async function getSupabaseProjectName(
   projectId: string,
+  organizationId?: string,
 ): Promise<string> {
   if (IS_TEST_BUILD) {
     return "Fake Supabase Project";
   }
 
-  const supabase = await getSupabaseClient();
+  const supabase = await getSupabaseClient({ organizationId });
   const projects = await supabase.getProjects();
   const project = projects?.find((p) => p.id === projectId);
   return project?.name || `<project not found for: ${projectId}>`;
@@ -467,8 +476,9 @@ export async function getSupabaseProjectName(
 export async function getSupabaseProjectLogs(
   projectId: string,
   timestampStart?: number,
+  organizationId?: string,
 ): Promise<any> {
-  const supabase = await getSupabaseClient();
+  const supabase = await getSupabaseClient({ organizationId });
 
   // Build SQL query with optional timestamp filter
   let sqlQuery = `
@@ -525,15 +535,17 @@ LIMIT 1000`;
 export async function executeSupabaseSql({
   supabaseProjectId,
   query,
+  organizationId,
 }: {
   supabaseProjectId: string;
   query: string;
+  organizationId?: string;
 }): Promise<string> {
   if (IS_TEST_BUILD) {
     return "{}";
   }
 
-  const supabase = await getSupabaseClient();
+  const supabase = await getSupabaseClient({ organizationId });
   const result = await supabase.runQuery(supabaseProjectId, query);
   return JSON.stringify(result);
 }
@@ -541,14 +553,16 @@ export async function executeSupabaseSql({
 export async function deleteSupabaseFunction({
   supabaseProjectId,
   functionName,
+  organizationId,
 }: {
   supabaseProjectId: string;
   functionName: string;
+  organizationId?: string;
 }): Promise<void> {
   logger.info(
     `Deleting Supabase function: ${functionName} from project: ${supabaseProjectId}`,
   );
-  const supabase = await getSupabaseClient();
+  const supabase = await getSupabaseClient({ organizationId });
   await supabase.deleteFunction(supabaseProjectId, functionName);
   logger.info(
     `Deleted Supabase function: ${functionName} from project: ${supabaseProjectId}`,
@@ -557,8 +571,10 @@ export async function deleteSupabaseFunction({
 
 export async function listSupabaseBranches({
   supabaseProjectId,
+  organizationId,
 }: {
   supabaseProjectId: string;
+  organizationId?: string;
 }): Promise<
   Array<{
     id: string;
@@ -589,7 +605,7 @@ export async function listSupabaseBranches({
   }
 
   logger.info(`Listing Supabase branches for project: ${supabaseProjectId}`);
-  const supabase = await getSupabaseClient();
+  const supabase = await getSupabaseClient({ organizationId });
 
   const response = await fetch(
     `https://api.supabase.com/v1/projects/${supabaseProjectId}/branches`,
@@ -619,11 +635,13 @@ export async function deploySupabaseFunction({
   functionName,
   appPath,
   bundleOnly = false,
+  organizationId,
 }: {
   supabaseProjectId: string;
   functionName: string;
   appPath: string;
   bundleOnly?: boolean;
+  organizationId?: string;
 }): Promise<DeployedFunctionResponse> {
   logger.info(
     `Deploying Supabase function: ${functionName} to project: ${supabaseProjectId}`,
@@ -665,7 +683,7 @@ export async function deploySupabaseFunction({
   });
 
   // 5) Prepare multipart form-data
-  const supabase = await getSupabaseClient();
+  const supabase = await getSupabaseClient({ organizationId });
   const formData = new FormData();
 
   // Metadata: instruct Supabase to use our import map
@@ -715,15 +733,17 @@ export async function deploySupabaseFunction({
 export async function bulkUpdateFunctions({
   supabaseProjectId,
   functions,
+  organizationId,
 }: {
   supabaseProjectId: string;
   functions: DeployedFunctionResponse[];
+  organizationId?: string;
 }): Promise<void> {
   logger.info(
     `Bulk updating ${functions.length} functions for project: ${supabaseProjectId}`,
   );
 
-  const supabase = await getSupabaseClient();
+  const supabase = await getSupabaseClient({ organizationId });
 
   const response = await fetch(
     `https://api.supabase.com/v1/projects/${encodeURIComponent(supabaseProjectId)}/functions`,

@@ -723,13 +723,11 @@ export function registerAppHandlers() {
 
     let supabaseProjectName: string | null = null;
     const settings = readSettings();
-    // Check for multi-account credentials or legacy single account
+    // Check for multi-organization credentials or legacy single account
     const hasSupabaseCredentials =
-      (app.supabaseUserId &&
-        app.supabaseOrganizationId &&
-        settings.supabase?.accounts?.[
-          `${app.supabaseUserId}:${app.supabaseOrganizationId}`
-        ]?.accessToken?.value) ||
+      (app.supabaseOrganizationId &&
+        settings.supabase?.organizations?.[app.supabaseOrganizationId]
+          ?.accessToken?.value) ||
       settings.supabase?.accessToken?.value;
     if (app.supabaseProjectId && hasSupabaseCredentials) {
       supabaseProjectName = await getSupabaseProjectName(

@@ -43,8 +43,6 @@ export const apps = sqliteTable("apps", {
   // This is only used for display purposes but is NOT used for any actual
   // supabase management logic.
   supabaseParentProjectId: text("supabase_parent_project_id"),
-  // Supabase user ID for credential lookup (used with supabaseOrganizationId)
-  supabaseUserId: text("supabase_user_id"),
   // Supabase organization ID for credential lookup
   supabaseOrganizationId: text("supabase_organization_id"),
   neonProjectId: text("neon_project_id"),

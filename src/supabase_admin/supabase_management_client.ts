@@ -8,8 +8,7 @@ import {
 } from "@dyad-sh/supabase-management-js";
 import log from "electron-log";
 import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
-import { buildSupabaseAccountKey } from "./supabase_account_key";
-import type { SupabaseAccount } from "../lib/schemas";
+import type { SupabaseOrganizationCredentials } from "../lib/schemas";
 
 const fsPromises = fs.promises;
 
@@ -176,42 +175,42 @@ export async function getSupabaseClient(): Promise<SupabaseManagementAPI> {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Multi-account support
+// Multi-organization support
 // ─────────────────────────────────────────────────────────────────────
 
 /**
- * Checks if an account's token is expired or about to expire.
+ * Checks if an organization's token is expired or about to expire.
  */
-function isAccountTokenExpired(account: SupabaseAccount): boolean {
-  if (!account.expiresIn || !account.tokenTimestamp) return true;
+function isOrganizationTokenExpired(
+  org: SupabaseOrganizationCredentials,
+): boolean {
+  if (!org.expiresIn || !org.tokenTimestamp) return true;
 
   const currentTime = Math.floor(Date.now() / 1000);
   // Check if the token is expired or about to expire (within 5 minutes)
-  return currentTime >= account.tokenTimestamp + account.expiresIn - 300;
+  return currentTime >= org.tokenTimestamp + org.expiresIn - 300;
 }
 
 /**
- * Refreshes the Supabase access token for a specific account.
+ * Refreshes the Supabase access token for a specific organization.
  */
-async function refreshSupabaseTokenForAccount(
-  userId: string,
+async function refreshSupabaseTokenForOrganization(
   organizationId: string,
 ): Promise<void> {
   const settings = readSettings();
-  const accountKey = buildSupabaseAccountKey(userId, organizationId);
-  const account = settings.supabase?.accounts?.[accountKey];
+  const org = settings.supabase?.organizations?.[organizationId];
 
-  if (!account) {
+  if (!org) {
     throw new Error(
-      `Supabase account not found for ${userId}:${organizationId}. Please authenticate first.`,
+      `Supabase organization ${organizationId} not found. Please authenticate first.`,
     );
   }
 
-  if (!isAccountTokenExpired(account)) {
+  if (!isOrganizationTokenExpired(org)) {
     return;
   }
 
-  const refreshToken = account.refreshToken?.value;
+  const refreshToken = org.refreshToken?.value;
   if (!refreshToken) {
     throw new Error(
       "Supabase refresh token not found. Please authenticate first.",
@@ -242,15 +241,15 @@ async function refreshSupabaseTokenForAccount(
       expiresIn,
     } = await response.json();
 
-    // Update the specific account in settings
-    const existingAccounts = settings.supabase?.accounts ?? {};
+    // Update the specific organization in settings
+    const existingOrgs = settings.supabase?.organizations ?? {};
     writeSettings({
       supabase: {
         ...settings.supabase,
-        accounts: {
-          ...existingAccounts,
-          [accountKey]: {
-            ...account,
+        organizations: {
+          ...existingOrgs,
+          [organizationId]: {
+            ...org,
             accessToken: {
               value: accessToken,
             },
@@ -265,7 +264,7 @@ async function refreshSupabaseTokenForAccount(
     });
   } catch (error) {
     logger.error(
-      `Error refreshing Supabase token for account ${accountKey}:`,
+      `Error refreshing Supabase token for organization ${organizationId}:`,
       error,
     );
     throw error;
@@ -273,42 +272,41 @@ async function refreshSupabaseTokenForAccount(
 }
 
 /**
- * Gets a Supabase Management API client for a specific account.
+ * Gets a Supabase Management API client for a specific organization.
  */
-export async function getSupabaseClientForAccount(
-  userId: string,
+export async function getSupabaseClientForOrganization(
   organizationId: string,
 ): Promise<SupabaseManagementAPI> {
   const settings = readSettings();
-  const accountKey = buildSupabaseAccountKey(userId, organizationId);
-  const account = settings.supabase?.accounts?.[accountKey];
+  const org = settings.supabase?.organizations?.[organizationId];
 
-  if (!account) {
+  if (!org) {
     throw new Error(
-      `Supabase account not found for ${userId}:${organizationId}. Please authenticate first.`,
+      `Supabase organization ${organizationId} not found. Please authenticate first.`,
     );
   }
 
-  const accessToken = account.accessToken?.value;
+  const accessToken = org.accessToken?.value;
   if (!accessToken) {
     throw new Error(
-      `Supabase access token not found for account ${accountKey}. Please authenticate first.`,
+      `Supabase access token not found for organization ${organizationId}. Please authenticate first.`,
     );
   }
 
   // Check if token needs refreshing
-  if (isAccountTokenExpired(account)) {
-    await withLock(`refresh-supabase-token-${accountKey}`, () =>
-      refreshSupabaseTokenForAccount(userId, organizationId),
+  if (isOrganizationTokenExpired(org)) {
+    await withLock(`refresh-supabase-token-${organizationId}`, () =>
+      refreshSupabaseTokenForOrganization(organizationId),
     );
     // Get updated settings after refresh
     const updatedSettings = readSettings();
-    const updatedAccount = updatedSettings.supabase?.accounts?.[accountKey];
-    const newAccessToken = updatedAccount?.accessToken?.value;
+    const updatedOrg =
+      updatedSettings.supabase?.organizations?.[organizationId];
+    const newAccessToken = updatedOrg?.accessToken?.value;
 
     if (!newAccessToken) {
       throw new Error(
-        `Failed to refresh Supabase access token for account ${accountKey}`,
+        `Failed to refresh Supabase access token for organization ${organizationId}`,
       );
     }
 
@@ -320,6 +318,137 @@ export async function getSupabaseClientForAccount(
   return new SupabaseManagementAPI({
     accessToken,
   });
+}
+
+/**
+ * Lists organizations for a given access token.
+ */
+export async function listSupabaseOrganizations(
+  accessToken: string,
+): Promise<any[]> {
+  const response = await fetch("https://api.supabase.com/v1/organizations", {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (response.status !== 200) {
+    const errorText = await response.text();
+    logger.error(
+      `Failed to fetch organizations (${response.status}): ${errorText}`,
+    );
+    throw new Error(`Failed to fetch organizations: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export interface SupabaseOrganizationMember {
+  userId: string;
+  email: string;
+  role: string; // "Owner" | "Member" | etc.
+  username?: string;
+}
+
+/**
+ * Gets members of a Supabase organization.
+ */
+export async function getOrganizationMembers(
+  organizationId: string,
+): Promise<SupabaseOrganizationMember[]> {
+  if (IS_TEST_BUILD) {
+    return [
+      {
+        userId: "fake-user-id",
+        email: "owner@example.com",
+        role: "Owner",
+        username: "owner",
+      },
+    ];
+  }
+
+  const client = await getSupabaseClientForOrganization(organizationId);
+  const accessToken = (client as any).options.accessToken;
+
+  const response = await fetch(
+    `https://api.supabase.com/v1/organizations/${organizationId}/members`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+
+  if (response.status !== 200) {
+    const errorText = await response.text();
+    logger.error(
+      `Failed to fetch organization members (${response.status}): ${errorText}`,
+    );
+    throw new Error(
+      `Failed to fetch organization members: ${response.statusText}`,
+    );
+  }
+
+  const members = await response.json();
+  return members.map((m: any) => ({
+    userId: m.user_id,
+    email: m.primary_email || m.email,
+    role: m.role_name,
+    username: m.username,
+  }));
+}
+
+export interface SupabaseOrganizationDetails {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+/**
+ * Gets details about a Supabase organization.
+ */
+export async function getOrganizationDetails(
+  organizationId: string,
+): Promise<SupabaseOrganizationDetails> {
+  if (IS_TEST_BUILD) {
+    return {
+      id: organizationId,
+      name: "Fake Organization",
+      slug: "fake-org",
+    };
+  }
+
+  const client = await getSupabaseClientForOrganization(organizationId);
+  const accessToken = (client as any).options.accessToken;
+
+  const response = await fetch(
+    `https://api.supabase.com/v1/organizations/${organizationId}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+
+  if (response.status !== 200) {
+    const errorText = await response.text();
+    logger.error(
+      `Failed to fetch organization details (${response.status}): ${errorText}`,
+    );
+    throw new Error(
+      `Failed to fetch organization details: ${response.statusText}`,
+    );
+  }
+
+  const org = await response.json();
+  return {
+    id: org.id,
+    name: org.name,
+    slug: org.slug,
+  };
 }
 
 export async function getSupabaseProjectName(

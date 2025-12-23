@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
-  supabaseAccountsAtom,
+  supabaseOrganizationsAtom,
   supabaseProjectsAtom,
   supabaseBranchesAtom,
   supabaseLoadingAtom,
@@ -13,11 +13,11 @@ import { appConsoleEntriesAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
 import {
   SetSupabaseAppProjectParams,
-  DeleteSupabaseAccountParams,
+  DeleteSupabaseOrganizationParams,
 } from "@/ipc/ipc_types";
 
 export function useSupabase() {
-  const [accounts, setAccounts] = useAtom(supabaseAccountsAtom);
+  const [organizations, setOrganizations] = useAtom(supabaseOrganizationsAtom);
   const [projects, setProjects] = useAtom(supabaseProjectsAtom);
   const [branches, setBranches] = useAtom(supabaseBranchesAtom);
   const [loading, setLoading] = useAtom(supabaseLoadingAtom);
@@ -32,47 +32,47 @@ export function useSupabase() {
   const ipcClient = IpcClient.getInstance();
 
   /**
-   * Load all connected Supabase accounts
+   * Load all connected Supabase organizations
    */
-  const loadAccounts = useCallback(async () => {
+  const loadOrganizations = useCallback(async () => {
     setLoading(true);
     try {
-      const accountList = await ipcClient.listSupabaseAccounts();
-      setAccounts(accountList);
+      const orgList = await ipcClient.listSupabaseOrganizations();
+      setOrganizations(orgList);
       setError(null);
     } catch (error) {
-      console.error("Error loading Supabase accounts:", error);
+      console.error("Error loading Supabase organizations:", error);
       setError(error instanceof Error ? error : new Error(String(error)));
     } finally {
       setLoading(false);
     }
-  }, [ipcClient, setAccounts, setError, setLoading]);
+  }, [ipcClient, setOrganizations, setError, setLoading]);
 
   /**
-   * Delete a Supabase account connection
+   * Delete a Supabase organization connection
    */
-  const deleteAccount = useCallback(
-    async (params: DeleteSupabaseAccountParams) => {
+  const deleteOrganization = useCallback(
+    async (params: DeleteSupabaseOrganizationParams) => {
       setLoading(true);
       try {
-        await ipcClient.deleteSupabaseAccount(params);
-        // Refresh accounts list after deletion
-        const accountList = await ipcClient.listSupabaseAccounts();
-        setAccounts(accountList);
+        await ipcClient.deleteSupabaseOrganization(params);
+        // Refresh organizations list after deletion
+        const orgList = await ipcClient.listSupabaseOrganizations();
+        setOrganizations(orgList);
         setError(null);
       } catch (error) {
-        console.error("Error deleting Supabase account:", error);
+        console.error("Error deleting Supabase organization:", error);
         setError(error instanceof Error ? error : new Error(String(error)));
         throw error;
       } finally {
         setLoading(false);
       }
     },
-    [ipcClient, setAccounts, setError, setLoading],
+    [ipcClient, setOrganizations, setError, setLoading],
   );
 
   /**
-   * Load Supabase projects from all connected accounts
+   * Load Supabase projects from all connected organizations
    */
   const loadProjects = useCallback(async () => {
     setLoading(true);
@@ -223,14 +223,14 @@ export function useSupabase() {
   );
 
   return {
-    accounts,
+    organizations,
     projects,
     branches,
     loading,
     error,
     selectedProject,
-    loadAccounts,
-    deleteAccount,
+    loadOrganizations,
+    deleteOrganization,
     loadProjects,
     loadBranches,
     loadEdgeLogs,

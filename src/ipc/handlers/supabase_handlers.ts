@@ -4,15 +4,13 @@ import { eq } from "drizzle-orm";
 import { apps } from "../../db/schema";
 import {
   getSupabaseClient,
-  getSupabaseClientForAccount,
+  getSupabaseClientForOrganization,
   listSupabaseBranches,
   getSupabaseProjectLogs,
+  getOrganizationDetails,
+  getOrganizationMembers,
 } from "../../supabase_admin/supabase_management_client";
 import { extractFunctionName } from "../../supabase_admin/supabase_utils";
-import {
-  buildSupabaseAccountKey,
-  parseSupabaseAccountKey,
-} from "../../supabase_admin/supabase_account_key";
 import {
   createLoggedHandler,
   createTestOnlyLoggedHandler,
@@ -24,9 +22,9 @@ import { readSettings, writeSettings } from "../../main/settings";
 import {
   SetSupabaseAppProjectParams,
   SupabaseBranch,
-  SupabaseAccountInfo,
-  SupabaseProjectWithAccount,
-  DeleteSupabaseAccountParams,
+  SupabaseOrganizationInfo,
+  SupabaseProject,
+  DeleteSupabaseOrganizationParams,
 } from "../ipc_types";
 import type { ConsoleEntry } from "../../atoms/appAtoms";
 
@@ -35,82 +33,101 @@ const handle = createLoggedHandler(logger);
 const testOnlyHandle = createTestOnlyLoggedHandler(logger);
 
 export function registerSupabaseHandlers() {
-  // List all connected Supabase accounts
-  handle("supabase:list-accounts", async (): Promise<SupabaseAccountInfo[]> => {
-    const settings = readSettings();
-    const accounts = settings.supabase?.accounts ?? {};
-
-    return Object.values(accounts).map((account) => ({
-      userId: account.userId,
-      organizationId: account.organizationId,
-      organizationName: account.organizationName,
-      userEmail: account.userEmail,
-    }));
-  });
-
-  // Delete a Supabase account connection
+  // List all connected Supabase organizations with details
   handle(
-    "supabase:delete-account",
-    async (_, { userId, organizationId }: DeleteSupabaseAccountParams) => {
+    "supabase:list-organizations",
+    async (): Promise<SupabaseOrganizationInfo[]> => {
       const settings = readSettings();
-      const accountKey = buildSupabaseAccountKey(userId, organizationId);
-      const accounts = { ...settings.supabase?.accounts };
+      const organizations = settings.supabase?.organizations ?? {};
 
-      if (!accounts[accountKey]) {
-        throw new Error(`Supabase account ${accountKey} not found`);
+      const results: SupabaseOrganizationInfo[] = [];
+
+      for (const organizationId of Object.keys(organizations)) {
+        try {
+          // Fetch organization details and members in parallel
+          const [details, members] = await Promise.all([
+            getOrganizationDetails(organizationId),
+            getOrganizationMembers(organizationId),
+          ]);
+
+          // Find the owner from members
+          const owner = members.find((m) => m.role === "Owner");
+
+          results.push({
+            organizationId,
+            name: details.name,
+            ownerEmail: owner?.email,
+          });
+        } catch (error) {
+          // If we can't fetch details, still include the org with just the ID
+          logger.error(
+            `Failed to fetch details for organization ${organizationId}:`,
+            error,
+          );
+          results.push({ organizationId });
+        }
       }
 
-      delete accounts[accountKey];
+      return results;
+    },
+  );
+
+  // Delete a Supabase organization connection
+  handle(
+    "supabase:delete-organization",
+    async (_, { organizationId }: DeleteSupabaseOrganizationParams) => {
+      const settings = readSettings();
+      const organizations = { ...settings.supabase?.organizations };
+
+      if (!organizations[organizationId]) {
+        throw new Error(`Supabase organization ${organizationId} not found`);
+      }
+
+      delete organizations[organizationId];
 
       writeSettings({
         supabase: {
           ...settings.supabase,
-          accounts,
+          organizations,
         },
       });
 
-      logger.info(`Deleted Supabase account ${accountKey}`);
+      logger.info(`Deleted Supabase organization ${organizationId}`);
     },
   );
 
-  // List all projects from all connected accounts
-  handle(
-    "supabase:list-all-projects",
-    async (): Promise<SupabaseProjectWithAccount[]> => {
-      const settings = readSettings();
-      const accounts = settings.supabase?.accounts ?? {};
-      const allProjects: SupabaseProjectWithAccount[] = [];
+  // List all projects from all connected organizations
+  handle("supabase:list-all-projects", async (): Promise<SupabaseProject[]> => {
+    const settings = readSettings();
+    const organizations = settings.supabase?.organizations ?? {};
+    const allProjects: SupabaseProject[] = [];
 
-      for (const accountKey of Object.keys(accounts)) {
-        const { userId, organizationId } = parseSupabaseAccountKey(accountKey);
-        try {
-          const client = await getSupabaseClientForAccount(
-            userId,
-            organizationId,
-          );
-          const projects = await client.getProjects();
+    for (const organizationId of Object.keys(organizations)) {
+      try {
+        const client = await getSupabaseClientForOrganization(organizationId);
+        const projects = await client.getProjects();
 
+        if (projects) {
           for (const project of projects) {
             allProjects.push({
               id: project.id,
               name: project.name,
               region: project.region,
               organizationId: project.organization_id,
-              userId,
             });
           }
-        } catch (error) {
-          logger.error(
-            `Failed to fetch projects for account ${accountKey}:`,
-            error,
-          );
-          // Continue with other accounts even if one fails
         }
+      } catch (error) {
+        logger.error(
+          `Failed to fetch projects for organization ${organizationId}:`,
+          error,
+        );
+        // Continue with other organizations even if one fails
       }
+    }
 
-      return allProjects;
-    },
-  );
+    return allProjects;
+  });
 
   // Legacy: list projects from the first available account (for backwards compat)
   handle("supabase:list-projects", async () => {
@@ -190,7 +207,6 @@ export function registerSupabaseHandlers() {
         projectId,
         appId,
         parentProjectId,
-        userId,
         organizationId,
       }: SetSupabaseAppProjectParams,
     ) => {
@@ -199,13 +215,12 @@ export function registerSupabaseHandlers() {
         .set({
           supabaseProjectId: projectId,
           supabaseParentProjectId: parentProjectId,
-          supabaseUserId: userId,
           supabaseOrganizationId: organizationId,
         })
         .where(eq(apps.id, appId));
 
       logger.info(
-        `Associated app ${appId} with Supabase project ${projectId} (account: ${userId}:${organizationId})${parentProjectId ? ` and parent project ${parentProjectId}` : ""}`,
+        `Associated app ${appId} with Supabase project ${projectId} (organization: ${organizationId})${parentProjectId ? ` and parent project ${parentProjectId}` : ""}`,
       );
     },
   );
@@ -217,7 +232,6 @@ export function registerSupabaseHandlers() {
       .set({
         supabaseProjectId: null,
         supabaseParentProjectId: null,
-        supabaseUserId: null,
         supabaseOrganizationId: null,
       })
       .where(eq(apps.id, app));
@@ -231,18 +245,13 @@ export function registerSupabaseHandlers() {
       event,
       { appId, fakeProjectId }: { appId: number; fakeProjectId: string },
     ) => {
-      const fakeUserId = "fake-user-id";
       const fakeOrgId = "fake-org-id";
 
-      // Call handleSupabaseOAuthReturn with fake data including userId and organizationId
+      // Call handleSupabaseOAuthReturn with fake data
       handleSupabaseOAuthReturn({
         token: "fake-access-token",
         refreshToken: "fake-refresh-token",
         expiresIn: 3600, // 1 hour
-        userId: fakeUserId,
-        organizationId: fakeOrgId,
-        organizationName: "Fake Organization",
-        userEmail: "fake@test.com",
       });
       logger.info(
         `Called handleSupabaseOAuthReturn with fake data for app ${appId} during testing.`,
@@ -253,7 +262,6 @@ export function registerSupabaseHandlers() {
         .update(apps)
         .set({
           supabaseProjectId: fakeProjectId,
-          supabaseUserId: fakeUserId,
           supabaseOrganizationId: fakeOrgId,
         })
         .where(eq(apps.id, appId));

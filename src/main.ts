@@ -308,7 +308,7 @@ app.on("open-url", (event, url) => {
   handleDeepLinkReturn(url);
 });
 
-function handleDeepLinkReturn(url: string) {
+async function handleDeepLinkReturn(url: string) {
   // example url: "dyad://supabase-oauth-return?token=a&refreshToken=b"
   let parsed: URL;
   try {
@@ -361,7 +361,9 @@ function handleDeepLinkReturn(url: string) {
       );
       return;
     }
-    handleSupabaseOAuthReturn({ token, refreshToken, expiresIn });
+    // Organization
+    // Members
+    await handleSupabaseOAuthReturn({ token, refreshToken, expiresIn });
     // Send message to renderer to trigger re-render
     mainWindow?.webContents.send("deep-link-received", {
       type: parsed.hostname,

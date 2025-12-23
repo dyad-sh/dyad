@@ -38,7 +38,7 @@ import connectSupabaseLight from "../../assets/supabase/connect-supabase-light.s
 
 import { ExternalLink, Plus, Trash2 } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
-import type { SupabaseProjectWithAccount } from "@/ipc/ipc_types";
+import type { SupabaseProject } from "@/ipc/ipc_types";
 
 export function SupabaseConnector({ appId }: { appId: number }) {
   const { settings, refreshSettings } = useSettings();
@@ -49,7 +49,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     const handleDeepLink = async () => {
       if (lastDeepLink?.type === "supabase-oauth-return") {
         await refreshSettings();
-        await loadAccounts();
+        await loadOrganizations();
         await loadProjects();
         await refreshApp();
         clearLastDeepLink();
@@ -58,12 +58,12 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     handleDeepLink();
   }, [lastDeepLink?.timestamp]);
   const {
-    accounts,
+    organizations,
     projects,
     loading,
     error,
-    loadAccounts,
-    deleteAccount,
+    loadOrganizations,
+    deleteOrganization,
     loadProjects,
     branches,
     loadBranches,
@@ -71,30 +71,27 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     unsetAppProject,
   } = useSupabase();
 
-  // Check if there are any connected accounts
-  const hasConnectedAccounts = accounts.length > 0;
+  // Check if there are any connected organizations
+  const hasConnectedOrganizations = organizations.length > 0;
 
   useEffect(() => {
-    // Load accounts and projects when the component mounts
-    loadAccounts();
-  }, [loadAccounts]);
+    // Load organizations and projects when the component mounts
+    loadOrganizations();
+  }, [loadOrganizations]);
 
   useEffect(() => {
-    // Load projects when accounts are available
-    if (hasConnectedAccounts) {
+    // Load projects when organizations are available
+    if (hasConnectedOrganizations) {
       loadProjects();
     }
-  }, [hasConnectedAccounts, loadProjects]);
+  }, [hasConnectedOrganizations, loadProjects]);
 
   const handleProjectSelect = async (projectValue: string) => {
     try {
-      // projectValue format: "userId:organizationId:projectId"
-      const [userId, organizationId, projectId] = projectValue.split(":");
+      // projectValue format: "organizationId:projectId"
+      const [organizationId, projectId] = projectValue.split(":");
       const project = projects.find(
-        (p) =>
-          p.id === projectId &&
-          p.userId === userId &&
-          p.organizationId === organizationId,
+        (p) => p.id === projectId && p.organizationId === organizationId,
       );
       if (!project) {
         throw new Error("Project not found");
@@ -102,7 +99,6 @@ export function SupabaseConnector({ appId }: { appId: number }) {
       await setAppProject({
         projectId,
         appId,
-        userId,
         organizationId,
       });
       toast.success("Project connected to app successfully");
@@ -112,31 +108,26 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     }
   };
 
-  // Group projects by account for display
+  // Group projects by organization for display
   const groupedProjects = projects.reduce(
     (acc, project) => {
-      const accountKey = `${project.userId}:${project.organizationId}`;
-      if (!acc[accountKey]) {
-        const account = accounts.find(
-          (a) =>
-            a.userId === project.userId &&
-            a.organizationId === project.organizationId,
+      const orgKey = project.organizationId;
+      if (!acc[orgKey]) {
+        // Find the organization info to get the name
+        const orgInfo = organizations.find(
+          (o) => o.organizationId === project.organizationId,
         );
-        acc[accountKey] = {
-          accountLabel:
-            account?.organizationName ||
-            account?.userEmail ||
-            `Account ${project.userId.slice(0, 8)}`,
+        acc[orgKey] = {
+          orgLabel:
+            orgInfo?.name ||
+            `Organization ${project.organizationId.slice(0, 8)}`,
           projects: [],
         };
       }
-      acc[accountKey].projects.push(project);
+      acc[orgKey].projects.push(project);
       return acc;
     },
-    {} as Record<
-      string,
-      { accountLabel: string; projects: SupabaseProjectWithAccount[] }
-    >,
+    {} as Record<string, { orgLabel: string; projects: SupabaseProject[] }>,
   );
 
   const handleAddAccount = async () => {
@@ -171,21 +162,18 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     }
   };
 
-  const handleDeleteAccount = async (
-    userId: string,
-    organizationId: string,
-  ) => {
+  const handleDeleteOrganization = async (organizationId: string) => {
     try {
-      await deleteAccount({ userId, organizationId });
-      toast.success("Account disconnected successfully");
+      await deleteOrganization({ organizationId });
+      toast.success("Organization disconnected successfully");
       await loadProjects();
     } catch (error) {
-      toast.error("Failed to disconnect account: " + error);
+      toast.error("Failed to disconnect organization: " + error);
     }
   };
 
   // Connected and has project set
-  if (hasConnectedAccounts && app?.supabaseProjectName) {
+  if (hasConnectedOrganizations && app?.supabaseProjectName) {
     return (
       <Card className="mt-1">
         <CardHeader>
@@ -230,12 +218,11 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                     if (!branch) {
                       throw new Error("Branch not found");
                     }
-                    // Keep the same userId/organizationId from the app
+                    // Keep the same organizationId from the app
                     await setAppProject({
                       projectId: branch.projectRef,
                       parentProjectId: branch.parentProjectRef,
                       appId,
-                      userId: app.supabaseUserId!,
                       organizationId: app.supabaseOrganizationId!,
                     });
                     toast.success("Branch selected");
@@ -275,14 +262,12 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     );
   }
 
-  // Connected accounts exist, show project selector
-  if (hasConnectedAccounts) {
+  // Connected organizations exist, show project selector
+  if (hasConnectedOrganizations) {
     // Build current project value for the select
     const currentProjectValue =
-      app?.supabaseUserId &&
-      app?.supabaseOrganizationId &&
-      app?.supabaseProjectId
-        ? `${app.supabaseUserId}:${app.supabaseOrganizationId}:${app.supabaseProjectId}`
+      app?.supabaseOrganizationId && app?.supabaseProjectId
+        ? `${app.supabaseOrganizationId}:${app.supabaseProjectId}`
         : "";
 
     return (
@@ -297,7 +282,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
               className="gap-1"
             >
               <Plus className="h-4 w-4" />
-              Add Account
+              Add Organization
             </Button>
           </CardTitle>
           <CardDescription>
@@ -323,32 +308,37 @@ export function SupabaseConnector({ appId }: { appId: number }) {
             </div>
           ) : (
             <div className="space-y-4">
-              {/* Connected accounts list */}
+              {/* Connected organizations list */}
               <div className="space-y-2">
-                <Label>Connected Accounts</Label>
+                <Label>Connected Organizations</Label>
                 <div className="space-y-1">
-                  {accounts.map((account) => (
+                  {organizations.map((org) => (
                     <div
-                      key={`${account.userId}:${account.organizationId}`}
-                      className="flex items-center justify-between p-2 rounded-md bg-muted/50 text-sm"
+                      key={org.organizationId}
+                      className="flex items-center justify-between p-2 rounded-md bg-muted/50 text-sm gap-2"
                     >
-                      <span>
-                        {account.organizationName ||
-                          account.userEmail ||
-                          `Account ${account.userId.slice(0, 8)}`}
-                      </span>
+                      <div className="flex flex-col min-w-0 flex-1">
+                        <span className="font-medium truncate">
+                          {org.name ||
+                            `Organization ${org.organizationId.slice(0, 8)}`}
+                        </span>
+                        {org.ownerEmail && (
+                          <span className="text-xs text-muted-foreground truncate">
+                            {org.ownerEmail}
+                          </span>
+                        )}
+                      </div>
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                        className="h-7 px-2 text-muted-foreground hover:text-destructive shrink-0"
                         onClick={() =>
-                          handleDeleteAccount(
-                            account.userId,
-                            account.organizationId,
-                          )
+                          handleDeleteOrganization(org.organizationId)
                         }
+                        title="Disconnect organization"
                       >
-                        <Trash2 className="h-3 w-3" />
+                        <Trash2 className="h-3.5 w-3.5 mr-1" />
+                        <span className="text-xs">Disconnect</span>
                       </Button>
                     </div>
                   ))}
@@ -357,7 +347,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
 
               {projects.length === 0 ? (
                 <p className="text-sm text-gray-500">
-                  No projects found in your connected Supabase accounts.
+                  No projects found in your connected Supabase organizations.
                 </p>
               ) : (
                 <div className="space-y-2">
@@ -371,16 +361,13 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                     </SelectTrigger>
                     <SelectContent>
                       {Object.entries(groupedProjects).map(
-                        ([
-                          accountKey,
-                          { accountLabel, projects: accountProjects },
-                        ]) => (
-                          <SelectGroup key={accountKey}>
-                            <SelectLabel>{accountLabel}</SelectLabel>
-                            {accountProjects.map((project) => (
+                        ([orgKey, { orgLabel, projects: orgProjects }]) => (
+                          <SelectGroup key={orgKey}>
+                            <SelectLabel>{orgLabel}</SelectLabel>
+                            {orgProjects.map((project) => (
                               <SelectItem
-                                key={`${project.userId}:${project.organizationId}:${project.id}`}
-                                value={`${project.userId}:${project.organizationId}:${project.id}`}
+                                key={`${project.organizationId}:${project.id}`}
+                                value={`${project.organizationId}:${project.id}`}
                               >
                                 {project.name || project.id}
                               </SelectItem>

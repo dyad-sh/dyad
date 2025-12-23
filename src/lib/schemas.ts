@@ -156,26 +156,26 @@ export const GithubUserSchema = z.object({
 export type GithubUser = z.infer<typeof GithubUserSchema>;
 
 /**
- * Individual Supabase account credentials.
- * Each account is scoped to a <userId, organizationId> pair.
+ * Supabase organization credentials.
+ * Each organization has its own OAuth tokens.
  */
-export const SupabaseAccountSchema = z.object({
-  userId: z.string(),
-  organizationId: z.string(),
-  organizationName: z.string().optional(),
-  userEmail: z.string().optional(),
+export const SupabaseOrganizationCredentialsSchema = z.object({
   accessToken: SecretSchema,
   refreshToken: SecretSchema,
   expiresIn: z.number(),
   tokenTimestamp: z.number(),
 });
-export type SupabaseAccount = z.infer<typeof SupabaseAccountSchema>;
+export type SupabaseOrganizationCredentials = z.infer<
+  typeof SupabaseOrganizationCredentialsSchema
+>;
 
 export const SupabaseSchema = z.object({
-  // Map keyed by "userId:organizationId" -> account data
-  accounts: z.record(z.string(), SupabaseAccountSchema).optional(),
+  // Map keyed by organizationId -> organization credentials
+  organizations: z
+    .record(z.string(), SupabaseOrganizationCredentialsSchema)
+    .optional(),
 
-  // Legacy fields - kept but ignored (no migration possible)
+  // Legacy fields - kept for backwards compat
   accessToken: SecretSchema.optional(),
   refreshToken: SecretSchema.optional(),
   expiresIn: z.number().optional(),

@@ -1,54 +1,72 @@
 import { readSettings, writeSettings } from "../main/settings";
-import { buildSupabaseAccountKey } from "./supabase_account_key";
+import { listSupabaseOrganizations } from "./supabase_management_client";
+import log from "electron-log";
+
+const logger = log.scope("supabase_return_handler");
 
 export interface SupabaseOAuthReturnParams {
   token: string;
   refreshToken: string;
   expiresIn: number;
-  userId: string;
-  organizationId: string;
-  organizationName?: string;
-  userEmail?: string;
 }
 
 /**
- * Handles OAuth return by storing account credentials keyed by userId:organizationId.
+ * Handles OAuth return by storing organization credentials.
+ * If exactly one organization is found, it's stored in the organizations map.
+ * Otherwise, it falls back to legacy fields.
  */
-export function handleSupabaseOAuthReturn({
+export async function handleSupabaseOAuthReturn({
   token,
   refreshToken,
   expiresIn,
-  userId,
-  organizationId,
-  organizationName,
-  userEmail,
 }: SupabaseOAuthReturnParams) {
   const settings = readSettings();
-  const accountKey = buildSupabaseAccountKey(userId, organizationId);
+  let orgs: any[] = [];
+  let errorOccurred = false;
 
-  // Get existing accounts or initialize empty map
-  const existingAccounts = settings.supabase?.accounts ?? {};
+  try {
+    orgs = await listSupabaseOrganizations(token);
+  } catch (error) {
+    logger.error("Error listing Supabase organizations:", error);
+    errorOccurred = true;
+  }
 
-  writeSettings({
-    supabase: {
-      ...settings.supabase,
-      accounts: {
-        ...existingAccounts,
-        [accountKey]: {
-          userId,
-          organizationId,
-          organizationName,
-          userEmail,
-          accessToken: {
-            value: token,
+  if (!errorOccurred && orgs.length === 1) {
+    const organizationId = orgs[0].id;
+    const existingOrgs = settings.supabase?.organizations ?? {};
+
+    writeSettings({
+      supabase: {
+        ...settings.supabase,
+        organizations: {
+          ...existingOrgs,
+          [organizationId]: {
+            accessToken: {
+              value: token,
+            },
+            refreshToken: {
+              value: refreshToken,
+            },
+            expiresIn,
+            tokenTimestamp: Math.floor(Date.now() / 1000),
           },
-          refreshToken: {
-            value: refreshToken,
-          },
-          expiresIn,
-          tokenTimestamp: Math.floor(Date.now() / 1000),
         },
       },
-    },
-  });
+    });
+  } else {
+    // Fallback to legacy fields
+    writeSettings({
+      supabase: {
+        ...settings.supabase,
+        accessToken: {
+          value: token,
+        },
+        refreshToken: {
+          value: refreshToken,
+        },
+        expiresIn,
+        tokenTimestamp: Math.floor(Date.now() / 1000),
+      },
+    });
+  }
 }

@@ -107,7 +107,6 @@ export interface App {
   supabaseProjectId: string | null;
   supabaseParentProjectId: string | null;
   supabaseProjectName: string | null;
-  supabaseUserId: string | null;
   supabaseOrganizationId: string | null;
   neonProjectId: string | null;
   neonDevelopmentBranchId: string | null;
@@ -540,38 +539,32 @@ export interface SupabaseBranch {
 }
 
 /**
- * Supabase account info for display (without secrets).
- * Each account is scoped to a <userId, organizationId> pair.
+ * Supabase organization info for display (without secrets).
  */
-export interface SupabaseAccountInfo {
-  userId: string;
+export interface SupabaseOrganizationInfo {
   organizationId: string;
-  organizationName?: string;
-  userEmail?: string;
+  name?: string;
+  ownerEmail?: string;
 }
 
 /**
- * Supabase project with account context.
+ * Supabase project info.
  */
-export interface SupabaseProjectWithAccount {
+export interface SupabaseProject {
   id: string;
   name: string;
   region?: string;
   organizationId: string;
-  // Account info for credential lookup
-  userId: string;
 }
 
 export interface SetSupabaseAppProjectParams {
   projectId: string;
   parentProjectId?: string;
   appId: number;
-  userId: string;
   organizationId: string;
 }
 
-export interface DeleteSupabaseAccountParams {
-  userId: string;
+export interface DeleteSupabaseOrganizationParams {
   organizationId: string;
 }
 

@@ -1,15 +1,15 @@
 import { atom } from "jotai";
 import {
   SupabaseBranch,
-  SupabaseAccountInfo,
-  SupabaseProjectWithAccount,
+  SupabaseOrganizationInfo,
+  SupabaseProject,
 } from "@/ipc/ipc_types";
 
-// Define atom for storing the list of connected Supabase accounts
-export const supabaseAccountsAtom = atom<SupabaseAccountInfo[]>([]);
+// Define atom for storing the list of connected Supabase organizations
+export const supabaseOrganizationsAtom = atom<SupabaseOrganizationInfo[]>([]);
 
-// Define atom for storing the list of Supabase projects (with account context)
-export const supabaseProjectsAtom = atom<SupabaseProjectWithAccount[]>([]);
+// Define atom for storing the list of Supabase projects
+export const supabaseProjectsAtom = atom<SupabaseProject[]>([]);
 export const supabaseBranchesAtom = atom<SupabaseBranch[]>([]);
 
 // Define atom for tracking loading state

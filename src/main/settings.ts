@@ -77,24 +77,24 @@ export function readSettings(): UserSettings {
           };
         }
       }
-      // Decrypt tokens for each account in the accounts map
-      if (supabase.accounts) {
-        for (const accountKey in supabase.accounts) {
-          const account = supabase.accounts[accountKey];
-          if (account.accessToken) {
-            const encryptionType = account.accessToken.encryptionType;
+      // Decrypt tokens for each organization in the organizations map
+      if (supabase.organizations) {
+        for (const orgId in supabase.organizations) {
+          const org = supabase.organizations[orgId];
+          if (org.accessToken) {
+            const encryptionType = org.accessToken.encryptionType;
             if (encryptionType) {
-              account.accessToken = {
-                value: decrypt(account.accessToken),
+              org.accessToken = {
+                value: decrypt(org.accessToken),
                 encryptionType,
               };
             }
           }
-          if (account.refreshToken) {
-            const encryptionType = account.refreshToken.encryptionType;
+          if (org.refreshToken) {
+            const encryptionType = org.refreshToken.encryptionType;
             if (encryptionType) {
-              account.refreshToken = {
-                value: decrypt(account.refreshToken),
+              org.refreshToken = {
+                value: decrypt(org.refreshToken),
                 encryptionType,
               };
             }
@@ -199,15 +199,15 @@ export function writeSettings(settings: Partial<UserSettings>): void {
           newSettings.supabase.refreshToken.value,
         );
       }
-      // Encrypt tokens for each account in the accounts map
-      if (newSettings.supabase.accounts) {
-        for (const accountKey in newSettings.supabase.accounts) {
-          const account = newSettings.supabase.accounts[accountKey];
-          if (account.accessToken) {
-            account.accessToken = encrypt(account.accessToken.value);
+      // Encrypt tokens for each organization in the organizations map
+      if (newSettings.supabase.organizations) {
+        for (const orgId in newSettings.supabase.organizations) {
+          const org = newSettings.supabase.organizations[orgId];
+          if (org.accessToken) {
+            org.accessToken = encrypt(org.accessToken.value);
           }
-          if (account.refreshToken) {
-            account.refreshToken = encrypt(account.refreshToken.value);
+          if (org.refreshToken) {
+            org.refreshToken = encrypt(org.refreshToken.value);
           }
         }
       }

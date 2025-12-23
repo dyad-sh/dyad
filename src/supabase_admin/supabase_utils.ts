@@ -132,7 +132,6 @@ export async function deployAllSupabaseFunctions({
           appPath,
           bundleOnly: true,
         });
-        console.log("RESULT: ", result);
         logger.info(`Successfully bundled function: ${functionName}`);
         return result;
       }),

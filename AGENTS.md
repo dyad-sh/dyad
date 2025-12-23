@@ -1,5 +1,6 @@
 # Repository Agent Guide
 
+Testing 
 ## Project context
 
 - This is an Electron application with a secure IPC boundary.

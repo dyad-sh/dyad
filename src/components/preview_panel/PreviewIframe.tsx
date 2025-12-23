@@ -137,7 +137,7 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
       </div>
 
       {/* Action buttons at the bottom */}
-      {!isDockerError && error.source === "preview-app" && (
+      {!isDockerError && (error.source === "preview-app" || error.source === "dyad-app") && (
         <div className="mt-3 px-6 flex justify-end gap-2">
           <CopyErrorMessage errorMessage={error.message} />
           <button
@@ -503,8 +503,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 <button
                   onClick={handleActivateComponentSelector}
                   className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${isPicking
-                      ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
-                      : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
+                    ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
+                    : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
                     }`}
                   disabled={
                     loading || !selectedAppId || !isComponentSelectorInitialized

@@ -142,6 +142,66 @@ const TEMPLATE_PROMPTS: Record<string, string> = {
     'portal-mini-store': 'Initialize a mini store portal using Next.js and Neon.' // Custom
 };
 
+// Auto-healing install helper
+async function installDependencies(targetDir: string, appId: number): Promise<void> {
+    const packageManager = await detectPackageManager();
+    console.log(`[WebBackend] Using ${packageManager} for dependency installation (App ${appId})`);
+
+    const runInstall = async () => {
+        return new Promise<void>((resolve, reject) => {
+            const installProcess = spawn(packageManager, ['install'], {
+                cwd: targetDir,
+                shell: true,
+                stdio: ['ignore', 'pipe', 'pipe']
+            });
+
+            let installOutput = '';
+            let installError = '';
+
+            installProcess.stdout?.on('data', (data) => {
+                installOutput += data.toString();
+                // console.log(`[WebBackend] install stdout: ${data}`); 
+            });
+
+            installProcess.stderr?.on('data', (data) => {
+                installError += data.toString();
+                // console.error(`[WebBackend] install stderr: ${data}`);
+            });
+
+            installProcess.on('close', (code) => {
+                if (code === 0) resolve();
+                else reject(new Error(`Install failed with code ${code}.\nStderr: ${installError}\nStdout: ${installOutput}`));
+            });
+            installProcess.on('error', (err) => reject(new Error(`Spawn failed: ${err.message}`)));
+        });
+    };
+
+    try {
+        console.log(`[WebBackend] Starting installation for App ${appId}...`);
+        await runInstall();
+    } catch (error: any) {
+        console.warn(`[WebBackend] Install failed for App ${appId}. Attempting auto-healing cleanup...`);
+        console.warn(`[WebBackend] Error was: ${error.message.split('\n')[0]}`); // Log just the first line of error
+
+        // Auto-healing: Delete node_modules and package-lock.json
+        try {
+            const nodeModulesPath = path.join(targetDir, 'node_modules');
+            const lockFilePath = path.join(targetDir, 'package-lock.json');
+
+            if (await fs.pathExists(nodeModulesPath)) await fs.remove(nodeModulesPath);
+            if (await fs.pathExists(lockFilePath)) await fs.remove(lockFilePath);
+
+            console.log(`[WebBackend] Cleanup complete (node_modules + lockfile). Retrying installation...`);
+
+            // Re-run install
+            await runInstall();
+            console.log(`[WebBackend] Auto-healing successful for App ${appId}!`);
+        } catch (retryError: any) {
+            throw new Error(`Auto-healing failed after cleanup.\n\nFinal Attempt Error: ${retryError.message}\n\nOriginal Error: ${error.message}`);
+        }
+    }
+}
+
 
 /**
  * GET /api/apps - List all apps
@@ -443,45 +503,7 @@ router.post("/:id/run", async (req, res, next) => {
         }
 
         // 3. Install Dependencies
-        console.log(`[WebBackend] Installing dependencies for app ${id} in ${targetDir}`);
-
-        // Detect package manager
-        const packageManager = await detectPackageManager();
-        console.log(`[WebBackend] Using ${packageManager} for dependency installation`);
-
-        const installProcess = spawn(packageManager, ['install'], {
-            cwd: targetDir,
-            shell: true,
-            stdio: ['ignore', 'pipe', 'pipe'] // Capture output instead of inheriting
-        });
-
-        let installOutput = '';
-        let installError = '';
-
-        installProcess.stdout?.on('data', (data) => {
-            installOutput += data.toString();
-            // Optional: still log to console if you want real-time server logs
-            console.log(`[WebBackend] install stdout: ${data}`);
-        });
-
-        installProcess.stderr?.on('data', (data) => {
-            installError += data.toString();
-            console.error(`[WebBackend] install stderr: ${data}`);
-        });
-
-        await new Promise<void>((resolve, reject) => {
-            installProcess.on('close', (code) => {
-                if (code === 0) resolve();
-                else {
-                    // Combine output and error for context
-                    const fullError = `Install failed with code ${code}.\nStderr: ${installError}\nStdout: ${installOutput}`;
-                    reject(new Error(fullError));
-                }
-            });
-            installProcess.on('error', (err) => {
-                reject(new Error(`Spawn failed: ${err.message}`));
-            });
-        });
+        await installDependencies(targetDir, appId);
 
         // 4. Run Dev Server
         console.log(`[WebBackend] Starting dev server for app ${id} on port ${port}`);

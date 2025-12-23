@@ -48,7 +48,7 @@ export const Terminal = ({ appId }: TerminalProps) => {
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
 
-        term.onData((data) => {
+        term.onData((data: string) => {
             if (ws.readyState === WebSocket.OPEN) {
                 ws.send(data);
             }
@@ -66,8 +66,10 @@ export const Terminal = ({ appId }: TerminalProps) => {
             term.write('\r\n\x1b[31mConnection Closed.\x1b[0m\r\n');
         };
 
-        ws.onerror = (err) => {
-            term.write(`\r\n\x1b[31mError: ${err}\x1b[0m\r\n`);
+        ws.onerror = (event) => {
+            console.error("WebSocket error:", event);
+            term.write(`\r\n\x1b[31mConnection Error.\x1b[0m\r\n`);
+            term.write(`\x1b[90mEnsure the backend server is running and try refreshing the page.\x1b[0m\r\n`);
         };
 
         // Resize observer

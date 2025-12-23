@@ -1,0 +1,1 @@
+ALTER TABLE `mcp_servers` ADD `headers_json` text;

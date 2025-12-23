@@ -483,6 +483,7 @@ export interface McpServer {
   args?: string[] | null;
   cwd?: string | null;
   envJson?: Record<string, string> | null;
+  headersJson?: Record<string, string> | null;
   url?: string | null;
   enabled: boolean;
   createdAt: number;

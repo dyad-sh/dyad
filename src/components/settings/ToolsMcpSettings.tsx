@@ -51,12 +51,14 @@ function EnvVarsEditor({
   disabled,
   onSave,
   isSaving,
+  itemLabel = "Environment Variable",
 }: {
   serverId: number;
   envJson?: Record<string, string> | null;
   disabled?: boolean;
   onSave: (envVars: KeyValue[]) => Promise<void>;
   isSaving: boolean;
+  itemLabel?: string;
 }) {
   const initial = useMemo(() => parseEnvJsonToArray(envJson), [envJson]);
   const [envVars, setEnvVars] = useState<KeyValue[]>(initial);
@@ -82,7 +84,7 @@ function EnvVarsEditor({
       return;
     }
     if (envVars.some((e) => e.key === newKey.trim())) {
-      showError("Environment variable with this key already exists");
+      showError(`${itemLabel} with this key already exists`);
       return;
     }
     const next = [...envVars, { key: newKey.trim(), value: newValue.trim() }];
@@ -90,7 +92,7 @@ function EnvVarsEditor({
     setNewKey("");
     setNewValue("");
     setIsAddingNew(false);
-    showSuccess("Environment variables saved");
+    showSuccess(`${itemLabel}s saved`);
   };
 
   const handleEdit = (kv: KeyValue) => {
@@ -110,7 +112,7 @@ function EnvVarsEditor({
         (e) => e.key === editingKeyValue.trim() && e.key !== editingKey,
       )
     ) {
-      showError("Environment variable with this key already exists");
+      showError(`${itemLabel} with this key already exists`);
       return;
     }
     const next = envVars.map((e) =>
@@ -122,7 +124,7 @@ function EnvVarsEditor({
     setEditingKey(null);
     setEditingKeyValue("");
     setEditingValue("");
-    showSuccess("Environment variables saved");
+    showSuccess(`${itemLabel}s saved`);
   };
 
   const handleCancelEdit = () => {
@@ -134,7 +136,7 @@ function EnvVarsEditor({
   const handleDelete = async (key: string) => {
     const next = envVars.filter((e) => e.key !== key);
     await saveAll(next);
-    showSuccess("Environment variables saved");
+    showSuccess(`${itemLabel}s saved`);
   };
 
   return (
@@ -145,7 +147,7 @@ function EnvVarsEditor({
             <Label htmlFor={`env-new-key-${serverId}`}>Key</Label>
             <Input
               id={`env-new-key-${serverId}`}
-              placeholder="e.g., PATH"
+              placeholder={itemLabel === "Header" ? "Key" : "e.g., PATH"}
               value={newKey}
               onChange={(e) => setNewKey(e.target.value)}
               autoFocus
@@ -156,7 +158,9 @@ function EnvVarsEditor({
             <Label htmlFor={`env-new-value-${serverId}`}>Value</Label>
             <Input
               id={`env-new-value-${serverId}`}
-              placeholder="e.g., /usr/local/bin"
+              placeholder={
+                itemLabel === "Header" ? "Value" : "e.g., /usr/local/bin"
+              }
               value={newValue}
               onChange={(e) => setNewValue(e.target.value)}
               disabled={disabled || isSaving}
@@ -193,14 +197,14 @@ function EnvVarsEditor({
           disabled={disabled}
         >
           <Plus size={14} />
-          Add Environment Variable
+          Add {itemLabel}
         </Button>
       )}
 
       <div className="space-y-2">
         {envVars.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-4">
-            No environment variables configured
+            No {itemLabel.toLowerCase()}s configured
           </p>
         ) : (
           envVars.map((kv) => (
@@ -475,6 +479,24 @@ export function ToolsMcpSettings() {
                     await updateServer({
                       id: s.id,
                       envJson: arrayToEnvObject(pairs),
+                    });
+                  }}
+                />
+              </div>
+            )}
+            {s.transport === "http" && (
+              <div className="mt-3">
+                <div className="text-sm font-medium mb-2">Headers</div>
+                <EnvVarsEditor
+                  serverId={s.id}
+                  envJson={s.headersJson}
+                  disabled={!s.enabled}
+                  isSaving={!!isUpdatingServer}
+                  itemLabel="Header"
+                  onSave={async (pairs) => {
+                    await updateServer({
+                      id: s.id,
+                      headersJson: arrayToEnvObject(pairs),
                     });
                   }}
                 />

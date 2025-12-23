@@ -1,0 +1,41 @@
+{
+  "name": "blockchain-guide-mcp-server",
+  "version": "2.0.0",
+  "description": "Universal MCP server providing blockchain documentation, version information, and translation patterns",
+  "type": "module",
+  "bin": {
+    "blockchain-guide-mcp": "./index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "start": "node dist/index.js",
+    "dev": "tsx index.ts",
+    "test": "npm run build && tsx test.ts",
+    "test:simple": "npm run build && tsx test-simple.ts",
+    "test:dynamic": "npm run build && tsx test-dynamic.ts",
+    "test:comprehensive": "npm run build && tsx test-comprehensive.ts",
+    "test:all": "npm run test && npm run test:simple",
+    "clean": "rm -rf dist",
+    "rebuild": "npm run clean && npm run build",
+    "verify": "npm run rebuild && npm run test:simple"
+  },
+  "keywords": [
+    "mcp",
+    "blockchain",
+    "sui",
+    "solana",
+    "translation"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.24.3",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.25",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

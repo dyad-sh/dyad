@@ -9,9 +9,16 @@ http:
       entryPoints:
         - https
       service: dyad-apps-service
-      tls:
-        certResolver: letsencrypt
-        # options: ondemand (Removed for Cloudflare Universal SSL compatibility)
+      tls: {}
+        # certResolver: letsencrypt (Removed per user request)
+
+    # WebSocket Router for Main Domain
+    dyad-ws:
+      rule: "Host(`dyad1.ty-dev.site`) && PathPrefix(`/ws/`)"
+      entryPoints:
+        - https
+      service: dyad-apps-service
+      tls: {}
 
   services:
     dyad-apps-service:

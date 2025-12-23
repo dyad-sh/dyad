@@ -44,6 +44,12 @@ async function main() {
     const app = express();
     const server = createServer(app);
 
+    // DEBUG: Log ALL incoming requests immediately
+    app.use((req, res, next) => {
+        console.log(`[Edge] Incoming: ${req.method} ${req.get('host')}${req.url}`);
+        next();
+    });
+
     // Debug: Log upgrade requests to see if they reach the server and match the path
     server.on('upgrade', (request, socket, head) => {
         console.log(`[Server] HTTP server upgrade request: ${request.url}`);

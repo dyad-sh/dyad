@@ -1,5 +1,5 @@
 # Repository Agent Guide
-
+foo
 ## Project context
 
 - This is an Electron application with a secure IPC boundary.

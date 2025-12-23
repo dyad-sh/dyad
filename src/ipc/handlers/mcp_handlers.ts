@@ -24,7 +24,16 @@ export function registerMcpHandlers() {
   handle(
     "mcp:create-server",
     async (_event: IpcMainInvokeEvent, params: CreateMcpServer) => {
-      const { name, transport, command, args, envJson, url, enabled } = params;
+      const {
+        name,
+        transport,
+        command,
+        args,
+        envJson,
+        headersJson,
+        url,
+        enabled,
+      } = params;
       const result = await db
         .insert(mcpServers)
         .values({
@@ -33,6 +42,7 @@ export function registerMcpHandlers() {
           command: command || null,
           args: args || null,
           envJson: envJson || null,
+          headersJson: headersJson || null,
           url: url || null,
           enabled: !!enabled,
         })
@@ -51,6 +61,8 @@ export function registerMcpHandlers() {
       if (params.args !== undefined) update.args = params.args || null;
       if (params.cwd !== undefined) update.cwd = params.cwd;
       if (params.envJson !== undefined) update.envJson = params.envJson || null;
+      if (params.headersJson !== undefined)
+        update.headersJson = params.headersJson || null;
       if (params.url !== undefined) update.url = params.url;
       if (params.enabled !== undefined) update.enabled = !!params.enabled;
 

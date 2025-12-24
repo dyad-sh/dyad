@@ -112,7 +112,12 @@ export function registerSupabaseHandlers() {
               id: project.id,
               name: project.name,
               region: project.region,
-              organizationSlug: project.organization_slug,
+              organizationSlug:
+                // The supabase management API typedef is out of date and there's
+                // actually an organization_slug field.
+                // Just in case it's not there, we fallback to organization_id
+                // which in practice is the same value as the slug.
+                (project as any).organization_slug || project.organization_id,
             });
           }
         }

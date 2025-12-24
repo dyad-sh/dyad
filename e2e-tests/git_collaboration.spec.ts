@@ -193,11 +193,10 @@ test.describe("Git Collaboration", () => {
     // Wait for merge to complete
     await po.waitForToast("success", 10000);
 
-    // Give the file system a moment to update after the merge
-    await po.page.waitForTimeout(500);
-
     // Verify merge success: file should now exist on main
-    expect(fs.existsSync(mergeTestFilePath)).toBe(true);
+    await expect(async () => {
+      expect(fs.existsSync(mergeTestFilePath)).toBe(true);
+    }).toPass({ timeout: 5000 });
     expect(fs.readFileSync(mergeTestFilePath, "utf-8")).toBe(featureContent);
 
     // Verify git status is clean (no uncommitted changes)

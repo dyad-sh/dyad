@@ -844,10 +844,8 @@ export class IpcClient {
     });
   }
 
-  public async abortGithubMerge(
-    appId: number,
-  ): Promise<{ success: boolean; error?: string }> {
-    return this.ipcRenderer.invoke("github:merge-abort", {
+  public async abortGithubMerge(appId: number): Promise<void> {
+    await this.ipcRenderer.invoke("github:merge-abort", {
       appId,
     });
   }
@@ -866,10 +864,8 @@ export class IpcClient {
     });
   }
 
-  public async pullGithubRepo(
-    appId: number,
-  ): Promise<{ success: boolean; error?: string }> {
-    return this.ipcRenderer.invoke("github:pull", { appId });
+  public async pullGithubRepo(appId: number): Promise<void> {
+    await this.ipcRenderer.invoke("github:pull", { appId });
   }
 
   public async fetchGithubRepo(
@@ -882,8 +878,8 @@ export class IpcClient {
     appId: number,
     branch: string,
     from?: string,
-  ): Promise<{ success: boolean; error?: string }> {
-    return this.ipcRenderer.invoke("github:create-branch", {
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("github:create-branch", {
       appId,
       branch,
       from,
@@ -893,34 +889,31 @@ export class IpcClient {
   public async deleteGithubBranch(
     appId: number,
     branch: string,
-  ): Promise<{ success: boolean; error?: string }> {
-    return this.ipcRenderer.invoke("github:delete-branch", { appId, branch });
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("github:delete-branch", { appId, branch });
   }
 
   public async switchGithubBranch(
     appId: number,
     branch: string,
-  ): Promise<{ success: boolean; error?: string }> {
-    return this.ipcRenderer.invoke("github:switch-branch", { appId, branch });
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("github:switch-branch", { appId, branch });
   }
 
   public async renameGithubBranch(
     appId: number,
     oldBranch: string,
     newBranch: string,
-  ): Promise<{ success: boolean; error?: string }> {
-    return this.ipcRenderer.invoke("github:rename-branch", {
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("github:rename-branch", {
       appId,
       oldBranch,
       newBranch,
     });
   }
 
-  public async mergeGithubBranch(
-    appId: number,
-    branch: string,
-  ): Promise<{ success: boolean; error?: string; isConflict?: boolean }> {
-    return this.ipcRenderer.invoke("github:merge-branch", { appId, branch });
+  public async mergeGithubBranch(appId: number, branch: string): Promise<void> {
+    await this.ipcRenderer.invoke("github:merge-branch", { appId, branch });
   }
 
   public async getGithubMergeConflicts(
@@ -929,12 +922,9 @@ export class IpcClient {
     return this.ipcRenderer.invoke("github:get-conflicts", { appId });
   }
 
-  public async listLocalGithubBranches(appId: number): Promise<{
-    success: boolean;
-    branches?: string[];
-    current?: string | null;
-    error?: string;
-  }> {
+  public async listLocalGithubBranches(
+    appId: number,
+  ): Promise<{ branches: string[]; current: string | null }> {
     return this.ipcRenderer.invoke("github:list-local-branches", { appId });
   }
   public async resolveGithubConflict(

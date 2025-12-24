@@ -56,7 +56,9 @@ export function GithubConflictResolver({
     loadFileContent();
     setResolvedContentOverride(null);
 
-    // cleanup only runs on unmount
+    // cleanup runs on every dependency change (currentFile/appId) and on unmount
+    // Note: isMountedRef only guards against component unmount, not file switches.
+    // File switching is protected by the closure variable (fileForThisRequest) in handleAiResolve.
     return () => {
       isMountedRef.current = false;
     };
@@ -128,6 +130,10 @@ export function GithubConflictResolver({
     try {
       const chatId = await ensureChatId();
 
+      // Capture the current file in a closure to prevent stale callbacks
+      // from updating state when the user switches files
+      const fileForThisRequest = currentFile;
+
       const attachment: FileAttachment = {
         file: new File([fileContent], currentFile, { type: "text/plain" }),
         type: "chat-context",
@@ -142,7 +148,10 @@ ${extractConflictSnippet(fileContent)}`,
           chatId,
           attachments: [attachment],
           onUpdate: (messages) => {
-            if (!isMountedRef.current) return;
+            // Check both mount status and that we're still on the same file
+            if (!isMountedRef.current || fileForThisRequest !== currentFile) {
+              return;
+            }
             const lastAssistant = [...messages]
               .reverse()
               .find((msg) => msg.role === "assistant");
@@ -154,13 +163,19 @@ ${extractConflictSnippet(fileContent)}`,
             }
           },
           onEnd: () => {
-            if (!isMountedRef.current) return;
+            // Check both mount status and that we're still on the same file
+            if (!isMountedRef.current || fileForThisRequest !== currentFile) {
+              return;
+            }
             showSuccess("AI suggested a resolution");
             refreshChatMessages(chatId);
             setIsAiResolving(false);
           },
           onError: (error) => {
-            if (!isMountedRef.current) return;
+            // Check both mount status and that we're still on the same file
+            if (!isMountedRef.current || fileForThisRequest !== currentFile) {
+              return;
+            }
             showError(error || "Failed to resolve with AI");
             setIsAiResolving(false);
           },

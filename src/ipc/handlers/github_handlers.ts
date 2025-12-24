@@ -122,6 +122,31 @@ async function prepareLocalBranch({
   const targetBranch = branch || "main";
 
   try {
+    // Check for uncommitted changes and commit them before checkout
+    const isClean = await isGitStatusClean({ path: appPath });
+    if (!isClean) {
+      try {
+        const uncommittedFiles = await getGitUncommittedFiles({
+          path: appPath,
+        });
+        // Stage all changes
+        await gitAddAll({ path: appPath });
+        // Commit with a descriptive message
+        await gitCommit({
+          path: appPath,
+          message: `[dyad] Auto-commit before preparing branch '${targetBranch}': ${uncommittedFiles.length} file(s) changed`,
+        });
+        logger.log(
+          `Auto-committed ${uncommittedFiles.length} file(s) before preparing branch '${targetBranch}'`,
+        );
+      } catch (commitError: any) {
+        throw new Error(
+          `Failed to commit uncommitted changes before preparing branch: ${commitError?.message || "Unknown error"}. ` +
+            "Please commit or stash your changes manually and try again.",
+        );
+      }
+    }
+
     const localBranches = await gitListBranches({ path: appPath });
     if (!localBranches.includes(targetBranch)) {
       await gitCreateBranch({
@@ -132,10 +157,22 @@ async function prepareLocalBranch({
     await gitCheckout({ path: appPath, ref: targetBranch });
   } catch (gitError: any) {
     logger.error("[GitHub Handler] Failed to prepare local branch:", gitError);
-    throw new Error(
+    // Check if error is about uncommitted changes (fallback in case check above missed it)
+    const errorMessage =
       gitError?.message ||
-        "Failed to prepare local branch for the connected repository.",
-    );
+      "Failed to prepare local branch for the connected repository.";
+    const lowerMessage = errorMessage.toLowerCase();
+    if (
+      lowerMessage.includes("local changes") ||
+      lowerMessage.includes("would be overwritten") ||
+      lowerMessage.includes("please commit or stash")
+    ) {
+      throw new Error(
+        `Failed to prepare local branch: uncommitted changes detected. ` +
+          "Attempting to commit automatically failed. Please commit or stash your changes manually and try again.",
+      );
+    }
+    throw new Error(errorMessage);
   }
 }
 
@@ -755,34 +792,26 @@ async function handlePushToGithub(
 async function handlePullFromGithub(
   event: IpcMainInvokeEvent,
   { appId }: { appId: number },
-) {
-  try {
-    const settings = readSettings();
-    const accessToken = settings.githubAccessToken?.value;
-    if (!accessToken) {
-      return { success: false, error: "Not authenticated with GitHub." };
-    }
-    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-    if (!app || !app.githubOrg || !app.githubRepo) {
-      return { success: false, error: "App is not linked to a GitHub repo." };
-    }
-    const appPath = getDyadAppPath(app.path);
-    const branch = app.githubBranch || "main";
-
-    // Pull from GitHub
-    await gitPull({
-      path: appPath,
-      remote: "origin",
-      branch,
-      accessToken,
-    });
-    return { success: true };
-  } catch (err: any) {
-    return {
-      success: false,
-      error: err.message || "Failed to pull from GitHub.",
-    };
+): Promise<void> {
+  const settings = readSettings();
+  const accessToken = settings.githubAccessToken?.value;
+  if (!accessToken) {
+    throw new Error("Not authenticated with GitHub.");
   }
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app || !app.githubOrg || !app.githubRepo) {
+    throw new Error("App is not linked to a GitHub repo.");
+  }
+  const appPath = getDyadAppPath(app.path);
+  const branch = app.githubBranch || "main";
+
+  // Pull from GitHub
+  await gitPull({
+    path: appPath,
+    remote: "origin",
+    branch,
+    accessToken,
+  });
 }
 
 async function handleAbortRebase(
@@ -807,20 +836,12 @@ async function handleAbortRebase(
 async function handleAbortMerge(
   event: IpcMainInvokeEvent,
   { appId }: { appId: number },
-) {
-  try {
-    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-    if (!app) throw new Error("App not found");
-    const appPath = getDyadAppPath(app.path);
+): Promise<void> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
 
-    await gitMergeAbort({ path: appPath });
-    return { success: true };
-  } catch (err: any) {
-    return {
-      success: false,
-      error: err.message || "Failed to abort merge.",
-    };
-  }
+  await gitMergeAbort({ path: appPath });
 }
 
 async function handleContinueRebase(
@@ -878,94 +899,72 @@ async function handleFetchFromGithub(
 async function handleCreateBranch(
   event: IpcMainInvokeEvent,
   { appId, branch, from }: { appId: number; branch: string; from?: string },
-) {
-  try {
-    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-    if (!app) throw new Error("App not found");
-    const appPath = getDyadAppPath(app.path);
+): Promise<void> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
 
-    await gitCreateBranch({
-      path: appPath,
-      branch,
-      from,
-    });
-    return { success: true };
-  } catch (err: any) {
-    return { success: false, error: err.message || "Failed to create branch." };
-  }
+  await gitCreateBranch({
+    path: appPath,
+    branch,
+    from,
+  });
 }
 
 async function handleDeleteBranch(
   event: IpcMainInvokeEvent,
   { appId, branch }: { appId: number; branch: string },
-) {
-  try {
-    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-    if (!app) throw new Error("App not found");
-    const appPath = getDyadAppPath(app.path);
+): Promise<void> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
 
-    await gitDeleteBranch({
-      path: appPath,
-      branch,
-    });
-    return { success: true };
-  } catch (err: any) {
-    return { success: false, error: err.message || "Failed to delete branch." };
-  }
+  await gitDeleteBranch({
+    path: appPath,
+    branch,
+  });
 }
 
 async function handleSwitchBranch(
   event: IpcMainInvokeEvent,
   { appId, branch }: { appId: number; branch: string },
-) {
-  try {
-    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-    if (!app) throw new Error("App not found");
-    const appPath = getDyadAppPath(app.path);
+): Promise<void> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
 
-    // Check for uncommitted changes and commit them before switching branches
-    const isClean = await isGitStatusClean({ path: appPath });
-    if (!isClean) {
-      try {
-        const uncommittedFiles = await getGitUncommittedFiles({
-          path: appPath,
-        });
-        // Stage all changes
-        await gitAddAll({ path: appPath });
-        // Commit with a descriptive message
-        await gitCommit({
-          path: appPath,
-          message: `[dyad] Auto-commit before switching to branch '${branch}': ${uncommittedFiles.length} file(s) changed`,
-        });
-        logger.log(
-          `Auto-committed ${uncommittedFiles.length} file(s) before switching to branch '${branch}'`,
-        );
-      } catch (commitError: any) {
-        return {
-          success: false,
-          error:
-            `Failed to commit uncommitted changes before switching branch: ${commitError?.message || "Unknown error"}. ` +
-            "Please commit or stash your changes manually and try again.",
-        };
-      }
+  // Check for uncommitted changes and commit them before switching branches
+  const isClean = await isGitStatusClean({ path: appPath });
+  if (!isClean) {
+    try {
+      const uncommittedFiles = await getGitUncommittedFiles({
+        path: appPath,
+      });
+      // Stage all changes
+      await gitAddAll({ path: appPath });
+      // Commit with a descriptive message
+      await gitCommit({
+        path: appPath,
+        message: `[dyad] Auto-commit before switching to branch '${branch}': ${uncommittedFiles.length} file(s) changed`,
+      });
+      logger.log(
+        `Auto-committed ${uncommittedFiles.length} file(s) before switching to branch '${branch}'`,
+      );
+    } catch (commitError: any) {
+      throw new Error(
+        `Failed to commit uncommitted changes before switching branch: ${commitError?.message || "Unknown error"}. ` +
+          "Please commit or stash your changes manually and try again.",
+      );
     }
+  }
 
+  try {
     await gitCheckout({
       path: appPath,
       ref: branch,
     });
-
-    // Update DB with new branch
-    await updateAppGithubRepo({
-      appId,
-      org: app.githubOrg || undefined,
-      repo: app.githubRepo || "",
-      branch,
-    });
-
-    return { success: true };
-  } catch (err: any) {
-    const errorMessage = err?.message || "Failed to switch branch.";
+  } catch (checkoutError: any) {
+    const errorMessage = checkoutError?.message || "Failed to switch branch.";
     // Check if error is about uncommitted changes (fallback in case check above missed it)
     const lowerMessage = errorMessage.toLowerCase();
     if (
@@ -973,15 +972,21 @@ async function handleSwitchBranch(
       lowerMessage.includes("would be overwritten") ||
       lowerMessage.includes("please commit or stash")
     ) {
-      return {
-        success: false,
-        error:
-          `Failed to switch branch: uncommitted changes detected. ` +
+      throw new Error(
+        `Failed to switch branch: uncommitted changes detected. ` +
           "Attempting to commit automatically failed. Please commit or stash your changes manually and try again.",
-      };
+      );
     }
-    return { success: false, error: errorMessage };
+    throw checkoutError;
   }
+
+  // Update DB with new branch
+  await updateAppGithubRepo({
+    appId,
+    org: app.githubOrg || undefined,
+    repo: app.githubRepo || "",
+    branch,
+  });
 }
 
 async function handleRenameBranch(
@@ -991,123 +996,119 @@ async function handleRenameBranch(
     oldBranch,
     newBranch,
   }: { appId: number; oldBranch: string; newBranch: string },
-) {
-  try {
-    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-    if (!app) throw new Error("App not found");
-    const appPath = getDyadAppPath(app.path);
+): Promise<void> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
 
-    await gitRenameBranch({
-      path: appPath,
-      oldBranch,
-      newBranch,
+  await gitRenameBranch({
+    path: appPath,
+    oldBranch,
+    newBranch,
+  });
+
+  // If we renamed the current branch (which is likely), update DB if needed
+  // But gitRenameBranch doesn't change HEAD if we are on it?
+  // Actually git branch -m renames the current branch if on it.
+  // We should check if we were on oldBranch and if so update DB.
+  const current = await gitCurrentBranch({ path: appPath });
+  if (current === newBranch) {
+    await updateAppGithubRepo({
+      appId,
+      org: app.githubOrg || undefined,
+      repo: app.githubRepo || "",
+      branch: newBranch,
     });
+  }
+}
 
-    // If we renamed the current branch (which is likely), update DB if needed
-    // But gitRenameBranch doesn't change HEAD if we are on it?
-    // Actually git branch -m renames the current branch if on it.
-    // We should check if we were on oldBranch and if so update DB.
-    const current = await gitCurrentBranch({ path: appPath });
-    if (current === newBranch) {
-      await updateAppGithubRepo({
-        appId,
-        org: app.githubOrg || undefined,
-        repo: app.githubRepo || "",
-        branch: newBranch,
-      });
-    }
-
-    return { success: true };
-  } catch (err: any) {
-    return { success: false, error: err.message || "Failed to rename branch." };
+// Custom error class for merge conflicts
+class MergeConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "MergeConflictError";
   }
 }
 
 async function handleMergeBranch(
   event: IpcMainInvokeEvent,
   { appId, branch }: { appId: number; branch: string },
-) {
-  try {
-    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-    if (!app) throw new Error("App not found");
-    const appPath = getDyadAppPath(app.path);
+): Promise<void> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
 
-    // Check for uncommitted changes and commit them before merging
-    const isClean = await isGitStatusClean({ path: appPath });
-    if (!isClean) {
-      try {
-        const uncommittedFiles = await getGitUncommittedFiles({
-          path: appPath,
-        });
-        // Stage all changes
-        await gitAddAll({ path: appPath });
-        // Commit with a descriptive message
-        await gitCommit({
-          path: appPath,
-          message: `[dyad] Auto-commit before merging branch '${branch}': ${uncommittedFiles.length} file(s) changed`,
-        });
-        logger.log(
-          `Auto-committed ${uncommittedFiles.length} file(s) before merging branch '${branch}'`,
-        );
-      } catch (commitError: any) {
-        return {
-          success: false,
-          error:
-            `Failed to commit uncommitted changes before merge: ${commitError?.message || "Unknown error"}. ` +
-            "Please commit or stash your changes manually and try again.",
-        };
-      }
+  // Check for uncommitted changes and commit them before merging
+  const isClean = await isGitStatusClean({ path: appPath });
+  if (!isClean) {
+    try {
+      const uncommittedFiles = await getGitUncommittedFiles({
+        path: appPath,
+      });
+      // Stage all changes
+      await gitAddAll({ path: appPath });
+      // Commit with a descriptive message
+      await gitCommit({
+        path: appPath,
+        message: `[dyad] Auto-commit before merging branch '${branch}': ${uncommittedFiles.length} file(s) changed`,
+      });
+      logger.log(
+        `Auto-committed ${uncommittedFiles.length} file(s) before merging branch '${branch}'`,
+      );
+    } catch (commitError: any) {
+      throw new Error(
+        `Failed to commit uncommitted changes before merge: ${commitError?.message || "Unknown error"}. ` +
+          "Please commit or stash your changes manually and try again.",
+      );
     }
+  }
 
+  try {
     await gitMerge({
       path: appPath,
       branch,
     });
-    return { success: true };
-  } catch (err: any) {
-    const errorMessage = err?.message || "Failed to merge branch.";
-    const isConflict =
-      typeof errorMessage === "string" &&
-      (errorMessage.toLowerCase().includes("conflict") ||
-        errorMessage.toLowerCase().includes("merge conflict"));
-    // Check if error is about uncommitted changes (fallback in case check above missed it)
+  } catch (mergeError: any) {
+    const errorMessage = mergeError?.message || "Failed to merge branch.";
     const lowerMessage = errorMessage.toLowerCase();
+    const isConflict =
+      lowerMessage.includes("conflict") ||
+      lowerMessage.includes("merge conflict");
+
+    // Check if error is about uncommitted changes (fallback in case check above missed it)
     if (
       (lowerMessage.includes("local changes") ||
         lowerMessage.includes("would be overwritten") ||
         lowerMessage.includes("please commit or stash")) &&
       !isConflict
     ) {
-      return {
-        success: false,
-        error:
-          `Failed to merge branch: uncommitted changes detected. ` +
+      throw new Error(
+        `Failed to merge branch: uncommitted changes detected. ` +
           "Attempting to commit automatically failed. Please commit or stash your changes manually and try again.",
-      };
+      );
     }
-    return {
-      success: false,
-      error: errorMessage,
-      isConflict,
-    };
+
+    // If it's a conflict, throw MergeConflictError
+    if (isConflict) {
+      throw new MergeConflictError(errorMessage);
+    }
+
+    // Otherwise, throw the original error
+    throw mergeError;
   }
 }
 
 async function handleListLocalBranches(
   event: IpcMainInvokeEvent,
   { appId }: { appId: number },
-) {
-  try {
-    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-    if (!app) throw new Error("App not found");
-    const appPath = getDyadAppPath(app.path);
+): Promise<{ branches: string[]; current: string | null }> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
 
-    const branches = await gitListBranches({ path: appPath });
-    const current = await gitCurrentBranch({ path: appPath });
-    return { success: true, branches, current };
-  } catch (err: any) {
-    return { success: false, error: err.message || "Failed to list branches." };
-  }
+  const branches = await gitListBranches({ path: appPath });
+  const current = await gitCurrentBranch({ path: appPath });
+  return { branches, current: current || null };
 }
 
 async function handleDisconnectGithubRepo(
@@ -1415,8 +1416,8 @@ export function registerGithubHandlers() {
   ipcMain.handle("github:resolve-conflict", handleResolveConflict);
   ipcMain.handle("github:invite-collaborator", handleInviteCollaborator);
   ipcMain.handle("github:remove-collaborator", handleRemoveCollaborator);
+  ipcMain.handle("github:complete-merge", handleCompleteMerge);
 }
-ipcMain.handle("github:complete-merge", handleCompleteMerge);
 
 async function handleGetMergeConflicts(
   event: IpcMainInvokeEvent,

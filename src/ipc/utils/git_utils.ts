@@ -896,7 +896,7 @@ export async function gitGetMergeConflicts({
   }
   //throw error("gitGetMergeConflicts requires native Git. Enable native Git in settings.");
   throw new Error(
-    "Git conflicts requires native Git. Enable native Git in settings.",
+    "Git conflict detection requires native Git. Enable native Git in settings.",
   );
 }
 

@@ -100,12 +100,8 @@ export function GithubBranchManager({
     try {
       const result =
         await IpcClient.getInstance().listLocalGithubBranches(appId);
-      if (result.success && result.branches) {
-        setBranches(result.branches);
-        setCurrentBranch(result.current || null);
-      } else {
-        showError(result.error || "Failed to list branches");
-      }
+      setBranches(result.branches);
+      setCurrentBranch(result.current || null);
     } catch (error: any) {
       showError(error.message || "Failed to load branches");
     } finally {
@@ -121,21 +117,17 @@ export function GithubBranchManager({
     if (!newBranchName.trim()) return;
     setIsCreating(true);
     try {
-      const result = await IpcClient.getInstance().createGithubBranch(
+      await IpcClient.getInstance().createGithubBranch(
         appId,
         newBranchName,
         sourceBranch || undefined,
       );
-      if (result.success) {
-        showSuccess(`Branch '${newBranchName}' created`);
-        setNewBranchName("");
-        setShowCreateDialog(false);
-        await loadBranches();
-        // Optionally switch to new branch automatically?
-        // For now, let user switch manually.
-      } else {
-        showError(result.error || "Failed to create branch");
-      }
+      showSuccess(`Branch '${newBranchName}' created`);
+      setNewBranchName("");
+      setShowCreateDialog(false);
+      await loadBranches();
+      // Optionally switch to new branch automatically?
+      // For now, let user switch manually.
     } catch (error: any) {
       showError(error.message || "Failed to create branch");
     } finally {
@@ -171,54 +163,61 @@ export function GithubBranchManager({
     setIsSwitching(true);
     try {
       const switchBranch = async () =>
-        IpcClient.getInstance().switchGithubBranch(appId, branch);
+        await IpcClient.getInstance().switchGithubBranch(appId, branch);
 
-      const initialResult = await switchBranch();
-
-      if (initialResult.success) {
+      try {
+        await switchBranch();
         showSuccess(`Switched to branch '${branch}'`);
         setCurrentBranch(branch);
         onBranchChange?.();
         return;
-      }
+      } catch (initialError: any) {
+        const errorMessage =
+          initialError?.message ||
+          "Failed to switch branch due to an unknown error";
 
-      const errorMessage =
-        initialResult.error ||
-        "Failed to switch branch due to an unknown error";
+        if (isRebaseInProgress(errorMessage)) {
+          try {
+            const abortResult =
+              await IpcClient.getInstance().abortGithubRebase(appId);
+            if (!abortResult.success) {
+              showError(
+                abortResult.error ||
+                  "Failed to abort ongoing rebase before switching branches",
+              );
+              return;
+            }
 
-      if (isRebaseInProgress(errorMessage)) {
-        const abortResult =
-          await IpcClient.getInstance().abortGithubRebase(appId);
-        if (!abortResult.success) {
-          showError(
-            abortResult.error ||
-              "Failed to abort ongoing rebase before switching branches",
-          );
-          return;
+            try {
+              await switchBranch();
+              showSuccess(
+                `Aborted ongoing rebase and switched to branch '${branch}'`,
+              );
+              setCurrentBranch(branch);
+              onBranchChange?.();
+              return;
+            } catch (retryError: any) {
+              showError(
+                retryError?.message ||
+                  "Failed to switch branch after aborting rebase. Please try again.",
+              );
+              return;
+            }
+          } catch (abortError: any) {
+            showError(
+              abortError?.message ||
+                "Failed to abort ongoing rebase before switching branches",
+            );
+            return;
+          }
         }
 
-        const retryResult = await switchBranch();
-        if (retryResult.success) {
-          showSuccess(
-            `Aborted ongoing rebase and switched to branch '${branch}'`,
-          );
-          setCurrentBranch(branch);
-          onBranchChange?.();
-          return;
-        }
-
-        showError(
-          retryResult.error ||
-            "Failed to switch branch after aborting rebase. Please try again.",
-        );
-        return;
-      }
-
-      if (isMergeInProgress(errorMessage)) {
-        // Check if there are unresolved conflicts - if so, show a more helpful message
-        try {
-          const conflictsResult =
-            await IpcClient.getInstance().getGithubMergeConflicts(appId);
+        if (isMergeInProgress(errorMessage)) {
+          // Check if there are unresolved conflicts - if so, show a more helpful message
+          // If checking fails, proceed to abort anyway
+          const conflictsResult = await IpcClient.getInstance()
+            .getGithubMergeConflicts(appId)
+            .catch(() => ({ success: false, conflicts: [] }));
           if (
             conflictsResult.success &&
             conflictsResult.conflicts &&
@@ -229,43 +228,37 @@ export function GithubBranchManager({
             );
             return;
           }
-        } catch (conflictCheckError: any) {
-          showError(
-            conflictCheckError.message ||
-              `Failed to check for conflicts before switching branches. Please complete or abort the merge manually.`,
-          );
-          // Ignore error checking conflicts, proceed with abort
+
+          // No conflicts or couldn't check - offer to abort the merge
+          try {
+            await IpcClient.getInstance().abortGithubMerge(appId);
+          } catch (abortError: any) {
+            showError(
+              abortError.message ||
+                "Failed to abort ongoing merge before switching branches. Please complete or abort the merge manually.",
+            );
+            return;
+          }
+
+          try {
+            await switchBranch();
+            showSuccess(
+              `Aborted ongoing merge and switched to branch '${branch}'`,
+            );
+            setCurrentBranch(branch);
+            onBranchChange?.();
+            return;
+          } catch (retryError: any) {
+            showError(
+              retryError?.message ||
+                "Failed to switch branch after aborting merge. Please try again.",
+            );
+            return;
+          }
         }
 
-        // No conflicts or couldn't check - offer to abort the merge
-        const abortResult =
-          await IpcClient.getInstance().abortGithubMerge(appId);
-        if (!abortResult.success) {
-          showError(
-            abortResult.error ||
-              "Failed to abort ongoing merge before switching branches. Please complete or abort the merge manually.",
-          );
-          return;
-        }
-
-        const retryResult = await switchBranch();
-        if (retryResult.success) {
-          showSuccess(
-            `Aborted ongoing merge and switched to branch '${branch}'`,
-          );
-          setCurrentBranch(branch);
-          onBranchChange?.();
-          return;
-        }
-
-        showError(
-          retryResult.error ||
-            "Failed to switch branch after aborting merge. Please try again.",
-        );
-        return;
+        throw initialError;
       }
-
-      showError(errorMessage);
     } catch (error: any) {
       showError(error.message || "Failed to switch branch");
     } finally {
@@ -278,17 +271,10 @@ export function GithubBranchManager({
 
     setIsDeleting(true);
     try {
-      const result = await IpcClient.getInstance().deleteGithubBranch(
-        appId,
-        branchToDelete,
-      );
-      if (result.success) {
-        showSuccess(`Branch '${branchToDelete}' deleted`);
-        setBranchToDelete(null);
-        await loadBranches();
-      } else {
-        showError(result.error || "Failed to delete branch");
-      }
+      await IpcClient.getInstance().deleteGithubBranch(appId, branchToDelete);
+      showSuccess(`Branch '${branchToDelete}' deleted`);
+      setBranchToDelete(null);
+      await loadBranches();
     } catch (error: any) {
       showError(error.message || "Failed to delete branch");
     } finally {
@@ -300,19 +286,15 @@ export function GithubBranchManager({
     if (!branchToRename || !renameBranchName.trim()) return;
     setIsRenaming(true);
     try {
-      const result = await IpcClient.getInstance().renameGithubBranch(
+      await IpcClient.getInstance().renameGithubBranch(
         appId,
         branchToRename,
         renameBranchName,
       );
-      if (result.success) {
-        showSuccess(`Renamed '${branchToRename}' to '${renameBranchName}'`);
-        setBranchToRename(null);
-        setRenameBranchName("");
-        await loadBranches();
-      } else {
-        showError(result.error || "Failed to rename branch");
-      }
+      showSuccess(`Renamed '${branchToRename}' to '${renameBranchName}'`);
+      setBranchToRename(null);
+      setRenameBranchName("");
+      await loadBranches();
     } catch (error: any) {
       showError(error.message || "Failed to rename branch");
     } finally {
@@ -324,55 +306,46 @@ export function GithubBranchManager({
     if (!branchToMerge) return;
     setIsMerging(true);
     try {
-      const result = await IpcClient.getInstance().mergeGithubBranch(
-        appId,
-        branchToMerge,
-      );
-      const msg = (result.error || "").toLowerCase();
-      const isConflict =
-        result.isConflict ||
-        msg.includes("conflict") ||
-        msg.includes("merge conflict");
-      if (result.success) {
-        showSuccess(`Merged '${branchToMerge}' into '${currentBranch}'`);
-        setBranchToMerge(null);
-        await loadBranches(); // Refresh to see any status changes if we implement them
-      } else {
-        if (!isConflict) {
-          showError(result.error || "Failed to merge branch");
-        } else {
-          showInfo("Merge conflict detected. Please resolve below.");
-        }
-        // Show conflicts dialog
-        if (isConflict) {
-          try {
-            const conflictsResult =
-              await IpcClient.getInstance().getGithubMergeConflicts(appId);
-
-            if (
-              conflictsResult.success &&
-              conflictsResult.conflicts &&
-              conflictsResult.conflicts.length > 0
-            ) {
-              setConflicts(conflictsResult.conflicts);
-              return;
-            }
-            setConflicts([]);
-            showError(
-              conflictsResult.error ||
-                "Merge conflict detected, but no conflicting files were returned. Please check git status and try again.",
-            );
-          } catch (error: any) {
-            setConflicts([]);
-            showError(
-              error.message ||
-                "Merge conflict detected, but failed to fetch conflicting files. Please try again.",
-            );
-          }
-        }
-      }
+      await IpcClient.getInstance().mergeGithubBranch(appId, branchToMerge);
+      showSuccess(`Merged '${branchToMerge}' into '${currentBranch}'`);
+      setBranchToMerge(null);
+      await loadBranches(); // Refresh to see any status changes if we implement them
     } catch (error: any) {
-      showError(error.message || "Failed to merge branch");
+      // Check if it's a merge conflict error
+      const isConflict =
+        error?.name === "MergeConflictError" ||
+        error?.message?.toLowerCase().includes("conflict");
+
+      if (isConflict) {
+        showInfo("Merge conflict detected. Please resolve below.");
+        // Show conflicts dialog
+        try {
+          const conflictsResult =
+            await IpcClient.getInstance().getGithubMergeConflicts(appId);
+
+          if (
+            conflictsResult.success &&
+            conflictsResult.conflicts &&
+            conflictsResult.conflicts.length > 0
+          ) {
+            setConflicts(conflictsResult.conflicts);
+            return;
+          }
+          setConflicts([]);
+          showError(
+            conflictsResult.error ||
+              "Merge conflict detected, but no conflicting files were returned. Please check git status and try again.",
+          );
+        } catch (fetchError: any) {
+          setConflicts([]);
+          showError(
+            fetchError.message ||
+              "Merge conflict detected, but failed to fetch conflicting files. Please try again.",
+          );
+        }
+      } else {
+        showError(error.message || "Failed to merge branch");
+      }
     } finally {
       setIsMerging(false);
     }
@@ -603,6 +576,8 @@ export function GithubBranchManager({
           appId={appId}
           conflicts={conflicts}
           onResolve={async () => {
+            // Clear conflicts immediately to close the dialog
+            // All conflicts have been resolved at this point
             setConflicts([]);
             try {
               const result =

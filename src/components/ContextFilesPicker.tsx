@@ -117,21 +117,12 @@ export function ContextFilesPicker() {
 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <PopoverTrigger asChild>
-            <Button
-              variant="ghost"
-              className="has-[>svg]:px-2"
-              size="sm"
-              data-testid="codebase-context-button"
-            >
-              <Settings2 className="size-4" />
-            </Button>
-          </PopoverTrigger>
-        </TooltipTrigger>
-        <TooltipContent>Codebase Context</TooltipContent>
-      </Tooltip>
+      <PopoverTrigger asChild>
+        <div className="flex items-center py-2 px-3 hover:bg-accent hover:text-accent-foreground rounded-sm cursor-pointer text-sm">
+          <Settings2 className="size-4 mr-2" />
+          Codebase context
+        </div>
+      </PopoverTrigger>
 
       <PopoverContent
         className="w-96 max-h-[80vh] overflow-y-auto"

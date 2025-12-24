@@ -159,10 +159,7 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
           message.approvalState ? (
             <div
               className={`mt-2 flex items-center ${
-                message.role === "assistant" &&
-                message.content &&
-                !isStreaming &&
-                message.approvalState
+                message.role === "assistant" && message.content && !isStreaming
                   ? "justify-between"
                   : ""
               } text-xs`}
@@ -192,9 +189,9 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
                     </Tooltip>
                   </TooltipProvider>
                 )}
-              <div className="flex">
+              <div className="flex flex-wrap gap-2">
                 {message.approvalState && (
-                  <div className="flex items-center space-x-1 mr-2">
+                  <div className="flex items-center space-x-1">
                     {message.approvalState === "approved" ? (
                       <>
                         <CheckCircle className="h-4 w-4 text-green-500" />
@@ -209,8 +206,8 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
                   </div>
                 )}
                 {message.role === "assistant" && message.model && (
-                  <div className="flex items-center space-x-1 text-gray-500 dark:text-gray-400">
-                    <Bot className="h-4 w-4" />
+                  <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400 w-full sm:w-auto">
+                    <Bot className="h-4 w-4 flex-shrink-0" />
                     <span>{message.model}</span>
                   </div>
                 )}

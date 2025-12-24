@@ -78,6 +78,8 @@ import { LexicalChatInput } from "./LexicalChatInput";
 import { useChatModeToggle } from "@/hooks/useChatModeToggle";
 import { VisualEditingChangesDialog } from "@/components/preview_panel/VisualEditingChangesDialog";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
+import { useQueryClient } from "@tanstack/react-query";
+import { TOKEN_COUNT_QUERY_KEY } from "@/hooks/useCountTokens";
 
 const showTokenBarAtom = atom(false);
 
@@ -96,10 +98,11 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const [showTokenBar, setShowTokenBar] = useAtom(showTokenBarAtom);
-  const toggleShowTokenBar = useCallback(
-    () => setShowTokenBar((prev) => !prev),
-    [setShowTokenBar],
-  );
+  const queryClient = useQueryClient();
+  const toggleShowTokenBar = useCallback(() => {
+    setShowTokenBar((prev) => !prev);
+    queryClient.invalidateQueries({ queryKey: TOKEN_COUNT_QUERY_KEY });
+  }, [setShowTokenBar]);
   const [selectedComponents, setSelectedComponents] = useAtom(
     selectedComponentsPreviewAtom,
   );

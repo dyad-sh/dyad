@@ -305,7 +305,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       )}
       {proposalError && (
         <div className="p-4 text-sm text-red-600">
-          Error loading proposal: {proposalError}
+          Error loading proposal: {proposalError.message}
         </div>
       )}
       <div className="p-4" data-testid="chat-input-container">

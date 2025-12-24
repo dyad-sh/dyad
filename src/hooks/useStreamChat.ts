@@ -141,7 +141,7 @@ export function useStreamChat({
                 posthog,
               });
             }
-            refreshProposal(chatId);
+            refreshProposal();
 
             refetchUserBudget();
 

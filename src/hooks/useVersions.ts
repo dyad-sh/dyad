@@ -29,7 +29,7 @@ export function useVersions(appId: number | null) {
       return ipcClient.listVersions({ appId });
     },
     enabled: appId !== null,
-    initialData: [],
+    placeholderData: [],
     meta: { showErrorToast: true },
   });
 

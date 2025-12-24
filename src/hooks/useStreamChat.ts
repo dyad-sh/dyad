@@ -43,7 +43,7 @@ export function useStreamChat({
   const setErrorById = useSetAtom(chatErrorByIdAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const [selectedAppId] = useAtom(selectedAppIdAtom);
-  const { refreshChats } = useChats(selectedAppId);
+  const { invalidateChats } = useChats(selectedAppId);
   const { refreshApp } = useLoadApp(selectedAppId);
 
   const setStreamCountById = useSetAtom(chatStreamCountByIdAtom);
@@ -152,7 +152,7 @@ export function useStreamChat({
               next.set(chatId, false);
               return next;
             });
-            refreshChats();
+            invalidateChats();
             refreshApp();
             refreshVersions();
             invalidateTokenCount();
@@ -172,7 +172,7 @@ export function useStreamChat({
               next.set(chatId, false);
               return next;
             });
-            refreshChats();
+            invalidateChats();
             refreshApp();
             refreshVersions();
             invalidateTokenCount();

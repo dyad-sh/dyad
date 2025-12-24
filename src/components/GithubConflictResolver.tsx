@@ -48,9 +48,11 @@ export function GithubConflictResolver({
   const [latestContent, setLatestContent] = useState<string | null>(null);
   const currentFile = conflicts[currentConflictIndex];
   const isMountedRef = useRef(true);
+  const currentFileRef = useRef(currentFile);
 
   useEffect(() => {
     isMountedRef.current = true;
+    currentFileRef.current = currentFile;
 
     // run per file/app change
     loadFileContent();
@@ -58,7 +60,8 @@ export function GithubConflictResolver({
 
     // cleanup runs on every dependency change (currentFile/appId) and on unmount
     // Note: isMountedRef only guards against component unmount, not file switches.
-    // File switching is protected by the closure variable (fileForThisRequest) in handleAiResolve.
+    // File switching is protected by comparing fileForThisRequest against currentFileRef.current
+    // in handleAiResolve callbacks.
     return () => {
       isMountedRef.current = false;
     };
@@ -149,7 +152,11 @@ ${extractConflictSnippet(fileContent)}`,
           attachments: [attachment],
           onUpdate: (messages) => {
             // Check both mount status and that we're still on the same file
-            if (!isMountedRef.current || fileForThisRequest !== currentFile) {
+            // Use currentFileRef.current to get the current value, not the closure value
+            if (
+              !isMountedRef.current ||
+              fileForThisRequest !== currentFileRef.current
+            ) {
               return;
             }
             const lastAssistant = [...messages]
@@ -164,7 +171,11 @@ ${extractConflictSnippet(fileContent)}`,
           },
           onEnd: () => {
             // Check both mount status and that we're still on the same file
-            if (!isMountedRef.current || fileForThisRequest !== currentFile) {
+            // Use currentFileRef.current to get the current value, not the closure value
+            if (
+              !isMountedRef.current ||
+              fileForThisRequest !== currentFileRef.current
+            ) {
               return;
             }
             showSuccess("AI suggested a resolution");
@@ -173,7 +184,11 @@ ${extractConflictSnippet(fileContent)}`,
           },
           onError: (error) => {
             // Check both mount status and that we're still on the same file
-            if (!isMountedRef.current || fileForThisRequest !== currentFile) {
+            // Use currentFileRef.current to get the current value, not the closure value
+            if (
+              !isMountedRef.current ||
+              fileForThisRequest !== currentFileRef.current
+            ) {
               return;
             }
             showError(error || "Failed to resolve with AI");

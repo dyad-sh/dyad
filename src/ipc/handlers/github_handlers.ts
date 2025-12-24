@@ -169,7 +169,7 @@ async function prepareLocalBranch({
     ) {
       throw new Error(
         `Failed to prepare local branch: uncommitted changes detected. ` +
-          "Attempting to commit automatically failed. Please commit or stash your changes manually and try again.",
+          "Unable to automatically handle uncommitted changes. Please commit or stash your changes manually and try again.",
       );
     }
     throw new Error(errorMessage);

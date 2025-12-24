@@ -46,6 +46,7 @@ export function AppUpgrades({ appId }: { appId: number | null }) {
         // query to show the new status.
         queryClient.invalidateQueries({ queryKey: ["is-capacitor", appId] });
       }
+      queryClient.invalidateQueries({ queryKey: ["versions", appId] });
     },
   });
 

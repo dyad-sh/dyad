@@ -20,14 +20,14 @@ interface AuxiliaryActionsMenuProps {
   ) => void;
   disabled?: boolean;
   showTokenBar: boolean;
-  setShowTokenBar: (show: boolean) => void;
+  toggleShowTokenBar: () => void;
 }
 
 export function AuxiliaryActionsMenu({
   onFileSelect,
   disabled,
   showTokenBar,
-  setShowTokenBar,
+  toggleShowTokenBar,
 }: AuxiliaryActionsMenuProps) {
   return (
     <DropdownMenu>
@@ -64,7 +64,7 @@ export function AuxiliaryActionsMenu({
 
         {/* Toggle Token Usage */}
         <DropdownMenuItem
-          onClick={() => setShowTokenBar(!showTokenBar)}
+          onClick={toggleShowTokenBar}
           className={`py-2 px-3 group ${showTokenBar ? "bg-primary/10 text-primary" : ""}`}
         >
           <ChartColumnIncreasing

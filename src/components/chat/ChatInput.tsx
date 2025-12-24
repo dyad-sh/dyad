@@ -475,7 +475,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               onFileSelect={handleFileSelect}
               disabled={isStreaming}
               showTokenBar={showTokenBar}
-              setShowTokenBar={setShowTokenBar}
+              toggleShowTokenBar={toggleShowTokenBar}
             />
           </div>
           {/* TokenBar is only displayed when showTokenBar is true */}

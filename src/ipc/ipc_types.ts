@@ -80,6 +80,7 @@ export interface Message {
   content: string;
   approvalState?: "approved" | "rejected" | null;
   commitHash?: string | null;
+  sourceCommitHash?: string | null;
   dbTimestamp?: string | null;
   createdAt?: Date | string;
   requestId?: string | null;
@@ -107,6 +108,7 @@ export interface App {
   supabaseProjectId: string | null;
   supabaseParentProjectId: string | null;
   supabaseProjectName: string | null;
+  supabaseOrganizationSlug: string | null;
   neonProjectId: string | null;
   neonDevelopmentBranchId: string | null;
   neonPreviewBranchId: string | null;
@@ -441,6 +443,10 @@ export interface GetNeonProjectResponse {
 export interface RevertVersionParams {
   appId: number;
   previousVersionId: string;
+  currentChatMessageId?: {
+    chatId: number;
+    messageId: number;
+  };
 }
 
 export type RevertVersionResponse =
@@ -537,10 +543,34 @@ export interface SupabaseBranch {
   parentProjectRef: string;
 }
 
+/**
+ * Supabase organization info for display (without secrets).
+ */
+export interface SupabaseOrganizationInfo {
+  organizationSlug: string;
+  name?: string;
+  ownerEmail?: string;
+}
+
+/**
+ * Supabase project info.
+ */
+export interface SupabaseProject {
+  id: string;
+  name: string;
+  region?: string;
+  organizationSlug: string;
+}
+
 export interface SetSupabaseAppProjectParams {
   projectId: string;
   parentProjectId?: string;
   appId: number;
+  organizationSlug: string | null;
+}
+
+export interface DeleteSupabaseOrganizationParams {
+  organizationSlug: string;
 }
 
 // Supabase Logs

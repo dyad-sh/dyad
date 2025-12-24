@@ -8,6 +8,7 @@ import {
 } from "@dyad-sh/supabase-management-js";
 import log from "electron-log";
 import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
+import type { SupabaseOrganizationCredentials } from "../lib/schemas";
 
 const fsPromises = fs.promises;
 
@@ -55,6 +56,25 @@ export interface DeployedFunctionResponse {
   entrypoint_path?: string;
   import_map_path?: string;
   ezbr_sha256?: string;
+}
+
+export interface SupabaseProjectLog {
+  timestamp: number;
+  event_message: string;
+  metadata: any;
+}
+
+export interface SupabaseProjectLogsResponse {
+  result: SupabaseProjectLog[];
+  error?: any;
+}
+
+export interface SupabaseProjectBranch {
+  id: string;
+  name: string;
+  is_default: boolean;
+  project_ref: string;
+  parent_project_ref: string;
 }
 
 // Caches for shared files to avoid re-reading unchanged files
@@ -139,7 +159,15 @@ export async function refreshSupabaseToken(): Promise<void> {
 }
 
 // Function to get the Supabase Management API client
-export async function getSupabaseClient(): Promise<SupabaseManagementAPI> {
+export async function getSupabaseClient({
+  organizationSlug,
+}: { organizationSlug?: string | null } = {}): Promise<SupabaseManagementAPI> {
+  // If organizationSlug provided, use organization-specific credentials
+  if (organizationSlug) {
+    return getSupabaseClientForOrganization(organizationSlug);
+  }
+
+  // Otherwise fall back to legacy single-account credentials
   const settings = readSettings();
 
   // Check if Supabase token exists in settings
@@ -173,14 +201,301 @@ export async function getSupabaseClient(): Promise<SupabaseManagementAPI> {
   });
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// Multi-organization support
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Checks if an organization's token is expired or about to expire.
+ */
+function isOrganizationTokenExpired(
+  org: SupabaseOrganizationCredentials,
+): boolean {
+  if (!org.expiresIn || !org.tokenTimestamp) return true;
+
+  const currentTime = Math.floor(Date.now() / 1000);
+  // Check if the token is expired or about to expire (within 5 minutes)
+  return currentTime >= org.tokenTimestamp + org.expiresIn - 300;
+}
+
+/**
+ * Refreshes the Supabase access token for a specific organization.
+ */
+async function refreshSupabaseTokenForOrganization(
+  organizationSlug: string,
+): Promise<void> {
+  const settings = readSettings();
+  const org = settings.supabase?.organizations?.[organizationSlug];
+
+  if (!org) {
+    throw new Error(
+      `Supabase organization ${organizationSlug} not found. Please authenticate first.`,
+    );
+  }
+
+  if (!isOrganizationTokenExpired(org)) {
+    return;
+  }
+
+  const refreshToken = org.refreshToken?.value;
+  if (!refreshToken) {
+    throw new Error(
+      "Supabase refresh token not found. Please authenticate first.",
+    );
+  }
+
+  try {
+    const response = await fetch(
+      "https://supabase-oauth.dyad.sh/api/connect-supabase/refresh",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ refreshToken }),
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `Supabase token refresh failed. Try going to Settings to disconnect Supabase and then reconnect. Error status: ${response.statusText}`,
+      );
+    }
+
+    const {
+      accessToken,
+      refreshToken: newRefreshToken,
+      expiresIn,
+    } = await response.json();
+
+    // Update the specific organization in settings
+    const existingOrgs = settings.supabase?.organizations ?? {};
+    writeSettings({
+      supabase: {
+        ...settings.supabase,
+        organizations: {
+          ...existingOrgs,
+          [organizationSlug]: {
+            ...org,
+            accessToken: {
+              value: accessToken,
+            },
+            refreshToken: {
+              value: newRefreshToken,
+            },
+            expiresIn,
+            tokenTimestamp: Math.floor(Date.now() / 1000),
+          },
+        },
+      },
+    });
+  } catch (error) {
+    logger.error(
+      `Error refreshing Supabase token for organization ${organizationSlug}:`,
+      error,
+    );
+    throw error;
+  }
+}
+
+/**
+ * Gets a Supabase Management API client for a specific organization.
+ */
+export async function getSupabaseClientForOrganization(
+  organizationSlug: string,
+): Promise<SupabaseManagementAPI> {
+  const settings = readSettings();
+  const org = settings.supabase?.organizations?.[organizationSlug];
+
+  if (!org) {
+    throw new Error(
+      `Supabase organization ${organizationSlug} not found. Please authenticate first.`,
+    );
+  }
+
+  const accessToken = org.accessToken?.value;
+  if (!accessToken) {
+    throw new Error(
+      `Supabase access token not found for organization ${organizationSlug}. Please authenticate first.`,
+    );
+  }
+
+  // Check if token needs refreshing
+  if (isOrganizationTokenExpired(org)) {
+    await withLock(`refresh-supabase-token-${organizationSlug}`, () =>
+      refreshSupabaseTokenForOrganization(organizationSlug),
+    );
+    // Get updated settings after refresh
+    const updatedSettings = readSettings();
+    const updatedOrg =
+      updatedSettings.supabase?.organizations?.[organizationSlug];
+    const newAccessToken = updatedOrg?.accessToken?.value;
+
+    if (!newAccessToken) {
+      throw new Error(
+        `Failed to refresh Supabase access token for organization ${organizationSlug}`,
+      );
+    }
+
+    return new SupabaseManagementAPI({
+      accessToken: newAccessToken,
+    });
+  }
+
+  return new SupabaseManagementAPI({
+    accessToken,
+  });
+}
+
+/**
+ * Lists organizations for a given access token.
+ */
+export async function listSupabaseOrganizations(
+  accessToken: string,
+): Promise<SupabaseOrganizationDetails[]> {
+  const response = await fetch("https://api.supabase.com/v1/organizations", {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (response.status !== 200) {
+    const errorText = await response.text();
+    logger.error(
+      `Failed to fetch organizations (${response.status}): ${errorText}`,
+    );
+    throw new Error(`Failed to fetch organizations: ${response.statusText}`);
+  }
+
+  const organizations: SupabaseOrganizationDetails[] = await response.json();
+  return organizations;
+}
+
+export interface SupabaseOrganizationMember {
+  userId: string;
+  email: string;
+  role: string; // "Owner" | "Member" | etc.
+  username?: string;
+}
+
+interface SupabaseRawMember {
+  user_id: string;
+  primary_email?: string;
+  email: string;
+  role_name: string;
+  username?: string;
+}
+
+/**
+ * Gets members of a Supabase organization.
+ */
+export async function getOrganizationMembers(
+  organizationSlug: string,
+): Promise<SupabaseOrganizationMember[]> {
+  if (IS_TEST_BUILD) {
+    return [
+      {
+        userId: "fake-user-id",
+        email: "owner@example.com",
+        role: "Owner",
+        username: "owner",
+      },
+    ];
+  }
+
+  const client = await getSupabaseClientForOrganization(organizationSlug);
+  const accessToken = (client as any).options.accessToken;
+
+  const response = await fetch(
+    `https://api.supabase.com/v1/organizations/${organizationSlug}/members`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+
+  if (response.status !== 200) {
+    const errorText = await response.text();
+    logger.error(
+      `Failed to fetch organization members (${response.status}): ${errorText}`,
+    );
+    throw new Error(
+      `Failed to fetch organization members: ${response.statusText}`,
+    );
+  }
+
+  const members: SupabaseRawMember[] = await response.json();
+  return members.map((m) => ({
+    userId: m.user_id,
+    email: m.primary_email || m.email,
+    role: m.role_name,
+    username: m.username,
+  }));
+}
+
+export interface SupabaseOrganizationDetails {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+/**
+ * Gets details about a Supabase organization.
+ */
+export async function getOrganizationDetails(
+  organizationSlug: string,
+): Promise<SupabaseOrganizationDetails> {
+  if (IS_TEST_BUILD) {
+    return {
+      id: organizationSlug,
+      name: "Fake Organization",
+      slug: "fake-org",
+    };
+  }
+
+  const client = await getSupabaseClientForOrganization(organizationSlug);
+  const accessToken = (client as any).options.accessToken;
+
+  const response = await fetch(
+    `https://api.supabase.com/v1/organizations/${organizationSlug}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+
+  if (response.status !== 200) {
+    const errorText = await response.text();
+    logger.error(
+      `Failed to fetch organization details (${response.status}): ${errorText}`,
+    );
+    throw new Error(
+      `Failed to fetch organization details: ${response.statusText}`,
+    );
+  }
+
+  const org = await response.json();
+  return {
+    id: org.id,
+    name: org.name,
+    slug: org.slug,
+  };
+}
+
 export async function getSupabaseProjectName(
   projectId: string,
+  organizationSlug?: string,
 ): Promise<string> {
   if (IS_TEST_BUILD) {
     return "Fake Supabase Project";
   }
 
-  const supabase = await getSupabaseClient();
+  const supabase = await getSupabaseClient({ organizationSlug });
   const projects = await supabase.getProjects();
   const project = projects?.find((p) => p.id === projectId);
   return project?.name || `<project not found for: ${projectId}>`;
@@ -189,8 +504,9 @@ export async function getSupabaseProjectName(
 export async function getSupabaseProjectLogs(
   projectId: string,
   timestampStart?: number,
-): Promise<any> {
-  const supabase = await getSupabaseClient();
+  organizationSlug?: string,
+): Promise<SupabaseProjectLogsResponse> {
+  const supabase = await getSupabaseClient({ organizationSlug });
 
   // Build SQL query with optional timestamp filter
   let sqlQuery = `
@@ -238,7 +554,7 @@ LIMIT 1000`;
     );
   }
 
-  const jsonResponse = await response.json();
+  const jsonResponse: SupabaseProjectLogsResponse = await response.json();
   logger.info(`Received ${jsonResponse.result?.length || 0} logs`);
 
   return jsonResponse;
@@ -247,15 +563,17 @@ LIMIT 1000`;
 export async function executeSupabaseSql({
   supabaseProjectId,
   query,
+  organizationSlug,
 }: {
   supabaseProjectId: string;
   query: string;
+  organizationSlug: string | null;
 }): Promise<string> {
   if (IS_TEST_BUILD) {
     return "{}";
   }
 
-  const supabase = await getSupabaseClient();
+  const supabase = await getSupabaseClient({ organizationSlug });
   const result = await supabase.runQuery(supabaseProjectId, query);
   return JSON.stringify(result);
 }
@@ -263,14 +581,16 @@ export async function executeSupabaseSql({
 export async function deleteSupabaseFunction({
   supabaseProjectId,
   functionName,
+  organizationSlug,
 }: {
   supabaseProjectId: string;
   functionName: string;
+  organizationSlug: string | null;
 }): Promise<void> {
   logger.info(
     `Deleting Supabase function: ${functionName} from project: ${supabaseProjectId}`,
   );
-  const supabase = await getSupabaseClient();
+  const supabase = await getSupabaseClient({ organizationSlug });
   await supabase.deleteFunction(supabaseProjectId, functionName);
   logger.info(
     `Deleted Supabase function: ${functionName} from project: ${supabaseProjectId}`,
@@ -279,17 +599,11 @@ export async function deleteSupabaseFunction({
 
 export async function listSupabaseBranches({
   supabaseProjectId,
+  organizationSlug,
 }: {
   supabaseProjectId: string;
-}): Promise<
-  Array<{
-    id: string;
-    name: string;
-    is_default: boolean;
-    project_ref: string;
-    parent_project_ref: string;
-  }>
-> {
+  organizationSlug: string | null;
+}): Promise<SupabaseProjectBranch[]> {
   if (IS_TEST_BUILD) {
     return [
       {
@@ -311,7 +625,7 @@ export async function listSupabaseBranches({
   }
 
   logger.info(`Listing Supabase branches for project: ${supabaseProjectId}`);
-  const supabase = await getSupabaseClient();
+  const supabase = await getSupabaseClient({ organizationSlug });
 
   const response = await fetch(
     `https://api.supabase.com/v1/projects/${supabaseProjectId}/branches`,
@@ -328,7 +642,7 @@ export async function listSupabaseBranches({
   }
 
   logger.info(`Listed Supabase branches for project: ${supabaseProjectId}`);
-  const jsonResponse = await response.json();
+  const jsonResponse: SupabaseProjectBranch[] = await response.json();
   return jsonResponse;
 }
 
@@ -341,11 +655,13 @@ export async function deploySupabaseFunction({
   functionName,
   appPath,
   bundleOnly = false,
+  organizationSlug,
 }: {
   supabaseProjectId: string;
   functionName: string;
   appPath: string;
   bundleOnly?: boolean;
+  organizationSlug: string | null;
 }): Promise<DeployedFunctionResponse> {
   logger.info(
     `Deploying Supabase function: ${functionName} to project: ${supabaseProjectId}`,
@@ -387,7 +703,7 @@ export async function deploySupabaseFunction({
   });
 
   // 5) Prepare multipart form-data
-  const supabase = await getSupabaseClient();
+  const supabase = await getSupabaseClient({ organizationSlug });
   const formData = new FormData();
 
   // Metadata: instruct Supabase to use our import map
@@ -437,15 +753,17 @@ export async function deploySupabaseFunction({
 export async function bulkUpdateFunctions({
   supabaseProjectId,
   functions,
+  organizationSlug,
 }: {
   supabaseProjectId: string;
   functions: DeployedFunctionResponse[];
+  organizationSlug: string | null;
 }): Promise<void> {
   logger.info(
     `Bulk updating ${functions.length} functions for project: ${supabaseProjectId}`,
   );
 
-  const supabase = await getSupabaseClient();
+  const supabase = await getSupabaseClient({ organizationSlug });
 
   const response = await fetch(
     `https://api.supabase.com/v1/projects/${encodeURIComponent(supabaseProjectId)}/functions`,

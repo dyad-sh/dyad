@@ -33,6 +33,7 @@ declare module "@tanstack/react-query" {
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
+      staleTime: 60_000,
       retry: false,
     },
     mutations: {

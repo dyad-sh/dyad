@@ -113,22 +113,23 @@ export function PreviewPanel() {
   // Load edge logs if app has Supabase project configured
   useEffect(() => {
     const projectId = app?.supabaseProjectId;
+    const organizationSlug = app?.supabaseOrganizationSlug ?? undefined;
     if (!projectId) return;
 
     // Load logs immediately
-    loadEdgeLogs(projectId).catch((error) => {
+    loadEdgeLogs({ projectId, organizationSlug }).catch((error) => {
       console.error("Failed to load edge logs:", error);
     });
 
     // Poll for new logs every 5 seconds
     const intervalId = setInterval(() => {
-      loadEdgeLogs(projectId).catch((error) => {
+      loadEdgeLogs({ projectId, organizationSlug }).catch((error) => {
         console.error("Failed to load edge logs:", error);
       });
     }, 5000);
 
     return () => clearInterval(intervalId);
-  }, [app?.supabaseProjectId, loadEdgeLogs]);
+  }, [app?.supabaseProjectId, app?.supabaseOrganizationSlug, loadEdgeLogs]);
 
   return (
     <div className="flex flex-col h-full">

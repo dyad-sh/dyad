@@ -73,6 +73,7 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
               await deleteSupabaseFunction({
                 supabaseProjectId: ctx.supabaseProjectId,
                 functionName: getFunctionNameFromPath(args.from),
+                organizationSlug: ctx.supabaseOrganizationSlug ?? null,
               });
             } catch (error) {
               logger.warn(
@@ -87,6 +88,7 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
                 supabaseProjectId: ctx.supabaseProjectId,
                 functionName: getFunctionNameFromPath(args.to),
                 appPath: ctx.appPath,
+                organizationSlug: ctx.supabaseOrganizationSlug ?? null,
               });
             } catch (error) {
               return `File renamed, but failed to deploy Supabase function: ${error}`;

@@ -1,1 +1,1 @@
-ALTER TABLE `apps` ADD `supabase_organization_id` text;
+ALTER TABLE `apps` ADD `supabase_organization_slug` text;

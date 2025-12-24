@@ -81,11 +81,11 @@ export function extractFunctionNameFromPath(filePath: string): string {
 export async function deployAllSupabaseFunctions({
   appPath,
   supabaseProjectId,
-  supabaseOrganizationId,
+  supabaseOrganizationSlug,
 }: {
   appPath: string;
   supabaseProjectId: string;
-  supabaseOrganizationId: string | null;
+  supabaseOrganizationSlug: string | null;
 }): Promise<string[]> {
   const functionsDir = path.join(appPath, "supabase", "functions");
 
@@ -141,7 +141,7 @@ export async function deployAllSupabaseFunctions({
         logger.info(`Bundling function: ${functionName}`);
         const result = await deploySupabaseFunction({
           supabaseProjectId,
-          organizationId: supabaseOrganizationId,
+          organizationSlug: supabaseOrganizationSlug,
           functionName,
           appPath,
           bundleOnly: true,
@@ -175,7 +175,7 @@ export async function deployAllSupabaseFunctions({
         await bulkUpdateFunctions({
           supabaseProjectId,
           functions: successfulDeploys,
-          organizationId: supabaseOrganizationId,
+          organizationSlug: supabaseOrganizationSlug,
         });
         logger.info(
           `Successfully activated ${successfulDeploys.length} functions`,

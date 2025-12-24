@@ -107,7 +107,7 @@ export interface App {
   supabaseProjectId: string | null;
   supabaseParentProjectId: string | null;
   supabaseProjectName: string | null;
-  supabaseOrganizationId: string | null;
+  supabaseOrganizationSlug: string | null;
   neonProjectId: string | null;
   neonDevelopmentBranchId: string | null;
   neonPreviewBranchId: string | null;
@@ -542,7 +542,7 @@ export interface SupabaseBranch {
  * Supabase organization info for display (without secrets).
  */
 export interface SupabaseOrganizationInfo {
-  organizationId: string;
+  organizationSlug: string;
   name?: string;
   ownerEmail?: string;
 }
@@ -554,18 +554,18 @@ export interface SupabaseProject {
   id: string;
   name: string;
   region?: string;
-  organizationId: string;
+  organizationSlug: string;
 }
 
 export interface SetSupabaseAppProjectParams {
   projectId: string;
   parentProjectId?: string;
   appId: number;
-  organizationId: string | null;
+  organizationSlug: string | null;
 }
 
 export interface DeleteSupabaseOrganizationParams {
-  organizationId: string;
+  organizationSlug: string;
 }
 
 // Supabase Logs

@@ -29,7 +29,7 @@ export const getDatabaseSchemaTool: ToolDefinition<
 
     const schema = await getSupabaseContext({
       supabaseProjectId: ctx.supabaseProjectId,
-      organizationId: ctx.supabaseOrganizationId ?? null,
+      organizationSlug: ctx.supabaseOrganizationSlug ?? null,
     });
 
     return schema || "";

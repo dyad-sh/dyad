@@ -322,7 +322,7 @@ export function registerVersionHandlers() {
             const deployErrors = await deployAllSupabaseFunctions({
               appPath,
               supabaseProjectId: app.supabaseProjectId,
-              supabaseOrganizationId: app.supabaseOrganizationId ?? null,
+              supabaseOrganizationSlug: app.supabaseOrganizationSlug ?? null,
             });
 
             if (deployErrors.length > 0) {

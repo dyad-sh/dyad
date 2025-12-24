@@ -79,8 +79,8 @@
           "notNull": false,
           "autoincrement": false
         },
-        "supabase_organization_id": {
-          "name": "supabase_organization_id",
+        "supabase_organization_slug": {
+          "name": "supabase_organization_slug",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

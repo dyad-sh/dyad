@@ -713,7 +713,7 @@ async function handleCloneRepoFromUrl(
         ...newApp,
         files: [],
         supabaseProjectName: null,
-        supabaseOrganizationId: null,
+        supabaseOrganizationSlug: null,
         vercelTeamSlug: null,
       },
       hasAiRules,

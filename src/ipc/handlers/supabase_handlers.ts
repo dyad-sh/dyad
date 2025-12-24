@@ -41,29 +41,29 @@ export function registerSupabaseHandlers() {
 
       const results: SupabaseOrganizationInfo[] = [];
 
-      for (const organizationId of Object.keys(organizations)) {
+      for (const organizationSlug of Object.keys(organizations)) {
         try {
           // Fetch organization details and members in parallel
           const [details, members] = await Promise.all([
-            getOrganizationDetails(organizationId),
-            getOrganizationMembers(organizationId),
+            getOrganizationDetails(organizationSlug),
+            getOrganizationMembers(organizationSlug),
           ]);
 
           // Find the owner from members
           const owner = members.find((m) => m.role === "Owner");
 
           results.push({
-            organizationId,
+            organizationSlug,
             name: details.name,
             ownerEmail: owner?.email,
           });
         } catch (error) {
           // If we can't fetch details, still include the org with just the ID
           logger.error(
-            `Failed to fetch details for organization ${organizationId}:`,
+            `Failed to fetch details for organization ${organizationSlug}:`,
             error,
           );
-          results.push({ organizationId });
+          results.push({ organizationSlug });
         }
       }
 
@@ -74,15 +74,15 @@ export function registerSupabaseHandlers() {
   // Delete a Supabase organization connection
   handle(
     "supabase:delete-organization",
-    async (_, { organizationId }: DeleteSupabaseOrganizationParams) => {
+    async (_, { organizationSlug }: DeleteSupabaseOrganizationParams) => {
       const settings = readSettings();
       const organizations = { ...settings.supabase?.organizations };
 
-      if (!organizations[organizationId]) {
-        throw new Error(`Supabase organization ${organizationId} not found`);
+      if (!organizations[organizationSlug]) {
+        throw new Error(`Supabase organization ${organizationSlug} not found`);
       }
 
-      delete organizations[organizationId];
+      delete organizations[organizationSlug];
 
       writeSettings({
         supabase: {
@@ -91,7 +91,7 @@ export function registerSupabaseHandlers() {
         },
       });
 
-      logger.info(`Deleted Supabase organization ${organizationId}`);
+      logger.info(`Deleted Supabase organization ${organizationSlug}`);
     },
   );
 
@@ -101,9 +101,9 @@ export function registerSupabaseHandlers() {
     const organizations = settings.supabase?.organizations ?? {};
     const allProjects: SupabaseProject[] = [];
 
-    for (const organizationId of Object.keys(organizations)) {
+    for (const organizationSlug of Object.keys(organizations)) {
       try {
-        const client = await getSupabaseClientForOrganization(organizationId);
+        const client = await getSupabaseClientForOrganization(organizationSlug);
         const projects = await client.getProjects();
 
         if (projects) {
@@ -112,13 +112,13 @@ export function registerSupabaseHandlers() {
               id: project.id,
               name: project.name,
               region: project.region,
-              organizationId: project.organization_id,
+              organizationSlug: project.organization_slug,
             });
           }
         }
       } catch (error) {
         logger.error(
-          `Failed to fetch projects for organization ${organizationId}:`,
+          `Failed to fetch projects for organization ${organizationSlug}:`,
           error,
         );
         // Continue with other organizations even if one fails
@@ -135,12 +135,12 @@ export function registerSupabaseHandlers() {
       _,
       {
         projectId,
-        organizationId,
-      }: { projectId: string; organizationId?: string },
+        organizationSlug,
+      }: { projectId: string; organizationSlug?: string },
     ): Promise<Array<SupabaseBranch>> => {
       const branches = await listSupabaseBranches({
         supabaseProjectId: projectId,
-        organizationId: organizationId ?? null,
+        organizationSlug: organizationSlug ?? null,
       });
       return branches.map((branch) => ({
         id: branch.id,
@@ -161,18 +161,18 @@ export function registerSupabaseHandlers() {
         projectId,
         timestampStart,
         appId,
-        organizationId,
+        organizationSlug,
       }: {
         projectId: string;
         timestampStart?: number;
         appId: number;
-        organizationId: string | null;
+        organizationSlug: string | null;
       },
     ): Promise<Array<ConsoleEntry>> => {
       const response = await getSupabaseProjectLogs(
         projectId,
         timestampStart,
-        organizationId ?? undefined,
+        organizationSlug ?? undefined,
       );
 
       if (response.error) {
@@ -214,7 +214,7 @@ export function registerSupabaseHandlers() {
         projectId,
         appId,
         parentProjectId,
-        organizationId,
+        organizationSlug,
       }: SetSupabaseAppProjectParams,
     ) => {
       await db
@@ -222,12 +222,12 @@ export function registerSupabaseHandlers() {
         .set({
           supabaseProjectId: projectId,
           supabaseParentProjectId: parentProjectId,
-          supabaseOrganizationId: organizationId,
+          supabaseOrganizationSlug: organizationSlug,
         })
         .where(eq(apps.id, appId));
 
       logger.info(
-        `Associated app ${appId} with Supabase project ${projectId} (organization: ${organizationId})${parentProjectId ? ` and parent project ${parentProjectId}` : ""}`,
+        `Associated app ${appId} with Supabase project ${projectId} (organization: ${organizationSlug})${parentProjectId ? ` and parent project ${parentProjectId}` : ""}`,
       );
     },
   );
@@ -239,7 +239,7 @@ export function registerSupabaseHandlers() {
       .set({
         supabaseProjectId: null,
         supabaseParentProjectId: null,
-        supabaseOrganizationId: null,
+        supabaseOrganizationSlug: null,
       })
       .where(eq(apps.id, app));
 
@@ -286,7 +286,7 @@ export function registerSupabaseHandlers() {
         .update(apps)
         .set({
           supabaseProjectId: fakeProjectId,
-          supabaseOrganizationId: fakeOrgId,
+          supabaseOrganizationSlug: fakeOrgId,
         })
         .where(eq(apps.id, appId));
       logger.info(

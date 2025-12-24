@@ -37,7 +37,7 @@ export async function handleSupabaseOAuthReturn({
         "Multiple Supabase organizations found unexpectedly, using the first one",
       );
     }
-    const organizationId = orgs[0].id;
+    const organizationSlug = orgs[0].slug;
     const existingOrgs = settings.supabase?.organizations ?? {};
 
     writeSettings({
@@ -45,7 +45,7 @@ export async function handleSupabaseOAuthReturn({
         ...settings.supabase,
         organizations: {
           ...existingOrgs,
-          [organizationId]: {
+          [organizationSlug]: {
             accessToken: {
               value: token,
             },

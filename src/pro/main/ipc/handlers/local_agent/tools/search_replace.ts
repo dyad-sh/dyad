@@ -98,7 +98,7 @@ export const searchReplaceTool: ToolDefinition<
           supabaseProjectId: ctx.supabaseProjectId,
           functionName: path.basename(path.dirname(args.path)),
           appPath: ctx.appPath,
-          organizationId: ctx.supabaseOrganizationId ?? null,
+          organizationSlug: ctx.supabaseOrganizationSlug ?? null,
         });
       } catch (error) {
         return `Search-replace applied, but failed to deploy Supabase function: ${error}`;

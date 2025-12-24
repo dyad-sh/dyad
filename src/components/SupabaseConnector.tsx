@@ -90,10 +90,10 @@ export function SupabaseConnector({ appId }: { appId: number }) {
 
   const handleProjectSelect = async (projectValue: string) => {
     try {
-      // projectValue format: "organizationId:projectId"
-      const [organizationId, projectId] = projectValue.split(":");
+      // projectValue format: "organizationSlug:projectId"
+      const [organizationSlug, projectId] = projectValue.split(":");
       const project = projects.find(
-        (p) => p.id === projectId && p.organizationId === organizationId,
+        (p) => p.id === projectId && p.organizationSlug === organizationSlug,
       );
       if (!project) {
         throw new Error("Project not found");
@@ -101,7 +101,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
       await setAppProject({
         projectId,
         appId,
-        organizationId,
+        organizationSlug,
       });
       toast.success("Project connected to app successfully");
       await refreshApp();
@@ -113,16 +113,16 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   // Group projects by organization for display
   const groupedProjects = projects.reduce(
     (acc, project) => {
-      const orgKey = project.organizationId;
+      const orgKey = project.organizationSlug;
       if (!acc[orgKey]) {
         // Find the organization info to get the name
         const orgInfo = organizations.find(
-          (o) => o.organizationId === project.organizationId,
+          (o) => o.organizationSlug === project.organizationSlug,
         );
         acc[orgKey] = {
           orgLabel:
             orgInfo?.name ||
-            `Organization ${project.organizationId.slice(0, 8)}`,
+            `Organization ${project.organizationSlug.slice(0, 8)}`,
           projects: [],
         };
       }
@@ -151,10 +151,10 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     if (projectIdForBranches) {
       loadBranches(
         projectIdForBranches,
-        app?.supabaseOrganizationId ?? undefined,
+        app?.supabaseOrganizationSlug ?? undefined,
       );
     }
-  }, [projectIdForBranches, loadBranches, app?.supabaseOrganizationId]);
+  }, [projectIdForBranches, loadBranches, app?.supabaseOrganizationSlug]);
 
   const handleUnsetProject = async () => {
     try {
@@ -167,9 +167,9 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     }
   };
 
-  const handleDeleteOrganization = async (organizationId: string) => {
+  const handleDeleteOrganization = async (organizationSlug: string) => {
     try {
-      await deleteOrganization({ organizationId });
+      await deleteOrganization({ organizationSlug });
       toast.success("Organization disconnected successfully");
       await loadProjects();
     } catch (error) {
@@ -229,12 +229,12 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                     if (!branch) {
                       throw new Error("Branch not found");
                     }
-                    // Keep the same organizationId from the app
+                    // Keep the same organizationSlug from the app
                     await setAppProject({
                       projectId: branch.projectRef,
                       parentProjectId: branch.parentProjectRef,
                       appId,
-                      organizationId: app.supabaseOrganizationId,
+                      organizationSlug: app.supabaseOrganizationSlug,
                     });
                     toast.success("Branch selected");
                     await refreshApp();
@@ -277,8 +277,8 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   if (isConnected) {
     // Build current project value for the select
     const currentProjectValue =
-      app?.supabaseOrganizationId && app?.supabaseProjectId
-        ? `${app.supabaseOrganizationId}:${app.supabaseProjectId}`
+      app?.supabaseOrganizationSlug && app?.supabaseProjectId
+        ? `${app.supabaseOrganizationSlug}:${app.supabaseProjectId}`
         : "";
 
     return (
@@ -325,13 +325,13 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                 <div className="space-y-1">
                   {organizations.map((org) => (
                     <div
-                      key={org.organizationId}
+                      key={org.organizationSlug}
                       className="flex items-center justify-between p-2 rounded-md bg-muted/50 text-sm gap-2"
                     >
                       <div className="flex flex-col min-w-0 flex-1">
                         <span className="font-medium truncate">
                           {org.name ||
-                            `Organization ${org.organizationId.slice(0, 8)}`}
+                            `Organization ${org.organizationSlug.slice(0, 8)}`}
                         </span>
                         {org.ownerEmail && (
                           <span className="text-xs text-muted-foreground truncate">
@@ -344,7 +344,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                         size="sm"
                         className="h-7 px-2 text-muted-foreground hover:text-destructive shrink-0"
                         onClick={() =>
-                          handleDeleteOrganization(org.organizationId)
+                          handleDeleteOrganization(org.organizationSlug)
                         }
                         title="Disconnect organization"
                       >
@@ -377,8 +377,8 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                             <SelectLabel>{orgLabel}</SelectLabel>
                             {orgProjects.map((project) => (
                               <SelectItem
-                                key={`${project.organizationId}:${project.id}`}
-                                value={`${project.organizationId}:${project.id}`}
+                                key={`${project.organizationSlug}:${project.id}`}
+                                value={`${project.organizationSlug}:${project.id}`}
                               >
                                 {project.name || project.id}
                               </SelectItem>

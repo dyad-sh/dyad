@@ -160,11 +160,11 @@ export async function refreshSupabaseToken(): Promise<void> {
 
 // Function to get the Supabase Management API client
 export async function getSupabaseClient({
-  organizationId,
-}: { organizationId?: string | null } = {}): Promise<SupabaseManagementAPI> {
-  // If organizationId provided, use organization-specific credentials
-  if (organizationId) {
-    return getSupabaseClientForOrganization(organizationId);
+  organizationSlug,
+}: { organizationSlug?: string | null } = {}): Promise<SupabaseManagementAPI> {
+  // If organizationSlug provided, use organization-specific credentials
+  if (organizationSlug) {
+    return getSupabaseClientForOrganization(organizationSlug);
   }
 
   // Otherwise fall back to legacy single-account credentials
@@ -222,14 +222,14 @@ function isOrganizationTokenExpired(
  * Refreshes the Supabase access token for a specific organization.
  */
 async function refreshSupabaseTokenForOrganization(
-  organizationId: string,
+  organizationSlug: string,
 ): Promise<void> {
   const settings = readSettings();
-  const org = settings.supabase?.organizations?.[organizationId];
+  const org = settings.supabase?.organizations?.[organizationSlug];
 
   if (!org) {
     throw new Error(
-      `Supabase organization ${organizationId} not found. Please authenticate first.`,
+      `Supabase organization ${organizationSlug} not found. Please authenticate first.`,
     );
   }
 
@@ -275,7 +275,7 @@ async function refreshSupabaseTokenForOrganization(
         ...settings.supabase,
         organizations: {
           ...existingOrgs,
-          [organizationId]: {
+          [organizationSlug]: {
             ...org,
             accessToken: {
               value: accessToken,
@@ -291,7 +291,7 @@ async function refreshSupabaseTokenForOrganization(
     });
   } catch (error) {
     logger.error(
-      `Error refreshing Supabase token for organization ${organizationId}:`,
+      `Error refreshing Supabase token for organization ${organizationSlug}:`,
       error,
     );
     throw error;
@@ -302,38 +302,38 @@ async function refreshSupabaseTokenForOrganization(
  * Gets a Supabase Management API client for a specific organization.
  */
 export async function getSupabaseClientForOrganization(
-  organizationId: string,
+  organizationSlug: string,
 ): Promise<SupabaseManagementAPI> {
   const settings = readSettings();
-  const org = settings.supabase?.organizations?.[organizationId];
+  const org = settings.supabase?.organizations?.[organizationSlug];
 
   if (!org) {
     throw new Error(
-      `Supabase organization ${organizationId} not found. Please authenticate first.`,
+      `Supabase organization ${organizationSlug} not found. Please authenticate first.`,
     );
   }
 
   const accessToken = org.accessToken?.value;
   if (!accessToken) {
     throw new Error(
-      `Supabase access token not found for organization ${organizationId}. Please authenticate first.`,
+      `Supabase access token not found for organization ${organizationSlug}. Please authenticate first.`,
     );
   }
 
   // Check if token needs refreshing
   if (isOrganizationTokenExpired(org)) {
-    await withLock(`refresh-supabase-token-${organizationId}`, () =>
-      refreshSupabaseTokenForOrganization(organizationId),
+    await withLock(`refresh-supabase-token-${organizationSlug}`, () =>
+      refreshSupabaseTokenForOrganization(organizationSlug),
     );
     // Get updated settings after refresh
     const updatedSettings = readSettings();
     const updatedOrg =
-      updatedSettings.supabase?.organizations?.[organizationId];
+      updatedSettings.supabase?.organizations?.[organizationSlug];
     const newAccessToken = updatedOrg?.accessToken?.value;
 
     if (!newAccessToken) {
       throw new Error(
-        `Failed to refresh Supabase access token for organization ${organizationId}`,
+        `Failed to refresh Supabase access token for organization ${organizationSlug}`,
       );
     }
 
@@ -391,7 +391,7 @@ interface SupabaseRawMember {
  * Gets members of a Supabase organization.
  */
 export async function getOrganizationMembers(
-  organizationId: string,
+  organizationSlug: string,
 ): Promise<SupabaseOrganizationMember[]> {
   if (IS_TEST_BUILD) {
     return [
@@ -404,11 +404,11 @@ export async function getOrganizationMembers(
     ];
   }
 
-  const client = await getSupabaseClientForOrganization(organizationId);
+  const client = await getSupabaseClientForOrganization(organizationSlug);
   const accessToken = (client as any).options.accessToken;
 
   const response = await fetch(
-    `https://api.supabase.com/v1/organizations/${organizationId}/members`,
+    `https://api.supabase.com/v1/organizations/${organizationSlug}/members`,
     {
       method: "GET",
       headers: {
@@ -446,21 +446,21 @@ export interface SupabaseOrganizationDetails {
  * Gets details about a Supabase organization.
  */
 export async function getOrganizationDetails(
-  organizationId: string,
+  organizationSlug: string,
 ): Promise<SupabaseOrganizationDetails> {
   if (IS_TEST_BUILD) {
     return {
-      id: organizationId,
+      id: organizationSlug,
       name: "Fake Organization",
       slug: "fake-org",
     };
   }
 
-  const client = await getSupabaseClientForOrganization(organizationId);
+  const client = await getSupabaseClientForOrganization(organizationSlug);
   const accessToken = (client as any).options.accessToken;
 
   const response = await fetch(
-    `https://api.supabase.com/v1/organizations/${organizationId}`,
+    `https://api.supabase.com/v1/organizations/${organizationSlug}`,
     {
       method: "GET",
       headers: {
@@ -489,13 +489,13 @@ export async function getOrganizationDetails(
 
 export async function getSupabaseProjectName(
   projectId: string,
-  organizationId?: string,
+  organizationSlug?: string,
 ): Promise<string> {
   if (IS_TEST_BUILD) {
     return "Fake Supabase Project";
   }
 
-  const supabase = await getSupabaseClient({ organizationId });
+  const supabase = await getSupabaseClient({ organizationSlug });
   const projects = await supabase.getProjects();
   const project = projects?.find((p) => p.id === projectId);
   return project?.name || `<project not found for: ${projectId}>`;
@@ -504,9 +504,9 @@ export async function getSupabaseProjectName(
 export async function getSupabaseProjectLogs(
   projectId: string,
   timestampStart?: number,
-  organizationId?: string,
+  organizationSlug?: string,
 ): Promise<SupabaseProjectLogsResponse> {
-  const supabase = await getSupabaseClient({ organizationId });
+  const supabase = await getSupabaseClient({ organizationSlug });
 
   // Build SQL query with optional timestamp filter
   let sqlQuery = `
@@ -563,17 +563,17 @@ LIMIT 1000`;
 export async function executeSupabaseSql({
   supabaseProjectId,
   query,
-  organizationId,
+  organizationSlug,
 }: {
   supabaseProjectId: string;
   query: string;
-  organizationId: string | null;
+  organizationSlug: string | null;
 }): Promise<string> {
   if (IS_TEST_BUILD) {
     return "{}";
   }
 
-  const supabase = await getSupabaseClient({ organizationId });
+  const supabase = await getSupabaseClient({ organizationSlug });
   const result = await supabase.runQuery(supabaseProjectId, query);
   return JSON.stringify(result);
 }
@@ -581,16 +581,16 @@ export async function executeSupabaseSql({
 export async function deleteSupabaseFunction({
   supabaseProjectId,
   functionName,
-  organizationId,
+  organizationSlug,
 }: {
   supabaseProjectId: string;
   functionName: string;
-  organizationId: string | null;
+  organizationSlug: string | null;
 }): Promise<void> {
   logger.info(
     `Deleting Supabase function: ${functionName} from project: ${supabaseProjectId}`,
   );
-  const supabase = await getSupabaseClient({ organizationId });
+  const supabase = await getSupabaseClient({ organizationSlug });
   await supabase.deleteFunction(supabaseProjectId, functionName);
   logger.info(
     `Deleted Supabase function: ${functionName} from project: ${supabaseProjectId}`,
@@ -599,10 +599,10 @@ export async function deleteSupabaseFunction({
 
 export async function listSupabaseBranches({
   supabaseProjectId,
-  organizationId,
+  organizationSlug,
 }: {
   supabaseProjectId: string;
-  organizationId: string | null;
+  organizationSlug: string | null;
 }): Promise<SupabaseProjectBranch[]> {
   if (IS_TEST_BUILD) {
     return [
@@ -625,7 +625,7 @@ export async function listSupabaseBranches({
   }
 
   logger.info(`Listing Supabase branches for project: ${supabaseProjectId}`);
-  const supabase = await getSupabaseClient({ organizationId });
+  const supabase = await getSupabaseClient({ organizationSlug });
 
   const response = await fetch(
     `https://api.supabase.com/v1/projects/${supabaseProjectId}/branches`,
@@ -655,13 +655,13 @@ export async function deploySupabaseFunction({
   functionName,
   appPath,
   bundleOnly = false,
-  organizationId,
+  organizationSlug,
 }: {
   supabaseProjectId: string;
   functionName: string;
   appPath: string;
   bundleOnly?: boolean;
-  organizationId: string | null;
+  organizationSlug: string | null;
 }): Promise<DeployedFunctionResponse> {
   logger.info(
     `Deploying Supabase function: ${functionName} to project: ${supabaseProjectId}`,
@@ -703,7 +703,7 @@ export async function deploySupabaseFunction({
   });
 
   // 5) Prepare multipart form-data
-  const supabase = await getSupabaseClient({ organizationId });
+  const supabase = await getSupabaseClient({ organizationSlug });
   const formData = new FormData();
 
   // Metadata: instruct Supabase to use our import map
@@ -753,17 +753,17 @@ export async function deploySupabaseFunction({
 export async function bulkUpdateFunctions({
   supabaseProjectId,
   functions,
-  organizationId,
+  organizationSlug,
 }: {
   supabaseProjectId: string;
   functions: DeployedFunctionResponse[];
-  organizationId: string | null;
+  organizationSlug: string | null;
 }): Promise<void> {
   logger.info(
     `Bulk updating ${functions.length} functions for project: ${supabaseProjectId}`,
   );
 
-  const supabase = await getSupabaseClient({ organizationId });
+  const supabase = await getSupabaseClient({ organizationSlug });
 
   const response = await fetch(
     `https://api.supabase.com/v1/projects/${encodeURIComponent(supabaseProjectId)}/functions`,

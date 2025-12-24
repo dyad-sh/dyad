@@ -44,9 +44,9 @@ export function SupabaseIntegration() {
     }
   };
 
-  const handleDeleteOrganization = async (organizationId: string) => {
+  const handleDeleteOrganization = async (organizationSlug: string) => {
     try {
-      await deleteOrganization({ organizationId });
+      await deleteOrganization({ organizationSlug });
       showSuccess("Organization disconnected successfully");
     } catch (err: any) {
       showError(err.message || "Failed to disconnect organization");
@@ -99,12 +99,12 @@ export function SupabaseIntegration() {
       <div className="mt-3 space-y-1">
         {organizations.map((org) => (
           <div
-            key={org.organizationId}
+            key={org.organizationSlug}
             className="flex items-center justify-between p-2 rounded-md bg-muted/50 text-sm gap-2"
           >
             <div className="flex flex-col min-w-0 flex-1">
               <span className="text-gray-700 dark:text-gray-300 font-medium truncate">
-                {org.name || `Organization ${org.organizationId.slice(0, 8)}`}
+                {org.name || `Organization ${org.organizationSlug.slice(0, 8)}`}
               </span>
               {org.ownerEmail && (
                 <span className="text-xs text-gray-500 dark:text-gray-400 truncate">
@@ -116,7 +116,7 @@ export function SupabaseIntegration() {
               variant="ghost"
               size="sm"
               className="h-7 px-2 text-muted-foreground hover:text-destructive shrink-0"
-              onClick={() => handleDeleteOrganization(org.organizationId)}
+              onClick={() => handleDeleteOrganization(org.organizationSlug)}
               title="Disconnect organization"
             >
               <Trash2 className="h-3.5 w-3.5 mr-1" />

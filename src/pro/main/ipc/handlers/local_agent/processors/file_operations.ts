@@ -27,7 +27,7 @@ export async function deployAllFunctionsIfNeeded(
     AgentContext,
     | "appPath"
     | "supabaseProjectId"
-    | "supabaseOrganizationId"
+    | "supabaseOrganizationSlug"
     | "isSharedModulesChanged"
   >,
 ): Promise<FileOperationResult> {
@@ -40,7 +40,7 @@ export async function deployAllFunctionsIfNeeded(
     const deployErrors = await deployAllSupabaseFunctions({
       appPath: ctx.appPath,
       supabaseProjectId: ctx.supabaseProjectId,
-      supabaseOrganizationId: ctx.supabaseOrganizationId ?? null,
+      supabaseOrganizationSlug: ctx.supabaseOrganizationSlug ?? null,
     });
 
     if (deployErrors.length > 0) {

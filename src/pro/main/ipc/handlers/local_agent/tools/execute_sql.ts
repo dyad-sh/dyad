@@ -38,7 +38,7 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
       await executeSupabaseSql({
         supabaseProjectId: ctx.supabaseProjectId,
         query: args.query,
-        organizationId: ctx.supabaseOrganizationId ?? null,
+        organizationSlug: ctx.supabaseOrganizationSlug ?? null,
       });
 
       // Write migration file if enabled

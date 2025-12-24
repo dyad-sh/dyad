@@ -170,7 +170,7 @@ export type SupabaseOrganizationCredentials = z.infer<
 >;
 
 export const SupabaseSchema = z.object({
-  // Map keyed by organizationId -> organization credentials
+  // Map keyed by organizationSlug -> organization credentials
   organizations: z
     .record(z.string(), SupabaseOrganizationCredentialsSchema)
     .optional(),

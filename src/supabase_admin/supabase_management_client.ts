@@ -58,6 +58,25 @@ export interface DeployedFunctionResponse {
   ezbr_sha256?: string;
 }
 
+export interface SupabaseProjectLog {
+  timestamp: number;
+  event_message: string;
+  metadata: any;
+}
+
+export interface SupabaseProjectLogsResponse {
+  result: SupabaseProjectLog[];
+  error?: any;
+}
+
+export interface SupabaseProjectBranch {
+  id: string;
+  name: string;
+  is_default: boolean;
+  project_ref: string;
+  parent_project_ref: string;
+}
+
 // Caches for shared files to avoid re-reading unchanged files
 const sharedFilesCache = new Map<string, CachedSharedFiles>();
 
@@ -333,7 +352,7 @@ export async function getSupabaseClientForOrganization(
  */
 export async function listSupabaseOrganizations(
   accessToken: string,
-): Promise<any[]> {
+): Promise<SupabaseOrganizationDetails[]> {
   const response = await fetch("https://api.supabase.com/v1/organizations", {
     method: "GET",
     headers: {
@@ -349,13 +368,22 @@ export async function listSupabaseOrganizations(
     throw new Error(`Failed to fetch organizations: ${response.statusText}`);
   }
 
-  return response.json();
+  const organizations: SupabaseOrganizationDetails[] = await response.json();
+  return organizations;
 }
 
 export interface SupabaseOrganizationMember {
   userId: string;
   email: string;
   role: string; // "Owner" | "Member" | etc.
+  username?: string;
+}
+
+interface SupabaseRawMember {
+  user_id: string;
+  primary_email?: string;
+  email: string;
+  role_name: string;
   username?: string;
 }
 
@@ -399,8 +427,8 @@ export async function getOrganizationMembers(
     );
   }
 
-  const members = await response.json();
-  return members.map((m: any) => ({
+  const members: SupabaseRawMember[] = await response.json();
+  return members.map((m) => ({
     userId: m.user_id,
     email: m.primary_email || m.email,
     role: m.role_name,
@@ -477,7 +505,7 @@ export async function getSupabaseProjectLogs(
   projectId: string,
   timestampStart?: number,
   organizationId?: string,
-): Promise<any> {
+): Promise<SupabaseProjectLogsResponse> {
   const supabase = await getSupabaseClient({ organizationId });
 
   // Build SQL query with optional timestamp filter
@@ -526,7 +554,7 @@ LIMIT 1000`;
     );
   }
 
-  const jsonResponse = await response.json();
+  const jsonResponse: SupabaseProjectLogsResponse = await response.json();
   logger.info(`Received ${jsonResponse.result?.length || 0} logs`);
 
   return jsonResponse;
@@ -575,15 +603,7 @@ export async function listSupabaseBranches({
 }: {
   supabaseProjectId: string;
   organizationId: string | null;
-}): Promise<
-  Array<{
-    id: string;
-    name: string;
-    is_default: boolean;
-    project_ref: string;
-    parent_project_ref: string;
-  }>
-> {
+}): Promise<SupabaseProjectBranch[]> {
   if (IS_TEST_BUILD) {
     return [
       {
@@ -622,7 +642,7 @@ export async function listSupabaseBranches({
   }
 
   logger.info(`Listed Supabase branches for project: ${supabaseProjectId}`);
-  const jsonResponse = await response.json();
+  const jsonResponse: SupabaseProjectBranch[] = await response.json();
   return jsonResponse;
 }
 

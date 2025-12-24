@@ -8,6 +8,7 @@ import {
   getSupabaseProjectLogs,
   getOrganizationDetails,
   getOrganizationMembers,
+  type SupabaseProjectLog,
 } from "../../supabase_admin/supabase_management_client";
 import { extractFunctionName } from "../../supabase_admin/supabase_utils";
 import {
@@ -185,7 +186,7 @@ export function registerSupabaseHandlers() {
       const rawLogs = response.result || [];
 
       // Transform to ConsoleEntry format
-      return rawLogs.map((log: any) => {
+      return rawLogs.map((log: SupabaseProjectLog) => {
         const metadata = log.metadata?.[0] || {};
         const level = metadata.level || "info";
         const eventMessage = log.event_message || "";

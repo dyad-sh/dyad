@@ -32,7 +32,9 @@ export function useDeleteCustomModel({
         queryKey: ["language-models", params.providerId],
       });
       // Invalidate general model list if needed
-      queryClient.invalidateQueries({ queryKey: ["languageModels"] });
+      queryClient.invalidateQueries({
+        queryKey: ["language-models-by-providers"],
+      });
       onSuccess?.();
     },
     onError: (error: Error) => {

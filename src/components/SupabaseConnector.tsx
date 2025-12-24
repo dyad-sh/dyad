@@ -47,46 +47,44 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   const { app, refreshApp } = useLoadApp(appId);
   const { lastDeepLink, clearLastDeepLink } = useDeepLink();
   const { isDarkMode } = useTheme();
+
+  // Check if there are any connected organizations
+  const isConnected = isSupabaseConnected(settings);
+
+  const branchesProjectId =
+    app?.supabaseParentProjectId || app?.supabaseProjectId;
+
+  const {
+    organizations,
+    projects,
+    branches,
+    isLoadingProjects,
+    isFetchingProjects,
+    projectsError,
+    isLoadingBranches,
+    isSettingAppProject,
+    refetchOrganizations,
+    refetchProjects,
+    deleteOrganization,
+    setAppProject,
+    unsetAppProject,
+  } = useSupabase({
+    branchesProjectId,
+    branchesOrganizationSlug: app?.supabaseOrganizationSlug,
+  });
+
   useEffect(() => {
     const handleDeepLink = async () => {
       if (lastDeepLink?.type === "supabase-oauth-return") {
         await refreshSettings();
-        await loadOrganizations();
-        await loadProjects();
+        await refetchOrganizations();
+        await refetchProjects();
         await refreshApp();
         clearLastDeepLink();
       }
     };
     handleDeepLink();
   }, [lastDeepLink?.timestamp]);
-  const {
-    organizations,
-    projects,
-    loading,
-    error,
-    loadOrganizations,
-    deleteOrganization,
-    loadProjects,
-    branches,
-    loadBranches,
-    setAppProject,
-    unsetAppProject,
-  } = useSupabase();
-
-  // Check if there are any connected organizations
-  const isConnected = isSupabaseConnected(settings);
-
-  useEffect(() => {
-    // Load organizations and projects when the component mounts
-    loadOrganizations();
-  }, [loadOrganizations]);
-
-  useEffect(() => {
-    // Load projects when organizations are available
-    if (isConnected) {
-      loadProjects();
-    }
-  }, [isConnected, loadProjects]);
 
   const handleProjectSelect = async (projectValue: string) => {
     try {
@@ -145,17 +143,6 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     }
   };
 
-  const projectIdForBranches =
-    app?.supabaseParentProjectId || app?.supabaseProjectId;
-  useEffect(() => {
-    if (projectIdForBranches) {
-      loadBranches(
-        projectIdForBranches,
-        app?.supabaseOrganizationSlug ?? undefined,
-      );
-    }
-  }, [projectIdForBranches, loadBranches, app?.supabaseOrganizationSlug]);
-
   const handleUnsetProject = async () => {
     try {
       await unsetAppProject(appId);
@@ -171,7 +158,6 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     try {
       await deleteOrganization({ organizationSlug });
       toast.success("Organization disconnected successfully");
-      await loadProjects();
     } catch (error) {
       toast.error("Failed to disconnect organization: " + error);
     }
@@ -242,7 +228,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                     toast.error("Failed to set branch: " + error);
                   }
                 }}
-                disabled={loading}
+                disabled={isLoadingBranches || isSettingAppProject}
               >
                 <SelectTrigger
                   id="supabase-branch-select"
@@ -301,18 +287,18 @@ export function SupabaseConnector({ appId }: { appId: number }) {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {loading ? (
+          {isLoadingProjects || isFetchingProjects ? (
             <div className="space-y-2">
               <Skeleton className="h-4 w-full" />
               <Skeleton className="h-10 w-full" />
             </div>
-          ) : error ? (
+          ) : projectsError ? (
             <div className="text-red-500">
-              Error loading projects: {error.message}
+              Error loading projects: {projectsError.message}
               <Button
                 variant="outline"
                 className="mt-2"
-                onClick={() => loadProjects()}
+                onClick={() => refetchProjects()}
               >
                 Retry
               </Button>

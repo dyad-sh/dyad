@@ -117,13 +117,13 @@ export function PreviewPanel() {
     if (!projectId) return;
 
     // Load logs immediately
-    loadEdgeLogs(projectId, organizationSlug).catch((error) => {
+    loadEdgeLogs({ projectId, organizationSlug }).catch((error) => {
       console.error("Failed to load edge logs:", error);
     });
 
     // Poll for new logs every 5 seconds
     const intervalId = setInterval(() => {
-      loadEdgeLogs(projectId, organizationSlug).catch((error) => {
+      loadEdgeLogs({ projectId, organizationSlug }).catch((error) => {
         console.error("Failed to load edge logs:", error);
       });
     }, 5000);

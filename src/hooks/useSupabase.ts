@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
+  supabaseOrganizationsAtom,
   supabaseProjectsAtom,
   supabaseBranchesAtom,
   supabaseLoadingAtom,
@@ -10,9 +11,13 @@ import {
 } from "@/atoms/supabaseAtoms";
 import { appConsoleEntriesAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
-import { SetSupabaseAppProjectParams } from "@/ipc/ipc_types";
+import {
+  SetSupabaseAppProjectParams,
+  DeleteSupabaseOrganizationParams,
+} from "@/ipc/ipc_types";
 
 export function useSupabase() {
+  const [organizations, setOrganizations] = useAtom(supabaseOrganizationsAtom);
   const [projects, setProjects] = useAtom(supabaseProjectsAtom);
   const [branches, setBranches] = useAtom(supabaseBranchesAtom);
   const [loading, setLoading] = useAtom(supabaseLoadingAtom);
@@ -27,12 +32,52 @@ export function useSupabase() {
   const ipcClient = IpcClient.getInstance();
 
   /**
-   * Load Supabase projects from the API
+   * Load all connected Supabase organizations
+   */
+  const loadOrganizations = useCallback(async () => {
+    setLoading(true);
+    try {
+      const orgList = await ipcClient.listSupabaseOrganizations();
+      setOrganizations(orgList);
+      setError(null);
+    } catch (error) {
+      console.error("Error loading Supabase organizations:", error);
+      setError(error instanceof Error ? error : new Error(String(error)));
+    } finally {
+      setLoading(false);
+    }
+  }, [ipcClient, setOrganizations, setError, setLoading]);
+
+  /**
+   * Delete a Supabase organization connection
+   */
+  const deleteOrganization = useCallback(
+    async (params: DeleteSupabaseOrganizationParams) => {
+      setLoading(true);
+      try {
+        await ipcClient.deleteSupabaseOrganization(params);
+        // Refresh organizations list after deletion
+        const orgList = await ipcClient.listSupabaseOrganizations();
+        setOrganizations(orgList);
+        setError(null);
+      } catch (error) {
+        console.error("Error deleting Supabase organization:", error);
+        setError(error instanceof Error ? error : new Error(String(error)));
+        throw error;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [ipcClient, setOrganizations, setError, setLoading],
+  );
+
+  /**
+   * Load Supabase projects from all connected organizations
    */
   const loadProjects = useCallback(async () => {
     setLoading(true);
     try {
-      const projectList = await ipcClient.listSupabaseProjects();
+      const projectList = await ipcClient.listAllSupabaseProjects();
       setProjects(projectList);
       setError(null);
     } catch (error) {
@@ -47,10 +92,13 @@ export function useSupabase() {
    * Load branches for a Supabase project
    */
   const loadBranches = useCallback(
-    async (projectId: string) => {
+    async (projectId: string, organizationSlug?: string) => {
       setLoading(true);
       try {
-        const list = await ipcClient.listSupabaseBranches({ projectId });
+        const list = await ipcClient.listSupabaseBranches({
+          projectId,
+          organizationSlug: organizationSlug ?? null,
+        });
         setBranches(Array.isArray(list) ? list : []);
         setError(null);
       } catch (error) {
@@ -108,7 +156,7 @@ export function useSupabase() {
    * Uses timestamp tracking to only fetch new logs on subsequent calls
    */
   const loadEdgeLogs = useCallback(
-    async (projectId: string) => {
+    async (projectId: string, organizationSlug?: string) => {
       if (!selectedAppId) return;
 
       // Use last timestamp if available, otherwise fetch logs from the past 10 minutes
@@ -122,6 +170,7 @@ export function useSupabase() {
           projectId,
           timestampStart,
           appId: selectedAppId,
+          organizationSlug: organizationSlug ?? null,
         });
 
         if (logs.length === 0) {
@@ -178,11 +227,14 @@ export function useSupabase() {
   );
 
   return {
+    organizations,
     projects,
     branches,
     loading,
     error,
     selectedProject,
+    loadOrganizations,
+    deleteOrganization,
     loadProjects,
     loadBranches,
     loadEdgeLogs,

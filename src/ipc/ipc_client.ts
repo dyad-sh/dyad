@@ -69,6 +69,9 @@ import type {
   CloneRepoParams,
   SupabaseBranch,
   SetSupabaseAppProjectParams,
+  SupabaseOrganizationInfo,
+  SupabaseProject,
+  DeleteSupabaseOrganizationParams,
   SelectNodeFolderResult,
   ApplyVisualEditingChangesParams,
   AnalyseComponentParams,
@@ -1041,12 +1044,29 @@ export class IpcClient {
   // --- End Proposal Management ---
 
   // --- Supabase Management ---
-  public async listSupabaseProjects(): Promise<any[]> {
-    return this.ipcRenderer.invoke("supabase:list-projects");
+
+  // List all connected Supabase organizations
+  public async listSupabaseOrganizations(): Promise<
+    SupabaseOrganizationInfo[]
+  > {
+    return this.ipcRenderer.invoke("supabase:list-organizations");
+  }
+
+  // Delete a Supabase organization connection
+  public async deleteSupabaseOrganization(
+    params: DeleteSupabaseOrganizationParams,
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("supabase:delete-organization", params);
+  }
+
+  // List all projects from all connected organizations
+  public async listAllSupabaseProjects(): Promise<SupabaseProject[]> {
+    return this.ipcRenderer.invoke("supabase:list-all-projects");
   }
 
   public async listSupabaseBranches(params: {
     projectId: string;
+    organizationSlug: string | null;
   }): Promise<SupabaseBranch[]> {
     return this.ipcRenderer.invoke("supabase:list-branches", params);
   }
@@ -1055,6 +1075,7 @@ export class IpcClient {
     projectId: string;
     timestampStart?: number;
     appId: number;
+    organizationSlug: string | null;
   }): Promise<Array<ConsoleEntry>> {
     return this.ipcRenderer.invoke("supabase:get-edge-logs", params);
   }

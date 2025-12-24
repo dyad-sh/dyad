@@ -155,7 +155,27 @@ export const GithubUserSchema = z.object({
 });
 export type GithubUser = z.infer<typeof GithubUserSchema>;
 
+/**
+ * Supabase organization credentials.
+ * Each organization has its own OAuth tokens.
+ */
+export const SupabaseOrganizationCredentialsSchema = z.object({
+  accessToken: SecretSchema,
+  refreshToken: SecretSchema,
+  expiresIn: z.number(),
+  tokenTimestamp: z.number(),
+});
+export type SupabaseOrganizationCredentials = z.infer<
+  typeof SupabaseOrganizationCredentialsSchema
+>;
+
 export const SupabaseSchema = z.object({
+  // Map keyed by organizationSlug -> organization credentials
+  organizations: z
+    .record(z.string(), SupabaseOrganizationCredentialsSchema)
+    .optional(),
+
+  // Legacy fields - kept for backwards compat
   accessToken: SecretSchema.optional(),
   refreshToken: SecretSchema.optional(),
   expiresIn: z.number().optional(),
@@ -299,6 +319,17 @@ export function isDyadProEnabled(settings: UserSettings): boolean {
 
 export function hasDyadProKey(settings: UserSettings): boolean {
   return !!settings.providerSettings?.auto?.apiKey?.value;
+}
+
+export function isSupabaseConnected(settings: UserSettings | null): boolean {
+  if (!settings) {
+    return false;
+  }
+  return Boolean(
+    settings.supabase?.accessToken ||
+      (settings.supabase?.organizations &&
+        Object.keys(settings.supabase.organizations).length > 0),
+  );
 }
 
 export function isTurboEditsV2Enabled(settings: UserSettings): boolean {

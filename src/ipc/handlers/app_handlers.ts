@@ -723,9 +723,16 @@ export function registerAppHandlers() {
 
     let supabaseProjectName: string | null = null;
     const settings = readSettings();
-    if (app.supabaseProjectId && settings.supabase?.accessToken?.value) {
+    // Check for multi-organization credentials or legacy single account
+    const hasSupabaseCredentials =
+      (app.supabaseOrganizationSlug &&
+        settings.supabase?.organizations?.[app.supabaseOrganizationSlug]
+          ?.accessToken?.value) ||
+      settings.supabase?.accessToken?.value;
+    if (app.supabaseProjectId && hasSupabaseCredentials) {
       supabaseProjectName = await getSupabaseProjectName(
         app.supabaseParentProjectId || app.supabaseProjectId,
+        app.supabaseOrganizationSlug ?? undefined,
       );
     }
 
@@ -1073,6 +1080,7 @@ export function registerAppHandlers() {
             const deployErrors = await deployAllSupabaseFunctions({
               appPath,
               supabaseProjectId: app.supabaseProjectId,
+              supabaseOrganizationSlug: app.supabaseOrganizationSlug ?? null,
             });
             if (deployErrors.length > 0) {
               return {
@@ -1096,6 +1104,7 @@ export function registerAppHandlers() {
               supabaseProjectId: app.supabaseProjectId,
               functionName,
               appPath,
+              organizationSlug: app.supabaseOrganizationSlug ?? null,
             });
           } catch (error) {
             logger.error(

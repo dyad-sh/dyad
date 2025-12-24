@@ -194,8 +194,8 @@ export function registerVersionHandlers() {
           path: appPath,
           targetOid: previousVersionId,
         });
-        const hasChanges = await isGitStatusClean({ path: appPath });
-        if (hasChanges) {
+        const isClean = await isGitStatusClean({ path: appPath });
+        if (!isClean) {
           await gitCommit({
             path: appPath,
             message: `Reverted all changes back to version ${previousVersionId}`,

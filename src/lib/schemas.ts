@@ -321,6 +321,17 @@ export function hasDyadProKey(settings: UserSettings): boolean {
   return !!settings.providerSettings?.auto?.apiKey?.value;
 }
 
+export function isSupabaseConnected(settings: UserSettings | null): boolean {
+  if (!settings) {
+    return false;
+  }
+  return Boolean(
+    settings.supabase?.accessToken ||
+      (settings.supabase?.organizations &&
+        Object.keys(settings.supabase.organizations).length > 0),
+  );
+}
+
 export function isTurboEditsV2Enabled(settings: UserSettings): boolean {
   return Boolean(
     isDyadProEnabled(settings) &&

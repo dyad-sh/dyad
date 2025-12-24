@@ -40,6 +40,7 @@ import connectSupabaseLight from "../../assets/supabase/connect-supabase-light.s
 import { ExternalLink, Plus, Trash2 } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import type { SupabaseProject } from "@/ipc/ipc_types";
+import { isSupabaseConnected } from "@/lib/schemas";
 
 export function SupabaseConnector({ appId }: { appId: number }) {
   const { settings, refreshSettings } = useSettings();
@@ -73,8 +74,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   } = useSupabase();
 
   // Check if there are any connected organizations
-  const isConnected =
-    !!settings?.supabase?.accessToken || organizations.length > 0;
+  const isConnected = isSupabaseConnected(settings);
 
   useEffect(() => {
     // Load organizations and projects when the component mounts

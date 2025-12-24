@@ -8,6 +8,7 @@ import { DatabaseZap, Trash2 } from "lucide-react"; // Using DatabaseZap as a pl
 import { useSettings } from "@/hooks/useSettings";
 import { useSupabase } from "@/hooks/useSupabase";
 import { showSuccess, showError } from "@/lib/toast";
+import { isSupabaseConnected } from "@/lib/schemas";
 
 export function SupabaseIntegration() {
   const { settings, updateSettings } = useSettings();
@@ -64,8 +65,7 @@ export function SupabaseIntegration() {
   };
 
   // Check if there are any connected organizations
-  const isConnected =
-    !!settings?.supabase?.accessToken || organizations.length > 0;
+  const isConnected = isSupabaseConnected(settings);
 
   if (!isConnected) {
     return null;

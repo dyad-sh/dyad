@@ -80,7 +80,7 @@ import { inArray } from "drizzle-orm";
 import { replacePromptReference } from "../utils/replacePromptReference";
 import { mcpManager } from "../utils/mcp_manager";
 import z from "zod";
-import { isTurboEditsV2Enabled } from "@/lib/schemas";
+import { isSupabaseConnected, isTurboEditsV2Enabled } from "@/lib/schemas";
 import { AI_STREAMING_ERROR_MESSAGE_PREFIX } from "@/shared/texts";
 import { getCurrentCommitHash } from "../utils/git_utils";
 import {
@@ -649,7 +649,7 @@ ${componentSnippet}
 
         if (
           updatedChat.app?.supabaseProjectId &&
-          settings.supabase?.accessToken?.value
+          isSupabaseConnected(settings)
         ) {
           systemPrompt +=
             "\n\n" +

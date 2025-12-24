@@ -96,6 +96,11 @@ export const FileTree = ({ appId, files }: FileTreeProps) => {
   const debouncedSearch = useDebouncedValue(searchValue, 250);
   const isSearchMode = debouncedSearch.trim().length > 0;
 
+  // Reset search when appId changes to prevent stale results from being used
+  React.useEffect(() => {
+    setSearchValue("");
+  }, [appId]);
+
   const {
     results: searchResults,
     loading: searchLoading,
@@ -171,7 +176,10 @@ export const FileTree = ({ appId, files }: FileTreeProps) => {
             {searchError.message}
           </div>
         )}
-        {isSearchMode && !searchLoading && matchesByPath.size === 0 ? (
+        {isSearchMode &&
+        !searchLoading &&
+        !searchError &&
+        matchesByPath.size === 0 ? (
           <div className="px-3 py-2 text-xs text-muted-foreground">
             No files matched your search.
           </div>

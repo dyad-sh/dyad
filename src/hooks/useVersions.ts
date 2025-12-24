@@ -22,6 +22,7 @@ export function useVersions(appId: number | null) {
   } = useQuery<Version[], Error>({
     queryKey: ["versions", appId],
     queryFn: async (): Promise<Version[]> => {
+      console.log("useVersions appId", appId);
       if (appId === null) {
         return [];
       }
@@ -29,7 +30,7 @@ export function useVersions(appId: number | null) {
       return ipcClient.listVersions({ appId });
     },
     enabled: appId !== null,
-    initialData: [],
+    placeholderData: [],
     meta: { showErrorToast: true },
   });
 

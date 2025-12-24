@@ -1,42 +1,27 @@
-import { useAtom } from "jotai";
-import { useEffect } from "react";
-import { chatsAtom, chatsLoadingAtom } from "@/atoms/chatAtoms";
-import { getAllChats } from "@/lib/chat";
+import { IpcClient } from "@/ipc/ipc_client";
 import type { ChatSummary } from "@/lib/schemas";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+
+export const CHATS_QUERY_KEY = "chats";
 
 export function useChats(appId: number | null) {
-  const [chats, setChats] = useAtom(chatsAtom);
-  const [loading, setLoading] = useAtom(chatsLoadingAtom);
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    const fetchChats = async () => {
-      try {
-        setLoading(true);
-        const chatList = await getAllChats(appId || undefined);
-        setChats(chatList);
-      } catch (error) {
-        console.error("Failed to load chats:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
+  const { data, isLoading, refetch } = useQuery<ChatSummary[]>({
+    queryKey: [CHATS_QUERY_KEY, appId],
+    queryFn: async () => {
+      return IpcClient.getInstance().getChats(appId ?? undefined);
+    },
+  });
 
-    fetchChats();
-  }, [appId, setChats, setLoading]);
-
-  const refreshChats = async () => {
-    try {
-      setLoading(true);
-      const chatList = await getAllChats(appId || undefined);
-      setChats(chatList);
-      return chatList;
-    } catch (error) {
-      console.error("Failed to refresh chats:", error);
-      return [] as ChatSummary[];
-    } finally {
-      setLoading(false);
-    }
+  const invalidateChats = () => {
+    queryClient.invalidateQueries({ queryKey: [CHATS_QUERY_KEY, appId] });
   };
 
-  return { chats, loading, refreshChats };
+  return {
+    chats: data ?? [],
+    loading: isLoading,
+    refreshChats: refetch,
+    invalidateChats,
+  };
 }

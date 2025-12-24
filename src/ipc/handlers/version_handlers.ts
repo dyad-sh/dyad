@@ -23,6 +23,7 @@ import {
   getCurrentCommitHash,
   gitCurrentBranch,
   gitLog,
+  isGitStatusClean,
 } from "../utils/git_utils";
 
 import {
@@ -193,11 +194,13 @@ export function registerVersionHandlers() {
           path: appPath,
           targetOid: previousVersionId,
         });
-
-        await gitCommit({
-          path: appPath,
-          message: `Reverted all changes back to version ${previousVersionId}`,
-        });
+        const hasChanges = await isGitStatusClean({ path: appPath });
+        if (hasChanges) {
+          await gitCommit({
+            path: appPath,
+            message: `Reverted all changes back to version ${previousVersionId}`,
+          });
+        }
 
         // Delete messages based on currentChatMessageId if provided, otherwise use commit hash lookup
         if (currentChatMessageId) {

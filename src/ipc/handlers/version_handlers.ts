@@ -1,6 +1,6 @@
 import { db } from "../../db";
 import { apps, messages, versions } from "../../db/schema";
-import { desc, eq, and, gt } from "drizzle-orm";
+import { desc, eq, and, gt, gte } from "drizzle-orm";
 import type {
   Version,
   BranchResult,
@@ -156,7 +156,7 @@ export function registerVersionHandlers() {
     "revert-version",
     async (
       _,
-      { appId, previousVersionId }: RevertVersionParams,
+      { appId, previousVersionId, currentChatMessageId }: RevertVersionParams,
     ): Promise<RevertVersionResponse> => {
       return withLock(appId, async () => {
         let successMessage = "Restored version";
@@ -199,41 +199,67 @@ export function registerVersionHandlers() {
           message: `Reverted all changes back to version ${previousVersionId}`,
         });
 
-        // Find the chat and message associated with the commit hash
-        const messageWithCommit = await db.query.messages.findFirst({
-          where: eq(messages.commitHash, previousVersionId),
-          with: {
-            chat: true,
-          },
-        });
+        // Delete messages based on currentChatMessageId if provided, otherwise use commit hash lookup
+        if (currentChatMessageId) {
+          // Delete all messages including and after the specified message
+          const { chatId, messageId } = currentChatMessageId;
 
-        // If we found a message with this commit hash, delete all subsequent messages (but keep this message)
-        if (messageWithCommit) {
-          const chatId = messageWithCommit.chatId;
-
-          // Find all messages in this chat with IDs > the one with our commit hash
           const messagesToDelete = await db.query.messages.findMany({
             where: and(
               eq(messages.chatId, chatId),
-              gt(messages.id, messageWithCommit.id),
+              gte(messages.id, messageId),
             ),
             orderBy: desc(messages.id),
           });
 
           logger.log(
-            `Deleting ${messagesToDelete.length} messages after commit ${previousVersionId} from chat ${chatId}`,
+            `Deleting ${messagesToDelete.length} messages (id >= ${messageId}) from chat ${chatId}`,
           );
 
-          // Delete the messages
           if (messagesToDelete.length > 0) {
             await db
               .delete(messages)
               .where(
-                and(
-                  eq(messages.chatId, chatId),
-                  gt(messages.id, messageWithCommit.id),
-                ),
+                and(eq(messages.chatId, chatId), gte(messages.id, messageId)),
               );
+          }
+        } else {
+          // Find the chat and message associated with the commit hash
+          const messageWithCommit = await db.query.messages.findFirst({
+            where: eq(messages.commitHash, previousVersionId),
+            with: {
+              chat: true,
+            },
+          });
+
+          // If we found a message with this commit hash, delete all subsequent messages (but keep this message)
+          if (messageWithCommit) {
+            const chatId = messageWithCommit.chatId;
+
+            // Find all messages in this chat with IDs > the one with our commit hash
+            const messagesToDelete = await db.query.messages.findMany({
+              where: and(
+                eq(messages.chatId, chatId),
+                gt(messages.id, messageWithCommit.id),
+              ),
+              orderBy: desc(messages.id),
+            });
+
+            logger.log(
+              `Deleting ${messagesToDelete.length} messages after commit ${previousVersionId} from chat ${chatId}`,
+            );
+
+            // Delete the messages
+            if (messagesToDelete.length > 0) {
+              await db
+                .delete(messages)
+                .where(
+                  and(
+                    eq(messages.chatId, chatId),
+                    gt(messages.id, messageWithCommit.id),
+                  ),
+                );
+            }
           }
         }
 

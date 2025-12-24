@@ -442,6 +442,10 @@ export interface GetNeonProjectResponse {
 export interface RevertVersionParams {
   appId: number;
   previousVersionId: string;
+  currentChatMessageId?: {
+    chatId: number;
+    messageId: number;
+  };
 }
 
 export type RevertVersionResponse =

@@ -118,7 +118,10 @@ export function ContextFilesPicker() {
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
-        <div className="flex items-center py-2 px-3 hover:bg-accent hover:text-accent-foreground rounded-sm cursor-pointer text-sm">
+        <div
+          className="flex items-center py-2 px-3 hover:bg-accent hover:text-accent-foreground rounded-sm cursor-pointer text-sm"
+          data-testid="codebase-context-trigger"
+        >
           <Settings2 className="size-4 mr-2" />
           Codebase context
         </div>

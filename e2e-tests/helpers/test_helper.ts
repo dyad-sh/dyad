@@ -366,10 +366,27 @@ export class PageObject {
   }
 
   async openContextFilesPicker() {
-    const contextButton = this.page.getByTestId("codebase-context-button");
-    await contextButton.click();
+    // Open the auxiliary actions menu
+    await this.getChatInputContainer()
+      .getByTestId("auxiliary-actions-menu")
+      .click();
+
+    // Click on "Codebase context" to open the popover
+    await this.page.getByTestId("codebase-context-trigger").click();
+
+    // Wait for the popover content to be visible
+    await this.page
+      .getByTestId("manual-context-files-input")
+      .waitFor({ state: "visible" });
+
     return new ContextFilesPickerDialog(this.page, async () => {
-      await contextButton.click();
+      // Close the popover first
+      await this.page.keyboard.press("Escape");
+      // Wait a bit for the popover to close, then close the dropdown menu
+      await this.page
+        .getByTestId("manual-context-files-input")
+        .waitFor({ state: "hidden" });
+      await this.page.keyboard.press("Escape");
     });
   }
 

@@ -38,6 +38,30 @@ let rememberedOrigin = null; // e.g. "http://localhost:5173"
 let stacktraceJsContent = null;
 let dyadShimContent = null;
 let dyadComponentSelectorClientContent = null;
+let dyadScreenshotClientContent = null;
+let htmlToImageContent = null;
+let dyadVisualEditorClientContent = null;
+let dyadLogsContent = null;
+
+try {
+  const htmlToImagePath = path.join(
+    __dirname,
+    "..",
+    "node_modules",
+    "html-to-image",
+    "dist",
+    "html-to-image.js",
+  );
+  htmlToImageContent = fs.readFileSync(htmlToImagePath, "utf-8");
+  parentPort?.postMessage(
+    `[proxy-worker] html-to-image.js loaded from: ${htmlToImagePath}`,
+  );
+} catch (error) {
+  parentPort?.postMessage(
+    `[proxy-worker] Failed to read html-to-image.js: ${error.message}`,
+  );
+}
+
 try {
   const stackTraceLibPath = path.join(
     __dirname,
@@ -83,6 +107,74 @@ try {
   );
 }
 
+try {
+  const dyadScreenshotClientPath = path.join(
+    __dirname,
+    "dyad-screenshot-client.js",
+  );
+  dyadScreenshotClientContent = fs.readFileSync(
+    dyadScreenshotClientPath,
+    "utf-8",
+  );
+  parentPort?.postMessage("[proxy-worker] dyad-screenshot-client.js loaded.");
+} catch (error) {
+  parentPort?.postMessage(
+    `[proxy-worker] Failed to read dyad-screenshot-client.js: ${error.message}`,
+  );
+}
+
+try {
+  const dyadVisualEditorClientPath = path.join(
+    __dirname,
+    "dyad-visual-editor-client.js",
+  );
+  dyadVisualEditorClientContent = fs.readFileSync(
+    dyadVisualEditorClientPath,
+    "utf-8",
+  );
+  parentPort?.postMessage(
+    "[proxy-worker] dyad-visual-editor-client.js loaded.",
+  );
+} catch (error) {
+  parentPort?.postMessage(
+    `[proxy-worker] Failed to read dyad-visual-editor-client.js: ${error.message}`,
+  );
+}
+
+try {
+  const dyadLogsPath = path.join(__dirname, "dyad_logs.js");
+  dyadLogsContent = fs.readFileSync(dyadLogsPath, "utf-8");
+  parentPort?.postMessage("[proxy-worker] dyad_logs.js loaded.");
+} catch (error) {
+  parentPort?.postMessage(
+    `[proxy-worker] Failed to read dyad_logs.js: ${error.message}`,
+  );
+}
+
+// Load Service Worker files
+let dyadSwContent = null;
+let dyadSwRegisterContent = null;
+
+try {
+  const dyadSwPath = path.join(__dirname, "dyad-sw.js");
+  dyadSwContent = fs.readFileSync(dyadSwPath, "utf-8");
+  parentPort?.postMessage("[proxy-worker] dyad-sw.js loaded.");
+} catch (error) {
+  parentPort?.postMessage(
+    `[proxy-worker] Failed to read dyad-sw.js: ${error.message}`,
+  );
+}
+
+try {
+  const dyadSwRegisterPath = path.join(__dirname, "dyad-sw-register.js");
+  dyadSwRegisterContent = fs.readFileSync(dyadSwRegisterPath, "utf-8");
+  parentPort?.postMessage("[proxy-worker] dyad-sw-register.js loaded.");
+} catch (error) {
+  parentPort?.postMessage(
+    `[proxy-worker] Failed to read dyad-sw-register.js: ${error.message}`,
+  );
+}
+
 /* ---------------------- helper: need to inject? ------------------------ */
 function needsInjection(pathname) {
   // Inject for routes without a file extension (e.g., "/foo", "/foo/bar", "/")
@@ -124,6 +216,47 @@ function injectHTML(buf) {
       '<script>console.warn("[proxy-worker] dyad component selector client was not injected.");</script>',
     );
   }
+  if (htmlToImageContent) {
+    scripts.push(`<script>${htmlToImageContent}</script>`);
+    parentPort?.postMessage(
+      "[proxy-worker] html-to-image script injected into HTML.",
+    );
+  } else {
+    scripts.push(
+      '<script>console.error("[proxy-worker] html-to-image was not injected - library not loaded.");</script>',
+    );
+    parentPort?.postMessage(
+      "[proxy-worker] WARNING: html-to-image not injected!",
+    );
+  }
+  if (dyadScreenshotClientContent) {
+    scripts.push(`<script>${dyadScreenshotClientContent}</script>`);
+  } else {
+    scripts.push(
+      '<script>console.warn("[proxy-worker] dyad screenshot client was not injected.");</script>',
+    );
+  }
+  if (dyadVisualEditorClientContent) {
+    scripts.push(`<script>${dyadVisualEditorClientContent}</script>`);
+  } else {
+    scripts.push(
+      '<script>console.warn("[proxy-worker] dyad visual editor client was not injected.");</script>',
+    );
+  }
+  if (dyadLogsContent) {
+    scripts.push(`<script>${dyadLogsContent}</script>`);
+  } else {
+    scripts.push(
+      '<script>console.warn("[proxy-worker] dyad_logs.js was not injected.");</script>',
+    );
+  }
+  if (dyadSwRegisterContent) {
+    scripts.push(`<script>${dyadSwRegisterContent}</script>`);
+  } else {
+    scripts.push(
+      '<script>console.warn("[proxy-worker] dyad-sw-register.js was not injected.");</script>',
+    );
+  }
   const allScripts = scripts.join("\n");
 
   const headRegex = /<head[^>]*>/i;
@@ -151,6 +284,23 @@ function buildTargetURL(clientReq) {
 /* ----------------------------------------------------------------------- */
 
 const server = http.createServer((clientReq, clientRes) => {
+  // Special handling for Service Worker file
+  if (clientReq.url === "/dyad-sw.js") {
+    if (dyadSwContent) {
+      clientRes.writeHead(200, {
+        "content-type": "application/javascript",
+        "service-worker-allowed": "/",
+        "cache-control": "no-cache",
+      });
+      clientRes.end(dyadSwContent);
+      return;
+    } else {
+      clientRes.writeHead(404, { "content-type": "text/plain" });
+      clientRes.end("Service Worker file not found");
+      return;
+    }
+  }
+
   let target;
   try {
     target = buildTargetURL(clientReq);

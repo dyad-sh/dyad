@@ -2,6 +2,10 @@ import { Request, Response } from "express";
 import fs from "fs";
 import path from "path";
 import { CANNED_MESSAGE, createStreamChunk } from ".";
+import {
+  handleLocalAgentFixture,
+  extractLocalAgentFixture,
+} from "./localAgentHandler";
 
 let globalCounter = 0;
 
@@ -21,6 +25,35 @@ export const createChatCompletionHandler =
           code: "rate_limit_exceeded",
         },
       });
+    }
+
+    // Check for local-agent fixture requests (tc=local-agent/*)
+    // This needs to be checked on the first user message, not the last (which might be tool results)
+    const lastUserMessage = messages
+      .slice()
+      .reverse()
+      .find((m: any) => m.role === "user");
+    if (lastUserMessage) {
+      // Handle both string content and array content (AI SDK format)
+      let textContent = "";
+      if (typeof lastUserMessage.content === "string") {
+        textContent = lastUserMessage.content;
+      } else if (Array.isArray(lastUserMessage.content)) {
+        const textPart = lastUserMessage.content.find(
+          (p: any) => p.type === "text",
+        );
+        if (textPart) {
+          textContent = textPart.text;
+        }
+      }
+
+      const localAgentFixture = extractLocalAgentFixture(textContent);
+      console.error(
+        `[local-agent] Checking message: "${textContent.slice(0, 50)}", fixture: ${localAgentFixture}`,
+      );
+      if (localAgentFixture) {
+        return handleLocalAgentFixture(req, res, localAgentFixture);
+      }
     }
 
     let messageContent = CANNED_MESSAGE;
@@ -127,6 +160,42 @@ export default Index;
       </dyad-write>
       `;
     }
+    if (
+      lastMessage &&
+      typeof lastMessage.content === "string" &&
+      lastMessage.content.startsWith(
+        "There was an issue with the following `dyad-search-replace` tags.",
+      )
+    ) {
+      if (lastMessage.content.includes("Make sure you use `dyad-read`")) {
+        // Fix errors in create-ts-errors.md and introduce a new error
+        messageContent =
+          `
+<dyad-read path="src/pages/Index.tsx"></dyad-read>
+
+<dyad-search-replace path="src/pages/Index.tsx">
+<<<<<<< SEARCH
+        // STILL Intentionally DO NOT MATCH ANYTHING TO TRIGGER FALLBACK
+        <h1 className="text-4xl font-bold mb-4">Welcome to Your Blank App</h1>
+=======
+        <h1 className="text-4xl font-bold mb-4">Welcome to the UPDATED App</h1>
+>>>>>>> REPLACE
+</dyad-search-replace>
+` +
+          "\n\n" +
+          generateDump(req);
+      } else {
+        // Fix errors in create-ts-errors.md and introduce a new error
+        messageContent =
+          `
+<dyad-write path="src/pages/Index.tsx" description="Rewrite file.">
+// FILE IS REPLACED WITH FALLBACK WRITE.
+</dyad-write>` +
+          "\n\n" +
+          generateDump(req);
+      }
+    }
+
     console.error("LASTMESSAGE", lastMessage);
     // Check if the last message is "[dump]" to write messages to file and return path
     if (
@@ -141,6 +210,27 @@ export default Index;
       messageContent = generateDump(req);
     }
 
+    if (
+      lastMessage &&
+      typeof lastMessage.content === "string" &&
+      lastMessage.content.startsWith("/security-review")
+    ) {
+      messageContent = fs.readFileSync(
+        path.join(
+          __dirname,
+          "..",
+          "..",
+          "..",
+          "e2e-tests",
+          "fixtures",
+          "security-review",
+          "findings.md",
+        ),
+        "utf-8",
+      );
+      messageContent += "\n\n" + generateDump(req);
+    }
+
     if (lastMessage && lastMessage.content === "[increment]") {
       globalCounter++;
       messageContent = `counter=${globalCounter}`;
@@ -151,7 +241,8 @@ export default Index;
       lastMessage &&
       lastMessage.content &&
       typeof lastMessage.content === "string" &&
-      lastMessage.content.startsWith("tc=")
+      lastMessage.content.startsWith("tc=") &&
+      !lastMessage.content.startsWith("tc=local-agent/")
     ) {
       const testCaseName = lastMessage.content.slice(3).split("[")[0].trim(); // Remove "tc=" prefix
       console.error(`* Loading test case: ${testCaseName}`);
@@ -314,12 +405,21 @@ export default Index;
       return;
     }
 
+    // Check for high token usage marker to simulate near context limit
+    const highTokensMatch =
+      typeof lastMessage?.content === "string" &&
+      !lastMessage?.content.startsWith("Summarize the following chat:") &&
+      lastMessage?.content?.match?.(/\[high-tokens=(\d+)\]/);
+    const highTokensValue = highTokensMatch
+      ? parseInt(highTokensMatch[1], 10)
+      : null;
+
     // Split the message into characters to simulate streaming
     const messageChars = messageContent.split("");
 
     // Stream each character with a delay
     let index = 0;
-    const batchSize = 8;
+    const batchSize = 32;
 
     // Send role first
     res.write(createStreamChunk("", "assistant"));
@@ -331,8 +431,15 @@ export default Index;
         res.write(createStreamChunk(batch));
         index += batchSize;
       } else {
-        // Send the final chunk
-        res.write(createStreamChunk("", "assistant", true));
+        // Send the final chunk with optional usage info for high token simulation
+        const usage = highTokensValue
+          ? {
+              prompt_tokens: highTokensValue - 100,
+              completion_tokens: 100,
+              total_tokens: highTokensValue,
+            }
+          : undefined;
+        res.write(createStreamChunk("", "assistant", true, usage));
         clearInterval(interval);
         res.end();
       }

@@ -4,18 +4,56 @@ import { ThemeProvider } from "../contexts/ThemeContext";
 import { DeepLinkProvider } from "../contexts/DeepLinkContext";
 import { Toaster } from "sonner";
 import { TitleBar } from "./TitleBar";
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useRunApp } from "@/hooks/useRunApp";
-import { useAtomValue } from "jotai";
-import { previewModeAtom } from "@/atoms/appAtoms";
+import { useAtomValue, useSetAtom } from "jotai";
+import {
+  appConsoleEntriesAtom,
+  previewModeAtom,
+  selectedAppIdAtom,
+} from "@/atoms/appAtoms";
+import { useSettings } from "@/hooks/useSettings";
+import type { ZoomLevel } from "@/lib/schemas";
+import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
+import { chatInputValueAtom } from "@/atoms/chatAtoms";
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+const DEFAULT_ZOOM_LEVEL: ZoomLevel = "100";
+
+export default function RootLayout({ children }: { children: ReactNode }) {
   const { refreshAppIframe } = useRunApp();
   const previewMode = useAtomValue(previewModeAtom);
+  const { settings } = useSettings();
+  const setSelectedComponentsPreview = useSetAtom(
+    selectedComponentsPreviewAtom,
+  );
+  const setChatInput = useSetAtom(chatInputValueAtom);
+  const selectedAppId = useAtomValue(selectedAppIdAtom);
+  const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
+
+  useEffect(() => {
+    const zoomLevel = settings?.zoomLevel ?? DEFAULT_ZOOM_LEVEL;
+    const zoomFactor = Number(zoomLevel) / 100;
+
+    const electronApi = (
+      window as Window & {
+        electron?: {
+          webFrame?: {
+            setZoomFactor: (factor: number) => void;
+          };
+        };
+      }
+    ).electron;
+
+    if (electronApi?.webFrame?.setZoomFactor) {
+      electronApi.webFrame.setZoomFactor(zoomFactor);
+
+      return () => {
+        electronApi.webFrame?.setZoomFactor(Number(DEFAULT_ZOOM_LEVEL) / 100);
+      };
+    }
+
+    return () => {};
+  }, [settings?.zoomLevel]);
   // Global keyboard listener for refresh events
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -36,6 +74,12 @@ export default function RootLayout({
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [refreshAppIframe, previewMode]);
+
+  useEffect(() => {
+    setChatInput("");
+    setSelectedComponentsPreview([]);
+    setConsoleEntries([]);
+  }, [selectedAppId]);
 
   return (
     <>

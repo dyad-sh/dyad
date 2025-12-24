@@ -20,7 +20,6 @@ import { useLoadApp } from "./useLoadApp";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useVersions } from "./useVersions";
 import { showExtraFilesToast } from "@/lib/toast";
-import { useProposal } from "./useProposal";
 import { useSearch } from "@tanstack/react-router";
 import { useRunApp } from "./useRunApp";
 import { useCountTokens } from "./useCountTokens";
@@ -28,6 +27,7 @@ import { useUserBudgetInfo } from "./useUserBudgetInfo";
 import { usePostHog } from "posthog-js/react";
 import { useCheckProblems } from "./useCheckProblems";
 import { useSettings } from "./useSettings";
+import { useQueryClient } from "@tanstack/react-query";
 
 export function getRandomNumberId() {
   return Math.floor(Math.random() * 1_000_000_000_000_000);
@@ -43,25 +43,25 @@ export function useStreamChat({
   const setErrorById = useSetAtom(chatErrorByIdAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const [selectedAppId] = useAtom(selectedAppIdAtom);
-  const { refreshChats } = useChats(selectedAppId);
+  const { invalidateChats } = useChats(selectedAppId);
   const { refreshApp } = useLoadApp(selectedAppId);
 
   const setStreamCountById = useSetAtom(chatStreamCountByIdAtom);
   const { refreshVersions } = useVersions(selectedAppId);
   const { refreshAppIframe } = useRunApp();
-  const { countTokens } = useCountTokens();
   const { refetchUserBudget } = useUserBudgetInfo();
   const { checkProblems } = useCheckProblems(selectedAppId);
   const { settings } = useSettings();
   const setRecentStreamChatIds = useSetAtom(recentStreamChatIdsAtom);
   const posthog = usePostHog();
+  const queryClient = useQueryClient();
   let chatId: number | undefined;
 
   if (hasChatId) {
     const { id } = useSearch({ from: "/chat" });
     chatId = id;
   }
-  let { refreshProposal } = hasChatId ? useProposal(chatId) : useProposal();
+  const { invalidateTokenCount } = useCountTokens(chatId ?? null, "");
 
   const streamMessage = useCallback(
     async ({
@@ -69,13 +69,15 @@ export function useStreamChat({
       chatId,
       redo,
       attachments,
-      selectedComponent,
+      selectedComponents,
+      onSettled,
     }: {
       prompt: string;
       chatId: number;
       redo?: boolean;
       attachments?: FileAttachment[];
-      selectedComponent?: ComponentSelection | null;
+      selectedComponents?: ComponentSelection[];
+      onSettled?: () => void;
     }) => {
       if (
         (!prompt.trim() && (!attachments || attachments.length === 0)) ||
@@ -104,7 +106,7 @@ export function useStreamChat({
       let hasIncrementedStreamCount = false;
       try {
         IpcClient.getInstance().streamMessage(prompt, {
-          selectedComponent: selectedComponent ?? null,
+          selectedComponents: selectedComponents ?? [],
           chatId,
           redo,
           attachments,
@@ -139,7 +141,8 @@ export function useStreamChat({
                 posthog,
               });
             }
-            refreshProposal(chatId);
+            // Use queryClient directly with the chatId parameter to avoid stale closure issues
+            queryClient.invalidateQueries({ queryKey: ["proposal", chatId] });
 
             refetchUserBudget();
 
@@ -149,10 +152,11 @@ export function useStreamChat({
               next.set(chatId, false);
               return next;
             });
-            refreshChats();
+            invalidateChats();
             refreshApp();
             refreshVersions();
-            countTokens(chatId, "");
+            invalidateTokenCount();
+            onSettled?.();
           },
           onError: (errorMessage: string) => {
             console.error(`[CHAT] Stream error for ${chatId}:`, errorMessage);
@@ -168,10 +172,11 @@ export function useStreamChat({
               next.set(chatId, false);
               return next;
             });
-            refreshChats();
+            invalidateChats();
             refreshApp();
             refreshVersions();
-            countTokens(chatId, "");
+            invalidateTokenCount();
+            onSettled?.();
           },
         });
       } catch (error) {
@@ -190,6 +195,7 @@ export function useStreamChat({
             );
           return next;
         });
+        onSettled?.();
       }
     },
     [
@@ -200,6 +206,7 @@ export function useStreamChat({
       selectedAppId,
       refetchUserBudget,
       settings,
+      queryClient,
     ],
   );
 

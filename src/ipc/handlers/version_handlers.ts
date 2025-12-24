@@ -1,20 +1,30 @@
 import { db } from "../../db";
 import { apps, messages, versions } from "../../db/schema";
-import { desc, eq, and, gt } from "drizzle-orm";
+import { desc, eq, and, gt, gte } from "drizzle-orm";
 import type {
   Version,
   BranchResult,
   RevertVersionParams,
   RevertVersionResponse,
 } from "../ipc_types";
+import type { GitCommit } from "../git_types";
 import fs from "node:fs";
 import path from "node:path";
 import { getDyadAppPath } from "../../paths/paths";
-import git, { type ReadCommitResult } from "isomorphic-git";
 import { withLock } from "../utils/lock_utils";
 import log from "electron-log";
 import { createLoggedHandler } from "./safe_handle";
-import { gitCheckout, gitCommit, gitStageToRevert } from "../utils/git_utils";
+
+import { deployAllSupabaseFunctions } from "../../supabase_admin/supabase_utils";
+import {
+  gitCheckout,
+  gitCommit,
+  gitStageToRevert,
+  getCurrentCommitHash,
+  gitCurrentBranch,
+  gitLog,
+  isGitStatusClean,
+} from "../utils/git_utils";
 
 import {
   getNeonClient,
@@ -79,11 +89,9 @@ export function registerVersionHandlers() {
       return [];
     }
 
-    const commits = await git.log({
-      fs,
-      dir: appPath,
-      // KEEP UP TO DATE WITH ChatHeader.tsx
-      depth: 100_000, // Limit to last 100_000 commits for performance
+    const commits = await gitLog({
+      path: appPath,
+      depth: 100_000, // KEEP UP TO DATE WITH ChatHeader.tsx
     });
 
     // Get all snapshots for this app to match with commits
@@ -103,7 +111,7 @@ export function registerVersionHandlers() {
       });
     }
 
-    return commits.map((commit: ReadCommitResult) => {
+    return commits.map((commit: GitCommit) => {
       const snapshotInfo = snapshotMap.get(commit.oid);
       return {
         oid: commit.oid,
@@ -133,11 +141,7 @@ export function registerVersionHandlers() {
       }
 
       try {
-        const currentBranch = await git.currentBranch({
-          fs,
-          dir: appPath,
-          fullname: false,
-        });
+        const currentBranch = await gitCurrentBranch({ path: appPath });
 
         return {
           branch: currentBranch || "<no-branch>",
@@ -153,11 +157,11 @@ export function registerVersionHandlers() {
     "revert-version",
     async (
       _,
-      { appId, previousVersionId }: RevertVersionParams,
+      { appId, previousVersionId, currentChatMessageId }: RevertVersionParams,
     ): Promise<RevertVersionResponse> => {
       return withLock(appId, async () => {
         let successMessage = "Restored version";
-        let warningMessage: string | undefined = undefined;
+        let warningMessage = "";
         const app = await db.query.apps.findFirst({
           where: eq(apps.id, appId),
         });
@@ -168,9 +172,8 @@ export function registerVersionHandlers() {
 
         const appPath = getDyadAppPath(app.path);
         // Get the current commit hash before reverting
-        const currentCommitHash = await git.resolveRef({
-          fs,
-          dir: appPath,
+        const currentCommitHash = await getCurrentCommitHash({
+          path: appPath,
           ref: "main",
         });
 
@@ -191,47 +194,75 @@ export function registerVersionHandlers() {
           path: appPath,
           targetOid: previousVersionId,
         });
+        const isClean = await isGitStatusClean({ path: appPath });
+        if (!isClean) {
+          await gitCommit({
+            path: appPath,
+            message: `Reverted all changes back to version ${previousVersionId}`,
+          });
+        }
 
-        await gitCommit({
-          path: appPath,
-          message: `Reverted all changes back to version ${previousVersionId}`,
-        });
+        // Delete messages based on currentChatMessageId if provided, otherwise use commit hash lookup
+        if (currentChatMessageId) {
+          // Delete all messages including and after the specified message
+          const { chatId, messageId } = currentChatMessageId;
 
-        // Find the chat and message associated with the commit hash
-        const messageWithCommit = await db.query.messages.findFirst({
-          where: eq(messages.commitHash, previousVersionId),
-          with: {
-            chat: true,
-          },
-        });
-
-        // If we found a message with this commit hash, delete all subsequent messages (but keep this message)
-        if (messageWithCommit) {
-          const chatId = messageWithCommit.chatId;
-
-          // Find all messages in this chat with IDs > the one with our commit hash
           const messagesToDelete = await db.query.messages.findMany({
             where: and(
               eq(messages.chatId, chatId),
-              gt(messages.id, messageWithCommit.id),
+              gte(messages.id, messageId),
             ),
             orderBy: desc(messages.id),
           });
 
           logger.log(
-            `Deleting ${messagesToDelete.length} messages after commit ${previousVersionId} from chat ${chatId}`,
+            `Deleting ${messagesToDelete.length} messages (id >= ${messageId}) from chat ${chatId}`,
           );
 
-          // Delete the messages
           if (messagesToDelete.length > 0) {
             await db
               .delete(messages)
               .where(
-                and(
-                  eq(messages.chatId, chatId),
-                  gt(messages.id, messageWithCommit.id),
-                ),
+                and(eq(messages.chatId, chatId), gte(messages.id, messageId)),
               );
+          }
+        } else {
+          // Find the chat and message associated with the commit hash
+          const messageWithCommit = await db.query.messages.findFirst({
+            where: eq(messages.commitHash, previousVersionId),
+            with: {
+              chat: true,
+            },
+          });
+
+          // If we found a message with this commit hash, delete all subsequent messages (but keep this message)
+          if (messageWithCommit) {
+            const chatId = messageWithCommit.chatId;
+
+            // Find all messages in this chat with IDs > the one with our commit hash
+            const messagesToDelete = await db.query.messages.findMany({
+              where: and(
+                eq(messages.chatId, chatId),
+                gt(messages.id, messageWithCommit.id),
+              ),
+              orderBy: desc(messages.id),
+            });
+
+            logger.log(
+              `Deleting ${messagesToDelete.length} messages after commit ${previousVersionId} from chat ${chatId}`,
+            );
+
+            // Delete the messages
+            if (messagesToDelete.length > 0) {
+              await db
+                .delete(messages)
+                .where(
+                  and(
+                    eq(messages.chatId, chatId),
+                    gt(messages.id, messageWithCommit.id),
+                  ),
+                );
+            }
           }
         }
 
@@ -310,6 +341,34 @@ export function registerVersionHandlers() {
             neonDevelopmentBranchId: app.neonDevelopmentBranchId,
             appPath: app.path,
           });
+        }
+        // Re-deploy all Supabase edge functions after reverting
+        if (app.supabaseProjectId) {
+          try {
+            logger.info(
+              `Re-deploying all Supabase edge functions for app ${appId} after revert`,
+            );
+            const deployErrors = await deployAllSupabaseFunctions({
+              appPath,
+              supabaseProjectId: app.supabaseProjectId,
+              supabaseOrganizationSlug: app.supabaseOrganizationSlug ?? null,
+            });
+
+            if (deployErrors.length > 0) {
+              warningMessage += `Some Supabase functions failed to deploy after revert: ${deployErrors.join(", ")}`;
+              logger.warn(warningMessage);
+              // Note: We don't fail the revert operation if function deployment fails
+              // The code has been successfully reverted, but functions may be out of sync
+            } else {
+              logger.info(
+                `Successfully re-deployed all Supabase edge functions for app ${appId}`,
+              );
+            }
+          } catch (error) {
+            warningMessage += `Error re-deploying Supabase edge functions after revert: ${error}`;
+            logger.warn(warningMessage);
+            // Continue with the revert operation even if function deployment fails
+          }
         }
         if (warningMessage) {
           return { warningMessage };

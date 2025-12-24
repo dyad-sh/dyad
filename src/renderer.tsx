@@ -13,6 +13,8 @@ import {
 } from "@tanstack/react-query";
 import { showError, showMcpConsentToast } from "./lib/toast";
 import { IpcClient } from "./ipc/ipc_client";
+import { useSetAtom } from "jotai";
+import { pendingAgentConsentsAtom } from "./atoms/chatAtoms";
 
 // @ts-ignore
 console.log("Running in mode:", import.meta.env.MODE);
@@ -31,6 +33,7 @@ declare module "@tanstack/react-query" {
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
+      staleTime: 60_000,
       retry: false,
     },
     mutations: {
@@ -120,6 +123,46 @@ function App() {
         inputPreview: payload.inputPreview,
         onDecision: (d) => ipc.respondToMcpConsentRequest(payload.requestId, d),
       });
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Agent v2 tool consent requests - queue consents instead of overwriting
+  const setPendingAgentConsents = useSetAtom(pendingAgentConsentsAtom);
+  useEffect(() => {
+    const ipc = IpcClient.getInstance();
+    const unsubscribe = ipc.onAgentToolConsentRequest((payload) => {
+      setPendingAgentConsents((prev) => [
+        ...prev,
+        {
+          requestId: payload.requestId,
+          chatId: payload.chatId,
+          toolName: payload.toolName,
+          toolDescription: payload.toolDescription,
+          inputPreview: payload.inputPreview,
+        },
+      ]);
+    });
+    return () => unsubscribe();
+  }, [setPendingAgentConsents]);
+
+  // Clear pending agent consents when a chat stream ends or errors
+  // This prevents stale consent banners from remaining visible after cancellation
+  useEffect(() => {
+    const ipc = IpcClient.getInstance();
+    const unsubscribe = ipc.onChatStreamEnd((chatId) => {
+      setPendingAgentConsents((prev) =>
+        prev.filter((consent) => consent.chatId !== chatId),
+      );
+    });
+    return () => unsubscribe();
+  }, [setPendingAgentConsents]);
+
+  // Forward telemetry events from main process to PostHog
+  useEffect(() => {
+    const ipc = IpcClient.getInstance();
+    const unsubscribe = ipc.onTelemetryEvent(({ eventName, properties }) => {
+      posthog.capture(eventName, properties);
     });
     return () => unsubscribe();
   }, []);

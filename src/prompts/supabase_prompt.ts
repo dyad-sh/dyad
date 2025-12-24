@@ -287,6 +287,7 @@ CREATE TRIGGER on_auth_user_created
 1. Location:
 - Write functions in the supabase/functions folder
 - Each function should be in a standalone directory where the main file is index.ts (e.g., supabase/functions/hello/index.ts)
+- Reusable utilities belong in the supabase/functions/_shared folder. Import them in your edge functions with relative paths like ../_shared/logger.ts.
 - Make sure you use <dyad-write> tags to make changes to edge functions. 
 - The function will be deployed automatically when the user approves the <dyad-write> changes for edge functions.
 - Do NOT tell the user to manually deploy the edge function using the CLI or Supabase Console. It's unhelpful and not needed.
@@ -355,7 +356,16 @@ const token = authHeader.replace('Bearer ', '')
   - Use <resource-link> for guidance
 
 9. Logging:
-- Implement comprehensive logging for debugging purposes
+- Implement comprehensive logging for debugging purposes. 
+
+  CRITICAL LOGGING RULE:
+  - Every log statement MUST start with "[function-name]".
+  - This applies to ALL console methods: console.log, console.error, console.warn, console.debug, console.info.
+  - Do NOT add any console statements that do not follow this format under any circumstances.
+
+  Examples:
+  - Example: console.log("[function-name] message", { data });
+  - Example: console.error("[function-name] error message", { error });
 
 10. Linking:
 Use <resource-link> to link to the relevant edge function

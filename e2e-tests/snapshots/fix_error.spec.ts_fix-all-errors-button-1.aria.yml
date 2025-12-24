@@ -1,0 +1,75 @@
+- paragraph: tc=create-multiple-errors
+- paragraph: I will intentionally add multiple errors to test the Fix All Errors button
+- img
+- text: Index.tsx
+- button "Edit":
+  - img
+- img
+- text: "src/pages/Index.tsx Summary: intentionally add first error"
+- img
+- text: Error First error in Index...
+- img
+- button "Copy":
+  - img
+- button "Fix with AI":
+  - img
+- img
+- text: ErrorComponent.tsx
+- button "Edit":
+  - img
+- img
+- text: "src/components/ErrorComponent.tsx Summary: intentionally add second error"
+- img
+- text: Error Second error in ErrorComponent...
+- img
+- button "Copy":
+  - img
+- button "Fix with AI":
+  - img
+- img
+- text: helper.ts
+- button "Edit":
+  - img
+- img
+- text: "src/utils/helper.ts Summary: intentionally add third error"
+- img
+- text: Error Third error in helper...
+- img
+- button "Copy":
+  - img
+- button "Fix with AI":
+  - img
+- button "Fix All Errors (3)":
+  - img
+- button:
+  - img
+- img
+- text: Approved
+- img
+- text: less than a minute ago
+- img
+- text: wrote 3 file(s)
+- paragraph: "Fix all of the following errors:"
+- list:
+  - listitem: First error in Index
+  - listitem: Second error in ErrorComponent
+  - listitem: Third error in helper
+- img
+- text: file1.txt
+- button "Edit":
+  - img
+- img
+- text: file1.txt
+- paragraph: More EOM
+- button:
+  - img
+- img
+- text: Approved
+- img
+- text: less than a minute ago
+- img
+- text: wrote 1 file(s)
+- button "Undo":
+  - img
+- button "Retry":
+  - img

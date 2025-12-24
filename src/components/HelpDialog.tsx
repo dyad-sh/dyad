@@ -25,6 +25,8 @@ import { ChatLogsData } from "@/ipc/ipc_types";
 import { showError } from "@/lib/toast";
 import { HelpBotDialog } from "./HelpBotDialog";
 import { useSettings } from "@/hooks/useSettings";
+import { BugScreenshotDialog } from "./BugScreenshotDialog";
+import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 
 interface HelpDialogProps {
   isOpen: boolean;
@@ -39,9 +41,10 @@ export function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
   const [uploadComplete, setUploadComplete] = useState(false);
   const [sessionId, setSessionId] = useState("");
   const [isHelpBotOpen, setIsHelpBotOpen] = useState(false);
+  const [isBugScreenshotOpen, setIsBugScreenshotOpen] = useState(false);
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { settings } = useSettings();
-
+  const { userBudget } = useUserBudgetInfo();
   const isDyadProUser = settings?.providerSettings?.["auto"]?.apiKey?.value;
 
   // Function to reset all dialog state
@@ -91,6 +94,9 @@ Issues that do not meet these requirements will be closed and may need to be res
 ## Actual Behavior (required)
 <!-- What actually happened? -->
 
+## Screenshot (Optional)
+<!-- Screenshot of the bug -->
+
 ## System Information
 - Dyad Version: ${debugInfo.dyadVersion}
 - Platform: ${debugInfo.platform}
@@ -98,6 +104,7 @@ Issues that do not meet these requirements will be closed and may need to be res
 - Node Version: ${debugInfo.nodeVersion || "n/a"}
 - PNPM Version: ${debugInfo.pnpmVersion || "n/a"}
 - Node Path: ${debugInfo.nodePath || "n/a"}
+- Pro User ID: ${userBudget?.redactedUserId || "n/a"}
 - Telemetry ID: ${debugInfo.telemetryId || "n/a"}
 - Model: ${debugInfo.selectedLanguageModel || "n/a"}
 
@@ -221,6 +228,7 @@ Issues that do not meet these requirements will be closed and may need to be res
 -->
 
 Session ID: ${sessionId}
+Pro User ID: ${userBudget?.redactedUserId || "n/a"}
 
 ## Issue Description (required)
 <!-- Please describe the issue you're experiencing -->
@@ -427,7 +435,10 @@ Session ID: ${sessionId}
           <div className="flex flex-col space-y-2">
             <Button
               variant="outline"
-              onClick={handleReportBug}
+              onClick={() => {
+                handleClose();
+                setIsBugScreenshotOpen(true);
+              }}
               disabled={isLoading}
               className="w-full py-6 bg-(--background-lightest)"
             >
@@ -459,6 +470,12 @@ Session ID: ${sessionId}
       <HelpBotDialog
         isOpen={isHelpBotOpen}
         onClose={() => setIsHelpBotOpen(false)}
+      />
+      <BugScreenshotDialog
+        isOpen={isBugScreenshotOpen}
+        onClose={() => setIsBugScreenshotOpen(false)}
+        handleReportBug={handleReportBug}
+        isLoading={isLoading}
       />
     </Dialog>
   );

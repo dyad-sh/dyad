@@ -1,0 +1,30 @@
+{
+  "selectedModel": {
+    "name": "auto",
+    "provider": "auto"
+  },
+  "providerSettings": {
+    "auto": {
+      "apiKey": {
+        "value": "testdyadkey",
+        "encryptionType": "plaintext"
+      }
+    }
+  },
+  "telemetryConsent": "unset",
+  "telemetryUserId": "[UUID]",
+  "hasRunBefore": true,
+  "enableDyadPro": true,
+  "experiments": {},
+  "lastShownReleaseNotesVersion": "[scrubbed]",
+  "enableProLazyEditsMode": true,
+  "proLazyEditsMode": "v1",
+  "enableProSmartFilesContextMode": true,
+  "selectedTemplateId": "react",
+  "selectedChatMode": "build",
+  "enableAutoFixProblems": false,
+  "enableAutoUpdate": true,
+  "releaseChannel": "stable",
+  "isRunning": true,
+  "isTestMode": true
+}

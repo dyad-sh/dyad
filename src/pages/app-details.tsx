@@ -128,11 +128,10 @@ export default function AppDetailsPage() {
       await refreshApps();
     } catch (error) {
       console.error("Failed to rename app:", error);
-      alert(
-        `Error renaming app: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      const errorMessage = (
+        error instanceof Error ? error.message : String(error)
+      ).replace(/^Error invoking remote method 'rename-app': Error: /, "");
+      showError(errorMessage);
     } finally {
       setIsRenaming(false);
     }
@@ -143,7 +142,6 @@ export default function AppDetailsPage() {
 
     try {
       setIsRenamingFolder(true);
-
       await IpcClient.getInstance().renameApp({
         appId,
         appName: selectedApp.name, // Keep the app name the same
@@ -154,11 +152,10 @@ export default function AppDetailsPage() {
       await refreshApps();
     } catch (error) {
       console.error("Failed to rename folder:", error);
-      alert(
-        `Error renaming folder: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      const errorMessage = (
+        error instanceof Error ? error.message : String(error)
+      ).replace(/^Error invoking remote method 'rename-app': Error: /, "");
+      showError(errorMessage);
     } finally {
       setIsRenamingFolder(false);
     }
@@ -299,13 +296,13 @@ export default function AppDetailsPage() {
             <span className="block text-gray-500 dark:text-gray-400 mb-0.5 text-xs">
               Created
             </span>
-            <span>{new Date().toLocaleString()}</span>
+            <span>{selectedApp.createdAt.toString()}</span>
           </div>
           <div>
             <span className="block text-gray-500 dark:text-gray-400 mb-0.5 text-xs">
               Last Updated
             </span>
-            <span>{new Date().toLocaleString()}</span>
+            <span>{selectedApp.updatedAt.toString()}</span>
           </div>
           <div className="col-span-2">
             <span className="block text-gray-500 dark:text-gray-400 mb-0.5 text-xs">

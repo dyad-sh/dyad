@@ -1,0 +1,257 @@
+{
+  "body": {
+    "model": "dyad/auto",
+    "max_tokens": 32000,
+    "temperature": 0,
+    "messages": [
+      {
+        "role": "system",
+        "content": "[[SYSTEM_MESSAGE]]"
+      },
+      {
+        "role": "user",
+        "content": "Generate an AI_RULES.md file for this app. Describe the tech stack in 5-10 bullet points and describe clear rules about what libraries to use for what."
+      },
+      {
+        "role": "assistant",
+        "content": "\n  <dyad-write path=\"file1.txt\">\n  A file (2)\n  </dyad-write>\n  More\n  EOM"
+      },
+      {
+        "role": "user",
+        "content": "[dump]"
+      }
+    ],
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "write_file",
+          "description": "Create or completely overwrite a file in the codebase",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "The file path relative to the app root"
+              },
+              "content": {
+                "type": "string",
+                "description": "The content to write to the file"
+              },
+              "description": {
+                "type": "string",
+                "description": "Brief description of the change"
+              }
+            },
+            "required": [
+              "path",
+              "content"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "delete_file",
+          "description": "Delete a file from the codebase",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "The file path to delete"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "rename_file",
+          "description": "Rename or move a file in the codebase",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "type": "string",
+                "description": "The current file path"
+              },
+              "to": {
+                "type": "string",
+                "description": "The new file path"
+              }
+            },
+            "required": [
+              "from",
+              "to"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "add_dependency",
+          "description": "Install npm packages",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "packages": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Array of package names to install"
+              }
+            },
+            "required": [
+              "packages"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "search_replace",
+          "description": "Apply targeted search/replace edits to a file. This is the preferred tool for editing a file.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "The file path to edit"
+              },
+              "search": {
+                "type": "string",
+                "description": "Content to search for in the file. This should match the existing code that will be replaced"
+              },
+              "replace": {
+                "type": "string",
+                "description": "New content to replace the search content with"
+              },
+              "description": {
+                "type": "string",
+                "description": "Brief description of the changes"
+              }
+            },
+            "required": [
+              "path",
+              "search",
+              "replace"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "read_file",
+          "description": "Read the content of a file from the codebase.\n  \n- You have the capability to call multiple tools in a single response. It is always better to speculatively read multiple files as a batch that are potentially useful.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "The file path to read"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "list_files",
+          "description": "List all files in the application directory recursively. If you are not sure, list all files by omitting the directory parameter.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "directory": {
+                "type": "string",
+                "description": "Optional subdirectory to list"
+              }
+            },
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "set_chat_summary",
+          "description": "Set the title/summary for this chat message. You should always call this message at the end of the turn when you have finished calling all the other tools.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "summary": {
+                "type": "string",
+                "description": "A short summary/title for the chat"
+              }
+            },
+            "required": [
+              "summary"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "add_integration",
+          "description": "Add an integration provider to the app (e.g., Supabase for auth, database, or server-side functions). Once you have called this tool, stop and do not call any more tools because you need to wait for the user to set up the integration.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "type": "string",
+                "enum": [
+                  "supabase"
+                ],
+                "description": "The integration provider to add (e.g., 'supabase')"
+              }
+            },
+            "required": [
+              "provider"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          }
+        }
+      }
+    ],
+    "tool_choice": "auto",
+    "stream": true,
+    "thinking": {
+      "type": "enabled",
+      "include_thoughts": true,
+      "budget_tokens": 4000
+    }
+  },
+  "headers": {
+    "authorization": "Bearer testdyadkey"
+  }
+}

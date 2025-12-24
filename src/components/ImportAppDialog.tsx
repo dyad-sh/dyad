@@ -298,383 +298,429 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
   const hasInstallCommand = installCommand.trim().length > 0;
   const hasStartCommand = startCommand.trim().length > 0;
   const commandsValid = hasInstallCommand === hasStartCommand;
-  // Add this component inside the ImportAppDialog.tsx file, before the main component
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[98vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="max-w-2xl w-[calc(100vw-2rem)] max-h-[98vh] overflow-y-auto flex flex-col p-0">
+        <DialogHeader className="sticky top-0 bg-background border-b px-6 py-4">
           <DialogTitle>Import App</DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-sm">
             Import existing app from local folder or clone from Github.
           </DialogDescription>
         </DialogHeader>
-
-        <Alert className="border-blue-500/20 text-blue-500">
-          <Info className="h-4 w-4" />
-          <AlertDescription>
-            App import is an experimental feature. If you encounter any issues,
-            please report them using the Help button.
-          </AlertDescription>
-        </Alert>
-        <Tabs defaultValue="local-folder" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="local-folder">Local Folder</TabsTrigger>
-            <TabsTrigger value="github-repos">Your GitHub Repos</TabsTrigger>
-            <TabsTrigger value="github-url">GitHub URL</TabsTrigger>
-          </TabsList>
-          <TabsContent value="local-folder" className="space-y-4">
-            <div className="py-4">
-              {!selectedPath ? (
-                <Button
-                  onClick={handleSelectFolder}
-                  disabled={selectFolderMutation.isPending}
-                  className="w-full"
-                >
-                  {selectFolderMutation.isPending ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Folder className="mr-2 h-4 w-4" />
-                  )}
-                  {selectFolderMutation.isPending
-                    ? "Selecting folder..."
-                    : "Select Folder"}
-                </Button>
-              ) : (
-                <div className="space-y-4">
-                  <div className="rounded-md border p-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium">Selected folder:</p>
-                        <p className="text-sm text-muted-foreground break-all">
-                          {selectedPath}
-                        </p>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleClear}
-                        className="h-8 w-8 p-0 flex-shrink-0"
-                        disabled={importAppMutation.isPending}
-                      >
-                        <X className="h-4 w-4" />
-                        <span className="sr-only">Clear selection</span>
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    {nameExists && (
-                      <p className="text-sm text-yellow-500">
-                        An app with this name already exists. Please choose a
-                        different name:
-                      </p>
+        <div className="px-6 pb-6 overflow-y-auto flex-1">
+          <Alert className="border-blue-500/20 text-blue-500 mb-2">
+            <Info className="h-4 w-4 flex-shrink-0" />
+            <AlertDescription className="text-xs sm:text-sm">
+              App import is an experimental feature. If you encounter any
+              issues, please report them using the Help button.
+            </AlertDescription>
+          </Alert>
+          <Tabs defaultValue="local-folder" className="w-full">
+            <TabsList className="grid w-full grid-cols-3 h-auto">
+              <TabsTrigger
+                value="local-folder"
+                className="text-xs sm:text-sm px-2 py-2"
+              >
+                Local Folder
+              </TabsTrigger>
+              <TabsTrigger
+                value="github-repos"
+                className="text-xs sm:text-sm px-2 py-2"
+              >
+                <span className="hidden sm:inline">Your GitHub Repos</span>
+                <span className="sm:hidden">GitHub Repos</span>
+              </TabsTrigger>
+              <TabsTrigger
+                value="github-url"
+                className="text-xs sm:text-sm px-2 py-2"
+              >
+                GitHub URL
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="local-folder" className="space-y-4">
+              <div className="py-4">
+                {!selectedPath ? (
+                  <Button
+                    onClick={handleSelectFolder}
+                    disabled={selectFolderMutation.isPending}
+                    className="w-full"
+                  >
+                    {selectFolderMutation.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Folder className="mr-2 h-4 w-4" />
                     )}
-                    <div className="relative">
-                      <Label className="text-sm ml-2 mb-2">App name</Label>
-                      <Input
-                        value={customAppName}
-                        onChange={handleAppNameChange}
-                        placeholder="Enter new app name"
-                        className="w-full pr-8"
-                        disabled={importAppMutation.isPending}
-                      />
-                      {isCheckingName && (
-                        <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <Accordion type="single" collapsible>
-                    <AccordionItem value="advanced-options">
-                      <AccordionTrigger className="text-sm hover:no-underline">
-                        Advanced options
-                      </AccordionTrigger>
-                      <AccordionContent className="space-y-4">
-                        <div className="grid gap-2">
-                          <Label className="text-sm ml-2 mb-2">
-                            Install command
-                          </Label>
-                          <Input
-                            value={installCommand}
-                            onChange={(e) => setInstallCommand(e.target.value)}
-                            placeholder="pnpm install"
-                            disabled={importAppMutation.isPending}
-                          />
-                        </div>
-                        <div className="grid gap-2">
-                          <Label className="text-sm ml-2 mb-2">
-                            Start command
-                          </Label>
-                          <Input
-                            value={startCommand}
-                            onChange={(e) => setStartCommand(e.target.value)}
-                            placeholder="pnpm dev"
-                            disabled={importAppMutation.isPending}
-                          />
-                        </div>
-                        {!commandsValid && (
-                          <p className="text-sm text-red-500">
-                            Both commands are required when customizing.
+                    {selectFolderMutation.isPending
+                      ? "Selecting folder..."
+                      : "Select Folder"}
+                  </Button>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="rounded-md border p-3 sm:p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1 overflow-hidden">
+                          <p className="text-sm font-medium mb-1">
+                            Selected folder:
                           </p>
-                        )}
-                      </AccordionContent>
-                    </AccordionItem>
-                  </Accordion>
-
-                  {hasAiRules === false && (
-                    <Alert className="border-yellow-500/20 text-yellow-500 flex items-start gap-2">
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Info className="h-4 w-4 flex-shrink-0 mt-1" />
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>
-                              AI_RULES.md lets Dyad know which tech stack to use
-                              for editing the app
-                            </p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                      <AlertDescription>
-                        No AI_RULES.md found. Dyad will automatically generate
-                        one after importing.
-                      </AlertDescription>
-                    </Alert>
-                  )}
-
-                  {importAppMutation.isPending && (
-                    <div className="flex items-center justify-center space-x-2 text-sm text-muted-foreground animate-pulse">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      <span>Importing app...</span>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={onClose}
-                disabled={importAppMutation.isPending}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleImport}
-                disabled={
-                  !selectedPath ||
-                  importAppMutation.isPending ||
-                  nameExists ||
-                  !commandsValid
-                }
-                className="min-w-[80px]"
-              >
-                {importAppMutation.isPending ? <>Importing...</> : "Import"}
-              </Button>
-            </DialogFooter>
-          </TabsContent>
-          <TabsContent value="github-repos" className="space-y-4">
-            {!isAuthenticated ? (
-              <UnconnectedGitHubConnector
-                appId={null}
-                folderName=""
-                settings={settings}
-                refreshSettings={refreshSettings}
-                handleRepoSetupComplete={() => undefined}
-                expanded={false}
-              />
-            ) : (
-              <>
-                {loading && (
-                  <div className="flex justify-center py-8">
-                    <Loader2 className="animate-spin h-6 w-6" />
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <Label className="text-sm ml-2 mb-2">
-                    App name (optional)
-                  </Label>
-                  <Input
-                    value={githubAppName}
-                    onChange={handleGithubAppNameChange}
-                    placeholder="Leave empty to use repository name"
-                    className="w-full pr-8"
-                    disabled={importing}
-                  />
-                  {isCheckingGithubName && (
-                    <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                    </div>
-                  )}
-                  {githubNameExists && (
-                    <p className="text-sm text-yellow-500">
-                      An app with this name already exists. Please choose a
-                      different name.
-                    </p>
-                  )}
-                </div>
-
-                <div className="flex flex-col space-y-2 max-h-64 overflow-y-auto">
-                  {!loading && repos.length === 0 && (
-                    <p className="text-sm text-muted-foreground text-center py-4">
-                      No repositories found
-                    </p>
-                  )}
-                  {repos.map((repo) => (
-                    <div
-                      key={repo.full_name}
-                      className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent/50 transition-colors"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="font-semibold truncate">{repo.name}</p>
-                        <p className="text-sm text-muted-foreground truncate">
-                          {repo.full_name}
-                        </p>
+                          <p className="text-xs sm:text-sm text-muted-foreground break-words">
+                            {selectedPath}
+                          </p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleClear}
+                          className="h-8 w-8 p-0 flex-shrink-0"
+                          disabled={importAppMutation.isPending}
+                        >
+                          <X className="h-4 w-4" />
+                          <span className="sr-only">Clear selection</span>
+                        </Button>
                       </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleSelectRepo(repo)}
-                        disabled={importing}
-                        className="ml-2 flex-shrink-0"
-                      >
-                        {importing ? (
-                          <Loader2 className="animate-spin h-4 w-4" />
-                        ) : (
-                          "Import"
-                        )}
-                      </Button>
                     </div>
-                  ))}
-                </div>
 
-                {repos.length > 0 && (
-                  <>
+                    <div className="space-y-2">
+                      {nameExists && (
+                        <p className="text-xs sm:text-sm text-yellow-500">
+                          An app with this name already exists. Please choose a
+                          different name:
+                        </p>
+                      )}
+                      <div className="relative">
+                        <Label className="text-xs sm:text-sm ml-2 mb-2">
+                          App name
+                        </Label>
+                        <Input
+                          value={customAppName}
+                          onChange={handleAppNameChange}
+                          placeholder="Enter new app name"
+                          className="w-full pr-8 text-sm"
+                          disabled={importAppMutation.isPending}
+                        />
+                        {isCheckingName && (
+                          <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
                     <Accordion type="single" collapsible>
                       <AccordionItem value="advanced-options">
-                        <AccordionTrigger className="text-sm hover:no-underline">
+                        <AccordionTrigger className="text-xs sm:text-sm hover:no-underline">
                           Advanced options
                         </AccordionTrigger>
                         <AccordionContent className="space-y-4">
                           <div className="grid gap-2">
-                            <Label className="text-sm">Install command</Label>
+                            <Label className="text-xs sm:text-sm ml-2 mb-2">
+                              Install command
+                            </Label>
                             <Input
                               value={installCommand}
                               onChange={(e) =>
                                 setInstallCommand(e.target.value)
                               }
                               placeholder="pnpm install"
-                              disabled={importing}
+                              className="text-sm"
+                              disabled={importAppMutation.isPending}
                             />
                           </div>
                           <div className="grid gap-2">
-                            <Label className="text-sm">Start command</Label>
+                            <Label className="text-xs sm:text-sm ml-2 mb-2">
+                              Start command
+                            </Label>
                             <Input
                               value={startCommand}
                               onChange={(e) => setStartCommand(e.target.value)}
                               placeholder="pnpm dev"
-                              disabled={importing}
+                              className="text-sm"
+                              disabled={importAppMutation.isPending}
                             />
                           </div>
                           {!commandsValid && (
-                            <p className="text-sm text-red-500">
+                            <p className="text-xs sm:text-sm text-red-500">
                               Both commands are required when customizing.
                             </p>
                           )}
                         </AccordionContent>
                       </AccordionItem>
                     </Accordion>
-                  </>
+
+                    {hasAiRules === false && (
+                      <Alert className="border-yellow-500/20 text-yellow-500 flex items-start gap-2">
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Info className="h-4 w-4 flex-shrink-0 mt-1" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p className="text-xs">
+                                AI_RULES.md lets Dyad know which tech stack to
+                                use for editing the app
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                        <AlertDescription className="text-xs sm:text-sm">
+                          No AI_RULES.md found. Dyad will automatically generate
+                          one after importing.
+                        </AlertDescription>
+                      </Alert>
+                    )}
+
+                    {importAppMutation.isPending && (
+                      <div className="flex items-center justify-center space-x-2 text-xs sm:text-sm text-muted-foreground animate-pulse">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span>Importing app...</span>
+                      </div>
+                    )}
+                  </div>
                 )}
-              </>
-            )}
-          </TabsContent>
-          <TabsContent value="github-url" className="space-y-4">
-            <div className="space-y-2">
-              <Label className="text-sm">Repository URL</Label>
-              <Input
-                placeholder="https://github.com/user/repo.git"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                disabled={importing}
-                onBlur={handleUrlBlur}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-sm">App name (optional)</Label>
-              <Input
-                value={githubAppName}
-                onChange={handleGithubAppNameChange}
-                placeholder="Leave empty to use repository name"
-                disabled={importing}
-              />
-              {isCheckingGithubName && (
-                <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                </div>
-              )}
-              {githubNameExists && (
-                <p className="text-sm text-yellow-500">
-                  An app with this name already exists. Please choose a
-                  different name.
-                </p>
-              )}
-            </div>
+              </div>
 
-            <Accordion type="single" collapsible>
-              <AccordionItem value="advanced-options">
-                <AccordionTrigger className="text-sm hover:no-underline">
-                  Advanced options
-                </AccordionTrigger>
-                <AccordionContent className="space-y-4">
-                  <div className="grid gap-2">
-                    <Label className="text-sm">Install command</Label>
-                    <Input
-                      value={installCommand}
-                      onChange={(e) => setInstallCommand(e.target.value)}
-                      placeholder="pnpm install"
-                      disabled={importing}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label className="text-sm">Start command</Label>
-                    <Input
-                      value={startCommand}
-                      onChange={(e) => setStartCommand(e.target.value)}
-                      placeholder="pnpm dev"
-                      disabled={importing}
-                    />
-                  </div>
-                  {!commandsValid && (
-                    <p className="text-sm text-red-500">
-                      Both commands are required when customizing.
-                    </p>
-                  )}
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
-
-            <Button
-              onClick={handleImportFromUrl}
-              disabled={importing || !url.trim() || !commandsValid}
-              className="w-full"
-            >
-              {importing ? (
-                <>
-                  <Loader2 className="animate-spin mr-2 h-4 w-4" />
-                  Importing...
-                </>
+              <DialogFooter className="flex-col sm:flex-row gap-2">
+                <Button
+                  variant="outline"
+                  onClick={onClose}
+                  disabled={importAppMutation.isPending}
+                  className="w-full sm:w-auto"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleImport}
+                  disabled={
+                    !selectedPath ||
+                    importAppMutation.isPending ||
+                    nameExists ||
+                    !commandsValid
+                  }
+                  className="w-full sm:w-auto min-w-[80px]"
+                >
+                  {importAppMutation.isPending ? <>Importing...</> : "Import"}
+                </Button>
+              </DialogFooter>
+            </TabsContent>
+            <TabsContent value="github-repos" className="space-y-4">
+              {!isAuthenticated ? (
+                <UnconnectedGitHubConnector
+                  appId={null}
+                  folderName=""
+                  settings={settings}
+                  refreshSettings={refreshSettings}
+                  handleRepoSetupComplete={() => undefined}
+                  expanded={false}
+                />
               ) : (
-                "Import"
+                <>
+                  {loading && (
+                    <div className="flex justify-center py-8">
+                      <Loader2 className="animate-spin h-6 w-6" />
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <Label className="text-xs sm:text-sm ml-2 mb-2">
+                      App name (optional)
+                    </Label>
+                    <Input
+                      value={githubAppName}
+                      onChange={handleGithubAppNameChange}
+                      placeholder="Leave empty to use repository name"
+                      className="w-full pr-8 text-sm"
+                      disabled={importing}
+                    />
+                    {isCheckingGithubName && (
+                      <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                      </div>
+                    )}
+                    {githubNameExists && (
+                      <p className="text-xs sm:text-sm text-yellow-500">
+                        An app with this name already exists. Please choose a
+                        different name.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col space-y-2 max-h-64 overflow-y-auto overflow-x-hidden">
+                    {!loading && repos.length === 0 && (
+                      <p className="text-xs sm:text-sm text-muted-foreground text-center py-4">
+                        No repositories found
+                      </p>
+                    )}
+                    {repos.map((repo) => (
+                      <div
+                        key={repo.full_name}
+                        className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent/50 transition-colors min-w-0"
+                      >
+                        <div className="min-w-0 flex-1 overflow-hidden mr-2">
+                          <p className="font-semibold truncate text-sm">
+                            {repo.name}
+                          </p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {repo.full_name}
+                          </p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleSelectRepo(repo)}
+                          disabled={importing}
+                          className="flex-shrink-0 text-xs"
+                        >
+                          {importing ? (
+                            <Loader2 className="animate-spin h-4 w-4" />
+                          ) : (
+                            "Import"
+                          )}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+
+                  {repos.length > 0 && (
+                    <>
+                      <Accordion type="single" collapsible>
+                        <AccordionItem value="advanced-options">
+                          <AccordionTrigger className="text-xs sm:text-sm hover:no-underline">
+                            Advanced options
+                          </AccordionTrigger>
+                          <AccordionContent className="space-y-4">
+                            <div className="grid gap-2">
+                              <Label className="text-xs sm:text-sm">
+                                Install command
+                              </Label>
+                              <Input
+                                value={installCommand}
+                                onChange={(e) =>
+                                  setInstallCommand(e.target.value)
+                                }
+                                placeholder="pnpm install"
+                                className="text-sm"
+                                disabled={importing}
+                              />
+                            </div>
+                            <div className="grid gap-2">
+                              <Label className="text-xs sm:text-sm">
+                                Start command
+                              </Label>
+                              <Input
+                                value={startCommand}
+                                onChange={(e) =>
+                                  setStartCommand(e.target.value)
+                                }
+                                placeholder="pnpm dev"
+                                className="text-sm"
+                                disabled={importing}
+                              />
+                            </div>
+                            {!commandsValid && (
+                              <p className="text-xs sm:text-sm text-red-500">
+                                Both commands are required when customizing.
+                              </p>
+                            )}
+                          </AccordionContent>
+                        </AccordionItem>
+                      </Accordion>
+                    </>
+                  )}
+                </>
               )}
-            </Button>
-          </TabsContent>
-        </Tabs>
+            </TabsContent>
+            <TabsContent value="github-url" className="space-y-4">
+              <div className="space-y-2">
+                <Label className="text-xs sm:text-sm">Repository URL</Label>
+                <Input
+                  placeholder="https://github.com/user/repo.git"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  disabled={importing}
+                  onBlur={handleUrlBlur}
+                  className="text-sm break-all"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs sm:text-sm">
+                  App name (optional)
+                </Label>
+                <Input
+                  value={githubAppName}
+                  onChange={handleGithubAppNameChange}
+                  placeholder="Leave empty to use repository name"
+                  disabled={importing}
+                  className="text-sm"
+                />
+                {isCheckingGithubName && (
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  </div>
+                )}
+                {githubNameExists && (
+                  <p className="text-xs sm:text-sm text-yellow-500">
+                    An app with this name already exists. Please choose a
+                    different name.
+                  </p>
+                )}
+              </div>
+
+              <Accordion type="single" collapsible>
+                <AccordionItem value="advanced-options">
+                  <AccordionTrigger className="text-xs sm:text-sm hover:no-underline">
+                    Advanced options
+                  </AccordionTrigger>
+                  <AccordionContent className="space-y-4">
+                    <div className="grid gap-2">
+                      <Label className="text-xs sm:text-sm">
+                        Install command
+                      </Label>
+                      <Input
+                        value={installCommand}
+                        onChange={(e) => setInstallCommand(e.target.value)}
+                        placeholder="pnpm install"
+                        className="text-sm"
+                        disabled={importing}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label className="text-xs sm:text-sm">
+                        Start command
+                      </Label>
+                      <Input
+                        value={startCommand}
+                        onChange={(e) => setStartCommand(e.target.value)}
+                        placeholder="pnpm dev"
+                        className="text-sm"
+                        disabled={importing}
+                      />
+                    </div>
+                    {!commandsValid && (
+                      <p className="text-xs sm:text-sm text-red-500">
+                        Both commands are required when customizing.
+                      </p>
+                    )}
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+
+              <Button
+                onClick={handleImportFromUrl}
+                disabled={importing || !url.trim() || !commandsValid}
+                className="w-full"
+              >
+                {importing ? (
+                  <>
+                    <Loader2 className="animate-spin mr-2 h-4 w-4" />
+                    Importing...
+                  </>
+                ) : (
+                  "Import"
+                )}
+              </Button>
+            </TabsContent>
+          </Tabs>
+        </div>
       </DialogContent>
     </Dialog>
   );

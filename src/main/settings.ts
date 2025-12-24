@@ -40,6 +40,8 @@ const DEFAULT_SETTINGS: UserSettings = {
   enableAutoUpdate: true,
   releaseChannel: "stable",
   selectedTemplateId: DEFAULT_TEMPLATE_ID,
+  isRunning: false,
+  lastKnownPerformance: undefined,
 };
 
 const SETTINGS_FILE = "user-settings.json";
@@ -62,6 +64,7 @@ export function readSettings(): UserSettings {
     };
     const supabase = combinedSettings.supabase;
     if (supabase) {
+      // Decrypt legacy tokens (kept but ignored)
       if (supabase.refreshToken) {
         const encryptionType = supabase.refreshToken.encryptionType;
         if (encryptionType) {
@@ -78,6 +81,30 @@ export function readSettings(): UserSettings {
             value: decrypt(supabase.accessToken),
             encryptionType,
           };
+        }
+      }
+      // Decrypt tokens for each organization in the organizations map
+      if (supabase.organizations) {
+        for (const orgId in supabase.organizations) {
+          const org = supabase.organizations[orgId];
+          if (org.accessToken) {
+            const encryptionType = org.accessToken.encryptionType;
+            if (encryptionType) {
+              org.accessToken = {
+                value: decrypt(org.accessToken),
+                encryptionType,
+              };
+            }
+          }
+          if (org.refreshToken) {
+            const encryptionType = org.refreshToken.encryptionType;
+            if (encryptionType) {
+              org.refreshToken = {
+                value: decrypt(org.refreshToken),
+                encryptionType,
+              };
+            }
+          }
         }
       }
     }
@@ -140,7 +167,10 @@ export function readSettings(): UserSettings {
 
     // Validate and merge with defaults
     const validatedSettings = UserSettingsSchema.parse(combinedSettings);
-
+    // "conservative" is deprecated, use undefined to use the default value
+    if (validatedSettings.proSmartContextOption === "conservative") {
+      validatedSettings.proSmartContextOption = undefined;
+    }
     return validatedSettings;
   } catch (error) {
     logger.error("Error reading settings:", error);
@@ -164,6 +194,7 @@ export function writeSettings(settings: Partial<UserSettings>): void {
       );
     }
     if (newSettings.supabase) {
+      // Encrypt legacy tokens (kept for backwards compat)
       if (newSettings.supabase.accessToken) {
         newSettings.supabase.accessToken = encrypt(
           newSettings.supabase.accessToken.value,
@@ -173,6 +204,18 @@ export function writeSettings(settings: Partial<UserSettings>): void {
         newSettings.supabase.refreshToken = encrypt(
           newSettings.supabase.refreshToken.value,
         );
+      }
+      // Encrypt tokens for each organization in the organizations map
+      if (newSettings.supabase.organizations) {
+        for (const orgId in newSettings.supabase.organizations) {
+          const org = newSettings.supabase.organizations[orgId];
+          if (org.accessToken) {
+            org.accessToken = encrypt(org.accessToken.value);
+          }
+          if (org.refreshToken) {
+            org.refreshToken = encrypt(org.refreshToken.value);
+          }
+        }
       }
     }
     if (newSettings.neon) {

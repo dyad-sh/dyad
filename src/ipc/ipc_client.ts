@@ -48,6 +48,7 @@ import type {
   VercelDeployment,
   GetVercelDeploymentsParams,
   DisconnectVercelProjectParams,
+  SecurityReviewResult,
   IsVercelProjectAvailableParams,
   SaveVercelAccessTokenParams,
   VercelProject,
@@ -68,8 +69,19 @@ import type {
   CloneRepoParams,
   SupabaseBranch,
   SetSupabaseAppProjectParams,
+  SupabaseOrganizationInfo,
+  SupabaseProject,
+  DeleteSupabaseOrganizationParams,
   SelectNodeFolderResult,
+  ApplyVisualEditingChangesParams,
+  AnalyseComponentParams,
+  AgentTool,
+  SetAgentToolConsentParams,
+  AgentToolConsentRequestPayload,
+  AgentToolConsentResponseParams,
+  TelemetryEventPayload,
 } from "./ipc_types";
+import type { ConsoleEntry } from "../atoms/appAtoms";
 import type { Template } from "../shared/templates";
 import type {
   AppChatContext,
@@ -123,12 +135,19 @@ export class IpcClient {
     }
   >;
   private mcpConsentHandlers: Map<string, (payload: any) => void>;
+  private agentConsentHandlers: Map<string, (payload: any) => void>;
+  private telemetryEventHandlers: Set<(payload: TelemetryEventPayload) => void>;
+  // Global handlers called for any chat stream completion (used for cleanup)
+  private globalChatStreamEndHandlers: Set<(chatId: number) => void>;
   private constructor() {
     this.ipcRenderer = (window as any).electron.ipcRenderer as IpcRenderer;
     this.chatStreams = new Map();
     this.appStreams = new Map();
     this.helpStreams = new Map();
     this.mcpConsentHandlers = new Map();
+    this.agentConsentHandlers = new Map();
+    this.telemetryEventHandlers = new Set();
+    this.globalChatStreamEndHandlers = new Set();
     // Set up listeners for stream events
     this.ipcRenderer.on("chat:response:chunk", (data) => {
       if (
@@ -188,6 +207,10 @@ export class IpcClient {
           ),
         );
       }
+      // Notify global handlers (used for cleanup like clearing pending consents)
+      for (const handler of this.globalChatStreamEndHandlers) {
+        handler(chatId);
+      }
     });
 
     this.ipcRenderer.on("chat:response:error", (payload) => {
@@ -208,6 +231,10 @@ export class IpcClient {
             `[IPC] No callbacks found for chat ${chatId} on error`,
             this.chatStreams,
           );
+        }
+        // Notify global handlers (used for cleanup like clearing pending consents)
+        for (const handler of this.globalChatStreamEndHandlers) {
+          handler(chatId);
         }
       } else {
         console.error("[IPC] Invalid error data received:", payload);
@@ -260,6 +287,21 @@ export class IpcClient {
     this.ipcRenderer.on("mcp:tool-consent-request", (payload) => {
       const handler = this.mcpConsentHandlers.get("consent");
       if (handler) handler(payload);
+    });
+
+    // Agent tool consent request from main
+    this.ipcRenderer.on("agent-tool:consent-request", (payload) => {
+      const handler = this.agentConsentHandlers.get("consent");
+      if (handler) handler(payload);
+    });
+
+    // Telemetry events from main to renderer
+    this.ipcRenderer.on("telemetry:event", (payload) => {
+      if (payload && typeof payload === "object" && "eventName" in payload) {
+        for (const handler of this.telemetryEventHandlers) {
+          handler(payload as TelemetryEventPayload);
+        }
+      }
     });
   }
 
@@ -386,7 +428,7 @@ export class IpcClient {
   public streamMessage(
     prompt: string,
     options: {
-      selectedComponent: ComponentSelection | null;
+      selectedComponents?: ComponentSelection[];
       chatId: number;
       redo?: boolean;
       attachments?: FileAttachment[];
@@ -400,7 +442,7 @@ export class IpcClient {
       chatId,
       redo,
       attachments,
-      selectedComponent,
+      selectedComponents,
       onUpdate,
       onEnd,
       onError,
@@ -440,16 +482,18 @@ export class IpcClient {
               prompt,
               chatId,
               redo,
-              selectedComponent,
+              selectedComponents,
               attachments: fileDataArray,
             })
             .catch((err) => {
+              console.error("Error streaming message:", err);
               showError(err);
               onError(String(err));
               this.chatStreams.delete(chatId);
             });
         })
         .catch((err) => {
+          console.error("Error streaming message:", err);
           showError(err);
           onError(String(err));
           this.chatStreams.delete(chatId);
@@ -461,9 +505,10 @@ export class IpcClient {
           prompt,
           chatId,
           redo,
-          selectedComponent,
+          selectedComponents,
         })
         .catch((err) => {
+          console.error("Error streaming message:", err);
           showError(err);
           onError(String(err));
           this.chatStreams.delete(chatId);
@@ -474,12 +519,6 @@ export class IpcClient {
   // Method to cancel an ongoing stream
   public cancelChatStream(chatId: number): void {
     this.ipcRenderer.invoke("chat:cancel", chatId);
-    const callbacks = this.chatStreams.get(chatId);
-    if (callbacks) {
-      this.chatStreams.delete(chatId);
-    } else {
-      console.error("Tried canceling chat that doesn't exist");
-    }
   }
 
   // Create a new chat for an app
@@ -912,6 +951,54 @@ export class IpcClient {
     });
   }
 
+  // --- Agent Tool Methods ---
+  public async getAgentTools(): Promise<AgentTool[]> {
+    return this.ipcRenderer.invoke("agent-tool:get-tools");
+  }
+
+  public async setAgentToolConsent(params: SetAgentToolConsentParams) {
+    return this.ipcRenderer.invoke("agent-tool:set-consent", params);
+  }
+
+  public onAgentToolConsentRequest(
+    handler: (payload: AgentToolConsentRequestPayload) => void,
+  ) {
+    this.agentConsentHandlers.set("consent", handler as any);
+    return () => {
+      this.agentConsentHandlers.delete("consent");
+    };
+  }
+
+  public respondToAgentConsentRequest(params: AgentToolConsentResponseParams) {
+    this.ipcRenderer.invoke("agent-tool:consent-response", params);
+  }
+
+  /**
+   * Subscribe to be notified when any chat stream ends (either successfully or with an error).
+   * Useful for cleanup tasks like clearing pending consent requests.
+   * @returns Unsubscribe function
+   */
+  public onChatStreamEnd(handler: (chatId: number) => void): () => void {
+    this.globalChatStreamEndHandlers.add(handler);
+    return () => {
+      this.globalChatStreamEndHandlers.delete(handler);
+    };
+  }
+
+  /**
+   * Subscribe to telemetry events from the main process.
+   * Used to forward events to PostHog in the renderer.
+   * @returns Unsubscribe function
+   */
+  public onTelemetryEvent(
+    handler: (payload: TelemetryEventPayload) => void,
+  ): () => void {
+    this.telemetryEventHandlers.add(handler);
+    return () => {
+      this.telemetryEventHandlers.delete(handler);
+    };
+  }
+
   // Get proposal details
   public async getProposal(chatId: number): Promise<ProposalResult | null> {
     try {
@@ -957,14 +1044,40 @@ export class IpcClient {
   // --- End Proposal Management ---
 
   // --- Supabase Management ---
-  public async listSupabaseProjects(): Promise<any[]> {
-    return this.ipcRenderer.invoke("supabase:list-projects");
+
+  // List all connected Supabase organizations
+  public async listSupabaseOrganizations(): Promise<
+    SupabaseOrganizationInfo[]
+  > {
+    return this.ipcRenderer.invoke("supabase:list-organizations");
+  }
+
+  // Delete a Supabase organization connection
+  public async deleteSupabaseOrganization(
+    params: DeleteSupabaseOrganizationParams,
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("supabase:delete-organization", params);
+  }
+
+  // List all projects from all connected organizations
+  public async listAllSupabaseProjects(): Promise<SupabaseProject[]> {
+    return this.ipcRenderer.invoke("supabase:list-all-projects");
   }
 
   public async listSupabaseBranches(params: {
     projectId: string;
+    organizationSlug: string | null;
   }): Promise<SupabaseBranch[]> {
     return this.ipcRenderer.invoke("supabase:list-branches", params);
+  }
+
+  public async getSupabaseEdgeLogs(params: {
+    projectId: string;
+    timestampStart?: number;
+    appId: number;
+    organizationSlug: string | null;
+  }): Promise<Array<ConsoleEntry>> {
+    return this.ipcRenderer.invoke("supabase:get-edge-logs", params);
   }
 
   public async setSupabaseAppProject(
@@ -1061,6 +1174,28 @@ export class IpcClient {
     this.ipcRenderer.on("deep-link-received", listener);
     return () => {
       this.ipcRenderer.removeListener("deep-link-received", listener);
+    };
+  }
+
+  // Listen for force close detected events
+  public onForceCloseDetected(
+    callback: (data: {
+      performanceData?: {
+        timestamp: number;
+        memoryUsageMB: number;
+        cpuUsagePercent?: number;
+        systemMemoryUsageMB?: number;
+        systemMemoryTotalMB?: number;
+        systemCpuPercent?: number;
+      };
+    }) => void,
+  ): () => void {
+    const listener = (data: any) => {
+      callback(data);
+    };
+    this.ipcRenderer.on("force-close-detected", listener);
+    return () => {
+      this.ipcRenderer.removeListener("force-close-detected", listener);
     };
   }
 
@@ -1197,6 +1332,12 @@ export class IpcClient {
     return this.ipcRenderer.invoke("check-ai-rules", params);
   }
 
+  public async getLatestSecurityReview(
+    appId: number,
+  ): Promise<SecurityReviewResult> {
+    return this.ipcRenderer.invoke("get-latest-security-review", appId);
+  }
+
   public async importApp(params: ImportAppParams): Promise<ImportAppResult> {
     return this.ipcRenderer.invoke("import-app", params);
   }
@@ -1316,7 +1457,24 @@ export class IpcClient {
       });
   }
 
+  public async takeScreenshot(): Promise<void> {
+    await this.ipcRenderer.invoke("take-screenshot");
+  }
+
   public cancelHelpChat(sessionId: string): void {
     this.ipcRenderer.invoke("help:chat:cancel", sessionId).catch(() => {});
+  }
+
+  // --- Visual Editing ---
+  public async applyVisualEditingChanges(
+    changes: ApplyVisualEditingChangesParams,
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("apply-visual-editing-changes", changes);
+  }
+
+  public async analyzeComponent(
+    params: AnalyseComponentParams,
+  ): Promise<{ isDynamic: boolean; hasStaticText: boolean }> {
+    return this.ipcRenderer.invoke("analyze-component", params);
   }
 }

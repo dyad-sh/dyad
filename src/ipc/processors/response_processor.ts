@@ -4,19 +4,29 @@ import { and, eq } from "drizzle-orm";
 import fs from "node:fs";
 import { getDyadAppPath } from "../../paths/paths";
 import path from "node:path";
-import git from "isomorphic-git";
 import { safeJoin } from "../utils/path_utils";
 
 import log from "electron-log";
 import { executeAddDependency } from "./executeAddDependency";
 import {
   deleteSupabaseFunction,
-  deploySupabaseFunctions,
+  deploySupabaseFunction,
   executeSupabaseSql,
 } from "../../supabase_admin/supabase_management_client";
-import { isServerFunction } from "../../supabase_admin/supabase_utils";
+import {
+  isServerFunction,
+  isSharedServerModule,
+  deployAllSupabaseFunctions,
+  extractFunctionNameFromPath,
+} from "../../supabase_admin/supabase_utils";
 import { UserSettings } from "../../lib/schemas";
-import { gitCommit } from "../utils/git_utils";
+import {
+  gitCommit,
+  gitAdd,
+  gitRemove,
+  gitAddAll,
+  getGitUncommittedFiles,
+} from "../utils/git_utils";
 import { readSettings } from "@/main/settings";
 import { writeMigrationFile } from "../utils/file_utils";
 import {
@@ -25,7 +35,9 @@ import {
   getDyadDeleteTags,
   getDyadAddDependencyTags,
   getDyadExecuteSqlTags,
+  getDyadSearchReplaceTags,
 } from "../utils/dyad_tag_parser";
+import { applySearchReplace } from "../../pro/main/ipc/processors/search_replace_processor";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 
 import { FileUploadsState } from "../utils/file_uploads_state";
@@ -38,16 +50,48 @@ interface Output {
   error: unknown;
 }
 
-function getFunctionNameFromPath(input: string): string {
-  return path.basename(path.extname(input) ? path.dirname(input) : input);
-}
+export async function dryRunSearchReplace({
+  fullResponse,
+  appPath,
+}: {
+  fullResponse: string;
+  appPath: string;
+}) {
+  const issues: { filePath: string; error: string }[] = [];
+  const dyadSearchReplaceTags = getDyadSearchReplaceTags(fullResponse);
+  for (const tag of dyadSearchReplaceTags) {
+    const filePath = tag.path;
+    const fullFilePath = safeJoin(appPath, filePath);
+    try {
+      if (!fs.existsSync(fullFilePath)) {
+        issues.push({
+          filePath,
+          error: `Search-replace target file does not exist: ${filePath}`,
+        });
+        continue;
+      }
 
-async function readFileFromFunctionPath(input: string): Promise<string> {
-  // Sometimes, the path given is a directory, sometimes it's the file itself.
-  if (path.extname(input) === "") {
-    return readFile(path.join(input, "index.ts"), "utf8");
+      const original = await readFile(fullFilePath, "utf8");
+      const result = applySearchReplace(original, tag.content);
+      if (!result.success || typeof result.content !== "string") {
+        issues.push({
+          filePath,
+          error:
+            "Unable to apply search-replace to file because: " + result.error,
+        });
+        logger.warn(
+          `Unable to apply search-replace to file ${filePath} because: ${result.error}. Original content:\n${original}\n Diff content:\n${tag.content}`,
+        );
+        continue;
+      }
+    } catch (error) {
+      issues.push({
+        filePath,
+        error: error?.toString() ?? "Unknown error",
+      });
+    }
   }
-  return readFile(input, "utf8");
+  return issues;
 }
 
 export async function processFullResponseActions(
@@ -105,6 +149,8 @@ export async function processFullResponseActions(
   const renamedFiles: string[] = [];
   const deletedFiles: string[] = [];
   let hasChanges = false;
+  // Track if any shared modules were modified
+  let sharedModulesChanged = false;
 
   const warnings: Output[] = [];
   const errors: Output[] = [];
@@ -139,6 +185,7 @@ export async function processFullResponseActions(
           await executeSupabaseSql({
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
             query: query.content,
+            organizationSlug: chatWithApp.app.supabaseOrganizationSlug ?? null,
           });
 
           // Only write migration file if SQL execution succeeded
@@ -210,6 +257,11 @@ export async function processFullResponseActions(
     for (const filePath of dyadDeletePaths) {
       const fullFilePath = safeJoin(appPath, filePath);
 
+      // Track if this is a shared module
+      if (isSharedServerModule(filePath)) {
+        sharedModulesChanged = true;
+      }
+
       // Delete the file if it exists
       if (fs.existsSync(fullFilePath)) {
         if (fs.lstatSync(fullFilePath).isDirectory()) {
@@ -222,11 +274,7 @@ export async function processFullResponseActions(
 
         // Remove the file from git
         try {
-          await git.remove({
-            fs,
-            dir: appPath,
-            filepath: filePath,
-          });
+          await gitRemove({ path: appPath, filepath: filePath });
         } catch (error) {
           logger.warn(`Failed to git remove deleted file ${filePath}:`, error);
           // Continue even if remove fails as the file was still deleted
@@ -234,11 +282,13 @@ export async function processFullResponseActions(
       } else {
         logger.warn(`File to delete does not exist: ${fullFilePath}`);
       }
+      // Only delete individual functions, not shared modules
       if (isServerFunction(filePath)) {
         try {
           await deleteSupabaseFunction({
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
-            functionName: getFunctionNameFromPath(filePath),
+            functionName: extractFunctionNameFromPath(filePath),
+            organizationSlug: chatWithApp.app.supabaseOrganizationSlug ?? null,
           });
         } catch (error) {
           errors.push({
@@ -254,6 +304,11 @@ export async function processFullResponseActions(
       const fromPath = safeJoin(appPath, tag.from);
       const toPath = safeJoin(appPath, tag.to);
 
+      // Track if this involves shared modules
+      if (isSharedServerModule(tag.from) || isSharedServerModule(tag.to)) {
+        sharedModulesChanged = true;
+      }
+
       // Ensure target directory exists
       const dirPath = path.dirname(toPath);
       fs.mkdirSync(dirPath, { recursive: true });
@@ -265,17 +320,9 @@ export async function processFullResponseActions(
         renamedFiles.push(tag.to);
 
         // Add the new file and remove the old one from git
-        await git.add({
-          fs,
-          dir: appPath,
-          filepath: tag.to,
-        });
+        await gitAdd({ path: appPath, filepath: tag.to });
         try {
-          await git.remove({
-            fs,
-            dir: appPath,
-            filepath: tag.from,
-          });
+          await gitRemove({ path: appPath, filepath: tag.from });
         } catch (error) {
           logger.warn(`Failed to git remove old file ${tag.from}:`, error);
           // Continue even if remove fails as the file was still renamed
@@ -283,11 +330,13 @@ export async function processFullResponseActions(
       } else {
         logger.warn(`Source file for rename does not exist: ${fromPath}`);
       }
+      // Only handle individual functions, not shared modules
       if (isServerFunction(tag.from)) {
         try {
           await deleteSupabaseFunction({
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
-            functionName: getFunctionNameFromPath(tag.from),
+            functionName: extractFunctionNameFromPath(tag.from),
+            organizationSlug: chatWithApp.app.supabaseOrganizationSlug ?? null,
           });
         } catch (error) {
           warnings.push({
@@ -296,12 +345,14 @@ export async function processFullResponseActions(
           });
         }
       }
-      if (isServerFunction(tag.to)) {
+      // Deploy renamed function (skip if shared modules changed - will be handled later)
+      if (isServerFunction(tag.to) && !sharedModulesChanged) {
         try {
-          await deploySupabaseFunctions({
+          await deploySupabaseFunction({
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
-            functionName: getFunctionNameFromPath(tag.to),
-            content: await readFileFromFunctionPath(toPath),
+            functionName: extractFunctionNameFromPath(tag.to),
+            appPath,
+            organizationSlug: chatWithApp.app.supabaseOrganizationSlug ?? null,
           });
         } catch (error) {
           errors.push({
@@ -312,11 +363,71 @@ export async function processFullResponseActions(
       }
     }
 
+    // Process all search-replace edits
+    const dyadSearchReplaceTags = getDyadSearchReplaceTags(fullResponse);
+    for (const tag of dyadSearchReplaceTags) {
+      const filePath = tag.path;
+      const fullFilePath = safeJoin(appPath, filePath);
+
+      // Track if this is a shared module
+      if (isSharedServerModule(filePath)) {
+        sharedModulesChanged = true;
+      }
+
+      try {
+        if (!fs.existsSync(fullFilePath)) {
+          // Do not show warning to user because we already attempt to do a <dyad-write> tag to fix it.
+          logger.warn(`Search-replace target file does not exist: ${filePath}`);
+          continue;
+        }
+        const original = await readFile(fullFilePath, "utf8");
+        const result = applySearchReplace(original, tag.content);
+        if (!result.success || typeof result.content !== "string") {
+          // Do not show warning to user because we already attempt to do a <dyad-write> and/or a subsequent <dyad-search-replace> tag to fix it.
+          logger.warn(
+            `Failed to apply search-replace to ${filePath}: ${result.error ?? "unknown"}`,
+          );
+          continue;
+        }
+        // Write modified content
+        fs.writeFileSync(fullFilePath, result.content);
+        writtenFiles.push(filePath);
+
+        // If server function (not shared), redeploy (skip if shared modules changed)
+        if (isServerFunction(filePath) && !sharedModulesChanged) {
+          try {
+            await deploySupabaseFunction({
+              supabaseProjectId: chatWithApp.app.supabaseProjectId!,
+              functionName: extractFunctionNameFromPath(filePath),
+              appPath,
+              organizationSlug:
+                chatWithApp.app.supabaseOrganizationSlug ?? null,
+            });
+          } catch (error) {
+            errors.push({
+              message: `Failed to deploy Supabase function after search-replace: ${filePath}`,
+              error: error,
+            });
+          }
+        }
+      } catch (error) {
+        errors.push({
+          message: `Error applying search-replace to ${filePath}`,
+          error: error,
+        });
+      }
+    }
+
     // Process all file writes
     for (const tag of dyadWriteTags) {
       const filePath = tag.path;
       let content: string | Buffer = tag.content;
       const fullFilePath = safeJoin(appPath, filePath);
+
+      // Track if this is a shared module
+      if (isSharedServerModule(filePath)) {
+        sharedModulesChanged = true;
+      }
 
       // Check if content (stripped of whitespace) exactly matches a file ID and replace with actual file content
       if (fileUploadsMap) {
@@ -350,12 +461,18 @@ export async function processFullResponseActions(
       fs.writeFileSync(fullFilePath, content);
       logger.log(`Successfully wrote file: ${fullFilePath}`);
       writtenFiles.push(filePath);
-      if (isServerFunction(filePath) && typeof content === "string") {
+      // Deploy individual function (skip if shared modules changed - will be handled later)
+      if (
+        isServerFunction(filePath) &&
+        typeof content === "string" &&
+        !sharedModulesChanged
+      ) {
         try {
-          await deploySupabaseFunctions({
+          await deploySupabaseFunction({
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
-            functionName: path.basename(path.dirname(filePath)),
-            content: content,
+            functionName: extractFunctionNameFromPath(filePath),
+            appPath,
+            organizationSlug: chatWithApp.app.supabaseOrganizationSlug ?? null,
           });
         } catch (error) {
           errors.push({
@@ -363,6 +480,36 @@ export async function processFullResponseActions(
             error: error,
           });
         }
+      }
+    }
+
+    // If shared modules changed, redeploy all functions
+    if (sharedModulesChanged && chatWithApp.app.supabaseProjectId) {
+      try {
+        logger.info(
+          "Shared modules changed, redeploying all Supabase functions",
+        );
+        const deployErrors = await deployAllSupabaseFunctions({
+          appPath,
+          supabaseProjectId: chatWithApp.app.supabaseProjectId,
+          supabaseOrganizationSlug:
+            chatWithApp.app.supabaseOrganizationSlug ?? null,
+        });
+        if (deployErrors.length > 0) {
+          for (const err of deployErrors) {
+            errors.push({
+              message:
+                "Failed to deploy Supabase function after shared module change",
+              error: err,
+            });
+          }
+        }
+      } catch (error) {
+        errors.push({
+          message:
+            "Failed to redeploy all Supabase functions after shared module change",
+          error: error,
+        });
       }
     }
 
@@ -379,11 +526,7 @@ export async function processFullResponseActions(
     if (hasChanges) {
       // Stage all written files
       for (const file of writtenFiles) {
-        await git.add({
-          fs,
-          dir: appPath,
-          filepath: file,
-        });
+        await gitAdd({ path: appPath, filepath: file });
       }
 
       // Create commit with details of all changes
@@ -412,18 +555,11 @@ export async function processFullResponseActions(
       logger.log(`Successfully committed changes: ${changes.join(", ")}`);
 
       // Check for any uncommitted changes after the commit
-      const statusMatrix = await git.statusMatrix({ fs, dir: appPath });
-      uncommittedFiles = statusMatrix
-        .filter((row) => row[1] !== 1 || row[2] !== 1 || row[3] !== 1)
-        .map((row) => row[0]); // Get just the file paths
+      uncommittedFiles = await getGitUncommittedFiles({ path: appPath });
 
       if (uncommittedFiles.length > 0) {
         // Stage all changes
-        await git.add({
-          fs,
-          dir: appPath,
-          filepath: ".",
-        });
+        await gitAddAll({ path: appPath });
         try {
           commitHash = await gitCommit({
             path: appPath,

@@ -1,7 +1,7 @@
 import {
   selectedAppIdAtom,
   appUrlAtom,
-  appOutputAtom,
+  appConsoleEntriesAtom,
   previewErrorMessageAtom,
 } from "@/atoms/appAtoms";
 import { useAtomValue, useSetAtom, useAtom } from "jotai";
@@ -23,8 +23,10 @@ import {
   Monitor,
   Tablet,
   Smartphone,
+  Pen,
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { CopyErrorMessage } from "@/components/CopyErrorMessage";
 import { IpcClient } from "@/ipc/ipc_client";
 
 import { useParseRouter } from "@/hooks/useParseRouter";
@@ -35,7 +37,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useStreamChat } from "@/hooks/useStreamChat";
-import { selectedComponentPreviewAtom } from "@/atoms/previewAtoms";
+import {
+  selectedComponentsPreviewAtom,
+  visualEditingSelectedComponentAtom,
+  currentComponentCoordinatesAtom,
+  previewIframeRefAtom,
+  annotatorModeAtom,
+  screenshotDataUrlAtom,
+  pendingVisualChangesAtom,
+} from "@/atoms/previewAtoms";
 import { ComponentSelection } from "@/ipc/ipc_types";
 import {
   Tooltip,
@@ -52,6 +62,13 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useRunApp } from "@/hooks/useRunApp";
 import { useShortcut } from "@/hooks/useShortcut";
 import { cn } from "@/lib/utils";
+import { normalizePath } from "../../../shared/normalizePath";
+import { showError } from "@/lib/toast";
+import { AnnotatorOnlyForPro } from "./AnnotatorOnlyForPro";
+import { useAttachments } from "@/hooks/useAttachments";
+import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
+import { Annotator } from "@/pro/ui/components/Annotator/Annotator";
+import { VisualEditingToolbar } from "./VisualEditingToolbar";
 
 interface ErrorBannerProps {
   error: { message: string; source: "preview-app" | "dyad-app" } | undefined;
@@ -132,13 +149,14 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
         </div>
       </div>
 
-      {/* AI Fix button at the bottom */}
+      {/* Action buttons at the bottom */}
       {!isDockerError && error.source === "preview-app" && (
-        <div className="mt-2 flex justify-end">
+        <div className="mt-3 px-6 flex justify-end gap-2">
+          <CopyErrorMessage errorMessage={error.message} />
           <button
             disabled={isStreaming}
             onClick={onAIFix}
-            className="cursor-pointer flex items-center space-x-1 px-2 py-0.5 bg-red-500 dark:bg-red-600 text-white rounded text-sm hover:bg-red-600 dark:hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="cursor-pointer flex items-center space-x-1 px-2 py-1 bg-red-500 dark:bg-red-600 text-white rounded text-sm hover:bg-red-600 dark:hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Sparkles size={14} />
             <span>Fix error with AI</span>
@@ -153,7 +171,7 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
 export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { appUrl, originalUrl } = useAtomValue(appUrlAtom);
-  const setAppOutput = useSetAtom(appOutputAtom);
+  const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
   // State to trigger iframe reload
   const [reloadKey, setReloadKey] = useState(0);
   const [errorMessage, setErrorMessage] = useAtom(previewErrorMessageAtom);
@@ -161,6 +179,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const { streamMessage } = useStreamChat();
   const { routes: availableRoutes } = useParseRouter(selectedAppId);
   const { restartApp } = useRunApp();
+  const { userBudget } = useUserBudgetInfo();
+  const isProMode = !!userBudget;
 
   // Navigation state
   const [isComponentSelectorInitialized, setIsComponentSelectorInitialized] =
@@ -169,11 +189,28 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const [canGoForward, setCanGoForward] = useState(false);
   const [navigationHistory, setNavigationHistory] = useState<string[]>([]);
   const [currentHistoryPosition, setCurrentHistoryPosition] = useState(0);
-  const [selectedComponentPreview, setSelectedComponentPreview] = useAtom(
-    selectedComponentPreviewAtom,
+  const setSelectedComponentsPreview = useSetAtom(
+    selectedComponentsPreviewAtom,
   );
+  const [visualEditingSelectedComponent, setVisualEditingSelectedComponent] =
+    useAtom(visualEditingSelectedComponentAtom);
+  const setCurrentComponentCoordinates = useSetAtom(
+    currentComponentCoordinatesAtom,
+  );
+  const setPreviewIframeRef = useSetAtom(previewIframeRefAtom);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isPicking, setIsPicking] = useState(false);
+  const [annotatorMode, setAnnotatorMode] = useAtom(annotatorModeAtom);
+  const [screenshotDataUrl, setScreenshotDataUrl] = useAtom(
+    screenshotDataUrlAtom,
+  );
+
+  const { addAttachments } = useAttachments();
+  const setPendingChanges = useSetAtom(pendingVisualChangesAtom);
+
+  // AST Analysis State
+  const [isDynamicComponent, setIsDynamicComponent] = useState(false);
+  const [hasStaticText, setHasStaticText] = useState(false);
 
   // Device mode state
   type DeviceMode = "desktop" | "tablet" | "mobile";
@@ -189,18 +226,117 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   //detect if the user is using Mac
   const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
 
-  // Deactivate component selector when selection is cleared
-  useEffect(() => {
-    if (!selectedComponentPreview) {
-      if (iframeRef.current?.contentWindow) {
+  const analyzeComponent = async (componentId: string) => {
+    if (!componentId || !selectedAppId) return;
+
+    try {
+      const result = await IpcClient.getInstance().analyzeComponent({
+        appId: selectedAppId,
+        componentId,
+      });
+      setIsDynamicComponent(result.isDynamic);
+      setHasStaticText(result.hasStaticText);
+
+      // Automatically enable text editing if component has static text
+      if (result.hasStaticText && iframeRef.current?.contentWindow) {
         iframeRef.current.contentWindow.postMessage(
-          { type: "deactivate-dyad-component-selector" },
+          {
+            type: "enable-dyad-text-editing",
+            data: {
+              componentId: componentId,
+              runtimeId: visualEditingSelectedComponent?.runtimeId,
+            },
+          },
           "*",
         );
       }
-      setIsPicking(false);
+    } catch (err) {
+      console.error("Failed to analyze component", err);
+      setIsDynamicComponent(false);
+      setHasStaticText(false);
     }
-  }, [selectedComponentPreview]);
+  };
+
+  const handleTextUpdated = async (data: any) => {
+    const { componentId, text } = data;
+    if (!componentId || !selectedAppId) return;
+
+    // Parse componentId to extract file path and line number
+    const [filePath, lineStr] = componentId.split(":");
+    const lineNumber = parseInt(lineStr, 10);
+
+    if (!filePath || isNaN(lineNumber)) {
+      console.error("Invalid componentId format:", componentId);
+      return;
+    }
+
+    // Store text change in pending changes
+    setPendingChanges((prev) => {
+      const updated = new Map(prev);
+      const existing = updated.get(componentId);
+
+      updated.set(componentId, {
+        componentId: componentId,
+        componentName:
+          existing?.componentName || visualEditingSelectedComponent?.name || "",
+        relativePath: filePath,
+        lineNumber: lineNumber,
+        styles: existing?.styles || {},
+        textContent: text,
+      });
+
+      return updated;
+    });
+  };
+
+  // Function to get current styles from selected element
+  const getCurrentElementStyles = () => {
+    if (!iframeRef.current?.contentWindow || !visualEditingSelectedComponent)
+      return;
+
+    try {
+      // Send message to iframe to get current styles
+      iframeRef.current.contentWindow.postMessage(
+        {
+          type: "get-dyad-component-styles",
+          data: {
+            elementId: visualEditingSelectedComponent.id,
+            runtimeId: visualEditingSelectedComponent.runtimeId,
+          },
+        },
+        "*",
+      );
+    } catch (error) {
+      console.error("Failed to get element styles:", error);
+    }
+  };
+  useEffect(() => {
+    setAnnotatorMode(false);
+  }, []);
+  // Reset visual editing state when app changes or component unmounts
+  useEffect(() => {
+    return () => {
+      // Cleanup on unmount or when app changes
+      setVisualEditingSelectedComponent(null);
+      setPendingChanges(new Map());
+      setCurrentComponentCoordinates(null);
+    };
+  }, [selectedAppId]);
+
+  // Update iframe ref atom
+  useEffect(() => {
+    setPreviewIframeRef(iframeRef.current);
+  }, [iframeRef.current, setPreviewIframeRef]);
+
+  // Send pro mode status to iframe
+  useEffect(() => {
+    if (iframeRef.current?.contentWindow && isComponentSelectorInitialized) {
+      iframeRef.current.contentWindow.postMessage(
+        { type: "dyad-pro-mode", enabled: isProMode },
+        "*",
+      );
+    }
+  }, [isProMode, isComponentSelectorInitialized]);
 
   // Add message listener for iframe errors and navigation events
   useEffect(() => {
@@ -210,15 +346,177 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         return;
       }
 
+      // Handle console logs from the iframe
+      if (event.data?.type === "console-log") {
+        const { level, args } = event.data;
+        const formattedMessage = `[${level.toUpperCase()}] ${args.join(" ")}`;
+        const logLevel =
+          level === "error" ? "error" : level === "warn" ? "warn" : "info";
+        setConsoleEntries((prev) => [
+          ...prev,
+          {
+            level: logLevel,
+            type: "client",
+            message: formattedMessage,
+            timestamp: Date.now(),
+            appId: selectedAppId!,
+          },
+        ]);
+        return;
+      }
+
+      // Handle network requests from the iframe
+      if (event.data?.type === "network-request") {
+        const { method, url } = event.data;
+        const formattedMessage = `→ ${method} ${url}`;
+        setConsoleEntries((prev) => [
+          ...prev,
+          {
+            level: "info",
+            type: "network-requests",
+            message: formattedMessage,
+            timestamp: Date.now(),
+            appId: selectedAppId!,
+          },
+        ]);
+        return;
+      }
+
+      // Handle network responses from the iframe
+      if (event.data?.type === "network-response") {
+        const { method, url, status, duration } = event.data;
+        const formattedMessage = `[${status}] ${method} ${url} (${duration}ms)`;
+        const level = status >= 400 ? "error" : status >= 300 ? "warn" : "info";
+        setConsoleEntries((prev) => [
+          ...prev,
+          {
+            level,
+            type: "network-requests",
+            message: formattedMessage,
+            timestamp: Date.now(),
+            appId: selectedAppId!,
+          },
+        ]);
+        return;
+      }
+
+      // Handle network errors from the iframe
+      if (event.data?.type === "network-error") {
+        const { method, url, status, error, duration } = event.data;
+        const statusCode = status && status !== 0 ? `[${status}] ` : "";
+        const formattedMessage = `${statusCode}${method} ${url} - ${error} (${duration}ms)`;
+        setConsoleEntries((prev) => [
+          ...prev,
+          {
+            level: "error",
+            type: "network-requests",
+            message: formattedMessage,
+            timestamp: Date.now(),
+            appId: selectedAppId!,
+          },
+        ]);
+        return;
+      }
+
       if (event.data?.type === "dyad-component-selector-initialized") {
         setIsComponentSelectorInitialized(true);
+        iframeRef.current?.contentWindow?.postMessage(
+          { type: "dyad-pro-mode", enabled: isProMode },
+          "*",
+        );
+        return;
+      }
+
+      if (event.data?.type === "dyad-text-updated") {
+        handleTextUpdated(event.data);
+        return;
+      }
+
+      if (event.data?.type === "dyad-text-finalized") {
+        handleTextUpdated(event.data);
         return;
       }
 
       if (event.data?.type === "dyad-component-selected") {
         console.log("Component picked:", event.data);
-        setSelectedComponentPreview(parseComponentSelection(event.data));
-        setIsPicking(false);
+
+        const component = parseComponentSelection(event.data);
+
+        if (!component) return;
+
+        // Store the coordinates
+        if (event.data.coordinates && isProMode) {
+          setCurrentComponentCoordinates(event.data.coordinates);
+        }
+
+        // Add to selected components if not already there
+        setSelectedComponentsPreview((prev) => {
+          const exists = prev.some((c) => {
+            // Check by runtimeId if available otherwise by id
+            // Stored components may have lost their runtimeId after re-renders or reloading the page
+            if (component.runtimeId && c.runtimeId) {
+              return c.runtimeId === component.runtimeId;
+            }
+            return c.id === component.id;
+          });
+          if (exists) {
+            return prev;
+          }
+          return [...prev, component];
+        });
+
+        if (isProMode) {
+          // Set as the highlighted component for visual editing
+          setVisualEditingSelectedComponent(component);
+          // Trigger AST analysis
+          analyzeComponent(component.id);
+        }
+
+        return;
+      }
+
+      if (event.data?.type === "dyad-component-deselected") {
+        const componentId = event.data.componentId;
+        if (componentId) {
+          // Disable text editing for the deselected component
+          if (iframeRef.current?.contentWindow) {
+            iframeRef.current.contentWindow.postMessage(
+              {
+                type: "disable-dyad-text-editing",
+                data: { componentId },
+              },
+              "*",
+            );
+          }
+
+          setSelectedComponentsPreview((prev) =>
+            prev.filter((c) => c.id !== componentId),
+          );
+          setVisualEditingSelectedComponent((prev) => {
+            const shouldClear = prev?.id === componentId;
+            if (shouldClear) {
+              setCurrentComponentCoordinates(null);
+            }
+            return shouldClear ? null : prev;
+          });
+        }
+        return;
+      }
+
+      if (event.data?.type === "dyad-component-coordinates-updated") {
+        if (event.data.coordinates) {
+          setCurrentComponentCoordinates(event.data.coordinates);
+        }
+        return;
+      }
+
+      if (event.data?.type === "dyad-screenshot-response") {
+        if (event.data.success && event.data.dataUrl) {
+          setScreenshotDataUrl(event.data.dataUrl);
+          setAnnotatorMode(true);
+        } else {
+          showError(event.data.error);
+        }
         return;
       }
 
@@ -254,26 +552,28 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         }\nStack trace: ${stack}`;
         console.error("Iframe error:", errorMessage);
         setErrorMessage({ message: errorMessage, source: "preview-app" });
-        setAppOutput((prev) => [
+        setConsoleEntries((prev) => [
           ...prev,
           {
+            level: "error",
+            type: "client",
             message: `Iframe error: ${errorMessage}`,
-            type: "client-error",
-            appId: selectedAppId!,
             timestamp: Date.now(),
+            appId: selectedAppId!,
           },
         ]);
       } else if (type === "build-error-report") {
         console.debug(`Build error report: ${payload}`);
         const errorMessage = `${payload?.message} from file ${payload?.file}.\n\nSource code:\n${payload?.frame}`;
         setErrorMessage({ message: errorMessage, source: "preview-app" });
-        setAppOutput((prev) => [
+        setConsoleEntries((prev) => [
           ...prev,
           {
+            level: "error",
+            type: "client",
             message: `Build error report: ${JSON.stringify(payload)}`,
-            type: "client-error",
-            appId: selectedAppId!,
             timestamp: Date.now(),
+            appId: selectedAppId!,
           },
         ]);
       } else if (type === "pushState" || type === "replaceState") {
@@ -306,7 +606,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     errorMessage,
     setErrorMessage,
     setIsComponentSelectorInitialized,
-    setSelectedComponentPreview,
+    setSelectedComponentsPreview,
+    setVisualEditingSelectedComponent,
   ]);
 
   useEffect(() => {
@@ -325,16 +626,47 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     }
   }, [appUrl]);
 
+  // Get current styles when component is selected for visual editing
+  useEffect(() => {
+    if (visualEditingSelectedComponent) {
+      getCurrentElementStyles();
+    }
+  }, [visualEditingSelectedComponent]);
+
   // Function to activate component selector in the iframe
   const handleActivateComponentSelector = () => {
     if (iframeRef.current?.contentWindow) {
       const newIsPicking = !isPicking;
+      if (!newIsPicking) {
+        // Clean up any text editing states when deactivating
+        iframeRef.current.contentWindow.postMessage(
+          { type: "cleanup-all-text-editing" },
+          "*",
+        );
+      }
       setIsPicking(newIsPicking);
+      setVisualEditingSelectedComponent(null);
       iframeRef.current.contentWindow.postMessage(
         {
           type: newIsPicking
             ? "activate-dyad-component-selector"
             : "deactivate-dyad-component-selector",
+        },
+        "*",
+      );
+    }
+  };
+
+  // Function to handle annotator button click
+  const handleAnnotatorClick = () => {
+    if (annotatorMode) {
+      setAnnotatorMode(false);
+      return;
+    }
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage(
+        {
+          type: "dyad-take-screenshot",
         },
         "*",
       );
@@ -392,6 +724,10 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const handleReload = () => {
     setReloadKey((prevKey) => prevKey + 1);
     setErrorMessage(undefined);
+    // Reset visual editing state
+    setVisualEditingSelectedComponent(null);
+    setPendingChanges(new Map());
+    setCurrentComponentCoordinates(null);
     // Optionally, add logic here if you need to explicitly stop/start the app again
     // For now, just changing the key should remount the iframe
     console.debug("Reloading iframe preview for app", selectedAppId);
@@ -454,203 +790,239 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Browser-style header */}
-      <div className="flex items-center p-2 border-b space-x-2 ">
-        {/* Navigation Buttons */}
-        <div className="flex space-x-1">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={handleActivateComponentSelector}
-                  className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
-                    isPicking
-                      ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
-                      : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
-                  }`}
-                  disabled={
-                    loading || !selectedAppId || !isComponentSelectorInitialized
-                  }
-                  data-testid="preview-pick-element-button"
-                >
-                  <MousePointerClick size={16} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>
-                  {isPicking
-                    ? "Deactivate component selector"
-                    : "Select component"}
-                </p>
-                <p>{isMac ? "⌘ + ⇧ + C" : "Ctrl + ⇧ + C"}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          <button
-            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
-            disabled={!canGoBack || loading || !selectedAppId}
-            onClick={handleNavigateBack}
-            data-testid="preview-navigate-back-button"
-          >
-            <ArrowLeft size={16} />
-          </button>
-          <button
-            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
-            disabled={!canGoForward || loading || !selectedAppId}
-            onClick={handleNavigateForward}
-            data-testid="preview-navigate-forward-button"
-          >
-            <ArrowRight size={16} />
-          </button>
-          <button
-            onClick={handleReload}
-            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
-            disabled={loading || !selectedAppId}
-            data-testid="preview-refresh-button"
-          >
-            <RefreshCw size={16} />
-          </button>
-        </div>
-
-        {/* Address Bar with Routes Dropdown - using shadcn/ui dropdown-menu */}
-        <div className="relative flex-grow min-w-20">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <div className="flex items-center justify-between px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded text-sm text-gray-700 dark:text-gray-200 cursor-pointer w-full min-w-0">
-                <span className="truncate flex-1 mr-2 min-w-0">
-                  {navigationHistory[currentHistoryPosition]
-                    ? new URL(navigationHistory[currentHistoryPosition])
-                        .pathname
-                    : "/"}
-                </span>
-                <ChevronDown size={14} className="flex-shrink-0" />
-              </div>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-full">
-              {availableRoutes.length > 0 ? (
-                availableRoutes.map((route) => (
-                  <DropdownMenuItem
-                    key={route.path}
-                    onClick={() => navigateToRoute(route.path)}
-                    className="flex justify-between"
-                  >
-                    <span>{route.label}</span>
-                    <span className="text-gray-500 dark:text-gray-400 text-xs">
-                      {route.path}
-                    </span>
-                  </DropdownMenuItem>
-                ))
-              ) : (
-                <DropdownMenuItem disabled>Loading routes...</DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex space-x-1">
-          <button
-            onClick={onRestart}
-            className="flex items-center space-x-1 px-3 py-1 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
-            title="Restart App"
-          >
-            <Power size={16} />
-            <span>Restart</span>
-          </button>
-          <button
-            data-testid="preview-open-browser-button"
-            onClick={() => {
-              if (originalUrl) {
-                IpcClient.getInstance().openExternalUrl(originalUrl);
-              }
-            }}
-            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
-          >
-            <ExternalLink size={16} />
-          </button>
-
-          {/* Device Mode Button */}
-          <Popover open={isDevicePopoverOpen} modal={false}>
-            <PopoverTrigger asChild>
-              <button
-                data-testid="device-mode-button"
-                onClick={() => {
-                  // Toggle popover open/close
-                  if (isDevicePopoverOpen) setDeviceMode("desktop");
-                  setIsDevicePopoverOpen(!isDevicePopoverOpen);
-                }}
-                className={cn(
-                  "p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 dark:text-gray-300",
-                  deviceMode !== "desktop" && "bg-gray-200 dark:bg-gray-700",
-                )}
-                title="Device Mode"
-              >
-                <MonitorSmartphone size={16} />
-              </button>
-            </PopoverTrigger>
-            <PopoverContent
-              className="w-auto p-2"
-              onOpenAutoFocus={(e) => e.preventDefault()}
-              onInteractOutside={(e) => e.preventDefault()}
-            >
-              <TooltipProvider>
-                <ToggleGroup
-                  type="single"
-                  value={deviceMode}
-                  onValueChange={(value) => {
-                    if (value) {
-                      setDeviceMode(value as DeviceMode);
-                      setIsDevicePopoverOpen(false);
+      {/* Browser-style header - hide when annotator is active */}
+      {!annotatorMode && (
+        <div className="flex items-center p-2 border-b space-x-2">
+          {/* Navigation Buttons */}
+          <div className="flex space-x-1">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={handleActivateComponentSelector}
+                    className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
+                      isPicking
+                        ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
+                        : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
+                    }`}
+                    disabled={
+                      loading ||
+                      !selectedAppId ||
+                      !isComponentSelectorInitialized
                     }
-                  }}
-                  variant="outline"
-                >
-                  {/* Tooltips placed inside items instead of wrapping 
-                  to avoid asChild prop merging that breaks highlighting */}
-                  <ToggleGroupItem value="desktop" aria-label="Desktop view">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="flex items-center justify-center">
-                          <Monitor size={16} />
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Desktop</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </ToggleGroupItem>
-                  <ToggleGroupItem value="tablet" aria-label="Tablet view">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="flex items-center justify-center">
-                          <Tablet size={16} className="scale-x-130" />
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Tablet</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </ToggleGroupItem>
-                  <ToggleGroupItem value="mobile" aria-label="Mobile view">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="flex items-center justify-center">
-                          <Smartphone size={16} />
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Mobile</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </ToggleGroupItem>
-                </ToggleGroup>
-              </TooltipProvider>
-            </PopoverContent>
-          </Popover>
-        </div>
-      </div>
+                    data-testid="preview-pick-element-button"
+                  >
+                    <MousePointerClick size={16} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>
+                    {isPicking
+                      ? "Deactivate component selector"
+                      : "Select component"}
+                  </p>
+                  <p>{isMac ? "⌘ + ⇧ + C" : "Ctrl + ⇧ + C"}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={handleAnnotatorClick}
+                    className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
+                      annotatorMode
+                        ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
+                        : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
+                    }`}
+                    disabled={
+                      loading ||
+                      !selectedAppId ||
+                      isPicking ||
+                      !isComponentSelectorInitialized
+                    }
+                    data-testid="preview-annotator-button"
+                  >
+                    <Pen size={16} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>
+                    {annotatorMode
+                      ? "Annotator mode active"
+                      : "Activate annotator"}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <button
+              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
+              disabled={!canGoBack || loading || !selectedAppId}
+              onClick={handleNavigateBack}
+              data-testid="preview-navigate-back-button"
+            >
+              <ArrowLeft size={16} />
+            </button>
+            <button
+              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
+              disabled={!canGoForward || loading || !selectedAppId}
+              onClick={handleNavigateForward}
+              data-testid="preview-navigate-forward-button"
+            >
+              <ArrowRight size={16} />
+            </button>
+            <button
+              onClick={handleReload}
+              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
+              disabled={loading || !selectedAppId}
+              data-testid="preview-refresh-button"
+            >
+              <RefreshCw size={16} />
+            </button>
+          </div>
 
-      <div className="relative flex-grow ">
+          {/* Address Bar with Routes Dropdown - using shadcn/ui dropdown-menu */}
+          <div className="relative flex-grow min-w-20">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <div className="flex items-center justify-between px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded text-sm text-gray-700 dark:text-gray-200 cursor-pointer w-full min-w-0">
+                  <span className="truncate flex-1 mr-2 min-w-0">
+                    {navigationHistory[currentHistoryPosition]
+                      ? new URL(navigationHistory[currentHistoryPosition])
+                          .pathname
+                      : "/"}
+                  </span>
+                  <ChevronDown size={14} className="flex-shrink-0" />
+                </div>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-full">
+                {availableRoutes.length > 0 ? (
+                  availableRoutes.map((route) => (
+                    <DropdownMenuItem
+                      key={route.path}
+                      onClick={() => navigateToRoute(route.path)}
+                      className="flex justify-between"
+                    >
+                      <span>{route.label}</span>
+                      <span className="text-gray-500 dark:text-gray-400 text-xs">
+                        {route.path}
+                      </span>
+                    </DropdownMenuItem>
+                  ))
+                ) : (
+                  <DropdownMenuItem disabled>
+                    Loading routes...
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex space-x-1">
+            <button
+              onClick={onRestart}
+              className="flex items-center space-x-1 px-3 py-1 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
+              title="Restart App"
+            >
+              <Power size={16} />
+              <span>Restart</span>
+            </button>
+            <button
+              data-testid="preview-open-browser-button"
+              onClick={() => {
+                if (originalUrl) {
+                  IpcClient.getInstance().openExternalUrl(originalUrl);
+                }
+              }}
+              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
+            >
+              <ExternalLink size={16} />
+            </button>
+
+            {/* Device Mode Button */}
+            <Popover open={isDevicePopoverOpen} modal={false}>
+              <PopoverTrigger asChild>
+                <button
+                  data-testid="device-mode-button"
+                  onClick={() => {
+                    // Toggle popover open/close
+                    if (isDevicePopoverOpen) setDeviceMode("desktop");
+                    setIsDevicePopoverOpen(!isDevicePopoverOpen);
+                  }}
+                  className={cn(
+                    "p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 dark:text-gray-300",
+                    deviceMode !== "desktop" && "bg-gray-200 dark:bg-gray-700",
+                  )}
+                  title="Device Mode"
+                >
+                  <MonitorSmartphone size={16} />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                className="w-auto p-2"
+                onOpenAutoFocus={(e) => e.preventDefault()}
+                onInteractOutside={(e) => e.preventDefault()}
+              >
+                <TooltipProvider>
+                  <ToggleGroup
+                    type="single"
+                    value={deviceMode}
+                    onValueChange={(value) => {
+                      if (value) {
+                        setDeviceMode(value as DeviceMode);
+                        setIsDevicePopoverOpen(false);
+                      }
+                    }}
+                    variant="outline"
+                  >
+                    {/* Tooltips placed inside items instead of wrapping 
+                    to avoid asChild prop merging that breaks highlighting */}
+                    <ToggleGroupItem value="desktop" aria-label="Desktop view">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="flex items-center justify-center">
+                            <Monitor size={16} />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Desktop</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </ToggleGroupItem>
+                    <ToggleGroupItem value="tablet" aria-label="Tablet view">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="flex items-center justify-center">
+                            <Tablet size={16} className="scale-x-130" />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Tablet</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </ToggleGroupItem>
+                    <ToggleGroupItem value="mobile" aria-label="Mobile view">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="flex items-center justify-center">
+                            <Smartphone size={16} />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Mobile</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </ToggleGroupItem>
+                  </ToggleGroup>
+                </TooltipProvider>
+              </PopoverContent>
+            </Popover>
+          </div>
+        </div>
+      )}
+
+      <div className="relative flex-grow overflow-hidden">
         <ErrorBanner
           error={errorMessage}
           onDismiss={() => setErrorMessage(undefined)}
@@ -678,24 +1050,60 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               deviceMode !== "desktop" && "flex justify-center",
             )}
           >
-            <iframe
-              sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-downloads"
-              data-testid="preview-iframe-element"
-              onLoad={() => {
-                setErrorMessage(undefined);
-              }}
-              ref={iframeRef}
-              key={reloadKey}
-              title={`Preview for App ${selectedAppId}`}
-              className="w-full h-full border-none bg-white dark:bg-gray-950"
-              style={
-                deviceMode == "desktop"
-                  ? {}
-                  : { width: `${deviceWidthConfig[deviceMode]}px` }
-              }
-              src={appUrl}
-              allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
-            />
+            {annotatorMode && screenshotDataUrl ? (
+              <div
+                className="w-full h-full bg-white dark:bg-gray-950"
+                style={
+                  deviceMode == "desktop"
+                    ? {}
+                    : { width: `${deviceWidthConfig[deviceMode]}px` }
+                }
+              >
+                {userBudget ? (
+                  <Annotator
+                    screenshotUrl={screenshotDataUrl}
+                    onSubmit={addAttachments}
+                    handleAnnotatorClick={handleAnnotatorClick}
+                  />
+                ) : (
+                  <AnnotatorOnlyForPro
+                    onGoBack={() => setAnnotatorMode(false)}
+                  />
+                )}
+              </div>
+            ) : (
+              <>
+                <iframe
+                  sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-downloads"
+                  data-testid="preview-iframe-element"
+                  onLoad={() => {
+                    setErrorMessage(undefined);
+                  }}
+                  ref={iframeRef}
+                  key={reloadKey}
+                  title={`Preview for App ${selectedAppId}`}
+                  className="w-full h-full border-none bg-white dark:bg-gray-950"
+                  style={
+                    deviceMode == "desktop"
+                      ? {}
+                      : { width: `${deviceWidthConfig[deviceMode]}px` }
+                  }
+                  src={appUrl}
+                  allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
+                />
+                {/* Visual Editing Toolbar */}
+                {isProMode &&
+                  visualEditingSelectedComponent &&
+                  selectedAppId && (
+                    <VisualEditingToolbar
+                      selectedComponent={visualEditingSelectedComponent}
+                      iframeRef={iframeRef}
+                      isDynamic={isDynamicComponent}
+                      hasStaticText={hasStaticText}
+                    />
+                  )}
+              </>
+            )}
           </div>
         )}
       </div>
@@ -704,16 +1112,20 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 };
 
 function parseComponentSelection(data: any): ComponentSelection | null {
+  if (!data || data.type !== "dyad-component-selected") {
+    return null;
+  }
+
+  const component = data.component;
   if (
-    !data ||
-    data.type !== "dyad-component-selected" ||
-    typeof data.id !== "string" ||
-    typeof data.name !== "string"
+    !component ||
+    typeof component.id !== "string" ||
+    typeof component.name !== "string"
   ) {
     return null;
   }
 
-  const { id, name } = data;
+  const { id, name, runtimeId } = component;
 
   // The id is expected to be in the format "filepath:line:column"
   const parts = id.split(":");
@@ -742,7 +1154,8 @@ function parseComponentSelection(data: any): ComponentSelection | null {
   return {
     id,
     name,
-    relativePath,
+    runtimeId,
+    relativePath: normalizePath(relativePath),
     lineNumber,
     columnNumber,
   };

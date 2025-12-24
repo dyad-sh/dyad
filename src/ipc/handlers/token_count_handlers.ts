@@ -22,6 +22,7 @@ import { validateChatContext } from "../utils/context_paths_utils";
 import { readSettings } from "@/main/settings";
 import { extractMentionedAppsCodebases } from "../utils/mention_apps";
 import { parseAppMentions } from "@/shared/parse_mention_apps";
+import { isTurboEditsV2Enabled } from "@/lib/schemas";
 
 const logger = log.scope("token_count_handlers");
 
@@ -62,7 +63,12 @@ export function registerTokenCountHandlers() {
       // Count system prompt tokens
       let systemPrompt = constructSystemPrompt({
         aiRules: await readAiRules(getDyadAppPath(chat.app.path)),
-        chatMode: settings.selectedChatMode,
+        chatMode:
+          settings.selectedChatMode === "agent" ||
+          settings.selectedChatMode === "local-agent"
+            ? "build"
+            : settings.selectedChatMode,
+        enableTurboEditsV2: isTurboEditsV2Enabled(settings),
       });
       let supabaseContext = "";
 
@@ -70,6 +76,7 @@ export function registerTokenCountHandlers() {
         systemPrompt += "\n\n" + SUPABASE_AVAILABLE_SYSTEM_PROMPT;
         supabaseContext = await getSupabaseContext({
           supabaseProjectId: chat.app.supabaseProjectId,
+          organizationSlug: chat.app.supabaseOrganizationSlug ?? null,
         });
       } else if (
         // Neon projects don't need Supabase.
@@ -139,8 +146,15 @@ export function registerTokenCountHandlers() {
         codebaseTokens +
         mentionedAppsTokens;
 
+      // Find the last assistant message since totalTokens is only set on assistant messages
+      const lastAssistantMessage = [...chat.messages]
+        .reverse()
+        .find((m) => m.role === "assistant");
+      const actualMaxTokens = lastAssistantMessage?.maxTokensUsed ?? null;
+
       return {
-        totalTokens,
+        estimatedTotalTokens: totalTokens,
+        actualMaxTokens,
         messageHistoryTokens,
         codebaseTokens,
         mentionedAppsTokens,

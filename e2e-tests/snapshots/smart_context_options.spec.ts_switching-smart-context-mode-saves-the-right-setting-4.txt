@@ -19,11 +19,12 @@
   "lastShownReleaseNotesVersion": "[scrubbed]",
   "enableProLazyEditsMode": true,
   "enableProSmartFilesContextMode": true,
-  "proSmartContextOption": "conservative",
+  "proSmartContextOption": "deep",
   "selectedTemplateId": "react",
   "selectedChatMode": "build",
   "enableAutoFixProblems": false,
   "enableAutoUpdate": true,
   "releaseChannel": "stable",
+  "isRunning": true,
   "isTestMode": true
 }

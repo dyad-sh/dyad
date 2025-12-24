@@ -9,6 +9,18 @@ export interface AppOutput {
   appId: number;
 }
 
+export interface SecurityFinding {
+  title: string;
+  level: "critical" | "high" | "medium" | "low";
+  description: string;
+}
+
+export interface SecurityReviewResult {
+  findings: SecurityFinding[];
+  timestamp: string;
+  chatId: number;
+}
+
 export interface RespondToAppInputParams {
   appId: number;
   response: string;
@@ -29,7 +41,7 @@ export interface ChatStreamParams {
     data: string; // Base64 encoded file data
     attachmentType: "upload-to-codebase" | "chat-context"; // FileAttachment type
   }>;
-  selectedComponent: ComponentSelection | null;
+  selectedComponents?: ComponentSelection[];
 }
 
 export interface ChatResponseEnd {
@@ -37,6 +49,8 @@ export interface ChatResponseEnd {
   updatedFiles: boolean;
   extraFiles?: string[];
   extraFilesError?: string;
+  totalTokens?: number;
+  contextWindow?: number;
 }
 
 export interface ChatProblemsEvent {
@@ -66,9 +80,11 @@ export interface Message {
   content: string;
   approvalState?: "approved" | "rejected" | null;
   commitHash?: string | null;
+  sourceCommitHash?: string | null;
   dbTimestamp?: string | null;
   createdAt?: Date | string;
   requestId?: string | null;
+  totalTokens?: number | null;
 }
 
 export interface Chat {
@@ -92,6 +108,7 @@ export interface App {
   supabaseProjectId: string | null;
   supabaseParentProjectId: string | null;
   supabaseProjectName: string | null;
+  supabaseOrganizationSlug: string | null;
   neonProjectId: string | null;
   neonDevelopmentBranchId: string | null;
   neonPreviewBranchId: string | null;
@@ -155,7 +172,8 @@ export interface TokenCountParams {
 }
 
 export interface TokenCountResult {
-  totalTokens: number;
+  estimatedTotalTokens: number;
+  actualMaxTokens: number | null;
   messageHistoryTokens: number;
   codebaseTokens: number;
   mentionedAppsTokens: number;
@@ -262,12 +280,14 @@ export const UserBudgetInfoSchema = z.object({
   usedCredits: z.number(),
   totalCredits: z.number(),
   budgetResetDate: z.date(),
+  redactedUserId: z.string(),
 });
 export type UserBudgetInfo = z.infer<typeof UserBudgetInfoSchema>;
 
 export interface ComponentSelection {
   id: string;
   name: string;
+  runtimeId?: string; // Unique runtime ID for duplicate components
   relativePath: string;
   lineNumber: number;
   columnNumber: number;
@@ -423,6 +443,10 @@ export interface GetNeonProjectResponse {
 export interface RevertVersionParams {
   appId: number;
   previousVersionId: string;
+  currentChatMessageId?: {
+    chatId: number;
+    messageId: number;
+  };
 }
 
 export type RevertVersionResponse =
@@ -501,6 +525,7 @@ export interface GithubRepository {
   full_name: string;
   private: boolean;
 }
+
 export type CloneRepoReturnType =
   | {
       app: App;
@@ -518,11 +543,65 @@ export interface SupabaseBranch {
   parentProjectRef: string;
 }
 
+/**
+ * Supabase organization info for display (without secrets).
+ */
+export interface SupabaseOrganizationInfo {
+  organizationSlug: string;
+  name?: string;
+  ownerEmail?: string;
+}
+
+/**
+ * Supabase project info.
+ */
+export interface SupabaseProject {
+  id: string;
+  name: string;
+  region?: string;
+  organizationSlug: string;
+}
+
 export interface SetSupabaseAppProjectParams {
   projectId: string;
   parentProjectId?: string;
   appId: number;
+  organizationSlug: string | null;
 }
+
+export interface DeleteSupabaseOrganizationParams {
+  organizationSlug: string;
+}
+
+// Supabase Logs
+export interface LogMetadata {
+  // For Edge Functions
+  function?: string;
+  request_id?: string;
+  status?: number;
+
+  // For Database logs
+  query?: string;
+  table?: string;
+  rows_affected?: number;
+
+  // For Auth logs
+  user_id?: string;
+  event?: string;
+
+  // Additional dynamic fields
+  [key: string]: any;
+}
+
+export interface SupabaseLog {
+  id: string;
+  timestamp: string;
+  log_type: "function" | "database" | "auth" | "api" | "realtime" | "system";
+  event_message: string;
+  metadata?: LogMetadata;
+  body?: any;
+}
+
 export interface SetNodePathParams {
   nodePath: string;
 }
@@ -531,4 +610,77 @@ export interface SelectNodeFolderResult {
   path: string | null;
   canceled?: boolean;
   selectedPath: string | null;
+}
+
+export interface VisualEditingChange {
+  componentId: string;
+  componentName: string;
+  relativePath: string;
+  lineNumber: number;
+  styles: {
+    margin?: { left?: string; right?: string; top?: string; bottom?: string };
+    padding?: { left?: string; right?: string; top?: string; bottom?: string };
+    dimensions?: { width?: string; height?: string };
+    border?: { width?: string; radius?: string; color?: string };
+    backgroundColor?: string;
+    text?: {
+      fontSize?: string;
+      fontWeight?: string;
+      color?: string;
+      fontFamily?: string;
+    };
+  };
+  textContent?: string;
+}
+
+export interface ApplyVisualEditingChangesParams {
+  appId: number;
+  changes: VisualEditingChange[];
+}
+
+export interface AnalyseComponentParams {
+  appId: number;
+  componentId: string;
+}
+
+// --- Agent Tool Types ---
+export interface AgentTool {
+  name: string;
+  description: string;
+  isAllowedByDefault: boolean;
+  consent: AgentToolConsent;
+}
+
+export interface SetAgentToolConsentParams {
+  toolName: string;
+  consent: AgentToolConsent;
+}
+
+export interface AgentToolConsentRequestPayload {
+  requestId: string;
+  chatId: number;
+  toolName: string;
+  toolDescription?: string | null;
+  inputPreview?: string | null;
+}
+
+export type AgentToolConsentDecision =
+  | "accept-once"
+  | "accept-always"
+  | "decline";
+
+export interface AgentToolConsentResponseParams {
+  requestId: string;
+  decision: AgentToolConsentDecision;
+}
+
+// ============================================================================
+// Consent Types
+// ============================================================================
+
+export type AgentToolConsent = "ask" | "always";
+
+export interface TelemetryEventPayload {
+  eventName: string;
+  properties?: Record<string, unknown>;
 }

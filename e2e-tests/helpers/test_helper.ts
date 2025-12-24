@@ -71,16 +71,25 @@ class ProModesDialog {
     public close: () => Promise<void>,
   ) {}
 
-  async setSmartContextMode(mode: "balanced" | "off" | "conservative") {
+  async setSmartContextMode(mode: "balanced" | "off" | "deep") {
     await this.page
+      .getByTestId("smart-context-selector")
       .getByRole("button", {
         name: mode.charAt(0).toUpperCase() + mode.slice(1),
       })
       .click();
   }
 
-  async toggleTurboEdits() {
-    await this.page.getByRole("switch", { name: "Turbo Edits" }).click();
+  async setTurboEditsMode(mode: "off" | "classic" | "search-replace") {
+    await this.page
+      .getByTestId("turbo-edits-selector")
+      .getByRole("button", {
+        name:
+          mode === "search-replace"
+            ? "Search & replace"
+            : mode.charAt(0).toUpperCase() + mode.slice(1),
+      })
+      .click();
   }
 }
 
@@ -249,11 +258,17 @@ export class PageObject {
     await this.selectTestModel();
   }
 
-  async setUpDyadPro({ autoApprove = false }: { autoApprove?: boolean } = {}) {
+  async setUpDyadPro({
+    autoApprove = false,
+    localAgent = false,
+  }: { autoApprove?: boolean; localAgent?: boolean } = {}) {
     await this.baseSetup();
     await this.goToSettingsTab();
     if (autoApprove) {
       await this.toggleAutoApprove();
+    }
+    if (localAgent) {
+      await this.toggleLocalAgentMode();
     }
     await this.setUpDyadProvider();
     await this.goToAppsTab();
@@ -330,9 +345,24 @@ export class PageObject {
     await this.page.getByRole("button", { name: "Import" }).click();
   }
 
-  async selectChatMode(mode: "build" | "ask" | "agent") {
+  async selectChatMode(mode: "build" | "ask" | "agent" | "local-agent") {
     await this.page.getByTestId("chat-mode-selector").click();
-    await this.page.getByRole("option", { name: mode }).click();
+    // local-agent appears as "Agent v2 (experimental)" in the UI
+    const optionName =
+      mode === "local-agent"
+        ? "Agent v2 (experimental)"
+        : mode === "agent"
+          ? "Build with MCP (experimental)"
+          : mode;
+    await this.page
+      .getByRole("option", {
+        name: optionName,
+      })
+      .click();
+  }
+
+  async selectLocalAgentMode() {
+    await this.selectChatMode("local-agent");
   }
 
   async openContextFilesPicker() {
@@ -362,7 +392,7 @@ export class PageObject {
     await expect(this.page.getByRole("dialog")).toMatchAriaSnapshot();
   }
 
-  async snapshotAppFiles({ name }: { name: string }) {
+  async snapshotAppFiles({ name, files }: { name: string; files?: string[] }) {
     const currentAppName = await this.getCurrentAppName();
     if (!currentAppName) {
       throw new Error("No app selected");
@@ -374,10 +404,17 @@ export class PageObject {
     }
 
     await expect(() => {
-      const filesData = generateAppFilesSnapshotData(appPath, appPath);
+      let filesData = generateAppFilesSnapshotData(appPath, appPath);
 
       // Sort by relative path to ensure deterministic output
       filesData.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+      if (files) {
+        filesData = filesData.filter((file) =>
+          files.some(
+            (f) => normalizePath(f) === normalizePath(file.relativePath),
+          ),
+        );
+      }
 
       const snapshotContent = filesData
         .map(
@@ -460,7 +497,9 @@ export class PageObject {
   // Preview panel
   ////////////////////////////////
 
-  async selectPreviewMode(mode: "code" | "problems" | "preview" | "configure") {
+  async selectPreviewMode(
+    mode: "code" | "problems" | "preview" | "configure" | "security",
+  ) {
     await this.page.getByTestId(`${mode}-mode-button`).click();
   }
 
@@ -504,8 +543,15 @@ export class PageObject {
       .click({ timeout: Timeout.EXTRA_LONG });
   }
 
-  async clickDeselectComponent() {
-    await this.page.getByRole("button", { name: "Deselect component" }).click();
+  async clickDeselectComponent(options?: { index?: number }) {
+    const buttons = this.page.getByRole("button", {
+      name: "Deselect component",
+    });
+    if (options?.index !== undefined) {
+      await buttons.nth(options.index).click();
+    } else {
+      await buttons.first().click();
+    }
   }
 
   async clickPreviewMoreOptions() {
@@ -528,6 +574,22 @@ export class PageObject {
     await this.page.getByTestId("preview-open-browser-button").click();
   }
 
+  async clickPreviewAnnotatorButton() {
+    await this.page
+      .getByTestId("preview-annotator-button")
+      .click({ timeout: Timeout.EXTRA_LONG });
+  }
+
+  async waitForAnnotatorMode() {
+    // Wait for the annotator toolbar to be visible
+    await expect(this.page.getByRole("button", { name: "Select" })).toBeVisible(
+      { timeout: Timeout.MEDIUM },
+    );
+  }
+
+  async clickAnnotatorSubmit() {
+    await this.page.getByRole("button", { name: "Add to Chat" }).click();
+  }
   locateLoadingAppPreview() {
     return this.page.getByText("Preparing app preview...");
   }
@@ -550,6 +612,17 @@ export class PageObject {
     await this.page.getByRole("button", { name: "Fix error with AI" }).click();
   }
 
+  async clickCopyErrorMessage() {
+    await this.page.getByRole("button", { name: /Copy/ }).click();
+  }
+
+  async getClipboardText(): Promise<string> {
+    return await this.page.evaluate(() => navigator.clipboard.readText());
+  }
+  async clickFixAllErrors() {
+    await this.page.getByRole("button", { name: /Fix All Errors/ }).click();
+  }
+
   async snapshotPreviewErrorBanner() {
     await expect(this.locatePreviewErrorBanner()).toMatchAriaSnapshot({
       timeout: Timeout.LONG,
@@ -564,12 +637,12 @@ export class PageObject {
     await expect(this.getChatInputContainer()).toMatchAriaSnapshot();
   }
 
-  getSelectedComponentDisplay() {
+  getSelectedComponentsDisplay() {
     return this.page.getByTestId("selected-component-display");
   }
 
-  async snapshotSelectedComponentDisplay() {
-    await expect(this.getSelectedComponentDisplay()).toMatchAriaSnapshot();
+  async snapshotSelectedComponentsDisplay() {
+    await expect(this.getSelectedComponentsDisplay()).toMatchAriaSnapshot();
   }
 
   async snapshotPreview({ name }: { name?: string } = {}) {
@@ -578,6 +651,12 @@ export class PageObject {
       name,
       timeout: Timeout.LONG,
     });
+  }
+
+  async snapshotSecurityFindingsTable() {
+    await expect(
+      this.page.getByTestId("security-findings-table"),
+    ).toMatchAriaSnapshot();
   }
 
   async snapshotServerDump(
@@ -682,7 +761,7 @@ export class PageObject {
 
   getChatInput() {
     return this.page.locator(
-      '[data-lexical-editor="true"][aria-placeholder="Ask Dyad to build..."]',
+      '[data-lexical-editor="true"][aria-placeholder^="Ask Dyad to build"]',
     );
   }
 
@@ -911,6 +990,10 @@ export class PageObject {
     await this.page.getByRole("switch", { name: "Auto-approve" }).click();
   }
 
+  async toggleLocalAgentMode() {
+    await this.page.getByRole("switch", { name: "Enable Agent v2" }).click();
+  }
+
   async toggleNativeGit() {
     await this.page.getByRole("switch", { name: "Enable Native Git" }).click();
   }
@@ -1034,6 +1117,34 @@ export class PageObject {
 
   async sleep(ms: number) {
     await new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  ////////////////////////////////
+  // Agent Tool Consent Banner
+  ////////////////////////////////
+
+  getAgentConsentBanner() {
+    return this.page
+      .getByRole("button", { name: "Always allow" })
+      .locator("..");
+  }
+
+  async waitForAgentConsentBanner(timeout = Timeout.MEDIUM) {
+    await expect(
+      this.page.getByRole("button", { name: "Always allow" }),
+    ).toBeVisible({ timeout });
+  }
+
+  async clickAgentConsentAlwaysAllow() {
+    await this.page.getByRole("button", { name: "Always allow" }).click();
+  }
+
+  async clickAgentConsentAllowOnce() {
+    await this.page.getByRole("button", { name: "Allow once" }).click();
+  }
+
+  async clickAgentConsentDecline() {
+    await this.page.getByRole("button", { name: "Decline" }).click();
   }
 }
 
@@ -1231,4 +1342,8 @@ function prettifyDump(
       return `===\nrole: ${message.role}\nmessage: ${content}`;
     })
     .join("\n\n");
+}
+
+function normalizePath(path: string): string {
+  return path.replace(/\\/g, "/");
 }

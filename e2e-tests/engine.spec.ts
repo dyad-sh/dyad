@@ -9,23 +9,6 @@ testSkipIfWindows("send message to engine", async ({ po }) => {
   await po.snapshotMessages({ replaceDumpPath: true });
 });
 
-testSkipIfWindows(
-  "send message to engine - smart context conservative",
-  async ({ po }) => {
-    await po.setUpDyadPro();
-    const proModesDialog = await po.openProModesDialog({
-      location: "home-chat-input-container",
-    });
-    await proModesDialog.setSmartContextMode("conservative");
-    await proModesDialog.close();
-    await po.selectModel({ provider: "Google", model: "Gemini 2.5 Pro" });
-    await po.sendPrompt("[dump] tc=turbo-edits");
-
-    await po.snapshotServerDump("request");
-    await po.snapshotMessages({ replaceDumpPath: true });
-  },
-);
-
 testSkipIfWindows("send message to engine - openai gpt-5", async ({ po }) => {
   await po.setUpDyadPro();
   // By default, it's using auto which points to Flash 2.5 and doesn't
@@ -42,7 +25,7 @@ testSkipIfWindows(
     await po.setUpDyadPro();
     // By default, it's using auto which points to Flash 2.5 and doesn't
     // use engine.
-    await po.selectModel({ provider: "Anthropic", model: "Claude 4 Sonnet" });
+    await po.selectModel({ provider: "Anthropic", model: "Claude Sonnet 4" });
     await po.sendPrompt("[dump] tc=turbo-edits");
 
     await po.snapshotServerDump("request");

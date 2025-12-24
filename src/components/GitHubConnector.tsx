@@ -30,7 +30,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { GithubBranchManager } from "@/components/GithubBranchManager";
 import { GithubConflictResolver } from "@/components/GithubConflictResolver";
-import { showSuccess } from "@/lib/toast";
+import { showSuccess, showError } from "@/lib/toast";
 import type { GithubSyncOptions } from "@/ipc/ipc_types";
 
 interface GitHubConnectorProps {
@@ -387,9 +387,27 @@ function ConnectedGitHubConnector({
         <GithubConflictResolver
           appId={appId}
           conflicts={conflicts}
-          onResolve={() => {
+          onResolve={async () => {
             setConflicts([]);
-            showSuccess("All conflicts resolved. Please commit your changes.");
+            try {
+              const result =
+                await IpcClient.getInstance().completeGithubMerge(appId);
+              if (result.success) {
+                showSuccess(
+                  "All conflicts resolved and merge completed successfully.",
+                );
+              } else {
+                showError(
+                  result.error ||
+                    "Failed to complete merge. Please try committing manually.",
+                );
+              }
+            } catch (error: any) {
+              showError(
+                error.message ||
+                  "Failed to complete merge. Please try committing manually.",
+              );
+            }
           }}
           onCancel={() => setConflicts([])}
         />

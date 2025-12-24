@@ -947,6 +947,12 @@ export class IpcClient {
     });
   }
 
+  public async completeGithubMerge(
+    appId: number,
+  ): Promise<{ success: boolean; commitHash?: string; error?: string }> {
+    return this.ipcRenderer.invoke("github:complete-merge", { appId });
+  }
+
   // --- End GitHub Repo Management ---
 
   // --- Vercel Token Management ---

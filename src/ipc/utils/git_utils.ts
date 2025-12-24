@@ -899,3 +899,33 @@ export async function gitGetMergeConflicts({
     "Git conflicts requires native Git. Enable native Git in settings.",
   );
 }
+
+/**
+ * Check if Git is currently in a merge or rebase state.
+ * This is important because commits are not allowed during merge/rebase
+ * if there are still unmerged files.
+ */
+export function isGitMergeOrRebaseInProgress({ path }: GitBaseParams): boolean {
+  const gitDir = pathModule.join(path, ".git");
+
+  // Check for merge in progress
+  const mergeHeadPath = pathModule.join(gitDir, "MERGE_HEAD");
+  if (fs.existsSync(mergeHeadPath)) {
+    return true;
+  }
+
+  // Check for rebase in progress
+  const rebaseHeadPath = pathModule.join(gitDir, "REBASE_HEAD");
+  if (fs.existsSync(rebaseHeadPath)) {
+    return true;
+  }
+
+  // Check for rebase-apply or rebase-merge directories
+  const rebaseApplyPath = pathModule.join(gitDir, "rebase-apply");
+  const rebaseMergePath = pathModule.join(gitDir, "rebase-merge");
+  if (fs.existsSync(rebaseApplyPath) || fs.existsSync(rebaseMergePath)) {
+    return true;
+  }
+
+  return false;
+}

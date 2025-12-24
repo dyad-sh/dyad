@@ -18,18 +18,23 @@ import {
   gitCurrentBranch,
   gitListBranches,
   gitRenameBranch,
+  gitAddAll,
+  gitCommit,
+  isGitStatusClean,
+  getGitUncommittedFiles,
 } from "../utils/git_utils";
 import * as schema from "../../db/schema";
 import fs from "node:fs";
+import path from "node:path";
 import { getDyadAppPath } from "../../paths/paths";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
+import { withLock } from "../utils/lock_utils";
 import type { CloneRepoParams, CloneRepoReturnType } from "@/ipc/ipc_types";
 import { eq } from "drizzle-orm";
 import { GithubUser } from "../../lib/schemas";
 import log from "electron-log";
 import { IS_TEST_BUILD } from "../utils/test_utils";
-import path from "node:path"; // ← ADD THIS
 
 const logger = log.scope("github_handlers");
 
@@ -643,6 +648,38 @@ async function handlePushToGithub(
 
     // Pull changes first (unless force push)
     if (!force && !forceWithLease) {
+      // If rebase is requested, check for uncommitted changes first
+      // Git requires a clean working directory for rebase pulls
+      // If there are uncommitted changes, automatically commit them
+      if (rebase) {
+        const isClean = await isGitStatusClean({ path: appPath });
+        if (!isClean) {
+          try {
+            // Get list of uncommitted files for the commit message
+            const uncommittedFiles = await getGitUncommittedFiles({
+              path: appPath,
+            });
+            // Stage all changes
+            await gitAddAll({ path: appPath });
+            // Commit with a descriptive message
+            await gitCommit({
+              path: appPath,
+              message: `[dyad] Auto-commit before rebase: ${uncommittedFiles.length} file(s) changed`,
+            });
+            logger.log(
+              `Auto-committed ${uncommittedFiles.length} file(s) before rebase pull`,
+            );
+          } catch (commitError: any) {
+            return {
+              success: false,
+              error:
+                `Failed to commit uncommitted changes before rebase: ${commitError?.message || "Unknown error"}. ` +
+                "Please commit or stash your changes manually and try again.",
+            };
+          }
+        }
+      }
+
       try {
         await gitPull({
           path: appPath,
@@ -670,6 +707,18 @@ async function handlePushToGithub(
             error:
               "Merge conflict detected. Please resolve conflicts before pushing.",
             isConflict: true,
+          };
+        }
+        // Check for uncommitted changes error (in case the check above didn't catch it)
+        if (
+          errorMessage.includes("uncommitted changes") ||
+          errorMessage.includes("Please commit or stash")
+        ) {
+          return {
+            success: false,
+            error:
+              "Cannot pull with rebase: Your working directory contains uncommitted changes. " +
+              "Please commit or stash your changes before rebasing.",
           };
         }
         // If it's just that remote doesn't have the branch yet, we can ignore and push
@@ -874,6 +923,33 @@ async function handleSwitchBranch(
     if (!app) throw new Error("App not found");
     const appPath = getDyadAppPath(app.path);
 
+    // Check for uncommitted changes and commit them before switching branches
+    const isClean = await isGitStatusClean({ path: appPath });
+    if (!isClean) {
+      try {
+        const uncommittedFiles = await getGitUncommittedFiles({
+          path: appPath,
+        });
+        // Stage all changes
+        await gitAddAll({ path: appPath });
+        // Commit with a descriptive message
+        await gitCommit({
+          path: appPath,
+          message: `[dyad] Auto-commit before switching to branch '${branch}': ${uncommittedFiles.length} file(s) changed`,
+        });
+        logger.log(
+          `Auto-committed ${uncommittedFiles.length} file(s) before switching to branch '${branch}'`,
+        );
+      } catch (commitError: any) {
+        return {
+          success: false,
+          error:
+            `Failed to commit uncommitted changes before switching branch: ${commitError?.message || "Unknown error"}. ` +
+            "Please commit or stash your changes manually and try again.",
+        };
+      }
+    }
+
     await gitCheckout({
       path: appPath,
       ref: branch,
@@ -889,7 +965,22 @@ async function handleSwitchBranch(
 
     return { success: true };
   } catch (err: any) {
-    return { success: false, error: err.message || "Failed to switch branch." };
+    const errorMessage = err?.message || "Failed to switch branch.";
+    // Check if error is about uncommitted changes (fallback in case check above missed it)
+    const lowerMessage = errorMessage.toLowerCase();
+    if (
+      lowerMessage.includes("local changes") ||
+      lowerMessage.includes("would be overwritten") ||
+      lowerMessage.includes("please commit or stash")
+    ) {
+      return {
+        success: false,
+        error:
+          `Failed to switch branch: uncommitted changes detected. ` +
+          "Attempting to commit automatically failed. Please commit or stash your changes manually and try again.",
+      };
+    }
+    return { success: false, error: errorMessage };
   }
 }
 
@@ -941,6 +1032,33 @@ async function handleMergeBranch(
     if (!app) throw new Error("App not found");
     const appPath = getDyadAppPath(app.path);
 
+    // Check for uncommitted changes and commit them before merging
+    const isClean = await isGitStatusClean({ path: appPath });
+    if (!isClean) {
+      try {
+        const uncommittedFiles = await getGitUncommittedFiles({
+          path: appPath,
+        });
+        // Stage all changes
+        await gitAddAll({ path: appPath });
+        // Commit with a descriptive message
+        await gitCommit({
+          path: appPath,
+          message: `[dyad] Auto-commit before merging branch '${branch}': ${uncommittedFiles.length} file(s) changed`,
+        });
+        logger.log(
+          `Auto-committed ${uncommittedFiles.length} file(s) before merging branch '${branch}'`,
+        );
+      } catch (commitError: any) {
+        return {
+          success: false,
+          error:
+            `Failed to commit uncommitted changes before merge: ${commitError?.message || "Unknown error"}. ` +
+            "Please commit or stash your changes manually and try again.",
+        };
+      }
+    }
+
     await gitMerge({
       path: appPath,
       branch,
@@ -952,6 +1070,21 @@ async function handleMergeBranch(
       typeof errorMessage === "string" &&
       (errorMessage.toLowerCase().includes("conflict") ||
         errorMessage.toLowerCase().includes("merge conflict"));
+    // Check if error is about uncommitted changes (fallback in case check above missed it)
+    const lowerMessage = errorMessage.toLowerCase();
+    if (
+      (lowerMessage.includes("local changes") ||
+        lowerMessage.includes("would be overwritten") ||
+        lowerMessage.includes("please commit or stash")) &&
+      !isConflict
+    ) {
+      return {
+        success: false,
+        error:
+          `Failed to merge branch: uncommitted changes detected. ` +
+          "Attempting to commit automatically failed. Please commit or stash your changes manually and try again.",
+      };
+    }
     return {
       success: false,
       error: errorMessage,
@@ -1283,6 +1416,7 @@ export function registerGithubHandlers() {
   ipcMain.handle("github:invite-collaborator", handleInviteCollaborator);
   ipcMain.handle("github:remove-collaborator", handleRemoveCollaborator);
 }
+ipcMain.handle("github:complete-merge", handleCompleteMerge);
 
 async function handleGetMergeConflicts(
   event: IpcMainInvokeEvent,
@@ -1361,4 +1495,65 @@ export async function updateAppGithubRepo({
       githubBranch: branch || "main",
     })
     .where(eq(schema.apps.id, appId));
+}
+
+async function handleCompleteMerge(
+  event: IpcMainInvokeEvent,
+  { appId }: { appId: number },
+) {
+  // Use withLock to serialize Git operations and prevent lock file conflicts
+  return withLock(appId, async () => {
+    try {
+      const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+      if (!app) {
+        throw new Error("App not found");
+      }
+
+      const appPath = getDyadAppPath(app.path);
+
+      // Check if a merge is actually in progress by checking for MERGE_HEAD
+      const mergeHeadPath = path.join(appPath, ".git", "MERGE_HEAD");
+      const mergeInProgress = fs.existsSync(mergeHeadPath);
+      if (!mergeInProgress) {
+        // Not in a merge state - this shouldn't happen, but we'll handle it gracefully
+        logger.warn(
+          "[GitHub Handler] Complete merge called but no merge in progress",
+        );
+        // Still stage and commit any changes (might be leftover from aborted merge)
+        await gitAddAll({ path: appPath });
+        const commitHash = await gitCommit({
+          path: appPath,
+          message: "Commit resolved changes",
+        });
+        return { success: true, commitHash };
+      }
+
+      // Stage all resolved files FIRST - this marks resolved files as resolved in the index
+      // After staging, Git will recognize that files with conflict markers removed are resolved
+      await gitAddAll({ path: appPath });
+
+      // NOW check if there are any remaining conflicts (after staging resolved files)
+      const conflicts = await gitGetMergeConflicts({ path: appPath });
+      if (conflicts.length > 0) {
+        return {
+          success: false,
+          error: `Cannot complete merge: ${conflicts.length} file(s) still have conflicts.`,
+        };
+      }
+
+      // Commit to complete the merge
+      const commitHash = await gitCommit({
+        path: appPath,
+        message: "Merge: resolve conflicts",
+      });
+
+      return { success: true, commitHash };
+    } catch (err: any) {
+      const errorMessage = err?.message || "Failed to complete merge.";
+      return {
+        success: false,
+        error: errorMessage,
+      };
+    }
+  });
 }

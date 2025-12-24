@@ -49,6 +49,7 @@ import {
   gitInit,
   gitListBranches,
   gitRenameBranch,
+  isGitMergeOrRebaseInProgress,
 } from "../utils/git_utils";
 import { safeSend } from "../utils/safe_sender";
 import { normalizePath } from "../../../shared/normalizePath";
@@ -1060,10 +1061,18 @@ export function registerAppHandlers() {
         if (fs.existsSync(path.join(appPath, ".git"))) {
           await gitAdd({ path: appPath, filepath: filePath });
 
-          await gitCommit({
+          // Skip commit if we're in a merge or rebase state (conflict resolution)
+          // Git will fail to commit if there are still unmerged files, and we
+          // want to allow resolving conflicts one file at a time without errors.
+          const isMergeOrRebase = isGitMergeOrRebaseInProgress({
             path: appPath,
-            message: `Updated ${filePath}`,
           });
+          if (!isMergeOrRebase) {
+            await gitCommit({
+              path: appPath,
+              message: `Updated ${filePath}`,
+            });
+          }
         }
       } catch (error: any) {
         logger.error(`Error writing file ${filePath} for app ${appId}:`, error);

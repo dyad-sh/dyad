@@ -152,15 +152,67 @@ test.describe("Git Collaboration", () => {
     await po.page.keyboard.press("Escape");
 
     // 4. Merge Branch
+    // First, create a file on feature-1 to verify merge actually works
+    const appPath = await po.getCurrentAppPath();
+    if (!appPath) throw new Error("App path not found");
+
+    // Switch to feature-1 and create a test file
+    await po.page.getByTestId("branch-select-trigger").click();
+    await po.page.getByRole("option", { name: featureBranch }).click();
+    await expect(po.page.getByTestId("current-branch-display")).toHaveText(
+      featureBranch,
+    );
+
+    const mergeTestFile = "merge-test.txt";
+    const mergeTestFilePath = path.join(appPath, mergeTestFile);
+    const featureContent = "Content from feature-1 branch";
+    fs.writeFileSync(mergeTestFilePath, featureContent);
+    execSync(
+      `git add ${mergeTestFile} && git commit -m "Add merge test file"`,
+      {
+        cwd: appPath,
+      },
+    );
+
+    // Switch back to main
+    await po.page.getByTestId("branch-select-trigger").click();
+    await po.page.getByRole("option", { name: "main" }).click();
+    await expect(po.page.getByTestId("current-branch-display")).toHaveText(
+      "main",
+    );
+
+    // Verify file doesn't exist on main before merge
+    expect(fs.existsSync(mergeTestFilePath)).toBe(false);
+
     // Merge feature-1 into main (we are currently on main)
     await branchesCard.hover();
     await po.page.getByTestId(`branch-actions-${featureBranch}`).click();
     await po.page.getByTestId("merge-branch-menu-item").click();
     await po.page.getByTestId("merge-branch-submit-button").click();
 
-    // Verify merge success (toast or just no error)
-    // We can check if a toast appears, but for now let's assume if it didn't fail it's good.
-    // In a real test we might check commit history or file content.
+    // Wait for merge to complete
+    await po.waitForToast("success", 10000);
+
+    // Give the file system a moment to update after the merge
+    await po.page.waitForTimeout(500);
+
+    // Verify merge success: file should now exist on main
+    expect(fs.existsSync(mergeTestFilePath)).toBe(true);
+    expect(fs.readFileSync(mergeTestFilePath, "utf-8")).toBe(featureContent);
+
+    // Verify git status is clean (no uncommitted changes)
+    const gitStatus = execSync("git status --porcelain", {
+      cwd: appPath,
+      encoding: "utf8",
+    }).trim();
+    expect(gitStatus).toBe("");
+
+    // Verify we're still on main branch
+    const currentBranch = execSync("git branch --show-current", {
+      cwd: appPath,
+      encoding: "utf8",
+    }).trim();
+    expect(currentBranch).toBe("main");
 
     // 5. Delete Branch
     // Delete feature-1
@@ -215,45 +267,44 @@ test.describe("Git Collaboration", () => {
     await po.waitForToastWithText(`Resolved ${conflictFile}`);
     await expect(po.page.getByText("Resolve Conflicts")).not.toBeVisible();
   });
-  test("should invite and remove collaborators", async ({ po }) => {
-    await po.setUp({ nativeGit: true });
-    await po.sendPrompt("tc=basic");
-    await po.selectPreviewMode("publish");
-    await po.githubConnector.connect();
+});
 
-    const repoName = "test-git-collab-invite-" + Date.now();
-    await po.githubConnector.fillCreateRepoName(repoName);
-    await po.githubConnector.clickCreateRepoButton();
-    await expect(po.page.getByTestId("github-connected-repo")).toBeVisible({
-      timeout: 20000,
-    });
-    //open collaborators accordion
-    const collaboratorsCard = po.page.getByTestId("collaborators-header");
-    await collaboratorsCard.hover();
+test("should invite and remove collaborators", async ({ po }) => {
+  await po.setUp();
+  await po.sendPrompt("tc=basic");
+  await po.selectPreviewMode("publish");
+  await po.githubConnector.connect();
 
-    // Wait for Collaborator Manager
-    await expect(
-      po.page.getByTestId("collaborator-invite-input"),
-    ).toBeVisible();
-
-    // Invite a fake user
-    const fakeUser = "test-user-123";
-    await po.page.getByTestId("collaborator-invite-input").fill(fakeUser);
-    await po.page.getByTestId("collaborator-invite-button").click();
-    // Let's check for a toast.
-    await po.waitForToast();
-
-    // verify collaborator appears in the list
-    await expect(
-      po.page.getByTestId(`collaborator-item-${fakeUser}`),
-    ).toBeVisible();
-
-    // Delete collaborator
-    await po.page.getByTestId(`collaborator-remove-button-${fakeUser}`).click();
-    await po.page.getByTestId("confirm-remove-collaborator").click();
-    await po.waitForToast("success");
-    await expect(
-      po.page.getByTestId(`collaborator-item-${fakeUser}`),
-    ).not.toBeVisible({ timeout: 5000 });
+  const repoName = "test-git-collab-invite-" + Date.now();
+  await po.githubConnector.fillCreateRepoName(repoName);
+  await po.githubConnector.clickCreateRepoButton();
+  await expect(po.page.getByTestId("github-connected-repo")).toBeVisible({
+    timeout: 20000,
   });
+  //open collaborators accordion
+  const collaboratorsCard = po.page.getByTestId("collaborators-header");
+  await collaboratorsCard.hover();
+
+  // Wait for Collaborator Manager
+  await expect(po.page.getByTestId("collaborator-invite-input")).toBeVisible();
+
+  // Invite a fake user
+  const fakeUser = "test-user-123";
+  await po.page.getByTestId("collaborator-invite-input").fill(fakeUser);
+  await po.page.getByTestId("collaborator-invite-button").click();
+  // Let's check for a toast.
+  await po.waitForToast();
+
+  // verify collaborator appears in the list
+  await expect(
+    po.page.getByTestId(`collaborator-item-${fakeUser}`),
+  ).toBeVisible();
+
+  // Delete collaborator
+  await po.page.getByTestId(`collaborator-remove-button-${fakeUser}`).click();
+  await po.page.getByTestId("confirm-remove-collaborator").click();
+  await po.waitForToast("success");
+  await expect(
+    po.page.getByTestId(`collaborator-item-${fakeUser}`),
+  ).not.toBeVisible({ timeout: 5000 });
 });

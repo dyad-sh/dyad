@@ -162,7 +162,9 @@ export function GithubBranchManager({
         lower.includes("merge in progress") ||
         lower.includes("merging is not possible") ||
         lower.includes("you have not concluded your merge") ||
-        lower.includes("unmerged files")
+        lower.includes("merge_head exists") ||
+        lower.includes("unmerged files") ||
+        lower.includes("unfinished merge")
       );
     };
 
@@ -213,12 +215,35 @@ export function GithubBranchManager({
       }
 
       if (isMergeInProgress(errorMessage)) {
+        // Check if there are unresolved conflicts - if so, show a more helpful message
+        try {
+          const conflictsResult =
+            await IpcClient.getInstance().getGithubMergeConflicts(appId);
+          if (
+            conflictsResult.success &&
+            conflictsResult.conflicts &&
+            conflictsResult.conflicts.length > 0
+          ) {
+            showError(
+              `Cannot switch branches: merge in progress with ${conflictsResult.conflicts.length} unresolved conflict(s). Please resolve all conflicts and complete the merge, or abort it first.`,
+            );
+            return;
+          }
+        } catch (conflictCheckError: any) {
+          showError(
+            conflictCheckError.message ||
+              `Failed to check for conflicts before switching branches. Please complete or abort the merge manually.`,
+          );
+          // Ignore error checking conflicts, proceed with abort
+        }
+
+        // No conflicts or couldn't check - offer to abort the merge
         const abortResult =
           await IpcClient.getInstance().abortGithubMerge(appId);
         if (!abortResult.success) {
           showError(
             abortResult.error ||
-              "Failed to abort ongoing merge before switching branches",
+              "Failed to abort ongoing merge before switching branches. Please complete or abort the merge manually.",
           );
           return;
         }
@@ -577,9 +602,29 @@ export function GithubBranchManager({
         <GithubConflictResolver
           appId={appId}
           conflicts={conflicts}
-          onResolve={() => {
+          onResolve={async () => {
             setConflicts([]);
-            showSuccess("All conflicts resolved. Please commit your changes.");
+            try {
+              const result =
+                await IpcClient.getInstance().completeGithubMerge(appId);
+              if (result.success) {
+                showSuccess(
+                  "All conflicts resolved and merge completed successfully.",
+                );
+                await loadBranches(); // Refresh branches after merge
+                onBranchChange?.(); // Notify parent of branch change
+              } else {
+                showError(
+                  result.error ||
+                    "Failed to complete merge. Please try committing manually.",
+                );
+              }
+            } catch (error: any) {
+              showError(
+                error.message ||
+                  "Failed to complete merge. Please try committing manually.",
+              );
+            }
           }}
           onCancel={() => setConflicts([])}
         />

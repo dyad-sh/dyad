@@ -197,7 +197,13 @@ ${extractConflictSnippet(fileContent)}`,
       setResolvedContentOverride(result.resolution);
       setLatestContent(result.resolution);
       showSuccess("Applied manual conflict resolution");
-      onResolve();
+
+      // Move to next conflict or finish if this was the last one
+      if (currentConflictIndex < conflicts.length - 1) {
+        setCurrentConflictIndex(currentConflictIndex + 1);
+      } else {
+        onResolve();
+      }
     } catch (error: any) {
       showError(error.message || "Failed to resolve conflict manually");
     }
@@ -245,7 +251,13 @@ ${extractConflictSnippet(fileContent)}`,
       setAiMessageId(null);
       refreshProposal();
       showSuccess("Applied AI suggestion via approval.");
-      onResolve();
+
+      // Move to next conflict or finish if this was the last one
+      if (currentConflictIndex < conflicts.length - 1) {
+        setCurrentConflictIndex(currentConflictIndex + 1);
+      } else {
+        onResolve();
+      }
     } catch (error: any) {
       showError(error?.message || "Failed to approve AI suggestion");
     } finally {

@@ -42,9 +42,18 @@ export function useVersions(appId: number | null) {
   const revertVersionMutation = useMutation<
     RevertVersionResponse,
     Error,
-    { versionId: string }
+    {
+      versionId: string;
+      currentChatMessageId?: { chatId: number; messageId: number };
+    }
   >({
-    mutationFn: async ({ versionId }: { versionId: string }) => {
+    mutationFn: async ({
+      versionId,
+      currentChatMessageId,
+    }: {
+      versionId: string;
+      currentChatMessageId?: { chatId: number; messageId: number };
+    }) => {
       const currentAppId = appId;
       if (currentAppId === null) {
         throw new Error("App ID is null");
@@ -53,6 +62,7 @@ export function useVersions(appId: number | null) {
       return ipcClient.revertVersion({
         appId: currentAppId,
         previousVersionId: versionId,
+        currentChatMessageId,
       });
     },
     onSuccess: async (result) => {

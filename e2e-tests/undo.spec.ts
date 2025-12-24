@@ -40,3 +40,29 @@ testSkipIfWindows("undo", async ({ po }) => {
 testSkipIfWindows("undo with native git", async ({ po }) => {
   await runUndoTest(po, true);
 });
+
+testSkipIfWindows("undo after assistant with no code", async ({ po }) => {
+  await po.setUp({ autoApprove: true, nativeGit: false });
+
+  // First prompt - no code generated
+  await po.sendPrompt("tc=no-code-response");
+
+  // Second prompt - generates code
+  await po.sendPrompt("tc=write-index");
+
+  const iframe = po.getPreviewIframeElement();
+  await expect(
+    iframe.contentFrame().getByText("Testing:write-index!"),
+  ).toBeVisible({
+    timeout: Timeout.LONG,
+  });
+
+  // Undo should work even though first assistant had no commit
+  await po.clickUndo();
+
+  await expect(
+    iframe.contentFrame().getByText("Welcome to Your Blank App"),
+  ).toBeVisible({
+    timeout: Timeout.LONG,
+  });
+});

@@ -88,8 +88,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
       {!isStreaming && (
         <div className="flex max-w-3xl mx-auto gap-2">
           {!!messages.length &&
-            messages[messages.length - 1].role === "assistant" &&
-            messages[messages.length - 1].commitHash && (
+            messages[messages.length - 1].role === "assistant" && (
               <Button
                 variant="outline"
                 size="sm"
@@ -102,51 +101,34 @@ function FooterComponent({ context }: { context?: FooterContext }) {
 
                   setIsUndoLoading(true);
                   try {
-                    if (messages.length >= 3) {
-                      const previousAssistantMessage =
-                        messages[messages.length - 3];
-                      if (
-                        previousAssistantMessage?.role === "assistant" &&
-                        previousAssistantMessage?.commitHash
-                      ) {
-                        console.debug(
-                          "Reverting to previous assistant version",
-                        );
-                        await revertVersion({
-                          versionId: previousAssistantMessage.commitHash,
-                        });
-                        const chat =
-                          await IpcClient.getInstance().getChat(selectedChatId);
-                        setMessagesById((prev) => {
-                          const next = new Map(prev);
-                          next.set(selectedChatId, chat.messages);
-                          return next;
-                        });
-                      }
-                    } else {
+                    const currentMessage = messages[messages.length - 1];
+                    // The user message that triggered this assistant response
+                    const userMessage = messages[messages.length - 2];
+                    if (currentMessage?.sourceCommitHash) {
+                      console.debug(
+                        "Reverting to source commit hash",
+                        currentMessage.sourceCommitHash,
+                      );
+                      await revertVersion({
+                        versionId: currentMessage.sourceCommitHash,
+                        currentChatMessageId: userMessage
+                          ? {
+                              chatId: selectedChatId,
+                              messageId: userMessage.id,
+                            }
+                          : undefined,
+                      });
                       const chat =
                         await IpcClient.getInstance().getChat(selectedChatId);
-                      if (chat.initialCommitHash) {
-                        await revertVersion({
-                          versionId: chat.initialCommitHash,
-                        });
-                        try {
-                          await IpcClient.getInstance().deleteMessages(
-                            selectedChatId,
-                          );
-                          setMessagesById((prev) => {
-                            const next = new Map(prev);
-                            next.set(selectedChatId, []);
-                            return next;
-                          });
-                        } catch (err) {
-                          showError(err);
-                        }
-                      } else {
-                        showWarning(
-                          "No initial commit hash found for chat. Need to manually undo code changes",
-                        );
-                      }
+                      setMessagesById((prev) => {
+                        const next = new Map(prev);
+                        next.set(selectedChatId, chat.messages);
+                        return next;
+                      });
+                    } else {
+                      showWarning(
+                        "No source commit hash found for message. Need to manually undo code changes",
+                      );
                     }
                   } catch (error) {
                     console.error("Error during undo operation:", error);

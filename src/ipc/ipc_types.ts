@@ -80,6 +80,7 @@ export interface Message {
   content: string;
   approvalState?: "approved" | "rejected" | null;
   commitHash?: string | null;
+  sourceCommitHash?: string | null;
   dbTimestamp?: string | null;
   createdAt?: Date | string;
   requestId?: string | null;
@@ -442,6 +443,10 @@ export interface GetNeonProjectResponse {
 export interface RevertVersionParams {
   appId: number;
   previousVersionId: string;
+  currentChatMessageId?: {
+    chatId: number;
+    messageId: number;
+  };
 }
 
 export type RevertVersionResponse =

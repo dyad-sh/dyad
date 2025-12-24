@@ -12,13 +12,13 @@ import { isSupabaseConnected } from "@/lib/schemas";
 
 export function SupabaseIntegration() {
   const { settings, updateSettings } = useSettings();
-  const { organizations, loadOrganizations, deleteOrganization } =
+  const { organizations, refetchOrganizations, deleteOrganization } =
     useSupabase();
   const [isDisconnecting, setIsDisconnecting] = useState(false);
 
   useEffect(() => {
-    loadOrganizations();
-  }, [loadOrganizations]);
+    refetchOrganizations();
+  }, [refetchOrganizations]);
 
   const handleDisconnectAllFromSupabase = async () => {
     setIsDisconnecting(true);
@@ -31,7 +31,7 @@ export function SupabaseIntegration() {
       });
       if (result) {
         showSuccess("Successfully disconnected all Supabase organizations");
-        await loadOrganizations();
+        await refetchOrganizations();
       } else {
         showError("Failed to disconnect from Supabase");
       }

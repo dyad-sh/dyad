@@ -47,18 +47,10 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   const { app, refreshApp } = useLoadApp(appId);
   const { lastDeepLink, clearLastDeepLink } = useDeepLink();
   const { isDarkMode } = useTheme();
-  useEffect(() => {
-    const handleDeepLink = async () => {
-      if (lastDeepLink?.type === "supabase-oauth-return") {
-        await refreshSettings();
-        await loadOrganizations();
-        await loadProjects();
-        await refreshApp();
-        clearLastDeepLink();
-      }
-    };
-    handleDeepLink();
-  }, [lastDeepLink?.timestamp]);
+
+  const branchesProjectId =
+    app?.supabaseParentProjectId || app?.supabaseProjectId;
+
   const {
     organizations,
     projects,
@@ -68,28 +60,43 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     projectsError,
     isLoadingBranches,
     isSettingAppProject,
-    loadOrganizations,
+    refetchOrganizations,
+    refetchProjects,
     deleteOrganization,
-    loadProjects,
-    loadBranches,
     setAppProject,
     unsetAppProject,
-  } = useSupabase();
+  } = useSupabase({
+    branchesProjectId,
+    branchesOrganizationSlug: app?.supabaseOrganizationSlug,
+  });
+
+  useEffect(() => {
+    const handleDeepLink = async () => {
+      if (lastDeepLink?.type === "supabase-oauth-return") {
+        await refreshSettings();
+        await refetchOrganizations();
+        await refetchProjects();
+        await refreshApp();
+        clearLastDeepLink();
+      }
+    };
+    handleDeepLink();
+  }, [lastDeepLink?.timestamp]);
 
   // Check if there are any connected organizations
   const isConnected = isSupabaseConnected(settings);
 
   useEffect(() => {
     // Load organizations and projects when the component mounts
-    loadOrganizations();
-  }, [loadOrganizations]);
+    refetchOrganizations();
+  }, [refetchOrganizations]);
 
   useEffect(() => {
     // Load projects when organizations are available
     if (isConnected) {
-      loadProjects();
+      refetchProjects();
     }
-  }, [isConnected, loadProjects]);
+  }, [isConnected, refetchProjects]);
 
   const handleProjectSelect = async (projectValue: string) => {
     try {
@@ -148,17 +155,6 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     }
   };
 
-  const projectIdForBranches =
-    app?.supabaseParentProjectId || app?.supabaseProjectId;
-  useEffect(() => {
-    if (projectIdForBranches) {
-      loadBranches(
-        projectIdForBranches,
-        app?.supabaseOrganizationSlug ?? undefined,
-      );
-    }
-  }, [projectIdForBranches, loadBranches, app?.supabaseOrganizationSlug]);
-
   const handleUnsetProject = async () => {
     try {
       await unsetAppProject(appId);
@@ -174,7 +170,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     try {
       await deleteOrganization({ organizationSlug });
       toast.success("Organization disconnected successfully");
-      await loadProjects();
+      await refetchProjects();
     } catch (error) {
       toast.error("Failed to disconnect organization: " + error);
     }
@@ -315,7 +311,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
               <Button
                 variant="outline"
                 className="mt-2"
-                onClick={() => loadProjects()}
+                onClick={() => refetchProjects()}
               >
                 Retry
               </Button>

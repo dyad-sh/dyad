@@ -1,11 +1,6 @@
-import { useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import {
-  supabaseBranchesAtom,
-  selectedSupabaseProjectAtom,
-  lastLogTimestampAtom,
-} from "@/atoms/supabaseAtoms";
+import { lastLogTimestampAtom } from "@/atoms/supabaseAtoms";
 import { appConsoleEntriesAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
 import {
@@ -22,12 +17,15 @@ const SUPABASE_QUERY_KEYS = {
   branches: (projectId: string) => ["supabase", "branches", projectId] as const,
 };
 
-export function useSupabase() {
+export interface UseSupabaseOptions {
+  branchesProjectId?: string | null;
+  branchesOrganizationSlug?: string | null;
+}
+
+export function useSupabase(options: UseSupabaseOptions = {}) {
+  const { branchesProjectId, branchesOrganizationSlug } = options;
   const queryClient = useQueryClient();
-  const [branches, setBranches] = useAtom(supabaseBranchesAtom);
-  const [selectedProject, setSelectedProject] = useAtom(
-    selectedSupabaseProjectAtom,
-  );
+
   const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const [lastLogTimestamp, setLastLogTimestamp] = useAtom(lastLogTimestampAtom);
@@ -93,24 +91,18 @@ export function useSupabase() {
     meta: { showErrorToast: true },
   });
 
-  // Mutation: Load branches for a Supabase project
-  // Using mutation because branches are stored in atom and depend on dynamic projectId
-  const loadBranchesMutation = useMutation<
-    SupabaseBranch[],
-    Error,
-    { projectId: string; organizationSlug?: string }
-  >({
-    mutationFn: async ({ projectId, organizationSlug }) => {
+  // Query: Load branches for a Supabase project
+  const branchesQuery = useQuery<SupabaseBranch[], Error>({
+    queryKey: SUPABASE_QUERY_KEYS.branches(branchesProjectId ?? ""),
+    queryFn: async () => {
       const ipcClient = IpcClient.getInstance();
       const list = await ipcClient.listSupabaseBranches({
-        projectId,
-        organizationSlug: organizationSlug ?? null,
+        projectId: branchesProjectId!,
+        organizationSlug: branchesOrganizationSlug ?? null,
       });
       return Array.isArray(list) ? list : [];
     },
-    onSuccess: (data) => {
-      setBranches(data);
-    },
+    enabled: !!branchesProjectId,
     meta: { showErrorToast: true },
   });
 
@@ -162,63 +154,11 @@ export function useSupabase() {
     },
   });
 
-  // Wrapper functions to preserve the existing API signatures
-  const loadOrganizations = useCallback(async () => {
-    await organizationsQuery.refetch();
-  }, [organizationsQuery]);
-
-  const loadProjects = useCallback(async () => {
-    await projectsQuery.refetch();
-  }, [projectsQuery]);
-
-  const deleteOrganization = useCallback(
-    async (params: DeleteSupabaseOrganizationParams) => {
-      await deleteOrganizationMutation.mutateAsync(params);
-    },
-    [deleteOrganizationMutation],
-  );
-
-  const loadBranches = useCallback(
-    async (projectId: string, organizationSlug?: string) => {
-      await loadBranchesMutation.mutateAsync({ projectId, organizationSlug });
-    },
-    [loadBranchesMutation],
-  );
-
-  const setAppProject = useCallback(
-    async (params: SetSupabaseAppProjectParams) => {
-      await setAppProjectMutation.mutateAsync(params);
-    },
-    [setAppProjectMutation],
-  );
-
-  const unsetAppProject = useCallback(
-    async (appId: number) => {
-      await unsetAppProjectMutation.mutateAsync(appId);
-    },
-    [unsetAppProjectMutation],
-  );
-
-  const loadEdgeLogs = useCallback(
-    async (projectId: string, organizationSlug?: string) => {
-      await loadEdgeLogsMutation.mutateAsync({ projectId, organizationSlug });
-    },
-    [loadEdgeLogsMutation],
-  );
-
-  const selectProject = useCallback(
-    (projectId: string | null) => {
-      setSelectedProject(projectId);
-    },
-    [setSelectedProject],
-  );
-
   return {
     // Data
     organizations: organizationsQuery.data ?? [],
     projects: projectsQuery.data ?? [],
-    branches,
-    selectedProject,
+    branches: branchesQuery.data ?? [],
 
     // Organizations query state
     isLoadingOrganizations: organizationsQuery.isLoading,
@@ -230,21 +170,24 @@ export function useSupabase() {
     isFetchingProjects: projectsQuery.isFetching,
     projectsError: projectsQuery.error,
 
+    // Branches query state
+    isLoadingBranches: branchesQuery.isLoading,
+    isFetchingBranches: branchesQuery.isFetching,
+    branchesError: branchesQuery.error,
+
     // Mutation states
     isDeletingOrganization: deleteOrganizationMutation.isPending,
     isSettingAppProject: setAppProjectMutation.isPending,
     isUnsettingAppProject: unsetAppProjectMutation.isPending,
-    isLoadingBranches: loadBranchesMutation.isPending,
     isLoadingEdgeLogs: loadEdgeLogsMutation.isPending,
 
     // Actions
-    loadOrganizations,
-    deleteOrganization,
-    loadProjects,
-    loadBranches,
-    loadEdgeLogs,
-    setAppProject,
-    unsetAppProject,
-    selectProject,
+    refetchOrganizations: organizationsQuery.refetch,
+    refetchProjects: projectsQuery.refetch,
+    refetchBranches: branchesQuery.refetch,
+    deleteOrganization: deleteOrganizationMutation.mutateAsync,
+    loadEdgeLogs: loadEdgeLogsMutation.mutateAsync,
+    setAppProject: setAppProjectMutation.mutateAsync,
+    unsetAppProject: unsetAppProjectMutation.mutateAsync,
   };
 }

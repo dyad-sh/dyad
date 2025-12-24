@@ -1,7 +1,7 @@
 import {
   selectedAppIdAtom,
   appUrlAtom,
-  appOutputAtom,
+  appConsoleEntriesAtom,
   previewErrorMessageAtom,
 } from "@/atoms/appAtoms";
 import { useAtomValue, useSetAtom, useAtom } from "jotai";
@@ -171,7 +171,7 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
 export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { appUrl, originalUrl } = useAtomValue(appUrlAtom);
-  const setAppOutput = useSetAtom(appOutputAtom);
+  const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
   // State to trigger iframe reload
   const [reloadKey, setReloadKey] = useState(0);
   const [errorMessage, setErrorMessage] = useAtom(previewErrorMessageAtom);
@@ -346,6 +346,78 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         return;
       }
 
+      // Handle console logs from the iframe
+      if (event.data?.type === "console-log") {
+        const { level, args } = event.data;
+        const formattedMessage = `[${level.toUpperCase()}] ${args.join(" ")}`;
+        const logLevel =
+          level === "error" ? "error" : level === "warn" ? "warn" : "info";
+        setConsoleEntries((prev) => [
+          ...prev,
+          {
+            level: logLevel,
+            type: "client",
+            message: formattedMessage,
+            timestamp: Date.now(),
+            appId: selectedAppId!,
+          },
+        ]);
+        return;
+      }
+
+      // Handle network requests from the iframe
+      if (event.data?.type === "network-request") {
+        const { method, url } = event.data;
+        const formattedMessage = `→ ${method} ${url}`;
+        setConsoleEntries((prev) => [
+          ...prev,
+          {
+            level: "info",
+            type: "network-requests",
+            message: formattedMessage,
+            timestamp: Date.now(),
+            appId: selectedAppId!,
+          },
+        ]);
+        return;
+      }
+
+      // Handle network responses from the iframe
+      if (event.data?.type === "network-response") {
+        const { method, url, status, duration } = event.data;
+        const formattedMessage = `[${status}] ${method} ${url} (${duration}ms)`;
+        const level = status >= 400 ? "error" : status >= 300 ? "warn" : "info";
+        setConsoleEntries((prev) => [
+          ...prev,
+          {
+            level,
+            type: "network-requests",
+            message: formattedMessage,
+            timestamp: Date.now(),
+            appId: selectedAppId!,
+          },
+        ]);
+        return;
+      }
+
+      // Handle network errors from the iframe
+      if (event.data?.type === "network-error") {
+        const { method, url, status, error, duration } = event.data;
+        const statusCode = status && status !== 0 ? `[${status}] ` : "";
+        const formattedMessage = `${statusCode}${method} ${url} - ${error} (${duration}ms)`;
+        setConsoleEntries((prev) => [
+          ...prev,
+          {
+            level: "error",
+            type: "network-requests",
+            message: formattedMessage,
+            timestamp: Date.now(),
+            appId: selectedAppId!,
+          },
+        ]);
+        return;
+      }
+
       if (event.data?.type === "dyad-component-selector-initialized") {
         setIsComponentSelectorInitialized(true);
         iframeRef.current?.contentWindow?.postMessage(
@@ -480,26 +552,28 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         }\nStack trace: ${stack}`;
         console.error("Iframe error:", errorMessage);
         setErrorMessage({ message: errorMessage, source: "preview-app" });
-        setAppOutput((prev) => [
+        setConsoleEntries((prev) => [
           ...prev,
           {
+            level: "error",
+            type: "client",
             message: `Iframe error: ${errorMessage}`,
-            type: "client-error",
-            appId: selectedAppId!,
             timestamp: Date.now(),
+            appId: selectedAppId!,
           },
         ]);
       } else if (type === "build-error-report") {
         console.debug(`Build error report: ${payload}`);
         const errorMessage = `${payload?.message} from file ${payload?.file}.\n\nSource code:\n${payload?.frame}`;
         setErrorMessage({ message: errorMessage, source: "preview-app" });
-        setAppOutput((prev) => [
+        setConsoleEntries((prev) => [
           ...prev,
           {
+            level: "error",
+            type: "client",
             message: `Build error report: ${JSON.stringify(payload)}`,
-            type: "client-error",
-            appId: selectedAppId!,
             timestamp: Date.now(),
+            appId: selectedAppId!,
           },
         ]);
       } else if (type === "pushState" || type === "replaceState") {

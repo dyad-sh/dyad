@@ -33,6 +33,7 @@ declare module "@tanstack/react-query" {
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
+      staleTime: 60_000,
       retry: false,
     },
     mutations: {
@@ -156,6 +157,15 @@ function App() {
     });
     return () => unsubscribe();
   }, [setPendingAgentConsents]);
+
+  // Forward telemetry events from main process to PostHog
+  useEffect(() => {
+    const ipc = IpcClient.getInstance();
+    const unsubscribe = ipc.onTelemetryEvent(({ eventName, properties }) => {
+      posthog.capture(eventName, properties);
+    });
+    return () => unsubscribe();
+  }, []);
 
   return <RouterProvider router={router} />;
 }

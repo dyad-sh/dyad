@@ -1,6 +1,6 @@
 import { useAtom, useAtomValue } from "jotai";
 import {
-  appOutputAtom,
+  appConsoleEntriesAtom,
   previewModeAtom,
   previewPanelKeyAtom,
   selectedAppIdAtom,
@@ -17,6 +17,7 @@ import { Console } from "./Console";
 import { useRunApp } from "@/hooks/useRunApp";
 import { PublishPanel } from "./PublishPanel";
 import { SecurityPanel } from "./SecurityPanel";
+import { useSupabase } from "@/hooks/useSupabase";
 
 interface ConsoleHeaderProps {
   isOpen: boolean;
@@ -54,13 +55,15 @@ export function PreviewPanel() {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const [isConsoleOpen, setIsConsoleOpen] = useState(false);
   const { runApp, stopApp, loading, app } = useRunApp();
+  const { loadEdgeLogs } = useSupabase();
   const runningAppIdRef = useRef<number | null>(null);
   const key = useAtomValue(previewPanelKeyAtom);
-  const appOutput = useAtomValue(appOutputAtom);
+  const consoleEntries = useAtomValue(appConsoleEntriesAtom);
 
-  const messageCount = appOutput.length;
   const latestMessage =
-    messageCount > 0 ? appOutput[messageCount - 1]?.message : undefined;
+    consoleEntries.length > 0
+      ? consoleEntries[consoleEntries.length - 1]?.message
+      : undefined;
 
   useEffect(() => {
     const previousAppId = runningAppIdRef.current;
@@ -106,6 +109,28 @@ export function PreviewPanel() {
     // Dependencies: run effect when selectedAppId changes.
     // runApp/stopApp are stable due to useCallback.
   }, [selectedAppId, runApp, stopApp]);
+
+  // Load edge logs if app has Supabase project configured
+  useEffect(() => {
+    const projectId = app?.supabaseProjectId;
+    const organizationSlug = app?.supabaseOrganizationSlug ?? undefined;
+    if (!projectId) return;
+
+    // Load logs immediately
+    loadEdgeLogs({ projectId, organizationSlug }).catch((error) => {
+      console.error("Failed to load edge logs:", error);
+    });
+
+    // Poll for new logs every 5 seconds
+    const intervalId = setInterval(() => {
+      loadEdgeLogs({ projectId, organizationSlug }).catch((error) => {
+        console.error("Failed to load edge logs:", error);
+      });
+    }, 5000);
+
+    return () => clearInterval(intervalId);
+  }, [app?.supabaseProjectId, app?.supabaseOrganizationSlug, loadEdgeLogs]);
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-hidden">

@@ -7,7 +7,11 @@ import { TitleBar } from "./TitleBar";
 import { useEffect, type ReactNode } from "react";
 import { useRunApp } from "@/hooks/useRunApp";
 import { useAtomValue, useSetAtom } from "jotai";
-import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
+import {
+  appConsoleEntriesAtom,
+  previewModeAtom,
+  selectedAppIdAtom,
+} from "@/atoms/appAtoms";
 import { useSettings } from "@/hooks/useSettings";
 import type { ZoomLevel } from "@/lib/schemas";
 import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
@@ -24,6 +28,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   );
   const setChatInput = useSetAtom(chatInputValueAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
+  const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
 
   useEffect(() => {
     const zoomLevel = settings?.zoomLevel ?? DEFAULT_ZOOM_LEVEL;
@@ -73,6 +78,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     setChatInput("");
     setSelectedComponentsPreview([]);
+    setConsoleEntries([]);
   }, [selectedAppId]);
 
   return (

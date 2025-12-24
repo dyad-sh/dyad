@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "4c0c9238-a3da-44c8-91dd-671fb9b66f1e",
+  "id": "f8636989-52ff-4660-87e2-518bfc2ebfd8",
   "prevId": "22201ae3-5058-4e52-a244-e2a6a17ecd9f",
   "tables": {
     "apps": {
@@ -74,6 +74,13 @@
         },
         "supabase_parent_project_id": {
           "name": "supabase_parent_project_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "supabase_organization_slug": {
+          "name": "supabase_organization_slug",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

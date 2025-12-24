@@ -78,8 +78,11 @@ const validInvokeChannels = [
   "approve-proposal",
   "reject-proposal",
   "get-system-debug-info",
-  "supabase:list-projects",
+  "supabase:list-organizations",
+  "supabase:delete-organization",
+  "supabase:list-all-projects",
   "supabase:list-branches",
+  "supabase:get-edge-logs",
   "supabase:set-app-project",
   "supabase:unset-app-project",
   "local-models:list-ollama",
@@ -167,6 +170,8 @@ const validReceiveChannels = [
   "mcp:tool-consent-request",
   // Agent tool consent request from main to renderer
   "agent-tool:consent-request",
+  // Telemetry events from main to renderer
+  "telemetry:event",
 ] as const;
 
 type ValidInvokeChannel = (typeof validInvokeChannels)[number];

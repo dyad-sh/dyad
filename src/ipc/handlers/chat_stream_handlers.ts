@@ -39,6 +39,7 @@ import { streamTestResponse } from "./testing_chat_handlers";
 import { getTestResponse } from "./testing_chat_handlers";
 import { getModelClient, ModelClient } from "../utils/get_model_client";
 import log from "electron-log";
+import { sendTelemetryEvent } from "../utils/telemetry";
 import {
   getSupabaseContext,
   getSupabaseClientCode,
@@ -79,7 +80,7 @@ import { inArray } from "drizzle-orm";
 import { replacePromptReference } from "../utils/replacePromptReference";
 import { mcpManager } from "../utils/mcp_manager";
 import z from "zod";
-import { isTurboEditsV2Enabled } from "@/lib/schemas";
+import { isSupabaseConnected, isTurboEditsV2Enabled } from "@/lib/schemas";
 import { AI_STREAMING_ERROR_MESSAGE_PREFIX } from "@/shared/texts";
 import { getCurrentCommitHash } from "../utils/git_utils";
 import {
@@ -649,7 +650,7 @@ ${componentSnippet}
 
         if (
           updatedChat.app?.supabaseProjectId &&
-          settings.supabase?.accessToken?.value
+          isSupabaseConnected(settings)
         ) {
           systemPrompt +=
             "\n\n" +
@@ -660,6 +661,8 @@ ${componentSnippet}
               ? ""
               : await getSupabaseContext({
                   supabaseProjectId: updatedChat.app.supabaseProjectId,
+                  organizationSlug:
+                    updatedChat.app.supabaseOrganizationSlug ?? null,
                 }));
         } else if (
           // Neon projects don't need Supabase.
@@ -954,6 +957,8 @@ This conversation includes one or more image attachments. When the user uploads 
           ) {
             const supabaseClientCode = await getSupabaseClientCode({
               projectId: updatedChat.app?.supabaseProjectId,
+              organizationSlug:
+                updatedChat.app?.supabaseOrganizationSlug ?? null,
             });
             fullResponse = fullResponse.replace(
               "$$SUPABASE_CLIENT_CODE$$",
@@ -1072,6 +1077,15 @@ This conversation includes one or more image attachments. When the user uploads 
               fullResponse,
               appPath: getDyadAppPath(updatedChat.app.path),
             });
+            sendTelemetryEvent("search_replace:fix", {
+              attemptNumber: 0,
+              success: issues.length === 0,
+              issueCount: issues.length,
+              errors: issues.map((i) => ({
+                filePath: i.filePath,
+                error: i.error,
+              })),
+            });
 
             let searchReplaceFixAttempts = 0;
             const originalFullResponse = fullResponse;
@@ -1141,6 +1155,16 @@ ${formattedSearchReplaceIssues}`,
               issues = await dryRunSearchReplace({
                 fullResponse: result.incrementalResponse,
                 appPath: getDyadAppPath(updatedChat.app.path),
+              });
+
+              sendTelemetryEvent("search_replace:fix", {
+                attemptNumber: searchReplaceFixAttempts,
+                success: issues.length === 0,
+                issueCount: issues.length,
+                errors: issues.map((i) => ({
+                  filePath: i.filePath,
+                  error: i.error,
+                })),
               });
             }
           }

@@ -20,7 +20,6 @@ import { useLoadApp } from "./useLoadApp";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useVersions } from "./useVersions";
 import { showExtraFilesToast } from "@/lib/toast";
-import { useProposal } from "./useProposal";
 import { useSearch } from "@tanstack/react-router";
 import { useRunApp } from "./useRunApp";
 import { useCountTokens } from "./useCountTokens";
@@ -28,6 +27,7 @@ import { useUserBudgetInfo } from "./useUserBudgetInfo";
 import { usePostHog } from "posthog-js/react";
 import { useCheckProblems } from "./useCheckProblems";
 import { useSettings } from "./useSettings";
+import { useQueryClient } from "@tanstack/react-query";
 
 export function getRandomNumberId() {
   return Math.floor(Math.random() * 1_000_000_000_000_000);
@@ -43,7 +43,7 @@ export function useStreamChat({
   const setErrorById = useSetAtom(chatErrorByIdAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const [selectedAppId] = useAtom(selectedAppIdAtom);
-  const { refreshChats } = useChats(selectedAppId);
+  const { invalidateChats } = useChats(selectedAppId);
   const { refreshApp } = useLoadApp(selectedAppId);
 
   const setStreamCountById = useSetAtom(chatStreamCountByIdAtom);
@@ -54,13 +54,13 @@ export function useStreamChat({
   const { settings } = useSettings();
   const setRecentStreamChatIds = useSetAtom(recentStreamChatIdsAtom);
   const posthog = usePostHog();
+  const queryClient = useQueryClient();
   let chatId: number | undefined;
 
   if (hasChatId) {
     const { id } = useSearch({ from: "/chat" });
     chatId = id;
   }
-  let { refreshProposal } = hasChatId ? useProposal(chatId) : useProposal();
   const { invalidateTokenCount } = useCountTokens(chatId ?? null, "");
 
   const streamMessage = useCallback(
@@ -141,7 +141,8 @@ export function useStreamChat({
                 posthog,
               });
             }
-            refreshProposal(chatId);
+            // Use queryClient directly with the chatId parameter to avoid stale closure issues
+            queryClient.invalidateQueries({ queryKey: ["proposal", chatId] });
 
             refetchUserBudget();
 
@@ -151,7 +152,7 @@ export function useStreamChat({
               next.set(chatId, false);
               return next;
             });
-            refreshChats();
+            invalidateChats();
             refreshApp();
             refreshVersions();
             invalidateTokenCount();
@@ -171,7 +172,7 @@ export function useStreamChat({
               next.set(chatId, false);
               return next;
             });
-            refreshChats();
+            invalidateChats();
             refreshApp();
             refreshVersions();
             invalidateTokenCount();
@@ -205,6 +206,7 @@ export function useStreamChat({
       selectedAppId,
       refetchUserBudget,
       settings,
+      queryClient,
     ],
   );
 

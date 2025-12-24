@@ -80,6 +80,7 @@ export interface Message {
   content: string;
   approvalState?: "approved" | "rejected" | null;
   commitHash?: string | null;
+  sourceCommitHash?: string | null;
   dbTimestamp?: string | null;
   createdAt?: Date | string;
   requestId?: string | null;

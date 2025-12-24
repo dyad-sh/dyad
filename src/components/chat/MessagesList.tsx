@@ -102,51 +102,26 @@ function FooterComponent({ context }: { context?: FooterContext }) {
 
                   setIsUndoLoading(true);
                   try {
-                    if (messages.length >= 3) {
-                      const previousAssistantMessage =
-                        messages[messages.length - 3];
-                      if (
-                        previousAssistantMessage?.role === "assistant" &&
-                        previousAssistantMessage?.commitHash
-                      ) {
-                        console.debug(
-                          "Reverting to previous assistant version",
-                        );
-                        await revertVersion({
-                          versionId: previousAssistantMessage.commitHash,
-                        });
-                        const chat =
-                          await IpcClient.getInstance().getChat(selectedChatId);
-                        setMessagesById((prev) => {
-                          const next = new Map(prev);
-                          next.set(selectedChatId, chat.messages);
-                          return next;
-                        });
-                      }
-                    } else {
+                    const currentMessage = messages[messages.length - 1];
+                    if (currentMessage?.sourceCommitHash) {
+                      console.debug(
+                        "Reverting to source commit hash",
+                        currentMessage.sourceCommitHash,
+                      );
+                      await revertVersion({
+                        versionId: currentMessage.sourceCommitHash,
+                      });
                       const chat =
                         await IpcClient.getInstance().getChat(selectedChatId);
-                      if (chat.initialCommitHash) {
-                        await revertVersion({
-                          versionId: chat.initialCommitHash,
-                        });
-                        try {
-                          await IpcClient.getInstance().deleteMessages(
-                            selectedChatId,
-                          );
-                          setMessagesById((prev) => {
-                            const next = new Map(prev);
-                            next.set(selectedChatId, []);
-                            return next;
-                          });
-                        } catch (err) {
-                          showError(err);
-                        }
-                      } else {
-                        showWarning(
-                          "No initial commit hash found for chat. Need to manually undo code changes",
-                        );
-                      }
+                      setMessagesById((prev) => {
+                        const next = new Map(prev);
+                        next.set(selectedChatId, chat.messages);
+                        return next;
+                      });
+                    } else {
+                      showWarning(
+                        "No source commit hash found for message. Need to manually undo code changes",
+                      );
                     }
                   } catch (error) {
                     console.error("Error during undo operation:", error);

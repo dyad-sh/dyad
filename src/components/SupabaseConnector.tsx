@@ -158,7 +158,6 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     try {
       await deleteOrganization({ organizationSlug });
       toast.success("Organization disconnected successfully");
-      await refetchProjects();
     } catch (error) {
       toast.error("Failed to disconnect organization: " + error);
     }

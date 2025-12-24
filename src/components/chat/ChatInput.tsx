@@ -102,7 +102,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const toggleShowTokenBar = useCallback(() => {
     setShowTokenBar((prev) => !prev);
     queryClient.invalidateQueries({ queryKey: TOKEN_COUNT_QUERY_KEY });
-  }, [setShowTokenBar]);
+  }, [setShowTokenBar, queryClient]);
   const [selectedComponents, setSelectedComponents] = useAtom(
     selectedComponentsPreviewAtom,
   );

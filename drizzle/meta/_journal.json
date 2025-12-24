@@ -141,6 +141,13 @@
       "when": 1766529533747,
       "tag": "0019_cute_carnage",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1766619976318,
+      "tag": "0020_nebulous_patch",
+      "breakpoints": true
     }
   ]
 }

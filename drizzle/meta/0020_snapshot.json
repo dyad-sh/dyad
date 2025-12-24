@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "f8636989-52ff-4660-87e2-518bfc2ebfd8",
-  "prevId": "22201ae3-5058-4e52-a244-e2a6a17ecd9f",
+  "id": "6572da73-71b6-44ff-b997-05094c580dff",
+  "prevId": "f8636989-52ff-4660-87e2-518bfc2ebfd8",
   "tables": {
     "apps": {
       "name": "apps",
@@ -596,6 +596,13 @@
         "max_tokens_used": {
           "name": "max_tokens_used",
           "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "model": {
+          "name": "model",
+          "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false

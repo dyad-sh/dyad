@@ -7,7 +7,9 @@ on:
         types: [opened, synchronize, ready_for_review, reopened]
 
 jobs:
-    review-with-tracking:
+    claude-review:
+        # Has Anthropic API key, etc.
+        environment: ai-bots
         # Only review code from regular contributors since claude code has non-trivial costs
         # https://github.com/anthropics/claude-code-action/blob/main/examples/pr-review-filtered-authors.yml
         if: |

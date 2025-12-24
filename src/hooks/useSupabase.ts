@@ -10,6 +10,8 @@ import {
   SupabaseProject,
   SupabaseBranch,
 } from "@/ipc/ipc_types";
+import { useSettings } from "./useSettings";
+import { isSupabaseConnected } from "@/lib/schemas";
 
 const SUPABASE_QUERY_KEYS = {
   organizations: ["supabase", "organizations"] as const,
@@ -25,28 +27,34 @@ export interface UseSupabaseOptions {
 export function useSupabase(options: UseSupabaseOptions = {}) {
   const { branchesProjectId, branchesOrganizationSlug } = options;
   const queryClient = useQueryClient();
+  const { settings } = useSettings();
+  const isConnected = isSupabaseConnected(settings);
 
   const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const [lastLogTimestamp, setLastLogTimestamp] = useAtom(lastLogTimestampAtom);
 
   // Query: Load all connected Supabase organizations
+  // Only runs when Supabase is connected to avoid unnecessary API calls
   const organizationsQuery = useQuery<SupabaseOrganizationInfo[], Error>({
     queryKey: SUPABASE_QUERY_KEYS.organizations,
     queryFn: async () => {
       const ipcClient = IpcClient.getInstance();
       return ipcClient.listSupabaseOrganizations();
     },
+    enabled: isConnected,
     meta: { showErrorToast: true },
   });
 
   // Query: Load Supabase projects from all connected organizations
+  // Only runs when there are connected organizations to avoid unauthorized errors
   const projectsQuery = useQuery<SupabaseProject[], Error>({
     queryKey: SUPABASE_QUERY_KEYS.projects,
     queryFn: async () => {
       const ipcClient = IpcClient.getInstance();
       return ipcClient.listAllSupabaseProjects();
     },
+    enabled: (organizationsQuery.data?.length ?? 0) > 0,
     meta: { showErrorToast: true },
   });
 

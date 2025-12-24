@@ -48,6 +48,9 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   const { lastDeepLink, clearLastDeepLink } = useDeepLink();
   const { isDarkMode } = useTheme();
 
+  // Check if there are any connected organizations
+  const isConnected = isSupabaseConnected(settings);
+
   const branchesProjectId =
     app?.supabaseParentProjectId || app?.supabaseProjectId;
 
@@ -82,21 +85,6 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     };
     handleDeepLink();
   }, [lastDeepLink?.timestamp]);
-
-  // Check if there are any connected organizations
-  const isConnected = isSupabaseConnected(settings);
-
-  useEffect(() => {
-    // Load organizations and projects when the component mounts
-    refetchOrganizations();
-  }, [refetchOrganizations]);
-
-  useEffect(() => {
-    // Load projects when organizations are available
-    if (isConnected) {
-      refetchProjects();
-    }
-  }, [isConnected, refetchProjects]);
 
   const handleProjectSelect = async (projectValue: string) => {
     try {

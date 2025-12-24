@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -12,13 +12,13 @@ import { isSupabaseConnected } from "@/lib/schemas";
 
 export function SupabaseIntegration() {
   const { settings, updateSettings } = useSettings();
-  const { organizations, refetchOrganizations, deleteOrganization } =
-    useSupabase();
   const [isDisconnecting, setIsDisconnecting] = useState(false);
 
-  useEffect(() => {
-    refetchOrganizations();
-  }, [refetchOrganizations]);
+  // Check if there are any connected organizations
+  const isConnected = isSupabaseConnected(settings);
+
+  const { organizations, refetchOrganizations, deleteOrganization } =
+    useSupabase();
 
   const handleDisconnectAllFromSupabase = async () => {
     setIsDisconnecting(true);
@@ -63,9 +63,6 @@ export function SupabaseIntegration() {
       showError(err.message || "Failed to update setting");
     }
   };
-
-  // Check if there are any connected organizations
-  const isConnected = isSupabaseConnected(settings);
 
   if (!isConnected) {
     return null;

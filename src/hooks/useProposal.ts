@@ -17,7 +17,6 @@ export function useProposal(chatId?: number | undefined) {
       return IpcClient.getInstance().getProposal(chatId);
     },
     enabled: chatId !== undefined,
-    initialData: null,
     meta: { showErrorToast: true },
   });
 

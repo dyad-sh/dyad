@@ -22,7 +22,6 @@ export function useVersions(appId: number | null) {
   } = useQuery<Version[], Error>({
     queryKey: ["versions", appId],
     queryFn: async (): Promise<Version[]> => {
-      console.log("useVersions appId", appId);
       if (appId === null) {
         return [];
       }

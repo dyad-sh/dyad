@@ -57,6 +57,10 @@ export function GithubConflictResolver({
     // run per file/app change
     loadFileContent();
     setResolvedContentOverride(null);
+    // Reset resolving states when switching files to prevent them from getting stuck
+    setIsAiResolving(false);
+    setIsManualResolving(false);
+    setIsResolving(false);
 
     // cleanup runs on every dependency change (currentFile/appId) and on unmount
     // Note: isMountedRef only guards against component unmount, not file switches.
@@ -176,6 +180,8 @@ ${extractConflictSnippet(fileContent)}`,
               !isMountedRef.current ||
               fileForThisRequest !== currentFileRef.current
             ) {
+              // Reset state even if we're switching files to prevent it from getting stuck
+              setIsAiResolving(false);
               return;
             }
             showSuccess("AI suggested a resolution");
@@ -189,6 +195,8 @@ ${extractConflictSnippet(fileContent)}`,
               !isMountedRef.current ||
               fileForThisRequest !== currentFileRef.current
             ) {
+              // Reset state even if we're switching files to prevent it from getting stuck
+              setIsAiResolving(false);
               return;
             }
             showError(error || "Failed to resolve with AI");

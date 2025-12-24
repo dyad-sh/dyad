@@ -62,12 +62,15 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   const {
     organizations,
     projects,
-    loading,
-    error,
+    branches,
+    isLoadingProjects,
+    isFetchingProjects,
+    projectsError,
+    isLoadingBranches,
+    isSettingAppProject,
     loadOrganizations,
     deleteOrganization,
     loadProjects,
-    branches,
     loadBranches,
     setAppProject,
     unsetAppProject,
@@ -242,7 +245,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                     toast.error("Failed to set branch: " + error);
                   }
                 }}
-                disabled={loading}
+                disabled={isLoadingBranches || isSettingAppProject}
               >
                 <SelectTrigger
                   id="supabase-branch-select"
@@ -301,14 +304,14 @@ export function SupabaseConnector({ appId }: { appId: number }) {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {loading ? (
+          {isLoadingProjects || isFetchingProjects ? (
             <div className="space-y-2">
               <Skeleton className="h-4 w-full" />
               <Skeleton className="h-10 w-full" />
             </div>
-          ) : error ? (
+          ) : projectsError ? (
             <div className="text-red-500">
-              Error loading projects: {error.message}
+              Error loading projects: {projectsError.message}
               <Button
                 variant="outline"
                 className="mt-2"

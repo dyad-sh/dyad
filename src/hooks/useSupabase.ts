@@ -1,11 +1,8 @@
 import { useCallback } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
-  supabaseOrganizationsAtom,
-  supabaseProjectsAtom,
   supabaseBranchesAtom,
-  supabaseLoadingAtom,
-  supabaseErrorAtom,
   selectedSupabaseProjectAtom,
   lastLogTimestampAtom,
 } from "@/atoms/supabaseAtoms";
@@ -14,14 +11,20 @@ import { IpcClient } from "@/ipc/ipc_client";
 import {
   SetSupabaseAppProjectParams,
   DeleteSupabaseOrganizationParams,
+  SupabaseOrganizationInfo,
+  SupabaseProject,
+  SupabaseBranch,
 } from "@/ipc/ipc_types";
 
+const SUPABASE_QUERY_KEYS = {
+  organizations: ["supabase", "organizations"] as const,
+  projects: ["supabase", "projects"] as const,
+  branches: (projectId: string) => ["supabase", "branches", projectId] as const,
+};
+
 export function useSupabase() {
-  const [organizations, setOrganizations] = useAtom(supabaseOrganizationsAtom);
-  const [projects, setProjects] = useAtom(supabaseProjectsAtom);
+  const queryClient = useQueryClient();
   const [branches, setBranches] = useAtom(supabaseBranchesAtom);
-  const [loading, setLoading] = useAtom(supabaseLoadingAtom);
-  const [error, setError] = useAtom(supabaseErrorAtom);
   const [selectedProject, setSelectedProject] = useAtom(
     selectedSupabaseProjectAtom,
   );
@@ -29,196 +32,180 @@ export function useSupabase() {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const [lastLogTimestamp, setLastLogTimestamp] = useAtom(lastLogTimestampAtom);
 
-  const ipcClient = IpcClient.getInstance();
-
-  /**
-   * Load all connected Supabase organizations
-   */
-  const loadOrganizations = useCallback(async () => {
-    setLoading(true);
-    try {
-      const orgList = await ipcClient.listSupabaseOrganizations();
-      setOrganizations(orgList);
-      setError(null);
-    } catch (error) {
-      console.error("Error loading Supabase organizations:", error);
-      setError(error instanceof Error ? error : new Error(String(error)));
-    } finally {
-      setLoading(false);
-    }
-  }, [ipcClient, setOrganizations, setError, setLoading]);
-
-  /**
-   * Delete a Supabase organization connection
-   */
-  const deleteOrganization = useCallback(
-    async (params: DeleteSupabaseOrganizationParams) => {
-      setLoading(true);
-      try {
-        await ipcClient.deleteSupabaseOrganization(params);
-        // Refresh organizations list after deletion
-        const orgList = await ipcClient.listSupabaseOrganizations();
-        setOrganizations(orgList);
-        setError(null);
-      } catch (error) {
-        console.error("Error deleting Supabase organization:", error);
-        setError(error instanceof Error ? error : new Error(String(error)));
-        throw error;
-      } finally {
-        setLoading(false);
-      }
+  // Query: Load all connected Supabase organizations
+  const organizationsQuery = useQuery<SupabaseOrganizationInfo[], Error>({
+    queryKey: SUPABASE_QUERY_KEYS.organizations,
+    queryFn: async () => {
+      const ipcClient = IpcClient.getInstance();
+      return ipcClient.listSupabaseOrganizations();
     },
-    [ipcClient, setOrganizations, setError, setLoading],
-  );
+    meta: { showErrorToast: true },
+  });
 
-  /**
-   * Load Supabase projects from all connected organizations
-   */
-  const loadProjects = useCallback(async () => {
-    setLoading(true);
-    try {
-      const projectList = await ipcClient.listAllSupabaseProjects();
-      setProjects(projectList);
-      setError(null);
-    } catch (error) {
-      console.error("Error loading Supabase projects:", error);
-      setError(error instanceof Error ? error : new Error(String(error)));
-    } finally {
-      setLoading(false);
-    }
-  }, [ipcClient, setProjects, setError, setLoading]);
-
-  /**
-   * Load branches for a Supabase project
-   */
-  const loadBranches = useCallback(
-    async (projectId: string, organizationSlug?: string) => {
-      setLoading(true);
-      try {
-        const list = await ipcClient.listSupabaseBranches({
-          projectId,
-          organizationSlug: organizationSlug ?? null,
-        });
-        setBranches(Array.isArray(list) ? list : []);
-        setError(null);
-      } catch (error) {
-        console.error("Error loading Supabase branches:", error);
-        setError(error instanceof Error ? error : new Error(String(error)));
-      } finally {
-        setLoading(false);
-      }
+  // Query: Load Supabase projects from all connected organizations
+  const projectsQuery = useQuery<SupabaseProject[], Error>({
+    queryKey: SUPABASE_QUERY_KEYS.projects,
+    queryFn: async () => {
+      const ipcClient = IpcClient.getInstance();
+      return ipcClient.listAllSupabaseProjects();
     },
-    [ipcClient, setBranches, setError, setLoading],
-  );
+    meta: { showErrorToast: true },
+  });
 
-  /**
-   * Associate a Supabase project with an app
-   */
-  const setAppProject = useCallback(
-    async (params: SetSupabaseAppProjectParams) => {
-      setLoading(true);
-      try {
-        await ipcClient.setSupabaseAppProject(params);
-        setError(null);
-      } catch (error) {
-        console.error("Error setting Supabase project for app:", error);
-        setError(error instanceof Error ? error : new Error(String(error)));
-        throw error;
-      } finally {
-        setLoading(false);
-      }
+  // Mutation: Delete a Supabase organization connection
+  const deleteOrganizationMutation = useMutation<
+    void,
+    Error,
+    DeleteSupabaseOrganizationParams
+  >({
+    mutationFn: async (params) => {
+      const ipcClient = IpcClient.getInstance();
+      await ipcClient.deleteSupabaseOrganization(params);
     },
-    [ipcClient, setError, setLoading],
-  );
-
-  /**
-   * Remove a Supabase project association from an app
-   */
-  const unsetAppProject = useCallback(
-    async (appId: number) => {
-      setLoading(true);
-      try {
-        await ipcClient.unsetSupabaseAppProject(appId);
-        setError(null);
-      } catch (error) {
-        console.error("Error unsetting Supabase project for app:", error);
-        setError(error instanceof Error ? error : new Error(String(error)));
-        throw error;
-      } finally {
-        setLoading(false);
-      }
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: SUPABASE_QUERY_KEYS.organizations,
+      });
+      queryClient.invalidateQueries({ queryKey: SUPABASE_QUERY_KEYS.projects });
     },
-    [ipcClient, setError, setLoading],
-  );
+    meta: { showErrorToast: true },
+  });
 
-  /**
-   * Load edge function logs for a Supabase project
-   * Uses timestamp tracking to only fetch new logs on subsequent calls
-   */
-  const loadEdgeLogs = useCallback(
-    async (projectId: string, organizationSlug?: string) => {
+  // Mutation: Associate a Supabase project with an app
+  const setAppProjectMutation = useMutation<
+    void,
+    Error,
+    SetSupabaseAppProjectParams
+  >({
+    mutationFn: async (params) => {
+      const ipcClient = IpcClient.getInstance();
+      await ipcClient.setSupabaseAppProject(params);
+    },
+    meta: { showErrorToast: true },
+  });
+
+  // Mutation: Remove a Supabase project association from an app
+  const unsetAppProjectMutation = useMutation<void, Error, number>({
+    mutationFn: async (appId) => {
+      const ipcClient = IpcClient.getInstance();
+      await ipcClient.unsetSupabaseAppProject(appId);
+    },
+    meta: { showErrorToast: true },
+  });
+
+  // Mutation: Load branches for a Supabase project
+  // Using mutation because branches are stored in atom and depend on dynamic projectId
+  const loadBranchesMutation = useMutation<
+    SupabaseBranch[],
+    Error,
+    { projectId: string; organizationSlug?: string }
+  >({
+    mutationFn: async ({ projectId, organizationSlug }) => {
+      const ipcClient = IpcClient.getInstance();
+      const list = await ipcClient.listSupabaseBranches({
+        projectId,
+        organizationSlug: organizationSlug ?? null,
+      });
+      return Array.isArray(list) ? list : [];
+    },
+    onSuccess: (data) => {
+      setBranches(data);
+    },
+    meta: { showErrorToast: true },
+  });
+
+  // Mutation: Load edge function logs for a Supabase project
+  // Using mutation because it has side effects (updating console entries)
+  const loadEdgeLogsMutation = useMutation<
+    void,
+    Error,
+    { projectId: string; organizationSlug?: string }
+  >({
+    mutationFn: async ({ projectId, organizationSlug }) => {
       if (!selectedAppId) return;
+
+      const ipcClient = IpcClient.getInstance();
 
       // Use last timestamp if available, otherwise fetch logs from the past 10 minutes
       const lastTimestamp = lastLogTimestamp[projectId];
-      const timestampStart = lastTimestamp ?? Date.now() - 10 * 60 * 1000; // 10 minutes ago
+      const timestampStart = lastTimestamp ?? Date.now() - 10 * 60 * 1000;
 
-      setLoading(true);
-      try {
-        // Fetch logs - handler returns ConsoleEntry[] already formatted
-        const logs = await ipcClient.getSupabaseEdgeLogs({
-          projectId,
-          timestampStart,
-          appId: selectedAppId,
-          organizationSlug: organizationSlug ?? null,
-        });
+      const logs = await ipcClient.getSupabaseEdgeLogs({
+        projectId,
+        timestampStart,
+        appId: selectedAppId,
+        organizationSlug: organizationSlug ?? null,
+      });
 
-        if (logs.length === 0) {
-          // Even if no logs, set the timestamp so we don't keep looking back 10 minutes
-          if (!lastTimestamp) {
-            setLastLogTimestamp((prev) => ({
-              ...prev,
-              [projectId]: Date.now(),
-            }));
-          }
-          setError(null);
-          return;
+      if (logs.length === 0) {
+        // Even if no logs, set the timestamp so we don't keep looking back 10 minutes
+        if (!lastTimestamp) {
+          setLastLogTimestamp((prev) => ({
+            ...prev,
+            [projectId]: Date.now(),
+          }));
         }
-
-        // Logs are already in ConsoleEntry format, just append them
-        setConsoleEntries((prev) => [...prev, ...logs]);
-
-        // Update the last timestamp for this project
-        const latestLog = logs.reduce((latest, log) =>
-          log.timestamp > latest.timestamp ? log : latest,
-        );
-        setLastLogTimestamp((prev) => ({
-          ...prev,
-          [projectId]: latestLog.timestamp,
-        }));
-
-        setError(null);
-      } catch (error) {
-        console.error("Error loading Supabase edge logs:", error);
-        setError(error instanceof Error ? error : new Error(String(error)));
-      } finally {
-        setLoading(false);
+        return;
       }
+
+      // Logs are already in ConsoleEntry format, just append them
+      setConsoleEntries((prev) => [...prev, ...logs]);
+
+      // Update the last timestamp for this project
+      const latestLog = logs.reduce((latest, log) =>
+        log.timestamp > latest.timestamp ? log : latest,
+      );
+      setLastLogTimestamp((prev) => ({
+        ...prev,
+        [projectId]: latestLog.timestamp,
+      }));
     },
-    [
-      ipcClient,
-      setConsoleEntries,
-      setError,
-      setLoading,
-      selectedAppId,
-      lastLogTimestamp,
-      setLastLogTimestamp,
-    ],
+  });
+
+  // Wrapper functions to preserve the existing API signatures
+  const loadOrganizations = useCallback(async () => {
+    await organizationsQuery.refetch();
+  }, [organizationsQuery]);
+
+  const loadProjects = useCallback(async () => {
+    await projectsQuery.refetch();
+  }, [projectsQuery]);
+
+  const deleteOrganization = useCallback(
+    async (params: DeleteSupabaseOrganizationParams) => {
+      await deleteOrganizationMutation.mutateAsync(params);
+    },
+    [deleteOrganizationMutation],
   );
 
-  /**
-   * Select a project for current use
-   */
+  const loadBranches = useCallback(
+    async (projectId: string, organizationSlug?: string) => {
+      await loadBranchesMutation.mutateAsync({ projectId, organizationSlug });
+    },
+    [loadBranchesMutation],
+  );
+
+  const setAppProject = useCallback(
+    async (params: SetSupabaseAppProjectParams) => {
+      await setAppProjectMutation.mutateAsync(params);
+    },
+    [setAppProjectMutation],
+  );
+
+  const unsetAppProject = useCallback(
+    async (appId: number) => {
+      await unsetAppProjectMutation.mutateAsync(appId);
+    },
+    [unsetAppProjectMutation],
+  );
+
+  const loadEdgeLogs = useCallback(
+    async (projectId: string, organizationSlug?: string) => {
+      await loadEdgeLogsMutation.mutateAsync({ projectId, organizationSlug });
+    },
+    [loadEdgeLogsMutation],
+  );
+
   const selectProject = useCallback(
     (projectId: string | null) => {
       setSelectedProject(projectId);
@@ -227,12 +214,30 @@ export function useSupabase() {
   );
 
   return {
-    organizations,
-    projects,
+    // Data
+    organizations: organizationsQuery.data ?? [],
+    projects: projectsQuery.data ?? [],
     branches,
-    loading,
-    error,
     selectedProject,
+
+    // Organizations query state
+    isLoadingOrganizations: organizationsQuery.isLoading,
+    isFetchingOrganizations: organizationsQuery.isFetching,
+    organizationsError: organizationsQuery.error,
+
+    // Projects query state
+    isLoadingProjects: projectsQuery.isLoading,
+    isFetchingProjects: projectsQuery.isFetching,
+    projectsError: projectsQuery.error,
+
+    // Mutation states
+    isDeletingOrganization: deleteOrganizationMutation.isPending,
+    isSettingAppProject: setAppProjectMutation.isPending,
+    isUnsettingAppProject: unsetAppProjectMutation.isPending,
+    isLoadingBranches: loadBranchesMutation.isPending,
+    isLoadingEdgeLogs: loadEdgeLogsMutation.isPending,
+
+    // Actions
     loadOrganizations,
     deleteOrganization,
     loadProjects,

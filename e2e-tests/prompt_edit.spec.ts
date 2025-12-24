@@ -30,6 +30,7 @@ test("editing a later prompt copies only previous history into the new chat", as
 
   await po.sendPrompt("tc=chat1");
   await po.sendPrompt("tc=chat2");
+  await po.sendPrompt("tc=chat3");
   await po.page.locator("button:has(.lucide-pencil)").nth(2).click();
   // Wait for the textarea to be visible before trying to fill it
   const editTextarea = po.page.getByTestId("chat-message-edit-textarea");

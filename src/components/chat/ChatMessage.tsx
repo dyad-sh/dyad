@@ -56,6 +56,7 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
       !selectedChatId ||
       !appId ||
       !message.id ||
+      !editContent.trim() ||
       editContent.trim() === message.content.trim()
     ) {
       setIsEditing(false);

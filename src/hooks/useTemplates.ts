@@ -9,7 +9,7 @@ export function useTemplates() {
       const ipcClient = IpcClient.getInstance();
       return ipcClient.getTemplates();
     },
-    initialData: localTemplatesData,
+    placeholderData: localTemplatesData,
     meta: {
       showErrorToast: true,
     },

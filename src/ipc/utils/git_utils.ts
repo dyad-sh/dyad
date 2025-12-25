@@ -929,3 +929,27 @@ export function isGitMergeOrRebaseInProgress({ path }: GitBaseParams): boolean {
 
   return false;
 }
+
+/**
+ * Check if Git is currently in a rebase state (not a merge).
+ * This is used to determine whether to use `git rebase --continue`
+ * or `git commit` when completing conflict resolution.
+ */
+export function isGitRebaseInProgress({ path }: GitBaseParams): boolean {
+  const gitDir = pathModule.join(path, ".git");
+
+  // Check for rebase in progress via REBASE_HEAD
+  const rebaseHeadPath = pathModule.join(gitDir, "REBASE_HEAD");
+  if (fs.existsSync(rebaseHeadPath)) {
+    return true;
+  }
+
+  // Check for rebase-apply or rebase-merge directories
+  const rebaseApplyPath = pathModule.join(gitDir, "rebase-apply");
+  const rebaseMergePath = pathModule.join(gitDir, "rebase-merge");
+  if (fs.existsSync(rebaseApplyPath) || fs.existsSync(rebaseMergePath)) {
+    return true;
+  }
+
+  return false;
+}

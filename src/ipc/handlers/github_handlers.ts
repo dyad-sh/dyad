@@ -22,6 +22,7 @@ import {
   gitCommit,
   isGitStatusClean,
   getGitUncommittedFiles,
+  isGitRebaseInProgress,
 } from "../utils/git_utils";
 import * as schema from "../../db/schema";
 import fs from "node:fs";
@@ -1512,15 +1513,19 @@ async function handleCompleteMerge(
 
       const appPath = getDyadAppPath(app.path);
 
-      // Check if a merge is actually in progress by checking for MERGE_HEAD
+      // Check if we're in a rebase state (this takes precedence over merge)
+      const rebaseInProgress = isGitRebaseInProgress({ path: appPath });
+
+      // Check if we're in a merge state
       const mergeHeadPath = path.join(appPath, ".git", "MERGE_HEAD");
       const mergeInProgress = fs.existsSync(mergeHeadPath);
-      if (!mergeInProgress) {
-        // Not in a merge state - this shouldn't happen, but we'll handle it gracefully
+
+      if (!rebaseInProgress && !mergeInProgress) {
+        // Not in a merge or rebase state - this shouldn't happen, but we'll handle it gracefully
         logger.warn(
-          "[GitHub Handler] Complete merge called but no merge in progress",
+          "[GitHub Handler] Complete merge called but no merge or rebase in progress",
         );
-        // Still stage and commit any changes (might be leftover from aborted merge)
+        // Still stage and commit any changes (might be leftover from aborted merge/rebase)
         await gitAddAll({ path: appPath });
         const commitHash = await gitCommit({
           path: appPath,
@@ -1529,26 +1534,44 @@ async function handleCompleteMerge(
         return { success: true, commitHash };
       }
 
-      // Stage all resolved files FIRST - this marks resolved files as resolved in the index
-      // After staging, Git will recognize that files with conflict markers removed are resolved
-      await gitAddAll({ path: appPath });
-
-      // NOW check if there are any remaining conflicts (after staging resolved files)
+      // Check for unresolved conflicts BEFORE staging. Staging can clear unmerged state,
+      // so we must detect conflicts prior to adding files.
       const conflicts = await gitGetMergeConflicts({ path: appPath });
       if (conflicts.length > 0) {
+        const operation = rebaseInProgress ? "rebase" : "merge";
         return {
           success: false,
-          error: `Cannot complete merge: ${conflicts.length} file(s) still have conflicts.`,
+          error: `Cannot complete ${operation}: ${conflicts.length} file(s) still have conflicts.`,
         };
       }
 
-      // Commit to complete the merge
-      const commitHash = await gitCommit({
-        path: appPath,
-        message: "Merge: resolve conflicts",
-      });
+      // With no conflicts reported, stage all changes to proceed with merge/rebase completion.
+      await gitAddAll({ path: appPath });
 
-      return { success: true, commitHash };
+      // Handle rebase vs merge differently
+      if (rebaseInProgress) {
+        // Rebase continuation requires native Git. Provide a clear message if disabled.
+        const settings = readSettings();
+        if (!settings.enableNativeGit) {
+          return {
+            success: false,
+            error:
+              "Cannot complete rebase because native Git is disabled. Enable native Git in settings to continue.",
+          };
+        }
+        // For rebase conflicts, use `git rebase --continue` instead of `git commit`
+        // This is critical - using `git commit` during a rebase would create duplicate commits
+        // and leave the repository in a broken state
+        await gitRebaseContinue({ path: appPath });
+        return { success: true };
+      } else {
+        // For merge conflicts, commit to complete the merge
+        const commitHash = await gitCommit({
+          path: appPath,
+          message: "Merge: resolve conflicts",
+        });
+        return { success: true, commitHash };
+      }
     } catch (err: any) {
       const errorMessage = err?.message || "Failed to complete merge.";
       return {

@@ -583,21 +583,19 @@ export function GithubBranchManager({
               const result =
                 await IpcClient.getInstance().completeGithubMerge(appId);
               if (result.success) {
-                showSuccess(
-                  "All conflicts resolved and merge completed successfully.",
-                );
-                await loadBranches(); // Refresh branches after merge
+                showSuccess("All conflicts resolved successfully.");
+                await loadBranches(); // Refresh branches after merge/rebase
                 onBranchChange?.(); // Notify parent of branch change
               } else {
                 showError(
                   result.error ||
-                    "Failed to complete merge. Please try committing manually.",
+                    "Failed to complete operation. Please try resolving manually.",
                 );
               }
             } catch (error: any) {
               showError(
                 error.message ||
-                  "Failed to complete merge. Please try committing manually.",
+                  "Failed to complete operation. Please try resolving manually.",
               );
             }
           }}

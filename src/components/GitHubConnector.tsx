@@ -393,19 +393,17 @@ function ConnectedGitHubConnector({
               const result =
                 await IpcClient.getInstance().completeGithubMerge(appId);
               if (result.success) {
-                showSuccess(
-                  "All conflicts resolved and merge completed successfully.",
-                );
+                showSuccess("All conflicts resolved successfully.");
               } else {
                 showError(
                   result.error ||
-                    "Failed to complete merge. Please try committing manually.",
+                    "Failed to complete operation. Please try resolving manually.",
                 );
               }
             } catch (error: any) {
               showError(
                 error.message ||
-                  "Failed to complete merge. Please try committing manually.",
+                  "Failed to complete operation. Please try resolving manually.",
               );
             }
           }}

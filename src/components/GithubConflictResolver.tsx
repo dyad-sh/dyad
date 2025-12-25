@@ -77,13 +77,11 @@ export function GithubConflictResolver({
     setAiChatId(newChatId);
     return newChatId;
   };
-  // Extracts a snippet around the conflict markers for AI context
-  const extractConflictSnippet = (content: string) => {
-    const start = content.indexOf("<<<<<<<");
-    if (start === -1) return content.slice(0, 1000);
-    const end = content.indexOf(">>>>>>>", start);
-    const sliceEnd = end === -1 ? start + 1200 : end + 7;
-    return content.slice(start, sliceEnd).slice(0, 1500);
+  // Counts the number of conflict markers in the file
+  // Git conflict markers start with "<<<<<<< " followed by a branch/commit identifier
+  const countConflicts = (content: string): number => {
+    const matches = content.match(/<<<<<<<[^\n]*\n/g);
+    return matches ? matches.length : 0;
   };
 
   // Refresh chat messages for a given chat ID
@@ -103,11 +101,19 @@ export function GithubConflictResolver({
 
   const loadFileContent = async () => {
     if (!currentFile) return;
+    const fileForThisRequest = currentFile;
     try {
       const content = await IpcClient.getInstance().readAppFile(
         appId,
         currentFile,
       );
+      // Prevent stale responses from overwriting state after a file switch or unmount
+      if (
+        !isMountedRef.current ||
+        fileForThisRequest !== currentFileRef.current
+      ) {
+        return;
+      }
       setFileContent(content);
       setLatestContent(content);
       setAiResolution(null);
@@ -146,11 +152,16 @@ export function GithubConflictResolver({
         type: "chat-context",
       };
 
-      IpcClient.getInstance().streamMessage(
-        `Resolve the Git conflict in ${currentFile}.
-The conflict markers are shown below. Return the fully resolved file content only.
+      const conflictCount = countConflicts(fileContent);
+      const conflictNote =
+        conflictCount > 1
+          ? `\n\nIMPORTANT: This file contains ${conflictCount} conflict(s). You must resolve ALL of them. Return the complete resolved file content with all conflict markers removed.`
+          : "\n\nReturn the fully resolved file content with all conflict markers removed.";
 
-${extractConflictSnippet(fileContent)}`,
+      IpcClient.getInstance().streamMessage(
+        `Resolve the Git conflict(s) in ${currentFile}.${conflictNote}
+
+The full file content is attached. Review the entire file and resolve all conflict markers (<<<<<<<, =======, >>>>>>>).`,
         {
           chatId,
           attachments: [attachment],

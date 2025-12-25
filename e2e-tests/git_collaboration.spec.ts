@@ -63,6 +63,87 @@ async function createGitConflict(po: PageObject) {
   return { conflictFile };
 }
 
+async function getCurrentAppId(po: PageObject): Promise<number | null> {
+  const currentAppName = await po.getCurrentAppName();
+  return await po.page.evaluate(async (appName) => {
+    const result = await (window as any).electron.ipcRenderer.invoke(
+      "list-apps",
+    );
+    const match = result.apps.find((app: any) => app.name === appName);
+    return match?.id ?? null;
+  }, currentAppName);
+}
+
+/**
+ * Sets up a rebase conflict scenario for testing.
+ * Creates a base commit, feature branch with changes, diverging main changes,
+ * and starts a rebase that will conflict.
+ * @returns Object with conflict file path and feature branch name
+ */
+async function setupRebaseConflict(
+  po: PageObject,
+  options: { nativeGit?: boolean } = {},
+): Promise<{
+  conflictFile: string;
+  conflictFilePath: string;
+  featureBranch: string;
+  appPath: string;
+}> {
+  await po.setUp({ nativeGit: options.nativeGit ?? false });
+  await po.sendPrompt("tc=basic");
+
+  await po.getTitleBarAppNameButton().click();
+  await po.githubConnector.connect();
+
+  const repoName = "test-rebase-gate-" + Date.now();
+  await po.githubConnector.fillCreateRepoName(repoName);
+  await po.githubConnector.clickCreateRepoButton();
+  await expect(po.page.getByTestId("github-connected-repo")).toBeVisible({
+    timeout: 20000,
+  });
+
+  const appPath = await po.getCurrentAppPath();
+  if (!appPath) throw new Error("App path not found");
+
+  const conflictFile = "rebase-conflict.txt";
+  const conflictFilePath = path.join(appPath, conflictFile);
+  const featureBranch = "rebase-feature";
+
+  // Base commit
+  fs.writeFileSync(conflictFilePath, "Line 1\nLine 2\nLine 3");
+  execSync(`git add ${conflictFile} && git commit -m "Base commit"`, {
+    cwd: appPath,
+  });
+
+  // Feature branch change
+  execSync(`git checkout -b ${featureBranch}`, { cwd: appPath });
+  fs.writeFileSync(conflictFilePath, "Line 1\nLine 2 Feature\nLine 3");
+  execSync(`git add ${conflictFile} && git commit -m "Feature change"`, {
+    cwd: appPath,
+  });
+
+  // Diverging change on main
+  execSync(`git checkout main`, { cwd: appPath });
+  fs.writeFileSync(conflictFilePath, "Line 1\nLine 2 Main\nLine 3");
+  execSync(`git add ${conflictFile} && git commit -m "Main change"`, {
+    cwd: appPath,
+  });
+
+  // Start rebase that will conflict
+  execSync(`git checkout ${featureBranch}`, { cwd: appPath });
+  let rebaseErrored = false;
+  try {
+    execSync(`git rebase main`, { cwd: appPath });
+  } catch {
+    rebaseErrored = true;
+  }
+  if (!rebaseErrored) {
+    throw new Error("Expected rebase to produce conflicts");
+  }
+
+  return { conflictFile, conflictFilePath, featureBranch, appPath };
+}
+
 test.describe("Git Collaboration", () => {
   //create git conflict helper function
   test("should create, switch, rename, merge, and delete branches", async ({
@@ -266,44 +347,85 @@ test.describe("Git Collaboration", () => {
     await po.waitForToastWithText(`Resolved ${conflictFile}`);
     await expect(po.page.getByText("Resolve Conflicts")).not.toBeVisible();
   });
-});
 
-test("should invite and remove collaborators", async ({ po }) => {
-  await po.setUp();
-  await po.sendPrompt("tc=basic");
-  await po.selectPreviewMode("publish");
-  await po.githubConnector.connect();
+  test("should block completion when conflicts remain unresolved", async ({
+    po,
+  }) => {
+    await createGitConflict(po);
+    await expect(po.page.getByText("Resolve Conflicts")).toBeVisible({
+      timeout: 10000,
+    });
 
-  const repoName = "test-git-collab-invite-" + Date.now();
-  await po.githubConnector.fillCreateRepoName(repoName);
-  await po.githubConnector.clickCreateRepoButton();
-  await expect(po.page.getByTestId("github-connected-repo")).toBeVisible({
-    timeout: 20000,
+    // Attempt to finish without resolving; backend should reject due to conflicts
+    await po.page.getByTestId("finish-resolution-button").click();
+    await po.waitForToastWithText("still have conflicts", 10000);
   });
-  //open collaborators accordion
-  const collaboratorsCard = po.page.getByTestId("collaborators-header");
-  await collaboratorsCard.hover();
 
-  // Wait for Collaborator Manager
-  await expect(po.page.getByTestId("collaborator-invite-input")).toBeVisible();
+  test("should fail rebase completion when native git is disabled", async ({
+    po,
+  }) => {
+    const { conflictFile, conflictFilePath, appPath } =
+      await setupRebaseConflict(po, { nativeGit: false });
 
-  // Invite a fake user
-  const fakeUser = "test-user-123";
-  await po.page.getByTestId("collaborator-invite-input").fill(fakeUser);
-  await po.page.getByTestId("collaborator-invite-button").click();
-  // Let's check for a toast.
-  await po.waitForToast();
+    // Resolve the conflict but leave rebase in-progress so completion requires native git
+    fs.writeFileSync(conflictFilePath, "Line 1\nLine 2 Resolved\nLine 3");
+    execSync(`git add ${conflictFile}`, { cwd: appPath });
 
-  // verify collaborator appears in the list
-  await expect(
-    po.page.getByTestId(`collaborator-item-${fakeUser}`),
-  ).toBeVisible();
+    const appId = await getCurrentAppId(po);
+    if (!appId) throw new Error("App ID not found");
 
-  // Delete collaborator
-  await po.page.getByTestId(`collaborator-remove-button-${fakeUser}`).click();
-  await po.page.getByTestId("confirm-remove-collaborator").click();
-  await po.waitForToast("success");
-  await expect(
-    po.page.getByTestId(`collaborator-item-${fakeUser}`),
-  ).not.toBeVisible({ timeout: 5000 });
+    const result = await po.page.evaluate(async (id) => {
+      return (window as any).electron.ipcRenderer.invoke(
+        "github:complete-merge",
+        {
+          appId: id,
+        },
+      );
+    }, appId);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("requires native Git");
+  });
+
+  test("should invite and remove collaborators", async ({ po }) => {
+    await po.setUp();
+    await po.sendPrompt("tc=basic");
+    await po.selectPreviewMode("publish");
+    await po.githubConnector.connect();
+
+    const repoName = "test-git-collab-invite-" + Date.now();
+    await po.githubConnector.fillCreateRepoName(repoName);
+    await po.githubConnector.clickCreateRepoButton();
+    await expect(po.page.getByTestId("github-connected-repo")).toBeVisible({
+      timeout: 20000,
+    });
+    //open collaborators accordion
+    const collaboratorsCard = po.page.getByTestId("collaborators-header");
+    await collaboratorsCard.hover();
+
+    // Wait for Collaborator Manager
+    await expect(
+      po.page.getByTestId("collaborator-invite-input"),
+    ).toBeVisible();
+
+    // Invite a fake user
+    const fakeUser = "test-user-123";
+    await po.page.getByTestId("collaborator-invite-input").fill(fakeUser);
+    await po.page.getByTestId("collaborator-invite-button").click();
+    // Let's check for a toast.
+    await po.waitForToast();
+
+    // verify collaborator appears in the list
+    await expect(
+      po.page.getByTestId(`collaborator-item-${fakeUser}`),
+    ).toBeVisible();
+
+    // Delete collaborator
+    await po.page.getByTestId(`collaborator-remove-button-${fakeUser}`).click();
+    await po.page.getByTestId("confirm-remove-collaborator").click();
+    await po.waitForToast("success");
+    await expect(
+      po.page.getByTestId(`collaborator-item-${fakeUser}`),
+    ).not.toBeVisible({ timeout: 5000 });
+  });
 });

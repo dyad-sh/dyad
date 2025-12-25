@@ -1423,6 +1423,22 @@ export class PageObject {
   async clickAgentConsentDecline() {
     await this.page.getByRole("button", { name: "Decline" }).click();
   }
+
+  ////////////////////////////////
+  // Test-only: Node.js Mock Control
+  ////////////////////////////////
+
+  /**
+   * Set the mock state for Node.js installation status.
+   * @param installed - true = mock as installed, false = mock as not installed, null = use real check
+   */
+  async setNodeMock(installed: boolean | null) {
+    await this.page.evaluate(async (installed) => {
+      await (window as any).electron.ipcRenderer.invoke("test:set-node-mock", {
+        installed,
+      });
+    }, installed);
+  }
 }
 
 interface ElectronConfig {

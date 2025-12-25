@@ -1607,7 +1607,6 @@ export function registerAppHandlers() {
 
   // Handler for adding logs to central store from renderer
   ipcMain.handle("add-log", async (_, entry: any) => {
-    const { addLog } = await import("../../lib/log_store");
     addLog(entry);
   });
 }

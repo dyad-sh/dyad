@@ -422,6 +422,7 @@ ${componentSnippet}
           role: "assistant",
           content: "", // Start with empty content
           requestId: dyadRequestId,
+          model: settings.selectedModel.name,
           sourceCommitHash: await getCurrentCommitHash({
             path: getDyadAppPath(chat.app.path),
           }),

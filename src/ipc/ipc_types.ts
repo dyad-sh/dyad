@@ -85,6 +85,7 @@ export interface Message {
   createdAt?: Date | string;
   requestId?: string | null;
   totalTokens?: number | null;
+  model?: string | null;
 }
 
 export interface Chat {

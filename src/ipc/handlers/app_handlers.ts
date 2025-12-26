@@ -9,6 +9,7 @@ import type {
   CopyAppParams,
   EditAppFileReturnType,
   RespondToAppInputParams,
+  ConsoleEntry,
 } from "../ipc_types";
 import fs from "node:fs";
 import path from "node:path";
@@ -1606,7 +1607,7 @@ export function registerAppHandlers() {
   );
 
   // Handler for adding logs to central store from renderer
-  ipcMain.handle("add-log", async (_, entry: any) => {
+  ipcMain.handle("add-log", async (_, entry: ConsoleEntry) => {
     addLog(entry);
   });
 }

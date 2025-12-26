@@ -80,8 +80,8 @@ import type {
   AgentToolConsentRequestPayload,
   AgentToolConsentResponseParams,
   TelemetryEventPayload,
+  ConsoleEntry,
 } from "./ipc_types";
-import type { ConsoleEntry } from "../atoms/appAtoms";
 import type { Template } from "../shared/templates";
 import type {
   AppChatContext,

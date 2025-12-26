@@ -1,4 +1,5 @@
-import { appConsoleEntriesAtom, type ConsoleEntry } from "@/atoms/appAtoms";
+import { appConsoleEntriesAtom } from "@/atoms/appAtoms";
+import type { ConsoleEntry } from "@/ipc/ipc_types";
 import { useAtomValue } from "jotai";
 import { useEffect, useRef, useState, useMemo, useCallback, memo } from "react";
 import { Virtuoso, VirtuosoHandle } from "react-virtuoso";

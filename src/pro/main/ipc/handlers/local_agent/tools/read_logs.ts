@@ -3,7 +3,8 @@ import { ToolDefinition, AgentContext } from "./types";
 import { db } from "@/db";
 import { chats } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { getLogs, ConsoleEntry } from "@/lib/log_store";
+import { getLogs } from "@/lib/log_store";
+import type { ConsoleEntry } from "@/ipc/ipc_types";
 
 const readLogsSchema = z.object({
   timeWindow: z

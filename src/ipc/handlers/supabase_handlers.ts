@@ -24,8 +24,8 @@ import {
   SupabaseOrganizationInfo,
   SupabaseProject,
   DeleteSupabaseOrganizationParams,
+  ConsoleEntry,
 } from "../ipc_types";
-import type { ConsoleEntry } from "../../atoms/appAtoms";
 
 const logger = log.scope("supabase_handlers");
 const handle = createLoggedHandler(logger);

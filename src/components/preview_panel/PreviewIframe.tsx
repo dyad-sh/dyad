@@ -415,16 +415,19 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         const { method, url, status, error, duration } = event.data;
         const statusCode = status && status !== 0 ? `[${status}] ` : "";
         const formattedMessage = `${statusCode}${method} ${url} - ${error} (${duration}ms)`;
-        setConsoleEntries((prev) => [
-          ...prev,
-          {
-            level: "error",
-            type: "network-requests",
-            message: formattedMessage,
-            timestamp: Date.now(),
-            appId: selectedAppId!,
-          },
-        ]);
+        const logEntry = {
+          level: "error" as const,
+          type: "network-requests" as const,
+          message: formattedMessage,
+          timestamp: Date.now(),
+          appId: selectedAppId!,
+        };
+
+        // Send to central log store
+        IpcClient.getInstance().addLog(logEntry);
+
+        // Also update UI state
+        setConsoleEntries((prev) => [...prev, logEntry]);
         return;
       }
 

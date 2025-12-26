@@ -3,19 +3,7 @@
  * This is the single source of truth for all logs (client, server, edge, network, build)
  */
 
-export interface ConsoleEntry {
-  level: "info" | "warn" | "error";
-  type:
-    | "server"
-    | "client"
-    | "edge-function"
-    | "network-requests"
-    | "build-time";
-  message: string;
-  timestamp: number;
-  sourceName?: string;
-  appId: number;
-}
+import type { ConsoleEntry } from "../ipc/ipc_types";
 
 // In-memory log store (per app)
 const logStore = new Map<number, ConsoleEntry[]>();

@@ -37,10 +37,11 @@ test("editing a later prompt copies only previous history into the new chat", as
   await po.page.getByRole("button", { name: "Save" }).click();
 
   await po.waitForChatCompletion();
-  // Check that the new chat has both previous prompts copied (tc=chat1 and tc=chat2)
+  // Check that only messages before the edited one are copied (tc=chat1)
   await expect(po.page.getByText("tc=chat1")).toHaveCount(1);
+  // Check that the edited message (tc=chat2) is replaced with the new content
   await expect(po.page.getByText("tc=chat2")).toHaveCount(0);
-  // Check that tc=chat3 was replaced with the edited prompt
+  // Check that messages after the edited one (tc=chat3) are not copied
   await expect(po.page.getByText("tc=chat3")).toHaveCount(0);
   await expect(po.page.getByText("Update your prompt...")).toBeVisible();
 });

@@ -103,11 +103,6 @@ export interface CreateChatFromPromptEditParams {
   messageId: number;
 }
 
-export interface CreateChatFromPromptEditResult {
-  chatId: number;
-  copiedMessagesCount: number;
-}
-
 export interface App {
   id: number;
   name: string;

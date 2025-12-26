@@ -7,11 +7,7 @@ import { createLoggedHandler } from "./safe_handle";
 
 import log from "electron-log";
 import { getDyadAppPath } from "../../paths/paths";
-import {
-  CreateChatFromPromptEditParams,
-  CreateChatFromPromptEditResult,
-  UpdateChatParams,
-} from "../ipc_types";
+import { CreateChatFromPromptEditParams, UpdateChatParams } from "../ipc_types";
 import { getCurrentCommitHash } from "../utils/git_utils";
 
 const logger = log.scope("chat_handlers");
@@ -67,7 +63,7 @@ export function registerChatHandlers() {
     async (
       _,
       params: CreateChatFromPromptEditParams,
-    ): Promise<CreateChatFromPromptEditResult> => {
+    ): Promise<{ chatId: number }> => {
       const { appId, chatId, messageId } = params;
 
       const chat = await db.query.chats.findFirst({
@@ -113,7 +109,7 @@ export function registerChatHandlers() {
         }
       }
 
-      const { newChat, messagesToCopy } = db.transaction((tx) => {
+      const { newChat, messagesToCopy } = await db.transaction((tx) => {
         const [newChat] = tx
           .insert(chats)
           .values({
@@ -128,19 +124,14 @@ export function registerChatHandlers() {
         if (messagesToCopy.length) {
           tx.insert(messages)
             .values(
-              messagesToCopy.map((message) => ({
-                chatId: newChat.id,
-                role: message.role,
-                content: message.content,
-                approvalState: message.approvalState,
-                sourceCommitHash: message.sourceCommitHash,
-                commitHash: message.commitHash,
-                requestId: message.requestId,
-                maxTokensUsed: message.maxTokensUsed,
-                createdAt: message.createdAt
-                  ? new Date(message.createdAt)
-                  : undefined,
-              })),
+              messagesToCopy.map((message) => {
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                const { id, chatId, ...messageFields } = message;
+                return {
+                  ...messageFields,
+                  chatId: newChat.id,
+                };
+              }),
             )
             .run();
         }
@@ -157,7 +148,6 @@ export function registerChatHandlers() {
 
       return {
         chatId: newChat.id,
-        copiedMessagesCount: messagesToCopy.length,
       };
     },
   );

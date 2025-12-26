@@ -88,6 +88,7 @@ const config: ForgeConfig = {
   makers: [
     new MakerSquirrel({
       windowsSign: {
+        debug: true,
         hookModulePath: path.join(__dirname, "scripts", "windows-sign-hook.js"),
       },
     }),

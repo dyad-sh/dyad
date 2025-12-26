@@ -85,7 +85,11 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
           </div>
           <div className="w-2/3">
             {selectedFile ? (
-              <FileEditor appId={app.id ?? null} filePath={selectedFile.path} />
+              <FileEditor
+                appId={app.id ?? null}
+                filePath={selectedFile.path}
+                initialLine={selectedFile.line ?? null}
+              />
             ) : (
               <div className="text-center py-4 text-gray-500">
                 Select a file to view

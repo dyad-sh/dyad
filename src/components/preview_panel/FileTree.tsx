@@ -138,7 +138,7 @@ export const FileTree = ({ appId, files }: FileTreeProps) => {
           <Input
             value={searchValue}
             onChange={(event) => setSearchValue(event.target.value)}
-            placeholder="Search files or content"
+            placeholder="Search file contents"
             className="h-8 pl-7 pr-16 text-sm"
             data-testid="file-tree-search"
             disabled={!appId}
@@ -269,6 +269,7 @@ const TreeNode = ({
     } else {
       setSelectedFile({
         path: node.path,
+        line: match?.snippet?.line ?? null,
       });
     }
   };
@@ -295,7 +296,16 @@ const TreeNode = ({
       </div>
 
       {match?.matchesContent && match.snippet && (
-        <div className="ml-6 mr-2 mt-1 border-l pl-2 text-xs text-muted-foreground">
+        <div
+          className="ml-6 mr-2 mt-1 border-l pl-2 text-xs text-muted-foreground cursor-pointer rounded hover:bg-muted/50 transition-colors"
+          onClick={(e) => {
+            e.stopPropagation();
+            setSelectedFile({
+              path: node.path,
+              line: match.snippet?.line ?? null,
+            });
+          }}
+        >
           <div className="font-mono text-[10px] uppercase tracking-wide text-primary">
             line {match.snippet.line}
           </div>

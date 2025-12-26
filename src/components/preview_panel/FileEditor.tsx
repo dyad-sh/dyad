@@ -20,6 +20,7 @@ import { getLanguage } from "@/utils/get_language";
 interface FileEditorProps {
   appId: number | null;
   filePath: string;
+  initialLine?: number | null;
 }
 
 interface BreadcrumbProps {
@@ -86,7 +87,11 @@ const Breadcrumb: React.FC<BreadcrumbProps> = ({
   );
 };
 
-export const FileEditor = ({ appId, filePath }: FileEditorProps) => {
+export const FileEditor = ({
+  appId,
+  filePath,
+  initialLine = null,
+}: FileEditorProps) => {
   const { content, loading, error } = useLoadAppFile(appId, filePath);
   const { theme } = useTheme();
   const [value, setValue] = useState<string | undefined>(undefined);
@@ -190,6 +195,21 @@ export const FileEditor = ({ appId, filePath }: FileEditorProps) => {
       setIsSaving(false);
     }
   };
+
+  // Jump to target line if provided (e.g., from search results)
+  useEffect(() => {
+    if (!initialLine || !editorRef.current) {
+      return;
+    }
+    const lineNumber = Math.max(1, Math.floor(initialLine));
+    const editor = editorRef.current;
+    const model = editor.getModel();
+    if (!model) return;
+    if (lineNumber > model.getLineCount()) return;
+
+    editor.revealLineInCenter(lineNumber);
+    editor.setPosition({ lineNumber, column: 1 });
+  }, [initialLine, content]);
 
   if (loading) {
     return <div className="p-4">Loading file content...</div>;

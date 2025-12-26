@@ -66,6 +66,39 @@ import { AppSearchResult } from "@/lib/schemas";
 import { getAppPort } from "../../../shared/ports";
 
 const MAX_FILE_SEARCH_SIZE = 1024 * 1024;
+const RIPGREP_EXCLUDED_GLOBS = ["!node_modules/**", "!.git/**", "!.next/**"];
+
+const logger = log.scope("app_handlers");
+const handle = createLoggedHandler(logger);
+
+function sanitizeSnippetText(text: string) {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function buildSnippetFromMatch({
+  lineText,
+  start,
+  end,
+  lineNumber,
+}: {
+  lineText: string;
+  start: number;
+  end: number;
+  lineNumber: number;
+}): AppFileSearchResult["snippet"] {
+  const safeLine = lineText.replace(/\r?\n$/, "");
+  const before = sanitizeSnippetText(safeLine.slice(0, start));
+  const match = sanitizeSnippetText(safeLine.slice(start, end));
+  const after = sanitizeSnippetText(safeLine.slice(end));
+
+  return {
+    before,
+    match,
+    after,
+    line: lineNumber,
+  };
+}
+
 function getDefaultCommand(appId: number): string {
   const port = getAppPort(appId);
   return `(pnpm install && pnpm run dev --port ${port}) || (npm install --legacy-peer-deps && npm run dev -- --port ${port})`;
@@ -88,9 +121,6 @@ async function copyDir(
     },
   });
 }
-
-const logger = log.scope("app_handlers");
-const handle = createLoggedHandler(logger);
 
 let proxyWorker: Worker | null = null;
 
@@ -560,6 +590,114 @@ async function stopDockerContainersOnPort(port: number): Promise<void> {
   } catch (e) {
     logger.warn(`Failed stopping Docker containers on port ${port}: ${e}`);
   }
+}
+
+async function searchAppFilesWithRipgrep({
+  appPath,
+  query,
+}: {
+  appPath: string;
+  query: string;
+}): Promise<AppFileSearchResult[]> {
+  // Use require at runtime to ensure correct resolution when externalized
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { rgPath } = require("@vscode/ripgrep");
+  return new Promise((resolve, reject) => {
+    const results = new Map<string, AppFileSearchResult>();
+    const args = [
+      "--json",
+      "--no-config",
+      "--ignore-case",
+      "--fixed-strings",
+      "--max-filesize",
+      `${MAX_FILE_SEARCH_SIZE}`,
+      ...RIPGREP_EXCLUDED_GLOBS.flatMap((glob) => ["--glob", glob]),
+      query,
+      ".",
+    ];
+
+    const rg = spawn(rgPath, args, { cwd: appPath });
+    let buffer = "";
+
+    rg.stdout.on("data", (data) => {
+      buffer += data.toString();
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const event = JSON.parse(line);
+          if (event.type !== "match" || !event.data) {
+            continue;
+          }
+
+          const matchPath = event.data.path?.text as string;
+          if (!matchPath) continue;
+
+          const absolutePath = path.isAbsolute(matchPath)
+            ? matchPath
+            : path.join(appPath, matchPath);
+          const relativePath = normalizePath(
+            path.relative(appPath, absolutePath),
+          );
+          if (relativePath.startsWith("..")) {
+            continue; // outside app directory
+          }
+
+          const lineText = event.data.lines?.text as string;
+          const lineNumber = event.data.line_number as number;
+          const submatch = event.data.submatches?.[0];
+          if (
+            typeof lineText !== "string" ||
+            typeof lineNumber !== "number" ||
+            !submatch
+          ) {
+            continue;
+          }
+
+          const snippet = buildSnippetFromMatch({
+            lineText,
+            start: submatch.start,
+            end: submatch.end,
+            lineNumber,
+          });
+
+          if (!results.has(relativePath)) {
+            results.set(relativePath, {
+              path: relativePath,
+              matchesName: false,
+              matchesContent: true,
+              snippet,
+            });
+          }
+        } catch (error) {
+          logger.warn("Failed to parse ripgrep output line:", line, error);
+        }
+      }
+    });
+
+    rg.stderr.on("data", (data) => {
+      const message = data.toString();
+      if (message.toLowerCase().includes("binary file skipped")) {
+        return;
+      }
+      logger.debug("ripgrep stderr:", message);
+    });
+
+    rg.on("close", (code) => {
+      // rg exits with code 1 when no matches are found; treat as success
+      if (code !== 0 && code !== 1) {
+        reject(new Error(`ripgrep exited with code ${code}`));
+        return;
+      }
+      resolve(Array.from(results.values()));
+    });
+
+    rg.on("error", (error) => {
+      reject(error);
+    });
+  });
 }
 
 export function registerAppHandlers() {
@@ -1523,64 +1661,62 @@ export function registerAppHandlers() {
 
       const appPath = getDyadAppPath(appRecord.path);
 
-      let files: string[] = [];
-
+      // Get all files for filename matching
+      let allFiles: string[] = [];
       try {
-        files = getFilesRecursively(appPath, appPath).map((path) =>
-          normalizePath(path),
-        );
+        allFiles = getFilesRecursively(appPath, appPath);
+        allFiles = allFiles.map((filePath) => normalizePath(filePath));
       } catch (error) {
         logger.error(`Error reading files for app ${appId}:`, error);
-        throw new Error("Failed to read app files");
       }
 
+      // Find files that match by filename (case-insensitive)
+      const filenameMatches = new Set<string>();
       const lowerQuery = trimmedQuery.toLowerCase();
-      const results: AppFileSearchResult[] = [];
-
-      for (const relativePath of files) {
-        const fullPath = path.join(appPath, relativePath);
-        if (!fullPath.startsWith(appPath)) {
-          continue;
+      for (const filePath of allFiles) {
+        const fileName = path.basename(filePath).toLowerCase();
+        if (fileName.includes(lowerQuery)) {
+          filenameMatches.add(filePath);
         }
+      }
 
-        const matchesName = relativePath.toLowerCase().includes(lowerQuery);
-        let matchesContent = false;
-        let snippet: AppFileSearchResult["snippet"];
+      // Search file contents with ripgrep
+      const contentMatches = await searchAppFilesWithRipgrep({
+        appPath,
+        query: trimmedQuery,
+      });
 
-        if (!matchesName && isSearchableFile(fullPath)) {
-          try {
-            const content = fs.readFileSync(fullPath, "utf-8");
-            if (!isLikelyTextFile(content)) {
-              continue;
-            }
-            const contentSnippet = getContentSnippet(
-              content,
-              trimmedQuery,
-              lowerQuery,
-            );
-            if (contentSnippet) {
-              matchesContent = true;
-              snippet = contentSnippet;
-            }
-          } catch (error) {
-            logger.warn(
-              `Failed to search file contents for ${relativePath}:`,
-              error,
-            );
-          }
-        }
+      // Merge results: combine filename matches with content matches
+      const resultsMap = new Map<string, AppFileSearchResult>();
 
-        if (matchesName || matchesContent) {
-          results.push({
-            path: normalizePath(relativePath),
-            matchesName,
-            matchesContent,
-            snippet,
+      // Add filename matches
+      for (const filePath of filenameMatches) {
+        // Check if we already have this file from content search
+        const existingContentMatch = contentMatches.find(
+          (r) => r.path === filePath,
+        );
+        if (existingContentMatch) {
+          // File matches both name and content, update matchesName
+          existingContentMatch.matchesName = true;
+          resultsMap.set(filePath, existingContentMatch);
+        } else {
+          // File matches name only
+          resultsMap.set(filePath, {
+            path: filePath,
+            matchesName: true,
+            matchesContent: false,
           });
         }
       }
 
-      return results;
+      // Add content matches that aren't already in results
+      for (const match of contentMatches) {
+        if (!resultsMap.has(match.path)) {
+          resultsMap.set(match.path, match);
+        }
+      }
+
+      return Array.from(resultsMap.values());
     },
   );
 
@@ -1668,60 +1804,6 @@ export function registerAppHandlers() {
       return uniqueApps;
     },
   );
-}
-
-function isSearchableFile(fullPath: string) {
-  try {
-    const stats = fs.statSync(fullPath);
-    if (!stats.isFile()) {
-      return false;
-    }
-    return stats.size <= MAX_FILE_SEARCH_SIZE;
-  } catch (error) {
-    logger.warn(`Skipping ${fullPath} while searching files:`, error);
-    return false;
-  }
-}
-
-function isLikelyTextFile(content: string) {
-  return !content.includes("\u0000");
-}
-
-function sanitizeSnippetText(text: string) {
-  return text.replace(/\s+/g, " ").trim();
-}
-
-function getContentSnippet(
-  content: string,
-  query: string,
-  lowerQuery: string,
-): AppFileSearchResult["snippet"] | null {
-  const lowerContent = content.toLowerCase();
-  const matchIndex = lowerContent.indexOf(lowerQuery);
-
-  if (matchIndex === -1) {
-    return null;
-  }
-
-  const radius = 80;
-  const start = Math.max(0, matchIndex - radius);
-  const end = Math.min(content.length, matchIndex + query.length + radius);
-  const beforeRaw = content.slice(start, matchIndex);
-  const match = content.slice(matchIndex, matchIndex + query.length);
-  const afterRaw = content.slice(matchIndex + query.length, end);
-
-  const before =
-    (start > 0 ? "..." : "") + sanitizeSnippetText(beforeRaw ?? "");
-  const after =
-    sanitizeSnippetText(afterRaw ?? "") + (end < content.length ? "..." : "");
-  const line = content.slice(0, matchIndex).split(/\r?\n/).length;
-
-  return {
-    before,
-    match,
-    after,
-    line,
-  };
 }
 
 function getCommand({

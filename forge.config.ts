@@ -7,19 +7,7 @@ import { VitePlugin } from "@electron-forge/plugin-vite";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
 import { AutoUnpackNativesPlugin } from "@electron-forge/plugin-auto-unpack-natives";
-import { execSync } from "child_process";
 import path from "path";
-
-// Path to signtool.exe bundled with electron-winstaller
-// On GitHub Actions, this is the full path:
-// D:\a\dyad\dyad\node_modules\electron-winstaller\vendor\signtool.exe
-const SIGNTOOL_PATH = path.join(
-  __dirname,
-  "node_modules",
-  "electron-winstaller",
-  "vendor",
-  "signtool.exe",
-);
 
 // Based on https://github.com/electron/forge/blob/6b2d547a7216c30fde1e1fddd1118eee5d872945/packages/plugin/vite/src/VitePlugin.ts#L124
 const ignore = (file: string) => {
@@ -100,17 +88,7 @@ const config: ForgeConfig = {
   makers: [
     new MakerSquirrel({
       windowsSign: {
-        hookFunction: (filePath: string) => {
-          const fileName = path.basename(filePath).toLowerCase();
-          // Only sign dyad.exe, skip all other files
-          if (fileName !== "dyad.exe") {
-            return;
-          }
-          const signParams = `/sha1 ${process.env.SM_CODE_SIGNING_CERT_SHA1_HASH} /tr http://timestamp.digicert.com /td SHA256 /fd SHA256`;
-          execSync(`"${SIGNTOOL_PATH}" sign ${signParams} "${filePath}"`, {
-            stdio: "inherit",
-          });
-        },
+        hookModulePath: path.join(__dirname, "scripts", "windows-sign-hook.js"),
       },
     }),
     new MakerZIP({}, ["darwin"]),

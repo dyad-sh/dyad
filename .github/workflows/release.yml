@@ -74,7 +74,7 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
         # Don't use npm run because we don't get logs
         # https://github.com/electron/forge/blob/main/SUPPORT.md
-        run: electron-forge publish
+        run: ./node_modules/.bin/electron-forge publish
 
   verify-assets:
     name: Verify Release Assets

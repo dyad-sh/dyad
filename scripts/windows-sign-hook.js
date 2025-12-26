@@ -24,9 +24,12 @@ module.exports = function (filePath) {
   }
 
   console.log(`[windows-sign-hook] Signing: ${fileName}`);
-  const signParams = `/sha1 ${process.env.SM_CODE_SIGNING_CERT_SHA1_HASH} /tr http://timestamp.digicert.com /td SHA256 /fd SHA256`;
+  const certHash = process.env.SM_CODE_SIGNING_CERT_SHA1_HASH;
+  const signParams = `/sha1 ${certHash} /tr http://timestamp.digicert.com /td SHA256 /fd SHA256`;
   const cmd = `"${SIGNTOOL_PATH}" sign ${signParams} "${filePath}"`;
-  console.log(`[windows-sign-hook] Command: ${cmd}`);
+  const redactedSignParams = `/sha1 ${certHash ? "[REDACTED]" : "[NOT SET]"} /tr http://timestamp.digicert.com /td SHA256 /fd SHA256`;
+  const redactedCmd = `"${SIGNTOOL_PATH}" sign ${redactedSignParams} "${filePath}"`;
+  console.log(`[windows-sign-hook] Command: ${redactedCmd}`);
 
   try {
     execSync(cmd, { stdio: "inherit" });

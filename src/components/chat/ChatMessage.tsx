@@ -52,6 +52,9 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
   const selectedChatId = message.chatId;
   const navigate = useNavigate();
   const handleSaveEdit = async () => {
+    if (isSaving) {
+      return;
+    }
     if (
       !selectedChatId ||
       !appId ||
@@ -157,12 +160,16 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
                 onKeyDown={(e) => {
                   if (e.key === "Escape") {
                     e.preventDefault();
-                    setEditContent(message.content.trim());
-                    setIsEditing(false);
+                    if (!isSaving) {
+                      setEditContent(message.content.trim());
+                      setIsEditing(false);
+                    }
                   }
                   if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
                     e.preventDefault();
-                    handleSaveEdit();
+                    if (!isSaving) {
+                      handleSaveEdit();
+                    }
                   }
                 }}
               />

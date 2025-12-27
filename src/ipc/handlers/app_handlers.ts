@@ -9,6 +9,7 @@ import type {
   CopyAppParams,
   EditAppFileReturnType,
   RespondToAppInputParams,
+  ConsoleEntry,
 } from "../ipc_types";
 import fs from "node:fs";
 import path from "node:path";
@@ -28,6 +29,7 @@ import {
 } from "../utils/process_manager";
 import { getEnvVar } from "../utils/read_env";
 import { readSettings } from "../../main/settings";
+import { addLog } from "../../lib/log_store";
 
 import fixPath from "fix-path";
 
@@ -240,6 +242,15 @@ function listenToProcess({
       `App ${appId} (PID: ${spawnedProcess.pid}) stdout: ${message}`,
     );
 
+    // Add to central log store
+    addLog({
+      level: "info",
+      type: "server",
+      message,
+      timestamp: Date.now(),
+      appId,
+    });
+
     // This is a hacky heuristic to pick up when drizzle is asking for user
     // to select from one of a few choices. We automatically pick the first
     // option because it's usually a good default choice. We guard this with
@@ -286,11 +297,21 @@ function listenToProcess({
     }
   });
 
-  spawnedProcess.stderr?.on("data", (data) => {
+  spawnedProcess.stderr?.on("data", async (data) => {
     const message = util.stripVTControlCharacters(data.toString());
     logger.error(
       `App ${appId} (PID: ${spawnedProcess.pid}) stderr: ${message}`,
     );
+
+    // Add to central log store
+    addLog({
+      level: "error",
+      type: "server",
+      message,
+      timestamp: Date.now(),
+      appId,
+    });
+
     safeSend(event.sender, "app:output", {
       type: "stderr",
       message,
@@ -1584,6 +1605,11 @@ export function registerAppHandlers() {
       return uniqueApps;
     },
   );
+
+  // Handler for adding logs to central store from renderer
+  ipcMain.handle("add-log", async (_, entry: ConsoleEntry) => {
+    addLog(entry);
+  });
 }
 
 function getCommand({

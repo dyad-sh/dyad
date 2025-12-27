@@ -17,6 +17,7 @@ import { listFilesTool } from "./tools/list_files";
 import { getDatabaseSchemaTool } from "./tools/get_database_schema";
 import { setChatSummaryTool } from "./tools/set_chat_summary";
 import { addIntegrationTool } from "./tools/add_integration";
+import { readLogsTool } from "./tools/read_logs";
 import {
   escapeXmlAttr,
   escapeXmlContent,
@@ -38,6 +39,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   getDatabaseSchemaTool,
   setChatSummaryTool,
   addIntegrationTool,
+  readLogsTool,
 ];
 // ============================================================================
 // Agent Tool Name Type (derived from TOOL_DEFINITIONS)

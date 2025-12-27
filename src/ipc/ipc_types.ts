@@ -9,6 +9,20 @@ export interface AppOutput {
   appId: number;
 }
 
+export interface ConsoleEntry {
+  level: "info" | "warn" | "error";
+  type:
+    | "server"
+    | "client"
+    | "edge-function"
+    | "network-requests"
+    | "build-time";
+  message: string;
+  timestamp: number;
+  sourceName?: string;
+  appId: number;
+}
+
 export interface SecurityFinding {
   title: string;
   level: "critical" | "high" | "medium" | "low";

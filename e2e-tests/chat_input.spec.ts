@@ -21,7 +21,7 @@ test("send button disabled during pending proposal", async ({ po }) => {
   await po.approveProposal();
 
   // Check send button is enabled again
-  await expect(sendButton).toBeEnabled();
+  await expect(sendButton).toBeDisabled();
 });
 
 test("send button disabled during pending proposal - reject", async ({

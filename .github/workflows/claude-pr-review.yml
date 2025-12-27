@@ -7,6 +7,16 @@ on:
     types: [opened, synchronize, ready_for_review, reopened]
 
 jobs:
+  debug-author:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Debug author association
+        run: |
+          echo "Author: ${{ github.event.pull_request.user.login }}"
+          echo "Author association: ${{ github.event.pull_request.author_association }}"
+          echo "Event name: ${{ github.event_name }}"
+          echo "Action: ${{ github.event.action }}"
+
   claude-review:
     # Has Anthropic API key, etc.
     environment: ai-bots

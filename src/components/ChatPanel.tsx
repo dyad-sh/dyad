@@ -32,65 +32,25 @@ export function ChatPanel({
   const [error, setError] = useState<string | null>(null);
   const streamCountById = useAtomValue(chatStreamCountByIdAtom);
   const isStreamingById = useAtomValue(isStreamingByIdAtom);
-  // Reference to store the processed prompt so we don't submit it twice
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
 
-  // Scroll-related properties
-  const [isUserScrolling, setIsUserScrolling] = useState(false);
+  // Scroll-related state
   const [showScrollButton, setShowScrollButton] = useState(false);
-  const userScrollTimeoutRef = useRef<number | null>(null);
-  const lastScrollTopRef = useRef<number>(0);
+
   const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
     messagesEndRef.current?.scrollIntoView({ behavior });
   };
 
   const handleScrollButtonClick = () => {
-    if (!messagesContainerRef.current) return;
-
     scrollToBottom("smooth");
   };
 
-  const getDistanceFromBottom = () => {
-    if (!messagesContainerRef.current) return 0;
-    const container = messagesContainerRef.current;
-    return (
-      container.scrollHeight - (container.scrollTop + container.clientHeight)
-    );
-  };
-
-  const isNearBottom = (threshold: number = 100) => {
-    return getDistanceFromBottom() <= threshold;
-  };
-
-  const scrollAwayThreshold = 150; // pixels from bottom to consider "scrolled away"
-
-  const handleScroll = useCallback(() => {
-    if (!messagesContainerRef.current) return;
-
-    const container = messagesContainerRef.current;
-    const distanceFromBottom =
-      container.scrollHeight - (container.scrollTop + container.clientHeight);
-
-    // User has scrolled away from bottom
-    if (distanceFromBottom > scrollAwayThreshold) {
-      setIsUserScrolling(true);
-      setShowScrollButton(true);
-
-      if (userScrollTimeoutRef.current) {
-        window.clearTimeout(userScrollTimeoutRef.current);
-      }
-
-      userScrollTimeoutRef.current = window.setTimeout(() => {
-        setIsUserScrolling(false);
-      }, 2000); // Increased timeout to 2 seconds
-    } else {
-      // User is near bottom
-      setIsUserScrolling(false);
-      setShowScrollButton(false);
-    }
-    lastScrollTopRef.current = container.scrollTop;
+  // Handle scroll state changes from MessagesList (Virtuoso)
+  const handleScrollStateChange = useCallback((isAtBottom: boolean) => {
+    // Show button when NOT at bottom
+    setShowScrollButton(!isAtBottom);
   }, []);
 
   useEffect(() => {
@@ -102,22 +62,6 @@ export function ChatPanel({
     chatId ? (streamCountById.get(chatId) ?? 0) : 0,
     chatId ? (isStreamingById.get(chatId) ?? false) : false,
   ]);
-
-  useEffect(() => {
-    const container = messagesContainerRef.current;
-    if (container) {
-      container.addEventListener("scroll", handleScroll, { passive: true });
-    }
-
-    return () => {
-      if (container) {
-        container.removeEventListener("scroll", handleScroll);
-      }
-      if (userScrollTimeoutRef.current) {
-        window.clearTimeout(userScrollTimeoutRef.current);
-      }
-    };
-  }, [handleScroll]);
 
   const fetchChatMessages = useCallback(async () => {
     if (!chatId) {
@@ -137,24 +81,6 @@ export function ChatPanel({
   }, [fetchChatMessages]);
 
   const messages = chatId ? (messagesById.get(chatId) ?? []) : [];
-  const isStreaming = chatId ? (isStreamingById.get(chatId) ?? false) : false;
-
-  // Auto-scroll effect when messages change during streaming
-  useEffect(() => {
-    if (
-      !isUserScrolling &&
-      isStreaming &&
-      messagesContainerRef.current &&
-      messages.length > 0
-    ) {
-      // Only auto-scroll if user is close to bottom
-      if (isNearBottom(280)) {
-        requestAnimationFrame(() => {
-          scrollToBottom("instant");
-        });
-      }
-    }
-  }, [messages, isUserScrolling, isStreaming]);
 
   return (
     <div className="flex flex-col h-full">
@@ -172,6 +98,7 @@ export function ChatPanel({
                 messages={messages}
                 messagesEndRef={messagesEndRef}
                 ref={messagesContainerRef}
+                onScrollStateChange={handleScrollStateChange}
               />
 
               {/* Scroll to bottom button */}

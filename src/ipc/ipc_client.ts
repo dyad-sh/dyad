@@ -73,6 +73,8 @@ import type {
   SupabaseProject,
   DeleteSupabaseOrganizationParams,
   SelectNodeFolderResult,
+  ChangeAppLocationParams,
+  ChangeAppLocationResult,
   ApplyVisualEditingChangesParams,
   AnalyseComponentParams,
   AgentTool,
@@ -1314,6 +1316,18 @@ export class IpcClient {
     name: string | null;
   }> {
     return this.ipcRenderer.invoke("select-app-folder");
+  }
+
+  public async selectAppLocation(
+    defaultPath?: string,
+  ): Promise<{ path: string | null; canceled: boolean }> {
+    return this.ipcRenderer.invoke("select-app-location", { defaultPath });
+  }
+
+  public async changeAppLocation(
+    params: ChangeAppLocationParams,
+  ): Promise<ChangeAppLocationResult> {
+    return this.ipcRenderer.invoke("change-app-location", params);
   }
 
   // Add these methods to IpcClient class

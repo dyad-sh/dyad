@@ -1,11 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAtom } from "jotai";
-import { appBasePathAtom, appsListAtom } from "@/atoms/appAtoms";
+import { appsListAtom } from "@/atoms/appAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
 
 export function useLoadApps() {
   const [apps, setApps] = useAtom(appsListAtom);
-  const [, setAppBasePath] = useAtom(appBasePathAtom);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
@@ -15,7 +14,6 @@ export function useLoadApps() {
       const ipcClient = IpcClient.getInstance();
       const appListResponse = await ipcClient.listApps();
       setApps(appListResponse.apps);
-      setAppBasePath(appListResponse.appBasePath);
       setError(null);
     } catch (error) {
       console.error("Error refreshing apps:", error);

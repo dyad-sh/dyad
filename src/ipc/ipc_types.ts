@@ -189,6 +189,12 @@ export interface ChatLogsData {
   codebase: string;
 }
 
+export interface GithubSyncOptions {
+  force?: boolean;
+  rebase?: boolean;
+  forceWithLease?: boolean;
+}
+
 export interface LanguageModelProvider {
   id: string;
   name: string;

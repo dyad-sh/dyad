@@ -15,7 +15,12 @@ import {
 import fs from "node:fs";
 import { db } from "../db";
 import { cleanFullResponse } from "../ipc/utils/cleanFullResponse";
-import { gitAdd, gitRemove, gitCommit } from "../ipc/utils/git_utils";
+import {
+  gitAdd,
+  gitRemove,
+  gitCommit,
+  isGitMergeOrRebaseInProgress,
+} from "../ipc/utils/git_utils";
 
 // Mock fs with default export
 vi.mock("node:fs", async () => {
@@ -46,7 +51,7 @@ vi.mock("node:fs", async () => {
 // Mock Git utils
 vi.mock("../ipc/utils/git_utils", () => ({
   gitAdd: vi.fn(),
-  gitCommit: vi.fn(),
+  gitCommit: vi.fn().mockResolvedValue("mock-commit-hash"),
   gitRemove: vi.fn(),
   gitRenameBranch: vi.fn(),
   gitCurrentBranch: vi.fn(),
@@ -56,6 +61,7 @@ vi.mock("../ipc/utils/git_utils", () => ({
   gitSetRemoteUrl: vi.fn(),
   gitStatus: vi.fn().mockResolvedValue([]),
   getGitUncommittedFiles: vi.fn().mockResolvedValue([]),
+  isGitMergeOrRebaseInProgress: vi.fn().mockReturnValue(false),
 }));
 
 // Mock paths module to control getDyadAppPath
@@ -668,6 +674,9 @@ describe("processFullResponse", () => {
 
     // Default mock for existsSync to return true
     vi.mocked(fs.existsSync).mockReturnValue(true);
+
+    // Reset isGitMergeOrRebaseInProgress to return false (no merge/rebase in progress)
+    vi.mocked(isGitMergeOrRebaseInProgress).mockReturnValue(false);
   });
 
   it("should return empty object when no dyad-write tags are found", async () => {

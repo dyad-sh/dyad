@@ -26,6 +26,7 @@ import {
   gitRemove,
   gitAddAll,
   getGitUncommittedFiles,
+  isGitMergeOrRebaseInProgress,
 } from "../utils/git_utils";
 import { readSettings } from "@/main/settings";
 import { writeMigrationFile } from "../utils/file_utils";
@@ -547,47 +548,66 @@ export async function processFullResponseActions(
       let message = chatSummary
         ? `[dyad] ${chatSummary} - ${changes.join(", ")}`
         : `[dyad] ${changes.join(", ")}`;
-      // Use chat summary, if provided, or default for commit message
-      let commitHash = await gitCommit({
+
+      // Check if we're in a merge or rebase state (conflict resolution)
+      // Skip commit if so - Git will fail to commit if there are still unmerged files,
+      // and we want to allow resolving conflicts one file at a time without errors.
+      const isMergeOrRebase = isGitMergeOrRebaseInProgress({
         path: appPath,
-        message,
       });
-      logger.log(`Successfully committed changes: ${changes.join(", ")}`);
 
-      // Check for any uncommitted changes after the commit
-      uncommittedFiles = await getGitUncommittedFiles({ path: appPath });
+      let commitHash: string | undefined;
 
-      if (uncommittedFiles.length > 0) {
-        // Stage all changes
-        await gitAddAll({ path: appPath });
-        try {
-          commitHash = await gitCommit({
-            path: appPath,
-            message: message + " + extra files edited outside of Dyad",
-            amend: true,
-          });
-          logger.log(
-            `Amend commit with changes outside of dyad: ${uncommittedFiles.join(", ")}`,
-          );
-        } catch (error) {
-          // Just log, but don't throw an error because the user can still
-          // commit these changes outside of Dyad if needed.
-          logger.error(
-            `Failed to commit changes outside of dyad: ${uncommittedFiles.join(
-              ", ",
-            )}`,
-          );
-          extraFilesError = (error as any).toString();
+      if (!isMergeOrRebase) {
+        // Use chat summary, if provided, or default for commit message
+        commitHash = await gitCommit({
+          path: appPath,
+          message,
+        });
+        logger.log(`Successfully committed changes: ${changes.join(", ")}`);
+
+        // Check for any uncommitted changes after the commit
+        uncommittedFiles = await getGitUncommittedFiles({ path: appPath });
+
+        if (uncommittedFiles.length > 0) {
+          // Stage all changes
+          await gitAddAll({ path: appPath });
+          try {
+            commitHash = await gitCommit({
+              path: appPath,
+              message: message + " + extra files edited outside of Dyad",
+              amend: true,
+            });
+            logger.log(
+              `Amend commit with changes outside of dyad: ${uncommittedFiles.join(", ")}`,
+            );
+          } catch (error) {
+            // Just log, but don't throw an error because the user can still
+            // commit these changes outside of Dyad if needed.
+            logger.error(
+              `Failed to commit changes outside of dyad: ${uncommittedFiles.join(
+                ", ",
+              )}`,
+            );
+            extraFilesError = (error as any).toString();
+          }
         }
-      }
 
-      // Save the commit hash to the message
-      await db
-        .update(messages)
-        .set({
-          commitHash: commitHash,
-        })
-        .where(eq(messages.id, messageId));
+        // Save the commit hash to the message only if we committed
+        if (commitHash) {
+          await db
+            .update(messages)
+            .set({
+              commitHash: commitHash,
+            })
+            .where(eq(messages.id, messageId));
+        }
+      } else {
+        // In merge/rebase state - files are staged but not committed
+        logger.debug(
+          `Skipping commit during merge/rebase - files staged for later commit: ${writtenFiles.join(", ")}`,
+        );
+      }
     }
     logger.log("mark as approved: hasChanges", hasChanges);
     // Update the message to approved

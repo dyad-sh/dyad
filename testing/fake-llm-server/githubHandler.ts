@@ -59,6 +59,12 @@ const mockBranches = [
   { name: "feature/test", commit: { sha: "ghi789" } },
 ];
 
+// Simple in-memory collaborator store keyed by full repo name
+const repoCollaborators: Record<
+  string,
+  { login: string; avatar_url: string; permissions: any }[]
+> = {};
+
 // Store device flow state
 let deviceFlowState = {
   deviceCode: mockDeviceCode,
@@ -202,6 +208,15 @@ export function handleUserRepos(req: Request, res: Response) {
       default_branch: "main",
     };
 
+    mockRepos.push(newRepo);
+    repoCollaborators[newRepo.full_name] = [
+      {
+        login: mockUser.login,
+        avatar_url: "https://example.com/avatar.png",
+        permissions: { admin: true, push: true, pull: true },
+      },
+    ];
+
     res.status(201).json(newRepo);
   }
 }
@@ -267,6 +282,56 @@ export function handleOrgRepos(req: Request, res: Response) {
 
   // For simplicity, just redirect to user repos for mock
   handleUserRepos(req, res);
+}
+
+export function handleRepoCollaborators(req: Request, res: Response) {
+  console.log("* GitHub Repo collaborators requested");
+
+  const { owner, repo } = req.params;
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.includes(mockAccessToken)) {
+    return res.status(401).json({
+      message: "Bad credentials",
+    });
+  }
+
+  const repoName = `${owner}/${repo}`;
+  const foundRepo = mockRepos.find((r) => r.full_name === repoName);
+  if (!foundRepo) {
+    return res.status(404).json({
+      message: "Not Found",
+    });
+  }
+
+  if (req.method === "GET") {
+    return res.json(repoCollaborators[repoName] || []);
+  }
+
+  if (req.method === "PUT") {
+    const username = req.params.username;
+    const collaborators = repoCollaborators[repoName] || [];
+    const existing = collaborators.find((c) => c.login === username);
+    if (!existing) {
+      collaborators.push({
+        login: username,
+        avatar_url: `https://example.com/avatars/${username}.png`,
+        permissions: { pull: true, push: true, admin: false },
+      });
+    }
+    repoCollaborators[repoName] = collaborators;
+    return res.status(201).json({ invitation: true });
+  }
+
+  if (req.method === "DELETE") {
+    const username = req.params.username;
+    repoCollaborators[repoName] = (repoCollaborators[repoName] || []).filter(
+      (c) => c.login !== username,
+    );
+    return res.status(204).send();
+  }
+
+  return res.status(405).json({ message: "Method not allowed" });
 }
 
 // Push event management functions for testing

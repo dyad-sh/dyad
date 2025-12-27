@@ -3,7 +3,6 @@ import { test } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
 test("mcp - call calculator", async ({ po }) => {
-  await po.setUp();
   await po.goToSettingsTab();
   await po.page.getByRole("button", { name: "Tools (MCP)" }).click();
 

@@ -1,4 +1,4 @@
-import { ipcMain, app } from "electron";
+import { ipcMain, app, dialog } from "electron";
 import { db, getDatabasePath } from "../../db";
 import { apps, chats, messages } from "../../db/schema";
 import { desc, eq, like } from "drizzle-orm";
@@ -9,6 +9,8 @@ import type {
   CopyAppParams,
   EditAppFileReturnType,
   RespondToAppInputParams,
+  ChangeAppLocationParams,
+  ChangeAppLocationResult,
 } from "../ipc_types";
 import fs from "node:fs";
 import path from "node:path";
@@ -72,11 +74,15 @@ async function copyDir(
   source: string,
   destination: string,
   filter?: (source: string) => boolean,
+  options?: { excludeNodeModules?: boolean },
 ) {
   await fsPromises.cp(source, destination, {
     recursive: true,
     filter: (src: string) => {
-      if (path.basename(src) === "node_modules") {
+      if (
+        options?.excludeNodeModules &&
+        path.basename(src) === "node_modules"
+      ) {
         return false;
       }
       if (filter) {
@@ -620,7 +626,10 @@ export function registerAppHandlers() {
         })
         .where(eq(chats.id, chat.id));
 
-      return { app, chatId: chat.id };
+      return {
+        app: { ...app, resolvedPath: fullAppPath },
+        chatId: chat.id,
+      };
     },
   );
 
@@ -652,12 +661,17 @@ export function registerAppHandlers() {
 
       // 3. Copy the app folder
       try {
-        await copyDir(originalAppPath, newAppPath, (source: string) => {
-          if (!withHistory && path.basename(source) === ".git") {
-            return false;
-          }
-          return true;
-        });
+        await copyDir(
+          originalAppPath,
+          newAppPath,
+          (source: string) => {
+            if (!withHistory && path.basename(source) === ".git") {
+              return false;
+            }
+            return true;
+          },
+          { excludeNodeModules: true },
+        );
       } catch (error) {
         logger.error("Failed to copy app directory:", error);
         throw new Error("Failed to copy app directory.");
@@ -744,6 +758,7 @@ export function registerAppHandlers() {
     return {
       ...app,
       files,
+      resolvedPath: appPath,
       supabaseProjectName,
       vercelTeamSlug,
     };
@@ -753,9 +768,12 @@ export function registerAppHandlers() {
     const allApps = await db.query.apps.findMany({
       orderBy: [desc(apps.createdAt)],
     });
+    const appsWithResolvedPath = allApps.map((app) => ({
+      ...app,
+      resolvedPath: getDyadAppPath(app.path),
+    }));
     return {
-      apps: allApps,
-      appBasePath: getDyadAppPath("$APP_BASE_PATH"),
+      apps: appsWithResolvedPath,
     };
   });
 
@@ -1242,6 +1260,16 @@ export function registerAppHandlers() {
 
         const pathChanged = appPath !== app.path;
 
+        // Security: reject NEW absolute paths - rename-app should only accept relative paths for new paths
+        // Absolute paths should only be set through change-app-location handler
+        // If the path is changing and it's absolute, reject it
+        if (pathChanged && path.isAbsolute(appPath)) {
+          throw new Error(
+            "Absolute paths are not allowed when renaming an app folder. Please use a relative folder name only. To change the storage location, use the 'Change location' button.",
+          );
+        }
+
+        // Validate path for invalid characters when path changes (only for relative paths)
         if (pathChanged) {
           const invalidChars = /[<>:"|?*/\\]/;
           const hasInvalidChars =
@@ -1259,16 +1287,32 @@ export function registerAppHandlers() {
           where: eq(apps.name, appName),
         });
 
-        const pathConflict = await db.query.apps.findFirst({
-          where: eq(apps.path, appPath),
-        });
-
         if (nameConflict && nameConflict.id !== appId) {
           throw new Error(`An app with the name '${appName}' already exists`);
         }
 
-        if (pathConflict && pathConflict.id !== appId) {
-          throw new Error(`An app with the path '${appPath}' already exists`);
+        // If the current path is absolute, preserve the directory and only change the folder name
+        // Otherwise, resolve the new path using the default base path
+        const currentResolvedPath = getDyadAppPath(app.path);
+        const newAppPath = path.isAbsolute(app.path)
+          ? path.join(path.dirname(app.path), appPath)
+          : getDyadAppPath(appPath);
+
+        let hasPathConflict = false;
+        if (pathChanged) {
+          const allApps = await db.query.apps.findMany();
+          hasPathConflict = allApps.some((existingApp) => {
+            if (existingApp.id === appId) {
+              return false;
+            }
+            return getDyadAppPath(existingApp.path) === newAppPath;
+          });
+        }
+
+        if (hasPathConflict) {
+          throw new Error(
+            `An app with the path '${newAppPath}' already exists`,
+          );
         }
 
         // Stop the app if it's running
@@ -1284,8 +1328,7 @@ export function registerAppHandlers() {
           }
         }
 
-        const oldAppPath = getDyadAppPath(app.path);
-        const newAppPath = getDyadAppPath(appPath);
+        const oldAppPath = currentResolvedPath;
         // Only move files if needed
         if (newAppPath !== oldAppPath) {
           // Move app files
@@ -1303,12 +1346,28 @@ export function registerAppHandlers() {
             });
 
             // Copy the directory without node_modules
-            await copyDir(oldAppPath, newAppPath);
+            await copyDir(oldAppPath, newAppPath, undefined, {
+              excludeNodeModules: true,
+            });
           } catch (error: any) {
             logger.error(
               `Error moving app files from ${oldAppPath} to ${newAppPath}:`,
               error,
             );
+            // Attempt cleanup if destination exists (partial copy may have occurred)
+            if (fs.existsSync(newAppPath)) {
+              try {
+                await fsPromises.rm(newAppPath, {
+                  recursive: true,
+                  force: true,
+                });
+              } catch (cleanupError) {
+                logger.warn(
+                  `Failed to clean up partial move at ${newAppPath}:`,
+                  cleanupError,
+                );
+              }
+            }
             throw new Error(`Failed to move app files: ${error.message}`);
           }
 
@@ -1329,12 +1388,14 @@ export function registerAppHandlers() {
         }
 
         // Update app in database
+        // If the current path was absolute, store the new absolute path; otherwise store the relative path
+        const pathToStore = path.isAbsolute(app.path) ? newAppPath : appPath;
         try {
           await db
             .update(apps)
             .set({
               name: appName,
-              path: appPath,
+              path: pathToStore,
             })
             .where(eq(apps.id, appId))
             .returning();
@@ -1345,7 +1406,9 @@ export function registerAppHandlers() {
           if (newAppPath !== oldAppPath) {
             try {
               // Copy back from new to old
-              await copyDir(newAppPath, oldAppPath);
+              await copyDir(newAppPath, oldAppPath, undefined, {
+                excludeNodeModules: true,
+              });
               // Delete the new directory
               await fsPromises.rm(newAppPath, { recursive: true, force: true });
             } catch (rollbackError) {
@@ -1582,6 +1645,173 @@ export function registerAppHandlers() {
       );
 
       return uniqueApps;
+    },
+  );
+
+  handle(
+    "select-app-location",
+    async (
+      _,
+      { defaultPath }: { defaultPath?: string },
+    ): Promise<{ path: string | null; canceled: boolean }> => {
+      const result = await dialog.showOpenDialog({
+        properties: ["openDirectory", "createDirectory"],
+        title: "Select a folder where this app will be stored",
+        defaultPath,
+      });
+
+      if (result.canceled || !result.filePaths[0]) {
+        return { path: null, canceled: true };
+      }
+
+      return { path: result.filePaths[0], canceled: false };
+    },
+  );
+
+  handle(
+    "change-app-location",
+    async (
+      _,
+      params: ChangeAppLocationParams,
+    ): Promise<ChangeAppLocationResult> => {
+      const { appId, parentDirectory } = params;
+
+      if (!parentDirectory) {
+        throw new Error("No destination folder provided.");
+      }
+
+      if (!path.isAbsolute(parentDirectory)) {
+        throw new Error("Please select an absolute destination folder.");
+      }
+
+      const normalizedParentDir = path.normalize(parentDirectory);
+
+      return withLock(appId, async () => {
+        const app = await db.query.apps.findFirst({
+          where: eq(apps.id, appId),
+        });
+
+        if (!app) {
+          throw new Error("App not found");
+        }
+
+        const currentResolvedPath = getDyadAppPath(app.path);
+        // Extract app folder name from current path (works for both absolute and relative paths)
+        const appFolderName = path.basename(
+          path.isAbsolute(app.path) ? app.path : currentResolvedPath,
+        );
+        const nextResolvedPath = path.join(normalizedParentDir, appFolderName);
+
+        if (currentResolvedPath === nextResolvedPath) {
+          // Path hasn't changed, but we should update to absolute path format if needed
+          if (!path.isAbsolute(app.path)) {
+            await db
+              .update(apps)
+              .set({ path: nextResolvedPath })
+              .where(eq(apps.id, appId));
+          }
+          return {
+            resolvedPath: nextResolvedPath,
+          };
+        }
+
+        const allApps = await db.query.apps.findMany();
+        const conflict = allApps.some(
+          (existingApp) =>
+            existingApp.id !== appId &&
+            getDyadAppPath(existingApp.path) === nextResolvedPath,
+        );
+
+        if (conflict) {
+          throw new Error(
+            `Another app already exists at '${nextResolvedPath}'. Please choose a different folder.`,
+          );
+        }
+
+        if (fs.existsSync(nextResolvedPath)) {
+          throw new Error(
+            `Destination path '${nextResolvedPath}' already exists. Please choose an empty folder.`,
+          );
+        }
+
+        // Check if source path exists - if not, just update the DB path without copying
+        const sourceExists = fs.existsSync(currentResolvedPath);
+        if (!sourceExists) {
+          logger.warn(
+            `Source path ${currentResolvedPath} does not exist. Updating database path only.`,
+          );
+          await db
+            .update(apps)
+            .set({ path: nextResolvedPath })
+            .where(eq(apps.id, appId));
+          return {
+            resolvedPath: nextResolvedPath,
+          };
+        }
+
+        if (runningApps.has(appId)) {
+          const appInfo = runningApps.get(appId)!;
+          try {
+            await stopAppByInfo(appId, appInfo);
+          } catch (error: any) {
+            logger.error(`Error stopping app ${appId} before moving:`, error);
+            throw new Error(
+              `Failed to stop app before moving: ${error.message}`,
+            );
+          }
+        }
+
+        await fsPromises.mkdir(normalizedParentDir, { recursive: true });
+
+        try {
+          // Copy the directory without node_modules
+          await copyDir(currentResolvedPath, nextResolvedPath, undefined, {
+            excludeNodeModules: true,
+          });
+
+          // Update path to absolute path
+          await db
+            .update(apps)
+            .set({ path: nextResolvedPath })
+            .where(eq(apps.id, appId));
+
+          try {
+            await fsPromises.rm(currentResolvedPath, {
+              recursive: true,
+              force: true,
+            });
+          } catch (error: any) {
+            logger.warn(
+              `Error deleting old app directory ${currentResolvedPath}:`,
+              error,
+            );
+          }
+
+          return {
+            resolvedPath: nextResolvedPath,
+          };
+        } catch (error: any) {
+          // Attempt cleanup if destination exists (partial copy may have occurred)
+          if (fs.existsSync(nextResolvedPath)) {
+            try {
+              await fsPromises.rm(nextResolvedPath, {
+                recursive: true,
+                force: true,
+              });
+            } catch (cleanupError) {
+              logger.warn(
+                `Failed to clean up partial move at ${nextResolvedPath}:`,
+                cleanupError,
+              );
+            }
+          }
+          logger.error(
+            `Error moving app files from ${currentResolvedPath} to ${nextResolvedPath}:`,
+            error,
+          );
+          throw new Error(`Failed to move app files: ${error.message}`);
+        }
+      });
     },
   );
 }

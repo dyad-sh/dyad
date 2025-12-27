@@ -5,7 +5,6 @@ import type { UserSettings } from "@/lib/schemas";
 export const currentAppAtom = atom<App | null>(null);
 export const selectedAppIdAtom = atom<number | null>(null);
 export const appsListAtom = atom<App[]>([]);
-export const appBasePathAtom = atom<string>("");
 export const versionsListAtom = atom<Version[]>([]);
 export const previewModeAtom = atom<
   "preview" | "code" | "problems" | "configure" | "publish" | "security"

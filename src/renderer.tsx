@@ -66,7 +66,7 @@ const posthogClient = posthog.init(
     capture_exceptions: true,
     capture_pageview: false,
     before_send: (event) => {
-      if (!isTelemetryOptedIn()) {
+      if (isTelemetryOptedIn()) {
         console.debug("Telemetry not opted in, skipping event");
         return null;
       }

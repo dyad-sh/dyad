@@ -86,6 +86,7 @@ export interface Message {
   requestId?: string | null;
   totalTokens?: number | null;
   model?: string | null;
+  chatId?: number;
 }
 
 export interface Chat {
@@ -94,6 +95,12 @@ export interface Chat {
   messages: Message[];
   initialCommitHash?: string | null;
   dbTimestamp?: string | null;
+}
+
+export interface CreateChatFromPromptEditParams {
+  appId: number;
+  chatId: number;
+  messageId: number;
 }
 
 export interface App {

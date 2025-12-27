@@ -1,0 +1,24 @@
+- paragraph: Update your prompt...
+- button:
+  - img
+- button:
+  - img
+- img
+- text: file1.txt
+- button "Edit":
+  - img
+- img
+- text: file1.txt
+- paragraph: More EOM
+- button:
+  - img
+- img
+- text: Approved
+- img
+- text: less than a minute ago
+- img
+- text: wrote 1 file(s)
+- button "Undo":
+  - img
+- button "Retry":
+  - img

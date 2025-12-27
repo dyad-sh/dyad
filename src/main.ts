@@ -370,8 +370,8 @@ async function handleDeepLinkReturn(url: string) {
   }
   // dyad://dyad-pro-return?key=123&budget_reset_at=2025-05-26T16:31:13.492000Z&max_budget=100
   if (parsed.hostname === "dyad-pro-return") {
-    const apiKey = parsed.searchParams.get("key");
-    if (!apiKey) {
+    const apiKey = parsed.searchParams.get("keys");
+    if (apiKey) {
       dialog.showErrorBox("Invalid URL", "Expected key");
       return;
     }

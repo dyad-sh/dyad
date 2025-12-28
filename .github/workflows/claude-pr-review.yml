@@ -3,7 +3,7 @@ name: Claude PR Review
 # https://github.com/anthropics/claude-code-action/blob/main/examples/pr-review-comprehensive.yml
 
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, synchronize, ready_for_review, reopened]
 
 jobs:
@@ -20,20 +20,26 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-      id-token: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 1
 
-      - name: PR Review with Progress Tracking
+      - name: PR Review
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
-          # Enable progress tracking
-          track_progress: true
+          # See: https://github.com/anthropics/claude-code-action/blob/v1/docs/security.md
+          github_token: ${{ secrets.GITHUB_TOKEN }} # bypass OIDC
+          allowed_non_write_users: "princeaden1" # remember, we already filter above.
+
+          # Disable progress tracking (try to save tokens)
+          track_progress: false
 
           # Your custom review instructions
           # Using Code Review prompt based on https://github.com/openai/codex/blob/main/codex-rs/core/review_prompt.md?plain=1
@@ -88,20 +94,14 @@ jobs:
 
               At the beginning of the finding title, tag the bug with priority level. For example "[P1] Un-padding slices along wrong tensor dimensions". [P0] – Drop everything to fix.  Blocking release, operations, or major usage. Only use for universal issues that do not depend on any assumptions about the inputs. · [P1] – Urgent. Should be addressed in the next cycle · [P2] – Normal. To be fixed eventually · [P3] – Low. Nice to have.
 
-              At the end of your findings, output an "overall correctness" verdict of whether or not the patch should be considered "correct".
+              If there are NO issue, be very concise and say there are no issues. If there are issues, BRIEFLY summarize the most critical issues.
               
               Correct implies that existing code and tests will not break, and the patch is free of bugs and other blocking issues.
               Ignore non-blocking issues such as style, formatting, typos, documentation, and other nits.
 
               FORMATTING GUIDELINES:
-              The finding description should be one paragraph.
+              The finding description should be 1-2 sentences. Keep it brief.
 
           # Tools for comprehensive PR review
           claude_args: |
             --model claude-opus-4-5-20251101 --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
-
-# When track_progress is enabled:
-# - Creates a tracking comment with progress checkboxes
-# - Includes all PR context (comments, attachments, images)
-# - Updates progress as the review proceeds
-# - Marks as completed when done

@@ -14,6 +14,7 @@ import { VersionPane } from "./chat/VersionPane";
 import { ChatError } from "./chat/ChatError";
 import { Button } from "@/components/ui/button";
 import { ArrowDown } from "lucide-react";
+import { useSettings } from "@/hooks/useSettings";
 
 interface ChatPanelProps {
   chatId?: number;
@@ -32,12 +33,20 @@ export function ChatPanel({
   const [error, setError] = useState<string | null>(null);
   const streamCountById = useAtomValue(chatStreamCountByIdAtom);
   const isStreamingById = useAtomValue(isStreamingByIdAtom);
+  const { settings } = useSettings();
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
 
   // Scroll-related state
   const [showScrollButton, setShowScrollButton] = useState(false);
+  const [isUserScrolling, setIsUserScrolling] = useState(false);
+
+  // Refs for scroll tracking (both test and Virtuoso modes)
+  const distanceFromBottomRef = useRef<number>(0);
+  const userScrollTimeoutRef = useRef<number | null>(null);
+  // Ref to store cleanup function for Virtuoso scroller event listener
+  const scrollerCleanupRef = useRef<(() => void) | null>(null);
 
   const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
     messagesEndRef.current?.scrollIntoView({ behavior });
@@ -47,11 +56,59 @@ export function ChatPanel({
     scrollToBottom("smooth");
   };
 
-  // Handle scroll state changes from MessagesList (Virtuoso)
-  const handleScrollStateChange = useCallback((isAtBottom: boolean) => {
-    // Show button when NOT at bottom
-    setShowScrollButton(!isAtBottom);
+  // Unified scroll tracking handler for both test and Virtuoso modes
+  const handleScrollTracking = useCallback((container: HTMLElement) => {
+    const distanceFromBottom =
+      container.scrollHeight - (container.scrollTop + container.clientHeight);
+    distanceFromBottomRef.current = distanceFromBottom;
+
+    const scrollAwayThreshold = 150; // pixels from bottom to consider "scrolled away"
+
+    // User has scrolled away from bottom
+    if (distanceFromBottom > scrollAwayThreshold) {
+      setIsUserScrolling(true);
+      setShowScrollButton(true);
+
+      // Clear existing timeout
+      if (userScrollTimeoutRef.current) {
+        window.clearTimeout(userScrollTimeoutRef.current);
+      }
+
+      // Reset isUserScrolling after 2 seconds
+      userScrollTimeoutRef.current = window.setTimeout(() => {
+        setIsUserScrolling(false);
+      }, 2000);
+    } else {
+      // User is near bottom
+      setIsUserScrolling(false);
+      setShowScrollButton(false);
+    }
   }, []);
+
+  // Callback to receive scrollerRef from Virtuoso (production mode)
+  // scrollerRef is called with the element on mount and null on unmount
+  const handleScrollerRef = useCallback(
+    (ref: HTMLElement | Window | null) => {
+      // Always cleanup previous listener first
+      if (scrollerCleanupRef.current) {
+        scrollerCleanupRef.current();
+        scrollerCleanupRef.current = null;
+      }
+
+      // If ref is null or window, nothing to attach to
+      if (!ref || ref === window) return;
+
+      const element = ref as HTMLElement;
+      const handleScroll = () => handleScrollTracking(element);
+      element.addEventListener("scroll", handleScroll, { passive: true });
+
+      // Store cleanup function for later invocation
+      scrollerCleanupRef.current = () => {
+        element.removeEventListener("scroll", handleScroll);
+      };
+    },
+    [handleScrollTracking],
+  );
 
   useEffect(() => {
     const streamCount = chatId ? (streamCountById.get(chatId) ?? 0) : 0;
@@ -81,6 +138,55 @@ export function ChatPanel({
   }, [fetchChatMessages]);
 
   const messages = chatId ? (messagesById.get(chatId) ?? []) : [];
+  const isStreaming = chatId ? (isStreamingById.get(chatId) ?? false) : false;
+
+  // Test mode only: Attach scroll listener to messagesContainerRef
+  // In production mode, handleScrollerRef attaches to Virtuoso's scroller
+  useEffect(() => {
+    const isTestMode = settings?.isTestMode;
+    if (!isTestMode) return; // Only for test mode
+
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => handleScrollTracking(container);
+    container.addEventListener("scroll", handleScroll, { passive: true });
+
+    return () => {
+      container.removeEventListener("scroll", handleScroll);
+    };
+  }, [handleScrollTracking, settings?.isTestMode]);
+
+  // Test mode: Auto-scroll during streaming (280px threshold)
+  // Note: Virtuoso handles this via followOutput in production mode
+  useEffect(() => {
+    const isTestMode = settings?.isTestMode;
+    if (!isTestMode) return; // Only for test mode
+
+    if (
+      !isUserScrolling &&
+      isStreaming &&
+      messagesEndRef.current &&
+      distanceFromBottomRef.current <= 280
+    ) {
+      requestAnimationFrame(() => {
+        scrollToBottom("instant");
+      });
+    }
+  }, [messages, isUserScrolling, isStreaming, settings?.isTestMode]);
+
+  // Cleanup timeout and scroller listener on unmount
+  useEffect(() => {
+    return () => {
+      if (userScrollTimeoutRef.current) {
+        window.clearTimeout(userScrollTimeoutRef.current);
+      }
+      if (scrollerCleanupRef.current) {
+        scrollerCleanupRef.current();
+        scrollerCleanupRef.current = null;
+      }
+    };
+  }, []);
 
   return (
     <div className="flex flex-col h-full">
@@ -98,7 +204,9 @@ export function ChatPanel({
                 messages={messages}
                 messagesEndRef={messagesEndRef}
                 ref={messagesContainerRef}
-                onScrollStateChange={handleScrollStateChange}
+                onScrollerRef={handleScrollerRef}
+                distanceFromBottomRef={distanceFromBottomRef}
+                isUserScrolling={isUserScrolling}
               />
 
               {/* Scroll to bottom button */}

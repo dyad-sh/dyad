@@ -25,7 +25,9 @@ import { useCountTokens } from "@/hooks/useCountTokens";
 interface MessagesListProps {
   messages: Message[];
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
-  onScrollStateChange?: (isAtBottom: boolean) => void;
+  onScrollerRef?: (ref: HTMLElement | Window | null) => void | (() => void);
+  distanceFromBottomRef?: React.MutableRefObject<number>;
+  isUserScrolling?: boolean;
 }
 
 // Memoize ChatMessage at module level to prevent recreation on every render
@@ -250,7 +252,13 @@ function FooterComponent({ context }: { context?: FooterContext }) {
 
 export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
   function MessagesList(
-    { messages, messagesEndRef, onScrollStateChange },
+    {
+      messages,
+      messagesEndRef,
+      onScrollerRef,
+      distanceFromBottomRef,
+      isUserScrolling,
+    },
     ref,
   ) {
     const appId = useAtomValue(selectedAppIdAtom);
@@ -365,14 +373,6 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
       ],
     );
 
-    // Handle scroll state changes from Virtuoso
-    const handleAtBottomStateChange = useCallback(
-      (atBottom: boolean) => {
-        onScrollStateChange?.(atBottom);
-      },
-      [onScrollStateChange],
-    );
-
     // Render empty state or setup banner
     if (messages.length === 0) {
       const setupBanner = renderSetupBanner();
@@ -437,10 +437,14 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
           itemContent={itemContent}
           components={{ Footer: FooterComponent }}
           context={footerContext}
-          atBottomStateChange={handleAtBottomStateChange}
-          atBottomThreshold={150}
-          followOutput={(isAtBottom) => {
-            return isStreaming && isAtBottom ? "smooth" : false;
+          scrollerRef={onScrollerRef}
+          followOutput={() => {
+            const shouldAutoScroll =
+              !isUserScrolling &&
+              isStreaming &&
+              distanceFromBottomRef &&
+              distanceFromBottomRef.current <= 280;
+            return shouldAutoScroll ? "auto" : false;
           }}
         />
       </div>

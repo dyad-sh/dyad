@@ -1534,8 +1534,23 @@ async function handleCompleteMerge(
         return { success: true, commitHash };
       }
 
+      // Handle rebase vs merge differently
+      if (rebaseInProgress) {
+        // Rebase continuation requires native Git. Check this BEFORE attempting conflict detection
+        // to provide a user-friendly error message instead of a generic conflict detection error.
+        const settings = readSettings();
+        if (!settings.enableNativeGit) {
+          return {
+            success: false,
+            error:
+              "Cannot complete rebase because native Git is disabled. Enable native Git in settings to continue.",
+          };
+        }
+      }
+
       // Check for unresolved conflicts BEFORE staging. Staging can clear unmerged state,
       // so we must detect conflicts prior to adding files.
+      // Note: For rebase, we've already checked native Git above, so this won't throw unexpectedly.
       const conflicts = await gitGetMergeConflicts({ path: appPath });
       if (conflicts.length > 0) {
         const operation = rebaseInProgress ? "rebase" : "merge";
@@ -1550,18 +1565,10 @@ async function handleCompleteMerge(
 
       // Handle rebase vs merge differently
       if (rebaseInProgress) {
-        // Rebase continuation requires native Git. Provide a clear message if disabled.
-        const settings = readSettings();
-        if (!settings.enableNativeGit) {
-          return {
-            success: false,
-            error:
-              "Cannot complete rebase because native Git is disabled. Enable native Git in settings to continue.",
-          };
-        }
         // For rebase conflicts, use `git rebase --continue` instead of `git commit`
         // This is critical - using `git commit` during a rebase would create duplicate commits
         // and leave the repository in a broken state
+        // Note: Native Git check was already performed above before conflict detection
         await gitRebaseContinue({ path: appPath });
         return { success: true };
       } else {

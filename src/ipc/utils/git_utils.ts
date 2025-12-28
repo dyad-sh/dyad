@@ -811,12 +811,110 @@ export async function gitMerge({
       `Failed to merge branch ${branch}`,
     );
   } else {
-    await git.merge({
+    // Get the commit hash of the branch being merged (for MERGE_HEAD)
+    const theirCommit = await git.resolveRef({
       fs,
       dir: path,
-      ours: "HEAD",
-      theirs: branch,
-      author: author || (await getGitAuthor()),
+      ref: branch,
+    });
+
+    // Get current HEAD commit before merge
+    const ourCommit = await git.resolveRef({
+      fs,
+      dir: path,
+      ref: "HEAD",
+    });
+
+    // Get current branch name for the merge commit
+    const currentBranch = await git.currentBranch({
+      fs,
+      dir: path,
+      fullname: true,
+    });
+    if (!currentBranch) {
+      throw new Error("Cannot merge: not on any branch");
+    }
+
+    let mergeResult;
+    try {
+      // Perform the merge in memory
+      // Setting abortOnConflict: false will write conflict markers to working directory
+      // instead of throwing immediately
+      mergeResult = await git.merge({
+        fs,
+        dir: path,
+        ours: "HEAD",
+        theirs: branch,
+        author: author || (await getGitAuthor()),
+        abortOnConflict: false, // Write conflict markers instead of throwing
+      });
+    } catch (mergeError: unknown) {
+      // Even with abortOnConflict: false, merge might throw on conflicts
+      // Check if this is a conflict error
+      const errorMessage =
+        mergeError instanceof Error ? mergeError.message : String(mergeError);
+      if (
+        errorMessage.includes("conflict") ||
+        errorMessage.includes("Conflict")
+      ) {
+        // Write MERGE_HEAD to indicate merge in progress
+        const mergeHeadPath = pathModule.join(path, ".git", "MERGE_HEAD");
+        await fsPromises.writeFile(mergeHeadPath, theirCommit + "\n", "utf-8");
+        throw new Error(
+          `Merge conflict: Conflicts detected when merging branch '${branch}'. Please resolve conflicts and complete the merge.`,
+        );
+      }
+      // Re-throw if it's a different error
+      throw mergeError;
+    }
+
+    // Check if merge resulted in conflicts by examining status
+    // isomorphic-git's merge may return successfully but still have conflicts
+    // in the working directory
+    const statusMatrix = await git.statusMatrix({ fs, dir: path });
+    const hasUnmergedFiles = statusMatrix.some((row) => {
+      // row[0] = filepath, row[1] = HEAD status, row[2] = working dir status, row[3] = stage status
+      // Stage status 2 or 3 indicates unmerged (conflict) state
+      return row[3] === 2 || row[3] === 3;
+    });
+
+    if (hasUnmergedFiles) {
+      // Write MERGE_HEAD to indicate merge in progress
+      const mergeHeadPath = pathModule.join(path, ".git", "MERGE_HEAD");
+      await fsPromises.writeFile(mergeHeadPath, theirCommit + "\n", "utf-8");
+
+      // Throw error to indicate conflicts
+      throw new Error(
+        `Merge conflict: Conflicts detected when merging branch '${branch}'. Please resolve conflicts and complete the merge.`,
+      );
+    }
+
+    // No conflicts - checkout the merged tree to working directory
+    const mergedTree = mergeResult.tree;
+    await git.checkout({
+      fs,
+      dir: path,
+      ref: mergedTree,
+      force: true, // Overwrite working directory files
+    });
+
+    // Create merge commit with both parents
+    const mergeAuthor = author || (await getGitAuthor());
+    const mergeCommitOid = await git.commit({
+      fs,
+      dir: path,
+      message: `Merge branch '${branch}' into ${currentBranch.replace("refs/heads/", "")}`,
+      author: mergeAuthor,
+      parent: [ourCommit, theirCommit],
+      tree: mergedTree,
+    });
+
+    // Update branch reference to point to the merge commit
+    await git.writeRef({
+      fs,
+      dir: path,
+      ref: currentBranch,
+      value: mergeCommitOid,
     });
   }
 }

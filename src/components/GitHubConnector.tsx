@@ -388,11 +388,11 @@ function ConnectedGitHubConnector({
           appId={appId}
           conflicts={conflicts}
           onResolve={async () => {
-            setConflicts([]);
             try {
               const result =
                 await IpcClient.getInstance().completeGithubMerge(appId);
               if (result.success) {
+                setConflicts([]);
                 showSuccess("All conflicts resolved successfully.");
               } else {
                 showError(

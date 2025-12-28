@@ -578,11 +578,11 @@ export function GithubBranchManager({
           onResolve={async () => {
             // Clear conflicts immediately to close the dialog
             // All conflicts have been resolved at this point
-            setConflicts([]);
             try {
               const result =
                 await IpcClient.getInstance().completeGithubMerge(appId);
               if (result.success) {
+                setConflicts([]);
                 showSuccess("All conflicts resolved successfully.");
                 await loadBranches(); // Refresh branches after merge/rebase
                 onBranchChange?.(); // Notify parent of branch change

@@ -85,7 +85,7 @@ function buildSnippetFromMatch({
   start: number;
   end: number;
   lineNumber: number;
-}): AppFileSearchResult["snippet"] {
+}): NonNullable<AppFileSearchResult["snippets"]>[number] {
   const safeLine = lineText.replace(/\r?\n$/, "");
   const before = sanitizeSnippetText(safeLine.slice(0, start));
   const match = sanitizeSnippetText(safeLine.slice(start, end));
@@ -663,13 +663,25 @@ async function searchAppFilesWithRipgrep({
             lineNumber,
           });
 
-          if (!results.has(relativePath)) {
+          const existing = results.get(relativePath);
+          if (!existing) {
             results.set(relativePath, {
               path: relativePath,
-              matchesName: false,
               matchesContent: true,
-              snippet,
+              snippets: [snippet],
             });
+          } else {
+            // Add snippet to existing result if it doesn't already exist (avoid duplicates)
+            if (!existing.snippets) {
+              existing.snippets = [];
+            }
+            // Only add if this line number isn't already in the snippets
+            const existingLine = existing.snippets.find(
+              (s) => s.line === snippet.line,
+            );
+            if (!existingLine) {
+              existing.snippets.push(snippet);
+            }
           }
         } catch (error) {
           logger.warn("Failed to parse ripgrep output line:", line, error);
@@ -1661,62 +1673,13 @@ export function registerAppHandlers() {
 
       const appPath = getDyadAppPath(appRecord.path);
 
-      // Get all files for filename matching
-      let allFiles: string[] = [];
-      try {
-        allFiles = getFilesRecursively(appPath, appPath);
-        allFiles = allFiles.map((filePath) => normalizePath(filePath));
-      } catch (error) {
-        logger.error(`Error reading files for app ${appId}:`, error);
-      }
-
-      // Find files that match by filename (case-insensitive)
-      const filenameMatches = new Set<string>();
-      const lowerQuery = trimmedQuery.toLowerCase();
-      for (const filePath of allFiles) {
-        const fileName = path.basename(filePath).toLowerCase();
-        if (fileName.includes(lowerQuery)) {
-          filenameMatches.add(filePath);
-        }
-      }
-
       // Search file contents with ripgrep
       const contentMatches = await searchAppFilesWithRipgrep({
         appPath,
         query: trimmedQuery,
       });
 
-      // Merge results: combine filename matches with content matches
-      const resultsMap = new Map<string, AppFileSearchResult>();
-
-      // Add filename matches
-      for (const filePath of filenameMatches) {
-        // Check if we already have this file from content search
-        const existingContentMatch = contentMatches.find(
-          (r) => r.path === filePath,
-        );
-        if (existingContentMatch) {
-          // File matches both name and content, update matchesName
-          existingContentMatch.matchesName = true;
-          resultsMap.set(filePath, existingContentMatch);
-        } else {
-          // File matches name only
-          resultsMap.set(filePath, {
-            path: filePath,
-            matchesName: true,
-            matchesContent: false,
-          });
-        }
-      }
-
-      // Add content matches that aren't already in results
-      for (const match of contentMatches) {
-        if (!resultsMap.has(match.path)) {
-          resultsMap.set(match.path, match);
-        }
-      }
-
-      return Array.from(resultsMap.values());
+      return contentMatches;
     },
   );
 

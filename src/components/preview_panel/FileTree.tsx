@@ -93,13 +93,28 @@ const buildFileTree = (files: string[]): TreeNode[] => {
 // File tree component
 export const FileTree = ({ appId, files }: FileTreeProps) => {
   const [searchValue, setSearchValue] = React.useState("");
-  const debouncedSearch = useDebouncedValue(searchValue, 250);
-  const isSearchMode = debouncedSearch.trim().length > 0;
+  const prevAppIdRef = React.useRef<number | null>(appId);
 
-  // Reset search when appId changes to prevent stale results from being used
+  // Reset search when appId changes to prevent unnecessary IPC calls with old search term
+  // Use a derived value to immediately clear search on appId change, before state update
+  const effectiveSearchValue = React.useMemo(() => {
+    const appIdChanged = prevAppIdRef.current !== appId;
+    if (appIdChanged) {
+      prevAppIdRef.current = appId;
+      return "";
+    }
+    return searchValue;
+  }, [appId, searchValue]);
+
+  // Sync state with effective value when appId changes
   React.useEffect(() => {
-    setSearchValue("");
-  }, [appId]);
+    if (effectiveSearchValue === "" && searchValue !== "") {
+      setSearchValue("");
+    }
+  }, [effectiveSearchValue, searchValue]);
+
+  const debouncedSearch = useDebouncedValue(effectiveSearchValue, 250);
+  const isSearchMode = debouncedSearch.trim().length > 0;
 
   const {
     results: searchResults,
@@ -269,7 +284,7 @@ const TreeNode = ({
     } else {
       setSelectedFile({
         path: node.path,
-        line: match?.snippet?.line ?? null,
+        line: match?.snippets?.[0]?.line ?? null,
       });
     }
   };
@@ -285,39 +300,35 @@ const TreeNode = ({
             {expanded ? <FolderOpen size={16} /> : <Folder size={16} />}
           </span>
         )}
-        <span className="truncate">
+        <span className="truncate flex-1">
           {isSearchMode ? highlightMatch(node.name, searchQuery) : node.name}
         </span>
-        {match && match.matchesContent && (
-          <span className="ml-2 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] uppercase text-primary">
-            content
-          </span>
-        )}
       </div>
 
-      {match?.matchesContent && match.snippet && (
-        <div
-          className="ml-6 mr-2 mt-1 border-l pl-2 text-xs text-muted-foreground cursor-pointer rounded hover:bg-muted/50 transition-colors"
-          onClick={(e) => {
-            e.stopPropagation();
-            setSelectedFile({
-              path: node.path,
-              line: match.snippet?.line ?? null,
-            });
-          }}
-        >
-          <div className="font-mono text-[10px] uppercase tracking-wide text-primary">
-            line {match.snippet.line}
+      {match?.matchesContent &&
+        match.snippets &&
+        match.snippets.length > 0 &&
+        match.snippets.map((snippet, index) => (
+          <div
+            key={`${snippet.line}-${index}`}
+            className="ml-6 mr-2 py-0.5 text-xs cursor-pointer hover:bg-muted/50 transition-colors"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedFile({
+                path: node.path,
+                line: snippet.line,
+              });
+            }}
+          >
+            <div className="font-mono text-[11px] leading-tight text-foreground truncate">
+              <span className="text-muted-foreground">{snippet.before}</span>
+              <mark className="bg-primary/20 text-foreground font-medium px-0.5 rounded">
+                {snippet.match}
+              </mark>
+              <span className="text-muted-foreground">{snippet.after}</span>
+            </div>
           </div>
-          <div className="line-clamp-2 leading-relaxed">
-            {match.snippet.before}
-            <mark className="bg-transparent text-foreground underline decoration-primary">
-              {match.snippet.match}
-            </mark>
-            {match.snippet.after}
-          </div>
-        </div>
-      )}
+        ))}
 
       {node.isDirectory && expanded && node.children.length > 0 && (
         <TreeNodes

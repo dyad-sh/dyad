@@ -96,7 +96,7 @@ const HubPage: React.FC = () => {
       <CreateAppDialog
         open={isCreateDialogOpen}
         onOpenChange={setIsCreateDialogOpen}
-        template={templates.find((t) => t.id === settings?.selectedTemplateId)}
+        template={templates?.find((t) => t.id === settings?.selectedTemplateId)}
       />
     </div>
   );

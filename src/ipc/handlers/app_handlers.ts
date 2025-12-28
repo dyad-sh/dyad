@@ -64,6 +64,7 @@ import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils"
 import { AppSearchResult } from "@/lib/schemas";
 
 import { getAppPort } from "../../../shared/ports";
+import { createRequire } from "module";
 
 const MAX_FILE_SEARCH_SIZE = 1024 * 1024;
 const RIPGREP_EXCLUDED_GLOBS = ["!node_modules/**", "!.git/**", "!.next/**"];
@@ -73,6 +74,28 @@ const handle = createLoggedHandler(logger);
 
 function sanitizeSnippetText(text: string) {
   return text.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Converts a byte offset in UTF-8 encoded string to a character index.
+ * Ripgrep provides byte offsets, but JavaScript strings use character indices.
+ * This handles multi-byte UTF-8 characters (emojis, CJK, accented characters) correctly.
+ */
+function byteOffsetToCharIndex(text: string, byteOffset: number): number {
+  // Cap the byte offset to the actual byte length of the string
+  const totalBytes = Buffer.from(text, "utf8").length;
+  const safeByteOffset = Math.min(byteOffset, totalBytes);
+
+  // Find the character index by checking byte counts at each position
+  // This correctly handles multi-byte characters
+  for (let i = 0; i <= text.length; i++) {
+    const bytesUpToIndex = Buffer.from(text.slice(0, i), "utf8").length;
+    if (bytesUpToIndex >= safeByteOffset) {
+      return i;
+    }
+  }
+
+  return text.length;
 }
 
 function buildSnippetFromMatch({
@@ -87,9 +110,12 @@ function buildSnippetFromMatch({
   lineNumber: number;
 }): NonNullable<AppFileSearchResult["snippets"]>[number] {
   const safeLine = lineText.replace(/\r?\n$/, "");
-  const before = sanitizeSnippetText(safeLine.slice(0, start));
-  const match = sanitizeSnippetText(safeLine.slice(start, end));
-  const after = sanitizeSnippetText(safeLine.slice(end));
+  // Convert byte offsets to character indices for proper UTF-8 handling
+  const startChar = byteOffsetToCharIndex(safeLine, start);
+  const endChar = byteOffsetToCharIndex(safeLine, end);
+  const before = sanitizeSnippetText(safeLine.slice(0, startChar));
+  const match = sanitizeSnippetText(safeLine.slice(startChar, endChar));
+  const after = sanitizeSnippetText(safeLine.slice(endChar));
 
   return {
     before,
@@ -601,6 +627,7 @@ async function searchAppFilesWithRipgrep({
 }): Promise<AppFileSearchResult[]> {
   // Use require at runtime to ensure correct resolution when externalized
   // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const require = createRequire(import.meta.url);
   const { rgPath } = require("@vscode/ripgrep");
   return new Promise((resolve, reject) => {
     const results = new Map<string, AppFileSearchResult>();

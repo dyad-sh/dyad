@@ -17,8 +17,8 @@ test("file tree search finds content matches and surfaces line numbers", async (
   await expect(searchInput).toBeVisible({ timeout: Timeout.MEDIUM });
 
   // Content search should find files whose contents match the query and show line info
-  await searchInput.fill("brings joy");
-  const resultItem = po.page.getByText("jumia.tsx").first();
+  await searchInput.fill("import");
+  const resultItem = po.page.getByText("App.tsx").first();
   await expect(resultItem).toBeVisible({ timeout: Timeout.MEDIUM });
 
   // Find the line number snippet specifically within the jumia.tsx result
@@ -42,7 +42,7 @@ test("file tree search finds content matches and surfaces line numbers", async (
   await lineNumberSnippet.click();
 
   // Breadcrumb/path should reflect the opened file
-  await expect(po.page.getByText("jumia.tsx")).toBeVisible({
+  await expect(po.page.getByText("App.tsx")).toBeVisible({
     timeout: Timeout.MEDIUM,
   });
 

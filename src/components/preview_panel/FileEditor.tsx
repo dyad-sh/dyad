@@ -209,7 +209,7 @@ export const FileEditor = ({
 
     editor.revealLineInCenter(lineNumber);
     editor.setPosition({ lineNumber, column: 1 });
-  }, [initialLine]);
+  }, [initialLine, filePath]);
 
   if (loading) {
     return <div className="p-4">Loading file content...</div>;

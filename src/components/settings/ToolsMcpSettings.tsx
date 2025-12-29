@@ -18,15 +18,15 @@ import { AddMcpServerDeepLinkData } from "@/ipc/deep_link_data";
 
 type KeyValue = { key: string; value: string };
 
-function parseEnvJsonToArray(
-  envJson?: Record<string, string> | string | null,
+function parseJsonToArray(
+  json?: Record<string, string> | string | null,
 ): KeyValue[] {
-  if (!envJson) return [];
+  if (!json) return [];
   try {
     const obj =
-      typeof envJson === "string"
-        ? (JSON.parse(envJson) as unknown as Record<string, string>)
-        : (envJson as Record<string, string>);
+      typeof json === "string"
+        ? (JSON.parse(json) as unknown as Record<string, string>)
+        : (json as Record<string, string>);
     return Object.entries(obj).map(([key, value]) => ({
       key,
       value: String(value ?? ""),
@@ -36,7 +36,7 @@ function parseEnvJsonToArray(
   }
 }
 
-function arrayToEnvObject(envVars: KeyValue[]): Record<string, string> {
+function arrayToJsonObject(envVars: KeyValue[]): Record<string, string> {
   const env: Record<string, string> = {};
   for (const { key, value } of envVars) {
     if (key.trim().length === 0) continue;
@@ -45,22 +45,22 @@ function arrayToEnvObject(envVars: KeyValue[]): Record<string, string> {
   return env;
 }
 
-function EnvVarsEditor({
-  serverId,
-  envJson,
+function KeyValueEditor({
+  id,
+  json,
   disabled,
   onSave,
   isSaving,
   itemLabel = "Environment Variable",
 }: {
-  serverId: number;
-  envJson?: Record<string, string> | null;
+  id: number;
+  json?: Record<string, string> | null;
   disabled?: boolean;
   onSave: (envVars: KeyValue[]) => Promise<void>;
   isSaving: boolean;
   itemLabel?: string;
 }) {
-  const initial = useMemo(() => parseEnvJsonToArray(envJson), [envJson]);
+  const initial = useMemo(() => parseJsonToArray(json), [json]);
   const [envVars, setEnvVars] = useState<KeyValue[]>(initial);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editingKeyValue, setEditingKeyValue] = useState("");
@@ -71,7 +71,7 @@ function EnvVarsEditor({
 
   React.useEffect(() => {
     setEnvVars(initial);
-  }, [serverId, initial]);
+  }, [id, initial]);
 
   const saveAll = async (next: KeyValue[]) => {
     await onSave(next);
@@ -144,9 +144,9 @@ function EnvVarsEditor({
       {isAddingNew ? (
         <div className="space-y-3 p-3 border rounded-md bg-muted/50">
           <div className="space-y-2">
-            <Label htmlFor={`env-new-key-${serverId}`}>Key</Label>
+            <Label htmlFor={`env-new-key-${id}`}>Key</Label>
             <Input
-              id={`env-new-key-${serverId}`}
+              id={`env-new-key-${id}`}
               placeholder={itemLabel === "Header" ? "Key" : "e.g., PATH"}
               value={newKey}
               onChange={(e) => setNewKey(e.target.value)}
@@ -155,9 +155,9 @@ function EnvVarsEditor({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor={`env-new-value-${serverId}`}>Value</Label>
+            <Label htmlFor={`env-new-value-${id}`}>Value</Label>
             <Input
-              id={`env-new-value-${serverId}`}
+              id={`env-new-value-${id}`}
               placeholder={
                 itemLabel === "Header" ? "Value" : "e.g., /usr/local/bin"
               }
@@ -470,15 +470,15 @@ export function ToolsMcpSettings() {
                 <div className="text-sm font-medium mb-2">
                   Environment Variables
                 </div>
-                <EnvVarsEditor
-                  serverId={s.id}
-                  envJson={s.envJson}
+                <KeyValueEditor
+                  id={s.id}
+                  json={s.envJson}
                   disabled={!s.enabled}
                   isSaving={!!isUpdatingServer}
                   onSave={async (pairs) => {
                     await updateServer({
                       id: s.id,
-                      envJson: arrayToEnvObject(pairs),
+                      envJson: arrayToJsonObject(pairs),
                     });
                   }}
                 />
@@ -487,16 +487,16 @@ export function ToolsMcpSettings() {
             {s.transport === "http" && (
               <div className="mt-3">
                 <div className="text-sm font-medium mb-2">Headers</div>
-                <EnvVarsEditor
-                  serverId={s.id}
-                  envJson={s.headersJson}
+                <KeyValueEditor
+                  id={s.id}
+                  json={s.headersJson}
                   disabled={!s.enabled}
                   isSaving={!!isUpdatingServer}
                   itemLabel="Header"
                   onSave={async (pairs) => {
                     await updateServer({
                       id: s.id,
-                      headersJson: arrayToEnvObject(pairs),
+                      headersJson: arrayToJsonObject(pairs),
                     });
                   }}
                 />

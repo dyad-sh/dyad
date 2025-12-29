@@ -155,7 +155,7 @@ export function ChatPanel({
     return () => {
       container.removeEventListener("scroll", handleScroll);
     };
-  }, [handleScrollTracking, settings?.isTestMode]);
+  }, [handleScrollTracking, settings?.isTestMode, isVersionPaneOpen]);
 
   // Test mode: Auto-scroll during streaming (280px threshold)
   // Note: Virtuoso handles this via followOutput in production mode

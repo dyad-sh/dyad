@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Plus, Paperclip, ChartColumnIncreasing } from "lucide-react";
 import {
   DropdownMenu,
@@ -29,8 +30,10 @@ export function AuxiliaryActionsMenu({
   showTokenBar,
   toggleShowTokenBar,
 }: AuxiliaryActionsMenuProps) {
+  const [isOpen, setIsOpen] = useState(false);
+
   return (
-    <DropdownMenu>
+    <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
@@ -39,7 +42,10 @@ export function AuxiliaryActionsMenu({
           className="has-[>svg]:px-2 hover:bg-muted bg-primary/10 text-primary cursor-pointer rounded-xl"
           data-testid="auxiliary-actions-menu"
         >
-          <Plus size={20} />
+          <Plus
+            size={20}
+            className={`transition-transform duration-200 ${isOpen ? "rotate-45" : "rotate-0"}`}
+          />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">

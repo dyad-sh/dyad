@@ -1,7 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import log from "electron-log";
-import { deploySupabaseFunction } from "./supabase_management_client";
+import {
+  bulkUpdateFunctions,
+  deploySupabaseFunction,
+  type DeployedFunctionResponse,
+} from "./supabase_management_client";
 
 const logger = log.scope("supabase_utils");
 
@@ -77,9 +81,11 @@ export function extractFunctionNameFromPath(filePath: string): string {
 export async function deployAllSupabaseFunctions({
   appPath,
   supabaseProjectId,
+  supabaseOrganizationSlug,
 }: {
   appPath: string;
   supabaseProjectId: string;
+  supabaseOrganizationSlug: string | null;
 }): Promise<string[]> {
   const functionsDir = path.join(appPath, "supabase", "functions");
 
@@ -105,34 +111,77 @@ export async function deployAllSupabaseFunctions({
       `Found ${functionDirs.length} functions to deploy in ${functionsDir}`,
     );
 
-    // Deploy each function
+    // Filter to only functions with index.ts
+    const validFunctions: string[] = [];
     for (const functionDir of functionDirs) {
       const functionName = functionDir.name;
       const functionPath = path.join(functionsDir, functionName);
       const indexPath = path.join(functionPath, "index.ts");
 
-      // Check if index.ts exists
       try {
         await fs.access(indexPath);
+        validFunctions.push(functionName);
       } catch {
         logger.warn(
           `Skipping ${functionName}: index.ts not found at ${indexPath}`,
         );
-        continue;
       }
+    }
 
-      try {
-        logger.info(`Deploying function: ${functionName}`);
+    if (validFunctions.length === 0) {
+      logger.info("No valid functions to deploy");
+      return [];
+    }
 
-        await deploySupabaseFunction({
+    // Deploy all functions in parallel with bundleOnly=true
+    logger.info(`Bundling ${validFunctions.length} functions in parallel...`);
+
+    const deployResults = await Promise.allSettled(
+      validFunctions.map(async (functionName) => {
+        logger.info(`Bundling function: ${functionName}`);
+        const result = await deploySupabaseFunction({
           supabaseProjectId,
+          organizationSlug: supabaseOrganizationSlug,
           functionName,
           appPath,
+          bundleOnly: true,
         });
+        logger.info(`Successfully bundled function: ${functionName}`);
+        return result;
+      }),
+    );
 
-        logger.info(`Successfully deployed function: ${functionName}`);
+    // Collect successful results and errors
+    const successfulDeploys: DeployedFunctionResponse[] = [];
+    for (let i = 0; i < deployResults.length; i++) {
+      const result = deployResults[i];
+      const functionName = validFunctions[i];
+
+      if (result.status === "fulfilled") {
+        successfulDeploys.push(result.value);
+      } else {
+        const errorMessage = `Failed to bundle ${functionName}: ${result.reason?.message || result.reason}`;
+        logger.error(errorMessage, result.reason);
+        errors.push(errorMessage);
+      }
+    }
+
+    // Bulk update all successfully bundled functions to activate them
+    if (successfulDeploys.length > 0) {
+      logger.info(
+        `Activating ${successfulDeploys.length} functions via bulk update...`,
+      );
+      try {
+        await bulkUpdateFunctions({
+          supabaseProjectId,
+          functions: successfulDeploys,
+          organizationSlug: supabaseOrganizationSlug,
+        });
+        logger.info(
+          `Successfully activated ${successfulDeploys.length} functions`,
+        );
       } catch (error: any) {
-        const errorMessage = `Failed to deploy ${functionName}: ${error.message}`;
+        const errorMessage = `Failed to bulk update functions: ${error.message}`;
         logger.error(errorMessage, error);
         errors.push(errorMessage);
       }

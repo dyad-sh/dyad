@@ -78,6 +78,8 @@ import { LexicalChatInput } from "./LexicalChatInput";
 import { useChatModeToggle } from "@/hooks/useChatModeToggle";
 import { VisualEditingChangesDialog } from "@/components/preview_panel/VisualEditingChangesDialog";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
+import { useQueryClient } from "@tanstack/react-query";
+import { TOKEN_COUNT_QUERY_KEY } from "@/hooks/useCountTokens";
 
 const showTokenBarAtom = atom(false);
 
@@ -96,6 +98,11 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const [showTokenBar, setShowTokenBar] = useAtom(showTokenBarAtom);
+  const queryClient = useQueryClient();
+  const toggleShowTokenBar = useCallback(() => {
+    setShowTokenBar((prev) => !prev);
+    queryClient.invalidateQueries({ queryKey: TOKEN_COUNT_QUERY_KEY });
+  }, [setShowTokenBar, queryClient]);
   const [selectedComponents, setSelectedComponents] = useAtom(
     selectedComponentsPreviewAtom,
   );
@@ -301,7 +308,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       )}
       {proposalError && (
         <div className="p-4 text-sm text-red-600">
-          Error loading proposal: {proposalError}
+          Error loading proposal: {proposalError.message}
         </div>
       )}
       <div className="p-4" data-testid="chat-input-container">
@@ -477,7 +484,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
-                    onClick={() => setShowTokenBar(!showTokenBar)}
+                    onClick={toggleShowTokenBar}
                     variant="ghost"
                     className={`has-[>svg]:px-2 ${
                       showTokenBar ? "text-purple-500 bg-purple-100" : ""

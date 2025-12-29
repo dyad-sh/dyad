@@ -43,6 +43,8 @@ export const apps = sqliteTable("apps", {
   // This is only used for display purposes but is NOT used for any actual
   // supabase management logic.
   supabaseParentProjectId: text("supabase_parent_project_id"),
+  // Supabase organization slug for credential lookup
+  supabaseOrganizationSlug: text("supabase_organization_slug"),
   neonProjectId: text("neon_project_id"),
   neonDevelopmentBranchId: text("neon_development_branch_id"),
   neonPreviewBranchId: text("neon_preview_branch_id"),
@@ -87,6 +89,8 @@ export const messages = sqliteTable("messages", {
   requestId: text("request_id"),
   // Max tokens used for this message (only for assistant messages)
   maxTokensUsed: integer("max_tokens_used"),
+  // Model name used for this message (only for assistant messages)
+  model: text("model"),
   // AI SDK messages (v5 envelope) for preserving tool calls/results in agent mode
   aiMessagesJson: text("ai_messages_json", {
     mode: "json",

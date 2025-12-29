@@ -69,6 +69,9 @@ import type {
   CloneRepoParams,
   SupabaseBranch,
   SetSupabaseAppProjectParams,
+  SupabaseOrganizationInfo,
+  SupabaseProject,
+  DeleteSupabaseOrganizationParams,
   SelectNodeFolderResult,
   ApplyVisualEditingChangesParams,
   AnalyseComponentParams,
@@ -76,6 +79,7 @@ import type {
   SetAgentToolConsentParams,
   AgentToolConsentRequestPayload,
   AgentToolConsentResponseParams,
+  TelemetryEventPayload,
 } from "./ipc_types";
 import type { ConsoleEntry } from "../atoms/appAtoms";
 import type { Template } from "../shared/templates";
@@ -132,6 +136,7 @@ export class IpcClient {
   >;
   private mcpConsentHandlers: Map<string, (payload: any) => void>;
   private agentConsentHandlers: Map<string, (payload: any) => void>;
+  private telemetryEventHandlers: Set<(payload: TelemetryEventPayload) => void>;
   // Global handlers called for any chat stream completion (used for cleanup)
   private globalChatStreamEndHandlers: Set<(chatId: number) => void>;
   private constructor() {
@@ -141,6 +146,7 @@ export class IpcClient {
     this.helpStreams = new Map();
     this.mcpConsentHandlers = new Map();
     this.agentConsentHandlers = new Map();
+    this.telemetryEventHandlers = new Set();
     this.globalChatStreamEndHandlers = new Set();
     // Set up listeners for stream events
     this.ipcRenderer.on("chat:response:chunk", (data) => {
@@ -287,6 +293,15 @@ export class IpcClient {
     this.ipcRenderer.on("agent-tool:consent-request", (payload) => {
       const handler = this.agentConsentHandlers.get("consent");
       if (handler) handler(payload);
+    });
+
+    // Telemetry events from main to renderer
+    this.ipcRenderer.on("telemetry:event", (payload) => {
+      if (payload && typeof payload === "object" && "eventName" in payload) {
+        for (const handler of this.telemetryEventHandlers) {
+          handler(payload as TelemetryEventPayload);
+        }
+      }
     });
   }
 
@@ -970,6 +985,20 @@ export class IpcClient {
     };
   }
 
+  /**
+   * Subscribe to telemetry events from the main process.
+   * Used to forward events to PostHog in the renderer.
+   * @returns Unsubscribe function
+   */
+  public onTelemetryEvent(
+    handler: (payload: TelemetryEventPayload) => void,
+  ): () => void {
+    this.telemetryEventHandlers.add(handler);
+    return () => {
+      this.telemetryEventHandlers.delete(handler);
+    };
+  }
+
   // Get proposal details
   public async getProposal(chatId: number): Promise<ProposalResult | null> {
     try {
@@ -1015,12 +1044,29 @@ export class IpcClient {
   // --- End Proposal Management ---
 
   // --- Supabase Management ---
-  public async listSupabaseProjects(): Promise<any[]> {
-    return this.ipcRenderer.invoke("supabase:list-projects");
+
+  // List all connected Supabase organizations
+  public async listSupabaseOrganizations(): Promise<
+    SupabaseOrganizationInfo[]
+  > {
+    return this.ipcRenderer.invoke("supabase:list-organizations");
+  }
+
+  // Delete a Supabase organization connection
+  public async deleteSupabaseOrganization(
+    params: DeleteSupabaseOrganizationParams,
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("supabase:delete-organization", params);
+  }
+
+  // List all projects from all connected organizations
+  public async listAllSupabaseProjects(): Promise<SupabaseProject[]> {
+    return this.ipcRenderer.invoke("supabase:list-all-projects");
   }
 
   public async listSupabaseBranches(params: {
     projectId: string;
+    organizationSlug: string | null;
   }): Promise<SupabaseBranch[]> {
     return this.ipcRenderer.invoke("supabase:list-branches", params);
   }
@@ -1029,6 +1075,7 @@ export class IpcClient {
     projectId: string;
     timestampStart?: number;
     appId: number;
+    organizationSlug: string | null;
   }): Promise<Array<ConsoleEntry>> {
     return this.ipcRenderer.invoke("supabase:get-edge-logs", params);
   }

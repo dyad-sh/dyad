@@ -79,6 +79,9 @@ export async function dryRunSearchReplace({
           error:
             "Unable to apply search-replace to file because: " + result.error,
         });
+        logger.warn(
+          `Unable to apply search-replace to file ${filePath} because: ${result.error}. Original content:\n${original}\n Diff content:\n${tag.content}`,
+        );
         continue;
       }
     } catch (error) {
@@ -182,6 +185,7 @@ export async function processFullResponseActions(
           await executeSupabaseSql({
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
             query: query.content,
+            organizationSlug: chatWithApp.app.supabaseOrganizationSlug ?? null,
           });
 
           // Only write migration file if SQL execution succeeded
@@ -284,6 +288,7 @@ export async function processFullResponseActions(
           await deleteSupabaseFunction({
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
             functionName: extractFunctionNameFromPath(filePath),
+            organizationSlug: chatWithApp.app.supabaseOrganizationSlug ?? null,
           });
         } catch (error) {
           errors.push({
@@ -331,6 +336,7 @@ export async function processFullResponseActions(
           await deleteSupabaseFunction({
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
             functionName: extractFunctionNameFromPath(tag.from),
+            organizationSlug: chatWithApp.app.supabaseOrganizationSlug ?? null,
           });
         } catch (error) {
           warnings.push({
@@ -346,6 +352,7 @@ export async function processFullResponseActions(
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
             functionName: extractFunctionNameFromPath(tag.to),
             appPath,
+            organizationSlug: chatWithApp.app.supabaseOrganizationSlug ?? null,
           });
         } catch (error) {
           errors.push({
@@ -393,6 +400,8 @@ export async function processFullResponseActions(
               supabaseProjectId: chatWithApp.app.supabaseProjectId!,
               functionName: extractFunctionNameFromPath(filePath),
               appPath,
+              organizationSlug:
+                chatWithApp.app.supabaseOrganizationSlug ?? null,
             });
           } catch (error) {
             errors.push({
@@ -463,6 +472,7 @@ export async function processFullResponseActions(
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
             functionName: extractFunctionNameFromPath(filePath),
             appPath,
+            organizationSlug: chatWithApp.app.supabaseOrganizationSlug ?? null,
           });
         } catch (error) {
           errors.push({
@@ -482,6 +492,8 @@ export async function processFullResponseActions(
         const deployErrors = await deployAllSupabaseFunctions({
           appPath,
           supabaseProjectId: chatWithApp.app.supabaseProjectId,
+          supabaseOrganizationSlug:
+            chatWithApp.app.supabaseOrganizationSlug ?? null,
         });
         if (deployErrors.length > 0) {
           for (const err of deployErrors) {

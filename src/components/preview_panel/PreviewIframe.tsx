@@ -28,6 +28,7 @@ import {
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { CopyErrorMessage } from "@/components/CopyErrorMessage";
 import { IpcClient } from "@/ipc/ipc_client";
+import { propagateLog, createLogEntry } from "@/lib/console_log_utils";
 
 import { useParseRouter } from "@/hooks/useParseRouter";
 import {
@@ -128,6 +129,7 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
               isCollapsed ? "" : "rotate-90"
             }`}
           />
+
           {isCollapsed ? getTruncatedError() : error.message}
         </div>
       </div>
@@ -352,19 +354,10 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         const formattedMessage = `[${level.toUpperCase()}] ${args.join(" ")}`;
         const logLevel: "info" | "warn" | "error" =
           level === "error" ? "error" : level === "warn" ? "warn" : "info";
-        const logEntry = {
-          level: logLevel,
-          type: "client" as const,
-          message: formattedMessage,
-          timestamp: Date.now(),
-          appId: selectedAppId!,
-        };
-
-        // Send to central log store
-        IpcClient.getInstance().addLog(logEntry);
-
-        // Also update UI state
-        setConsoleEntries((prev) => [...prev, logEntry]);
+        propagateLog(
+          createLogEntry(logLevel, "client", formattedMessage, selectedAppId!),
+          setConsoleEntries,
+        );
         return;
       }
 
@@ -372,19 +365,15 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       if (event.data?.type === "network-request") {
         const { method, url } = event.data;
         const formattedMessage = `→ ${method} ${url}`;
-        const logEntry = {
-          level: "info" as const,
-          type: "network-requests" as const,
-          message: formattedMessage,
-          timestamp: Date.now(),
-          appId: selectedAppId!,
-        };
-
-        // Send to central log store
-        IpcClient.getInstance().addLog(logEntry);
-
-        // Also update UI state
-        setConsoleEntries((prev) => [...prev, logEntry]);
+        propagateLog(
+          createLogEntry(
+            "info",
+            "network-requests",
+            formattedMessage,
+            selectedAppId!,
+          ),
+          setConsoleEntries,
+        );
         return;
       }
 
@@ -394,19 +383,15 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         const formattedMessage = `[${status}] ${method} ${url} (${duration}ms)`;
         const level: "info" | "warn" | "error" =
           status >= 400 ? "error" : status >= 300 ? "warn" : "info";
-        const logEntry = {
-          level,
-          type: "network-requests" as const,
-          message: formattedMessage,
-          timestamp: Date.now(),
-          appId: selectedAppId!,
-        };
-
-        // Send to central log store
-        IpcClient.getInstance().addLog(logEntry);
-
-        // Also update UI state
-        setConsoleEntries((prev) => [...prev, logEntry]);
+        propagateLog(
+          createLogEntry(
+            level,
+            "network-requests",
+            formattedMessage,
+            selectedAppId!,
+          ),
+          setConsoleEntries,
+        );
         return;
       }
 
@@ -415,19 +400,15 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         const { method, url, status, error, duration } = event.data;
         const statusCode = status && status !== 0 ? `[${status}] ` : "";
         const formattedMessage = `${statusCode}${method} ${url} - ${error} (${duration}ms)`;
-        const logEntry = {
-          level: "error" as const,
-          type: "network-requests" as const,
-          message: formattedMessage,
-          timestamp: Date.now(),
-          appId: selectedAppId!,
-        };
-
-        // Send to central log store
-        IpcClient.getInstance().addLog(logEntry);
-
-        // Also update UI state
-        setConsoleEntries((prev) => [...prev, logEntry]);
+        propagateLog(
+          createLogEntry(
+            "error",
+            "network-requests",
+            formattedMessage,
+            selectedAppId!,
+          ),
+          setConsoleEntries,
+        );
         return;
       }
 
@@ -565,30 +546,28 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         }\nStack trace: ${stack}`;
         console.error("Iframe error:", errorMessage);
         setErrorMessage({ message: errorMessage, source: "preview-app" });
-        setConsoleEntries((prev) => [
-          ...prev,
-          {
-            level: "error",
-            type: "client",
-            message: `Iframe error: ${errorMessage}`,
-            timestamp: Date.now(),
-            appId: selectedAppId!,
-          },
-        ]);
+        propagateLog(
+          createLogEntry(
+            "error",
+            "client",
+            `Iframe error: ${errorMessage}`,
+            selectedAppId!,
+          ),
+          setConsoleEntries,
+        );
       } else if (type === "build-error-report") {
         console.debug(`Build error report: ${payload}`);
         const errorMessage = `${payload?.message} from file ${payload?.file}.\n\nSource code:\n${payload?.frame}`;
         setErrorMessage({ message: errorMessage, source: "preview-app" });
-        setConsoleEntries((prev) => [
-          ...prev,
-          {
-            level: "error",
-            type: "client",
-            message: `Build error report: ${JSON.stringify(payload)}`,
-            timestamp: Date.now(),
-            appId: selectedAppId!,
-          },
-        ]);
+        propagateLog(
+          createLogEntry(
+            "error",
+            "client",
+            `Build error report: ${JSON.stringify(payload)}`,
+            selectedAppId!,
+          ),
+          setConsoleEntries,
+        );
       } else if (type === "pushState" || type === "replaceState") {
         console.debug(`Navigation event: ${type}`, payload);
 

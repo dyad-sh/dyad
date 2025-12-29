@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ToolDefinition, AgentContext } from "./types";
+import { ToolDefinition, AgentContext, escapeXmlContent } from "./types";
 import { db } from "@/db";
 import { chats } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -7,11 +7,6 @@ import { getLogs } from "@/lib/log_store";
 import type { ConsoleEntry } from "@/ipc/ipc_types";
 
 const readLogsSchema = z.object({
-  timeWindow: z
-    .enum(["last-minute", "last-5-minutes", "last-hour", "all"])
-    .optional()
-    .describe("Time range to fetch logs from (default: last-5-minutes)"),
-
   type: z
     .enum([
       "all",
@@ -22,17 +17,14 @@ const readLogsSchema = z.object({
       "build-time",
     ])
     .optional()
-    .describe("Filter by log source type (default: all)"),
+    .describe(
+      "Filter by log source type (default: all). Types: 'client' = browser console logs; 'server' = backend/SSR logs; 'edge-function' = edge function logs; 'network-requests' = HTTP requests and responses (outgoing calls and their responses); 'build-time' = build and bundler output.",
+    ),
 
   level: z
     .enum(["all", "info", "warn", "error"])
     .optional()
     .describe("Filter by log level (default: all)"),
-
-  sourceName: z
-    .string()
-    .optional()
-    .describe("Filter by source name (e.g., specific edge function name)"),
 
   searchTerm: z
     .string()
@@ -47,30 +39,20 @@ const readLogsSchema = z.object({
     .describe("Maximum number of logs to return (default: 50, max: 200)"),
 });
 
-function getTimeCutoff(timeWindow: string): number {
-  const now = Date.now();
-  switch (timeWindow) {
-    case "last-minute":
-      return now - 60 * 1000;
-    case "last-5-minutes":
-      return now - 5 * 60 * 1000;
-    case "last-hour":
-      return now - 60 * 60 * 1000;
-    default:
-      return 0; // "all"
-  }
-}
-
-function truncateMessage(message: string, maxLength: number = 500): string {
+function truncateMessage(message: string, maxLength: number = 1000): string {
   if (message.length <= maxLength) {
     return message;
   }
 
-  // Check if it's a stack trace
-  if (message.includes("at ") && message.includes("\n")) {
-    const lines = message.split("\n");
+  // Check if it's a stack trace (lines starting with "    at " indicate stack frames)
+  const lines = message.split("\n");
+  const hasStackTrace = lines.some((line) => line.startsWith("    at "));
+
+  if (hasStackTrace) {
     const errorMessage = lines[0];
-    const stackFrames = lines.slice(1, 6); // First 5 stack frames
+    const stackFrames = lines
+      .filter((line) => line.startsWith("    at "))
+      .slice(0, 5);
 
     return (
       errorMessage +
@@ -114,29 +96,26 @@ export const readLogsTool: ToolDefinition<z.infer<typeof readLogsSchema>> = {
   inputSchema: readLogsSchema,
   defaultConsent: "always",
 
-  buildXml: (args, isComplete) => {
-    if (!isComplete) return undefined;
-
+  buildXml: (args) => {
     const filters = [];
-    if (args.timeWindow) filters.push(`time="${args.timeWindow}"`);
     if (args.type && args.type !== "all") filters.push(`type="${args.type}"`);
     if (args.level && args.level !== "all")
       filters.push(`level="${args.level}"`);
 
     // Build a descriptive summary of what's being queried
-    const parts: string[] = [];
-    const timeWindow = args.timeWindow || "last-5-minutes";
-    parts.push(`Time: ${timeWindow}`);
+    const parts: string[] = ["Time: last 5 minutes"];
 
     if (args.type && args.type !== "all") parts.push(`Type: ${args.type}`);
     if (args.level && args.level !== "all") parts.push(`Level: ${args.level}`);
-    if (args.sourceName) parts.push(`Source: ${args.sourceName}`);
-    if (args.searchTerm) parts.push(`Search: "${args.searchTerm}"`);
+    if (args.searchTerm)
+      parts.push(`Search: "${escapeXmlContent(args.searchTerm)}"`);
     if (args.limit) parts.push(`Limit: ${args.limit}`);
 
     const summary = parts.join(" | ");
 
-    return `<dyad-read-logs ${filters.join(" ")}>\n${summary}\n</dyad-read-logs>`;
+    return `<dyad-read-logs ${filters.join(" ")}>
+${summary}
+</dyad-read-logs>`;
   },
 
   execute: async (args, ctx: AgentContext) => {
@@ -156,9 +135,8 @@ export const readLogsTool: ToolDefinition<z.infer<typeof readLogsSchema>> = {
       // Get logs directly from central log store (no UI coupling!)
       const allLogs = getLogs(appId);
 
-      // Apply time filter (default: last 5 minutes)
-      const timeWindow = args.timeWindow ?? "last-5-minutes";
-      const cutoff = getTimeCutoff(timeWindow);
+      // Apply time filter (hardcoded: last 5 minutes)
+      const cutoff = Date.now() - 5 * 60 * 1000;
       let filtered = allLogs.filter((log) => log.timestamp >= cutoff);
 
       // Apply type filter
@@ -169,11 +147,6 @@ export const readLogsTool: ToolDefinition<z.infer<typeof readLogsSchema>> = {
       // Apply level filter
       if (args.level && args.level !== "all") {
         filtered = filtered.filter((log) => log.level === args.level);
-      }
-
-      // Apply source name filter
-      if (args.sourceName) {
-        filtered = filtered.filter((log) => log.sourceName === args.sourceName);
       }
 
       // Apply search term filter
@@ -191,12 +164,18 @@ export const readLogsTool: ToolDefinition<z.infer<typeof readLogsSchema>> = {
       const limit = Math.min(args.limit ?? 50, 200);
       filtered = filtered.slice(-limit);
 
-      // Return formatted logs
-      if (filtered.length === 0) {
-        return "No logs found matching the specified filters.";
-      }
+      // Format logs for display
+      const formattedLogs =
+        filtered.length === 0
+          ? "No logs found matching the specified filters."
+          : formatLogsForAI(filtered);
 
-      return formatLogsForAI(filtered);
+      // Output the log results so users can see what the AI receives
+      ctx.onXmlComplete(
+        `<dyad-logs-results count="${filtered.length}">\n${escapeXmlContent(formattedLogs)}\n</dyad-logs-results>`,
+      );
+
+      return formattedLogs;
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);

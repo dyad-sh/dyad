@@ -4,7 +4,7 @@ import { useState } from "react";
 import {
   ChevronsDownUp,
   ChevronsUpDown,
-  ScrollText,
+  FileText,
   Loader,
   CircleX,
 } from "lucide-react";
@@ -14,7 +14,6 @@ import { CustomTagState } from "./stateTypes";
 interface DyadReadLogsProps {
   children?: ReactNode;
   node?: any;
-  time?: string;
   type?: string;
   level?: string;
 }
@@ -22,7 +21,6 @@ interface DyadReadLogsProps {
 export const DyadReadLogs: React.FC<DyadReadLogsProps> = ({
   children,
   node,
-  time,
   type,
   level,
 }) => {
@@ -32,13 +30,11 @@ export const DyadReadLogs: React.FC<DyadReadLogsProps> = ({
   const aborted = state === "aborted";
 
   // Extract filters from node properties or props
-  const timeWindow = time || node?.properties?.time || "last-5-minutes";
   const logType = type || node?.properties?.type || "all";
   const logLevel = level || node?.properties?.level || "all";
 
   // Build filter description
   const filters: string[] = [];
-  if (timeWindow !== "last-5-minutes") filters.push(`time: ${timeWindow}`);
   if (logType !== "all") filters.push(`type: ${logType}`);
   if (logLevel !== "all") filters.push(`level: ${logLevel}`);
 
@@ -49,24 +45,21 @@ export const DyadReadLogs: React.FC<DyadReadLogsProps> = ({
     <div
       className={`bg-(--background-lightest) hover:bg-(--background-lighter) rounded-lg px-4 py-2 border my-2 cursor-pointer ${
         inProgress
-          ? "border-amber-500"
+          ? "border-(--primary)"
           : aborted
             ? "border-red-500"
-            : "border-border"
+            : "border-(--primary)/30"
       }`}
       onClick={() => setIsContentVisible(!isContentVisible)}
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <ScrollText size={16} />
+          <FileText size={16} className="text-(--primary)" />
           <span className="text-gray-700 dark:text-gray-300 font-medium text-sm">
-            <span className="font-bold mr-2 outline-2 outline-gray-200 dark:outline-gray-700 bg-gray-100 dark:bg-gray-800 rounded-md px-1">
-              LOGS
-            </span>
             Reading console logs{filterDescription}
           </span>
           {inProgress && (
-            <div className="flex items-center text-amber-600 text-xs">
+            <div className="flex items-center text-(--primary) text-xs">
               <Loader size={14} className="mr-1 animate-spin" />
               <span>Reading...</span>
             </div>
@@ -82,12 +75,12 @@ export const DyadReadLogs: React.FC<DyadReadLogsProps> = ({
           {isContentVisible ? (
             <ChevronsDownUp
               size={20}
-              className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              className="text-(--primary)/70 hover:text-(--primary)"
             />
           ) : (
             <ChevronsUpDown
               size={20}
-              className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              className="text-(--primary)/70 hover:text-(--primary)"
             />
           )}
         </div>

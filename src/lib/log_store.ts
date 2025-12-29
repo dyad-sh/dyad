@@ -32,28 +32,3 @@ export function addLog(entry: ConsoleEntry): void {
 export function getLogs(appId: number): ConsoleEntry[] {
   return logStore.get(appId) || [];
 }
-
-/**
- * Get all logs across all apps
- */
-export function getAllLogs(): ConsoleEntry[] {
-  const allLogs: ConsoleEntry[] = [];
-  for (const logs of logStore.values()) {
-    allLogs.push(...logs);
-  }
-  return allLogs;
-}
-
-/**
- * Clear logs for a specific app
- */
-export function clearLogs(appId: number): void {
-  logStore.delete(appId);
-}
-
-/**
- * Clear all logs
- */
-export function clearAllLogs(): void {
-  logStore.clear();
-}

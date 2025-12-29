@@ -7,6 +7,7 @@ import { DyadDelete } from "./DyadDelete";
 import { DyadAddDependency } from "./DyadAddDependency";
 import { DyadExecuteSql } from "./DyadExecuteSql";
 import { DyadReadLogs } from "./DyadReadLogs";
+import { DyadLogsResults } from "./DyadLogsResults";
 import { DyadAddIntegration } from "./DyadAddIntegration";
 import { DyadEdit } from "./DyadEdit";
 import { DyadSearchReplace } from "./DyadSearchReplace";
@@ -40,6 +41,7 @@ const DYAD_CUSTOM_TAGS = [
   "dyad-add-dependency",
   "dyad-execute-sql",
   "dyad-read-logs",
+  "dyad-logs-results",
   "dyad-add-integration",
   "dyad-output",
   "dyad-problem-report",
@@ -486,6 +488,19 @@ function renderCustomTag(
         >
           {content}
         </DyadReadLogs>
+      );
+
+    case "dyad-logs-results":
+      return (
+        <DyadLogsResults
+          node={{
+            properties: {
+              count: attributes.count || "",
+            },
+          }}
+        >
+          {content}
+        </DyadLogsResults>
       );
 
     case "dyad-add-integration":

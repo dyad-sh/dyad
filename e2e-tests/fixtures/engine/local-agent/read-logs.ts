@@ -9,7 +9,6 @@ export const fixture: LocalAgentFixture = {
                 {
                     name: "read_logs",
                     args: {
-                        timeWindow: "last-5-minutes",
                         type: "all",
                         level: "all",
                     },
@@ -22,7 +21,6 @@ export const fixture: LocalAgentFixture = {
                 {
                     name: "read_logs",
                     args: {
-                        timeWindow: "last-hour",
                         level: "error",
                         limit: 10,
                     },
@@ -36,7 +34,6 @@ export const fixture: LocalAgentFixture = {
                     name: "read_logs",
                     args: {
                         type: "client",
-                        timeWindow: "last-minute",
                     },
                 },
             ],

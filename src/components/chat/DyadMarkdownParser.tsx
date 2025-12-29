@@ -6,8 +6,7 @@ import { DyadRename } from "./DyadRename";
 import { DyadDelete } from "./DyadDelete";
 import { DyadAddDependency } from "./DyadAddDependency";
 import { DyadExecuteSql } from "./DyadExecuteSql";
-import { DyadReadLogs } from "./DyadReadLogs";
-import { DyadLogsResults } from "./DyadLogsResults";
+import { DyadLogs } from "./DyadLogs";
 import { DyadAddIntegration } from "./DyadAddIntegration";
 import { DyadEdit } from "./DyadEdit";
 import { DyadSearchReplace } from "./DyadSearchReplace";
@@ -476,7 +475,8 @@ function renderCustomTag(
 
     case "dyad-read-logs":
       return (
-        <DyadReadLogs
+        <DyadLogs
+          variant="read-logs"
           node={{
             properties: {
               state: getState({ isStreaming, inProgress }),
@@ -487,12 +487,13 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadReadLogs>
+        </DyadLogs>
       );
 
     case "dyad-logs-results":
       return (
-        <DyadLogsResults
+        <DyadLogs
+          variant="results"
           node={{
             properties: {
               count: attributes.count || "",
@@ -500,7 +501,7 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadLogsResults>
+        </DyadLogs>
       );
 
     case "dyad-add-integration":

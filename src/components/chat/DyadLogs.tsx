@@ -11,52 +11,72 @@ import {
 import { CodeHighlight } from "./CodeHighlight";
 import { CustomTagState } from "./stateTypes";
 
-interface DyadReadLogsProps {
+type LogsVariant = "read-logs" | "results";
+
+interface DyadLogsProps {
   children?: ReactNode;
   node?: any;
+  variant: LogsVariant;
+  // For "read-logs" variant
   type?: string;
   level?: string;
+  // For "results" variant
+  count?: string;
 }
 
-export const DyadReadLogs: React.FC<DyadReadLogsProps> = ({
+export const DyadLogs: React.FC<DyadLogsProps> = ({
   children,
   node,
+  variant,
   type,
   level,
+  count,
 }) => {
   const [isContentVisible, setIsContentVisible] = useState(false);
+
+  // State handling (only for read-logs variant)
   const state = node?.properties?.state as CustomTagState;
-  const inProgress = state === "pending";
-  const aborted = state === "aborted";
+  const inProgress = variant === "read-logs" && state === "pending";
+  const aborted = variant === "read-logs" && state === "aborted";
 
-  // Extract filters from node properties or props
-  const logType = type || node?.properties?.type || "all";
-  const logLevel = level || node?.properties?.level || "all";
+  // Build description based on variant
+  let description = "";
+  if (variant === "read-logs") {
+    const logType = type || node?.properties?.type || "all";
+    const logLevel = level || node?.properties?.level || "all";
+    const filters: string[] = [];
+    if (logType !== "all") filters.push(`type: ${logType}`);
+    if (logLevel !== "all") filters.push(`level: ${logLevel}`);
+    description = filters.length > 0 ? ` (${filters.join(", ")})` : "";
+  } else {
+    const logCount = count || node?.properties?.count || "";
+    description = logCount ? ` (${logCount} logs)` : "";
+  }
 
-  // Build filter description
-  const filters: string[] = [];
-  if (logType !== "all") filters.push(`type: ${logType}`);
-  if (logLevel !== "all") filters.push(`level: ${logLevel}`);
-
-  const filterDescription =
-    filters.length > 0 ? ` (${filters.join(", ")})` : "";
+  // Dynamic border styling
+  const borderClass = inProgress
+    ? "border-(--primary)"
+    : aborted
+      ? "border-red-500"
+      : "border-(--primary)/30";
 
   return (
     <div
-      className={`bg-(--background-lightest) hover:bg-(--background-lighter) rounded-lg px-4 py-2 border my-2 cursor-pointer ${
-        inProgress
-          ? "border-(--primary)"
-          : aborted
-            ? "border-red-500"
-            : "border-(--primary)/30"
-      }`}
+      className={`bg-(--background-lightest) hover:bg-(--background-lighter) rounded-lg px-4 py-2 border my-2 cursor-pointer ${borderClass}`}
       onClick={() => setIsContentVisible(!isContentVisible)}
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <FileText size={16} className="text-(--primary)" />
           <span className="text-gray-700 dark:text-gray-300 font-medium text-sm">
-            Reading console logs{filterDescription}
+            {variant === "results" && (
+              <span className="font-bold mr-2 outline-2 outline-(--primary)/20 bg-(--primary)/10 text-(--primary) rounded-md px-1">
+                LOGS
+              </span>
+            )}
+            {variant === "read-logs"
+              ? `Reading console logs${description}`
+              : `Console logs Results${description}`}
           </span>
           {inProgress && (
             <div className="flex items-center text-(--primary) text-xs">
@@ -86,7 +106,7 @@ export const DyadReadLogs: React.FC<DyadReadLogsProps> = ({
         </div>
       </div>
       {isContentVisible && (
-        <div className="text-xs">
+        <div className={`text-xs${variant === "results" ? " mt-2" : ""}`}>
           <CodeHighlight className="language-log">{children}</CodeHighlight>
         </div>
       )}

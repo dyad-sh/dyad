@@ -81,18 +81,16 @@ export class MakerAppImage extends MakerBase<{}> {
       // Generate .desktop file
       // See: https://docs.appimage.org/reference/desktop-integration.html#desktop-files
       // Also: https://specifications.freedesktop.org/desktop-entry/latest/recognized-keys.html
-      const desktopFile = `
-        [Desktop Entry]
-        Type=Application
-        Version=1.5
-        Name=${appName}
-        Exec=AppRun %U
-        X-AppImage-Name=${appName}
-        X-AppImage-Version=${version}
-        X-AppImage-Arch=x86_64
-      `
-        .replaceAll(/\n[ \t]+|[ \t]+\n/g, "\n") // Remove excess ws; only necessary due to string formatting aesthetics
-        .trim();
+      const desktopFile = [
+        "[Desktop Entry]",
+        "Type=Application",
+        "Version=1.5",
+        `Name=${appName}`,
+        "Exec=AppRun %U",
+        `X-AppImage-Name=${appName}`,
+        `X-AppImage-Version=${version}`,
+        "X-AppImage-Arch=x86_64",
+      ].join("\n");
 
       await writeFile(resolve(appDir, `${appName}.desktop`), desktopFile);
 

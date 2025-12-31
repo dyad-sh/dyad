@@ -45,7 +45,14 @@ export class MakerAppImage extends MakerBase<{}> {
     const outputFilePath = resolve(outputDir, exeName);
 
     // Fetch AppImage runtime
-    const runtime = await fetch(RUNTIME_URL).then((res) => res.bytes());
+    const res = await fetch(RUNTIME_URL);
+
+    if (!res.ok)
+      throw new Error(
+        `Could not fetch AppImage runtime: ${res.status} ${res.statusText}`,
+      );
+
+    const runtime = await res.bytes();
 
     // Create directory structure of AppDir.
     // For conventions, see: https://docs.appimage.org/reference/appdir.html#conventions

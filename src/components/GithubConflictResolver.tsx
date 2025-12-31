@@ -225,26 +225,18 @@ The full file content is attached. Review the entire file and resolve all confli
   const handleManualResolve = async () => {
     setIsManualResolving(true);
     try {
-      const result = await IpcClient.getInstance().resolveGithubConflict(
+      const resolution = await IpcClient.getInstance().resolveGithubConflict(
         appId,
         currentFile,
       );
 
-      if (!result.success || !result.resolution) {
-        throw new Error(result.error || "Failed to resolve conflict");
-      }
-
-      await IpcClient.getInstance().editAppFile(
-        appId,
-        currentFile,
-        result.resolution,
-      );
+      await IpcClient.getInstance().editAppFile(appId, currentFile, resolution);
 
       setAiResolution(null);
       setAiMessageId(null);
-      setFileContent(result.resolution);
-      setResolvedContentOverride(result.resolution);
-      setLatestContent(result.resolution);
+      setFileContent(resolution);
+      setResolvedContentOverride(resolution);
+      setLatestContent(resolution);
       showSuccess("Applied manual conflict resolution");
 
       // Move to next conflict or finish if this was the last one

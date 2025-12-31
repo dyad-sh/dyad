@@ -128,18 +128,19 @@ function ConnectedGitHubConnector({
         } else {
           if (result.isConflict) {
             // Fetch the actual conflicts
-            const conflictsResult =
-              await IpcClient.getInstance().getGithubMergeConflicts(appId);
-            if (
-              conflictsResult.success &&
-              conflictsResult.conflicts &&
-              conflictsResult.conflicts.length > 0
-            ) {
-              setConflicts(conflictsResult.conflicts);
-              setSyncError(
-                "Merge conflicts detected. Please resolve them below.",
-              );
-              return;
+            try {
+              const conflicts =
+                await IpcClient.getInstance().getGithubMergeConflicts(appId);
+              if (conflicts.length > 0) {
+                setConflicts(conflicts);
+                setSyncError(
+                  "Merge conflicts detected. Please resolve them below.",
+                );
+                return;
+              }
+            } catch (error) {
+              // If we can't get conflicts, still show the error
+              console.error("Failed to get merge conflicts:", error);
             }
           }
 
@@ -389,17 +390,9 @@ function ConnectedGitHubConnector({
           conflicts={conflicts}
           onResolve={async () => {
             try {
-              const result =
-                await IpcClient.getInstance().completeGithubMerge(appId);
-              if (result.success) {
-                setConflicts([]);
-                showSuccess("All conflicts resolved successfully.");
-              } else {
-                showError(
-                  result.error ||
-                    "Failed to complete operation. Please try resolving manually.",
-                );
-              }
+              await IpcClient.getInstance().completeGithubMerge(appId);
+              setConflicts([]);
+              showSuccess("All conflicts resolved successfully.");
             } catch (error: any) {
               showError(
                 error.message ||

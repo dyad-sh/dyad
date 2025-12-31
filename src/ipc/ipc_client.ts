@@ -868,10 +868,8 @@ export class IpcClient {
     await this.ipcRenderer.invoke("github:pull", { appId });
   }
 
-  public async fetchGithubRepo(
-    appId: number,
-  ): Promise<{ success: boolean; error?: string }> {
-    return this.ipcRenderer.invoke("github:fetch", { appId });
+  public async fetchGithubRepo(appId: number): Promise<void> {
+    await this.ipcRenderer.invoke("github:fetch", { appId });
   }
 
   public async createGithubBranch(
@@ -916,9 +914,7 @@ export class IpcClient {
     await this.ipcRenderer.invoke("github:merge-branch", { appId, branch });
   }
 
-  public async getGithubMergeConflicts(
-    appId: number,
-  ): Promise<{ success: boolean; conflicts?: string[]; error?: string }> {
+  public async getGithubMergeConflicts(appId: number): Promise<string[]> {
     return this.ipcRenderer.invoke("github:get-conflicts", { appId });
   }
 
@@ -930,16 +926,14 @@ export class IpcClient {
   public async resolveGithubConflict(
     appId: number,
     filePath: string,
-  ): Promise<{ success: boolean; resolution?: string; error?: string }> {
+  ): Promise<string> {
     return this.ipcRenderer.invoke("github:resolve-conflict", {
       appId,
       file: filePath,
     });
   }
 
-  public async completeGithubMerge(
-    appId: number,
-  ): Promise<{ success: boolean; commitHash?: string; error?: string }> {
+  public async completeGithubMerge(appId: number): Promise<string | undefined> {
     return this.ipcRenderer.invoke("github:complete-merge", { appId });
   }
 

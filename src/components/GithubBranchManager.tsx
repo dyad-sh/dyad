@@ -215,18 +215,21 @@ export function GithubBranchManager({
         if (isMergeInProgress(errorMessage)) {
           // Check if there are unresolved conflicts - if so, show a more helpful message
           // If checking fails, proceed to abort anyway
-          const conflictsResult = await IpcClient.getInstance()
-            .getGithubMergeConflicts(appId)
-            .catch(() => ({ success: false, conflicts: [] }));
-          if (
-            conflictsResult.success &&
-            conflictsResult.conflicts &&
-            conflictsResult.conflicts.length > 0
-          ) {
-            showError(
-              `Cannot switch branches: merge in progress with ${conflictsResult.conflicts.length} unresolved conflict(s). Please resolve all conflicts and complete the merge, or abort it first.`,
+          try {
+            const conflicts =
+              await IpcClient.getInstance().getGithubMergeConflicts(appId);
+            if (conflicts.length > 0) {
+              showError(
+                `Cannot switch branches: merge in progress with ${conflicts.length} unresolved conflict(s). Please resolve all conflicts and complete the merge, or abort it first.`,
+              );
+              return;
+            }
+          } catch (error) {
+            // If we can't get conflicts, proceed to abort anyway
+            console.debug(
+              "Failed to get merge conflicts, proceeding to abort:",
+              error,
             );
-            return;
           }
 
           // No conflicts or couldn't check - offer to abort the merge
@@ -320,21 +323,16 @@ export function GithubBranchManager({
         showInfo("Merge conflict detected. Please resolve below.");
         // Show conflicts dialog
         try {
-          const conflictsResult =
+          const conflicts =
             await IpcClient.getInstance().getGithubMergeConflicts(appId);
 
-          if (
-            conflictsResult.success &&
-            conflictsResult.conflicts &&
-            conflictsResult.conflicts.length > 0
-          ) {
-            setConflicts(conflictsResult.conflicts);
+          if (conflicts.length > 0) {
+            setConflicts(conflicts);
             return;
           }
           setConflicts([]);
           showError(
-            conflictsResult.error ||
-              "Merge conflict detected, but no conflicting files were returned. Please check git status and try again.",
+            "Merge conflict detected, but no conflicting files were returned. Please check git status and try again.",
           );
         } catch (fetchError: any) {
           setConflicts([]);
@@ -579,19 +577,11 @@ export function GithubBranchManager({
             // Clear conflicts immediately to close the dialog
             // All conflicts have been resolved at this point
             try {
-              const result =
-                await IpcClient.getInstance().completeGithubMerge(appId);
-              if (result.success) {
-                setConflicts([]);
-                showSuccess("All conflicts resolved successfully.");
-                await loadBranches(); // Refresh branches after merge/rebase
-                onBranchChange?.(); // Notify parent of branch change
-              } else {
-                showError(
-                  result.error ||
-                    "Failed to complete operation. Please try resolving manually.",
-                );
-              }
+              await IpcClient.getInstance().completeGithubMerge(appId);
+              setConflicts([]);
+              showSuccess("All conflicts resolved successfully.");
+              await loadBranches(); // Refresh branches after merge/rebase
+              onBranchChange?.(); // Notify parent of branch change
             } catch (error: any) {
               showError(
                 error.message ||

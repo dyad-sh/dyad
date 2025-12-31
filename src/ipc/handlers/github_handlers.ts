@@ -868,31 +868,23 @@ async function handleContinueRebase(
 async function handleFetchFromGithub(
   event: IpcMainInvokeEvent,
   { appId }: { appId: number },
-) {
-  try {
-    const settings = readSettings();
-    const accessToken = settings.githubAccessToken?.value;
-    if (!accessToken) {
-      return { success: false, error: "Not authenticated with GitHub." };
-    }
-    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-    if (!app || !app.githubOrg || !app.githubRepo) {
-      return { success: false, error: "App is not linked to a GitHub repo." };
-    }
-    const appPath = getDyadAppPath(app.path);
-
-    await gitFetch({
-      path: appPath,
-      remote: "origin",
-      accessToken,
-    });
-    return { success: true };
-  } catch (err: any) {
-    return {
-      success: false,
-      error: err.message || "Failed to fetch from GitHub.",
-    };
+): Promise<void> {
+  const settings = readSettings();
+  const accessToken = settings.githubAccessToken?.value;
+  if (!accessToken) {
+    throw new Error("Not authenticated with GitHub.");
   }
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app || !app.githubOrg || !app.githubRepo) {
+    throw new Error("App is not linked to a GitHub repo.");
+  }
+  const appPath = getDyadAppPath(app.path);
+
+  await gitFetch({
+    path: appPath,
+    remote: "origin",
+    accessToken,
+  });
 }
 
 // --- GitHub Branch Handlers ---
@@ -1423,59 +1415,48 @@ export function registerGithubHandlers() {
 async function handleGetMergeConflicts(
   event: IpcMainInvokeEvent,
   { appId }: { appId: number },
-) {
-  try {
-    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-    if (!app) throw new Error("App not found");
-    const appPath = getDyadAppPath(app.path);
+): Promise<string[]> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
 
-    const conflicts = await gitGetMergeConflicts({ path: appPath });
-    return { success: true, conflicts };
-  } catch (err: any) {
-    return { success: false, error: err.message || "Failed to get conflicts." };
-  }
+  const conflicts = await gitGetMergeConflicts({ path: appPath });
+  return conflicts;
 }
 
 async function handleResolveConflict(
   event: IpcMainInvokeEvent,
   { appId, file }: { appId: number; file: string },
-) {
-  try {
-    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-    if (!app) {
-      throw new Error("App not found");
-    }
-
-    const appPath = getDyadAppPath(app.path);
-    const filePath = path.join(appPath, file);
-    // Prevent path traversal attacks
-    const resolvedPath = path.resolve(filePath);
-    const resolvedAppPath = path.resolve(appPath);
-    if (!resolvedPath.startsWith(resolvedAppPath + path.sep)) {
-      throw new Error("Invalid file path");
-    }
-
-    if (!fs.existsSync(filePath)) {
-      throw new Error("File not found");
-    }
-
-    const content = fs.readFileSync(filePath, "utf-8");
-    // Normalize Windows CRLF to LF so the regex matches reliably
-    const normalized = content.replace(/\r\n/g, "\n");
-
-    // Prefer local (HEAD) changes in conflict blocks.
-    const resolution = normalized.replace(
-      /<<<<<<< HEAD\n([\s\S]*?)=======\n([\s\S]*?)>>>>>>> .*?\n/g,
-      (_match, headContent) => headContent,
-    );
-
-    return { success: true, resolution };
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to resolve conflict.";
-
-    return { success: false, error: message };
+): Promise<string> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) {
+    throw new Error("App not found");
   }
+
+  const appPath = getDyadAppPath(app.path);
+  const filePath = path.join(appPath, file);
+  // Prevent path traversal attacks
+  const resolvedPath = path.resolve(filePath);
+  const resolvedAppPath = path.resolve(appPath);
+  if (!resolvedPath.startsWith(resolvedAppPath + path.sep)) {
+    throw new Error("Invalid file path");
+  }
+
+  if (!fs.existsSync(filePath)) {
+    throw new Error("File not found");
+  }
+
+  const content = fs.readFileSync(filePath, "utf-8");
+  // Normalize Windows CRLF to LF so the regex matches reliably
+  const normalized = content.replace(/\r\n/g, "\n");
+
+  // Prefer local (HEAD) changes in conflict blocks.
+  const resolution = normalized.replace(
+    /<<<<<<< HEAD\n([\s\S]*?)=======\n([\s\S]*?)>>>>>>> .*?\n/g,
+    (_match, headContent) => headContent,
+  );
+
+  return resolution;
 }
 
 export async function updateAppGithubRepo({
@@ -1502,89 +1483,78 @@ export async function updateAppGithubRepo({
 async function handleCompleteMerge(
   event: IpcMainInvokeEvent,
   { appId }: { appId: number },
-) {
+): Promise<string | undefined> {
   // Use withLock to serialize Git operations and prevent lock file conflicts
   return withLock(appId, async () => {
-    try {
-      const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-      if (!app) {
-        throw new Error("App not found");
-      }
+    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+    if (!app) {
+      throw new Error("App not found");
+    }
 
-      const appPath = getDyadAppPath(app.path);
+    const appPath = getDyadAppPath(app.path);
 
-      // Check if we're in a rebase state (this takes precedence over merge)
-      const rebaseInProgress = isGitRebaseInProgress({ path: appPath });
+    // Check if we're in a rebase state (this takes precedence over merge)
+    const rebaseInProgress = isGitRebaseInProgress({ path: appPath });
 
-      // Check if we're in a merge state
-      const mergeHeadPath = path.join(appPath, ".git", "MERGE_HEAD");
-      const mergeInProgress = fs.existsSync(mergeHeadPath);
+    // Check if we're in a merge state
+    const mergeHeadPath = path.join(appPath, ".git", "MERGE_HEAD");
+    const mergeInProgress = fs.existsSync(mergeHeadPath);
 
-      if (!rebaseInProgress && !mergeInProgress) {
-        // Not in a merge or rebase state - this shouldn't happen, but we'll handle it gracefully
-        logger.warn(
-          "[GitHub Handler] Complete merge called but no merge or rebase in progress",
-        );
-        // Still stage and commit any changes (might be leftover from aborted merge/rebase)
-        await gitAddAll({ path: appPath });
-        const commitHash = await gitCommit({
-          path: appPath,
-          message: "Commit resolved changes",
-        });
-        return { success: true, commitHash };
-      }
-
-      // Handle rebase vs merge differently
-      if (rebaseInProgress) {
-        // Rebase continuation requires native Git. Check this BEFORE attempting conflict detection
-        // to provide a user-friendly error message instead of a generic conflict detection error.
-        const settings = readSettings();
-        if (!settings.enableNativeGit) {
-          return {
-            success: false,
-            error:
-              "Cannot complete rebase because native Git is disabled. Enable native Git in settings to continue.",
-          };
-        }
-      }
-
-      // Check for unresolved conflicts BEFORE staging. Staging can clear unmerged state,
-      // so we must detect conflicts prior to adding files.
-      // Note: For rebase, we've already checked native Git above, so this won't throw unexpectedly.
-      const conflicts = await gitGetMergeConflicts({ path: appPath });
-      if (conflicts.length > 0) {
-        const operation = rebaseInProgress ? "rebase" : "merge";
-        return {
-          success: false,
-          error: `Cannot complete ${operation}: ${conflicts.length} file(s) still have conflicts.`,
-        };
-      }
-
-      // With no conflicts reported, stage all changes to proceed with merge/rebase completion.
+    if (!rebaseInProgress && !mergeInProgress) {
+      // Not in a merge or rebase state - this shouldn't happen, but we'll handle it gracefully
+      logger.warn(
+        "[GitHub Handler] Complete merge called but no merge or rebase in progress",
+      );
+      // Still stage and commit any changes (might be leftover from aborted merge/rebase)
       await gitAddAll({ path: appPath });
+      const commitHash = await gitCommit({
+        path: appPath,
+        message: "Commit resolved changes",
+      });
+      return commitHash;
+    }
 
-      // Handle rebase vs merge differently
-      if (rebaseInProgress) {
-        // For rebase conflicts, use `git rebase --continue` instead of `git commit`
-        // This is critical - using `git commit` during a rebase would create duplicate commits
-        // and leave the repository in a broken state
-        // Note: Native Git check was already performed above before conflict detection
-        await gitRebaseContinue({ path: appPath });
-        return { success: true };
-      } else {
-        // For merge conflicts, commit to complete the merge
-        const commitHash = await gitCommit({
-          path: appPath,
-          message: "Merge: resolve conflicts",
-        });
-        return { success: true, commitHash };
+    // Handle rebase vs merge differently
+    if (rebaseInProgress) {
+      // Rebase continuation requires native Git. Check this BEFORE attempting conflict detection
+      // to provide a user-friendly error message instead of a generic conflict detection error.
+      const settings = readSettings();
+      if (!settings.enableNativeGit) {
+        throw new Error(
+          "Cannot complete rebase because native Git is disabled. Enable native Git in settings to continue.",
+        );
       }
-    } catch (err: any) {
-      const errorMessage = err?.message || "Failed to complete merge.";
-      return {
-        success: false,
-        error: errorMessage,
-      };
+    }
+
+    // Check for unresolved conflicts BEFORE staging. Staging can clear unmerged state,
+    // so we must detect conflicts prior to adding files.
+    // Note: For rebase, we've already checked native Git above, so this won't throw unexpectedly.
+    const conflicts = await gitGetMergeConflicts({ path: appPath });
+    if (conflicts.length > 0) {
+      const operation = rebaseInProgress ? "rebase" : "merge";
+      throw new Error(
+        `Cannot complete ${operation}: ${conflicts.length} file(s) still have conflicts.`,
+      );
+    }
+
+    // With no conflicts reported, stage all changes to proceed with merge/rebase completion.
+    await gitAddAll({ path: appPath });
+
+    // Handle rebase vs merge differently
+    if (rebaseInProgress) {
+      // For rebase conflicts, use `git rebase --continue` instead of `git commit`
+      // This is critical - using `git commit` during a rebase would create duplicate commits
+      // and leave the repository in a broken state
+      // Note: Native Git check was already performed above before conflict detection
+      await gitRebaseContinue({ path: appPath });
+      return undefined; // Rebase doesn't create a new commit, so no commitHash
+    } else {
+      // For merge conflicts, commit to complete the merge
+      const commitHash = await gitCommit({
+        path: appPath,
+        message: "Merge: resolve conflicts",
+      });
+      return commitHash;
     }
   });
 }

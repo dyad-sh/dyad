@@ -22,6 +22,11 @@ import type {
   GitInitParams,
   GitPushParams,
   GitCommit,
+  GitFetchParams,
+  GitPullParams,
+  GitMergeParams,
+  GitCreateBranchParams,
+  GitDeleteBranchParams,
 } from "../git_types";
 
 /**
@@ -531,43 +536,90 @@ export async function gitPush({
   branch,
   accessToken,
   force,
+  forceWithLease,
 }: GitPushParams): Promise<void> {
   const settings = readSettings();
+  const targetBranch = branch || "main";
 
   if (settings.enableNativeGit) {
-    // Dugite version
     try {
-      // Push using the configured origin remote (which already has auth in URL)
-      const args = ["push", "origin", `main:${branch}`];
-      if (force) {
+      const args = ["push", "origin", `${targetBranch}:${targetBranch}`];
+      if (forceWithLease) {
+        args.push("--force-with-lease");
+      } else if (force) {
         args.push("--force");
       }
       const result = await exec(args, path);
-
       if (result.exitCode !== 0) {
         const errorMsg = result.stderr.toString() || result.stdout.toString();
         throw new Error(`Git push failed: ${errorMsg}`);
       }
+      return;
     } catch (error: any) {
       logger.error("Error during git push:", error);
       throw new Error(`Git push failed: ${error.message}`);
     }
-  } else {
-    // isomorphic-git version
-    await git.push({
-      fs,
-      http,
-      dir: path,
-      remote: "origin",
-      ref: "main",
-      remoteRef: branch,
-      onAuth: () => ({
-        username: accessToken,
-        password: "x-oauth-basic",
-      }),
-      force: !!force,
-    });
   }
+
+  // isomorphic-git cannot provide "force-with-lease" safety guarantees.
+  if (forceWithLease) {
+    throw new Error(
+      "gitPush: 'forceWithLease' is not supported when native git is disabled. " +
+        "Falling back to plain force could overwrite remote commits. Enable native git or use 'force' explicitly.",
+    );
+  }
+  await git.push({
+    fs,
+    http,
+    dir: path,
+    remote: "origin",
+    ref: targetBranch,
+    remoteRef: targetBranch,
+    onAuth: () => ({
+      username: accessToken,
+      password: "x-oauth-basic",
+    }),
+    force: !!force,
+  });
+}
+
+export async function gitRebaseAbort({ path }: GitBaseParams): Promise<void> {
+  const settings = readSettings();
+  if (!settings.enableNativeGit) {
+    throw new Error(
+      "Rebase controls require native Git. Enable native Git in settings.",
+    );
+  }
+
+  await execOrThrow(["rebase", "--abort"], path, "Failed to abort rebase");
+}
+
+export async function gitRebaseContinue({
+  path,
+}: GitBaseParams): Promise<void> {
+  const settings = readSettings();
+  if (!settings.enableNativeGit) {
+    throw new Error(
+      "Rebase controls require native Git. Enable native Git in settings.",
+    );
+  }
+
+  await execOrThrow(
+    ["rebase", "--continue"],
+    path,
+    "Failed to continue rebase. Make sure conflicts are resolved and changes are staged.",
+  );
+}
+
+export async function gitMergeAbort({ path }: GitBaseParams): Promise<void> {
+  const settings = readSettings();
+  if (!settings.enableNativeGit) {
+    throw new Error(
+      "Merge abort requires native Git. Enable native Git in settings.",
+    );
+  }
+
+  await execOrThrow(["merge", "--abort"], path, "Failed to abort merge");
 }
 
 export async function gitCurrentBranch({
@@ -694,4 +746,212 @@ export async function gitLogNative(
   }
 
   return entries;
+}
+
+export async function gitFetch({
+  path,
+  remote = "origin",
+  accessToken,
+}: GitFetchParams): Promise<void> {
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    await execOrThrow(["fetch", remote], path, "Failed to fetch from remote");
+  } else {
+    await git.fetch({
+      fs,
+      http,
+      dir: path,
+      remote,
+      onAuth: accessToken
+        ? () => ({
+            username: accessToken,
+            password: "x-oauth-basic",
+          })
+        : undefined,
+    });
+  }
+}
+
+export async function gitPull({
+  path,
+  remote = "origin",
+  branch = "main",
+  accessToken,
+  author,
+}: GitPullParams): Promise<void> {
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    const args = ["pull", remote, branch];
+    await execOrThrow(args, path, "Failed to pull from remote");
+    return;
+  }
+  await git.pull({
+    fs,
+    http,
+    dir: path,
+    remote,
+    ref: branch,
+    singleBranch: true,
+    author: author || (await getGitAuthor()),
+    onAuth: accessToken
+      ? () => ({
+          username: accessToken,
+          password: "x-oauth-basic",
+        })
+      : undefined,
+  });
+}
+
+export async function gitMerge({
+  path,
+  branch,
+  author,
+}: GitMergeParams): Promise<void> {
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    await execOrThrow(
+      ["merge", branch],
+      path,
+      `Failed to merge branch ${branch}`,
+    );
+  } else {
+    await git.merge({
+      fs,
+      dir: path,
+      ours: "HEAD",
+      theirs: branch,
+      author: author || (await getGitAuthor()),
+    });
+  }
+}
+
+export async function gitCreateBranch({
+  path,
+  branch,
+  from = "HEAD",
+}: GitCreateBranchParams): Promise<void> {
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    await execOrThrow(
+      ["branch", branch, from],
+      path,
+      `Failed to create branch ${branch}`,
+    );
+    return;
+  }
+  // isomorphic-git: branch creation uses the current HEAD; it does not honor "from"
+  // in the same way as native `git branch <name> <from>`.
+  if (from !== "HEAD") {
+    throw new Error(
+      `gitCreateBranch: 'from' is not supported when native git is disabled (from=${from}). ` +
+        `Branches would be created from HEAD instead.`,
+    );
+  }
+  await git.branch({
+    fs,
+    dir: path,
+    ref: branch,
+    checkout: false,
+  });
+}
+
+export async function gitDeleteBranch({
+  path,
+  branch,
+}: GitDeleteBranchParams): Promise<void> {
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    await execOrThrow(
+      ["branch", "-D", branch],
+      path,
+      `Failed to delete branch ${branch}`,
+    );
+  } else {
+    await git.deleteBranch({
+      fs,
+      dir: path,
+      ref: branch,
+    });
+  }
+}
+
+export async function gitGetMergeConflicts({
+  path,
+}: GitBaseParams): Promise<string[]> {
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    // git diff --name-only --diff-filter=U
+    const result = (await exec(
+      ["diff", "--name-only", "--diff-filter=U"],
+      path,
+    )) as unknown as {
+      stdout: string;
+      stderr: string;
+      exitCode: number;
+    };
+    if (result.exitCode !== 0) {
+      throw new Error(`Failed to get merge conflicts: ${result.stderr}`);
+    }
+    return result.stdout
+      .toString()
+      .split("\n")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+  }
+  //throw error("gitGetMergeConflicts requires native Git. Enable native Git in settings.");
+  throw new Error(
+    "Git conflict detection requires native Git. Enable native Git in settings.",
+  );
+}
+
+/**
+ * Check if Git is currently in a merge or rebase state.
+ * This is important because commits are not allowed during merge/rebase
+ * if there are still unmerged files.
+ */
+export function isGitMergeOrRebaseInProgress({ path }: GitBaseParams): boolean {
+  const gitDir = pathModule.join(path, ".git");
+
+  // Check for merge in progress
+  const mergeHeadPath = pathModule.join(gitDir, "MERGE_HEAD");
+  if (fs.existsSync(mergeHeadPath)) {
+    return true;
+  }
+
+  // Check for rebase in progress
+  const rebaseHeadPath = pathModule.join(gitDir, "REBASE_HEAD");
+  if (fs.existsSync(rebaseHeadPath)) {
+    return true;
+  }
+
+  // Check for rebase-apply or rebase-merge directories
+  const rebaseApplyPath = pathModule.join(gitDir, "rebase-apply");
+  const rebaseMergePath = pathModule.join(gitDir, "rebase-merge");
+  if (fs.existsSync(rebaseApplyPath) || fs.existsSync(rebaseMergePath)) {
+    return true;
+  }
+
+  return false;
+}
+/**
+ * Check if Git is currently in a rebase state (not a merge).
+ * This is used to determine whether to use `git rebase --continue`
+ * or `git commit` when completing conflict resolution.
+ */
+export function isGitRebaseInProgress({ path }: GitBaseParams): boolean {
+  const gitDir = pathModule.join(path, ".git");
+
+  // Check for rebase in progress via REBASE_HEAD
+  const rebaseHeadPath = pathModule.join(gitDir, "REBASE_HEAD");
+  if (fs.existsSync(rebaseHeadPath)) {
+    return true;
+  }
+
+  // Check for rebase-apply or rebase-merge directories
+  const rebaseApplyPath = pathModule.join(gitDir, "rebase-apply");
+  const rebaseMergePath = pathModule.join(gitDir, "rebase-merge");
+  if (fs.existsSync(rebaseApplyPath) || fs.existsSync(rebaseMergePath)) {
+    return true;
+  }
+  return false;
 }

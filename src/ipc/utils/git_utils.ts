@@ -611,6 +611,27 @@ export async function gitRebaseContinue({
   );
 }
 
+export async function gitRebase({
+  path,
+  branch,
+}: {
+  path: string;
+  branch: string;
+}): Promise<void> {
+  const settings = readSettings();
+  if (!settings.enableNativeGit) {
+    throw new Error(
+      "Rebase requires native Git. Enable native Git in settings.",
+    );
+  }
+
+  await execOrThrow(
+    ["rebase", `origin/${branch}`],
+    path,
+    `Failed to rebase onto origin/${branch}. Make sure you have a clean working directory and the remote branch exists.`,
+  );
+}
+
 export async function gitMergeAbort({ path }: GitBaseParams): Promise<void> {
   const settings = readSettings();
   if (!settings.enableNativeGit) {

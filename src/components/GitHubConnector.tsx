@@ -87,6 +87,9 @@ function ConnectedGitHubConnector({
   >(null);
   const [rebaseInProgress, setRebaseInProgress] = useState(false);
   const autoSyncTriggeredRef = useRef(false);
+  const prevHandleSyncRef = useRef<
+    ((options?: GithubSyncOptions) => Promise<void>) | null
+  >(null);
 
   const handleDisconnectRepo = async () => {
     setIsDisconnecting(true);
@@ -104,7 +107,6 @@ function ConnectedGitHubConnector({
   const handleSyncToGithub = useCallback(
     async ({
       force = false,
-      rebase = false,
       forceWithLease = false,
     }: GithubSyncOptions = {}) => {
       setIsSyncing(true);
@@ -113,16 +115,17 @@ function ConnectedGitHubConnector({
       setShowForceDialog(false);
       setRebaseStatusMessage(null);
       setRebaseInProgress(false);
+      setConflicts([]); // Clear conflicts when starting a new sync
 
       try {
         const result = await IpcClient.getInstance().syncGithubRepo(appId, {
           force,
-          rebase,
           forceWithLease,
         });
         if (result.success) {
           setSyncSuccess(true);
           setRebaseInProgress(false);
+          setConflicts([]); // Clear conflicts on successful sync
         } else {
           if (result.isConflict) {
             // Fetch the actual conflicts
@@ -209,7 +212,6 @@ function ConnectedGitHubConnector({
     try {
       await handleSyncToGithub({
         force: false,
-        rebase: false,
         forceWithLease: true,
       });
     } finally {
@@ -217,8 +219,37 @@ function ConnectedGitHubConnector({
     }
   }, [handleSyncToGithub]);
 
+  const handleRebaseAndSync = useCallback(async () => {
+    try {
+      // First, perform the rebase
+      await IpcClient.getInstance().rebaseGithubRepo(appId);
+      setRebaseStatusMessage(
+        "Rebase completed successfully. Pushing to GitHub...",
+      );
+      // Then, sync (push) to GitHub using the existing handler
+      await handleSyncToGithub();
+    } catch (err: any) {
+      const errorMessage =
+        err.message || "Failed to rebase and sync to GitHub.";
+      setSyncError(errorMessage);
+      setRebaseInProgress(errorMessage.includes("rebase-merge"));
+      // If rebase failed, show appropriate message
+      if (errorMessage.includes("rebase")) {
+        setRebaseStatusMessage(
+          "Rebase failed. You may need to resolve conflicts or abort the rebase.",
+        );
+      }
+    }
+  }, [appId, handleSyncToGithub]);
+
   // Auto-sync when triggerAutoSync prop is true
   useEffect(() => {
+    // Reset the ref when appId changes (handleSyncToGithub changes) to allow sync for new app
+    if (prevHandleSyncRef.current !== handleSyncToGithub) {
+      autoSyncTriggeredRef.current = false;
+      prevHandleSyncRef.current = handleSyncToGithub;
+    }
+
     if (triggerAutoSync && !autoSyncTriggeredRef.current) {
       autoSyncTriggeredRef.current = true;
       handleSyncToGithub().finally(() => {
@@ -228,7 +259,7 @@ function ConnectedGitHubConnector({
       // Reset the ref when triggerAutoSync becomes false
       autoSyncTriggeredRef.current = false;
     }
-  }, [triggerAutoSync]); // Only depend on triggerAutoSync to avoid unnecessary re-runs
+  }, [triggerAutoSync, handleSyncToGithub, onAutoSyncComplete]); // Include handleSyncToGithub to ensure we use the latest version with current appId
 
   const isForcePushError =
     syncError?.includes("rejected") || syncError?.includes("non-fast-forward");
@@ -369,7 +400,7 @@ function ConnectedGitHubConnector({
           )}
           {showRebaseAndSync && (
             <Button
-              onClick={() => handleSyncToGithub({ rebase: true })}
+              onClick={handleRebaseAndSync}
               variant="outline"
               size="sm"
               disabled={isRebaseActionPending}

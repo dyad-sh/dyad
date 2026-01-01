@@ -62,6 +62,7 @@ const validInvokeChannels = [
   "github:connect-existing-repo",
   "github:push",
   "github:fetch",
+  "github:rebase",
   "github:rebase-abort",
   "github:merge-abort",
   "github:rebase-continue",

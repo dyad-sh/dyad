@@ -847,11 +847,10 @@ export class IpcClient {
     appId: number,
     options: GithubSyncOptions = {},
   ): Promise<{ success: boolean; error?: string; isConflict?: boolean }> {
-    const { force, rebase, forceWithLease } = options;
+    const { force, forceWithLease } = options;
     return this.ipcRenderer.invoke("github:push", {
       appId,
       force,
-      rebase,
       forceWithLease,
     });
   }
@@ -876,6 +875,10 @@ export class IpcClient {
     return this.ipcRenderer.invoke("github:rebase-continue", {
       appId,
     });
+  }
+
+  public async rebaseGithubRepo(appId: number): Promise<void> {
+    await this.ipcRenderer.invoke("github:rebase", { appId });
   }
 
   public async disconnectGithubRepo(appId: number): Promise<void> {
@@ -938,6 +941,32 @@ export class IpcClient {
     appId: number,
   ): Promise<{ branches: string[]; current: string | null }> {
     return this.ipcRenderer.invoke("github:list-local-branches", { appId });
+  }
+
+  public async listCollaborators(
+    appId: number,
+  ): Promise<{ login: string; avatar_url: string; permissions: any }[]> {
+    return this.ipcRenderer.invoke("github:list-collaborators", { appId });
+  }
+
+  public async inviteCollaborator(
+    appId: number,
+    username: string,
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("github:invite-collaborator", {
+      appId,
+      username,
+    });
+  }
+
+  public async removeCollaborator(
+    appId: number,
+    username: string,
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("github:remove-collaborator", {
+      appId,
+      username,
+    });
   }
 
   // --- End GitHub Repo Management ---

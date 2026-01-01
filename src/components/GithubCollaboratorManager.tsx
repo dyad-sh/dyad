@@ -113,7 +113,10 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
       onMouseLeave={() => setIsExpanded(false)}
       onFocusCapture={() => setIsExpanded(true)}
       onBlurCapture={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) {
+        if (
+          !event.relatedTarget ||
+          !event.currentTarget.contains(event.relatedTarget as Node)
+        ) {
           setIsExpanded(false);
         }
       }}

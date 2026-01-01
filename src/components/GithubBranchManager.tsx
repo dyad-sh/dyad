@@ -123,6 +123,7 @@ export function GithubBranchManager({
       );
       showSuccess(`Branch '${newBranchName}' created`);
       setNewBranchName("");
+      setSourceBranch(""); // Reset source branch selection
       setShowCreateDialog(false);
       await loadBranches();
       // Optionally switch to new branch automatically?
@@ -327,6 +328,8 @@ export function GithubBranchManager({
 
           if (conflicts.length > 0) {
             setConflicts(conflicts);
+            // Close the merge modal since user has been notified
+            setBranchToMerge(null);
             return;
           }
           setConflicts([]);
@@ -343,6 +346,8 @@ export function GithubBranchManager({
       } else {
         showError(error.message || "Failed to merge branch");
       }
+      // Close the merge modal on any error since user has been notified
+      setBranchToMerge(null);
     } finally {
       setIsMerging(false);
     }
@@ -368,7 +373,7 @@ export function GithubBranchManager({
           </SelectTrigger>
           <SelectContent>
             {branches.map((branch) => (
-              <SelectItem key={branch} value={branch}>
+              <SelectItem key={branch} value={branch} aria-label={branch}>
                 <Network className="h-4 w-4 text-gray-500" />
                 <span className="font-medium text-sm">Branch:</span>
                 <span

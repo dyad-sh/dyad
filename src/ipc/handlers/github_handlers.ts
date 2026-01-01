@@ -8,6 +8,7 @@ import {
   gitPull,
   gitRebaseAbort,
   gitRebaseContinue,
+  gitRebase,
   gitMergeAbort,
   gitFetch,
   gitCreateBranch,
@@ -647,12 +648,10 @@ async function handlePushToGithub(
   {
     appId,
     force,
-    rebase,
     forceWithLease,
   }: {
     appId: number;
     force?: boolean;
-    rebase?: boolean;
     forceWithLease?: boolean;
   },
 ) {
@@ -683,38 +682,6 @@ async function handlePushToGithub(
 
     // Pull changes first (unless force push)
     if (!force && !forceWithLease) {
-      // If rebase is requested, check for uncommitted changes first
-      // Git requires a clean working directory for rebase pulls
-      // If there are uncommitted changes, automatically commit them
-      if (rebase) {
-        const isClean = await isGitStatusClean({ path: appPath });
-        if (!isClean) {
-          try {
-            // Get list of uncommitted files for the commit message
-            const uncommittedFiles = await getGitUncommittedFiles({
-              path: appPath,
-            });
-            // Stage all changes
-            await gitAddAll({ path: appPath });
-            // Commit with a descriptive message
-            await gitCommit({
-              path: appPath,
-              message: `[dyad] Auto-commit before rebase: ${uncommittedFiles.length} file(s) changed`,
-            });
-            logger.log(
-              `Auto-committed ${uncommittedFiles.length} file(s) before rebase pull`,
-            );
-          } catch (commitError: any) {
-            return {
-              success: false,
-              error:
-                `Failed to commit uncommitted changes before rebase: ${commitError?.message || "Unknown error"}. ` +
-                "Please commit or stash your changes manually and try again.",
-            };
-          }
-        }
-      }
-
       try {
         await gitPull({
           path: appPath,
@@ -743,18 +710,6 @@ async function handlePushToGithub(
             isConflict: true,
           };
         }
-        // Check for uncommitted changes error (in case the check above didn't catch it)
-        if (
-          errorMessage.includes("uncommitted changes") ||
-          errorMessage.includes("Please commit or stash")
-        ) {
-          return {
-            success: false,
-            error:
-              "Your working directory contains uncommitted changes. " +
-              "Please commit or stash your changes before rebasing.",
-          };
-        }
         // If it's just that remote doesn't have the branch yet, we can ignore and push
         if (!isMissingRemoteBranch) {
           throw pullError;
@@ -780,7 +735,7 @@ async function handlePushToGithub(
     return {
       success: false,
       error: err.message || "Failed to push to GitHub.",
-      isConflict: err.message?.includes("conflict"),
+      isConflict: err.message?.includes("conflict") ?? false,
     };
   }
 }
@@ -832,6 +787,72 @@ async function handleContinueRebase(
       error: err.message || "Failed to continue rebase.",
     };
   }
+}
+// --- GitHub Rebase Handler ---
+async function handleRebaseFromGithub(
+  event: IpcMainInvokeEvent,
+  { appId }: { appId: number },
+): Promise<void> {
+  const settings = readSettings();
+  const accessToken = settings.githubAccessToken?.value;
+  if (!accessToken) {
+    throw new Error("Not authenticated with GitHub.");
+  }
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app || !app.githubOrg || !app.githubRepo) {
+    throw new Error("App is not linked to a GitHub repo.");
+  }
+  const appPath = getDyadAppPath(app.path);
+  const branch = app.githubBranch || "main";
+
+  // Set up remote URL with token
+  const remoteUrl = IS_TEST_BUILD
+    ? `${GITHUB_GIT_BASE}/${app.githubOrg}/${app.githubRepo}.git`
+    : `https://${accessToken}:x-oauth-basic@github.com/${app.githubOrg}/${app.githubRepo}.git`;
+  // Set or update remote URL using git config
+  await gitSetRemoteUrl({
+    path: appPath,
+    remoteUrl,
+  });
+
+  // Fetch latest changes from remote first
+  await gitFetch({
+    path: appPath,
+    remote: "origin",
+    accessToken,
+  });
+
+  // Check for uncommitted changes - Git requires a clean working directory for rebase
+  const isClean = await isGitStatusClean({ path: appPath });
+  if (!isClean) {
+    try {
+      // Get list of uncommitted files for the commit message
+      const uncommittedFiles = await getGitUncommittedFiles({
+        path: appPath,
+      });
+      // Stage all changes
+      await gitAddAll({ path: appPath });
+      // Commit with a descriptive message
+      await gitCommit({
+        path: appPath,
+        message: `[dyad] Auto-commit before rebase: ${uncommittedFiles.length} file(s) changed`,
+      });
+      logger.log(
+        `Auto-committed ${uncommittedFiles.length} file(s) before rebase`,
+      );
+    } catch (commitError: any) {
+      throw new Error(
+        `Failed to commit uncommitted changes before rebase: ${commitError?.message || "Unknown error"}. ` +
+          "Please commit or stash your changes manually and try again.",
+      );
+    }
+  }
+
+  // Perform the rebase
+  await gitRebase({
+    path: appPath,
+    branch,
+  });
 }
 
 // --- GitHub Fetch Handler ---
@@ -1364,6 +1385,7 @@ export function registerGithubHandlers() {
       args: { owner: string; repo: string; branch: string; appId: number },
     ) => handleConnectToExistingRepo(event, args),
   );
+  ipcMain.handle("github:rebase", handleRebaseFromGithub);
   ipcMain.handle("github:push", handlePushToGithub);
   ipcMain.handle("github:rebase-abort", handleAbortRebase);
   ipcMain.handle("github:merge-abort", handleAbortMerge);

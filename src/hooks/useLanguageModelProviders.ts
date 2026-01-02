@@ -24,6 +24,12 @@ export function useLanguageModelProviders() {
     if (queryResult.isLoading) {
       return false;
     }
+    if (provider === "ollama") {
+      return Boolean(settings?.ollamaEndpoint?.trim());
+    }
+    if (provider === "lmstudio") {
+      return Boolean(settings?.lmStudioEndpoint?.trim());
+    }
     // Vertex uses service account credentials instead of an API key
     if (provider === "vertex") {
       const vertexSettings = providerSettings as VertexProviderSetting;
@@ -63,6 +69,14 @@ export function useLanguageModelProviders() {
   const isAnyProviderSetup = () => {
     // Check hardcoded cloud providers
     if (cloudProviders.some((provider) => isProviderSetup(provider))) {
+      return true;
+    }
+
+    const localProviders = queryResult.data?.filter(
+      (provider) => provider.type === "local",
+    );
+
+    if (localProviders?.some((provider) => isProviderSetup(provider.id))) {
       return true;
     }
 

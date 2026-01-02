@@ -20,6 +20,7 @@ import {
 import { ProviderSettingsHeader } from "./ProviderSettingsHeader";
 import { ApiKeyConfiguration } from "./ApiKeyConfiguration";
 import { ModelsSection } from "./ModelsSection";
+import { LocalModelEndpointSettings } from "@/components/LocalModelEndpointSettings";
 
 interface ProviderSettingsPageProps {
   provider: string;
@@ -55,6 +56,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   const supportsCustomModels =
     providerData?.type === "custom" || providerData?.type === "cloud";
 
+  const isLocalProvider = providerData?.type === "local";
   const isDyad = provider === "auto";
 
   const [apiKeyInput, setApiKeyInput] = useState("");
@@ -69,7 +71,10 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   const providerWebsiteUrl = isDyad
     ? "https://academy.dyad.sh/settings"
     : providerData?.websiteUrl;
-  const hasFreeTier = isDyad ? false : providerData?.hasFreeTier;
+  const hasFreeTier =
+    isDyad || providerData?.type === "local"
+      ? false
+      : providerData?.hasFreeTier;
   const envVarName = isDyad ? undefined : providerData?.envVarName;
 
   // Use provider ID (which is the 'provider' prop)
@@ -110,8 +115,16 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
       ? azureHasSavedSettings || azureHasEnvConfiguration
       : false;
 
-  const isConfigured =
-    provider === "azure"
+  const isLocalConfigured =
+    provider === "ollama"
+      ? Boolean(settings?.ollamaEndpoint?.trim())
+      : provider === "lmstudio"
+        ? Boolean(settings?.lmStudioEndpoint?.trim())
+        : false;
+
+  const isConfigured = isLocalProvider
+    ? isLocalConfigured
+    : provider === "azure"
       ? isAzureConfigured
       : provider === "vertex"
         ? isVertexConfigured
@@ -293,6 +306,12 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
               Could not load configuration data: {settingsError.message}
             </AlertDescription>
           </Alert>
+        ) : isLocalProvider ? (
+          <div className="space-y-4">
+            <LocalModelEndpointSettings
+              kind={provider === "ollama" ? "ollama" : "lmstudio"}
+            />
+          </div>
         ) : (
           <ApiKeyConfiguration
             provider={provider}

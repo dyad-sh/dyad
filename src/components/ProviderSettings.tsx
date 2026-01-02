@@ -109,79 +109,77 @@ export function ProviderSettingsGrid() {
     <div className="p-6">
       <h2 className="text-lg font-medium mb-6">AI Providers</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {providers
-          ?.filter((p) => p.type !== "local")
-          .map((provider: LanguageModelProvider) => {
-            const isCustom = provider.type === "custom";
+        {providers?.map((provider: LanguageModelProvider) => {
+          const isCustom = provider.type === "custom";
 
-            return (
-              <Card
-                key={provider.id}
-                className="relative transition-all hover:shadow-md border-border"
+          return (
+            <Card
+              key={provider.id}
+              className="relative transition-all hover:shadow-md border-border"
+            >
+              <CardHeader
+                className="p-4 cursor-pointer"
+                onClick={() => handleProviderClick(provider.id)}
               >
-                <CardHeader
-                  className="p-4 cursor-pointer"
-                  onClick={() => handleProviderClick(provider.id)}
-                >
-                  {isCustom && (
-                    <div
-                      className="flex items-center justify-end"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            data-testid="edit-custom-provider"
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0 hover:bg-muted rounded-md"
-                            onClick={() => handleEditProvider(provider)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Edit Provider</TooltipContent>
-                      </Tooltip>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            data-testid="delete-custom-provider"
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10 rounded-md"
-                            onClick={() => setProviderToDelete(provider.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Delete Provider</TooltipContent>
-                      </Tooltip>
-                    </div>
+                {isCustom && (
+                  <div
+                    className="flex items-center justify-end"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          data-testid="edit-custom-provider"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 hover:bg-muted rounded-md"
+                          onClick={() => handleEditProvider(provider)}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Edit Provider</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          data-testid="delete-custom-provider"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10 rounded-md"
+                          onClick={() => setProviderToDelete(provider.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Delete Provider</TooltipContent>
+                    </Tooltip>
+                  </div>
+                )}
+                <CardTitle className="text-lg font-medium mb-2">
+                  {provider.name}
+                  {isProviderSetup(provider.id) ? (
+                    <span className="ml-3 text-sm font-medium text-green-500 bg-green-50 dark:bg-green-900/30 border border-green-500/50 dark:border-green-500/50 px-2 py-1 rounded-full">
+                      Ready
+                    </span>
+                  ) : (
+                    <span className="text-sm text-gray-500 bg-gray-50 dark:bg-gray-900 dark:text-gray-300 px-2 py-1 rounded-full">
+                      Needs Setup
+                    </span>
                   )}
-                  <CardTitle className="text-lg font-medium mb-2">
-                    {provider.name}
-                    {isProviderSetup(provider.id) ? (
-                      <span className="ml-3 text-sm font-medium text-green-500 bg-green-50 dark:bg-green-900/30 border border-green-500/50 dark:border-green-500/50 px-2 py-1 rounded-full">
-                        Ready
-                      </span>
-                    ) : (
-                      <span className="text-sm text-gray-500 bg-gray-50 dark:bg-gray-900 dark:text-gray-300 px-2 py-1 rounded-full">
-                        Needs Setup
-                      </span>
-                    )}
-                  </CardTitle>
-                  <CardDescription>
-                    {provider.hasFreeTier && (
-                      <span className="text-blue-600 mt-2 dark:text-blue-400 text-sm font-medium bg-blue-100 dark:bg-blue-900/30 px-2 py-1 rounded-full inline-flex items-center">
-                        <GiftIcon className="w-4 h-4 mr-1" />
-                        Free tier available
-                      </span>
-                    )}
-                  </CardDescription>
-                </CardHeader>
-              </Card>
-            );
-          })}
+                </CardTitle>
+                <CardDescription>
+                  {provider.type !== "local" && provider.hasFreeTier && (
+                    <span className="text-blue-600 mt-2 dark:text-blue-400 text-sm font-medium bg-blue-100 dark:bg-blue-900/30 px-2 py-1 rounded-full inline-flex items-center">
+                      <GiftIcon className="w-4 h-4 mr-1" />
+                      Free tier available
+                    </span>
+                  )}
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          );
+        })}
 
         {/* Add custom provider button */}
         <Card

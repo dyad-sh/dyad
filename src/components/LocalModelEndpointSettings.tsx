@@ -42,29 +42,38 @@ const endpointConfig: Record<
   },
 };
 
-export function LocalModelEndpointSettings() {
+type LocalModelEndpointSettingsProps = {
+  kind?: EndpointKind;
+};
+
+export function LocalModelEndpointSettings({
+  kind,
+}: LocalModelEndpointSettingsProps) {
   const { settings, updateSettings } = useSettings();
   const [ollamaValue, setOllamaValue] = useState(DEFAULT_OLLAMA_ENDPOINT);
   const [lmStudioValue, setLmStudioValue] = useState(
     DEFAULT_LM_STUDIO_ENDPOINT,
   );
   const [saving, setSaving] = useState<SavingTarget>(null);
+  const ollamaEndpoint = settings?.ollamaEndpoint;
+  const lmStudioEndpoint = settings?.lmStudioEndpoint;
+  const endpointKinds: EndpointKind[] = kind ? [kind] : ["ollama", "lmstudio"];
 
   useEffect(() => {
-    if (settings?.ollamaEndpoint) {
-      setOllamaValue(settings.ollamaEndpoint);
-    } else {
-      setOllamaValue(DEFAULT_OLLAMA_ENDPOINT);
+    if (!settings) {
+      return;
     }
-  }, [settings?.ollamaEndpoint]);
+    const endpoint = ollamaEndpoint ?? DEFAULT_OLLAMA_ENDPOINT;
+    setOllamaValue(endpoint);
+  }, [ollamaEndpoint, settings]);
 
   useEffect(() => {
-    if (settings?.lmStudioEndpoint) {
-      setLmStudioValue(settings.lmStudioEndpoint);
-    } else {
-      setLmStudioValue(DEFAULT_LM_STUDIO_ENDPOINT);
+    if (!settings) {
+      return;
     }
-  }, [settings?.lmStudioEndpoint]);
+    const endpoint = lmStudioEndpoint ?? DEFAULT_LM_STUDIO_ENDPOINT;
+    setLmStudioValue(endpoint);
+  }, [lmStudioEndpoint, settings]);
 
   if (!settings) {
     return null;
@@ -73,8 +82,7 @@ export function LocalModelEndpointSettings() {
   const handleSave = async (kind: EndpointKind) => {
     const value = kind === "ollama" ? ollamaValue : lmStudioValue;
     const config = endpointConfig[kind];
-    const trimmed = value.trim();
-    const valueToPersist = trimmed.length > 0 ? trimmed : config.defaultValue;
+    const valueToPersist = value.trim();
     const payload: Partial<UserSettings> =
       kind === "ollama"
         ? { ollamaEndpoint: valueToPersist }
@@ -180,8 +188,7 @@ export function LocalModelEndpointSettings() {
 
   return (
     <div className="space-y-6">
-      {renderEndpointField("ollama")}
-      {renderEndpointField("lmstudio")}
+      {endpointKinds.map((endpointKind) => renderEndpointField(endpointKind))}
     </div>
   );
 }

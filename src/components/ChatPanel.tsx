@@ -47,6 +47,8 @@ export function ChatPanel({
   const userScrollTimeoutRef = useRef<number | null>(null);
   // Ref to store cleanup function for Virtuoso scroller event listener
   const scrollerCleanupRef = useRef<(() => void) | null>(null);
+  // Ref to track previous streaming state
+  const prevIsStreamingRef = useRef(false);
 
   const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
     messagesEndRef.current?.scrollIntoView({ behavior });
@@ -114,11 +116,7 @@ export function ChatPanel({
     const streamCount = chatId ? (streamCountById.get(chatId) ?? 0) : 0;
     console.log("streamCount - scrolling to bottom", streamCount);
     scrollToBottom();
-  }, [
-    chatId,
-    chatId ? (streamCountById.get(chatId) ?? 0) : 0,
-    chatId ? (isStreamingById.get(chatId) ?? false) : false,
-  ]);
+  }, [chatId, chatId ? (streamCountById.get(chatId) ?? 0) : 0]);
 
   const fetchChatMessages = useCallback(async () => {
     if (!chatId) {
@@ -139,6 +137,22 @@ export function ChatPanel({
 
   const messages = chatId ? (messagesById.get(chatId) ?? []) : [];
   const isStreaming = chatId ? (isStreamingById.get(chatId) ?? false) : false;
+
+  // Scroll to bottom when streaming completes to ensure footer content is visible
+  useEffect(() => {
+    const wasStreaming = prevIsStreamingRef.current;
+    prevIsStreamingRef.current = isStreaming;
+
+    // When streaming transitions from true to false
+    if (wasStreaming && !isStreaming) {
+      // Double RAF ensures DOM is fully updated with footer content
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          scrollToBottom("smooth");
+        });
+      });
+    }
+  }, [isStreaming]);
 
   // Test mode only: Attach scroll listener to messagesContainerRef
   // In production mode, handleScrollerRef attaches to Virtuoso's scroller

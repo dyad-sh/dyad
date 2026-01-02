@@ -95,8 +95,8 @@ const config: ForgeConfig = {
   packagerConfig: {
     protocols: [
       {
-        name: "Dyad",
-        schemes: ["dyad"],
+        name: "JoyCreate",
+        schemes: ["joycreate"],
       },
     ],
     icon: "./assets/icon/logo",
@@ -121,6 +121,8 @@ const config: ForgeConfig = {
   rebuildConfig: {
     extraModules: ["better-sqlite3"],
     force: true,
+    // Only rebuild the top-level better-sqlite3, not nested ones in n8n-nodes-langchain
+    onlyModules: ["better-sqlite3"],
   },
   hooks: {
     postMake: async (_forgeConfig, makeResults) => {
@@ -150,7 +152,7 @@ const config: ForgeConfig = {
     new MakerRpm({}),
     new MakerDeb({
       options: {
-        mimeType: ["x-scheme-handler/dyad"],
+        mimeType: ["x-scheme-handler/joycreate"],
       },
     }),
   ],

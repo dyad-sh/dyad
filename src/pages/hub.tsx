@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Layout, Sparkles, Users } from "lucide-react";
 import { useRouter } from "@tanstack/react-router";
 import { useSettings } from "@/hooks/useSettings";
 import { useTemplates } from "@/hooks/useTemplates";
@@ -29,33 +29,50 @@ const HubPage: React.FC = () => {
     templates?.filter((template) => !template.isOfficial) || [];
 
   return (
-    <div className="min-h-screen px-8 py-4">
+    <div className="min-h-screen px-8 py-6">
       <div className="max-w-5xl mx-auto pb-12">
         <Button
           onClick={() => router.history.back()}
           variant="outline"
           size="sm"
-          className="flex items-center gap-2 mb-4 bg-(--background-lightest) py-5"
+          className="flex items-center gap-2 mb-6 border-border/50 hover:border-cyan-500/30 hover:bg-cyan-500/10 transition-all"
         >
           <ArrowLeft className="h-4 w-4" />
           Go Back
         </Button>
-        <header className="mb-8 text-left">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-            Pick your default template
-          </h1>
-          <p className="text-md text-gray-600 dark:text-gray-400">
+        
+        {/* Enhanced Header */}
+        <header className="mb-10 p-6 rounded-2xl bg-gradient-to-r from-cyan-500/10 via-blue-500/10 to-indigo-500/10 border border-cyan-500/20">
+          <div className="flex items-center gap-4 mb-3">
+            <div className="p-3 rounded-xl bg-gradient-to-br from-cyan-500/20 via-blue-500/20 to-indigo-500/20 border border-cyan-500/20">
+              <Layout className="h-7 w-7 text-cyan-500" />
+            </div>
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 bg-clip-text text-transparent">
+              Pick your default template
+            </h1>
+          </div>
+          <p className="text-muted-foreground ml-16">
             Choose a starting point for your new project.
-            {isLoading && " Loading additional templates..."}
+            {isLoading && (
+              <span className="inline-flex items-center gap-2 ml-2 text-cyan-500">
+                <Sparkles className="h-4 w-4 animate-pulse" />
+                Loading additional templates...
+              </span>
+            )}
           </p>
         </header>
 
         {/* Official Templates Section */}
         {officialTemplates.length > 0 && (
           <section className="mb-12">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
-              Official templates
-            </h2>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2 rounded-lg bg-gradient-to-br from-cyan-500/20 to-blue-500/20 border border-cyan-500/20">
+                <Sparkles className="h-5 w-5 text-cyan-500" />
+              </div>
+              <h2 className="text-xl font-bold bg-gradient-to-r from-cyan-600 to-blue-600 bg-clip-text text-transparent">
+                Official templates
+              </h2>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {officialTemplates.map((template) => (
                 <TemplateCard
@@ -73,9 +90,14 @@ const HubPage: React.FC = () => {
         {/* Community Templates Section */}
         {communityTemplates.length > 0 && (
           <section className="mb-12">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
-              Community templates
-            </h2>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2 rounded-lg bg-gradient-to-br from-violet-500/20 to-purple-500/20 border border-violet-500/20">
+                <Users className="h-5 w-5 text-violet-500" />
+              </div>
+              <h2 className="text-xl font-bold bg-gradient-to-r from-violet-600 to-purple-600 bg-clip-text text-transparent">
+                Community templates
+              </h2>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {communityTemplates.map((template) => (
                 <TemplateCard

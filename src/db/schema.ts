@@ -243,3 +243,324 @@ export const mcpToolConsents = sqliteTable(
   },
   (table) => [unique("uniq_mcp_consent").on(table.serverId, table.toolName)],
 );
+
+// --- AI Agent Builder tables ---
+
+// Agent type enum-like values
+export type AgentType = "chatbot" | "task" | "multi-agent" | "workflow" | "rag";
+
+// Agent status
+export type AgentStatus = "draft" | "testing" | "deployed" | "archived";
+
+// Agent deployment target
+export type DeploymentTarget = "local" | "docker" | "vercel" | "aws" | "custom";
+
+// Main agents table
+export const agents = sqliteTable("agents", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  description: text("description"),
+  type: text("type").$type<AgentType>().notNull().default("chatbot"),
+  status: text("status").$type<AgentStatus>().notNull().default("draft"),
+  // The app this agent belongs to (for UI generation)
+  appId: integer("app_id").references(() => apps.id, { onDelete: "set null" }),
+  // System prompt for the agent
+  systemPrompt: text("system_prompt"),
+  // Model configuration
+  modelId: text("model_id"),
+  temperature: integer("temperature"),
+  maxTokens: integer("max_tokens"),
+  // Agent configuration as JSON
+  configJson: text("config_json", { mode: "json" }).$type<AgentConfig | null>(),
+  // Version tracking
+  version: text("version").notNull().default("1.0.0"),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+// Agent tools - custom tools defined for agents
+export const agentTools = sqliteTable("agent_tools", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  agentId: integer("agent_id")
+    .notNull()
+    .references(() => agents.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description").notNull(),
+  // Tool input schema (JSON Schema format)
+  inputSchema: text("input_schema", { mode: "json" }).$type<Record<string, unknown>>(),
+  // Tool implementation code
+  implementationCode: text("implementation_code"),
+  // Whether this tool requires user approval
+  requiresApproval: integer("requires_approval", { mode: "boolean" })
+    .notNull()
+    .default(sql`0`),
+  // Whether tool is enabled
+  enabled: integer("enabled", { mode: "boolean" })
+    .notNull()
+    .default(sql`1`),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+// Agent workflows - for multi-step agent execution
+export const agentWorkflows = sqliteTable("agent_workflows", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  agentId: integer("agent_id")
+    .notNull()
+    .references(() => agents.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  // Workflow definition as JSON (nodes, edges, conditions)
+  workflowJson: text("workflow_json", { mode: "json" }).$type<WorkflowDefinition | null>(),
+  // Whether this is the default workflow
+  isDefault: integer("is_default", { mode: "boolean" })
+    .notNull()
+    .default(sql`0`),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+// Agent deployments - track where agents are deployed
+export const agentDeployments = sqliteTable("agent_deployments", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  agentId: integer("agent_id")
+    .notNull()
+    .references(() => agents.id, { onDelete: "cascade" }),
+  target: text("target").$type<DeploymentTarget>().notNull(),
+  // Deployment configuration
+  deploymentConfigJson: text("deployment_config_json", { mode: "json" }).$type<DeploymentConfig | null>(),
+  // Deployment URL or endpoint
+  endpoint: text("endpoint"),
+  // Deployment status
+  deploymentStatus: text("deployment_status").notNull().default("pending"),
+  // Last deployment timestamp
+  deployedAt: integer("deployed_at", { mode: "timestamp" }),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+// Agent test sessions - for testing agents before deployment
+export const agentTestSessions = sqliteTable("agent_test_sessions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  agentId: integer("agent_id")
+    .notNull()
+    .references(() => agents.id, { onDelete: "cascade" }),
+  // Test session messages as JSON
+  messagesJson: text("messages_json", { mode: "json" }).$type<AgentTestMessage[] | null>(),
+  // Test results/metrics
+  metricsJson: text("metrics_json", { mode: "json" }).$type<TestMetrics | null>(),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+// Agent knowledge bases - for RAG agents
+export const agentKnowledgeBases = sqliteTable("agent_knowledge_bases", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  agentId: integer("agent_id")
+    .notNull()
+    .references(() => agents.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  // Source type: files, urls, database, api
+  sourceType: text("source_type").notNull(),
+  // Source configuration
+  sourceConfigJson: text("source_config_json", { mode: "json" }).$type<KnowledgeBaseConfig | null>(),
+  // Embedding model
+  embeddingModel: text("embedding_model"),
+  // Chunk settings
+  chunkSize: integer("chunk_size").default(1000),
+  chunkOverlap: integer("chunk_overlap").default(200),
+  // Status
+  indexStatus: text("index_status").notNull().default("pending"),
+  documentCount: integer("document_count").default(0),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+// Agent UI components - for full-stack agent UIs
+export const agentUIComponents = sqliteTable("agent_ui_components", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  agentId: integer("agent_id")
+    .notNull()
+    .references(() => agents.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  // Component type: chat, form, dashboard, etc.
+  componentType: text("component_type").notNull(),
+  // Component code/template
+  code: text("code"),
+  // Component props schema
+  propsSchema: text("props_schema", { mode: "json" }).$type<Record<string, unknown> | null>(),
+  // Styling configuration
+  stylesJson: text("styles_json", { mode: "json" }).$type<Record<string, unknown> | null>(),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+// Type definitions for JSON columns
+export interface AgentConfig {
+  // Memory settings
+  memory?: {
+    type: "buffer" | "summary" | "vector";
+    maxMessages?: number;
+  };
+  // Retry settings
+  retry?: {
+    maxRetries: number;
+    backoffMs: number;
+  };
+  // Rate limiting
+  rateLimit?: {
+    requestsPerMinute: number;
+  };
+  // Custom settings
+  custom?: Record<string, unknown>;
+}
+
+export interface WorkflowDefinition {
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+  entryNodeId: string;
+}
+
+export interface WorkflowNode {
+  id: string;
+  type: "llm" | "tool" | "condition" | "loop" | "human" | "subagent";
+  name: string;
+  config: Record<string, unknown>;
+}
+
+export interface WorkflowEdge {
+  id: string;
+  sourceId: string;
+  targetId: string;
+  condition?: string;
+}
+
+export interface DeploymentConfig {
+  // Environment variables
+  envVars?: Record<string, string>;
+  // Resource limits
+  resources?: {
+    memory?: string;
+    cpu?: string;
+  };
+  // Scaling
+  scaling?: {
+    minInstances?: number;
+    maxInstances?: number;
+  };
+  // Custom deployment settings
+  custom?: Record<string, unknown>;
+}
+
+export interface AgentTestMessage {
+  role: "user" | "assistant" | "system";
+  content: string;
+  timestamp: number;
+  toolCalls?: Array<{
+    name: string;
+    input: Record<string, unknown>;
+    output?: unknown;
+  }>;
+}
+
+export interface TestMetrics {
+  totalMessages: number;
+  averageResponseTime?: number;
+  toolCallCount?: number;
+  errorCount?: number;
+}
+
+export interface KnowledgeBaseConfig {
+  // For file sources
+  files?: string[];
+  // For URL sources
+  urls?: string[];
+  // For database sources
+  connectionString?: string;
+  query?: string;
+  // For API sources
+  apiEndpoint?: string;
+  apiHeaders?: Record<string, string>;
+}
+
+// Relations for agent tables
+export const agentsRelations = relations(agents, ({ one, many }) => ({
+  app: one(apps, {
+    fields: [agents.appId],
+    references: [apps.id],
+  }),
+  tools: many(agentTools),
+  workflows: many(agentWorkflows),
+  deployments: many(agentDeployments),
+  testSessions: many(agentTestSessions),
+  knowledgeBases: many(agentKnowledgeBases),
+  uiComponents: many(agentUIComponents),
+}));
+
+export const agentToolsRelations = relations(agentTools, ({ one }) => ({
+  agent: one(agents, {
+    fields: [agentTools.agentId],
+    references: [agents.id],
+  }),
+}));
+
+export const agentWorkflowsRelations = relations(agentWorkflows, ({ one }) => ({
+  agent: one(agents, {
+    fields: [agentWorkflows.agentId],
+    references: [agents.id],
+  }),
+}));
+
+export const agentDeploymentsRelations = relations(agentDeployments, ({ one }) => ({
+  agent: one(agents, {
+    fields: [agentDeployments.agentId],
+    references: [agents.id],
+  }),
+}));
+
+export const agentTestSessionsRelations = relations(agentTestSessions, ({ one }) => ({
+  agent: one(agents, {
+    fields: [agentTestSessions.agentId],
+    references: [agents.id],
+  }),
+}));
+
+export const agentKnowledgeBasesRelations = relations(agentKnowledgeBases, ({ one }) => ({
+  agent: one(agents, {
+    fields: [agentKnowledgeBases.agentId],
+    references: [agents.id],
+  }),
+}));
+
+export const agentUIComponentsRelations = relations(agentUIComponents, ({ one }) => ({
+  agent: one(agents, {
+    fields: [agentUIComponents.agentId],
+    references: [agents.id],
+  }),
+}));

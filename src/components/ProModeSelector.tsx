@@ -13,8 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Sparkles, Info } from "lucide-react";
 import { useSettings } from "@/hooks/useSettings";
-import { IpcClient } from "@/ipc/ipc_client";
-import { hasDyadProKey, type UserSettings } from "@/lib/schemas";
+import { type UserSettings } from "@/lib/schemas";
 
 export function ProModeSelector() {
   const { settings, updateSettings } = useSettings();
@@ -51,14 +50,8 @@ export function ProModeSelector() {
     }
   };
 
-  const toggleProEnabled = () => {
-    updateSettings({
-      enableDyadPro: !settings?.enableDyadPro,
-    });
-  };
-
-  const hasProKey = settings ? hasDyadProKey(settings) : false;
-  const proModeTogglable = hasProKey && Boolean(settings?.enableDyadPro);
+  // All features are now free - no toggle needed
+  const isTogglable = true;
 
   return (
     <Popover>
@@ -71,67 +64,39 @@ export function ProModeSelector() {
               className="has-[>svg]:px-1.5 flex items-center gap-1.5 h-8 border-primary/50 hover:bg-primary/10 font-medium shadow-sm shadow-primary/10 transition-all hover:shadow-md hover:shadow-primary/15"
             >
               <Sparkles className="h-4 w-4 text-primary" />
-              <span className="text-primary font-medium text-xs-sm">Pro</span>
+              <span className="text-primary font-medium text-xs-sm">Features</span>
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>
-        <TooltipContent>Configure Dyad Pro settings</TooltipContent>
+        <TooltipContent>Configure JoyCreate features</TooltipContent>
       </Tooltip>
       <PopoverContent className="w-80 border-primary/20">
         <div className="space-y-4">
           <div className="space-y-1">
             <h4 className="font-medium flex items-center gap-1.5">
               <Sparkles className="h-4 w-4 text-primary" />
-              <span className="text-primary font-medium">Dyad Pro</span>
+              <span className="text-primary font-medium">AI Features</span>
             </h4>
+            <p className="text-xs text-muted-foreground">All features are free</p>
             <div className="h-px bg-gradient-to-r from-primary/50 via-primary/20 to-transparent" />
           </div>
-          {!hasProKey && (
-            <div className="text-sm text-center text-muted-foreground">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <a
-                    className="inline-flex items-center justify-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
-                    onClick={() => {
-                      IpcClient.getInstance().openExternalUrl(
-                        "https://dyad.sh/pro#ai",
-                      );
-                    }}
-                  >
-                    Unlock Pro modes
-                  </a>
-                </TooltipTrigger>
-                <TooltipContent>
-                  Visit dyad.sh/pro to unlock Pro features
-                </TooltipContent>
-              </Tooltip>
-            </div>
-          )}
           <div className="flex flex-col gap-5">
-            <SelectorRow
-              id="pro-enabled"
-              label="Enable Dyad Pro"
-              tooltip="Uses Dyad Pro AI credits for the main AI model and Pro modes."
-              isTogglable={hasProKey}
-              settingEnabled={Boolean(settings?.enableDyadPro)}
-              toggle={toggleProEnabled}
-            />
             <SelectorRow
               id="web-search"
               label="Web Access"
-              tooltip="Allows Dyad to access the web (e.g. search for information)"
-              isTogglable={proModeTogglable}
+              tooltip="Allows JoyCreate to access the web (e.g. search for information)"
+              isTogglable={isTogglable}
               settingEnabled={Boolean(settings?.enableProWebSearch)}
               toggle={toggleWebSearch}
             />
 
             <TurboEditsSelector
-              isTogglable={proModeTogglable}
+              isTogglable={isTogglable}
               settings={settings}
               onValueChange={handleTurboEditsChange}
             />
             <SmartContextSelector
-              isTogglable={proModeTogglable}
+              isTogglable={isTogglable}
               settings={settings}
               onValueChange={handleSmartContextChange}
             />

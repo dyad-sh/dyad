@@ -101,7 +101,7 @@ export function AzureConfiguration({
         variant: "default" as const,
         title: "Azure OpenAI Configured",
         description:
-          "Dyad will use the credentials saved in Settings for Azure OpenAI models.",
+          "JoyCreate will use the credentials saved in Settings for Azure OpenAI models.",
         icon: KeyRound,
         titleClassName: "",
         descriptionClassName: "",
@@ -264,7 +264,7 @@ export function AzureConfiguration({
               </p>
               <p>
                 Values saved in Settings take precedence over environment
-                variables. Restart Dyad after changing environment variables.
+                variables. restart JoyCreate after changing environment variables.
               </p>
             </div>
           </AccordionContent>

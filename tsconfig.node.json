@@ -9,6 +9,9 @@
     "noImplicitAny": true,
     "sourceMap": true,
     "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
     "outDir": "dist",
     "moduleResolution": "bundler",
     "resolveJsonModule": true

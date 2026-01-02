@@ -34,6 +34,10 @@ import { registerMcpHandlers } from "./handlers/mcp_handlers";
 import { registerSecurityHandlers } from "./handlers/security_handlers";
 import { registerVisualEditingHandlers } from "../pro/main/ipc/handlers/visual_editing_handlers";
 import { registerAgentToolHandlers } from "../pro/main/ipc/handlers/local_agent/agent_tool_handlers";
+import { registerAgentBuilderHandlers } from "./handlers/agent_builder_handlers";
+import { registerAgentExportHandlers } from "./handlers/agent_export_handlers";
+import { registerN8nHandlers } from "./handlers/n8n_handlers";
+import { registerTrustlessInferenceHandlers } from "./handlers/trustless_inference_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -73,4 +77,8 @@ export function registerIpcHandlers() {
   registerSecurityHandlers();
   registerVisualEditingHandlers();
   registerAgentToolHandlers();
+  registerAgentBuilderHandlers();
+  registerAgentExportHandlers();
+  registerN8nHandlers();
+  registerTrustlessInferenceHandlers();
 }

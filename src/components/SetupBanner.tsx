@@ -29,7 +29,7 @@ import { usePostHog } from "posthog-js/react";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useScrollAndNavigateTo } from "@/hooks/useScrollAndNavigateTo";
 // @ts-ignore
-import logo from "../../assets/logo.svg";
+import logo from "../../assets/joycreate-logo.svg";
 import { OnboardingBanner } from "./home/OnboardingBanner";
 import { showError } from "@/lib/toast";
 import { useSettings } from "@/hooks/useSettings";
@@ -114,11 +114,10 @@ export function SetupBanner() {
       params: { provider: "openrouter" },
     });
   };
-  const handleDyadProSetupClick = () => {
-    posthog.capture("setup-flow:ai-provider-setup:dyad:click");
-    IpcClient.getInstance().openExternalUrl(
-      "https://www.dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=setup-banner",
-    );
+  
+  const handleLocalAISetupClick = () => {
+    posthog.capture("setup-flow:ai-provider-setup:local:click");
+    navigate({ to: "/local-models" });
   };
 
   const handleOtherProvidersClick = () => {
@@ -153,15 +152,20 @@ export function SetupBanner() {
 
   if (itemsNeedAction.length === 0) {
     return (
-      <h1 className="text-center text-5xl font-bold mb-8 bg-clip-text text-transparent bg-gradient-to-r from-gray-900 to-gray-600 dark:from-gray-100 dark:to-gray-400 tracking-tight">
-        Build your dream app
-      </h1>
+      <div className="text-center mb-8">
+        <h1 className="text-5xl font-bold mb-3 bg-clip-text text-transparent bg-gradient-to-r from-violet-600 via-indigo-500 to-blue-500 dark:from-violet-400 dark:via-indigo-400 dark:to-blue-400 tracking-tight">
+          Create with Joy
+        </h1>
+        <p className="text-lg text-muted-foreground">
+          Build apps, agents, bots, algorithms & more with AI
+        </p>
+      </div>
     );
   }
 
   const bannerClasses = cn(
-    "w-full mb-6 border rounded-xl shadow-sm overflow-hidden",
-    "border-zinc-200 dark:border-zinc-700",
+    "w-full mb-6 rounded-xl overflow-hidden ghost-panel",
+    "border border-white/20 dark:border-white/10",
   );
 
   const getStatusIcon = (isComplete: boolean, hasError: boolean = false) => {
@@ -178,7 +182,7 @@ export function SetupBanner() {
   return (
     <>
       <p className="text-xl font-medium text-zinc-700 dark:text-zinc-300 p-4">
-        Setup Dyad
+        Setup JoyCreate
       </p>
       <OnboardingBanner
         isVisible={isOnboardingVisible}
@@ -343,15 +347,15 @@ export function SetupBanner() {
 
               <SetupProviderCard
                 className="mt-2"
-                variant="dyad"
-                onClick={handleDyadProSetupClick}
+                variant="local"
+                onClick={handleLocalAISetupClick}
                 tabIndex={isNodeSetupComplete ? 0 : -1}
                 leadingIcon={
-                  <img src={logo} alt="Dyad Logo" className="w-6 h-6 mr-0.5" />
+                  <img src={logo} alt="JoyCreate Logo" className="w-6 h-6 mr-0.5" />
                 }
-                title="Setup Dyad Pro"
-                subtitle="Access all AI models with one plan"
-                chip={<>Recommended</>}
+                title="Setup Local AI (Ollama/LM Studio)"
+                subtitle="Run AI models locally, 100% private"
+                chip={<>Free &amp; Private</>}
               />
 
               <div
@@ -446,7 +450,7 @@ function NodeInstallButton({
     case "finished-checking":
       return (
         <div className="mt-3 text-sm text-red-600 dark:text-red-400">
-          Node.js not detected. Closing and re-opening Dyad usually fixes this.
+          Node.js not detected. Closing and re-opening JoyCreate usually fixes this.
         </div>
       );
     default:

@@ -96,15 +96,7 @@ export async function handleLocalAgentStream(
 ): Promise<void> {
   const settings = readSettings();
 
-  // Check Pro status
-  if (!isDyadProEnabled(settings)) {
-    safeSend(event.sender, "chat:response:error", {
-      chatId: req.chatId,
-      error:
-        "Agent v2 requires Dyad Pro. Please enable Dyad Pro in Settings → Pro.",
-    });
-    return;
-  }
+  // All features are now free - no Pro check needed
 
   // Get the chat and app
   const chat = await db.query.chats.findFirst({

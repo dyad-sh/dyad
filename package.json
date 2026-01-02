@@ -1,6 +1,6 @@
 {
-  "name": "dyad",
-  "productName": "dyad",
+  "name": "joycreate",
+  "productName": "JoyCreate",
   "version": "0.32.0-beta.1",
   "description": "Free, local, open-source AI app builder",
   "main": ".vite/build/main.js",
@@ -77,6 +77,7 @@
     "happy-dom": "^17.4.4",
     "husky": "^9.1.7",
     "lint-staged": "^15.5.2",
+    "n8n": "^2.1.4",
     "oxlint": "^1.8.0",
     "prettier": "3.5.3",
     "rimraf": "^6.0.1",
@@ -97,7 +98,10 @@
     "@babel/parser": "^7.28.5",
     "@biomejs/biome": "^1.9.4",
     "@dyad-sh/supabase-management-js": "v1.0.1",
+    "@helia/json": "^5.0.3",
+    "@helia/unixfs": "^6.0.4",
     "@lexical/react": "^0.33.1",
+    "@libp2p/crypto": "^5.1.13",
     "@modelcontextprotocol/sdk": "^1.17.5",
     "@monaco-editor/react": "^4.7.0-rc.0",
     "@neondatabase/api-client": "^2.1.0",
@@ -105,7 +109,9 @@
     "@openrouter/ai-sdk-provider": "^1.1.2",
     "@radix-ui/react-accordion": "^1.2.4",
     "@radix-ui/react-alert-dialog": "^1.1.13",
+    "@radix-ui/react-avatar": "^1.1.11",
     "@radix-ui/react-checkbox": "^1.3.2",
+    "@radix-ui/react-collapsible": "^1.1.12",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.7",
     "@radix-ui/react-label": "^2.1.4",
@@ -113,6 +119,7 @@
     "@radix-ui/react-scroll-area": "^1.2.9",
     "@radix-ui/react-select": "^2.2.2",
     "@radix-ui/react-separator": "^1.1.2",
+    "@radix-ui/react-slider": "^1.3.6",
     "@radix-ui/react-slot": "^1.2.2",
     "@radix-ui/react-switch": "^1.2.0",
     "@radix-ui/react-tabs": "^1.0.4",
@@ -129,12 +136,14 @@
     "@vitejs/plugin-react": "^4.3.4",
     "ai": "^5.0.15",
     "better-sqlite3": "^12.4.1",
+    "blockstore-fs": "^3.0.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
+    "datastore-fs": "^11.0.2",
     "date-fns": "^4.1.0",
     "dotenv": "^16.4.7",
-    "drizzle-orm": "^0.41.0",
+    "drizzle-orm": "^0.45.1",
     "dugite": "^3.0.0",
     "electron-log": "^5.3.3",
     "electron-playwright-helpers": "^1.7.1",
@@ -145,6 +154,7 @@
     "framer-motion": "^12.6.3",
     "geist": "^1.3.1",
     "glob": "^11.0.2",
+    "helia": "^6.0.14",
     "html-to-image": "^1.11.13",
     "isomorphic-git": "^1.30.1",
     "jotai": "^2.12.2",
@@ -155,6 +165,7 @@
     "lexical-beautiful-mentions": "^0.1.47",
     "lucide-react": "^0.487.0",
     "monaco-editor": "^0.52.2",
+    "multiformats": "^13.4.2",
     "openai": "^4.91.1",
     "perfect-freehand": "^1.2.2",
     "posthog-js": "^1.236.3",
@@ -186,6 +197,7 @@
   "overrides": {
     "@vercel/sdk": {
       "@modelcontextprotocol/sdk": "$@modelcontextprotocol/sdk"
-    }
+    },
+    "better-sqlite3": "$better-sqlite3"
   }
 }

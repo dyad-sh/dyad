@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -94,7 +94,7 @@ export function GithubBranchManager({
   const [isExpanded, setIsExpanded] = useState(false);
   const [isBranchMenuOpen, setIsBranchMenuOpen] = useState(false);
 
-  const loadBranches = async () => {
+  const loadBranches = useCallback(async () => {
     setIsLoading(true);
     try {
       const result =
@@ -106,10 +106,36 @@ export function GithubBranchManager({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [appId]);
 
   useEffect(() => {
-    loadBranches();
+    let cancelled = false;
+
+    const load = async () => {
+      setIsLoading(true);
+      try {
+        const result =
+          await IpcClient.getInstance().listLocalGithubBranches(appId);
+        if (!cancelled) {
+          setBranches(result.branches);
+          setCurrentBranch(result.current || null);
+        }
+      } catch (error: any) {
+        if (!cancelled) {
+          showError(error.message || "Failed to load branches");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    load();
+
+    return () => {
+      cancelled = true;
+    };
   }, [appId]);
 
   const handleCreateBranch = async () => {
@@ -177,6 +203,26 @@ export function GithubBranchManager({
           "Failed to switch branch due to an unknown error";
 
         if (isRebaseInProgress(errorMessage)) {
+          // Check if there are unresolved conflicts - if so, prevent switching to avoid losing work
+          try {
+            const conflicts =
+              await IpcClient.getInstance().getGithubMergeConflicts(appId);
+            if (conflicts.length > 0) {
+              showError(
+                `Cannot switch branches: rebase in progress with ${conflicts.length} unresolved conflict(s). Please resolve all conflicts and continue the rebase, or abort it manually first.`,
+              );
+              return;
+            }
+          } catch {
+            // If we can't get conflicts, show a warning but still allow abort
+            // This is safer than silently aborting
+            showError(
+              "Rebase in progress. Unable to check for conflicts. Please resolve any conflicts and continue the rebase, or abort it manually before switching branches.",
+            );
+            return;
+          }
+
+          // No conflicts detected - safe to abort and switch
           try {
             const abortResult =
               await IpcClient.getInstance().abortGithubRebase(appId);
@@ -308,9 +354,11 @@ export function GithubBranchManager({
   const handleMergeBranch = async () => {
     if (!branchToMerge) return;
     setIsMerging(true);
+    setConflicts([]); // Clear conflicts when starting a new merge operation
     try {
       await IpcClient.getInstance().mergeGithubBranch(appId, branchToMerge);
       showSuccess(`Merged '${branchToMerge}' into '${currentBranch}'`);
+      setConflicts([]); // Clear conflicts on successful merge
       setBranchToMerge(null);
       await loadBranches(); // Refresh to see any status changes if we implement them
     } catch (error: any) {

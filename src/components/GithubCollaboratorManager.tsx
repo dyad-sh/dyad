@@ -162,7 +162,7 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
             <Button
               type="submit"
               data-testid="collaborator-invite-button"
-              disabled={isInviting || !inviteUsername}
+              disabled={isInviting || !inviteUsername.trim()}
             >
               {isInviting ? (
                 "Inviting..."

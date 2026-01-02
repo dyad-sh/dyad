@@ -575,10 +575,12 @@ export async function gitPush({
     remote: "origin",
     ref: targetBranch,
     remoteRef: targetBranch,
-    onAuth: () => ({
-      username: accessToken,
-      password: "x-oauth-basic",
-    }),
+    onAuth: accessToken
+      ? () => ({
+          username: accessToken,
+          password: "x-oauth-basic",
+        })
+      : undefined,
     force: !!force,
   });
 }

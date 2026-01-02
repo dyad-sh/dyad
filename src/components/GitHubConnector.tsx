@@ -220,6 +220,7 @@ function ConnectedGitHubConnector({
   }, [handleSyncToGithub]);
 
   const handleRebaseAndSync = useCallback(async () => {
+    setIsSyncing(true); // Set loading state at the start to prevent multiple clicks
     try {
       // First, perform the rebase
       await IpcClient.getInstance().rebaseGithubRepo(appId);
@@ -227,6 +228,7 @@ function ConnectedGitHubConnector({
         "Rebase completed successfully. Pushing to GitHub...",
       );
       // Then, sync (push) to GitHub using the existing handler
+      // Note: handleSyncToGithub will manage isSyncing state, but we've already set it
       await handleSyncToGithub();
     } catch (err: any) {
       const errorMessage =
@@ -239,7 +241,11 @@ function ConnectedGitHubConnector({
           "Rebase failed. You may need to resolve conflicts or abort the rebase.",
         );
       }
+      // Reset syncing state on error (handleSyncToGithub wasn't called or failed)
+      setIsSyncing(false);
     }
+    // Note: If handleSyncToGithub succeeds, it will reset isSyncing in its own finally block
+    // If it fails, the catch block above handles it
   }, [appId, handleSyncToGithub]);
 
   // Auto-sync when triggerAutoSync prop is true

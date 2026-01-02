@@ -159,8 +159,6 @@ test.describe("Git Collaboration", () => {
     await branchesCard.hover();
     await po.page.getByTestId(`branch-actions-${featureBranch}`).click();
     await po.page.getByTestId("delete-branch-menu-item").click();
-    // Confirm delete (native confirm dialog handling might be needed or custom dialog)
-    // The implementation uses `confirm()`, so we need to handle the dialog.
     await po.page.getByRole("button", { name: "Delete Branch" }).click();
 
     // Verify deletion

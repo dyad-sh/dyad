@@ -10,7 +10,17 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      external: ["better-sqlite3"],
+      external: [
+        "better-sqlite3",
+        // ESM-only packages that need to be externalized
+        "helia",
+        "@helia/json",
+        "@helia/unixfs",
+        "blockstore-fs",
+        "datastore-fs",
+        "multiformats",
+        "@libp2p/crypto",
+      ],
     },
   },
   plugins: [

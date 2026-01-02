@@ -25,20 +25,19 @@ export function DyadProSuccessDialog({
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100 dark:bg-green-900">
               <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400" />
             </div>
-            <span>Dyad Pro Enabled</span>
+            <span>Features Enabled</span>
           </DialogTitle>
         </DialogHeader>
         <div className="py-4">
           <p className="mb-4 text-base">
-            Congrats! Dyad Pro is now enabled in the app.
+            All JoyCreate features are now ready to use!
           </p>
           <div className="flex items-center gap-2 mb-3">
             <Sparkles className="h-5 w-5 text-indigo-500" />
-            <p className="text-sm">You have access to leading AI models.</p>
+            <p className="text-sm">You have access to all AI models and features.</p>
           </div>
           <p className="text-sm text-muted-foreground">
-            You can click the Pro button at the top to access the settings at
-            any time.
+            Click the Features button at the top to access settings at any time.
           </p>
         </div>
         <DialogFooter className="flex justify-end gap-2">

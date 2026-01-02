@@ -129,24 +129,20 @@ export function TokenBar({ chatId }: TokenBarProps) {
       {error && (
         <div className="text-red-500 text-xs mt-1">Failed to count tokens</div>
       )}
-      {(!settings?.enableProSmartFilesContextMode ||
-        !settings?.enableDyadPro) && (
+      {!settings?.enableProSmartFilesContextMode && (
         <div className="text-xs text-center text-muted-foreground mt-2">
           Optimize your tokens with{" "}
           <a
             onClick={() =>
-              settings?.enableDyadPro
-                ? IpcClient.getInstance().openExternalUrl(
-                    "https://www.dyad.sh/docs/guides/ai-models/pro-modes#smart-context",
-                  )
-                : IpcClient.getInstance().openExternalUrl(
-                    "https://dyad.sh/pro#ai",
-                  )
+              IpcClient.getInstance().openExternalUrl(
+                "https://docs.joycreate.app/guides/ai-models/smart-context",
+              )
             }
             className="text-blue-500 dark:text-blue-400 cursor-pointer hover:underline"
           >
-            Dyad Pro's Smart Context
+            Smart Context
           </a>
+          {" "}- enable it in Pro Modes.
         </div>
       )}
     </div>

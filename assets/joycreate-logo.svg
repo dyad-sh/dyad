@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <defs>
+    <linearGradient id="joyGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#8B5CF6"/>
+      <stop offset="50%" style="stop-color:#6366F1"/>
+      <stop offset="100%" style="stop-color:#3B82F6"/>
+    </linearGradient>
+    <linearGradient id="sparkGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#F472B6"/>
+      <stop offset="100%" style="stop-color:#8B5CF6"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Main circular shape with gradient -->
+  <circle cx="50" cy="50" r="44" fill="url(#joyGradient)" opacity="0.95"/>
+  
+  <!-- Inner glow ring -->
+  <circle cx="50" cy="50" r="38" fill="none" stroke="white" stroke-width="1" opacity="0.3"/>
+  
+  <!-- J letter stylized as a creative spark/wand -->
+  <g filter="url(#glow)">
+    <!-- J stem -->
+    <path d="M56 28 L56 58 Q56 70 44 70 Q32 70 32 58" 
+          stroke="white" stroke-width="6" stroke-linecap="round" fill="none"/>
+    
+    <!-- Creative spark at top -->
+    <circle cx="56" cy="24" r="4" fill="url(#sparkGradient)"/>
+    
+    <!-- Small sparkles -->
+    <circle cx="66" cy="30" r="2" fill="white" opacity="0.8"/>
+    <circle cx="70" cy="38" r="1.5" fill="white" opacity="0.6"/>
+    <circle cx="64" cy="42" r="1" fill="white" opacity="0.4"/>
+  </g>
+  
+  <!-- Orbital ring suggesting creation/generation -->
+  <ellipse cx="50" cy="50" rx="32" ry="10" fill="none" 
+           stroke="white" stroke-width="1.5" opacity="0.4"
+           transform="rotate(-20 50 50)"/>
+</svg>

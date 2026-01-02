@@ -35,8 +35,8 @@ function getKeyButtonText({
 }) {
   if (isDyad) {
     return isConfigured
-      ? "Manage Dyad Pro Subscription"
-      : "Setup Dyad Pro Subscription";
+      ? "Manage JoyCreate Settings"
+      : "Configure JoyCreate";
   }
   return isConfigured ? "Manage API Keys" : "Setup API Key";
 }

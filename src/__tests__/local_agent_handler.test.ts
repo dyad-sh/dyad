@@ -275,7 +275,7 @@ describe("handleLocalAgentStream", () => {
   });
 
   describe("Pro status validation", () => {
-    it("should send error when Dyad Pro is not enabled", async () => {
+    it("should send error when JoyCreate Pro is not enabled", async () => {
       // Arrange
       const { event, getMessagesByChannel } = createFakeEvent();
       mockSettings = buildTestSettings({ enableDyadPro: false });
@@ -293,7 +293,7 @@ describe("handleLocalAgentStream", () => {
       expect(errorMessages).toHaveLength(1);
       expect(errorMessages[0].args[0]).toMatchObject({
         chatId: 1,
-        error: expect.stringContaining("Agent v2 requires Dyad Pro"),
+        error: expect.stringContaining("Agent v2 requires JoyCreate Pro"),
       });
     });
 

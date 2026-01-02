@@ -2,7 +2,7 @@ import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ReactNode } from "react";
 
-type SetupProviderVariant = "google" | "openrouter" | "dyad";
+type SetupProviderVariant = "google" | "openrouter" | "dyad" | "local";
 
 export function SetupProviderCard({
   variant,
@@ -102,6 +102,16 @@ function getVariantStyles(variant: SetupProviderVariant) {
         titleColor: "text-violet-800 dark:text-violet-300",
         subtitleColor: "text-violet-600 dark:text-violet-400",
         chevronColor: "text-violet-600 dark:text-violet-400",
+      } as const;
+    case "local":
+    default:
+      return {
+        container:
+          "bg-emerald-50 dark:bg-emerald-900/50 border-emerald-200 dark:border-emerald-700 hover:bg-emerald-100 dark:hover:bg-emerald-900/70",
+        iconWrapper: "bg-emerald-100 dark:bg-emerald-800",
+        titleColor: "text-emerald-800 dark:text-emerald-300",
+        subtitleColor: "text-emerald-600 dark:text-emerald-400",
+        chevronColor: "text-emerald-600 dark:text-emerald-400",
       } as const;
   }
 }

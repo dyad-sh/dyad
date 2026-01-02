@@ -34,9 +34,9 @@ export function ReleaseChannelSelector() {
     } else {
       toast("Using Beta release channel", {
         description:
-          "You will need to restart Dyad for your settings to take effect.",
+          "You will need to restart JoyCreate for your settings to take effect.",
         action: {
-          label: "Restart Dyad",
+          label: "restart JoyCreate",
           onClick: () => {
             IpcClient.getInstance().restartDyad();
           },

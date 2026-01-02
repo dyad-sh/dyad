@@ -407,18 +407,17 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                       <button
                         onClick={() => {
                           IpcClient.getInstance().openExternalUrl(
-                            "https://dyad.sh/pro",
+                            "https://docs.joycreate.app/features/visual-editor",
                           );
                         }}
                         className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors cursor-pointer"
                       >
                         <Lock size={16} />
-                        <span className="font-medium">Visual editor (Pro)</span>
+                        <span className="font-medium">Visual editor</span>
                       </button>
                     </TooltipTrigger>
                     <TooltipContent>
-                      Visual editing lets you make UI changes without AI and is
-                      a Pro-only feature
+                      Visual editing lets you make UI changes without AI
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>

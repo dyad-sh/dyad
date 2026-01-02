@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { useTheme } from "@/contexts/ThemeContext";
 import { Button } from "@/components/ui/button";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Sparkles, RefreshCw } from "lucide-react";
 import { ImportAppButton } from "@/components/ImportAppButton";
 import { showError } from "@/lib/toast";
 import { invalidateAppQuery } from "@/hooks/useLoadApp";
@@ -183,15 +183,19 @@ export default function HomePage() {
     return (
       <div className="flex flex-col items-center justify-center max-w-3xl m-auto p-8">
         <div className="w-full flex flex-col items-center">
-          {/* Loading Spinner */}
-          <div className="relative w-24 h-24 mb-8">
-            <div className="absolute top-0 left-0 w-full h-full border-8 border-gray-200 dark:border-gray-700 rounded-full"></div>
-            <div className="absolute top-0 left-0 w-full h-full border-8 border-t-primary rounded-full animate-spin"></div>
+          {/* Loading Spinner with gradient */}
+          <div className="relative w-28 h-28 mb-8">
+            <div className="absolute inset-0 rounded-full bg-gradient-to-r from-violet-500/20 via-purple-500/20 to-pink-500/20 animate-pulse"></div>
+            <div className="absolute inset-2 rounded-full bg-background"></div>
+            <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-violet-500 border-r-purple-500 animate-spin"></div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Sparkles className="w-8 h-8 text-violet-500 animate-pulse" />
+            </div>
           </div>
-          <h2 className="text-2xl font-bold mb-2 text-gray-800 dark:text-gray-200">
+          <h2 className="text-2xl font-bold mb-2 bg-gradient-to-r from-violet-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
             Building your app
           </h2>
-          <p className="text-gray-600 dark:text-gray-400 text-center max-w-md mb-8">
+          <p className="text-muted-foreground text-center max-w-md mb-8">
             We're setting up your app with AI magic. <br />
             This might take a moment...
           </p>
@@ -211,28 +215,44 @@ export default function HomePage() {
       <SetupBanner />
 
       <div className="w-full">
+        {/* Hero Section */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-violet-500/10 via-purple-500/10 to-pink-500/10 border border-violet-500/20 mb-4">
+            <Sparkles className="w-4 h-4 text-violet-500" />
+            <span className="text-sm font-medium bg-gradient-to-r from-violet-600 to-purple-600 bg-clip-text text-transparent">
+              AI-Powered App Builder
+            </span>
+          </div>
+          <h1 className="text-3xl font-bold mb-2 bg-gradient-to-r from-foreground via-foreground/90 to-foreground/70 bg-clip-text text-transparent">
+            What would you like to build?
+          </h1>
+          <p className="text-muted-foreground">
+            Describe your idea and watch it come to life
+          </p>
+        </div>
+
         <ImportAppButton />
         <HomeChatInput onSubmit={handleSubmit} />
 
-        <div className="flex flex-col gap-4 mt-2">
-          <div className="flex flex-wrap gap-4 justify-center">
+        <div className="flex flex-col gap-4 mt-6">
+          <div className="flex flex-wrap gap-3 justify-center">
             {randomPrompts.map((item, index) => (
               <button
                 type="button"
                 key={index}
                 onClick={() => setInputValue(`Build me a ${item.label}`)}
-                className="flex items-center gap-3 px-4 py-2 rounded-xl border border-gray-200
-                           bg-white/50 backdrop-blur-sm
-                           transition-all duration-200
-                           hover:bg-white hover:shadow-md hover:border-gray-300
-                           active:scale-[0.98]
-                           dark:bg-gray-800/50 dark:border-gray-700
-                           dark:hover:bg-gray-800 dark:hover:border-gray-600"
+                className="group flex items-center gap-3 px-4 py-2.5 rounded-xl border border-border/50
+                           bg-gradient-to-br from-background via-background to-muted/30
+                           backdrop-blur-sm shadow-sm
+                           transition-all duration-300
+                           hover:shadow-lg hover:border-violet-500/30 hover:scale-[1.02]
+                           hover:bg-gradient-to-br hover:from-violet-500/5 hover:via-purple-500/5 hover:to-pink-500/5
+                           active:scale-[0.98]"
               >
-                <span className="text-gray-700 dark:text-gray-300">
+                <span className="text-lg group-hover:scale-110 transition-transform duration-200">
                   {item.icon}
                 </span>
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                <span className="text-sm font-medium text-foreground/80 group-hover:text-foreground transition-colors">
                   {item.label}
                 </span>
               </button>
@@ -242,28 +262,16 @@ export default function HomePage() {
           <button
             type="button"
             onClick={() => setRandomPrompts(getRandomPrompts())}
-            className="self-center flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-200
-                       bg-white/50 backdrop-blur-sm
-                       transition-all duration-200
-                       hover:bg-white hover:shadow-md hover:border-gray-300
-                       active:scale-[0.98]
-                       dark:bg-gray-800/50 dark:border-gray-700
-                       dark:hover:bg-gray-800 dark:hover:border-gray-600"
+            className="group self-center flex items-center gap-2 px-4 py-2 rounded-xl border border-border/50
+                       bg-gradient-to-r from-background to-muted/20
+                       backdrop-blur-sm
+                       transition-all duration-300
+                       hover:shadow-md hover:border-violet-500/30
+                       hover:bg-gradient-to-r hover:from-violet-500/5 hover:to-purple-500/5
+                       active:scale-[0.98]"
           >
-            <svg
-              className="w-5 h-5 text-gray-700 dark:text-gray-300"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-              />
-            </svg>
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            <RefreshCw className="w-4 h-4 text-muted-foreground group-hover:text-violet-500 group-hover:rotate-180 transition-all duration-500" />
+            <span className="text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors">
               More ideas
             </span>
           </button>

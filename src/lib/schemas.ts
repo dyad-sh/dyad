@@ -313,12 +313,19 @@ export const UserSettingsSchema = z.object({
  */
 export type UserSettings = z.infer<typeof UserSettingsSchema>;
 
-export function isDyadProEnabled(settings: UserSettings): boolean {
-  return settings.enableDyadPro === true && hasDyadProKey(settings);
+/**
+ * All Pro features are now free in JoyCreate
+ * This function always returns true to enable all features
+ */
+export function isDyadProEnabled(_settings: UserSettings): boolean {
+  return true; // All features are free in JoyCreate
 }
 
+/**
+ * Check if user has a Pro API key (legacy, not required anymore)
+ */
 export function hasDyadProKey(settings: UserSettings): boolean {
-  return !!settings.providerSettings?.auto?.apiKey?.value;
+  return true; // All features work without a key in JoyCreate
 }
 
 export function isSupabaseConnected(settings: UserSettings | null): boolean {
@@ -333,9 +340,9 @@ export function isSupabaseConnected(settings: UserSettings | null): boolean {
 }
 
 export function isTurboEditsV2Enabled(settings: UserSettings): boolean {
+  // Turbo Edits V2 now available for free in JoyCreate
   return Boolean(
-    isDyadProEnabled(settings) &&
-      settings.enableProLazyEditsMode === true &&
+    settings.enableProLazyEditsMode === true &&
       settings.proLazyEditsMode === "v2",
   );
 }

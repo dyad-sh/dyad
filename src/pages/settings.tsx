@@ -11,7 +11,7 @@ import { ThinkingBudgetSelector } from "@/components/ThinkingBudgetSelector";
 import { useSettings } from "@/hooks/useSettings";
 import { useAppVersion } from "@/hooks/useAppVersion";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Settings } from "lucide-react";
 import { useRouter } from "@tanstack/react-router";
 import { GitHubIntegration } from "@/components/GitHubIntegration";
 import { VercelIntegration } from "@/components/VercelIntegration";
@@ -61,21 +61,33 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="min-h-screen px-8 py-4">
+    <div className="min-h-screen px-8 py-6">
       <div className="max-w-5xl mx-auto">
         <Button
           onClick={() => router.history.back()}
           variant="outline"
           size="sm"
-          className="flex items-center gap-2 mb-4 bg-(--background-lightest) py-5"
+          className="flex items-center gap-2 mb-6 border-border/50 hover:border-gray-500/30 hover:bg-gray-500/10 transition-all"
         >
           <ArrowLeft className="h-4 w-4" />
           Go Back
         </Button>
-        <div className="flex justify-between mb-4">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-            Settings
-          </h1>
+        
+        {/* Enhanced Header */}
+        <div className="mb-8 p-6 rounded-2xl bg-gradient-to-r from-gray-500/10 via-slate-500/10 to-zinc-500/10 border border-gray-500/20">
+          <div className="flex items-center gap-4">
+            <div className="p-3 rounded-xl bg-gradient-to-br from-gray-500/20 via-slate-500/20 to-zinc-500/20 border border-gray-500/20">
+              <Settings className="h-7 w-7 text-gray-500" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-600 via-slate-600 to-zinc-600 bg-clip-text text-transparent">
+                Settings
+              </h1>
+              <p className="text-muted-foreground text-sm">
+                Configure your application preferences
+              </p>
+            </div>
+          </div>
         </div>
 
         <div className="space-y-6">

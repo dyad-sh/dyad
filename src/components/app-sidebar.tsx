@@ -12,6 +12,7 @@ import {
   PanelLeftClose,
   PanelLeft,
   Plus,
+  FileText,
 } from "lucide-react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -79,6 +80,15 @@ const navItems = [
     hoverBg: "hover:bg-emerald-500/10",
     activeBg: "bg-emerald-500/15",
     activeText: "text-emerald-600 dark:text-emerald-400",
+  },
+  {
+    title: "Documents",
+    to: "/documents",
+    icon: FileText,
+    gradient: "from-sky-500 to-cyan-500",
+    hoverBg: "hover:bg-sky-500/10",
+    activeBg: "bg-sky-500/15",
+    activeText: "text-sky-600 dark:text-sky-400",
   },
   {
     title: "Chat",

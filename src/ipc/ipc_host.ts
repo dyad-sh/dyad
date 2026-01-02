@@ -38,6 +38,7 @@ import { registerAgentBuilderHandlers } from "./handlers/agent_builder_handlers"
 import { registerAgentExportHandlers } from "./handlers/agent_export_handlers";
 import { registerN8nHandlers } from "./handlers/n8n_handlers";
 import { registerTrustlessInferenceHandlers } from "./handlers/trustless_inference_handlers";
+import { registerLibreOfficeHandlers } from "./handlers/libreoffice_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -81,4 +82,5 @@ export function registerIpcHandlers() {
   registerAgentExportHandlers();
   registerN8nHandlers();
   registerTrustlessInferenceHandlers();
+  registerLibreOfficeHandlers();
 }

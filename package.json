@@ -92,6 +92,7 @@
     "@ai-sdk/azure": "^2.0.17",
     "@ai-sdk/google": "^2.0.6",
     "@ai-sdk/google-vertex": "3.0.16",
+    "@ai-sdk/mcp": "0.0.13",
     "@ai-sdk/openai": "2.0.15",
     "@ai-sdk/openai-compatible": "^1.0.8",
     "@ai-sdk/provider-utils": "^3.0.3",
@@ -117,6 +118,7 @@
     "@radix-ui/react-dropdown-menu": "^2.1.7",
     "@radix-ui/react-label": "^2.1.4",
     "@radix-ui/react-popover": "^1.1.7",
+    "@radix-ui/react-progress": "^1.1.8",
     "@radix-ui/react-scroll-area": "^1.2.9",
     "@radix-ui/react-select": "^2.2.2",
     "@radix-ui/react-separator": "^1.1.2",
@@ -130,8 +132,13 @@
     "@rollup/plugin-commonjs": "^28.0.3",
     "@tailwindcss/typography": "^0.5.16",
     "@tailwindcss/vite": "^4.1.3",
+    "@tanstack/history": "^1.141.0",
+    "@tanstack/query-core": "^5.90.16",
     "@tanstack/react-query": "^5.75.5",
     "@tanstack/react-router": "^1.114.34",
+    "@tanstack/react-store": "^0.8.0",
+    "@tanstack/router-core": "^1.144.0",
+    "@tanstack/store": "^0.8.0",
     "@types/uuid": "^10.0.0",
     "@vercel/sdk": "^1.18.0",
     "@vitejs/plugin-react": "^4.3.4",
@@ -201,5 +208,13 @@
       "@modelcontextprotocol/sdk": "$@modelcontextprotocol/sdk"
     },
     "better-sqlite3": "$better-sqlite3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "electron-winstaller",
+      "better-sqlite3",
+      "esbuild"
+    ]
   }
 }

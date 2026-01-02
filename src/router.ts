@@ -11,6 +11,11 @@ import { agentsRoute, agentEditorRoute, agentTestRoute } from "./routes/agents";
 import { workflowsRoute } from "./routes/workflows";
 import { localModelsRoute } from "./routes/local-models";
 import { documentsRoute } from "./routes/documents";
+import { deployRoute } from "./routes/deploy";
+import { datasetsRoute } from "./routes/datasets";
+import { assetStudioRoute } from "./routes/asset-studio";
+import { nftMarketplaceRoute } from "./routes/nft-marketplace";
+import { federationRoute } from "./routes/federation";
 
 const routeTree = rootRoute.addChildren([
   homeRoute,
@@ -25,6 +30,11 @@ const routeTree = rootRoute.addChildren([
   workflowsRoute,
   localModelsRoute,
   documentsRoute,
+  deployRoute,
+  datasetsRoute,
+  assetStudioRoute,
+  nftMarketplaceRoute,
+  federationRoute,
 ]);
 
 // src/components/NotFoundRedirect.tsx

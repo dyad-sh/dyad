@@ -212,6 +212,15 @@ const validInvokeChannels = [
   "trustless:verify-batch-proof",
   "trustless:helia-status",
   "trustless:get-stats",
+  // LibreOffice Integration
+  "libreoffice:status",
+  "libreoffice:create",
+  "libreoffice:list",
+  "libreoffice:get",
+  "libreoffice:delete",
+  "libreoffice:export",
+  "libreoffice:open",
+  "libreoffice:get-directory",
   // Test-only channels
   // These should ALWAYS be guarded with IS_TEST_BUILD in the main process.
   // We can't detect with IS_TEST_BUILD in the preload script because

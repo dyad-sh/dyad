@@ -564,3 +564,73 @@ export const agentUIComponentsRelations = relations(agentUIComponents, ({ one })
     references: [agents.id],
   }),
 }));
+
+// ============================================================================
+// Document Creation Tables (LibreOffice Integration)
+// ============================================================================
+
+export const documents = sqliteTable("documents", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  type: text("type", { enum: ["document", "spreadsheet", "presentation"] }).notNull(),
+  format: text("format").notNull(), // odt, docx, ods, xlsx, odp, pptx, etc.
+  status: text("status", { enum: ["draft", "generating", "ready", "error"] })
+    .notNull()
+    .default("draft"),
+  filePath: text("file_path").notNull(),
+  description: text("description"),
+  tags: text("tags", { mode: "json" }).$type<string[]>(),
+  thumbnail: text("thumbnail"),
+  size: integer("size"),
+  // AI generation metadata
+  aiPrompt: text("ai_prompt"),
+  aiModel: text("ai_model"),
+  aiProvider: text("ai_provider"),
+  // Timestamps
+  createdAt: text("created_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
+  updatedAt: text("updated_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
+});
+
+export const documentTemplates = sqliteTable("document_templates", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  type: text("type", { enum: ["document", "spreadsheet", "presentation"] }).notNull(),
+  description: text("description"),
+  category: text("category").notNull(),
+  thumbnail: text("thumbnail"),
+  content: text("content", { mode: "json" }),
+  isBuiltin: integer("is_builtin", { mode: "boolean" })
+    .notNull()
+    .default(sql`0`),
+  createdAt: text("created_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
+});
+
+export const documentExports = sqliteTable("document_exports", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  documentId: integer("document_id")
+    .notNull()
+    .references(() => documents.id, { onDelete: "cascade" }),
+  format: text("format").notNull(),
+  filePath: text("file_path").notNull(),
+  createdAt: text("created_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
+});
+
+// Document relations
+export const documentsRelations = relations(documents, ({ many }) => ({
+  exports: many(documentExports),
+}));
+
+export const documentExportsRelations = relations(documentExports, ({ one }) => ({
+  document: one(documents, {
+    fields: [documentExports.documentId],
+    references: [documents.id],
+  }),
+}));

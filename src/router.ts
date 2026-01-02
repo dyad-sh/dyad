@@ -10,6 +10,7 @@ import { libraryRoute } from "./routes/library";
 import { agentsRoute, agentEditorRoute, agentTestRoute } from "./routes/agents";
 import { workflowsRoute } from "./routes/workflows";
 import { localModelsRoute } from "./routes/local-models";
+import { documentsRoute } from "./routes/documents";
 
 const routeTree = rootRoute.addChildren([
   homeRoute,
@@ -23,6 +24,7 @@ const routeTree = rootRoute.addChildren([
   agentTestRoute,
   workflowsRoute,
   localModelsRoute,
+  documentsRoute,
 ]);
 
 // src/components/NotFoundRedirect.tsx

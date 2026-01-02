@@ -188,7 +188,9 @@ export function LocalModelEndpointSettings({
 
   return (
     <div className="space-y-6">
-      {endpointKinds.map((endpointKind) => renderEndpointField(endpointKind))}
+      {endpointKinds.map((endpointKind) => (
+        <div key={endpointKind}>{renderEndpointField(endpointKind)}</div>
+      ))}
     </div>
   );
 }

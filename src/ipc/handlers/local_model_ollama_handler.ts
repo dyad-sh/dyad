@@ -14,10 +14,6 @@ export function parseOllamaHost(host?: string): string {
     return DEFAULT_OLLAMA_ENDPOINT;
   }
 
-  if (!host) {
-    return DEFAULT_OLLAMA_ENDPOINT;
-  }
-
   const hostWithoutWhitespace = host.replace(/\s+/g, "");
   if (!hostWithoutWhitespace) {
     return DEFAULT_OLLAMA_ENDPOINT;

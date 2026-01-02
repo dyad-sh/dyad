@@ -39,6 +39,11 @@ import { registerAgentExportHandlers } from "./handlers/agent_export_handlers";
 import { registerN8nHandlers } from "./handlers/n8n_handlers";
 import { registerTrustlessInferenceHandlers } from "./handlers/trustless_inference_handlers";
 import { registerLibreOfficeHandlers } from "./handlers/libreoffice_handlers";
+import { registerMarketplaceHandlers } from "./handlers/marketplace_handlers";
+import { registerScraperHandlers } from "./handlers/scraper_handlers";
+import { registerAssetStudioHandlers } from "./handlers/asset_studio_handlers";
+import { registerNFTHandlers } from "./handlers/nft_handlers";
+import { registerFederationHandlers } from "./handlers/federation_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -83,4 +88,9 @@ export function registerIpcHandlers() {
   registerN8nHandlers();
   registerTrustlessInferenceHandlers();
   registerLibreOfficeHandlers();
+  registerMarketplaceHandlers();
+  registerScraperHandlers();
+  registerAssetStudioHandlers();
+  registerNFTHandlers();
+  registerFederationHandlers();
 }

@@ -26,15 +26,32 @@ export function HistoryNavigation({
     draftRef.current = "";
   }, [messageHistory]);
 
+  const isMentionsMenuOpen = useCallback(() => {
+    const mentionsMenu = document.querySelector('[data-mentions-menu="true"]');
+    return !!(mentionsMenu && mentionsMenu.children.length > 0);
+  }, []);
+
+  const setEditorContent = useCallback(
+    (text: string) => {
+      editor.update(() => {
+        const root = $getRoot();
+        root.clear();
+        const paragraph = $createParagraphNode();
+        if (text) {
+          paragraph.append($createTextNode(text));
+        }
+        root.append(paragraph);
+        paragraph.selectEnd();
+      });
+      onChange(text);
+    },
+    [editor, onChange],
+  );
+
   const handleArrowUp = useCallback(
     (event: KeyboardEvent) => {
       // Check if mentions menu is open
-      const mentionsMenu = document.querySelector(
-        '[data-mentions-menu="true"]',
-      );
-      const hasVisibleItems = mentionsMenu && mentionsMenu.children.length > 0;
-
-      if (hasVisibleItems) {
+      if (isMentionsMenuOpen()) {
         return false;
       }
 
@@ -61,38 +78,24 @@ export function HistoryNavigation({
         draftRef.current = currentText;
       }
 
-      event.preventDefault();
-
       // Move to previous history item
       if (historyIndexRef.current < messageHistory.length - 1) {
+        event.preventDefault();
         historyIndexRef.current += 1;
         const historyItem = messageHistory[historyIndexRef.current];
-        editor.update(() => {
-          const root = $getRoot();
-          root.clear();
-          const paragraph = $createParagraphNode();
-          paragraph.append($createTextNode(historyItem));
-          root.append(paragraph);
-          paragraph.selectEnd();
-        });
-        onChange(historyItem);
+        setEditorContent(historyItem);
         return true;
       }
 
       return false;
     },
-    [editor, messageHistory, onChange],
+    [editor, messageHistory, isMentionsMenuOpen, setEditorContent],
   );
 
   const handleArrowDown = useCallback(
     (event: KeyboardEvent) => {
       // Check if mentions menu is open
-      const mentionsMenu = document.querySelector(
-        '[data-mentions-menu="true"]',
-      );
-      const hasVisibleItems = mentionsMenu && mentionsMenu.children.length > 0;
-
-      if (hasVisibleItems) {
+      if (isMentionsMenuOpen()) {
         return false;
       }
 
@@ -107,36 +110,18 @@ export function HistoryNavigation({
       if (historyIndexRef.current > 0) {
         historyIndexRef.current -= 1;
         const historyItem = messageHistory[historyIndexRef.current];
-        editor.update(() => {
-          const root = $getRoot();
-          root.clear();
-          const paragraph = $createParagraphNode();
-          paragraph.append($createTextNode(historyItem));
-          root.append(paragraph);
-          paragraph.selectEnd();
-        });
-        onChange(historyItem);
+        setEditorContent(historyItem);
         return true;
       } else {
         // Go back to draft (empty or saved draft)
         historyIndexRef.current = -1;
         const draft = draftRef.current;
         draftRef.current = "";
-        editor.update(() => {
-          const root = $getRoot();
-          root.clear();
-          const paragraph = $createParagraphNode();
-          if (draft) {
-            paragraph.append($createTextNode(draft));
-          }
-          root.append(paragraph);
-          paragraph.selectEnd();
-        });
-        onChange(draft);
+        setEditorContent(draft);
         return true;
       }
     },
-    [editor, messageHistory, onChange],
+    [messageHistory, isMentionsMenuOpen, setEditorContent],
   );
 
   useEffect(() => {

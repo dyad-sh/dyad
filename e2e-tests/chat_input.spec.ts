@@ -64,12 +64,11 @@ test("chat input history navigation - up arrow recalls previous prompts", async 
   // Clear the input (should be empty after sending)
   await chatInput.click();
   await chatInput.fill("");
-  await po.page.waitForTimeout(100); // Wait for input to clear
+  await expect(chatInput).toBeEmpty(); // Wait for input to clear
 
   // Press Up arrow to get the most recent message (Third message)
   await chatInput.press("ArrowUp");
-  await po.page.waitForTimeout(100);
-  expect(await chatInput.textContent()).toBe("Third message");
+  await expect(chatInput).toHaveText("Third message");
 
   // Press Up arrow again to get the second message
   await chatInput.press("ArrowUp");

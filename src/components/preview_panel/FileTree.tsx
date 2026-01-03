@@ -104,22 +104,16 @@ export const FileTree = ({ appId, files }: FileTreeProps) => {
   const prevAppIdRef = React.useRef<number | null>(appId);
 
   // Reset search when appId changes to prevent unnecessary IPC calls with old search term
-  // Use a derived value to immediately clear search on appId change, before state update
-  const effectiveSearchValue = React.useMemo(() => {
+  React.useEffect(() => {
     const appIdChanged = prevAppIdRef.current !== appId;
     if (appIdChanged) {
       prevAppIdRef.current = appId;
-      return "";
-    }
-    return searchValue;
-  }, [appId, searchValue]);
-
-  // Sync state with effective value when appId changes
-  React.useEffect(() => {
-    if (effectiveSearchValue === "" && searchValue !== "") {
       setSearchValue("");
     }
-  }, [effectiveSearchValue, searchValue]);
+  }, [appId]);
+
+  // Use searchValue directly as effectiveSearchValue since we handle reset in useEffect
+  const effectiveSearchValue = searchValue;
 
   const debouncedSearch = useDebouncedValue(effectiveSearchValue, 250);
   const isSearchMode = debouncedSearch.trim().length > 0;

@@ -132,9 +132,29 @@ export const FileEditor = ({
       window.matchMedia("(prefers-color-scheme: dark)").matches);
   const editorTheme = isDarkMode ? "dyad-dark" : "dyad-light";
 
+  // Navigate to a specific line in the editor
+  const navigateToLine = React.useCallback((line: number | null) => {
+    if (line == null || !editorRef.current) {
+      return;
+    }
+    const lineNumber = Math.max(1, Math.floor(line));
+    const editor = editorRef.current;
+    const model = editor.getModel();
+    if (!model) return;
+    if (lineNumber > model.getLineCount()) return;
+
+    editor.revealLineInCenter(lineNumber);
+    editor.setPosition({ lineNumber, column: 1 });
+  }, []);
+
   // Handle editor mount
   const handleEditorDidMount: OnMount = (editor) => {
     editorRef.current = editor;
+
+    // Navigate to initialLine if provided (handles case when editor mounts after initialLine is set)
+    if (initialLine != null) {
+      navigateToLine(initialLine);
+    }
 
     // Listen for model content change events
     editor.onDidBlurEditorText(() => {
@@ -197,19 +217,10 @@ export const FileEditor = ({
   };
 
   // Jump to target line if provided (e.g., from search results)
+  // This effect handles when initialLine changes after the editor is mounted
   useEffect(() => {
-    if (!initialLine || !editorRef.current) {
-      return;
-    }
-    const lineNumber = Math.max(1, Math.floor(initialLine));
-    const editor = editorRef.current;
-    const model = editor.getModel();
-    if (!model) return;
-    if (lineNumber > model.getLineCount()) return;
-
-    editor.revealLineInCenter(lineNumber);
-    editor.setPosition({ lineNumber, column: 1 });
-  }, [initialLine, filePath]);
+    navigateToLine(initialLine ?? null);
+  }, [initialLine, filePath, navigateToLine]);
 
   if (loading) {
     return <div className="p-4">Loading file content...</div>;

@@ -6,7 +6,10 @@ import { useRef, useEffect } from "react";
 export function useSearchAppFiles(appId: number | null, query: string) {
   const trimmedQuery = query.trim();
   const enabled = Boolean(appId && trimmedQuery.length > 0);
-  const lastDataAppIdRef = useRef<number | null>(null);
+  const lastDataRef = useRef<{
+    appId: number | null;
+    query: string;
+  } | null>(null);
 
   const { data, isFetching, isLoading, error } = useQuery({
     queryKey: ["search-app-files", appId, trimmedQuery],
@@ -18,9 +21,14 @@ export function useSearchAppFiles(appId: number | null, query: string) {
       return IpcClient.getInstance().searchAppFiles(appId, trimmedQuery);
     },
     placeholderData: (previousData) => {
-      // Only use previous data if it's from the same appId to prevent
-      // stale results from a different app being used as placeholder
-      if (previousData && appId === lastDataAppIdRef.current) {
+      // Only use previous data if it's from the same appId AND same query
+      // to prevent stale results from a different app or query being shown
+      if (
+        previousData &&
+        lastDataRef.current &&
+        appId === lastDataRef.current.appId &&
+        trimmedQuery === lastDataRef.current.query
+      ) {
         return previousData;
       }
       return undefined;
@@ -28,17 +36,17 @@ export function useSearchAppFiles(appId: number | null, query: string) {
     retry: 0,
   });
 
-  // Track which appId the data belongs to when we receive it
+  // Track which appId and query the data belongs to when we receive it
   useEffect(() => {
-    if (data && appId !== null) {
-      lastDataAppIdRef.current = appId;
+    if (data && appId !== null && trimmedQuery) {
+      lastDataRef.current = { appId, query: trimmedQuery };
     }
-  }, [data, appId]);
+  }, [data, appId, trimmedQuery]);
 
   // Reset the ref when appId changes to null to prevent stale data
   useEffect(() => {
     if (appId === null) {
-      lastDataAppIdRef.current = null;
+      lastDataRef.current = null;
     }
   }, [appId]);
 

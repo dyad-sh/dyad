@@ -21,15 +21,21 @@ test("file tree search finds content matches and surfaces line numbers", async (
   const resultItem = po.page.getByText("App.tsx").first();
   await expect(resultItem).toBeVisible({ timeout: Timeout.MEDIUM });
 
-  // The snippet is in the same list item as the file name
-  // Find the parent list item and then find the snippet container (which shows the code snippet)
-  const fileTreeListItem = resultItem.locator("xpath=ancestor::li[1]");
+  // Files are collapsed by default in the new accordion UI, so we need to click to expand
+  // Find the file name container (the clickable div that toggles expansion)
+  const fileContainer = resultItem
+    .locator("xpath=ancestor::div[contains(@class, 'cursor-pointer')]")
+    .first();
+  await expect(fileContainer).toBeVisible({ timeout: Timeout.MEDIUM });
 
-  // Find the snippet container - it's a clickable div that contains the code snippet
-  // The snippet shows the match text, so we can find it by looking for text containing "import"
-  // The snippet is a div with class "ml-6" that comes after the file name
-  const snippetContainer = fileTreeListItem
-    .locator("div")
+  // Click on the file name to expand the accordion and show snippets
+  await fileContainer.click();
+
+  // Now the snippets should be visible - find the snippet container
+  // The snippet is a div with class "ml-12" that contains the code snippet
+  // Find it by looking for text containing "import" in the expanded section
+  const snippetContainer = po.page
+    .locator("div.ml-12")
     .filter({ hasText: /import/i })
     .first();
   await expect(snippetContainer).toBeVisible({ timeout: Timeout.MEDIUM });

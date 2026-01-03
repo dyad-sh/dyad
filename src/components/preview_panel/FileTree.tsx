@@ -1,5 +1,13 @@
 import React from "react";
-import { Folder, FolderOpen, Loader2, Search, X } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Folder,
+  FolderOpen,
+  Loader2,
+  Search,
+  X,
+} from "lucide-react";
 import { selectedFileAtom } from "@/atoms/viewAtoms";
 import { useSetAtom } from "jotai";
 import { Input } from "@/components/ui/input";
@@ -142,6 +150,26 @@ export const FileTree = ({ appId, files }: FileTreeProps) => {
     [visibleFiles],
   );
 
+  // In search mode, create a flat list of matching files with match counts
+  const searchResultsList = React.useMemo(() => {
+    if (!isSearchMode) {
+      return [];
+    }
+    return Array.from(matchesByPath.entries())
+      .map(([path, result]) => ({
+        path,
+        matchCount: result.snippets?.length ?? 0,
+        result,
+      }))
+      .sort((a, b) => {
+        // Sort by match count (descending), then by path (ascending)
+        if (b.matchCount !== a.matchCount) {
+          return b.matchCount - a.matchCount;
+        }
+        return a.path.localeCompare(b.path);
+      });
+  }, [isSearchMode, matchesByPath]);
+
   return (
     <div className="file-tree mt-2 flex h-full flex-col">
       <div className="px-2 pb-2">
@@ -197,6 +225,17 @@ export const FileTree = ({ appId, files }: FileTreeProps) => {
         matchesByPath.size === 0 ? (
           <div className="px-3 py-2 text-xs text-muted-foreground">
             No files matched your search.
+          </div>
+        ) : isSearchMode ? (
+          <div className="px-2 py-1">
+            {searchResultsList.map(({ path, matchCount, result }) => (
+              <SearchResultItem
+                key={path}
+                path={path}
+                matchCount={matchCount}
+                result={result}
+              />
+            ))}
           </div>
         ) : (
           <TreeNodes
@@ -259,6 +298,86 @@ interface TreeNodeProps {
   isSearchMode: boolean;
   searchQuery: string;
 }
+
+// Search result item component (flat list in search mode)
+interface SearchResultItemProps {
+  path: string;
+  matchCount: number;
+  result: AppFileSearchResult;
+}
+
+const SearchResultItem = ({
+  path,
+  matchCount,
+  result,
+}: SearchResultItemProps) => {
+  const setSelectedFile = useSetAtom(selectedFileAtom);
+  const [isExpanded, setIsExpanded] = React.useState(false);
+
+  const handleFileClick = () => {
+    setIsExpanded(!isExpanded);
+  };
+
+  const handleSnippetClick = (line: number) => {
+    setSelectedFile({
+      path,
+      line,
+    });
+  };
+
+  return (
+    <div className="py-1">
+      <div
+        className="flex items-center rounded px-1.5 py-1 text-sm hover:bg-(--sidebar) cursor-pointer"
+        onClick={handleFileClick}
+      >
+        {/* Chevron */}
+        <span className="text-muted-foreground mr-1.5 flex-shrink-0">
+          {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </span>
+
+        {/* Path */}
+        <span className="truncate flex-1">{path}</span>
+
+        {/* Count badge (right-aligned, circular) */}
+        <span
+          className="
+      ml-auto
+      flex h-5 min-w-[1.25rem] items-center justify-center
+      rounded-full
+      bg-muted
+      text-xs font-medium
+      text-muted-foreground
+    "
+        >
+          {matchCount}
+        </span>
+      </div>
+
+      {isExpanded &&
+        result.snippets &&
+        result.snippets.length > 0 &&
+        result.snippets.map((snippet, index) => (
+          <div
+            key={`${snippet.line}-${index}`}
+            className="ml-12 mr-2 py-0.5 text-xs cursor-pointer hover:bg-muted/50 transition-colors"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleSnippetClick(snippet.line);
+            }}
+          >
+            <div className="font-mono text-[11px] leading-tight text-foreground truncate">
+              <span className="text-muted-foreground">{snippet.before}</span>
+              <mark className="bg-primary/20 text-foreground font-medium px-0.5 rounded">
+                {snippet.match}
+              </mark>
+              <span className="text-muted-foreground">{snippet.after}</span>
+            </div>
+          </div>
+        ))}
+    </div>
+  );
+};
 
 // Individual tree node component
 const TreeNode = ({

@@ -27,6 +27,7 @@ import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { MENTION_REGEX, parseAppMentions } from "@/shared/parse_mention_apps";
 import { useLoadApp } from "@/hooks/useLoadApp";
+import { HistoryNavigation } from "./HistoryNavigation";
 
 // Define the theme for mentions
 const beautifulMentionsTheme: BeautifulMentionsTheme = {
@@ -238,6 +239,7 @@ interface LexicalChatInputProps {
   disabled?: boolean;
   excludeCurrentApp: boolean;
   disableSendButton: boolean;
+  messageHistory?: string[];
 }
 
 function onError(error: Error) {
@@ -253,6 +255,7 @@ export function LexicalChatInput({
   placeholder = "Ask Dyad to build...",
   disabled = false,
   disableSendButton,
+  messageHistory = [],
 }: LexicalChatInputProps) {
   const { apps } = useLoadApps();
   const { prompts } = usePrompts();
@@ -423,6 +426,10 @@ export function LexicalChatInput({
         <ClearEditorPlugin
           shouldClear={shouldClear}
           onCleared={handleCleared}
+        />
+        <HistoryNavigation
+          messageHistory={messageHistory}
+          onChange={onChange}
         />
       </div>
     </LexicalComposer>

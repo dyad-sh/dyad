@@ -1,32 +1,71 @@
-/// <reference types="vite/client" />
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const SAMPLE_RATE = 16000;
-const DEFAULT_MODEL_URL =
-  import.meta.env.VITE_VOSK_MODEL_URL ??
-  "/models/vosk-model-small-en-us-0.15.tar.gz";
+const DEFAULT_MODEL_URL = "/models/vosk-model-small-en-us-0.15.tar.gz";
 
-type VoskModel = {
+interface VoskModelMessage {
+  result?: boolean;
+  error?: string;
+}
+
+interface VoskRecognizerResultMessage {
+  result: {
+    text?: string;
+    partial?: string;
+  };
+}
+
+type VoskModelEvent = "load" | "error";
+type VoskRecognizerEvent = "result" | "partialresult";
+
+type VoskModelEventHandler = (message: VoskModelMessage) => void;
+type VoskRecognizerEventHandler = (
+  message: VoskRecognizerResultMessage,
+) => void;
+
+interface VoskModel {
   KaldiRecognizer: new (sampleRate?: number) => VoskRecognizer;
   ready?: boolean;
-  on?: (event: string, handler: (message: any) => void) => void;
+  on?: (event: VoskModelEvent, handler: VoskModelEventHandler) => void;
   terminate?: () => void;
   setLogLevel?: (level: number) => void;
-};
+}
 
-type VoskRecognizer = {
+interface VoskRecognizer {
   acceptWaveform: (buffer: AudioBuffer) => void;
   setWords?: (words: boolean) => void;
   remove?: () => void;
-  on?: (event: string, handler: (message: any) => void) => void;
-};
+  on?: (
+    event: VoskRecognizerEvent,
+    handler: VoskRecognizerEventHandler,
+  ) => void;
+}
 
-type UseVoskVoiceToTextOptions = {
+interface VoskModule {
+  Model: new (modelUrl: string) => VoskModel;
+  createModel?: (modelUrl: string) => Promise<VoskModel>;
+}
+
+interface UseVoskVoiceToTextOptions {
   onFinalResult?: (text: string) => void;
   onPartialResult?: (text: string) => void;
   modelUrl?: string;
-};
+}
 
+interface TestVoiceEventDetail {
+  text?: string;
+  final?: boolean;
+}
+
+/**
+ * Custom React hook for voice-to-text functionality using Vosk.
+ *
+ * @param options - Configuration options for the hook
+ * @param options.onFinalResult - Callback invoked when final transcription is available
+ * @param options.onPartialResult - Callback invoked when partial transcription is available
+ * @param options.modelUrl - URL to the Vosk model file (defaults to env var or default model)
+ * @returns Object containing recording state and control functions
+ */
 export function useVoskVoiceToText({
   onFinalResult,
   onPartialResult,
@@ -44,18 +83,29 @@ export function useVoskVoiceToText({
   const audioContextRef = useRef<AudioContext | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const modelLoadHandlersRef = useRef<{
+    load?: VoskModelEventHandler;
+    error?: VoskModelEventHandler;
+  }>({});
+  const isMountedRef = useRef(true);
+
   const isTestMode =
     typeof window !== "undefined" &&
-    Boolean((window as any).__DYAD_TEST_VOICE__ === true);
+    Boolean(
+      (window as { __DYAD_TEST_VOICE__?: boolean }).__DYAD_TEST_VOICE__ ===
+        true,
+    );
 
-  const resetError = useCallback(() => setError(null), []);
+  const resetError = useCallback(() => {
+    setError(null);
+  }, []);
 
   const cleanupAudio = useCallback(() => {
     processorRef.current?.disconnect();
     processorRef.current = null;
 
     audioContextRef.current?.close().catch(() => {
-      /* noop */
+      // Ignore errors when closing audio context
     });
     audioContextRef.current = null;
 
@@ -72,21 +122,35 @@ export function useVoskVoiceToText({
     recognizerRef.current = null;
   }, []);
 
+  const cleanupTestEventHandler = useCallback(() => {
+    if (testEventHandlerRef.current) {
+      window.removeEventListener(
+        "dyad-test-voice",
+        testEventHandlerRef.current,
+      );
+      testEventHandlerRef.current = null;
+    }
+  }, []);
+
   const cleanupAll = useCallback(() => {
     cleanupAudio();
     cleanupRecognizer();
+    cleanupTestEventHandler();
     setIsRecording(false);
     setPartialText("");
     latestPartialRef.current = "";
-  }, [cleanupAudio, cleanupRecognizer]);
+  }, [cleanupAudio, cleanupRecognizer, cleanupTestEventHandler]);
 
-  const ensureModel = useCallback(async () => {
-    if (modelRef.current) return modelRef.current;
+  const ensureModel = useCallback(async (): Promise<VoskModel> => {
+    if (modelRef.current) {
+      return modelRef.current;
+    }
 
     setIsInitializing(true);
     setError(null);
+
     try {
-      const vosk = (await import("vosk-browser")) as any;
+      const vosk = (await import("vosk-browser")) as VoskModule;
       const model: VoskModel =
         (vosk.createModel && (await vosk.createModel(modelUrl))) ||
         new vosk.Model(modelUrl);
@@ -94,7 +158,8 @@ export function useVoskVoiceToText({
       // Wait for model to finish loading if it exposes events
       if (!model.ready && model.on) {
         await new Promise<void>((resolve, reject) => {
-          const handleLoad = (message: any) => {
+          const handleLoad: VoskModelEventHandler = (message) => {
+            cleanupModelHandlers(model);
             if (message?.result === false) {
               reject(
                 new Error("Failed to load Vosk model. Check the modelUrl."),
@@ -103,7 +168,9 @@ export function useVoskVoiceToText({
             }
             resolve();
           };
-          const handleError = (message: any) => {
+
+          const handleError: VoskModelEventHandler = (message) => {
+            cleanupModelHandlers(model);
             reject(
               new Error(
                 message?.error ||
@@ -112,8 +179,14 @@ export function useVoskVoiceToText({
             );
           };
 
-          model.on?.("load", handleLoad);
-          model.on?.("error", handleError);
+          if (model.on) {
+            model.on("load", handleLoad);
+            model.on("error", handleError);
+            modelLoadHandlersRef.current = {
+              load: handleLoad,
+              error: handleError,
+            };
+          }
         });
       }
 
@@ -123,24 +196,51 @@ export function useVoskVoiceToText({
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Unable to initialize Vosk.";
-      setError(message);
+      if (isMountedRef.current) {
+        setError(message);
+      }
       throw err;
     } finally {
-      setIsInitializing(false);
+      if (isMountedRef.current) {
+        setIsInitializing(false);
+      }
     }
   }, [modelUrl]);
 
-  const stopRecording = useCallback(() => {
-    if (testEventHandlerRef.current) {
-      window.removeEventListener("dyad-test-voice", testEventHandlerRef.current);
-      testEventHandlerRef.current = null;
+  const cleanupModelHandlers = useCallback((model: VoskModel) => {
+    const handlers = modelLoadHandlersRef.current;
+    if (model.on && handlers.load) {
+      // Note: vosk-browser may not support removing handlers, but we clean up refs
+      modelLoadHandlersRef.current = {};
     }
-    if (latestPartialRef.current) {
-      onFinalResult?.(latestPartialRef.current);
+  }, []);
+
+  const handleFinalResult = useCallback(
+    (text: string) => {
+      if (!text.trim()) return;
+      setPartialText("");
       latestPartialRef.current = "";
+      onFinalResult?.(text);
+    },
+    [onFinalResult],
+  );
+
+  const handlePartialResult = useCallback(
+    (text: string) => {
+      setPartialText(text);
+      latestPartialRef.current = text;
+      onPartialResult?.(text);
+    },
+    [onPartialResult],
+  );
+
+  const stopRecording = useCallback(() => {
+    cleanupTestEventHandler();
+    if (latestPartialRef.current) {
+      handleFinalResult(latestPartialRef.current);
     }
     cleanupAll();
-  }, [cleanupAll, onFinalResult]);
+  }, [cleanupAll, cleanupTestEventHandler, handleFinalResult]);
 
   const startRecording = useCallback(async () => {
     if (isRecording) return;
@@ -149,17 +249,15 @@ export function useVoskVoiceToText({
       if (isTestMode) {
         setIsRecording(true);
         const handler = (event: Event) => {
-          const detail = (event as CustomEvent).detail || {};
-          const text: string = detail.text ?? "";
+          const detail =
+            (event as CustomEvent<TestVoiceEventDetail>).detail || {};
+          const text = detail.text ?? "";
           const isFinal = Boolean(detail.final);
           if (text) {
             if (isFinal) {
-              latestPartialRef.current = "";
-              onFinalResult?.(text);
+              handleFinalResult(text);
             } else {
-              latestPartialRef.current = text;
-              setPartialText(text);
-              onPartialResult?.(text);
+              handlePartialResult(text);
             }
           }
         };
@@ -173,19 +271,15 @@ export function useVoskVoiceToText({
       recognizerRef.current = recognizer;
 
       recognizer.setWords?.(true);
-      recognizer.on?.("result", (message: any) => {
+      recognizer.on?.("result", (message) => {
         const text = message?.result?.text?.trim();
         if (text) {
-          setPartialText("");
-          latestPartialRef.current = "";
-          onFinalResult?.(text);
+          handleFinalResult(text);
         }
       });
-      recognizer.on?.("partialresult", (message: any) => {
+      recognizer.on?.("partialresult", (message) => {
         const text = message?.result?.partial ?? "";
-        setPartialText(text);
-        latestPartialRef.current = text;
-        onPartialResult?.(text);
+        handlePartialResult(text);
       });
 
       const mediaStream = await navigator.mediaDevices.getUserMedia({
@@ -204,16 +298,18 @@ export function useVoskVoiceToText({
 
       const recognizerNode = audioContext.createScriptProcessor(4096, 1, 1);
       processorRef.current = recognizerNode;
+
       recognizerNode.onaudioprocess = (event) => {
         try {
           recognizer.acceptWaveform(event.inputBuffer);
         } catch (err) {
-          console.error("acceptWaveform failed", err);
-          setError(
-            err instanceof Error
-              ? err.message
-              : "Unable to process microphone audio.",
-          );
+          if (isMountedRef.current) {
+            setError(
+              err instanceof Error
+                ? err.message
+                : "Unable to process microphone audio.",
+            );
+          }
           stopRecording();
         }
       };
@@ -224,36 +320,37 @@ export function useVoskVoiceToText({
 
       setIsRecording(true);
     } catch (err) {
-      console.error("Failed to start voice capture", err);
       const message =
         err instanceof Error
           ? err.message
           : "Unable to access microphone or model.";
-      setError(message);
+      if (isMountedRef.current) {
+        setError(message);
+      }
       cleanupAll();
     }
   }, [
     cleanupAll,
     ensureModel,
+    handleFinalResult,
+    handlePartialResult,
     isRecording,
-    onFinalResult,
-    onPartialResult,
+    isTestMode,
     stopRecording,
   ]);
 
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
-      if (testEventHandlerRef.current) {
-        window.removeEventListener(
-          "dyad-test-voice",
-          testEventHandlerRef.current,
-        );
-      }
+      isMountedRef.current = false;
       cleanupAll();
-      modelRef.current?.terminate?.();
-      modelRef.current = null;
+      if (modelRef.current) {
+        cleanupModelHandlers(modelRef.current);
+        modelRef.current.terminate?.();
+        modelRef.current = null;
+      }
     };
-  }, [cleanupAll]);
+  }, [cleanupAll, cleanupModelHandlers]);
 
   return {
     startRecording,

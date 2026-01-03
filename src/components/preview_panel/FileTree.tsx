@@ -1,4 +1,4 @@
-import React from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -27,9 +27,9 @@ interface TreeNode {
 }
 
 const useDebouncedValue = <T,>(value: T, delay = 200) => {
-  const [debouncedValue, setDebouncedValue] = React.useState(value);
+  const [debouncedValue, setDebouncedValue] = useState(value);
 
-  React.useEffect(() => {
+  useEffect(() => {
     const handler = setTimeout(() => setDebouncedValue(value), delay);
     return () => clearTimeout(handler);
   }, [value, delay]);
@@ -100,20 +100,24 @@ const buildFileTree = (files: string[]): TreeNode[] => {
 
 // File tree component
 export const FileTree = ({ appId, files }: FileTreeProps) => {
-  const [searchValue, setSearchValue] = React.useState("");
-  const prevAppIdRef = React.useRef<number | null>(appId);
+  const [searchValue, setSearchValue] = useState("");
+  const prevAppIdRef = useRef<number | null>(appId);
 
   // Reset search when appId changes to prevent unnecessary IPC calls with old search term
-  React.useEffect(() => {
+  const effectiveSearchValue = useMemo(() => {
     const appIdChanged = prevAppIdRef.current !== appId;
     if (appIdChanged) {
       prevAppIdRef.current = appId;
+      return "";
+    }
+    return searchValue;
+  }, [appId, searchValue]);
+  // Sync state with effective value when appId changes
+  useEffect(() => {
+    if (effectiveSearchValue === "" && searchValue !== "") {
       setSearchValue("");
     }
-  }, [appId]);
-
-  // Use searchValue directly as effectiveSearchValue since we handle reset in useEffect
-  const effectiveSearchValue = searchValue;
+  }, [effectiveSearchValue, searchValue]);
 
   const debouncedSearch = useDebouncedValue(effectiveSearchValue, 250);
   const isSearchMode = debouncedSearch.trim().length > 0;
@@ -124,7 +128,7 @@ export const FileTree = ({ appId, files }: FileTreeProps) => {
     error: searchError,
   } = useSearchAppFiles(appId, debouncedSearch);
 
-  const matchesByPath = React.useMemo(() => {
+  const matchesByPath = useMemo(() => {
     const map = new Map<string, AppFileSearchResult>();
     for (const result of searchResults) {
       map.set(result.path, result);
@@ -132,20 +136,17 @@ export const FileTree = ({ appId, files }: FileTreeProps) => {
     return map;
   }, [searchResults]);
 
-  const visibleFiles = React.useMemo(() => {
+  const visibleFiles = useMemo(() => {
     if (!isSearchMode) {
       return files;
     }
     return files.filter((filePath) => matchesByPath.has(filePath));
   }, [files, isSearchMode, matchesByPath]);
 
-  const treeData = React.useMemo(
-    () => buildFileTree(visibleFiles),
-    [visibleFiles],
-  );
+  const treeData = useMemo(() => buildFileTree(visibleFiles), [visibleFiles]);
 
   // In search mode, create a flat list of matching files with match counts
-  const searchResultsList = React.useMemo(() => {
+  const searchResultsList = useMemo(() => {
     if (!isSearchMode) {
       return [];
     }
@@ -306,7 +307,7 @@ const SearchResultItem = ({
   result,
 }: SearchResultItemProps) => {
   const setSelectedFile = useSetAtom(selectedFileAtom);
-  const [isExpanded, setIsExpanded] = React.useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const handleFileClick = () => {
     setIsExpanded(!isExpanded);
@@ -381,11 +382,11 @@ const TreeNode = ({
   isSearchMode,
   searchQuery,
 }: TreeNodeProps) => {
-  const [expanded, setExpanded] = React.useState(level < 2);
+  const [expanded, setExpanded] = useState(level < 2);
   const setSelectedFile = useSetAtom(selectedFileAtom);
   const match = isSearchMode ? matchesByPath.get(node.path) : undefined;
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (isSearchMode && node.isDirectory) {
       setExpanded(true);
     }

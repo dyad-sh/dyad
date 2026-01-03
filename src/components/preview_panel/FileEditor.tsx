@@ -218,9 +218,13 @@ export const FileEditor = ({
 
   // Jump to target line if provided (e.g., from search results)
   // This effect handles when initialLine changes after the editor is mounted
+  // Include content in dependencies to ensure navigation only occurs after file content is loaded
   useEffect(() => {
-    navigateToLine(initialLine ?? null);
-  }, [initialLine, filePath, navigateToLine]);
+    // Only navigate if content is loaded (not null) to avoid navigating in old file content
+    if (content !== null) {
+      navigateToLine(initialLine ?? null);
+    }
+  }, [initialLine, filePath, content, navigateToLine]);
 
   if (loading) {
     return <div className="p-4">Loading file content...</div>;

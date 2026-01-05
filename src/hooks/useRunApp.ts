@@ -77,8 +77,11 @@ export function useRunApp() {
         timestamp: output.timestamp,
       };
 
-      // Send to central log store
-      IpcClient.getInstance().addLog(logEntry);
+      // Only send client-error logs to central store
+      // Server logs (stdout/stderr) are already stored in the main process
+      if (output.type === "client-error") {
+        IpcClient.getInstance().addLog(logEntry);
+      }
 
       // Also update UI state
       setConsoleEntries((prev) => [...prev, logEntry]);

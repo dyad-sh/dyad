@@ -1,4 +1,5 @@
 import { useNavigate, useRouter, useSearch } from "@tanstack/react-router";
+import { normalizePath } from "../../shared/normalizePath";
 import { useAtom, useSetAtom } from "jotai";
 import { appsListAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
@@ -100,7 +101,9 @@ export default function AppDetailsPage() {
 
   const handleOpenRenameFolderDialog = () => {
     if (selectedApp) {
-      setNewFolderName(selectedApp.path.split("/").pop() || selectedApp.path);
+      setNewFolderName(
+        normalizePath(selectedApp.path).split("/").pop() || selectedApp.path,
+      );
       setIsRenameFolderDialogOpen(true);
     }
   };

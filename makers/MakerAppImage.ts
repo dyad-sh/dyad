@@ -1,5 +1,5 @@
 import { MakerBase, MakerOptions } from "@electron-forge/maker-base";
-import { execFileSync } from "child_process";
+import { execFile } from "child_process";
 import {
   writeFile,
   appendFile,
@@ -12,6 +12,7 @@ import {
   rm,
 } from "fs/promises";
 import { tmpdir } from "os";
+import { promisify } from "util";
 import { resolve, relative } from "path";
 
 const RUNTIME_URL =
@@ -115,7 +116,9 @@ export class MakerAppImage extends MakerBase<{}> {
         resolve(tmpdir(), `${WORKDIR_PREFIX}_${appName}_${version}_`),
       );
       const tempSquashedFsPath = resolve(workDir, "temp");
-      execFileSync("mksquashfs", [appDir, tempSquashedFsPath]);
+
+      const execFileAsync = promisify(execFile);
+      await execFileAsync("mksquashfs", [appDir, tempSquashedFsPath]);
 
       // Directory to hold final executable
       await mkdir(outputDir, { recursive: true, mode: 0o755 });

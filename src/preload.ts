@@ -144,6 +144,9 @@ const validInvokeChannels = [
   "add-to-favorite",
   "github:clone-repo-from-url",
   "get-latest-security-review",
+  // Extensions
+  "extension:list",
+  "extension:delete",
   // Test-only channels
   // These should ALWAYS be guarded with IS_TEST_BUILD in the main process.
   // We can't detect with IS_TEST_BUILD in the preload script because
@@ -183,6 +186,10 @@ contextBridge.exposeInMainWorld("electron", {
   ipcRenderer: {
     invoke: (channel: ValidInvokeChannel, ...args: unknown[]) => {
       if (validInvokeChannels.includes(channel)) {
+        return ipcRenderer.invoke(channel, ...args);
+      }
+      // Allow extension IPC channels (format: extension:{extensionId}:{channelName})
+      if (typeof channel === "string" && channel.startsWith("extension:")) {
         return ipcRenderer.invoke(channel, ...args);
       }
       throw new Error(`Invalid channel: ${channel}`);

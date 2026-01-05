@@ -16,6 +16,8 @@ import { useRouter } from "@tanstack/react-router";
 import { GitHubIntegration } from "@/components/GitHubIntegration";
 import { VercelIntegration } from "@/components/VercelIntegration";
 import { SupabaseIntegration } from "@/components/SupabaseIntegration";
+import { useExtensions } from "@/hooks/useExtensions";
+import { ExtensionIntegration } from "@/components/ExtensionIntegration";
 
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -30,6 +32,24 @@ import { AgentToolsSettings } from "@/components/settings/AgentToolsSettings";
 import { ZoomSelector } from "@/components/ZoomSelector";
 import { useSetAtom } from "jotai";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
+
+function ExtensionIntegrationsList() {
+  const { extensions } = useExtensions();
+
+  if (extensions.length === 0) {
+    return null;
+  }
+
+  return (
+    <>
+      {extensions
+        .filter((ext) => ext.ui?.settingsPage)
+        .map((extension) => (
+          <ExtensionIntegration key={extension.id} extension={extension} />
+        ))}
+    </>
+  );
+}
 
 export default function SettingsPage() {
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
@@ -127,6 +147,7 @@ export default function SettingsPage() {
               <VercelIntegration />
               <SupabaseIntegration />
               <NeonIntegration />
+              <ExtensionIntegrationsList />
             </div>
           </div>
 

@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, Menu } from "electron";
 import * as path from "node:path";
 import { registerIpcHandlers } from "./ipc/ipc_host";
+import { getDyadAppPath } from "./paths/paths";
 import dotenv from "dotenv";
 // @ts-ignore
 import started from "electron-squirrel-startup";
@@ -29,6 +30,8 @@ import {
   stopPerformanceMonitoring,
 } from "./utils/performance_monitor";
 import { cleanupOldAiMessagesJson } from "./pro/main/ipc/handlers/local_agent/ai_messages_cleanup";
+import { ExtensionManager } from "./extensions/core/extension_manager";
+import { loadDevelopmentExtensions } from "./extensions/core/load_development_extensions";
 import fs from "fs";
 
 log.errorHandler.startCatching();
@@ -89,6 +92,26 @@ export async function onReady() {
 
   // Cleanup old ai_messages_json entries to prevent database bloat
   cleanupOldAiMessagesJson();
+
+  // Load extensions
+  const extensionsDir = path.join(getDyadAppPath("."), "extensions");
+  const extensionManager = new ExtensionManager(extensionsDir);
+  try {
+    await extensionManager.loadExtensions();
+  } catch (error) {
+    logger.error("Failed to load extensions:", error);
+    // Continue execution even if extensions fail to load
+  }
+
+  // In development, also load extensions from source tree (static imports)
+  if (!app.isPackaged) {
+    try {
+      await loadDevelopmentExtensions();
+    } catch (error) {
+      logger.error("Failed to load development extensions:", error);
+      // Continue execution even if development extensions fail to load
+    }
+  }
 
   const settings = readSettings();
 

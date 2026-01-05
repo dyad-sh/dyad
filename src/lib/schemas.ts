@@ -295,6 +295,10 @@ export const UserSettingsSchema = z.object({
     })
     .optional(),
 
+  extensionSettings: z
+    .record(z.string(), z.record(z.string(), z.any()))
+    .optional(),
+
   ////////////////////////////////
   // E2E TESTING ONLY.
   ////////////////////////////////

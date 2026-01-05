@@ -170,6 +170,39 @@ function App() {
   return <RouterProvider router={router} />;
 }
 
+// Load extension renderer code
+// Note: In production, this would dynamically load based on extension metadata
+// For now, extensions manually import and register their components
+try {
+  // Cloudflare extension
+  import("./extensions/plugins/cloudflare/renderer")
+    .then((module) => {
+      if (module.renderer) {
+        module.renderer({
+          extensionId: "cloudflare",
+          manifest: {
+            id: "cloudflare",
+            name: "Cloudflare Pages",
+            version: "1.0.0",
+            description: "Deploy your projects to Cloudflare Pages",
+            capabilities: {
+              hasMainProcess: true,
+              hasRendererProcess: true,
+              hasDatabaseSchema: false,
+              hasSettingsSchema: false,
+              ipcChannels: [],
+            },
+          },
+        });
+      }
+    })
+    .catch((error) => {
+      console.warn("Failed to load Cloudflare extension renderer:", error);
+    });
+} catch (error) {
+  console.warn("Error loading extensions:", error);
+}
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>

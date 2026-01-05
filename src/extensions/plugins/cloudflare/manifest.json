@@ -1,0 +1,35 @@
+{
+  "id": "cloudflare",
+  "name": "Cloudflare Pages",
+  "version": "1.0.0",
+  "description": "Deploy your projects to Cloudflare Pages",
+  "author": "Dyad",
+  "capabilities": {
+    "hasMainProcess": true,
+    "hasRendererProcess": true,
+    "hasDatabaseSchema": false,
+    "hasSettingsSchema": false,
+    "ipcChannels": [
+      "save-token",
+      "list-projects",
+      "create-project",
+      "connect-existing-project",
+      "deploy",
+      "list-deployments",
+      "disconnect"
+    ]
+  },
+  "main": "main.ts",
+  "renderer": "renderer.ts",
+  "ui": {
+    "settingsPage": {
+      "component": "CloudflareSettings",
+      "title": "Cloudflare Pages",
+      "icon": "Cloud"
+    },
+    "appConnector": {
+      "component": "CloudflareConnector",
+      "title": "Cloudflare Pages"
+    }
+  }
+}

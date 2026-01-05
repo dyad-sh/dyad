@@ -41,6 +41,41 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { useCheckName } from "@/hooks/useCheckName";
 import { AppUpgrades } from "@/components/AppUpgrades";
 import { CapacitorControls } from "@/components/CapacitorControls";
+import { useExtensions } from "@/hooks/useExtensions";
+import { ExtensionConnector } from "@/components/ExtensionConnector";
+
+function ExtensionConnectorsList({
+  appId,
+  folderName,
+}: {
+  appId: number;
+  folderName: string;
+}) {
+  const { extensions } = useExtensions();
+
+  if (extensions.length === 0) {
+    return null;
+  }
+
+  return (
+    <>
+      {extensions
+        .filter((ext) => ext.ui?.appConnector)
+        .map((extension) => (
+          <div
+            key={extension.id}
+            className="border border-gray-200 rounded-md p-4"
+          >
+            <ExtensionConnector
+              extension={extension}
+              appId={appId}
+              folderName={folderName}
+            />
+          </div>
+        ))}
+    </>
+  );
+}
 
 export default function AppDetailsPage() {
   const navigate = useNavigate();
@@ -345,6 +380,13 @@ export default function AppDetailsPage() {
           {appId && <SupabaseConnector appId={appId} />}
           {appId && <CapacitorControls appId={appId} />}
           <AppUpgrades appId={appId} />
+          {/* Extension connectors */}
+          {appId && (
+            <ExtensionConnectorsList
+              appId={appId}
+              folderName={selectedApp.path}
+            />
+          )}
         </div>
 
         {/* Rename Dialog */}

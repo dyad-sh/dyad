@@ -60,6 +60,32 @@ export const apps = sqliteTable("apps", {
     .default(sql`0`),
 });
 
+export const extensionData = sqliteTable(
+  "extension_data",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    appId: integer("app_id")
+      .notNull()
+      .references(() => apps.id, { onDelete: "cascade" }),
+    extensionId: text("extension_id").notNull(),
+    key: text("key").notNull(),
+    value: text("value"), // JSON string
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    uniqueAppExtensionKey: unique().on(
+      table.appId,
+      table.extensionId,
+      table.key,
+    ),
+  }),
+);
+
 export const chats = sqliteTable("chats", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   appId: integer("app_id")

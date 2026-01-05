@@ -1485,4 +1485,8 @@ export class IpcClient {
       console.error("Failed to add log to central store:", err);
     });
   }
+
+  public async clearLogs(appId: number): Promise<void> {
+    await this.ipcRenderer.invoke("clear-logs", { appId });
+  }
 }

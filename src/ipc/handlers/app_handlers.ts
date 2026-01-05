@@ -29,7 +29,7 @@ import {
 } from "../utils/process_manager";
 import { getEnvVar } from "../utils/read_env";
 import { readSettings } from "../../main/settings";
-import { addLog } from "../../lib/log_store";
+import { addLog, clearLogs } from "../../lib/log_store";
 
 import fixPath from "fix-path";
 
@@ -1609,6 +1609,11 @@ export function registerAppHandlers() {
   // Handler for adding logs to central store from renderer
   ipcMain.handle("add-log", async (_, entry: ConsoleEntry) => {
     addLog(entry);
+  });
+
+  // Handler for clearing logs for a specific app
+  ipcMain.handle("clear-logs", async (_, { appId }: { appId: number }) => {
+    clearLogs(appId);
   });
 }
 

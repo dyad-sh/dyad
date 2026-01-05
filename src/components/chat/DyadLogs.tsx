@@ -11,47 +11,33 @@ import {
 import { CodeHighlight } from "./CodeHighlight";
 import { CustomTagState } from "./stateTypes";
 
-type LogsVariant = "read-logs" | "results";
-
 interface DyadLogsProps {
   children?: ReactNode;
   node?: any;
-  variant: LogsVariant;
-  // For "read-logs" variant
-  type?: string;
-  level?: string;
-  // For "results" variant
-  count?: string;
 }
 
-export const DyadLogs: React.FC<DyadLogsProps> = ({
-  children,
-  node,
-  variant,
-  type,
-  level,
-  count,
-}) => {
+export const DyadLogs: React.FC<DyadLogsProps> = ({ children, node }) => {
   const [isContentVisible, setIsContentVisible] = useState(false);
 
-  // State handling (only for read-logs variant)
+  // State handling
   const state = node?.properties?.state as CustomTagState;
-  const inProgress = variant === "read-logs" && state === "pending";
-  const aborted = variant === "read-logs" && state === "aborted";
+  const inProgress = state === "pending";
+  const aborted = state === "aborted";
 
-  // Build description based on variant
-  let description = "";
-  if (variant === "read-logs") {
-    const logType = type || node?.properties?.type || "all";
-    const logLevel = level || node?.properties?.level || "all";
-    const filters: string[] = [];
-    if (logType !== "all") filters.push(`type: ${logType}`);
-    if (logLevel !== "all") filters.push(`level: ${logLevel}`);
-    description = filters.length > 0 ? ` (${filters.join(", ")})` : "";
-  } else {
-    const logCount = count || node?.properties?.count || "";
-    description = logCount ? ` (${logCount} logs)` : "";
-  }
+  // Get count from node properties
+  const logCount = node?.properties?.count || "";
+  const hasResults = !!logCount;
+
+  // Build description based on filters
+  const logType = node?.properties?.type || "all";
+  const logLevel = node?.properties?.level || "all";
+  const filters: string[] = [];
+  if (logType !== "all") filters.push(`type: ${logType}`);
+  if (logLevel !== "all") filters.push(`level: ${logLevel}`);
+  const filterDesc = filters.length > 0 ? ` (${filters.join(", ")})` : "";
+
+  // Build display text
+  const displayText = `Reading ${hasResults ? `${logCount} ` : ""}logs${filterDesc}`;
 
   // Dynamic border styling
   const borderClass = inProgress
@@ -69,14 +55,10 @@ export const DyadLogs: React.FC<DyadLogsProps> = ({
         <div className="flex items-center gap-2">
           <FileText size={16} className="text-(--primary)" />
           <span className="text-gray-700 dark:text-gray-300 font-medium text-sm">
-            {variant === "results" && (
-              <span className="font-bold mr-2 outline-2 outline-(--primary)/20 bg-(--primary)/10 text-(--primary) rounded-md px-1">
-                LOGS
-              </span>
-            )}
-            {variant === "read-logs"
-              ? `Reading console logs${description}`
-              : `Console logs Results${description}`}
+            <span className="font-bold mr-2 outline-2 outline-(--primary)/20 bg-(--primary)/10 text-(--primary) rounded-md px-1">
+              LOGS
+            </span>
+            {displayText}
           </span>
           {inProgress && (
             <div className="flex items-center text-(--primary) text-xs">
@@ -106,7 +88,7 @@ export const DyadLogs: React.FC<DyadLogsProps> = ({
         </div>
       </div>
       {isContentVisible && (
-        <div className={`text-xs${variant === "results" ? " mt-2" : ""}`}>
+        <div className={`text-xs${hasResults ? " mt-2" : ""}`}>
           <CodeHighlight className="language-log">{children}</CodeHighlight>
         </div>
       )}

@@ -40,7 +40,6 @@ const DYAD_CUSTOM_TAGS = [
   "dyad-add-dependency",
   "dyad-execute-sql",
   "dyad-read-logs",
-  "dyad-logs-results",
   "dyad-add-integration",
   "dyad-output",
   "dyad-problem-report",
@@ -476,26 +475,12 @@ function renderCustomTag(
     case "dyad-read-logs":
       return (
         <DyadLogs
-          variant="read-logs"
           node={{
             properties: {
               state: getState({ isStreaming, inProgress }),
               time: attributes.time || "",
               type: attributes.type || "",
               level: attributes.level || "",
-            },
-          }}
-        >
-          {content}
-        </DyadLogs>
-      );
-
-    case "dyad-logs-results":
-      return (
-        <DyadLogs
-          variant="results"
-          node={{
-            properties: {
               count: attributes.count || "",
             },
           }}

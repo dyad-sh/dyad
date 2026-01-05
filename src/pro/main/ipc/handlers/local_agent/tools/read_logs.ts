@@ -92,7 +92,7 @@ function formatLogsForAI(logs: ConsoleEntry[]): string {
 export const readLogsTool: ToolDefinition<z.infer<typeof readLogsSchema>> = {
   name: "read_logs",
   description:
-    "Read console logs from the Console at the moment this tool is called. Includes client logs, server logs, edge function logs, and network requests. Use this to debug errors, investigate issues, or understand app behavior. IMPORTANT: Logs are a snapshot from when you call this tool - they will NOT update while you are writing code or making changes. Use filters (searchTerm, type, level) to narrow down relevant logs on the first call.",
+    "Read logs at the moment this tool is called. Includes client logs, server logs, edge function logs, and network requests. Use this to debug errors, investigate issues, or understand app behavior. IMPORTANT: Logs are a snapshot from when you call this tool - they will NOT update while you are writing code or making changes. Use filters (searchTerm, type, level) to narrow down relevant logs on the first call.",
   inputSchema: readLogsSchema,
   defaultConsent: "always",
 
@@ -113,6 +113,7 @@ export const readLogsTool: ToolDefinition<z.infer<typeof readLogsSchema>> = {
 
     const summary = parts.join(" | ");
 
+    // Initial XML - will be replaced with full results when execution completes
     return `<dyad-read-logs ${filters.join(" ")}>
 ${summary}
 </dyad-read-logs>`;
@@ -170,9 +171,25 @@ ${summary}
           ? "No logs found matching the specified filters."
           : formatLogsForAI(filtered);
 
-      // Output the log results so users can see what the AI receives
+      // Build the query summary for display
+      const parts: string[] = ["Time: last 5 minutes"];
+      if (args.type && args.type !== "all") parts.push(`Type: ${args.type}`);
+      if (args.level && args.level !== "all")
+        parts.push(`Level: ${args.level}`);
+      if (args.searchTerm)
+        parts.push(`Search: "${escapeXmlContent(args.searchTerm)}"`);
+      if (args.limit) parts.push(`Limit: ${args.limit}`);
+      const summary = parts.join(" | ");
+
+      // Build filter attributes for the tag
+      const filters = [];
+      if (args.type && args.type !== "all") filters.push(`type="${args.type}"`);
+      if (args.level && args.level !== "all")
+        filters.push(`level="${args.level}"`);
+
+      // Output the complete results in a single tag
       ctx.onXmlComplete(
-        `<dyad-logs-results count="${filtered.length}">\n${escapeXmlContent(formattedLogs)}\n</dyad-logs-results>`,
+        `<dyad-read-logs ${filters.join(" ")} count="${filtered.length}">\n${summary}\n\n${escapeXmlContent(formattedLogs)}\n</dyad-read-logs>`,
       );
 
       return formattedLogs;

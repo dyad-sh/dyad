@@ -32,3 +32,10 @@ export function addLog(entry: ConsoleEntry): void {
 export function getLogs(appId: number): ConsoleEntry[] {
   return logStore.get(appId) || [];
 }
+
+/**
+ * Clear all logs for a specific app
+ */
+export function clearLogs(appId: number): void {
+  logStore.delete(appId);
+}

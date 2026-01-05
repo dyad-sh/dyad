@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { expect } from "@playwright/test";
-import { test } from "./helpers/test_helper";
+import { test, Timeout } from "./helpers/test_helper";
 import * as eph from "electron-playwright-helpers";
 
 test("move app to a custom storage location", async ({ po }) => {
@@ -23,8 +23,9 @@ test("move app to a custom storage location", async ({ po }) => {
     filePaths: [newBasePath],
   });
 
-  // Click the "Change location" button
-  await po.page.getByRole("button", { name: "Change location" }).click();
+  // Click the overflow menu and then "Move folder"
+  await po.page.getByTestId("app-details-more-options-button").click();
+  await po.page.getByRole("button", { name: "Move folder" }).click();
 
   // Wait for the dialog to be visible and click "Select Folder" button
   const selectFolderButton = po.page
@@ -34,7 +35,7 @@ test("move app to a custom storage location", async ({ po }) => {
   await selectFolderButton.click();
 
   // Wait for the move operation to complete (button shows "Moving..." then dialog closes)
-  await expect(selectFolderButton).not.toBeVisible({ timeout: 30000 });
+  await expect(selectFolderButton).not.toBeVisible({ timeout: Timeout.MEDIUM });
 
   const newAppPath = path.join(newBasePath, appName ?? "");
 

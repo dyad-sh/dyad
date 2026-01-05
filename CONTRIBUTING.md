@@ -34,7 +34,7 @@ md userData
 
 **Generate DB migrations:**
 
-If you have the change the DB schema (i.e. `src/db/schema.ts`), you will need to generate a DB migration.
+If you change the DB schema (i.e. `src/db/schema.ts`), you will need to generate a DB migration.
 
 ```sh
 npm run db:generate
@@ -100,10 +100,5 @@ Dyad relies on several AI code reviewers to catch issues. If a comment is irrele
 
 You can also do local code reviews with the following tools:
 
-### Local code reviews
-
-#### Codex
-
-```
-
-```
+- Codex CLI - `codex` -> `/review`
+- Claude Code CLI - `claude` -> `/review`

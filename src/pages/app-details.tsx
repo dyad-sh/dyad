@@ -310,6 +310,14 @@ export default function AppDetailsPage() {
                   Rename folder
                 </Button>
                 <Button
+                  onClick={() => setIsChangeLocationDialogOpen(true)}
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 justify-start text-xs"
+                >
+                  Move folder
+                </Button>
+                <Button
                   onClick={handleOpenCopyDialog}
                   variant="ghost"
                   size="sm"
@@ -347,30 +355,19 @@ export default function AppDetailsPage() {
             <span className="block text-gray-500 dark:text-gray-400 mb-0.5 text-xs">
               Path
             </span>
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-1">
-                <span className="text-sm break-all">{currentAppPath}</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="p-0.5 h-auto cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                  onClick={() => {
-                    IpcClient.getInstance().showItemInFolder(currentAppPath);
-                  }}
-                  title="Show in folder"
-                >
-                  <Folder className="h-3.5 w-3.5" />
-                </Button>
-              </div>
+            <div className="flex items-center gap-1">
               <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setIsChangeLocationDialogOpen(true)}
-                className="w-full justify-start"
+                variant="ghost"
+                size="icon"
+                className="ml-[-8px] p-0.5 h-auto cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                onClick={() => {
+                  IpcClient.getInstance().showItemInFolder(currentAppPath);
+                }}
+                title="Show in folder"
               >
-                <Folder className="h-4 w-4 mr-2" />
-                Change location
+                <Folder className="h-3.5 w-3.5" />
               </Button>
+              <span className="text-sm break-all">{currentAppPath}</span>
             </div>
           </div>
         </div>

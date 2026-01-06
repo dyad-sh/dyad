@@ -804,7 +804,14 @@ export async function gitPull({
 }: GitPullParams): Promise<void> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
-    const args = ["pull", remote, branch];
+    const args = [
+      "-c",
+      "credential.helper=",
+      "pull",
+      "--rebase=false",
+      remote,
+      branch,
+    ];
     await execOrThrow(args, path, "Failed to pull from remote");
     return;
   }

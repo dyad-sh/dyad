@@ -92,7 +92,6 @@ export function GithubBranchManager({
   const [branchToMerge, setBranchToMerge] = useState<string | null>(null);
   const [isMerging, setIsMerging] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [isBranchMenuOpen, setIsBranchMenuOpen] = useState(false);
 
   const loadBranches = useCallback(async () => {
     setIsLoading(true);
@@ -141,19 +140,20 @@ export function GithubBranchManager({
   const handleCreateBranch = async () => {
     if (!newBranchName.trim()) return;
     setIsCreating(true);
+    const branchName = newBranchName.trim();
     try {
       await IpcClient.getInstance().createGithubBranch(
         appId,
-        newBranchName,
+        branchName,
         sourceBranch || undefined,
       );
-      showSuccess(`Branch '${newBranchName}' created`);
+      showSuccess(`Branch '${branchName}' created`);
       setNewBranchName("");
       setSourceBranch(""); // Reset source branch selection
       setShowCreateDialog(false);
       await loadBranches();
-      // Optionally switch to new branch automatically?
-      // For now, let user switch manually.
+      // Automatically switch to the newly created branch
+      await handleSwitchBranch(branchName);
     } catch (error: any) {
       showError(error.message || "Failed to create branch");
     } finally {
@@ -628,22 +628,7 @@ export function GithubBranchManager({
         </p>
       )}
 
-      <Card
-        className="mt-2 transition-all duration-200"
-        onMouseEnter={() => setIsExpanded(true)}
-        onMouseLeave={() => {
-          if (!isBranchMenuOpen) setIsExpanded(false);
-        }}
-        onFocusCapture={() => setIsExpanded(true)}
-        onBlurCapture={(event) => {
-          if (isBranchMenuOpen) return;
-          if (
-            !event.currentTarget.contains(event.relatedTarget as Node | null)
-          ) {
-            setIsExpanded(false);
-          }
-        }}
-      >
+      <Card className="transition-all duration-200">
         <CardHeader
           className="p-2 cursor-pointer"
           onClick={() => setIsExpanded((prev) => !prev)}
@@ -695,7 +680,6 @@ export function GithubBranchManager({
                       {branch !== currentBranch && (
                         <DropdownMenu
                           onOpenChange={(open) => {
-                            setIsBranchMenuOpen(open);
                             if (open) setIsExpanded(true);
                           }}
                         >

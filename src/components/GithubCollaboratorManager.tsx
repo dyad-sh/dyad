@@ -107,20 +107,7 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
   };
 
   return (
-    <Card
-      className="transition-all duration-200"
-      onMouseEnter={() => setIsExpanded(true)}
-      onMouseLeave={() => setIsExpanded(false)}
-      onFocusCapture={() => setIsExpanded(true)}
-      onBlurCapture={(event) => {
-        if (
-          !event.relatedTarget ||
-          !event.currentTarget.contains(event.relatedTarget as Node)
-        ) {
-          setIsExpanded(false);
-        }
-      }}
-    >
+    <Card className="transition-all duration-200">
       <CardHeader
         className="p-2 cursor-pointer"
         onClick={() => setIsExpanded((prev) => !prev)}

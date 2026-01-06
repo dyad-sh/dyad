@@ -11,12 +11,13 @@ import { deleteFileTool } from "./tools/delete_file";
 import { renameFileTool } from "./tools/rename_file";
 import { addDependencyTool } from "./tools/add_dependency";
 import { executeSqlTool } from "./tools/execute_sql";
-import { searchReplaceTool } from "./tools/search_replace";
+
 import { readFileTool } from "./tools/read_file";
 import { listFilesTool } from "./tools/list_files";
 import { getDatabaseSchemaTool } from "./tools/get_database_schema";
 import { setChatSummaryTool } from "./tools/set_chat_summary";
 import { addIntegrationTool } from "./tools/add_integration";
+import { editFileTool } from "./tools/edit_file";
 import {
   escapeXmlAttr,
   escapeXmlContent,
@@ -28,11 +29,13 @@ import { getSupabaseClientCode } from "@/supabase_admin/supabase_context";
 // Combined tool definitions array
 export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   writeFileTool,
+  editFileTool,
   deleteFileTool,
   renameFileTool,
   addDependencyTool,
   executeSqlTool,
-  searchReplaceTool,
+  // Do not enable search-replace tool for now due to concerns around reliability
+  // searchReplaceTool,
   readFileTool,
   listFilesTool,
   getDatabaseSchemaTool,
@@ -252,10 +255,9 @@ export function buildAgentToolSet(ctx: AgentContext) {
         } catch (error) {
           const errorMessage =
             error instanceof Error ? error.message : String(error);
-          const errorStack =
-            error instanceof Error && error.stack ? error.stack : "";
+
           ctx.onXmlComplete(
-            `<dyad-output type="error" message="Tool '${tool.name}' failed: ${escapeXmlAttr(errorMessage)}">${escapeXmlContent(errorStack || errorMessage)}</dyad-output>`,
+            `<dyad-output type="error" message="Tool '${tool.name}' failed: ${escapeXmlAttr(errorMessage)}">${escapeXmlContent(errorMessage)}</dyad-output>`,
           );
           throw error;
         }

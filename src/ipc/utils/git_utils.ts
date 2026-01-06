@@ -418,6 +418,41 @@ export async function gitListBranches({
   }
 }
 
+export async function gitListRemoteBranches({
+  path,
+  remote = "origin",
+}: GitBaseParams & { remote?: string }): Promise<string[]> {
+  const settings = readSettings();
+
+  if (settings.enableNativeGit) {
+    const result = await exec(["branch", "-r", "--list"], path);
+
+    if (result.exitCode !== 0) {
+      throw new Error(result.stderr.toString());
+    }
+    // Parse output:
+    // e.g. "  origin/main\n  origin/feature/login"
+    return result.stdout
+      .toString()
+      .split("\n")
+      .map((line) => {
+        const trimmed = line.trim();
+        if (trimmed.startsWith(`${remote}/`)) {
+          return trimmed.substring(`${remote}/`.length);
+        }
+        return trimmed;
+      })
+      .filter((line) => line.length > 0 && !line.includes("HEAD"));
+  } else {
+    const allBranches = await git.listBranches({
+      fs,
+      dir: path,
+      remote: remote,
+    });
+    return allBranches;
+  }
+}
+
 export async function gitRenameBranch({
   path,
   oldBranch,
@@ -522,11 +557,19 @@ export async function gitSetRemoteUrl({
     }
   } else {
     //isomorphic-git version
+    // Set the remote URL
     await git.setConfig({
       fs,
       dir: path,
       path: "remote.origin.url",
       value: remoteUrl,
+    });
+    // Set the fetch refspec (required for isomorphic-git to work with remotes)
+    await git.setConfig({
+      fs,
+      dir: path,
+      path: "remote.origin.fetch",
+      value: "+refs/heads/*:refs/remotes/origin/*",
     });
   }
 }
@@ -795,6 +838,28 @@ export async function gitFetch({
   }
 }
 
+// Custom error class for git conflicts
+export class GitConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GitConflictError";
+  }
+}
+
+function isConflictError(errorMessage: string): boolean {
+  const lower = errorMessage.toLowerCase();
+  return (
+    lower.includes("conflict") ||
+    lower.includes("merge conflict") ||
+    lower.includes("would be overwritten") ||
+    lower.includes("unmerged paths") ||
+    lower.includes("fetch_head") ||
+    lower.includes("preimage") ||
+    lower.includes("both modified") ||
+    lower.includes("needs merge")
+  );
+}
+
 export async function gitPull({
   path,
   remote = "origin",
@@ -812,24 +877,44 @@ export async function gitPull({
       remote,
       branch,
     ];
-    await execOrThrow(args, path, "Failed to pull from remote");
+    try {
+      await execOrThrow(args, path, "Failed to pull from remote");
+    } catch (error: any) {
+      const errorMessage = error?.message || String(error);
+      if (isConflictError(errorMessage)) {
+        throw new GitConflictError(
+          `Merge conflict detected during pull. Please resolve conflicts before proceeding.`,
+        );
+      }
+      throw error;
+    }
     return;
   }
-  await git.pull({
-    fs,
-    http,
-    dir: path,
-    remote,
-    ref: branch,
-    singleBranch: true,
-    author: author || (await getGitAuthor()),
-    onAuth: accessToken
-      ? () => ({
-          username: accessToken,
-          password: "x-oauth-basic",
-        })
-      : undefined,
-  });
+  try {
+    await git.pull({
+      fs,
+      http,
+      dir: path,
+      remote,
+      ref: branch,
+      singleBranch: true,
+      author: author || (await getGitAuthor()),
+      onAuth: accessToken
+        ? () => ({
+            username: accessToken,
+            password: "x-oauth-basic",
+          })
+        : undefined,
+    });
+  } catch (error: any) {
+    const errorMessage = error?.message || String(error);
+    if (isConflictError(errorMessage)) {
+      throw new GitConflictError(
+        `Merge conflict detected during pull. Please resolve conflicts before proceeding.`,
+      );
+    }
+    throw error;
+  }
 }
 
 export async function gitMerge({

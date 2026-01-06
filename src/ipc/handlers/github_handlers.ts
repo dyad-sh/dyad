@@ -18,11 +18,13 @@ import {
   gitGetMergeConflicts,
   gitCurrentBranch,
   gitListBranches,
+  gitListRemoteBranches,
   gitRenameBranch,
   gitAddAll,
   gitCommit,
   isGitStatusClean,
   getGitUncommittedFiles,
+  GitConflictError,
 } from "../utils/git_utils";
 import * as schema from "../../db/schema";
 import fs from "node:fs";
@@ -699,14 +701,19 @@ async function handlePushToGithub(
           errorMessage.includes("not found") ||
           // isomorphic-git throws a TypeError when the remote repo is empty
           errorMessage.includes("Cannot read properties of null");
+
+        // Check if it's a conflict error (including GitConflictError)
         if (
+          pullError instanceof GitConflictError ||
           errorMessage.includes("conflict") ||
-          errorMessage.includes("Merge conflict")
+          errorMessage.includes("Merge conflict") ||
+          errorMessage.includes("Fetch_head") ||
+          errorMessage.includes("preimage")
         ) {
           return {
             success: false,
             error:
-              "Merge conflict detected. Please resolve conflicts before pushing.",
+              "Merge conflict detected during pull. Please resolve conflicts before pushing.",
             isConflict: true,
           };
         }
@@ -1022,6 +1029,19 @@ async function handleMergeBranch(
   if (!app) throw new Error("App not found");
   const appPath = getDyadAppPath(app.path);
 
+  // Check if branch exists locally, if not, check if it's a remote branch
+  const localBranches = await gitListBranches({ path: appPath });
+  const remoteBranches: string[] = await gitListRemoteBranches({
+    path: appPath,
+  }).catch(() => []);
+
+  let mergeBranchRef = branch;
+
+  // If branch doesn't exist locally but exists remotely, use remote ref
+  if (!localBranches.includes(branch) && remoteBranches.includes(branch)) {
+    mergeBranchRef = `origin/${branch}`;
+  }
+
   // Check for uncommitted changes and commit them before merging
   const isClean = await isGitStatusClean({ path: appPath });
   if (!isClean) {
@@ -1050,7 +1070,7 @@ async function handleMergeBranch(
   try {
     await gitMerge({
       path: appPath,
-      branch,
+      branch: mergeBranchRef,
     });
   } catch (mergeError: any) {
     const errorMessage = mergeError?.message || "Failed to merge branch.";
@@ -1093,6 +1113,18 @@ async function handleListLocalBranches(
   const branches = await gitListBranches({ path: appPath });
   const current = await gitCurrentBranch({ path: appPath });
   return { branches, current: current || null };
+}
+
+async function handleListRemoteBranches(
+  event: IpcMainInvokeEvent,
+  { appId, remote = "origin" }: { appId: number; remote?: string },
+): Promise<string[]> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
+
+  const branches = await gitListRemoteBranches({ path: appPath, remote });
+  return branches;
 }
 
 async function handleListCollaborators(
@@ -1397,6 +1429,7 @@ export function registerGithubHandlers() {
   ipcMain.handle("github:rename-branch", handleRenameBranch);
   ipcMain.handle("github:merge-branch", handleMergeBranch);
   ipcMain.handle("github:list-local-branches", handleListLocalBranches);
+  ipcMain.handle("github:list-remote-branches", handleListRemoteBranches);
   ipcMain.handle("github:list-collaborators", handleListCollaborators);
   ipcMain.handle("github:invite-collaborator", handleInviteCollaborator);
   ipcMain.handle("github:remove-collaborator", handleRemoveCollaborator);

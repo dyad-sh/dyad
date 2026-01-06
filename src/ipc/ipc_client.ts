@@ -943,6 +943,16 @@ export class IpcClient {
     return this.ipcRenderer.invoke("github:list-local-branches", { appId });
   }
 
+  public async listRemoteGithubBranches(
+    appId: number,
+    remote = "origin",
+  ): Promise<string[]> {
+    return this.ipcRenderer.invoke("github:list-remote-branches", {
+      appId,
+      remote,
+    });
+  }
+
   public async listCollaborators(
     appId: number,
   ): Promise<{ login: string; avatar_url: string; permissions: any }[]> {

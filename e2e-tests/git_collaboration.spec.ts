@@ -44,7 +44,7 @@ test.describe("Git Collaboration", () => {
     // Verify we are on the new branch
     //open branches accordion
     const branchesCard = po.page.getByTestId("branches-header");
-    await branchesCard.hover();
+    await branchesCard.click();
     await expect(
       po.page.getByTestId(`branch-item-${featureBranch}`),
     ).toBeVisible();
@@ -66,17 +66,22 @@ test.describe("Git Collaboration", () => {
     await po.page.getByRole("option", { name: featureBranch }).click();
     await po.page.getByTestId("create-branch-submit-button").click();
 
-    // Verify creation (it doesn't auto-switch, so we check list)
-    await po.page.getByTestId("branch-select-trigger").click();
-    await expect(
-      po.page.getByRole("option", { name: featureBranch2 }),
-    ).toBeVisible();
-    await po.page.keyboard.press("Escape"); // Close select
+    // Verify creation (it auto-switches to the new branch, so we verify we're on it)
+    await expect(po.page.getByTestId("current-branch-display")).toHaveText(
+      featureBranch2,
+    );
 
     // 3. Rename Branch
+    // Switch back to main first since we can't rename the branch we're currently on
+    await po.page.getByTestId("branch-select-trigger").click();
+    await po.page.getByRole("option", { name: "main" }).click();
+    await expect(po.page.getByTestId("current-branch-display")).toHaveText(
+      "main",
+    );
+
     // Rename feature-2 to feature-2-renamed
     const renamedBranch = "feature-2-renamed";
-    await branchesCard.hover();
+    await branchesCard.click();
     await po.page.getByTestId(`branch-actions-${featureBranch2}`).click();
     await po.page.getByTestId("rename-branch-menu-item").click();
     await po.page.getByTestId("rename-branch-input").fill(renamedBranch);
@@ -126,7 +131,7 @@ test.describe("Git Collaboration", () => {
     expect(fs.existsSync(mergeTestFilePath)).toBe(false);
 
     // Merge feature-1 into main (we are currently on main)
-    await branchesCard.hover();
+    await branchesCard.click();
     await po.page.getByTestId(`branch-actions-${featureBranch}`).click();
     await po.page.getByTestId("merge-branch-menu-item").click();
     await po.page.getByTestId("merge-branch-submit-button").click();
@@ -156,7 +161,7 @@ test.describe("Git Collaboration", () => {
 
     // 5. Delete Branch
     // Delete feature-1
-    await branchesCard.hover();
+    await branchesCard.click();
     await po.page.getByTestId(`branch-actions-${featureBranch}`).click();
     await po.page.getByTestId("delete-branch-menu-item").click();
     await po.page.getByRole("button", { name: "Delete Branch" }).click();
@@ -183,7 +188,7 @@ test.describe("Git Collaboration", () => {
     });
     //open collaborators accordion
     const collaboratorsCard = po.page.getByTestId("collaborators-header");
-    await collaboratorsCard.hover();
+    await collaboratorsCard.click();
 
     // Wait for Collaborator Manager
     await expect(

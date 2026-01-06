@@ -67,6 +67,7 @@ const validInvokeChannels = [
   "github:merge-abort",
   "github:rebase-continue",
   "github:list-local-branches",
+  "github:list-remote-branches",
   "github:create-branch",
   "github:switch-branch",
   "github:list-collaborators",

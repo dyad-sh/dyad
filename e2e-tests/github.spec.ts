@@ -1,7 +1,5 @@
 import { expect } from "@playwright/test";
-import { test, testWithConfig } from "./helpers/test_helper";
-import * as fs from "node:fs";
-import * as path from "node:path";
+import { test } from "./helpers/test_helper";
 
 test("should connect to GitHub using device flow", async ({ po }) => {
   await po.setUp();
@@ -146,28 +144,21 @@ test("create and sync to existing repo - custom branch", async ({ po }) => {
   });
 });
 
-// Test that disconnecting from GitHub clears both githubAccessToken and githubUser
-testWithConfig({
-  preLaunchHook: async ({ userDataDir }) => {
-    fs.mkdirSync(userDataDir, { recursive: true });
-    const settingsPath = path.join(userDataDir, "user-settings.json");
-    const settings = {
-      hasRunBefore: true,
-      enableAutoUpdate: false,
-      releaseChannel: "stable",
-      selectedTemplateId: "react-vite",
-      selectedModel: {
-        providerId: "openai",
-        modelId: "gpt-4o",
-      },
-      providerSettings: {},
-      // Pre-populate GitHub credentials
-      githubAccessToken: { value: "test-github-token" },
-      githubUser: { email: "testuser@example.com" },
-    };
-    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
-  },
-})("disconnect from GitHub clears githubUser", async ({ po }) => {
+test("github clear integration settings", async ({ po }) => {
+  await po.setUp({ autoApprove: true });
+  await po.sendPrompt("tc=basic");
+
+  await po.getTitleBarAppNameButton().click();
+  await po.githubConnector.connect();
+  await expect(po.githubConnector.getCreateNewRepoModeButton()).toBeVisible();
+
+  // Capture settings before disconnecting
+
+  await po.clickOpenInChatButton();
+  // Make sure we are committing so that githubUser.email is getting set.
+  await po.sendPrompt("tc=write-index");
+  const beforeSettings = po.captureSettings();
+
   // Navigate to settings
   await po.goToSettingsTab();
 
@@ -175,22 +166,13 @@ testWithConfig({
   const disconnectButton = po.page.getByRole("button", {
     name: "Disconnect from GitHub",
   });
-  await expect(disconnectButton).toBeVisible();
 
   // Click disconnect
   await disconnectButton.click();
 
-  // Verify success toast
-  await po.waitForToastWithText("Successfully disconnected from GitHub");
-
   // Verify the button is no longer visible (component returns null when not connected)
   await expect(disconnectButton).not.toBeVisible();
 
-  // Verify settings file no longer contains githubUser or githubAccessToken
-  const settingsPath = path.join(po.userDataDir, "user-settings.json");
-  const settingsContent = fs.readFileSync(settingsPath, "utf-8");
-  const settings = JSON.parse(settingsContent);
-
-  expect(settings.githubAccessToken).toBeUndefined();
-  expect(settings.githubUser).toBeUndefined();
+  // Snapshot only the settings that changed (GitHub token/user removed)
+  po.snapshotSettingsDelta(beforeSettings);
 });

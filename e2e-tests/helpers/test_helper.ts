@@ -1017,6 +1017,63 @@ export class PageObject {
     expect(sanitizedSettingsContent).toMatchSnapshot();
   }
 
+  /**
+   * Captures the current settings state for later comparison.
+   * Use with `snapshotSettingsDelta()` to snapshot only what changed.
+   */
+  captureSettings(): Record<string, unknown> {
+    const settingsPath = path.join(this.userDataDir, "user-settings.json");
+    const settingsContent = fs.readFileSync(settingsPath, "utf-8");
+    return JSON.parse(settingsContent);
+  }
+
+  /**
+   * Snapshots only the differences between the current settings and a previously captured state.
+   * Output is in git diff style for easy reading.
+   */
+  snapshotSettingsDelta(beforeSettings: Record<string, unknown>) {
+    const afterSettings = this.captureSettings();
+
+    const diffLines: string[] = [];
+
+    const allKeys = new Set([
+      ...Object.keys(beforeSettings),
+      ...Object.keys(afterSettings),
+    ]);
+
+    // Sort keys for deterministic output
+    const sortedKeys = Array.from(allKeys).sort();
+
+    for (const key of sortedKeys) {
+      const beforeValue = beforeSettings[key];
+      const afterValue = afterSettings[key];
+      const beforeExists = key in beforeSettings;
+      const afterExists = key in afterSettings;
+
+      // Format value with diff marker on each line for multiline values
+      const formatValue = (val: unknown, marker: "+" | "-") => {
+        const lines = JSON.stringify(val, null, 2).split("\n");
+        return lines
+          .map((line, i) => (i === 0 ? line : `${marker}   ${line}`))
+          .join("\n");
+      };
+
+      if (!beforeExists && afterExists) {
+        // Added
+        diffLines.push(`+ "${key}": ${formatValue(afterValue, "+")}`);
+      } else if (beforeExists && !afterExists) {
+        // Removed
+        diffLines.push(`- "${key}": ${formatValue(beforeValue, "-")}`);
+      } else if (JSON.stringify(beforeValue) !== JSON.stringify(afterValue)) {
+        // Changed
+        diffLines.push(`- "${key}": ${formatValue(beforeValue, "-")}`);
+        diffLines.push(`+ "${key}": ${formatValue(afterValue, "+")}`);
+      }
+    }
+
+    expect(diffLines.join("\n")).toMatchSnapshot();
+  }
+
   async toggleAutoUpdate() {
     await this.page.getByRole("switch", { name: "Auto-update" }).click();
   }

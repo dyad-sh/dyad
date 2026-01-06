@@ -12,6 +12,7 @@ testSkipIfWindows("context window", async ({ po }) => {
   await po.snapshotServerDump();
 
   await po.goToSettingsTab();
+  const beforeSettings = po.recordSettings();
   await po.page
     .getByRole("combobox", { name: "Maximum number of chat turns" })
     .click();
@@ -19,7 +20,7 @@ testSkipIfWindows("context window", async ({ po }) => {
 
   // close combobox
   //   await po.page.keyboard.press("Escape");
-  await po.snapshotSettings();
+  po.snapshotSettingsDelta(beforeSettings);
   await po.page.getByText("Go Back").click();
 
   await po.sendPrompt("[dump] tc=6");

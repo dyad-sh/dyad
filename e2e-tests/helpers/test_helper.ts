@@ -1019,37 +1019,22 @@ export class PageObject {
     await this.page.getByRole("switch", { name: "Auto-fix problems" }).click();
   }
 
-  async snapshotSettings() {
-    const settings = path.join(this.userDataDir, "user-settings.json");
-    const settingsContent = fs.readFileSync(settings, "utf-8");
-    //  Sanitize the "telemetryUserId" since it's a UUID
-    const sanitizedSettingsContent = settingsContent
-      .replace(/"telemetryUserId": "[^"]*"/g, '"telemetryUserId": "[UUID]"')
-      // Don't snapshot this otherwise it'll diff with every release.
-      .replace(
-        /"lastShownReleaseNotesVersion": "[^"]*"/g,
-        '"lastShownReleaseNotesVersion": "[scrubbed]"',
-      );
-
-    expect(sanitizedSettingsContent).toMatchSnapshot();
-  }
-
   /**
-   * Captures the current settings state for later comparison.
+   * Records the current settings state for later comparison.
    * Use with `snapshotSettingsDelta()` to snapshot only what changed.
    */
-  captureSettings(): Record<string, unknown> {
+  recordSettings(): Record<string, unknown> {
     const settingsPath = path.join(this.userDataDir, "user-settings.json");
     const settingsContent = fs.readFileSync(settingsPath, "utf-8");
     return JSON.parse(settingsContent);
   }
 
   /**
-   * Snapshots only the differences between the current settings and a previously captured state.
+   * Snapshots only the differences between the current settings and a previously recorded state.
    * Output is in git diff style for easy reading.
    */
   snapshotSettingsDelta(beforeSettings: Record<string, unknown>) {
-    const afterSettings = this.captureSettings();
+    const afterSettings = this.recordSettings();
 
     const diffLines: string[] = [];
 
@@ -1061,6 +1046,12 @@ export class PageObject {
     // Sort keys for deterministic output
     const sortedKeys = Array.from(allKeys).sort();
 
+    // Keys whose values should be redacted for deterministic snapshots
+    const redactedKeys: Record<string, string> = {
+      telemetryUserId: "[UUID]",
+      lastShownReleaseNotesVersion: "[scrubbed]",
+    };
+
     for (const key of sortedKeys) {
       const beforeValue = beforeSettings[key];
       const afterValue = afterSettings[key];
@@ -1068,8 +1059,10 @@ export class PageObject {
       const afterExists = key in afterSettings;
 
       // Format value with diff marker on each line for multiline values
+      // Redact certain keys for deterministic snapshots
       const formatValue = (val: unknown, marker: "+" | "-") => {
-        const lines = JSON.stringify(val, null, 2).split("\n");
+        const displayVal = key in redactedKeys ? redactedKeys[key] : val;
+        const lines = JSON.stringify(displayVal, null, 2).split("\n");
         return lines
           .map((line, i) => (i === 0 ? line : `${marker}   ${line}`))
           .join("\n");

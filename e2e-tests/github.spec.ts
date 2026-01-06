@@ -157,7 +157,7 @@ test("github clear integration settings", async ({ po }) => {
   await po.clickOpenInChatButton();
   // Make sure we are committing so that githubUser.email is getting set.
   await po.sendPrompt("tc=write-index");
-  const beforeSettings = po.captureSettings();
+  const beforeSettings = po.recordSettings();
 
   // Navigate to settings
   await po.goToSettingsTab();

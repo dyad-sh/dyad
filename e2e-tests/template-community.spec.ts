@@ -3,10 +3,12 @@ import { test } from "./helpers/test_helper";
 test("template - community", async ({ po }) => {
   await po.goToHubTab();
   // This is a community template, so we should see the consent dialog
+  const beforeSettings1 = po.recordSettings();
   await po.selectTemplate("Angular");
   await po.page.getByRole("button", { name: "Cancel" }).click();
-  await po.snapshotSettings();
+  po.snapshotSettingsDelta(beforeSettings1);
 
+  const beforeSettings2 = po.recordSettings();
   await po.selectTemplate("Angular");
   await po.page.getByRole("button", { name: "Accept" }).click();
   await po.page
@@ -15,5 +17,5 @@ test("template - community", async ({ po }) => {
     .locator("div")
     .first()
     .click();
-  await po.snapshotSettings();
+  po.snapshotSettingsDelta(beforeSettings2);
 });

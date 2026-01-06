@@ -7,27 +7,30 @@ testSkipIfWindows("thinking budget", async ({ po }) => {
 
   // Low
   await po.goToSettingsTab();
+  const beforeSettings1 = po.recordSettings();
   await po.page.getByRole("combobox", { name: "Thinking Budget" }).click();
   await po.page.getByRole("option", { name: "Low" }).click();
-  await po.snapshotSettings();
+  po.snapshotSettingsDelta(beforeSettings1);
   await po.page.getByText("Go Back").click();
   await po.sendPrompt("[dump] hi");
   await po.snapshotServerDump("request");
 
   // Medium
   await po.goToSettingsTab();
+  const beforeSettings2 = po.recordSettings();
   await po.page.getByRole("combobox", { name: "Thinking Budget" }).click();
   await po.page.getByRole("option", { name: "Medium (default)" }).click();
-  await po.snapshotSettings();
+  po.snapshotSettingsDelta(beforeSettings2);
   await po.page.getByText("Go Back").click();
   await po.sendPrompt("[dump] hi");
   await po.snapshotServerDump("request");
 
   // High
   await po.goToSettingsTab();
+  const beforeSettings3 = po.recordSettings();
   await po.page.getByRole("combobox", { name: "Thinking Budget" }).click();
   await po.page.getByRole("option", { name: "High" }).click();
-  await po.snapshotSettings();
+  po.snapshotSettingsDelta(beforeSettings3);
   await po.page.getByText("Go Back").click();
   await po.sendPrompt("[dump] hi");
   await po.snapshotServerDump("request");

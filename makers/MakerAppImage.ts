@@ -136,7 +136,24 @@ export class MakerAppImage extends MakerBase<{ icon?: string }> {
       const tempSquashedFsPath = resolve(workDir, "temp");
 
       const execFileAsync = promisify(execFile);
-      await execFileAsync("mksquashfs", [appDir, tempSquashedFsPath]);
+
+      try {
+        await execFileAsync("mksquashfs", [appDir, tempSquashedFsPath]);
+      } catch (err: any) {
+        const stderr = err?.stderr?.toString?.() ?? "";
+        const stdout = err?.stdout?.toString?.() ?? "";
+
+        throw new Error(
+          [
+            "mksquashfs failed",
+            `exit code: ${err?.code ?? "unknown"}`,
+            stderr && `stderr:\n${stderr}`,
+            stdout && `stdout:\n${stdout}`,
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        );
+      }
 
       // Directory to hold final executable
       await mkdir(outputDir, { recursive: true, mode: 0o755 });

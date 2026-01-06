@@ -1,8 +1,8 @@
 import { PageObject, testSkipIfWindows, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
-const runUndoTest = async (po: PageObject, disableNativeGit: boolean) => {
-  await po.setUp({ autoApprove: true, disableNativeGit });
+const runUndoTest = async (po: PageObject, nativeGit: boolean) => {
+  await po.setUp({ autoApprove: true, disableNativeGit: !nativeGit });
   await po.sendPrompt("tc=write-index");
   await po.sendPrompt("tc=write-index-2");
 

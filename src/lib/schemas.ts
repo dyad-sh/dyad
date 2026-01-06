@@ -251,6 +251,8 @@ export type AgentToolConsent = z.infer<typeof AgentToolConsentSchema>;
 export const UserSettingsSchema = z.object({
   selectedModel: LargeLanguageModelSchema,
   providerSettings: z.record(z.string(), ProviderSettingSchema),
+  ollamaEndpoint: z.string(),
+  lmStudioEndpoint: z.string(),
   agentToolConsents: z.record(z.string(), AgentToolConsentSchema).optional(),
   githubUser: GithubUserSchema.optional(),
   githubAccessToken: SecretSchema.optional(),

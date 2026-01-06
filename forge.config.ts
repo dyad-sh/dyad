@@ -154,7 +154,9 @@ const config: ForgeConfig = {
         mimeType: ["x-scheme-handler/dyad"],
       },
     }),
-    new MakerAppImage({}),
+    new MakerAppImage({
+      icon: "./assets/icon/logo.png",
+    }),
   ],
   publishers: [
     {

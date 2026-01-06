@@ -9,11 +9,12 @@ import {
   symlink,
   chmod,
   readFile,
+  copyFile,
   rm,
 } from "fs/promises";
 import { tmpdir } from "os";
 import { promisify } from "util";
-import { resolve, relative } from "path";
+import { resolve, relative, extname } from "path";
 
 const RUNTIME_URL =
   "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64";
@@ -25,7 +26,7 @@ const WORKDIR_PREFIX = "AppImageWorkDir";
 /**
  * Minimalist Forge maker for AppImages
  */
-export class MakerAppImage extends MakerBase<{}> {
+export class MakerAppImage extends MakerBase<{ icon?: string }> {
   override defaultPlatforms = ["linux"];
   override name = "AppImage";
   override requiredExternalBinaries = ["mksquashfs"];
@@ -45,6 +46,8 @@ export class MakerAppImage extends MakerBase<{}> {
 
     if (!version || typeof version !== "string")
       throw new Error("Could not access version information");
+
+    const { icon } = this.config;
 
     const exeName = `${appName}_${version}_${targetArch}.AppImage`;
     const outputDir = resolve(makeDir, "AppImage");
@@ -87,6 +90,7 @@ export class MakerAppImage extends MakerBase<{}> {
         "Type=Application",
         "Version=1.5",
         `Name=${appName}`,
+        ...(icon ? [`Icon=${appName}`] : []),
         "Exec=AppRun %U",
         `X-AppImage-Name=${appName}`,
         `X-AppImage-Version=${version}`,
@@ -94,6 +98,20 @@ export class MakerAppImage extends MakerBase<{}> {
       ].join("\n");
 
       await writeFile(resolve(appDir, `${appName}.desktop`), desktopFile);
+
+      // Add the icon
+      if (icon) {
+        const ext = extname(icon);
+
+        if (!ext || ext !== ".png")
+          throw new Error(`Invalid icon extension: ${ext || "[None]"}`);
+
+        const finalIconName = `${appName}${ext}`;
+        const finalIconPath = resolve(appDir, finalIconName);
+
+        await copyFile(icon, finalIconPath);
+        await symlink(finalIconName, resolve(appDir, ".DirIcon"), "file");
+      }
 
       // By convention, executables should be in /bin
       await symlink(

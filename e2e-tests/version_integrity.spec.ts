@@ -4,7 +4,7 @@ import * as eph from "electron-playwright-helpers";
 import path from "node:path";
 
 const runVersionIntegrityTest = async (po: PageObject, nativeGit: boolean) => {
-  await po.setUp({ autoApprove: true, nativeGit });
+  await po.setUp({ autoApprove: true, disableNativeGit: !nativeGit });
 
   // Importing a simple app with a few files.
   await po.page.getByRole("button", { name: "Import App" }).click();

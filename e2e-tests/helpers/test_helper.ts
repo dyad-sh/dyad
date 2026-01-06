@@ -233,11 +233,11 @@ export class PageObject {
 
   async setUp({
     autoApprove = false,
-    nativeGit = false,
+    disableNativeGit = false,
     enableAutoFixProblems = false,
   }: {
     autoApprove?: boolean;
-    nativeGit?: boolean;
+    disableNativeGit?: boolean;
     enableAutoFixProblems?: boolean;
   } = {}) {
     await this.baseSetup();
@@ -245,7 +245,7 @@ export class PageObject {
     if (autoApprove) {
       await this.toggleAutoApprove();
     }
-    if (nativeGit) {
+    if (disableNativeGit) {
       await this.toggleNativeGit();
     }
     if (enableAutoFixProblems) {

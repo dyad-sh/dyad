@@ -1,8 +1,8 @@
 import { PageObject, testSkipIfWindows, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
-const runUndoTest = async (po: PageObject, nativeGit: boolean) => {
-  await po.setUp({ autoApprove: true, nativeGit });
+const runUndoTest = async (po: PageObject, disableNativeGit: boolean) => {
+  await po.setUp({ autoApprove: true, disableNativeGit });
   await po.sendPrompt("tc=write-index");
   await po.sendPrompt("tc=write-index-2");
 
@@ -42,7 +42,7 @@ testSkipIfWindows("undo with native git", async ({ po }) => {
 });
 
 testSkipIfWindows("undo after assistant with no code", async ({ po }) => {
-  await po.setUp({ autoApprove: true, nativeGit: false });
+  await po.setUp({ autoApprove: true });
 
   // First prompt - no code generated
   await po.sendPrompt("tc=no-code-response");

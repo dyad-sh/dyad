@@ -187,6 +187,21 @@ app.post("/github/api/test/clear-push-events", handleClearPushEvents);
 // GitHub Git endpoints - intercept all paths with /github/git prefix
 app.all("/github/git/*", handleGitPush);
 
+// Dyad Engine turbo-file-edit endpoint for edit_file tool
+app.post("/engine/v1/tools/turbo-file-edit", (req, res) => {
+  const { path: filePath, description } = req.body;
+  console.log(
+    `* turbo-file-edit: ${filePath} - ${description || "no description"}`,
+  );
+
+  try {
+    res.json({ result: "TURBO EDITED filePath" });
+  } catch (error) {
+    console.error(`* turbo-file-edit error:`, error);
+    res.status(400).json({ error: String(error) });
+  }
+});
+
 // Start the server
 const server = createServer(app);
 server.listen(PORT, () => {

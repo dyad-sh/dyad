@@ -1,10 +1,6 @@
 import { db } from "../../db";
 import { mcpServers } from "../../db/schema";
-import {
-  createMCPClient,
-  type MCPClient,
-  type MCPTransport,
-} from "@ai-sdk/mcp";
+import { createMCPClient, type MCPClient } from "@ai-sdk/mcp";
 import { eq } from "drizzle-orm";
 
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -45,7 +41,7 @@ class McpManager {
       throw new Error(`Unsupported MCP transport: ${s.transport}`);
     }
     const client = await createMCPClient({
-      transport: transport as MCPTransport,
+      transport,
     });
     this.clients.set(serverId, client);
     return client;

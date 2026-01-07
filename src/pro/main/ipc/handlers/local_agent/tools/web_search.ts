@@ -1,6 +1,11 @@
 import { z } from "zod";
 import log from "electron-log";
-import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
+import {
+  ToolDefinition,
+  AgentContext,
+  escapeXmlAttr,
+  escapeXmlContent,
+} from "./types";
 import { readSettings } from "@/main/settings";
 
 const logger = log.scope("web_search");
@@ -12,7 +17,29 @@ const webSearchSchema = z.object({
   query: z.string().describe("The search query to look up on the web"),
 });
 
-const DESCRIPTION = `Search the web for real-time information about any topic. Use this tool when you need up-to-date information that might not be available in your training data, or when you need to verify current facts. The search results will include relevant snippets and URLs from web pages. This is particularly useful for questions about current events, technology updates, or any topic that requires recent information.`;
+const DESCRIPTION = `
+Use this tool to access real-time information beyond your training data cutoff.
+
+When to Search:
+- Current API documentation, library versions, or breaking changes
+- Latest best practices, security advisories, or bug fixes
+- Specific error messages or troubleshooting solutions
+- Recent framework updates or deprecation notices
+
+Query Tips:
+- Be specific: Include version numbers, exact error messages, or technical terms
+- Add context: "React 19 useEffect cleanup" not just "React hooks"
+
+Examples:
+
+<example>
+OpenAI GPT-5 API model names
+</example>
+
+<example>
+NextJS 14 app router middleware auth
+</example>
+`;
 
 /**
  * Parse SSE events from a buffer and extract content deltas.
@@ -122,7 +149,7 @@ async function callWebSearchSSE(
         accumulated += content;
         // Stream intermediate results to UI with dyad-web-search prefix
         ctx.onXmlStream(
-          `<dyad-web-search query="${escapeXmlAttr(query)}">${accumulated}`,
+          `<dyad-web-search query="${escapeXmlAttr(query)}">${escapeXmlContent(accumulated)}`,
         );
       });
     }
@@ -159,7 +186,7 @@ export const webSearchTool: ToolDefinition<z.infer<typeof webSearchSchema>> = {
 
     // Write final result to UI and DB with dyad-web-search wrapper
     ctx.onXmlComplete(
-      `<dyad-web-search query="${escapeXmlAttr(args.query)}">${result}</dyad-web-search>`,
+      `<dyad-web-search query="${escapeXmlAttr(args.query)}">${escapeXmlContent(result)}</dyad-web-search>`,
     );
 
     logger.log(`Web search completed for query: ${args.query}`);

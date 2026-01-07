@@ -142,6 +142,13 @@ const validInvokeChannels = [
   "prompts:create",
   "prompts:update",
   "prompts:delete",
+  // Themes
+  "themes:list",
+  "themes:get",
+  "themes:create",
+  "themes:update",
+  "themes:delete",
+  "themes:seed",
   // adding app to favorite
   "add-to-favorite",
   "github:clone-repo-from-url",

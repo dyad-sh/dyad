@@ -12,7 +12,7 @@ import {
 } from "ai";
 
 import { db } from "../../db";
-import { chats, messages } from "../../db/schema";
+import { chats, messages, themes } from "../../db/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import type { SmartContextMode } from "../../lib/schemas";
 import {
@@ -608,8 +608,22 @@ ${componentSnippet}
 
         const aiRules = await readAiRules(getDyadAppPath(updatedChat.app.path));
 
+        // Fetch theme prompt if themeId is provided and append to aiRules
+        let aiRulesWithTheme = aiRules;
+        if (req.themeId) {
+          const theme = db
+            .select()
+            .from(themes)
+            .where(eq(themes.id, req.themeId))
+            .get();
+          if (theme && theme.prompt) {
+            aiRulesWithTheme = `${aiRules}\n\n# Design Theme Guidelines\n\n${theme.prompt}`;
+            logger.log(`Applied theme "${theme.title}" to system prompt`);
+          }
+        }
+
         let systemPrompt = constructSystemPrompt({
-          aiRules,
+          aiRules: aiRulesWithTheme,
           chatMode:
             settings.selectedChatMode === "agent"
               ? "build"

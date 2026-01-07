@@ -28,3 +28,9 @@ export interface PendingAgentConsent {
 }
 
 export const pendingAgentConsentsAtom = atom<PendingAgentConsent[]>([]);
+
+// Selected theme ID for new apps
+export const selectedThemeIdAtom = atom<number | null>(null);
+
+// Selected primary color ID for new apps
+export const selectedColorIdAtom = atom<string | null>(null);

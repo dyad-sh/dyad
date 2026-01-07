@@ -29,6 +29,7 @@ import { registerAppEnvVarsHandlers } from "./handlers/app_env_vars_handlers";
 import { registerTemplateHandlers } from "./handlers/template_handlers";
 import { registerPortalHandlers } from "./handlers/portal_handlers";
 import { registerPromptHandlers } from "./handlers/prompt_handlers";
+import { registerThemesHandlers } from "./handlers/themes_handlers";
 import { registerHelpBotHandlers } from "./handlers/help_bot_handlers";
 import { registerMcpHandlers } from "./handlers/mcp_handlers";
 import { registerSecurityHandlers } from "./handlers/security_handlers";
@@ -68,6 +69,7 @@ export function registerIpcHandlers() {
   registerTemplateHandlers();
   registerPortalHandlers();
   registerPromptHandlers();
+  registerThemesHandlers();
   registerHelpBotHandlers();
   registerMcpHandlers();
   registerSecurityHandlers();

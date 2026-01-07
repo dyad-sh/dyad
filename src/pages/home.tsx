@@ -1,6 +1,11 @@
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { useAtom, useSetAtom } from "jotai";
-import { homeChatInputValueAtom } from "../atoms/chatAtoms";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import {
+  homeChatInputValueAtom,
+  selectedThemeIdAtom,
+  selectedColorIdAtom,
+} from "../atoms/chatAtoms";
+import { APP_COLORS } from "@/data/colors";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
 import { generateCuteAppName } from "@/lib/utils";
@@ -54,10 +59,21 @@ export default function HomePage() {
   const { streamMessage } = useStreamChat({ hasChatId: false });
   const posthog = usePostHog();
   const appVersion = useAppVersion();
+  const selectedThemeId = useAtomValue(selectedThemeIdAtom);
+  const selectedColorId = useAtomValue(selectedColorIdAtom);
+  const selectedColor = APP_COLORS.find((c) => c.id === selectedColorId);
   const [releaseNotesOpen, setReleaseNotesOpen] = useState(false);
   const [releaseUrl, setReleaseUrl] = useState("");
   const { theme } = useTheme();
   const queryClient = useQueryClient();
+
+  // Fetch themes to determine if MD3 is selected
+  const [themes, setThemes] = useState<{ id: number; title: string }[]>([]);
+  useEffect(() => {
+    IpcClient.getInstance()
+      .listThemes()
+      .then((t) => setThemes(t));
+  }, []);
 
   // Listen for force-close events
   useEffect(() => {
@@ -153,11 +169,30 @@ export default function HomePage() {
         });
       }
 
-      // Stream the message with attachments
+      // Build prompt with optional color instructions based on theme
+      // Build prompt with optional color instructions
+      let finalPrompt = inputValue;
+      const selectedTheme = themes.find((t) => t.id === selectedThemeId);
+
+      if (selectedColor) {
+        if (selectedTheme?.title.includes("Apple")) {
+          // Apple: Tint Color
+          finalPrompt += `\n\nUse ${selectedColor.hex} as the System Tint Color (Primary). Maintain standard white/gray system backgrounds.`;
+        } else if (selectedTheme?.title === "Material Design 3") {
+          // MD3: Seed Color
+          finalPrompt += `\n\nUse ${selectedColor.hex} as the seed color for the Material Design 3 tonal palette.`;
+        } else {
+          // Default/Other: Primary Color
+          finalPrompt += `\n\nUse ${selectedColor.hex} as the Primary Brand Color.`;
+        }
+      }
+
+      // Stream the message with attachments and theme
       streamMessage({
-        prompt: inputValue,
+        prompt: finalPrompt,
         chatId: result.chatId,
         attachments,
+        themeId: selectedThemeId ?? undefined,
       });
       await new Promise((resolve) =>
         setTimeout(resolve, settings?.isTestMode ? 0 : 2000),

@@ -17,8 +17,10 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 import { IpcClient } from "@/ipc/ipc_client";
 import { toast } from "sonner";
+import { showError } from "@/lib/toast";
 
 import { useRunApp } from "@/hooks/useRunApp";
+import { useChats } from "@/hooks/useChats";
 
 interface VersionPaneProps {
   isVisible: boolean;
@@ -31,6 +33,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
   const { restartApp } = useRunApp();
   const navigate = useNavigate();
   const [selectedChatId, setSelectedChatId] = useAtom(selectedChatIdAtom);
+  const { invalidateChats } = useChats(appId);
   const {
     versions: liveVersions,
     refreshVersions,
@@ -248,30 +251,41 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
 
                             // Create a new chat and navigate to it
                             if (appId) {
-                              const newChatId =
-                                await IpcClient.getInstance().createChat(appId);
-                              setSelectedChatId(newChatId);
-                              await navigate({
-                                to: "/chat",
-                                search: { id: newChatId },
-                              });
-
-                              // Show toast with action to go back to previous chat
-                              if (previousChatId) {
-                                toast("Switched to new chat", {
-                                  description:
-                                    "We've switched you to a new chat to give the AI a clean context.",
-                                  action: {
-                                    label: "Go to previous chat",
-                                    onClick: async () => {
-                                      setSelectedChatId(previousChatId);
-                                      await navigate({
-                                        to: "/chat",
-                                        search: { id: previousChatId },
-                                      });
-                                    },
-                                  },
+                              try {
+                                const newChatId =
+                                  await IpcClient.getInstance().createChat(
+                                    appId,
+                                  );
+                                setSelectedChatId(newChatId);
+                                await navigate({
+                                  to: "/chat",
+                                  search: { id: newChatId },
                                 });
+
+                                // Refresh the chat list
+                                await invalidateChats();
+
+                                // Show toast with action to go back to previous chat
+                                if (previousChatId) {
+                                  toast("Switched to new chat", {
+                                    description:
+                                      "We've switched you to a new chat to give the AI a clean context.",
+                                    action: {
+                                      label: "Go to previous chat",
+                                      onClick: async () => {
+                                        setSelectedChatId(previousChatId);
+                                        await navigate({
+                                          to: "/chat",
+                                          search: { id: previousChatId },
+                                        });
+                                      },
+                                    },
+                                  });
+                                }
+                              } catch (error) {
+                                showError(
+                                  `Failed to create new chat: ${(error as any).toString()}`,
+                                );
                               }
                             }
                           }}

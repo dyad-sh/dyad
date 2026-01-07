@@ -650,8 +650,11 @@ export async function gitRebaseContinue({
     );
   }
 
+  // Use withGitAuthor since rebase --continue needs to create commits
+  // and requires user.name and user.email
+  const args = await withGitAuthor(["rebase", "--continue"]);
   await execOrThrow(
-    ["rebase", "--continue"],
+    args,
     path,
     "Failed to continue rebase. Make sure conflicts are resolved and changes are staged.",
   );
@@ -671,8 +674,11 @@ export async function gitRebase({
     );
   }
 
+  // Use withGitAuthor since rebase replays commits and needs user.name and user.email
+  // to set the committer identity on the rebased commits
+  const args = await withGitAuthor(["rebase", `origin/${branch}`]);
   await execOrThrow(
-    ["rebase", `origin/${branch}`],
+    args,
     path,
     `Failed to rebase onto origin/${branch}. Make sure you have a clean working directory and the remote branch exists.`,
   );
@@ -873,16 +879,18 @@ export async function gitPull({
 }: GitPullParams): Promise<void> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
-    const args = [
+    // Use withGitAuthor since pull may need to create merge commits
+    // and requires user.name and user.email
+    const pullArgs = await withGitAuthor([
       "-c",
       "credential.helper=",
       "pull",
       "--rebase=false",
       remote,
       branch,
-    ];
+    ]);
     try {
-      await execOrThrow(args, path, "Failed to pull from remote");
+      await execOrThrow(pullArgs, path, "Failed to pull from remote");
     } catch (error: any) {
       // Check git state files to detect conflicts instead of parsing error messages
       if (hasGitConflictState({ path })) {
@@ -928,11 +936,8 @@ export async function gitMerge({
 }: GitMergeParams): Promise<void> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
-    await execOrThrow(
-      ["merge", branch],
-      path,
-      `Failed to merge branch ${branch}`,
-    );
+    const args = await withGitAuthor(["merge", branch]);
+    await execOrThrow(args, path, `Failed to merge branch ${branch}`);
   } else {
     await git.merge({
       fs,

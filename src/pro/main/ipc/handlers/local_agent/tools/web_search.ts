@@ -17,6 +17,7 @@ const DESCRIPTION = `Search the web for real-time information about any topic. U
 /**
  * Parse SSE events from a buffer and extract content deltas.
  * Returns the remaining unparsed buffer.
+ * Throws an error if an SSE error event is received.
  */
 function parseSSEEvents(
   buffer: string,
@@ -41,12 +42,24 @@ function parseSSEEvents(
 
     try {
       const json = JSON.parse(data);
+
+      // Check for OpenAI-style SSE error: { error: { message: "...", type: "...", code: "..." } }
+      if (json.error) {
+        const errorMessage =
+          json.error.message || json.error.type || "Unknown SSE error";
+        throw new Error(`Web search SSE error: ${errorMessage}`);
+      }
+
       // OpenAI-style SSE format: { choices: [{ delta: { content: "..." } }] }
       const content = json.choices?.[0]?.delta?.content;
       if (content) {
         onContent(content);
       }
-    } catch {
+    } catch (e) {
+      // Re-throw SSE errors
+      if (e instanceof Error && e.message.startsWith("Web search SSE error:")) {
+        throw e;
+      }
       // Skip malformed JSON lines
       logger.warn("Failed to parse SSE JSON:", data);
     }

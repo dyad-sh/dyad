@@ -186,7 +186,6 @@
   "overrides": {
     "@vercel/sdk": {
       "@modelcontextprotocol/sdk": "$@modelcontextprotocol/sdk"
-    },
-    "@ai-sdk/provider": "3.0.2"
+    }
   }
 }

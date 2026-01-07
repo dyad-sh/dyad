@@ -72,6 +72,7 @@ export function AuxiliaryActionsMenu({
         <DropdownMenuItem
           onClick={toggleShowTokenBar}
           className={`py-2 px-3 group ${showTokenBar ? "bg-primary/10 text-primary" : ""}`}
+          data-testid="token-bar-toggle"
         >
           <ChartColumnIncreasing
             size={16}

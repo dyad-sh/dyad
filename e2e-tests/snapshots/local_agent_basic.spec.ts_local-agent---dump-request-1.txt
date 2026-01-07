@@ -236,6 +236,27 @@
             "$schema": "http://json-schema.org/draft-07/schema#"
           }
         }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "web_search",
+          "description": "\nUse this tool to access real-time information beyond your training data cutoff.\n\nWhen to Search:\n- Current API documentation, library versions, or breaking changes\n- Latest best practices, security advisories, or bug fixes\n- Specific error messages or troubleshooting solutions\n- Recent framework updates or deprecation notices\n\nQuery Tips:\n- Be specific: Include version numbers, exact error messages, or technical terms\n- Add context: \"React 19 useEffect cleanup\" not just \"React hooks\"\n\nExamples:\n\n<example>\nOpenAI GPT-5 API model names\n</example>\n\n<example>\nNextJS 14 app router middleware auth\n</example>\n",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "description": "The search query to look up on the web"
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          }
+        }
       }
     ],
     "tool_choice": "auto",

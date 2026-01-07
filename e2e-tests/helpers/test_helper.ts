@@ -20,6 +20,60 @@ export const Timeout = {
   MEDIUM: process.env.CI ? 30_000 : 15_000,
 };
 
+/**
+ * Normalizes fileId hashes in versioned_files to be deterministic.
+ * FileIds are SHA-256 hashes that may include non-deterministic components
+ * like app paths with timestamps. This replaces them with stable placeholders
+ * based on content sorting.
+ */
+function normalizeVersionedFiles(dump: any): void {
+  const vf = dump?.body?.dyad_options?.versioned_files;
+  if (!vf?.fileIdToContent) {
+    return;
+  }
+
+  const fileIdToContent = vf.fileIdToContent as Record<string, string>;
+
+  // Create mapping from old fileId to new deterministic fileId
+  // Sort by content to ensure deterministic ordering
+  const entries = Object.entries(fileIdToContent).sort((a, b) =>
+    String(a[1]).localeCompare(String(b[1])),
+  );
+
+  const oldToNewId: Record<string, string> = {};
+  const newFileIdToContent: Record<string, string> = {};
+
+  entries.forEach(([oldId, content], index) => {
+    const newId = `[[FILE_ID_${index}]]`;
+    oldToNewId[oldId] = newId;
+    newFileIdToContent[newId] = content;
+  });
+
+  vf.fileIdToContent = newFileIdToContent;
+
+  // Update fileReferences
+  if (vf.fileReferences) {
+    vf.fileReferences = vf.fileReferences.map((ref: any) => ({
+      ...ref,
+      fileId: oldToNewId[ref.fileId] ?? ref.fileId,
+    }));
+  }
+
+  // Update messageIndexToFilePathToFileId
+  if (vf.messageIndexToFilePathToFileId) {
+    for (const pathToId of Object.values(
+      vf.messageIndexToFilePathToFileId as Record<
+        string,
+        Record<string, string>
+      >,
+    )) {
+      for (const [filePath, id] of Object.entries(pathToId)) {
+        pathToId[filePath] = oldToNewId[id] ?? id;
+      }
+    }
+  }
+}
+
 export class ContextFilesPickerDialog {
   constructor(
     public page: Page,
@@ -734,6 +788,8 @@ export class PageObject {
           return message;
         },
       );
+      // Normalize fileIds to be deterministic based on content
+      normalizeVersionedFiles(parsedDump);
       expect(
         JSON.stringify(parsedDump, null, 2).replace(/\\r\\n/g, "\\n"),
       ).toMatchSnapshot(name);
@@ -792,6 +848,16 @@ export class PageObject {
 
   async clickBackButton() {
     await this.page.getByRole("button", { name: "Back" }).click();
+  }
+
+  async toggleTokenBar() {
+    // Need to make sure it's NOT visible yet to avoid a race when we opened
+    // the auxiliary actions menu earlier.
+    await expect(this.page.getByTestId("token-bar-toggle")).not.toBeVisible();
+    await this.getChatInputContainer()
+      .getByTestId("auxiliary-actions-menu")
+      .click();
+    await this.page.getByTestId("token-bar-toggle").click();
   }
 
   async sendPrompt(

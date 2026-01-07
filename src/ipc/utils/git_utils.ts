@@ -431,7 +431,8 @@ export async function gitListRemoteBranches({
       throw new Error(result.stderr.toString());
     }
     // Parse output:
-    // e.g. "  origin/main\n  origin/feature/login"
+    // e.g. "  origin/main\n  origin/feature/login\n  upstream/develop"
+    // Only return branches from the specified remote
     return result.stdout
       .toString()
       .split("\n")
@@ -838,26 +839,29 @@ export async function gitFetch({
   }
 }
 
-// Custom error class for git conflicts
-export class GitConflictError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "GitConflictError";
-  }
+// Custom error function for git conflicts
+export function GitConflictError(message: string): Error {
+  const error = new Error(message);
+  error.name = "GitConflictError";
+  return error;
 }
 
-function isConflictError(errorMessage: string): boolean {
-  const lower = errorMessage.toLowerCase();
-  return (
-    lower.includes("conflict") ||
-    lower.includes("merge conflict") ||
-    lower.includes("would be overwritten") ||
-    lower.includes("unmerged paths") ||
-    lower.includes("fetch_head") ||
-    lower.includes("preimage") ||
-    lower.includes("both modified") ||
-    lower.includes("needs merge")
-  );
+// Custom error function for git operations with structured error codes
+export function GitStateError(message: string, code: string): Error {
+  const error = new Error(message);
+  error.name = "GitStateError";
+  (error as any).code = code;
+  return error;
+}
+
+// Error codes for git state errors
+export const GIT_ERROR_CODES = {
+  MERGE_IN_PROGRESS: "MERGE_IN_PROGRESS",
+  REBASE_IN_PROGRESS: "REBASE_IN_PROGRESS",
+} as const;
+
+function hasGitConflictState({ path }: GitBaseParams): boolean {
+  return isGitMergeOrRebaseInProgress({ path });
 }
 
 export async function gitPull({
@@ -880,9 +884,9 @@ export async function gitPull({
     try {
       await execOrThrow(args, path, "Failed to pull from remote");
     } catch (error: any) {
-      const errorMessage = error?.message || String(error);
-      if (isConflictError(errorMessage)) {
-        throw new GitConflictError(
+      // Check git state files to detect conflicts instead of parsing error messages
+      if (hasGitConflictState({ path })) {
+        throw GitConflictError(
           `Merge conflict detected during pull. Please resolve conflicts before proceeding.`,
         );
       }
@@ -907,9 +911,9 @@ export async function gitPull({
         : undefined,
     });
   } catch (error: any) {
-    const errorMessage = error?.message || String(error);
-    if (isConflictError(errorMessage)) {
-      throw new GitConflictError(
+    // Check git state files to detect conflicts instead of parsing error messages
+    if (hasGitConflictState({ path })) {
+      throw GitConflictError(
         `Merge conflict detected during pull. Please resolve conflicts before proceeding.`,
       );
     }
@@ -1048,6 +1052,16 @@ export function isGitMergeOrRebaseInProgress({ path }: GitBaseParams): boolean {
 
   return false;
 }
+/**
+ * Check if Git is currently in a merge state (not a rebase).
+ * This checks for MERGE_HEAD file which indicates a merge is in progress.
+ */
+export function isGitMergeInProgress({ path }: GitBaseParams): boolean {
+  const gitDir = pathModule.join(path, ".git");
+  const mergeHeadPath = pathModule.join(gitDir, "MERGE_HEAD");
+  return fs.existsSync(mergeHeadPath);
+}
+
 /**
  * Check if Git is currently in a rebase state (not a merge).
  * This is used to determine whether to use `git rebase --continue`

@@ -855,10 +855,8 @@ export class IpcClient {
     });
   }
 
-  public async abortGithubRebase(
-    appId: number,
-  ): Promise<{ success: boolean; error?: string }> {
-    return this.ipcRenderer.invoke("github:rebase-abort", {
+  public async abortGithubRebase(appId: number): Promise<void> {
+    await this.ipcRenderer.invoke("github:rebase-abort", {
       appId,
     });
   }
@@ -869,10 +867,8 @@ export class IpcClient {
     });
   }
 
-  public async continueGithubRebase(
-    appId: number,
-  ): Promise<{ success: boolean; error?: string }> {
-    return this.ipcRenderer.invoke("github:rebase-continue", {
+  public async continueGithubRebase(appId: number): Promise<void> {
+    await this.ipcRenderer.invoke("github:rebase-continue", {
       appId,
     });
   }
@@ -951,6 +947,13 @@ export class IpcClient {
       appId,
       remote,
     });
+  }
+
+  public async getGithubState(appId: number): Promise<{
+    mergeInProgress: boolean;
+    rebaseInProgress: boolean;
+  }> {
+    return this.ipcRenderer.invoke("github:get-git-state", { appId });
   }
 
   public async listCollaborators(

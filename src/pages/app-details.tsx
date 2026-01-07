@@ -392,7 +392,7 @@ export default function AppDetailsPage() {
           </Button>
           <div className="border border-gray-200 rounded-md p-4">
             <GitHubConnector appId={appId} folderName={selectedApp.path} />
-            {selectedApp.githubOrg && appId && (
+            {selectedApp.githubOrg && selectedApp.githubRepo && appId && (
               <div className="pt-4 border-t border-gray-100 dark:border-gray-800">
                 <GithubCollaboratorManager appId={appId} />
               </div>

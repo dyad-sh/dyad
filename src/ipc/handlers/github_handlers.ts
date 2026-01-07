@@ -24,7 +24,10 @@ import {
   gitCommit,
   isGitStatusClean,
   getGitUncommittedFiles,
-  GitConflictError,
+  GitStateError,
+  GIT_ERROR_CODES,
+  isGitMergeInProgress,
+  isGitRebaseInProgress,
 } from "../utils/git_utils";
 import * as schema from "../../db/schema";
 import fs from "node:fs";
@@ -112,9 +115,13 @@ export async function getGithubUser(): Promise<GithubUser | null> {
 async function prepareLocalBranch({
   appId,
   branch,
+  remoteUrl,
+  accessToken,
 }: {
   appId: number;
   branch?: string;
+  remoteUrl?: string;
+  accessToken?: string;
 }) {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app) {
@@ -124,6 +131,32 @@ async function prepareLocalBranch({
   const targetBranch = branch || "main";
 
   try {
+    // Set up remote URL if provided (should be set up before calling this)
+    if (remoteUrl) {
+      await gitSetRemoteUrl({
+        path: appPath,
+        remoteUrl,
+      });
+
+      // Fetch remote branches if we have access token and remote URL
+      // This allows us to check if the branch exists remotely
+      if (accessToken) {
+        try {
+          await gitFetch({
+            path: appPath,
+            remote: "origin",
+            accessToken,
+          });
+        } catch (fetchError: any) {
+          // For new repos, fetch might fail because the repo is empty
+          // This is okay - we'll just create the branch locally
+          logger.debug(
+            `[GitHub Handler] Fetch failed (expected for new repos): ${fetchError?.message || "Unknown error"}`,
+          );
+        }
+      }
+    }
+
     // Check for uncommitted changes and commit them before checkout
     const isClean = await isGitStatusClean({ path: appPath });
     if (!isClean) {
@@ -150,13 +183,51 @@ async function prepareLocalBranch({
     }
 
     const localBranches = await gitListBranches({ path: appPath });
-    if (!localBranches.includes(targetBranch)) {
-      await gitCreateBranch({
+
+    // Check if branch exists remotely (if remote was set up)
+    let remoteBranches: string[] = [];
+    if (remoteUrl && accessToken) {
+      remoteBranches = await gitListRemoteBranches({
         path: appPath,
-        branch: targetBranch,
+        remote: "origin",
       });
     }
-    await gitCheckout({ path: appPath, ref: targetBranch });
+
+    if (!localBranches.includes(targetBranch)) {
+      // If branch exists remotely, create local tracking branch
+      // Otherwise, create a new local branch
+      if (remoteBranches.includes(targetBranch)) {
+        // For native git: create branch with tracking
+        // For isomorphic-git: checkout remote branch directly (creates tracking branch automatically)
+        const settings = readSettings();
+        if (settings.enableNativeGit) {
+          // Native git: create branch from remote with tracking
+          await gitCreateBranch({
+            path: appPath,
+            branch: targetBranch,
+            from: `origin/${targetBranch}`,
+          });
+          await gitCheckout({ path: appPath, ref: targetBranch });
+        } else {
+          // isomorphic-git: checkout remote branch directly
+          // This automatically creates a local tracking branch
+          await gitCheckout({
+            path: appPath,
+            ref: `origin/${targetBranch}`,
+          });
+        }
+      } else {
+        // Create new local branch
+        await gitCreateBranch({
+          path: appPath,
+          branch: targetBranch,
+        });
+        await gitCheckout({ path: appPath, ref: targetBranch });
+      }
+    } else {
+      // Branch exists locally, just checkout
+      await gitCheckout({ path: appPath, ref: targetBranch });
+    }
   } catch (gitError: any) {
     logger.error("[GitHub Handler] Failed to prepare local branch:", gitError);
     // Check if error is about uncommitted changes (fallback in case check above missed it)
@@ -593,7 +664,20 @@ async function handleCreateRepo(
 
     throw new Error(errorMessage);
   }
-  await prepareLocalBranch({ appId, branch });
+
+  // Set up remote URL before preparing branch
+  const remoteUrl = IS_TEST_BUILD
+    ? `${GITHUB_GIT_BASE}/${owner}/${repo}.git`
+    : `https://${accessToken}:x-oauth-basic@github.com/${owner}/${repo}.git`;
+
+  // Prepare local branch with remote URL set up
+  await prepareLocalBranch({
+    appId,
+    branch,
+    remoteUrl,
+    accessToken,
+  });
+
   // Store org, repo, and branch in the app's DB row (apps table)
   await updateAppGithubRepo({ appId, org: owner, repo, branch });
 }
@@ -634,7 +718,18 @@ async function handleConnectToExistingRepo(
       );
     }
 
-    await prepareLocalBranch({ appId, branch });
+    // Set up remote URL before preparing branch
+    const remoteUrl = IS_TEST_BUILD
+      ? `${GITHUB_GIT_BASE}/${owner}/${repo}.git`
+      : `https://${accessToken}:x-oauth-basic@github.com/${owner}/${repo}.git`;
+
+    // Prepare local branch with remote URL set up
+    await prepareLocalBranch({
+      appId,
+      branch,
+      remoteUrl,
+      accessToken,
+    });
 
     // Store org, repo, and branch in the app's DB row
     await updateAppGithubRepo({ appId, org: owner, repo, branch });
@@ -704,7 +799,7 @@ async function handlePushToGithub(
 
         // Check if it's a conflict error (including GitConflictError)
         if (
-          pullError instanceof GitConflictError ||
+          pullError?.name === "GitConflictError" ||
           errorMessage.includes("conflict") ||
           errorMessage.includes("Merge conflict") ||
           errorMessage.includes("Fetch_head") ||
@@ -750,20 +845,12 @@ async function handlePushToGithub(
 async function handleAbortRebase(
   event: IpcMainInvokeEvent,
   { appId }: { appId: number },
-) {
-  try {
-    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-    if (!app) throw new Error("App not found");
-    const appPath = getDyadAppPath(app.path);
+): Promise<void> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
 
-    await gitRebaseAbort({ path: appPath });
-    return { success: true };
-  } catch (err: any) {
-    return {
-      success: false,
-      error: err.message || "Failed to abort rebase.",
-    };
-  }
+  await gitRebaseAbort({ path: appPath });
 }
 
 async function handleAbortMerge(
@@ -780,20 +867,12 @@ async function handleAbortMerge(
 async function handleContinueRebase(
   event: IpcMainInvokeEvent,
   { appId }: { appId: number },
-) {
-  try {
-    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-    if (!app) throw new Error("App not found");
-    const appPath = getDyadAppPath(app.path);
+): Promise<void> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
 
-    await gitRebaseContinue({ path: appPath });
-    return { success: true };
-  } catch (err: any) {
-    return {
-      success: false,
-      error: err.message || "Failed to continue rebase.",
-    };
-  }
+  await gitRebaseContinue({ path: appPath });
 }
 // --- GitHub Rebase Handler ---
 async function handleRebaseFromGithub(
@@ -924,6 +1003,22 @@ async function handleSwitchBranch(
   if (!app) throw new Error("App not found");
   const appPath = getDyadAppPath(app.path);
 
+  // Check for merge or rebase in progress before attempting to switch
+  // This provides structured error codes instead of relying on string matching
+  if (isGitMergeInProgress({ path: appPath })) {
+    throw GitStateError(
+      "Cannot switch branches: merge in progress. Please complete or abort the merge first.",
+      GIT_ERROR_CODES.MERGE_IN_PROGRESS,
+    );
+  }
+
+  if (isGitRebaseInProgress({ path: appPath })) {
+    throw GitStateError(
+      "Cannot switch branches: rebase in progress. Please complete or abort the rebase first.",
+      GIT_ERROR_CODES.REBASE_IN_PROGRESS,
+    );
+  }
+
   // Check for uncommitted changes and commit them before switching branches
   const isClean = await isGitStatusClean({ path: appPath });
   if (!isClean) {
@@ -978,6 +1073,20 @@ async function handleSwitchBranch(
     repo: app.githubRepo || "",
     branch,
   });
+}
+
+async function handleGetGitState(
+  event: IpcMainInvokeEvent,
+  { appId }: { appId: number },
+): Promise<{ mergeInProgress: boolean; rebaseInProgress: boolean }> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
+
+  const mergeInProgress = isGitMergeInProgress({ path: appPath });
+  const rebaseInProgress = isGitRebaseInProgress({ path: appPath });
+
+  return { mergeInProgress, rebaseInProgress };
 }
 
 async function handleRenameBranch(
@@ -1434,6 +1543,7 @@ export function registerGithubHandlers() {
   ipcMain.handle("github:invite-collaborator", handleInviteCollaborator);
   ipcMain.handle("github:remove-collaborator", handleRemoveCollaborator);
   ipcMain.handle("github:get-conflicts", handleGetMergeConflicts);
+  ipcMain.handle("github:get-git-state", handleGetGitState);
   ipcMain.handle("github:disconnect", (event, args: { appId: number }) =>
     handleDisconnectGithubRepo(event, args),
   );

@@ -9,7 +9,7 @@ test.describe("Git Collaboration", () => {
   test("should create, switch, rename, merge, and delete branches", async ({
     po,
   }) => {
-    await po.setUp({ nativeGit: true });
+    await po.setUp({ disableNativeGit: false });
     await po.sendPrompt("tc=basic");
 
     await po.getTitleBarAppNameButton().click();

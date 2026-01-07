@@ -113,7 +113,6 @@ function ConnectedGitHubConnector({
       setSyncError(null);
       setSyncSuccess(false);
       setShowForceDialog(false);
-      setRebaseStatusMessage(null);
       setRebaseInProgress(false);
       setConflicts([]); // Clear conflicts when starting a new sync
 
@@ -126,6 +125,8 @@ function ConnectedGitHubConnector({
           setSyncSuccess(true);
           setRebaseInProgress(false);
           setConflicts([]); // Clear conflicts on successful sync
+          // Clear rebase status message after successful sync
+          setRebaseStatusMessage(null);
         } else {
           if (result.isConflict) {
             // Fetch the actual conflicts
@@ -135,7 +136,7 @@ function ConnectedGitHubConnector({
               if (conflicts.length > 0) {
                 setConflicts(conflicts);
                 setSyncError(
-                  "Merge conflicts detected. Please resolve them below.",
+                  "Merge conflicts detected. Please resolve them in the editor.",
                 );
                 return;
               }
@@ -148,6 +149,8 @@ function ConnectedGitHubConnector({
           const errorMessage = result.error || "Failed to sync to GitHub.";
           setSyncError(errorMessage);
           setRebaseInProgress(errorMessage.includes("rebase-merge"));
+          // Clear any prior rebase success message if push failed
+          setRebaseStatusMessage(null);
           // If it's a push rejection error, show the force dialog
           if (
             result.error?.includes("rejected") ||
@@ -160,6 +163,8 @@ function ConnectedGitHubConnector({
         const errorMessage = err.message || "Failed to sync to GitHub.";
         setSyncError(errorMessage);
         setRebaseInProgress(errorMessage.includes("rebase-merge"));
+        // Clear any prior rebase success message if push errored
+        setRebaseStatusMessage(null);
       } finally {
         setIsSyncing(false);
       }
@@ -173,10 +178,7 @@ function ConnectedGitHubConnector({
     setRebaseStatusMessage(null);
     setSyncSuccess(false);
     try {
-      const result = await IpcClient.getInstance().abortGithubRebase(appId);
-      if (!result.success) {
-        throw new Error(result.error || "Failed to abort rebase.");
-      }
+      await IpcClient.getInstance().abortGithubRebase(appId);
       setRebaseInProgress(false);
       setRebaseStatusMessage("Rebase aborted. You can try syncing again.");
     } catch (err: any) {
@@ -193,10 +195,7 @@ function ConnectedGitHubConnector({
     setRebaseStatusMessage(null);
     setSyncSuccess(false);
     try {
-      const result = await IpcClient.getInstance().continueGithubRebase(appId);
-      if (!result.success) {
-        throw new Error(result.error || "Failed to continue rebase.");
-      }
+      await IpcClient.getInstance().continueGithubRebase(appId);
       setRebaseInProgress(false);
       setRebaseStatusMessage("Rebase continued. You can sync when ready.");
     } catch (err: any) {
@@ -290,7 +289,9 @@ function ConnectedGitHubConnector({
       >
         {app.githubOrg}/{app.githubRepo}
       </a>
-      {app.githubBranch && <GithubBranchManager appId={appId} />}
+      {app.githubBranch && (
+        <GithubBranchManager appId={appId} onBranchChange={refreshApp} />
+      )}
       <div className="mt-2 flex gap-2">
         <Button
           onClick={() => handleSyncToGithub()}

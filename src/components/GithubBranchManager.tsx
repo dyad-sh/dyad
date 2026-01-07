@@ -98,6 +98,13 @@ export function GithubBranchManager({
   const [branchToMerge, setBranchToMerge] = useState<string | null>(null);
   const [isMerging, setIsMerging] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  // State for abort confirmation dialog
+  const [abortConfirmation, setAbortConfirmation] = useState<{
+    show: boolean;
+    targetBranch: string;
+    operationType: "merge" | "rebase";
+    hasConflicts: boolean;
+  } | null>(null);
 
   const loadBranches = useCallback(async () => {
     setIsLoading(true);
@@ -188,28 +195,6 @@ export function GithubBranchManager({
 
   const handleSwitchBranch = async (branch: string) => {
     if (branch === currentBranch) return;
-    const isRebaseInProgress = (message?: string) => {
-      if (!message) return false;
-      const lower = message.toLowerCase();
-      return (
-        lower.includes("rebase in progress") ||
-        lower.includes("rebase-apply") ||
-        lower.includes("rebase --continue") ||
-        lower.includes("rebase --abort")
-      );
-    };
-    const isMergeInProgress = (message?: string) => {
-      if (!message) return false;
-      const lower = message.toLowerCase();
-      return (
-        lower.includes("merge in progress") ||
-        lower.includes("merging is not possible") ||
-        lower.includes("you have not concluded your merge") ||
-        lower.includes("merge_head exists") ||
-        lower.includes("unmerged files") ||
-        lower.includes("unfinished merge")
-      );
-    };
 
     setIsSwitching(true);
     try {
@@ -223,112 +208,74 @@ export function GithubBranchManager({
         onBranchChange?.();
         return;
       } catch (initialError: any) {
-        const errorMessage =
-          initialError?.message ||
-          "Failed to switch branch due to an unknown error";
+        // Check for structured error codes instead of string matching
+        const errorCode = initialError?.code;
 
-        if (isRebaseInProgress(errorMessage)) {
-          // Check if there are unresolved conflicts - if so, prevent switching to avoid losing work
+        // Fallback: query backend git state if code is missing
+        let inferredCode:
+          | "REBASE_IN_PROGRESS"
+          | "MERGE_IN_PROGRESS"
+          | undefined;
+        if (!errorCode) {
           try {
-            const conflicts =
-              await IpcClient.getInstance().getGithubMergeConflicts(appId);
-            if (conflicts.length > 0) {
-              showError(
-                `Cannot switch branches: rebase in progress with ${conflicts.length} unresolved conflict(s). Please resolve all conflicts and continue the rebase, or abort it manually first.`,
-              );
-              return;
-            }
+            const state = await IpcClient.getInstance().getGithubState(appId);
+            if (state.rebaseInProgress) inferredCode = "REBASE_IN_PROGRESS";
+            else if (state.mergeInProgress) inferredCode = "MERGE_IN_PROGRESS";
           } catch {
-            // If we can't get conflicts, show a warning but still allow abort
-            // This is safer than silently aborting
-            showError(
-              "Rebase in progress. Unable to check for conflicts. Please resolve any conflicts and continue the rebase, or abort it manually before switching branches.",
-            );
-            return;
-          }
-
-          // No conflicts detected - safe to abort and switch
-          try {
-            const abortResult =
-              await IpcClient.getInstance().abortGithubRebase(appId);
-            if (!abortResult.success) {
-              showError(
-                abortResult.error ||
-                  "Failed to abort ongoing rebase before switching branches",
-              );
-              return;
-            }
-
-            try {
-              await switchBranch();
-              showSuccess(
-                `Aborted ongoing rebase and switched to branch '${branch}'`,
-              );
-              setCurrentBranch(branch);
-              onBranchChange?.();
-              return;
-            } catch (retryError: any) {
-              showError(
-                retryError?.message ||
-                  "Failed to switch branch after aborting rebase. Please try again.",
-              );
-              return;
-            }
-          } catch (abortError: any) {
-            showError(
-              abortError?.message ||
-                "Failed to abort ongoing rebase before switching branches",
-            );
-            return;
+            // ignore state inference errors
           }
         }
+        const effectiveCode = (errorCode || inferredCode) as
+          | "REBASE_IN_PROGRESS"
+          | "MERGE_IN_PROGRESS"
+          | undefined;
 
-        if (isMergeInProgress(errorMessage)) {
-          // Check if there are unresolved conflicts - if so, show a more helpful message
-          // If checking fails, proceed to abort anyway
+        if (effectiveCode === "REBASE_IN_PROGRESS") {
+          // Check if there are unresolved conflicts
+          let hasConflicts = false;
           try {
             const conflicts =
               await IpcClient.getInstance().getGithubMergeConflicts(appId);
-            if (conflicts.length > 0) {
-              showError(
-                `Cannot switch branches: merge in progress with ${conflicts.length} unresolved conflict(s). Please resolve all conflicts and complete the merge, or abort it first.`,
-              );
-              return;
-            }
+            hasConflicts = conflicts.length > 0;
+          } catch {
+            // If we can't get conflicts, assume there might be conflicts to be safe
+            hasConflicts = true;
+          }
+
+          // Show confirmation dialog instead of auto-aborting
+          setAbortConfirmation({
+            show: true,
+            targetBranch: branch,
+            operationType: "rebase",
+            hasConflicts,
+          });
+          return;
+        }
+
+        if (effectiveCode === "MERGE_IN_PROGRESS") {
+          // Check if there are unresolved conflicts
+          let hasConflicts = false;
+          try {
+            const conflicts =
+              await IpcClient.getInstance().getGithubMergeConflicts(appId);
+            hasConflicts = conflicts.length > 0;
           } catch (error) {
-            // If we can't get conflicts, proceed to abort anyway
+            // If we can't get conflicts, assume there might be conflicts to be safe
+            hasConflicts = true;
             console.debug(
-              "Failed to get merge conflicts, proceeding to abort:",
+              "Failed to get merge conflicts, assuming conflicts exist:",
               error,
             );
           }
 
-          // No conflicts or couldn't check - offer to abort the merge
-          try {
-            await IpcClient.getInstance().abortGithubMerge(appId);
-          } catch (abortError: any) {
-            showError(
-              abortError.message ||
-                "Failed to abort ongoing merge before switching branches. Please complete or abort the merge manually.",
-            );
-            return;
-          }
-
-          try {
-            await switchBranch();
-            showSuccess(
-              `Aborted ongoing merge and switched to branch '${branch}'`,
-            );
-            setCurrentBranch(branch);
-            onBranchChange?.();
-            return;
-          } catch (retryError: any) {
-            showError(
-              retryError?.message ||
-                "Failed to switch branch after aborting merge. Please try again.",
-            );
-            return;
-          }
+          // Show confirmation dialog instead of auto-aborting
+          setAbortConfirmation({
+            show: true,
+            targetBranch: branch,
+            operationType: "merge",
+            hasConflicts,
+          });
+          return;
         }
 
         throw initialError;
@@ -337,6 +284,46 @@ export function GithubBranchManager({
       showError(error.message || "Failed to switch branch");
     } finally {
       setIsSwitching(false);
+    }
+  };
+
+  const handleConfirmAbortAndSwitch = async () => {
+    if (!abortConfirmation) return;
+
+    const { targetBranch, operationType } = abortConfirmation;
+    setIsSwitching(true);
+
+    try {
+      // Abort the operation - both methods throw on error
+      if (operationType === "rebase") {
+        await IpcClient.getInstance().abortGithubRebase(appId);
+      } else {
+        await IpcClient.getInstance().abortGithubMerge(appId);
+      }
+
+      // Now switch to the target branch
+      try {
+        await IpcClient.getInstance().switchGithubBranch(appId, targetBranch);
+        showSuccess(
+          `Aborted ongoing ${operationType} and switched to branch '${targetBranch}'`,
+        );
+        setCurrentBranch(targetBranch);
+        onBranchChange?.();
+        await loadBranches();
+      } catch (switchError: any) {
+        showError(
+          switchError?.message ||
+            `Failed to switch branch after aborting ${operationType}. Please try again.`,
+        );
+      }
+    } catch (abortError: any) {
+      showError(
+        abortError?.message ||
+          `Failed to abort ongoing ${operationType} before switching branches.`,
+      );
+    } finally {
+      setIsSwitching(false);
+      setAbortConfirmation(null);
     }
   };
 
@@ -393,7 +380,7 @@ export function GithubBranchManager({
         error?.message?.toLowerCase().includes("conflict");
 
       if (isConflict) {
-        showInfo("Merge conflict detected. Please resolve below.");
+        showInfo("Merge conflict detected. Please resolve them in the editor.");
         // Show conflicts dialog
         try {
           const conflicts =
@@ -640,6 +627,93 @@ export function GithubBranchManager({
               disabled={isDeleting}
             >
               {isDeleting ? "Deleting..." : "Delete Branch"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Abort Merge/Rebase Confirmation Dialog */}
+      <AlertDialog
+        open={!!abortConfirmation?.show}
+        onOpenChange={(open) => {
+          if (!open) setAbortConfirmation(null);
+        }}
+      >
+        <AlertDialogContent className="max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-yellow-100 dark:bg-yellow-900/30">
+                <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
+              </span>
+
+              <div className="flex flex-col">
+                <span className="text-base font-semibold">
+                  {abortConfirmation?.operationType === "merge"
+                    ? "Merge in Progress"
+                    : "Rebase in Progress"}
+                </span>
+                <span className="text-sm text-muted-foreground font-normal">
+                  This action will abort the current operation
+                </span>
+              </div>
+            </AlertDialogTitle>
+
+            <AlertDialogDescription className="mt-4 space-y-4 text-sm">
+              <p className="text-foreground">
+                A{" "}
+                <span className="font-medium">
+                  {abortConfirmation?.operationType}
+                </span>{" "}
+                operation is currently in progress. Switching to{" "}
+                <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
+                  {abortConfirmation?.targetBranch}
+                </span>{" "}
+                will abort this operation.
+              </p>
+
+              {abortConfirmation?.hasConflicts && (
+                <div className="rounded-md border border-red-200 bg-red-50 p-3 text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">
+                  <p className="font-medium">Unresolved conflicts detected</p>
+                  <p className="mt-1 text-xs">
+                    Aborting will discard any conflict resolution work you’ve
+                    already done.
+                  </p>
+                </div>
+              )}
+
+              <p className="text-muted-foreground">
+                Are you sure you want to abort the{" "}
+                {abortConfirmation?.operationType} and switch branches?
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <AlertDialogFooter className="mt-6 gap-2">
+            <AlertDialogCancel
+              disabled={isSwitching}
+              data-testid="abort-confirmation-cancel"
+            >
+              Keep working
+            </AlertDialogCancel>
+
+            <AlertDialogAction
+              onClick={handleConfirmAbortAndSwitch}
+              disabled={isSwitching}
+              className="bg-red-600 text-white hover:bg-red-700 focus:ring-red-600"
+              data-testid="abort-confirmation-proceed"
+            >
+              {isSwitching ? (
+                <span className="flex items-center gap-2">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                  Aborting…
+                </span>
+              ) : (
+                `Abort ${
+                  abortConfirmation?.operationType === "merge"
+                    ? "Merge"
+                    : "Rebase"
+                } & Switch`
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -1169,6 +1169,9 @@ export function registerAppHandlers() {
           }
         }
 
+        // Clear logs for this app to prevent memory leak
+        clearLogs(appId);
+
         // Delete app from database
         try {
           await db.delete(apps).where(eq(apps.id, appId));

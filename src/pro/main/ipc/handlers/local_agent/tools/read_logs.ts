@@ -96,7 +96,13 @@ export const readLogsTool: ToolDefinition<z.infer<typeof readLogsSchema>> = {
   inputSchema: readLogsSchema,
   defaultConsent: "always",
 
-  buildXml: (args) => {
+  buildXml: (args, isComplete) => {
+    // When complete, return undefined so execute's onXmlComplete provides the final XML
+    // This prevents showing two separate components
+    if (isComplete) {
+      return undefined;
+    }
+
     const filters = [];
     if (args.type && args.type !== "all") filters.push(`type="${args.type}"`);
     if (args.level && args.level !== "all")
@@ -113,90 +119,82 @@ export const readLogsTool: ToolDefinition<z.infer<typeof readLogsSchema>> = {
 
     const summary = parts.join(" | ");
 
-    // Initial XML - will be replaced with full results when execution completes
     return `<dyad-read-logs ${filters.join(" ")}>
 ${summary}
 </dyad-read-logs>`;
   },
 
   execute: async (args, ctx: AgentContext) => {
-    try {
-      // Get the chat to find the appId
-      const chat = await db.query.chats.findFirst({
-        where: eq(chats.id, ctx.chatId),
-        with: { app: true },
-      });
+    // Get the chat to find the appId
+    const chat = await db.query.chats.findFirst({
+      where: eq(chats.id, ctx.chatId),
+      with: { app: true },
+    });
 
-      if (!chat || !chat.app) {
-        return "Failed to read logs: Chat or app not found.";
-      }
-
-      const appId = chat.app.id;
-
-      // Get logs directly from central log store (no UI coupling!)
-      const allLogs = getLogs(appId);
-
-      // Apply time filter (hardcoded: last 5 minutes)
-      const cutoff = Date.now() - 5 * 60 * 1000;
-      let filtered = allLogs.filter((log) => log.timestamp >= cutoff);
-
-      // Apply type filter
-      if (args.type && args.type !== "all") {
-        filtered = filtered.filter((log) => log.type === args.type);
-      }
-
-      // Apply level filter
-      if (args.level && args.level !== "all") {
-        filtered = filtered.filter((log) => log.level === args.level);
-      }
-
-      // Apply search term filter
-      if (args.searchTerm) {
-        const term = args.searchTerm.toLowerCase();
-        filtered = filtered.filter((log) =>
-          log.message.toLowerCase().includes(term),
-        );
-      }
-
-      // Sort by timestamp (oldest to newest)
-      filtered.sort((a, b) => a.timestamp - b.timestamp);
-
-      // Limit results (take most recent)
-      const limit = Math.min(args.limit ?? 50, 200);
-      filtered = filtered.slice(-limit);
-
-      // Format logs for display
-      const formattedLogs =
-        filtered.length === 0
-          ? "No logs found matching the specified filters."
-          : formatLogsForAI(filtered);
-
-      // Build the query summary for display
-      const parts: string[] = ["Time: last 5 minutes"];
-      if (args.type && args.type !== "all") parts.push(`Type: ${args.type}`);
-      if (args.level && args.level !== "all")
-        parts.push(`Level: ${args.level}`);
-      if (args.searchTerm)
-        parts.push(`Search: "${escapeXmlContent(args.searchTerm)}"`);
-      if (args.limit) parts.push(`Limit: ${args.limit}`);
-      const summary = parts.join(" | ");
-
-      // Build filter attributes for the tag
-      const filters = [];
-      if (args.type && args.type !== "all") filters.push(`type="${args.type}"`);
-      if (args.level && args.level !== "all")
-        filters.push(`level="${args.level}"`);
-
-      // Output the complete results in a single tag
-      ctx.onXmlComplete(
-        `<dyad-read-logs ${filters.join(" ")} count="${filtered.length}">\n${summary}\n\n${escapeXmlContent(formattedLogs)}\n</dyad-read-logs>`,
-      );
-
-      return formattedLogs;
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      return `Failed to read logs: ${errorMessage}`;
+    if (!chat || !chat.app) {
+      throw new Error("Chat or app not found.");
     }
+
+    const appId = chat.app.id;
+
+    // Get logs directly from central log store (no UI coupling!)
+    const allLogs = getLogs(appId);
+
+    // Apply time filter (hardcoded: last 5 minutes)
+    const cutoff = Date.now() - 5 * 60 * 1000;
+    let filtered = allLogs.filter((log) => log.timestamp >= cutoff);
+
+    // Apply type filter
+    if (args.type && args.type !== "all") {
+      filtered = filtered.filter((log) => log.type === args.type);
+    }
+
+    // Apply level filter
+    if (args.level && args.level !== "all") {
+      filtered = filtered.filter((log) => log.level === args.level);
+    }
+
+    // Apply search term filter
+    if (args.searchTerm) {
+      const term = args.searchTerm.toLowerCase();
+      filtered = filtered.filter((log) =>
+        log.message.toLowerCase().includes(term),
+      );
+    }
+
+    // Sort by timestamp (oldest to newest)
+    filtered.sort((a, b) => a.timestamp - b.timestamp);
+
+    // Limit results (take most recent)
+    const limit = Math.min(args.limit ?? 50, 200);
+    filtered = filtered.slice(-limit);
+
+    // Format logs for display
+    const formattedLogs =
+      filtered.length === 0
+        ? "No logs found matching the specified filters."
+        : formatLogsForAI(filtered);
+
+    // Build the query summary for display
+    const parts: string[] = ["Time: last 5 minutes"];
+    if (args.type && args.type !== "all") parts.push(`Type: ${args.type}`);
+    if (args.level && args.level !== "all") parts.push(`Level: ${args.level}`);
+    if (args.searchTerm)
+      parts.push(`Search: "${escapeXmlContent(args.searchTerm)}"`);
+    if (args.limit) parts.push(`Limit: ${args.limit}`);
+    const summary = parts.join(" | ");
+
+    // Build filter attributes for the tag
+    const filters = [];
+    if (args.type && args.type !== "all") filters.push(`type="${args.type}"`);
+    if (args.level && args.level !== "all")
+      filters.push(`level="${args.level}"`);
+
+    // Output the complete results in a single tag
+    ctx.onXmlComplete(
+      `<dyad-read-logs ${filters.join(" ")} count="${filtered.length}">\n${summary}\n\n${escapeXmlContent(formattedLogs)}\n</dyad-read-logs>`,
+    );
+
+    return formattedLogs;
   },
 };

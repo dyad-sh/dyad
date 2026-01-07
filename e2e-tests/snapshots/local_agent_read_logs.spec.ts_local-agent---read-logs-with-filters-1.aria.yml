@@ -17,24 +17,15 @@
 - paragraph: tc=local-agent/read-logs
 - paragraph: Let me check the recent console logs to see what's happening in the application.
 - img
-- text: Reading console logs
-- img
-- img
-- text: /LOGSConsole logs Results \(\d+ logs\)/
+- text: LOGSReading 5 logs
 - img
 - paragraph: Now let me filter for only error logs to identify any issues.
 - img
-- text: "Reading console logs (level: error)"
-- img
-- img
-- text: LOGSConsole logs Results (0 logs)
+- text: "LOGSReading 0 logs (level: error)"
 - img
 - paragraph: Let me also check client-side logs specifically.
 - img
-- text: "Reading console logs (type: client)"
-- img
-- img
-- text: LOGSConsole logs Results (0 logs)
+- text: "LOGSReading 0 logs (type: client)"
 - img
 - paragraph: I've reviewed the console logs. The application appears to be running normally with no critical errors detected.
 - button:

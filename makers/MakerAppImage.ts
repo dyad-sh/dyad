@@ -15,9 +15,18 @@ import {
 import { tmpdir } from "os";
 import { promisify } from "util";
 import { resolve, relative, extname } from "path";
+import { createHash } from "crypto";
 
-const RUNTIME_URL =
-  "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64";
+// AppImage runtime version and location
+const RUNTIME_VERSION = "20251108";
+const RUNTIME_URL = `https://github.com/AppImage/type2-runtime/releases/download/${RUNTIME_VERSION}/runtime-x86_64`;
+
+// SHA256 hash of the expected runtime binary
+// Can be generated with: curl -sL <URL> | sha256sum
+// Also visible directly on the GitHub releases page; see 'runtime-x86_64' on:
+// https://github.com/AppImage/type2-runtime/releases/tag/20251108
+const RUNTIME_SHA256 =
+  "2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d";
 
 // For creating temporary work directories; largely arbitrary
 const APPDIR_PREFIX = "AppDir";
@@ -62,6 +71,20 @@ export class MakerAppImage extends MakerBase<{ icon?: string }> {
       );
 
     const runtime = await res.bytes();
+
+    // Verify SHA256 hash
+    const hash = createHash("sha256").update(runtime).digest("hex");
+
+    if (hash !== RUNTIME_SHA256)
+      throw new Error(
+        [
+          "AppImage runtime integrity check failed.",
+          `Expected: ${RUNTIME_SHA256}`,
+          `Got:      ${hash}`,
+          "The runtime binary may have been tampered with or updated.",
+          "If this was intentional, please update RUNTIME_SHA256 in makers/MakerAppImage.ts.",
+        ].join("\n"),
+      );
 
     // Names of temporary directories to clean up later
     let appDir: string | undefined;

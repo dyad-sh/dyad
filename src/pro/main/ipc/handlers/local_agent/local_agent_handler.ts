@@ -4,7 +4,13 @@
  */
 
 import { IpcMainInvokeEvent } from "electron";
-import { streamText, ToolSet, stepCountIs, ModelMessage } from "ai";
+import {
+  streamText,
+  ToolSet,
+  stepCountIs,
+  ModelMessage,
+  type ToolExecutionOptions,
+} from "ai";
 import log from "electron-log";
 import { db } from "@/db";
 import { chats, messages } from "@/db/schema";
@@ -466,14 +472,13 @@ async function getMcpTools(
       const client = await mcpManager.getClient(s.id);
       const toolSet = await client.tools();
 
-      for (const [name, tool] of Object.entries(toolSet)) {
+      for (const [name, mcpTool] of Object.entries(toolSet)) {
         const key = `${sanitizeMcpName(s.name || "")}__${sanitizeMcpName(name)}`;
-        const original = tool;
 
         mcpToolSet[key] = {
-          description: original?.description,
-          inputSchema: original?.inputSchema,
-          execute: async (args: any, execCtx: any) => {
+          description: mcpTool.description,
+          inputSchema: mcpTool.inputSchema,
+          execute: async (args: unknown, execCtx: ToolExecutionOptions) => {
             try {
               const inputPreview =
                 typeof args === "string"
@@ -486,7 +491,7 @@ async function getMcpTools(
                 serverId: s.id,
                 serverName: s.name,
                 toolName: name,
-                toolDescription: original?.description,
+                toolDescription: mcpTool.description,
                 inputPreview,
               });
 
@@ -499,7 +504,7 @@ async function getMcpTools(
                 `<dyad-mcp-tool-call server="${serverName}" tool="${toolName}">\n${content}\n</dyad-mcp-tool-call>`,
               );
 
-              const res = await original.execute?.(args, execCtx);
+              const res = await mcpTool.execute(args, execCtx);
               const resultStr =
                 typeof res === "string" ? res : JSON.stringify(res);
 

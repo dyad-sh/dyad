@@ -55,6 +55,7 @@ describe("readSettings", () => {
         {
           "enableAutoFixProblems": false,
           "enableAutoUpdate": true,
+          "enableNativeGit": true,
           "enableProLazyEditsMode": true,
           "enableProSmartFilesContextMode": true,
           "experiments": {},
@@ -303,6 +304,7 @@ describe("readSettings", () => {
         {
           "enableAutoFixProblems": false,
           "enableAutoUpdate": true,
+          "enableNativeGit": true,
           "enableProLazyEditsMode": true,
           "enableProSmartFilesContextMode": true,
           "experiments": {},

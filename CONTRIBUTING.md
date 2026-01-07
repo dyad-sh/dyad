@@ -1,7 +1,5 @@
 # Contributing
 
-Dyad is still a very early-stage project, thus the codebase is rapidly changing.
-
 Before opening a pull request, please open an issue and discuss whether the change makes sense in Dyad. Ensuring a cohesive user experience sometimes means we can't include every possible feature or we need to consider the long-term design of how we want to support a feature area.
 
 - For a high-level overview of how Dyad works, please see the [Architecture Guide](./docs/architecture.md). Understanding the architecture will help ensure your contributions align with the overall design of the project.
@@ -34,13 +32,15 @@ mkdir userData
 md userData
 ```
 
-**Apply migrations:**
+**Generate DB migrations:**
+
+If you change the DB schema (i.e. `src/db/schema.ts`), you will need to generate a DB migration.
 
 ```sh
-# Generate and apply database migrations
 npm run db:generate
-npm run db:push
 ```
+
+> If you want to discard a DB migration, you will likely need to reset your database which you can do by deleting the file in `userData/sqlite.db`.
 
 **Run locally:**
 
@@ -93,3 +93,12 @@ Update snapshots for a test:
 ```sh
 npm run e2e e2e-tests/context_manage.spec.ts -- --update-snapshots
 ```
+
+## Code reviews
+
+Dyad relies on several AI code reviewers to catch issues. If a comment is irrelevant please leave a brief comment and mark the comment as resolved.
+
+You can also do local code reviews with the following tools:
+
+- Codex CLI - `codex` -> `/review`
+- Claude Code CLI - `claude` -> `/review`

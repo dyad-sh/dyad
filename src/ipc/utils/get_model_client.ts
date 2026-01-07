@@ -4,8 +4,7 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createXai } from "@ai-sdk/xai";
 import { createVertex as createGoogleVertex } from "@ai-sdk/google-vertex";
 import { createAzure } from "@ai-sdk/azure";
-import { LanguageModelV2 } from "@ai-sdk/provider";
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import type { LanguageModel } from "ai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
 import type {
@@ -48,7 +47,7 @@ const AUTO_MODELS = [
 ];
 
 export interface ModelClient {
-  model: LanguageModelV2;
+  model: LanguageModel;
   builtinProviderId?: string;
 }
 
@@ -280,7 +279,11 @@ function getRegularModelClient(
       };
     }
     case "openrouter": {
-      const provider = createOpenRouter({ apiKey });
+      const provider = createOpenAICompatible({
+        name: "openrouter",
+        baseURL: "https://openrouter.ai/api/v1",
+        apiKey,
+      });
       return {
         modelClient: {
           model: provider(model.name),

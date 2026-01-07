@@ -1,48 +1,3 @@
-=== .gitignore ===
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-
-node_modules
-dist
-dist-ssr
-*.local
-
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-
-
-=== a.txt ===
-a
-
-=== AI_RULES.md ===
-avoid AI_RULES auto-prompt
-
-
-=== b.txt ===
-b
-
-=== dir/c.txt ===
-dir/c.txt
-
-=== new-file.js ===
-new-file
-end of new-file
-
-=== package.json ===
 {
   "name": "vite_react_shadcn_ts",
   "private": true,
@@ -66,9 +21,5 @@ end of new-file
     "@vitejs/plugin-react-swc": "^3.9.0",
     "typescript": "^5.5.3",
     "vite": "^6.3.4"
-  },
-  "packageManager": "<scrubbed>"
+  }
 }
-
-=== to-be-edited.txt ===
-after-edit

@@ -1,5 +1,7 @@
 # Repository Agent Guide
 
+Please read `CONTRIBUTING.md` which includes information for human code contributors. Much of the information is applicable to you as well.
+
 ## Project context
 
 - This is an Electron application with a secure IPC boundary.
@@ -40,3 +42,17 @@ IMPORTANT: Do NOT generate SQL migration files by hand! This is wrong.
 - Add tests in the same folder tree when touching renderer components.
 
 Use these guidelines whenever you work within this repository.
+
+## Testing
+
+Our project relies on a combination of unit testing and E2E testing.
+
+### Unit testing
+
+Use unit testing for pure business logic and util functions.
+
+### E2E testing
+
+Use E2E testing when you need to test a complete user flow for a feature.
+
+If you would need to mock a lot of things to unit test a feature, prefer to write an E2E test instead.

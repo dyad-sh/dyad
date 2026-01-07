@@ -1,8 +1,11 @@
 import { PageObject, testSkipIfWindows, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
-const runSwitchVersionTest = async (po: PageObject, nativeGit: boolean) => {
-  await po.setUp({ autoApprove: true, nativeGit });
+const runSwitchVersionTest = async (
+  po: PageObject,
+  disableNativeGit: boolean,
+) => {
+  await po.setUp({ autoApprove: true, disableNativeGit });
   await po.sendPrompt("tc=write-index");
 
   await po.snapshotPreview({ name: `v2` });
@@ -25,10 +28,10 @@ const runSwitchVersionTest = async (po: PageObject, nativeGit: boolean) => {
   });
 };
 
-testSkipIfWindows("switch versions", async ({ po }) => {
+testSkipIfWindows("switch versions (native git)", async ({ po }) => {
   await runSwitchVersionTest(po, false);
 });
 
-testSkipIfWindows("switch versions with native git", async ({ po }) => {
+testSkipIfWindows("switch versions (isomorphic git)", async ({ po }) => {
   await runSwitchVersionTest(po, true);
 });

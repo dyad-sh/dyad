@@ -42,6 +42,27 @@ async function execOrThrow(
   }
 }
 
+/**
+ * Prepends git config args for user.name and user.email to the provided args.
+ * Automatically fetches the git author from settings.
+ * Usage: await withGitAuthor(["commit", "-m", "message"])
+ * Returns: ["-c", "user.name=...", "-c", "user.email=...", "commit", "-m", "message"]
+ *
+ * Do NOT do "--author" because this does not set the committer identity.
+ *
+ * Doing -c user.name/email sets both the committer and author identity.
+ */
+export async function withGitAuthor(args: string[]): Promise<string[]> {
+  const author = await getGitAuthor();
+  return [
+    "-c",
+    `user.name=${author.name}`,
+    "-c",
+    `user.email=${author.email}`,
+    ...args,
+  ];
+}
+
 export async function getCurrentCommitHash({
   path,
   ref = "HEAD",
@@ -95,19 +116,12 @@ export async function gitCommit({
 }: GitCommitParams): Promise<string> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
-    // Get author info to match isomorphic-git behavior
-    const author = await getGitAuthor();
-    // Perform the commit using dugite with --author flag
-    const args = [
-      "commit",
-      "-m",
-      message,
-      "--author",
-      `${author.name} <${author.email}>`,
-    ];
+    // Perform the commit using dugite with -c user.name/email config
+    const commitArgs = ["commit", "-m", message];
     if (amend) {
-      args.push("--amend");
+      commitArgs.push("--amend");
     }
+    const args = await withGitAuthor(commitArgs);
     await execOrThrow(args, path, "Failed to create commit");
     // Get the new commit hash
     const result = await exec(["rev-parse", "HEAD"], path);

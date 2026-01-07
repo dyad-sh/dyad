@@ -42,7 +42,6 @@ export interface RespondToAppInputParams {
 
 export interface ListAppsResponse {
   apps: App[];
-  appBasePath: string;
 }
 
 export interface ChatStreamParams {
@@ -134,6 +133,7 @@ export interface App {
   installCommand: string | null;
   startCommand: string | null;
   isFavorite: boolean;
+  resolvedPath?: string;
 }
 
 export interface Version {
@@ -289,6 +289,15 @@ export interface RenameBranchParams {
   appId: number;
   oldBranchName: string;
   newBranchName: string;
+}
+
+export interface ChangeAppLocationParams {
+  appId: number;
+  parentDirectory: string;
+}
+
+export interface ChangeAppLocationResult {
+  resolvedPath: string;
 }
 
 export const UserBudgetInfoSchema = z.object({

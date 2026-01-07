@@ -3,9 +3,9 @@ import { integer, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
 import { relations } from "drizzle-orm";
 import type { ModelMessage } from "ai";
 
-export const AI_MESSAGES_SDK_VERSION = "ai@v5" as const;
+export const AI_MESSAGES_SDK_VERSION = "ai@v6" as const;
 
-export type AiMessagesJsonV5 = {
+export type AiMessagesJsonV6 = {
   messages: ModelMessage[];
   sdkVersion: typeof AI_MESSAGES_SDK_VERSION;
 };
@@ -94,7 +94,7 @@ export const messages = sqliteTable("messages", {
   // AI SDK messages (v5 envelope) for preserving tool calls/results in agent mode
   aiMessagesJson: text("ai_messages_json", {
     mode: "json",
-  }).$type<AiMessagesJsonV5 | null>(),
+  }).$type<AiMessagesJsonV6 | null>(),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),

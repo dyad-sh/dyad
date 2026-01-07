@@ -8,7 +8,7 @@ import {
 import log from "electron-log";
 import { getExtraProviderOptions } from "./thinking_utils";
 import type { UserSettings } from "../../lib/schemas";
-import { LanguageModelV2 } from "@ai-sdk/provider";
+import type { LanguageModel } from "ai";
 
 const logger = log.scope("llm_engine_provider");
 
@@ -50,10 +50,7 @@ export interface DyadEngineProvider {
   /**
 Creates a model for text generation.
 */
-  (
-    modelId: ExampleChatModelId,
-    settings?: ExampleChatSettings,
-  ): LanguageModelV2;
+  (modelId: ExampleChatModelId, settings?: ExampleChatSettings): LanguageModel;
 
   /**
 Creates a chat model for text generation.
@@ -61,7 +58,7 @@ Creates a chat model for text generation.
   chatModel(
     modelId: ExampleChatModelId,
     settings?: ExampleChatSettings,
-  ): LanguageModelV2;
+  ): LanguageModel;
 }
 
 export function createDyadEngine(

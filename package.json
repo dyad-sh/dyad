@@ -90,6 +90,7 @@
     "@ai-sdk/azure": "^3.0.7",
     "@ai-sdk/google": "^3.0.5",
     "@ai-sdk/google-vertex": "4.0.8",
+    "@ai-sdk/mcp": "^1.0.5",
     "@ai-sdk/openai": "3.0.7",
     "@ai-sdk/openai-compatible": "^2.0.4",
     "@ai-sdk/provider-utils": "^4.0.4",
@@ -185,6 +186,7 @@
   "overrides": {
     "@vercel/sdk": {
       "@modelcontextprotocol/sdk": "$@modelcontextprotocol/sdk"
-    }
+    },
+    "@ai-sdk/provider": "3.0.2"
   }
 }

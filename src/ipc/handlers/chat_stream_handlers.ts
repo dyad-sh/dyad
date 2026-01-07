@@ -9,6 +9,7 @@ import {
   TextStreamPart,
   stepCountIs,
   hasToolCall,
+  type ToolExecutionOptions,
 } from "ai";
 
 import { db } from "../../db";
@@ -1705,13 +1706,12 @@ async function getMcpTools(event: IpcMainInvokeEvent): Promise<ToolSet> {
     for (const s of servers) {
       const client = await mcpManager.getClient(s.id);
       const toolSet = await client.tools();
-      for (const [name, tool] of Object.entries(toolSet)) {
+      for (const [name, mcpTool] of Object.entries(toolSet)) {
         const key = `${String(s.name || "").replace(/[^a-zA-Z0-9_-]/g, "-")}__${String(name).replace(/[^a-zA-Z0-9_-]/g, "-")}`;
-        const original = tool;
         mcpToolSet[key] = {
-          description: original?.description,
-          inputSchema: original?.inputSchema,
-          execute: async (args: any, execCtx: any) => {
+          description: mcpTool.description,
+          inputSchema: mcpTool.inputSchema,
+          execute: async (args: unknown, execCtx: ToolExecutionOptions) => {
             const inputPreview =
               typeof args === "string"
                 ? args
@@ -1722,12 +1722,12 @@ async function getMcpTools(event: IpcMainInvokeEvent): Promise<ToolSet> {
               serverId: s.id,
               serverName: s.name,
               toolName: name,
-              toolDescription: original?.description,
+              toolDescription: mcpTool.description,
               inputPreview,
             });
 
             if (!ok) throw new Error(`User declined running tool ${key}`);
-            const res = await original.execute?.(args, execCtx);
+            const res = await mcpTool.execute(args, execCtx);
 
             return typeof res === "string" ? res : JSON.stringify(res);
           },

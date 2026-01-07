@@ -240,6 +240,52 @@
       {
         "type": "function",
         "function": {
+          "name": "read_logs",
+          "description": "Read logs at the moment this tool is called. Includes client logs, server logs, edge function logs, and network requests. Use this to debug errors, investigate issues, or understand app behavior. IMPORTANT: Logs are a snapshot from when you call this tool - they will NOT update while you are writing code or making changes. Use filters (searchTerm, type, level) to narrow down relevant logs on the first call.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "all",
+                  "client",
+                  "server",
+                  "edge-function",
+                  "network-requests",
+                  "build-time"
+                ],
+                "description": "Filter by log source type (default: all). Types: 'client' = browser console logs; 'server' = backend/SSR logs; 'edge-function' = edge function logs; 'network-requests' = HTTP requests and responses (outgoing calls and their responses); 'build-time' = build and bundler output."
+              },
+              "level": {
+                "type": "string",
+                "enum": [
+                  "all",
+                  "info",
+                  "warn",
+                  "error"
+                ],
+                "description": "Filter by log level (default: all)"
+              },
+              "searchTerm": {
+                "type": "string",
+                "description": "Search for logs containing this text (case-insensitive)"
+              },
+              "limit": {
+                "type": "number",
+                "minimum": 1,
+                "maximum": 200,
+                "description": "Maximum number of logs to return (default: 50, max: 200)"
+              }
+            },
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
           "name": "web_search",
           "description": "\nUse this tool to access real-time information beyond your training data cutoff.\n\nWhen to Search:\n- Current API documentation, library versions, or breaking changes\n- Latest best practices, security advisories, or bug fixes\n- Specific error messages or troubleshooting solutions\n- Recent framework updates or deprecation notices\n\nQuery Tips:\n- Be specific: Include version numbers, exact error messages, or technical terms\n- Add context: \"React 19 useEffect cleanup\" not just \"React hooks\"\n\nExamples:\n\n<example>\nOpenAI GPT-5 API model names\n</example>\n\n<example>\nNextJS 14 app router middleware auth\n</example>\n",
           "parameters": {

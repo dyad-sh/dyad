@@ -1,4 +1,4 @@
-import { AI_MESSAGES_SDK_VERSION, AiMessagesJsonV5 } from "@/db/schema";
+import { AI_MESSAGES_SDK_VERSION, AiMessagesJsonV6 } from "@/db/schema";
 import type { ModelMessage } from "ai";
 import log from "electron-log";
 
@@ -13,12 +13,12 @@ export const MAX_AI_MESSAGES_SIZE = 1_000_000;
  */
 export function getAiMessagesJsonIfWithinLimit(
   aiMessages: ModelMessage[],
-): AiMessagesJsonV5 | undefined {
+): AiMessagesJsonV6 | undefined {
   if (!aiMessages || aiMessages.length === 0) {
     return undefined;
   }
 
-  const payload: AiMessagesJsonV5 = {
+  const payload: AiMessagesJsonV6 = {
     messages: aiMessages,
     sdkVersion: AI_MESSAGES_SDK_VERSION,
   };
@@ -39,7 +39,7 @@ export type DbMessageForParsing = {
   id: number;
   role: string;
   content: string;
-  aiMessagesJson: AiMessagesJsonV5 | ModelMessage[] | null;
+  aiMessagesJson: AiMessagesJsonV6 | ModelMessage[] | null;
 };
 
 /**
@@ -61,19 +61,18 @@ export function parseAiMessagesJson(msg: DbMessageForParsing): ModelMessage[] {
       return parsed;
     }
 
-    // Current shape: { messages: ModelMessage[]; sdkVersion: "ai@v5" }
     if (
       parsed &&
       typeof parsed === "object" &&
       "sdkVersion" in parsed &&
-      (parsed as AiMessagesJsonV5).sdkVersion === AI_MESSAGES_SDK_VERSION &&
+      (parsed as AiMessagesJsonV6).sdkVersion === AI_MESSAGES_SDK_VERSION &&
       "messages" in parsed &&
-      Array.isArray((parsed as AiMessagesJsonV5).messages) &&
-      (parsed as AiMessagesJsonV5).messages.every(
+      Array.isArray((parsed as AiMessagesJsonV6).messages) &&
+      (parsed as AiMessagesJsonV6).messages.every(
         (m: ModelMessage) => m && typeof m.role === "string",
       )
     ) {
-      return (parsed as AiMessagesJsonV5).messages;
+      return (parsed as AiMessagesJsonV6).messages;
     }
   }
 

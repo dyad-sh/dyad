@@ -94,7 +94,7 @@
     "@ai-sdk/openai": "3.0.7",
     "@ai-sdk/openai-compatible": "^2.0.4",
     "@ai-sdk/provider-utils": "^4.0.4",
-    "@ai-sdk/xai": "^2.0.16",
+    "@ai-sdk/xai": "^3.0.10",
     "@babel/parser": "^7.28.5",
     "@biomejs/biome": "^1.9.4",
     "@dyad-sh/supabase-management-js": "v1.0.1",

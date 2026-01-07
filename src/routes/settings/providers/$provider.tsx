@@ -8,7 +8,7 @@ interface ProviderSettingsParams {
 
 export const providerSettingsRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/providers/$provider",
+  path: "/settings/providers/$provider",
   params: {
     parse: (params: { provider: string }): ProviderSettingsParams => ({
       provider: params.provider,

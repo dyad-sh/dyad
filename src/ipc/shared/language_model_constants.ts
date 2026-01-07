@@ -226,8 +226,17 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     },
     {
       name: "mistralai/devstral-2512:free",
-      displayName: "Devstral 2 (free)",
+      displayName: "DevStral 2512 (free)",
       description: "Use for free (data may be used for training)",
+      maxOutputTokens: 262_100,
+      contextWindow: 262_100,
+      temperature: 0,
+      dollarSigns: 0,
+    },
+    {
+      name: "z-ai/glm-4.6",
+      displayName: "GLM 4.6",
+      description: "Z-AI's best coding model",
       maxOutputTokens: 32_000,
       contextWindow: 200_000,
       temperature: 0,
@@ -270,6 +279,24 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       temperature: 0,
       dollarSigns: 2,
     },
+    {
+      name: "openai/gpt-5.1-codex-max",
+      displayName: "GPT 5.1 Codex Max",
+      description: "OpenAI's latest model coding model",
+      maxOutputTokens: 128_000,
+      contextWindow: 400_000,
+      temperature: 1,
+      dollarSigns: 4,
+    },
+    {
+      name: "openai/gpt-5.2-pro",
+      displayName: "GPT 5.2 Pro",
+      description: "OpenAI's latest model",
+      maxOutputTokens: 128_000,
+      contextWindow: 400_000,
+      temperature: 0,
+      dollarSigns: 3,
+    }
   ],
   auto: [
     {

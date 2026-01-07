@@ -92,11 +92,11 @@ export function ModelPicker() {
       if (translateModel && translateModel.provider !== "auto") {
         return translateModel;
       }
-      // Default to SolMover for contract translation
-      return {
-        provider: "solmover",
-        name: "solmover",
-      };
+      // // Default to SolMover for contract translation
+      // return {
+      //   provider: "solmover",
+      //   name: "solmover",
+      // };
     }
     return selectedModel;
   };

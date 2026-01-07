@@ -44,8 +44,10 @@ import { CreateAppDialog } from "@/components/CreateAppDialog";
 import {
   documentPhase,
   buildEnrichedPrompt,
-  getContextSummary
+  getContextSummary,
+  generateAIRulesContent
 } from "@/lib/translation_pipeline";
+import { TranslationPipeline, type PipelinePhase, type PhaseStatus } from "@/components/TranslationPipeline";
 
 // Adding an export for attachments
 export interface HomeSubmitOptions {
@@ -90,6 +92,217 @@ export default function HomePage() {
   const [selectedTemplateId, setSelectedTemplateId] = useState<
     string | undefined
   >();
+
+  // Pipeline state
+  const [showPipeline, setShowPipeline] = useState(false);
+  const [currentPhase, setCurrentPhase] = useState<PipelinePhase>('document');
+  const [documentStatus, setDocumentStatus] = useState<PhaseStatus>('pending');
+  const [planStatus, setPlanStatus] = useState<PhaseStatus>('pending');
+  const [actStatus, setActStatus] = useState<PhaseStatus>('pending');
+  const [documentDetails, setDocumentDetails] = useState<string>('');
+  const [planDetails, setPlanDetails] = useState<string>('');
+  const [actDetails, setActDetails] = useState<string>('');
+
+  // Approval workflow state
+  const [awaitingApproval, setAwaitingApproval] = useState<PipelinePhase | null>(null);
+  const [translationContext, setTranslationContext] = useState<any>(null);
+  const [translationParams, setTranslationParams] = useState<{
+    sourceLanguage: string;
+    targetLanguage: string;
+    code: string;
+    attachments: FileAttachment[];
+    finalName: string;
+    solanaAppId?: number;
+    suiAppId?: number;
+    transpilerUsed?: boolean;
+    writtenFiles?: string[];
+  } | null>(null);
+
+  // Reset pipeline state
+  const resetPipeline = () => {
+    setShowPipeline(false);
+    setCurrentPhase('document');
+    setDocumentStatus('pending');
+    setPlanStatus('pending');
+    setActStatus('pending');
+    setDocumentDetails('');
+    setPlanDetails('');
+    setActDetails('');
+    setAwaitingApproval(null);
+    setTranslationContext(null);
+    setTranslationParams(null);
+  };
+
+  // Approve Phase 1 and continue to Phase 2
+  const approvePhase1 = async () => {
+    if (!translationContext || !translationParams) {
+      console.error('Missing translation context or params');
+      return;
+    }
+
+    setAwaitingApproval(null);
+    await executePhase2();
+  };
+
+  // Approve Phase 2 and continue to Phase 3
+  const approvePhase2 = async () => {
+    if (!translationContext || !translationParams) {
+      console.error('Missing translation context or params');
+      return;
+    }
+
+    setAwaitingApproval(null);
+    await executePhase3();
+  };
+
+  // Execute Phase 2: Plan
+  const executePhase2 = async () => {
+    if (!translationParams) return;
+
+    setCurrentPhase('plan');
+    setPlanStatus('in_progress');
+    setPlanDetails('Analyzing contract structure...');
+
+    const { code, targetLanguage } = translationParams;
+
+    // Analyze the contract
+    const analysis = analyzeContract(code, targetLanguage);
+
+    setPlanDetails(analysis);
+    setPlanStatus('completed');
+
+    // Wait for approval before Phase 3
+    setAwaitingApproval('plan');
+  };
+
+  // Helper function to analyze Solidity contract
+  const analyzeContract = (code: string, targetLanguage: string): string => {
+
+    // Extract contract name
+    const contractMatch = code.match(/contract\s+(\w+)/);
+    const contractName = contractMatch ? contractMatch[1] : 'Unknown';
+
+    // Count functions
+    const functionMatches = code.match(/function\s+\w+/g) || [];
+    const functions = functionMatches.map(f => f.replace('function ', ''));
+
+    // Extract state variables
+    const stateVars: string[] = [];
+    const stateVarRegex = /^\s*(uint\d*|int\d*|address|bool|string|bytes\d*|mapping\([^)]+\))\s+(public|private|internal)?\s*(\w+)/gm;
+    let match;
+    while ((match = stateVarRegex.exec(code)) !== null) {
+      stateVars.push(`${match[1]} ${match[3]}`);
+    }
+
+    // Detect events
+    const events = (code.match(/event\s+\w+/g) || []).map(e => e.replace('event ', ''));
+
+    // Detect modifiers
+    const modifiers = (code.match(/modifier\s+\w+/g) || []).map(m => m.replace('modifier ', ''));
+
+    // Detect inheritance
+    const inheritance = (code.match(/is\s+([^{]+)/)?.[1] || '').split(',').map(s => s.trim()).filter(Boolean);
+
+    // Detect patterns that need special attention
+    const warnings: string[] = [];
+    if (code.includes('payable')) warnings.push('Payable functions detected');
+    if (code.includes('mapping')) warnings.push('Mapping requires redesign');
+    if (modifiers.length > 0) warnings.push('Modifiers need conversion');
+    if (inheritance.length > 0) warnings.push('Inheritance needs restructuring');
+    if (events.length > 0) warnings.push('Events need emit equivalents');
+
+    // Build detailed summary
+    const ecosystemName = targetLanguage === 'sui_move' ? 'Sui Move' : 'Solana (Anchor)';
+
+    let summary = `Contract Analysis: ${contractName}\n\n`;
+    summary += `📊 Structure Overview:\n`;
+    summary += `- Functions: ${functions.length} (${functions.slice(0, 3).join(', ')}${functions.length > 3 ? '...' : ''})\n`;
+    summary += `- State variables: ${stateVars.length} (${stateVars.slice(0, 2).join(', ')}${stateVars.length > 2 ? '...' : ''})\n`;
+    summary += `- Events: ${events.length}${events.length > 0 ? ` (${events.join(', ')})` : ''}\n`;
+    summary += `- Modifiers: ${modifiers.length}${modifiers.length > 0 ? ` (${modifiers.join(', ')})` : ''}\n`;
+    if (inheritance.length > 0) summary += `- Inherits: ${inheritance.join(', ')}\n`;
+
+    summary += `\n⚠️ Translation Considerations for ${ecosystemName}:\n`;
+    if (warnings.length > 0) {
+      warnings.forEach(w => summary += `- ${w}\n`);
+    } else {
+      summary += `- No critical warnings detected\n`;
+    }
+
+    summary += `\n✅ Ready for translation`;
+
+    return summary;
+  };
+
+  // Execute Phase 3: Act
+  const executePhase3 = async () => {
+    if (!translationContext || !translationParams) return;
+
+    const { context } = translationContext;
+    const {
+      sourceLanguage,
+      targetLanguage,
+      code,
+      attachments,
+      finalName,
+      solanaAppId,
+      suiAppId,
+      transpilerUsed,
+      writtenFiles
+    } = translationParams;
+
+    setCurrentPhase('act');
+    setActStatus('in_progress');
+    setActDetails('Building enriched prompt with context...');
+
+    // Get the dynamic translation prompt for this language pair and enrich with MCP context
+    const basePrompt = generateTranslationPrompt(sourceLanguage, targetLanguage);
+    const enrichedPrompt = buildEnrichedPrompt(basePrompt, context, {
+      includeFullDocs: false,
+      docsPreviewSize: 50000,
+    });
+
+    // For Solana, add specific file path instruction
+    const solanaPathInstruction = targetLanguage === "solana_rust"
+      ? `\n\n**IMPORTANT**: The Anchor project has been initialized at \`src/${finalName}/\`.\n\nWrite the translated contract to:\n\`\`\`\nsrc/${finalName}/programs/${finalName}/src/lib.rs\n\`\`\`\n\nUse this exact path in your <dyad-write> tag.`
+      : "";
+
+    // Create the complete translation prompt
+    let translationPrompt: string;
+
+    if (transpilerUsed && suiAppId && writtenFiles && writtenFiles.length > 0) {
+      const helperFiles = writtenFiles.filter(f => f.match(/^(i8|i16|i32|i64|i128|i256|map)\.move$/));
+      const contractFiles = writtenFiles.filter(f => !f.match(/^(i8|i16|i32|i64|i128|i256|map)\.move$/));
+
+      const fileList = [
+        ...(helperFiles.length > 0 ? [`- Helper modules: ${helperFiles.map(f => `\`${f}\``).join(', ')}`] : []),
+        ...(contractFiles.length > 0 ? [`- Main contract(s): ${contractFiles.map(f => `\`${f}\``).join(', ')}`] : []),
+      ].join('\n');
+
+      translationPrompt = `${enrichedPrompt}\n\n---\n\n## ✅ Automatic Transpilation Completed\n\n**Project Name:** ${finalName}\n\nThe Solidity contract has been **automatically transpiled** to Sui Move using shinso-transpiler and **all ${writtenFiles.length} files have been written to the codebase** in \`src/${finalName}/sources/\`.\n\n**Files created:**\n${fileList}\n\n**Your Task:**\n1. **Review the transpiled code**\n2. **Verify correctness**\n3. **Add tests**\n4. **Optimize**\n5. **Document**\n6. **Enhance**\n\n**Original Solidity Contract (for reference):**\n\`\`\`solidity\n${code}\n\`\`\`\n\nThe transpiled code is already in the codebase. Focus on review, testing, and enhancement rather than rewriting.`;
+    } else {
+      const contractSource = code.trim() || (attachments.length > 0 ? `**See attached ${BLOCKCHAIN_LANGUAGES[sourceLanguage]?.fileExtension || 'source'} files for the contract code.**` : '');
+
+      translationPrompt = `${enrichedPrompt}\n\n---\n\n## 📋 Translation Context Prepared\n\n**✅ AI_RULES.md Created**: An enriched AI_RULES.md file has been generated with ${(context.ecosystem.size / 1024).toFixed(0)}KB of current ${BLOCKCHAIN_LANGUAGES[targetLanguage]?.displayName || targetLanguage} documentation, version ${context.version.current} guidelines, and feature compatibility patterns. This file will guide your translation with up-to-date context.\n\n---\n\n## Contract to Translate:\n\n**Project Name:** ${finalName}${solanaPathInstruction}\n\n${contractSource}\n\n---\n\nPlease translate this ${BLOCKCHAIN_LANGUAGES[sourceLanguage]?.displayName || sourceLanguage} contract to ${BLOCKCHAIN_LANGUAGES[targetLanguage]?.displayName || targetLanguage} following the guidelines above and in the AI_RULES.md file. Provide a complete, working implementation with inline comments explaining key translation decisions.${attachments.length > 0 ? '\n\n**Note:** The source contract code is provided in the attached files. Please read and translate the attached contract files.' : ''}`;
+    }
+
+    const appPath = targetLanguage === "solana_rust" ? `src/${finalName}` : finalName;
+
+    setActDetails(`Prompt enriched with ${(context.ecosystem.size / 1024).toFixed(0)}KB context. Submitting to LLM for code generation...`);
+    setActStatus('completed');
+
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // Submit to chat
+    await handleSubmit({
+      attachments,
+      customName: appPath,
+      isContractProject: true,
+      prompt: translationPrompt,
+      existingAppId: solanaAppId || suiAppId,
+    });
+  };
+
   useEffect(() => {
     const updateLastVersionLaunched = async () => {
       if (
@@ -160,6 +373,9 @@ export default function HomePage() {
     sourceLanguage: string,
     targetLanguage: string,
   ) => {
+    // Reset pipeline state at the start
+    resetPipeline();
+
     // Extract contract name based on source language
     let extractedName: string | undefined;
     if (sourceLanguage === "solidity" || sourceLanguage === "vyper") {
@@ -286,6 +502,27 @@ export default function HomePage() {
       });
     }
 
+    // If target is Sui and no app was created by transpiler, create one now
+    if (targetLanguage === "sui_move" && !suiAppId) {
+      try {
+        setIsLoading(true);
+        console.log("📦 Creating Sui Move app for non-token contract:", finalName);
+
+        const createResult = await IpcClient.getInstance().createApp({
+          name: finalName,
+          isContractProject: true,
+        });
+        suiAppId = createResult.app.id;
+        console.log(`✅ Created Sui app with ID: ${suiAppId}`);
+      } catch (error) {
+        console.error("Error creating Sui app:", error);
+        showError("Failed to create Sui app: " + (error as Error).message);
+        return;
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
     // If target is Solana, scaffold the Anchor project first
     let solanaAppId: number | undefined;
     if (targetLanguage === "solana_rust") {
@@ -317,114 +554,58 @@ export default function HomePage() {
 
     // PHASE 1: DOCUMENT - Gather MCP context for target ecosystem
     console.log("📚 Starting document phase for", targetLanguage);
+    setIsLoading(true); // Ensure loading state is active for pipeline UI
+    setShowPipeline(true);
+    setCurrentPhase('document');
+    setDocumentStatus('in_progress');
+    setDocumentDetails('Initializing...');
+
     const context = await documentPhase(targetLanguage, (msg) => {
       console.log("📚 Document phase:", msg);
-    });
-    console.log(getContextSummary(context));
-
-    // Get the dynamic translation prompt for this language pair and enrich with MCP context
-    const basePrompt = generateTranslationPrompt(sourceLanguage, targetLanguage);
-    const enrichedPrompt = buildEnrichedPrompt(basePrompt, context, {
-      includeFullDocs: false, // Use preview to avoid token limits
-      docsPreviewSize: 50000,  // 50KB preview
+      setDocumentDetails(msg);
     });
 
-    // For Solana, add specific file path instruction
-    const solanaPathInstruction = targetLanguage === "solana_rust"
-      ? `\n\n**IMPORTANT**: The Anchor project has been initialized at \`src/${finalName}/\`.
+    // Generate enriched AI_RULES.md
+    setDocumentDetails('Generating AI_RULES.md with blockchain context...');
+    const aiRulesContent = generateAIRulesContent(context, targetLanguage, sourceLanguage);
 
-Write the translated contract to:
-\`\`\`
-src/${finalName}/programs/${finalName}/src/lib.rs
-\`\`\`
-
-Use this exact path in your <dyad-write> tag.`
-      : "";
-
-    // Create the complete translation prompt with the user's code
-    let translationPrompt: string;
-
-    if (transpilerUsed && suiAppId && writtenFiles.length > 0) {
-      console.log("🎯 Using transpiler - files already written to codebase");
-      // Files have been written - ask LLM to review and improve
-      const helperFiles = writtenFiles.filter(f => f.match(/^(i8|i16|i32|i64|i128|i256|map)\.move$/));
-      const contractFiles = writtenFiles.filter(f => !f.match(/^(i8|i16|i32|i64|i128|i256|map)\.move$/));
-
-      const fileList = [
-        ...(helperFiles.length > 0 ? [`- Helper modules: ${helperFiles.map(f => `\`${f}\``).join(', ')}`] : []),
-        ...(contractFiles.length > 0 ? [`- Main contract(s): ${contractFiles.map(f => `\`${f}\``).join(', ')}`] : []),
-      ].join('\n');
-
-      translationPrompt = `${enrichedPrompt}
-
----
-
-## ✅ Automatic Transpilation Completed
-
-**Project Name:** ${finalName}
-
-The Solidity contract has been **automatically transpiled** to Sui Move using shinso-transpiler and **all ${writtenFiles.length} files have been written to the codebase** in \`src/${finalName}/sources/\`.
-
-**Files created:**
-${fileList}
-
-**Your Task:**
-1. **Review the transpiled code** - Check the files in \`src/${finalName}/sources/\`
-2. **Verify correctness** - Ensure it implements the Solidity contract's functionality properly
-3. **Add tests** - Create comprehensive test cases in a test file
-4. **Optimize** - Improve gas efficiency and code quality where needed
-5. **Document** - Add/improve inline comments and module documentation
-6. **Enhance** - Add any missing features, better error handling, or security improvements
-
-**Original Solidity Contract (for reference):**
-\`\`\`solidity
-${code}
-\`\`\`
-
-**Next Steps:**
-- Review the existing transpiled files
-- Create a test file (e.g., \`src/${finalName}/tests/${extractedName || 'contract'}_tests.move\`)
-- Add any improvements or missing functionality
-- Ensure the code compiles and tests pass
-
-The transpiled code is already in the codebase. Focus on review, testing, and enhancement rather than rewriting.`;
-    } else {
-      console.log("📝 Using standard LLM translation (no transpiler output)");
-      // Standard LLM translation (no transpiler or transpiler failed)
-      const contractSource = code.trim()
-        ? code
-        : attachments.length > 0
-          ? `**See attached ${BLOCKCHAIN_LANGUAGES[sourceLanguage]?.fileExtension || 'source'} files for the contract code.**`
-          : '';
-
-      translationPrompt = `${enrichedPrompt}
-
----
-
-## Contract to Translate:
-
-**Project Name:** ${finalName}${solanaPathInstruction}
-
-${contractSource}
-
----
-
-Please translate this ${BLOCKCHAIN_LANGUAGES[sourceLanguage]?.displayName || sourceLanguage} contract to ${BLOCKCHAIN_LANGUAGES[targetLanguage]?.displayName || targetLanguage} following the guidelines above. Provide a complete, working implementation with inline comments explaining key translation decisions.${attachments.length > 0 ? '\n\n**Note:** The source contract code is provided in the attached files. Please read and translate the attached contract files.' : ''}`;
+    // Write AI_RULES.md to the app directory
+    const appId = solanaAppId || suiAppId;
+    if (appId) {
+      try {
+        await IpcClient.getInstance().editAppFile(
+          appId,
+          'AI_RULES.md',
+          aiRulesContent
+        );
+        console.log('✅ AI_RULES.md written successfully');
+      } catch (error) {
+        console.error('Failed to write AI_RULES.md:', error);
+      }
     }
 
-    // For Solana, use the full path since anchor init creates it in src/
-    const appPath = targetLanguage === "solana_rust"
-      ? `src/${finalName}`
-      : finalName;
+    const summary = getContextSummary(context);
+    console.log(summary);
+    setDocumentDetails(`${summary}\n\n✅ AI_RULES.md generated (${(aiRulesContent.length / 1024).toFixed(1)}KB)`);
+    setDocumentStatus('completed');
 
-    // Submit immediately with the translation prompt passed directly
-    await handleSubmit({
+    // Save translation context and parameters for later phases
+    setTranslationContext({ context });
+    setTranslationParams({
+      sourceLanguage,
+      targetLanguage,
+      code,
       attachments,
-      customName: appPath,
-      isContractProject: true,
-      prompt: translationPrompt,
-      existingAppId: solanaAppId || suiAppId, // Pass the app ID from scaffold/transpiler
+      finalName,
+      solanaAppId,
+      suiAppId,
+      transpilerUsed,
+      writtenFiles
     });
+
+    // Wait for user approval before proceeding to Phase 2
+    console.log('⏸️ Pausing for Phase 1 approval...');
+    setAwaitingApproval('document');
   };
 
   const handleSubmit = async (options?: HomeSubmitOptions) => {
@@ -506,18 +687,37 @@ Please translate this ${BLOCKCHAIN_LANGUAGES[sourceLanguage]?.displayName || sou
     return (
       <div className="flex flex-col items-center justify-center max-w-3xl m-auto p-8">
         <div className="w-full flex flex-col items-center">
-          {/* Loading Spinner */}
-          <div className="relative w-24 h-24 mb-8">
-            <div className="absolute top-0 left-0 w-full h-full border-8 border-gray-200 dark:border-gray-700 rounded-full"></div>
-            <div className="absolute top-0 left-0 w-full h-full border-8 border-t-primary rounded-full animate-spin"></div>
-          </div>
-          <h2 className="text-2xl font-bold mb-2 text-gray-800 dark:text-gray-200">
-            Building your app
-          </h2>
-          <p className="text-gray-600 dark:text-gray-400 text-center max-w-md mb-8">
-            We're setting up your app with AI magic. <br />
-            This might take a moment...
-          </p>
+          {showPipeline ? (
+            // Show pipeline progress during translation
+            <TranslationPipeline
+              currentPhase={currentPhase}
+              documentStatus={documentStatus}
+              planStatus={planStatus}
+              actStatus={actStatus}
+              documentDetails={documentDetails}
+              planDetails={planDetails}
+              actDetails={actDetails}
+              awaitingApproval={awaitingApproval}
+              onApprovePhase1={approvePhase1}
+              onApprovePhase2={approvePhase2}
+            />
+          ) : (
+            // Show generic loading for non-translation tasks
+            <>
+              {/* Loading Spinner */}
+              <div className="relative w-24 h-24 mb-8">
+                <div className="absolute top-0 left-0 w-full h-full border-8 border-gray-200 dark:border-gray-700 rounded-full"></div>
+                <div className="absolute top-0 left-0 w-full h-full border-8 border-t-primary rounded-full animate-spin"></div>
+              </div>
+              <h2 className="text-2xl font-bold mb-2 text-gray-800 dark:text-gray-200">
+                Building your app
+              </h2>
+              <p className="text-gray-600 dark:text-gray-400 text-center max-w-md mb-8">
+                We're setting up your app with AI magic. <br />
+                This might take a moment...
+              </p>
+            </>
+          )}
         </div>
       </div>
     );

@@ -33,7 +33,8 @@ async function testSuiDocs() {
       arguments: { ecosystem: 'sui' },
     });
 
-    const text = (result.content[0] as any).text;
+    const content = result.content as any[];
+    const text = content[0].text;
     const sizeKB = (text.length / 1024).toFixed(0);
 
     console.log('═══════════════════════════════════════════════════════════');

@@ -632,7 +632,7 @@ export async function gitPush({
     );
     throw new Error(
       "gitPush: 'forceWithLease' is not supported when native git is disabled. " +
-        "Falling back to plain force could overwrite remote commits. Enable native git or use 'force' explicitly.",
+        "Falling back to plain force could overwrite remote commits. Enable native git.",
     );
   }
   await git.push({

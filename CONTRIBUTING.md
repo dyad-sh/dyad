@@ -5,6 +5,8 @@ Before opening a pull request, please open an issue and discuss whether the chan
 - For a high-level overview of how Dyad works, please see the [Architecture Guide](./docs/architecture.md). Understanding the architecture will help ensure your contributions align with the overall design of the project.
 - For a detailed architecture on how the new local agent mode (aka Agent v2) works, please read the [Agent Architecture Guide](./docs/agent_architecture.md)
 
+> **Note:** By submitting a contribution within `src/pro`, you agree that such contribution is licensed under the Fair Source License (FSL) used by that directory.
+
 ## More than code contributions
 
 Something that I really appreciate are all the non-code contributions, such as reporting bugs, writing feature requests and participating on [Dyad's sub-reddit](https://www.reddit.com/r/dyadbuilders).

@@ -1,8 +1,8 @@
 # Contributor License Agreement (Individual)
 
-Thank you for your interest in contributing to this project.
+Thank you for your interest in contributing to Dyad.
 
-This Contributor License Agreement (“Agreement”) clarifies the intellectual property license granted by you to the project owner for your contributions.
+This Contributor License Agreement (“Agreement”) clarifies the intellectual property license granted by you to the project owner, **Dyad Tech, Inc.**, for your contributions.
 
 ---
 
@@ -12,13 +12,13 @@ This Contributor License Agreement (“Agreement”) clarifies the intellectual 
 
 **“Contribution”** means any original work of authorship, including code, documentation, or other material, that you intentionally submit for inclusion in the project.
 
-**“Project”** means the software project to which the Contribution is submitted.
+**“Project”** means the Dyad open-source software project to which the Contribution is submitted.
 
 ---
 
 ## 2. Grant of Copyright License
 
-Subject to the terms of this Agreement, You hereby grant the Project and its maintainers a **perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable copyright license** to:
+Subject to the terms of this Agreement, You hereby grant the Project and **Dyad Tech, Inc.** a **perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable copyright license** to:
 
 - use,
 - reproduce,
@@ -37,7 +37,7 @@ You retain ownership of the copyright in Your Contributions.
 
 ## 3. Grant of Patent License
 
-Subject to the terms of this Agreement, You hereby grant the Project and its maintainers a **perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable patent license** to make, have made, use, offer to sell, sell, import, and otherwise transfer the Contribution, where such license applies only to those patent claims licensable by You that are necessarily infringed by Your Contribution alone or by combination with the Project.
+Subject to the terms of this Agreement, You hereby grant the Project and **Dyad Tech, Inc.** a **perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable patent license** to make, have made, use, offer to sell, sell, import, and otherwise transfer the Contribution, where such license applies only to those patent claims licensable by You that are necessarily infringed by Your Contribution alone or by combination with the Project.
 
 If You initiate patent litigation claiming that the Contribution or the Project infringes a patent, then any patent licenses granted under this Agreement shall terminate as of the date such litigation is filed.
 
@@ -70,5 +70,3 @@ You are not obligated to provide support, updates, or future Contributions.
 This Agreement applies to all Contributions You submit now or in the future, unless You explicitly state otherwise in writing at the time of submission.
 
 By submitting a Contribution, You agree to the terms of this Agreement.
-
----

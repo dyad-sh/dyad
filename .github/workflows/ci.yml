@@ -148,29 +148,6 @@ jobs:
         # do not run this on windows (it's redundant)
         if: contains(matrix.os.name, 'macos')
         run: npm run test
-      - name: Setup pnpm
-        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
-        with:
-          version: latest
-      - name: Clone nextjs-template
-        run: git clone --depth 1 https://github.com/dyad-sh/nextjs-template.git nextjs-template
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
-      - name: Setup pnpm cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ matrix.os.name }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ matrix.os.name }}-pnpm-store-
-      # Not strictly needed but makes the e2e tests faster (and less flaky)
-      - name: Install scaffold dependencies
-        run: cd scaffold && pnpm install
-      - name: Install nextjs-template dependencies
-        run: cd nextjs-template && pnpm install
       - name: Build
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
@@ -212,10 +189,36 @@ jobs:
           cache-dependency-path: package-lock.json
       - name: Install node modules
         run: npm ci --no-audit --no-fund --progress=false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+        with:
+          version: latest
+      - name: Clone nextjs-template
+        run: git clone --depth 1 https://github.com/dyad-sh/nextjs-template.git nextjs-template
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ matrix.os.name }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ matrix.os.name }}-pnpm-store-
+      # Not strictly needed but makes the e2e tests faster (and less flaky)
+      - name: Install scaffold dependencies
+        run: cd scaffold && pnpm install
+      - name: Install nextjs-template dependencies
+        run: cd nextjs-template && pnpm install
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           name: build-${{ matrix.os.name }}
+      - name: Restore executable permissions (macOS)
+        if: contains(matrix.os.name, 'macos')
+        run: chmod +x out/dyad-darwin-arm64/dyad.app/Contents/MacOS/dyad
       - name: Install Chromium browser for Playwright
         run: npx playwright install chromium --with-deps
       - name: E2E tests (Shard ${{ matrix.shard }}/4)

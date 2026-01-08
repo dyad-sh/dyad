@@ -1,9 +1,0 @@
-# Ignore artifacts:
-build
-coverage
-# generated files
-drizzle/
-**/pnpm-lock.yaml
-**/snapshots/**
-# test fixtures
-e2e-tests/fixtures/**

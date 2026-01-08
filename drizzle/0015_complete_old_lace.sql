@@ -1,1 +1,0 @@
-ALTER TABLE `apps` ADD `supabase_parent_project_id` text;

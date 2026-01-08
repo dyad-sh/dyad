@@ -1,3 +1,0 @@
-+ "lastShownReleaseNotesVersion": "[scrubbed]"
-- "telemetryConsent": "unset"
-+ "telemetryConsent": "opted_in"

@@ -1,1 +1,0 @@
-ALTER TABLE `messages` ADD `request_id` text;

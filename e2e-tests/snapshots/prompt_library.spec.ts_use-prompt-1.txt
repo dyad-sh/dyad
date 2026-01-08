@@ -1,3 +1,0 @@
-===
-role: user
-message: [dump] prompt1content

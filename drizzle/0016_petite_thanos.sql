@@ -1,1 +1,0 @@
-ALTER TABLE `messages` ADD `source_commit_hash` text;

@@ -1,4 +1,0 @@
-- "enableProLazyEditsMode": true
-+ "enableProLazyEditsMode": false
-- "proLazyEditsMode": "v2"
-+ "proLazyEditsMode": "off"

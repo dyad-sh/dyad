@@ -1,3 +1,0 @@
-+ "acceptedCommunityCode": true
-- "selectedTemplateId": "react"
-+ "selectedTemplateId": "jeff-kazzee/dyad-template-angular"

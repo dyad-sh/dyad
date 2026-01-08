@@ -1,1 +1,0 @@
-# AI_RULES.md

@@ -1,1 +1,0 @@
-ALTER TABLE `apps` ADD `supabase_project_id` text;

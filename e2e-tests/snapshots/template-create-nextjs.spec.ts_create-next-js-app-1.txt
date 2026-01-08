@@ -1,2 +1,0 @@
-- "selectedTemplateId": "react"
-+ "selectedTemplateId": "next"

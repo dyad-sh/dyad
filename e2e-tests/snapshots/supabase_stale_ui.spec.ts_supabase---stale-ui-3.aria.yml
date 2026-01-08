@@ -1,6 +1,0 @@
-- paragraph: tc=add-supabase
-- paragraph: Adding supabase...
-- text: Integrate with supabase?
-- button "Set up supabase"
-- button "Retry":
-  - img

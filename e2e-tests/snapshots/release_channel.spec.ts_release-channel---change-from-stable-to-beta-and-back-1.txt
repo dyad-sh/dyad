@@ -1,2 +1,0 @@
-- "releaseChannel": "stable"
-+ "releaseChannel": "beta"

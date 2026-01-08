@@ -1,7 +1,0 @@
-- "githubAccessToken": {
--     "value": "fake_access_token_12345",
--     "encryptionType": "plaintext"
--   }
-- "githubUser": {
--     "email": "testuser@example.com"
--   }

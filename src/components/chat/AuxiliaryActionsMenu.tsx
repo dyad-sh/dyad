@@ -19,14 +19,12 @@ interface AuxiliaryActionsMenuProps {
     files: FileList,
     type: "chat-context" | "upload-to-codebase",
   ) => void;
-  disabled?: boolean;
   showTokenBar: boolean;
   toggleShowTokenBar: () => void;
 }
 
 export function AuxiliaryActionsMenu({
   onFileSelect,
-  disabled,
   showTokenBar,
   toggleShowTokenBar,
 }: AuxiliaryActionsMenuProps) {
@@ -38,7 +36,6 @@ export function AuxiliaryActionsMenu({
         <Button
           variant="ghost"
           size="sm"
-          disabled={disabled}
           className="has-[>svg]:px-2 hover:bg-muted bg-primary/10 text-primary cursor-pointer rounded-xl"
           data-testid="auxiliary-actions-menu"
         >

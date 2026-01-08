@@ -476,7 +476,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
             <AuxiliaryActionsMenu
               onFileSelect={handleFileSelect}
-              disabled={isStreaming}
               showTokenBar={showTokenBar}
               toggleShowTokenBar={toggleShowTokenBar}
             />

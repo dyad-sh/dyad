@@ -574,7 +574,7 @@ ${componentSnippet}
                     deploymentInfo.deploymentData?.createdObjects?.length > 0
                   ) {
                     section += `\n   - Use the following created object IDs:`;
-                    deploymentInfo.deploymentData.createdObjects.forEach(
+                    deploymentInfo.deploymentData?.createdObjects.forEach(
                       (obj: any, idx: number) => {
                         section += `\n     ${idx + 1}. ${obj.objectType}: ${obj.objectId}`;
                       },

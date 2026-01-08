@@ -28,6 +28,7 @@ import {
   GIT_ERROR_CODES,
   isGitMergeInProgress,
   isGitRebaseInProgress,
+  gitReset,
 } from "../utils/git_utils";
 import * as schema from "../../db/schema";
 import fs from "node:fs";
@@ -39,7 +40,8 @@ import { eq } from "drizzle-orm";
 import { GithubUser } from "../../lib/schemas";
 import log from "electron-log";
 import { IS_TEST_BUILD } from "../utils/test_utils";
-import path from "node:path"; // ← ADD THIS
+import path from "node:path";
+import { withLock } from "../utils/lock_utils";
 
 const logger = log.scope("github_handlers");
 
@@ -158,29 +160,41 @@ async function prepareLocalBranch({
     }
 
     // Check for uncommitted changes and commit them before checkout
-    const isClean = await isGitStatusClean({ path: appPath });
-    if (!isClean) {
-      try {
-        const uncommittedFiles = await getGitUncommittedFiles({
-          path: appPath,
-        });
-        // Stage all changes
-        await gitAddAll({ path: appPath });
-        // Commit with a descriptive message
-        await gitCommit({
-          path: appPath,
-          message: `[dyad] Auto-commit before preparing branch '${targetBranch}': ${uncommittedFiles.length} file(s) changed`,
-        });
-        logger.log(
-          `Auto-committed ${uncommittedFiles.length} file(s) before preparing branch '${targetBranch}'`,
-        );
-      } catch (commitError: any) {
-        throw new Error(
-          `Failed to commit uncommitted changes before preparing branch: ${commitError?.message || "Unknown error"}. ` +
-            "Please commit or stash your changes manually and try again.",
-        );
+    // Use locking to prevent race conditions when multiple operations attempt to commit simultaneously
+    await withLock(appId, async () => {
+      const isClean = await isGitStatusClean({ path: appPath });
+      if (!isClean) {
+        try {
+          const uncommittedFiles = await getGitUncommittedFiles({
+            path: appPath,
+          });
+          // Stage all changes
+          await gitAddAll({ path: appPath });
+          // Commit with a descriptive message
+          await gitCommit({
+            path: appPath,
+            message: `[dyad] Auto-commit before preparing branch '${targetBranch}': ${uncommittedFiles.length} file(s) changed`,
+          });
+          logger.log(
+            `Auto-committed ${uncommittedFiles.length} file(s) before preparing branch '${targetBranch}'`,
+          );
+        } catch (commitError: any) {
+          // Reset staging area to prevent partial state if commit failed after staging
+          try {
+            await gitReset({ path: appPath });
+          } catch (resetError) {
+            // Log but don't throw - the main error is the commit failure
+            logger.warn(
+              `Failed to reset staging area after commit failure: ${resetError}`,
+            );
+          }
+          throw new Error(
+            `Failed to commit uncommitted changes before preparing branch: ${commitError?.message || "Unknown error"}. ` +
+              "Please commit or stash your changes manually and try again.",
+          );
+        }
       }
-    }
+    });
 
     const localBranches = await gitListBranches({ path: appPath });
 

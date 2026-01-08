@@ -288,6 +288,22 @@ export async function gitAdd({ path, filepath }: GitFileParams): Promise<void> {
   }
 }
 
+export async function gitReset({ path }: GitBaseParams): Promise<void> {
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    // Reset the staging area to match HEAD (unstage files but keep working directory changes)
+    await execOrThrow(["reset", "HEAD"], path, "Failed to reset staging area");
+  } else {
+    // For isomorphic-git, resetting the index is complex and not directly supported
+    // This is a fallback - in practice, this should rarely be needed when native git is disabled
+    // If needed, users can manually reset via command line or enable native git
+    throw new Error(
+      "gitReset: Resetting the staging area is not fully supported when native git is disabled. " +
+        "Please enable native git or manually unstage files using 'git reset HEAD'.",
+    );
+  }
+}
+
 export async function gitInit({
   path,
   ref = "main",
@@ -441,9 +457,12 @@ export async function gitListRemoteBranches({
         if (trimmed.startsWith(`${remote}/`)) {
           return trimmed.substring(`${remote}/`.length);
         }
-        return trimmed;
+        return null;
       })
-      .filter((line) => line.length > 0 && !line.includes("HEAD"));
+      .filter(
+        (line): line is string =>
+          line !== null && line.length > 0 && !line.includes("HEAD"),
+      );
   } else {
     const allBranches = await git.listBranches({
       fs,

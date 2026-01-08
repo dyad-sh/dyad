@@ -95,6 +95,7 @@ export const SuiSetup = ({
           actionLabel: "Verify Configuration",
           isLoading: isCheckingEnv,
           completed: currentStep !== "env",
+          externalLink: null,
         },
         {
           id: "address" as SetupStep,
@@ -341,7 +342,7 @@ export const SuiSetup = ({
                             variant="outline"
                             size="sm"
                             onClick={() =>
-                              window.open(step.externalLink!.url, "_blank")
+                              window.open(step.externalLink?.url, "_blank")
                             }
                             className="h-8"
                           >

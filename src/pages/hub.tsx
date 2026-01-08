@@ -28,7 +28,7 @@ const HubPage: React.FC = () => {
   };
 
   // Combine regular templates with contract translation templates
-  const allTemplates = [...templates, ...contractTranslationTemplates];
+  const allTemplates = [...templates!, ...contractTranslationTemplates];
   // Separate templates into official and community
   const officialTemplates =
     templates?.filter((template) => template.isOfficial) || [];

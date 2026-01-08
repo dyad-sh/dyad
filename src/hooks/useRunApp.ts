@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { atom } from "jotai";
+import { atom , useAtom, useAtomValue, useSetAtom } from "jotai";
 import { IpcClient } from "@/ipc/ipc_client";
 import {
   appConsoleEntriesAtom,
@@ -9,7 +9,6 @@ import {
   previewErrorMessageAtom,
   selectedAppIdAtom,
 } from "@/atoms/appAtoms";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { AppOutput } from "@/ipc/ipc_types";
 import { showInputRequest } from "@/lib/toast";
 
@@ -100,16 +99,6 @@ export function useRunApp() {
         // Skip running contract projects - they don't have a dev server
         if (app.isContractProject) {
           console.debug("Skipping run for contract project", appId);
-          setAppOutput((prev) => [
-            ...prev,
-            {
-              message:
-                "Contract project loaded. Use the Contract panel to compile and deploy.",
-              type: "stdout",
-              appId,
-              timestamp: Date.now(),
-            },
-          ]);
           setPreviewErrorMessage(undefined);
           setLoading(false);
           return;
@@ -205,16 +194,6 @@ export function useRunApp() {
         // Skip restarting contract projects - they don't have a dev server
         if (app.isContractProject) {
           console.debug("Skipping restart for contract project", appId);
-          setAppOutput((prev) => [
-            ...prev,
-            {
-              message:
-                "Contract projects don't have a dev server to restart. Use the Contract panel to compile and deploy.",
-              type: "stdout",
-              appId,
-              timestamp: Date.now(),
-            },
-          ]);
           setLoading(false);
           return;
         }

@@ -5,8 +5,7 @@ import { mcpServers, mcpToolConsents } from "../../db/schema";
 import { eq, and } from "drizzle-orm";
 import { createLoggedHandler } from "./safe_handle";
 
-import { resolveConsent } from "../utils/mcp_consent";
-import { getStoredConsent } from "../utils/mcp_consent";
+import { resolveConsent , getStoredConsent } from "../utils/mcp_consent";
 import { mcpManager } from "../utils/mcp_manager";
 import { CreateMcpServer, McpServerUpdate, McpTool } from "../ipc_types";
 
@@ -62,7 +61,9 @@ export function registerMcpHandlers() {
       // If server config changed, dispose cached client to be recreated on next use
       try {
         mcpManager.dispose(params.id);
-      } catch {}
+      } catch (e) {
+        console.error(e)
+      }
       return result[0];
     },
   );
@@ -72,7 +73,9 @@ export function registerMcpHandlers() {
     async (_event: IpcMainInvokeEvent, id: number) => {
       try {
         mcpManager.dispose(id);
-      } catch {}
+      } catch (e) {
+        console.error(e)
+      }
       await db.delete(mcpServers).where(eq(mcpServers.id, id));
       return { success: true };
     },
@@ -182,8 +185,8 @@ export function registerMcpHandlers() {
       }
       const server = servers[0];
 
-      // Get client for this server
-      const client = await mcpManager.getClient(server.id);
+      // Get raw client for direct tool calling
+      const client = await mcpManager.getRawClient(server.id);
 
       // Call the tool
       const result = await client.callTool({

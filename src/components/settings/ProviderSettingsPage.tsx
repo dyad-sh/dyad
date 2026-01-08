@@ -66,9 +66,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   const providerDisplayName = isDyad
     ? "Dyad"
     : (providerData?.name ?? "Unknown Provider");
-  const providerWebsiteUrl = isDyad
-    ? "https://academy.dyad.sh/settings"
-    : providerData?.websiteUrl;
+  const providerWebsiteUrl = providerData?.websiteUrl;
   const hasFreeTier = isDyad ? false : providerData?.hasFreeTier;
   const envVarName = isDyad ? undefined : providerData?.envVarName;
 

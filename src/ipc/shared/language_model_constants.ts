@@ -442,12 +442,12 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
 
 export const TURBO_MODELS: LanguageModel[] = [
   {
-    apiName: "glm-4.6:turbo",
-    displayName: "GLM 4.6",
+    apiName: "glm-4.7:turbo",
+    displayName: "GLM 4.7",
     description: "Strong coding model (very fast)",
     maxOutputTokens: 32_000,
     contextWindow: 131_000,
-    temperature: 0,
+    temperature: 0.7,
     dollarSigns: 3,
     type: "cloud",
   },
@@ -521,7 +521,7 @@ export const CLOUD_PROVIDERS: Record<
   },
   auto: {
     displayName: "Dyad",
-    websiteUrl: "https://academy.dyad.sh/settings",
+    websiteUrl: "https://academy.dyad.sh/subscription",
     gatewayPrefix: "dyad/",
   },
   azure: {

@@ -1,6 +1,9 @@
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 import { getSupabaseClient } from "./supabase_management_client";
-import { SUPABASE_SCHEMA_QUERY } from "./supabase_schema_query";
+import {
+  SUPABASE_SCHEMA_QUERY,
+  buildSupabaseSchemaQuery,
+} from "./supabase_schema_query";
 
 async function getPublishableKey({
   projectId,
@@ -107,4 +110,98 @@ export async function getSupabaseContext({
   `;
 
   return context;
+}
+
+// Query to get just table names (lightweight)
+const TABLE_NAMES_QUERY = `
+  SELECT table_name 
+  FROM information_schema.tables 
+  WHERE table_schema = 'public'
+  ORDER BY table_name;
+`;
+
+/**
+ * Get high-level Supabase project info: project ID, publishable key, secret names, and table names.
+ * This is a lightweight call that doesn't fetch full schema details.
+ */
+export async function getSupabaseProjectInfo({
+  supabaseProjectId,
+  organizationSlug,
+}: {
+  supabaseProjectId: string;
+  organizationSlug: string | null;
+}): Promise<string> {
+  if (IS_TEST_BUILD) {
+    return `# Supabase Project Info
+
+## Project ID
+${supabaseProjectId}
+
+## Publishable Key
+test-publishable-key
+
+## Secret Names
+["TEST_SECRET_1", "TEST_SECRET_2"]
+
+## Table Names
+["users", "posts", "comments"]
+`;
+  }
+
+  const supabase = await getSupabaseClient({ organizationSlug });
+  const publishableKey = await getPublishableKey({
+    projectId: supabaseProjectId,
+    organizationSlug,
+  });
+
+  const secrets = await supabase.getSecrets(supabaseProjectId);
+  const secretNames = secrets?.map((secret) => secret.name) ?? [];
+
+  const tableResult = await supabase.runQuery(
+    supabaseProjectId,
+    TABLE_NAMES_QUERY,
+  );
+  const tableNames =
+    (tableResult as unknown as { table_name: string }[] | undefined)?.map(
+      (row) => row.table_name,
+    ) ?? [];
+
+  return `# Supabase Project Info
+
+## Project ID
+${supabaseProjectId}
+
+## Publishable Key
+${publishableKey}
+
+## Secret Names
+${JSON.stringify(secretNames)}
+
+## Table Names
+${JSON.stringify(tableNames)}
+`;
+}
+
+/**
+ * Get database table schema. If tableName is provided, returns schema for that specific table.
+ * If tableName is omitted, returns schema for all tables.
+ */
+export async function getSupabaseTableSchema({
+  supabaseProjectId,
+  organizationSlug,
+  tableName,
+}: {
+  supabaseProjectId: string;
+  organizationSlug: string | null;
+  tableName?: string;
+}): Promise<string> {
+  if (IS_TEST_BUILD) {
+    return `[[TEST_TABLE_SCHEMA${tableName ? `:${tableName}` : ""}]]`;
+  }
+
+  const supabase = await getSupabaseClient({ organizationSlug });
+  const query = buildSupabaseSchemaQuery(tableName);
+  const schemaResult = await supabase.runQuery(supabaseProjectId, query);
+
+  return JSON.stringify(schemaResult);
 }

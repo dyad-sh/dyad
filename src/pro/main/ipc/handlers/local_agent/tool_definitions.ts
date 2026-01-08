@@ -14,7 +14,8 @@ import { executeSqlTool } from "./tools/execute_sql";
 
 import { readFileTool } from "./tools/read_file";
 import { listFilesTool } from "./tools/list_files";
-import { getDatabaseSchemaTool } from "./tools/get_database_schema";
+import { getSupabaseProjectInfoTool } from "./tools/get_supabase_project_info";
+import { getSupabaseTableSchemaTool } from "./tools/get_supabase_table_schema";
 import { setChatSummaryTool } from "./tools/set_chat_summary";
 import { addIntegrationTool } from "./tools/add_integration";
 import { readLogsTool } from "./tools/read_logs";
@@ -43,7 +44,8 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   // searchReplaceTool,
   readFileTool,
   listFilesTool,
-  getDatabaseSchemaTool,
+  getSupabaseProjectInfoTool,
+  getSupabaseTableSchemaTool,
   setChatSummaryTool,
   addIntegrationTool,
   readLogsTool,

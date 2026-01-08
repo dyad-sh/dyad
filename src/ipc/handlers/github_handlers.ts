@@ -165,12 +165,14 @@ async function prepareLocalBranch({
     await withLock(appId, async () => {
       const isClean = await isGitStatusClean({ path: appPath });
       if (!isClean) {
+        let filesStaged = false;
         try {
           const uncommittedFiles = await getGitUncommittedFiles({
             path: appPath,
           });
           // Stage all changes
           await gitAddAll({ path: appPath });
+          filesStaged = true; // Mark that staging succeeded
           // Commit with a descriptive message
           await gitCommit({
             path: appPath,
@@ -180,15 +182,27 @@ async function prepareLocalBranch({
             `Auto-committed ${uncommittedFiles.length} file(s) before preparing branch '${targetBranch}'`,
           );
         } catch (commitError: any) {
-          // Reset staging area to prevent partial state if commit failed after staging
-          try {
-            await gitReset({ path: appPath });
-          } catch (resetError) {
-            // Log but don't throw - the main error is the commit failure
-            logger.warn(
-              `Failed to reset staging area after commit failure: ${resetError}`,
-            );
+          // Reset staging area if files were staged but commit failed
+          // This ensures cleanup always happens, preventing inconsistent repository state
+          if (filesStaged) {
+            try {
+              await gitReset({ path: appPath });
+            } catch (resetError) {
+              // If reset fails, log the error and enhance the error message to inform user
+              // This documents the risk: files remain staged if reset fails
+              logger.error(
+                `Failed to reset staging area after commit failure. Files remain staged. ` +
+                  `Original error: ${commitError?.message || "Unknown error"}, ` +
+                  `Reset error: ${resetError}`,
+              );
+              throw new Error(
+                `Failed to commit uncommitted changes before preparing branch: ${commitError?.message || "Unknown error"}. ` +
+                  "Additionally, failed to unstage files - your files are currently staged but not committed. " +
+                  "Please manually unstage using 'git reset HEAD' or commit/stash your changes and try again.",
+              );
+            }
           }
+          // Throw the original error after successful cleanup
           throw new Error(
             `Failed to commit uncommitted changes before preparing branch: ${commitError?.message || "Unknown error"}. ` +
               "Please commit or stash your changes manually and try again.",

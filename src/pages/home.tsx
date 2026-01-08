@@ -15,6 +15,7 @@ import { usePostHog } from "posthog-js/react";
 import { PrivacyBanner } from "@/components/TelemetryBanner";
 import { INSPIRATION_PROMPTS } from "@/prompts/inspiration_prompts";
 import { useAppVersion } from "@/hooks/useAppVersion";
+
 import {
   Dialog,
   DialogContent,
@@ -33,7 +34,12 @@ import { ForceCloseDialog } from "@/components/ForceCloseDialog";
 import type { FileAttachment } from "@/ipc/ipc_types";
 import { NEON_TEMPLATE_IDS } from "@/shared/templates";
 import { neonTemplateHook } from "@/client_logic/template_hook";
-import { ProBanner } from "@/components/ProBanner";
+import {
+  ProBanner,
+  ManageDyadProButton,
+  SetupDyadProButton,
+} from "@/components/ProBanner";
+import { hasDyadProKey } from "@/lib/schemas";
 
 // Adding an export for attachments
 export interface HomeSubmitOptions {
@@ -47,6 +53,7 @@ export default function HomePage() {
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
   const { refreshApps } = useLoadApps();
   const { settings, updateSettings } = useSettings();
+
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const [isLoading, setIsLoading] = useState(false);
   const [forceCloseDialogOpen, setForceCloseDialogOpen] = useState(false);
@@ -202,7 +209,14 @@ export default function HomePage() {
 
   // Main Home Page Content
   return (
-    <div className="flex flex-col items-center justify-center max-w-3xl w-full m-auto p-8">
+    <div className="flex flex-col items-center justify-center max-w-3xl w-full m-auto p-8 relative">
+      <div className="fixed top-16 right-8 z-50">
+        {settings && hasDyadProKey(settings) ? (
+          <ManageDyadProButton className="mt-0 w-auto h-9 px-3 text-base shadow-sm bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm hover:bg-white dark:hover:bg-gray-800" />
+        ) : (
+          <SetupDyadProButton />
+        )}
+      </div>
       <ForceCloseDialog
         isOpen={forceCloseDialogOpen}
         onClose={() => setForceCloseDialogOpen(false)}
@@ -211,7 +225,9 @@ export default function HomePage() {
       <SetupBanner />
 
       <div className="w-full">
-        <ImportAppButton />
+        <div className="flex items-center justify-center gap-4 mb-4">
+          <ImportAppButton className="px-0 pb-0 flex-none" />
+        </div>
         <HomeChatInput onSubmit={handleSubmit} />
 
         <div className="flex flex-col gap-4 mt-2">

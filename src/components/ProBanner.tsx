@@ -6,14 +6,13 @@ import googleLogo from "../../assets/ai-logos/google-logo.svg";
 import anthropicLogo from "../../assets/ai-logos/anthropic-logo.svg";
 import { IpcClient } from "@/ipc/ipc_client";
 import { useState } from "react";
-import { KeyRound } from "lucide-react";
+import { ArrowUpRight, KeyRound, Wallet } from "lucide-react";
 
-import { useSettings } from "@/hooks/useSettings";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { Button } from "./ui/button";
+import { cn } from "@/lib/utils";
 
 export function ProBanner() {
-  const { settings } = useSettings();
   const { userBudget } = useUserBudgetInfo();
 
   const [selectedBanner] = useState<"ai" | "smart" | "turbo">(() => {
@@ -21,12 +20,8 @@ export function ProBanner() {
     return options[Math.floor(Math.random() * options.length)];
   });
 
-  if (settings?.enableDyadPro || userBudget) {
-    return (
-      <div className="mt-6 max-w-2xl mx-auto">
-        <ManageDyadProButton />
-      </div>
-    );
+  if (userBudget) {
+    return null;
   }
 
   return (
@@ -38,25 +33,28 @@ export function ProBanner() {
       ) : (
         <TurboBanner />
       )}
-      <SetupDyadProButton />
     </div>
   );
 }
 
-export function ManageDyadProButton() {
+export function ManageDyadProButton({ className }: { className?: string }) {
   return (
     <Button
       variant="outline"
       size="lg"
-      className="w-full mt-4 bg-(--background-lighter) text-primary"
+      className={cn(
+        "cursor-pointer w-full mt-4 bg-(--background-lighter) text-primary",
+        className,
+      )}
       onClick={() => {
         IpcClient.getInstance().openExternalUrl(
           "https://academy.dyad.sh/subscription",
         );
       }}
     >
-      <KeyRound aria-hidden="true" />
-      Manage Dyad Pro subscription
+      <Wallet aria-hidden="true" className="w-5 h-5" />
+      Manage Dyad Pro
+      <ArrowUpRight aria-hidden="true" className="w-5 h-5" />
     </Button>
   );
 }
@@ -66,7 +64,7 @@ export function SetupDyadProButton() {
     <Button
       variant="outline"
       size="lg"
-      className="w-full mt-4 bg-(--background-lighter) text-primary"
+      className="cursor-pointer w-full mt-4 bg-(--background-lighter) text-primary"
       onClick={() => {
         IpcClient.getInstance().openExternalUrl(
           "https://academy.dyad.sh/settings",
@@ -167,7 +165,7 @@ export function SmartContextBanner() {
         <div className="mt-0.5 sm:mt-1 flex items-center gap-2 sm:gap-3 justify-center">
           <div className="flex flex-col items-center text-center">
             <div className="text-xl font-semibold tracking-tight text-emerald-900 dark:text-emerald-100">
-              Up to 5x cheaper
+              Up to 3x cheaper
             </div>
             <div className="text-sm sm:text-base mt-1 text-emerald-700 dark:text-emerald-200/80">
               by using Smart Context

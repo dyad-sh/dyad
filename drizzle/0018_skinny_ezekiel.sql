@@ -1,1 +1,0 @@
-ALTER TABLE `messages` ADD `ai_messages_json` text;

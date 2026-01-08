@@ -182,6 +182,15 @@ declare global {
 let mainWindow: BrowserWindow | null = null;
 let pendingForceCloseData: any = null;
 
+/**
+ * Safely send a message to the main window, checking if it exists and is not destroyed
+ */
+function safelySendToMainWindow(channel: string, ...args: any[]) {
+  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+    mainWindow.webContents.send(channel, ...args);
+  }
+}
+
 const createWindow = () => {
   // Create the browser window.
   mainWindow = new BrowserWindow({
@@ -220,7 +229,7 @@ const createWindow = () => {
   // Send force-close event if it was detected
   if (pendingForceCloseData) {
     mainWindow.webContents.once("did-finish-load", () => {
-      mainWindow?.webContents.send("force-close-detected", {
+      safelySendToMainWindow("force-close-detected", {
         performanceData: pendingForceCloseData,
       });
       pendingForceCloseData = null;
@@ -310,7 +319,7 @@ app.on("open-url", (event, url) => {
   handleDeepLinkReturn(url);
 });
 
-function handleDeepLinkReturn(url: string) {
+async function handleDeepLinkReturn(url: string) {
   // example url: "shinso://supabase-oauth-return?token=a&refreshToken=b"
   let parsed: URL;
   try {
@@ -347,7 +356,7 @@ function handleDeepLinkReturn(url: string) {
     }
     handleNeonOAuthReturn({ token, refreshToken, expiresIn });
     // Send message to renderer to trigger re-render
-    mainWindow?.webContents.send("deep-link-received", {
+    safelySendToMainWindow("deep-link-received", {
       type: parsed.hostname,
     });
     return;
@@ -365,7 +374,7 @@ function handleDeepLinkReturn(url: string) {
     }
     await handleSupabaseOAuthReturn({ token, refreshToken, expiresIn });
     // Send message to renderer to trigger re-render
-    mainWindow?.webContents.send("deep-link-received", {
+    safelySendToMainWindow("deep-link-received", {
       type: parsed.hostname,
     });
     return;
@@ -381,7 +390,7 @@ function handleDeepLinkReturn(url: string) {
       apiKey,
     });
     // Send message to renderer to trigger re-render
-    mainWindow?.webContents.send("deep-link-received", {
+    safelySendToMainWindow("deep-link-received", {
       type: parsed.hostname,
     });
     return;
@@ -400,7 +409,7 @@ function handleDeepLinkReturn(url: string) {
       const decodedConfig = JSON.parse(decodedConfigJson);
       const parsedConfig = AddMcpServerConfigSchema.parse(decodedConfig);
 
-      mainWindow?.webContents.send("deep-link-received", {
+      safelySendToMainWindow("deep-link-received", {
         type: parsed.hostname,
         payload: {
           name,
@@ -429,7 +438,7 @@ function handleDeepLinkReturn(url: string) {
       const decoded = JSON.parse(decodedJson);
       const parsedData = AddPromptDataSchema.parse(decoded);
 
-      mainWindow?.webContents.send("deep-link-received", {
+      safelySendToMainWindow("deep-link-received", {
         type: parsed.hostname,
         payload: parsedData as AddPromptPayload,
       });

@@ -22,7 +22,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   children,
 }) => {
   const navigate = useNavigate();
-  const { streamMessage } = useStreamChat();
+  const { streamMessage, isStreaming } = useStreamChat();
 
   const { provider } = node.properties;
   const appId = useAtomValue(selectedAppIdAtom);
@@ -89,6 +89,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
           onClick={handleKeepGoingClick}
           className="self-start mt-2"
           variant="outline"
+          disabled={isStreaming}
         >
           Continue
         </Button>

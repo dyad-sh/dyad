@@ -44,7 +44,6 @@ export function ModelPicker() {
     queryClient.invalidateQueries({ queryKey: TOKEN_COUNT_QUERY_KEY });
   };
 
-
   // Check if current app is a contract project
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const apps = useAtomValue(appsListAtom);

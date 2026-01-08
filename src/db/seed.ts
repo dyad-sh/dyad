@@ -33,8 +33,22 @@ export async function seedBlockchainGuideMcpServer() {
     // In production: <resources>/mcp-servers/blockchain-guide/dist/index.js
     const isDev = !app.isPackaged;
     const serverPath = isDev
-      ? path.join(__dirname, "..", "..", "mcp-servers", "blockchain-guide", "dist", "index.js")
-      : path.join(process.resourcesPath, "mcp-servers", "blockchain-guide", "dist", "index.js");
+      ? path.join(
+          __dirname,
+          "..",
+          "..",
+          "mcp-servers",
+          "blockchain-guide",
+          "dist",
+          "index.js",
+        )
+      : path.join(
+          process.resourcesPath,
+          "mcp-servers",
+          "blockchain-guide",
+          "dist",
+          "index.js",
+        );
 
     logger.info("Seeding blockchain-guide MCP server at:", serverPath);
 

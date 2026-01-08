@@ -34,9 +34,11 @@ self.MonacoEnvironment = {
 loader.config({ monaco });
 
 // Initialize blockchain language support (Solidity, Move, etc.)
-import("@/utils/blockchain_languages").then(({ initializeBlockchainLanguages }) => {
-  initializeBlockchainLanguages().catch(console.error);
-});
+import("@/utils/blockchain_languages").then(
+  ({ initializeBlockchainLanguages }) => {
+    initializeBlockchainLanguages().catch(console.error);
+  },
+);
 
 // loader.init().then(/* ... */);
 export const customLight: editor.IStandaloneThemeData = {

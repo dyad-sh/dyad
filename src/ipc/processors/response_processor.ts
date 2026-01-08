@@ -560,17 +560,17 @@ export async function processFullResponseActions(
       // Filter out build artifacts that should not be auto-committed
       const isBuildArtifact = (filepath: string): boolean => {
         const buildArtifactPatterns = [
-          /\/target\//,                    // Rust/Cargo build directory
-          /\/Cargo\.lock$/,                // Cargo lock files in subdirectories
-          /\/\.rustc_info\.json$/,         // Rust compiler info
-          /\/CACHEDIR\.TAG$/,              // Cache directory marker
-          /\/\.fingerprint\//,             // Cargo fingerprint cache
-          /\/build\//,                     // General build directories
-          /\/\.anchor\//,                  // Anchor framework cache
-          /\/node_modules\//,              // Node modules
-          /\/\.next\//,                    // Next.js build
-          /\/dist\//,                      // Build output
-          /\/out\//,                       // Build output
+          /\/target\//, // Rust/Cargo build directory
+          /\/Cargo\.lock$/, // Cargo lock files in subdirectories
+          /\/\.rustc_info\.json$/, // Rust compiler info
+          /\/CACHEDIR\.TAG$/, // Cache directory marker
+          /\/\.fingerprint\//, // Cargo fingerprint cache
+          /\/build\//, // General build directories
+          /\/\.anchor\//, // Anchor framework cache
+          /\/node_modules\//, // Node modules
+          /\/\.next\//, // Next.js build
+          /\/dist\//, // Build output
+          /\/out\//, // Build output
         ];
 
         return buildArtifactPatterns.some((pattern) => pattern.test(filepath));

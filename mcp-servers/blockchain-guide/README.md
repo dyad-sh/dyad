@@ -25,6 +25,7 @@ A custom MCP server that provides LLM-optimized documentation, version informati
 ## Tools
 
 ### 1. `fetch-ecosystem-docs`
+
 **What it does:** Fetches full LLM-optimized documentation
 **Use case:** Model needs comprehensive current documentation
 
@@ -37,11 +38,13 @@ fetch-ecosystem-docs({ ecosystem: 'solana' })
 ```
 
 **Supported ecosystems:**
+
 - `solana` - Full Solana documentation (645KB from llms.txt)
 - `sui` - Sui documentation links (when llms.txt becomes available)
 - `anchor` - Anchor framework documentation links
 
 ### 2. `fetch-latest-releases`
+
 **What it does:** Gets current versions + full release notes from GitHub
 **Use case:** Model needs to know current version and breaking changes
 
@@ -59,6 +62,7 @@ fetch-latest-releases({ ecosystem: 'anchor' })
 **Supported ecosystems:** `solana`, `anchor`, `sui`, `all`
 
 ### 3. `get-translation-guide`
+
 **What it does:** Provides translation patterns between languages
 **Use case:** Model needs to understand core differences and patterns
 
@@ -73,10 +77,12 @@ get-translation-guide({ from: 'solidity', to: 'solana' })
 ```
 
 **Supported translations:**
+
 - `solidity → solana`
 - `solidity → sui`
 
 ### 4. `check-feature-compatibility`
+
 **What it does:** Quick lookup for specific Solidity features
 **Use case:** Model needs to know how to translate a specific feature
 
@@ -136,9 +142,11 @@ Add to your `claude_desktop_config.json`:
   "mcpServers": {
     "blockchain-guide": {
       "command": "node",
-      "args": ["/absolute/path/to/dyad/mcp-servers/blockchain-guide/dist/index.js"],
+      "args": [
+        "/absolute/path/to/dyad/mcp-servers/blockchain-guide/dist/index.js"
+      ],
       "env": {
-        "GITHUB_TOKEN": "your_token_here"  // Optional, for higher rate limits
+        "GITHUB_TOKEN": "your_token_here" // Optional, for higher rate limits
       }
     }
   }
@@ -174,6 +182,7 @@ npm test             # Same as test
 ```
 
 Expected output:
+
 ```
 🧪 Testing Simplified MCP Server v2.0
 
@@ -226,6 +235,7 @@ blockchain-guide/
 ## Changelog
 
 ### v2.0.0 (December 9, 2025)
+
 - ✅ Simplified to 4 essential tools (from 9)
 - ✅ Universal design for all blockchains
 - ✅ Removed complex URL mapping and HTML parsing
@@ -236,6 +246,7 @@ blockchain-guide/
 - ✅ Serves full 645KB Solana llms.txt
 
 ### v1.0.0 (Previous)
+
 - Had 9 tools (over-engineered)
 - Complex URL mapping logic
 - HTML parsing functionality

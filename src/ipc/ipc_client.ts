@@ -6,11 +6,11 @@ import {
   type ContextPathResults,
   ChatSearchResultsSchema,
   AppSearchResultsSchema,
-
   AppChatContext,
   AppSearchResult,
   ChatSearchResult,
-  ProposalResult} from "../lib/schemas";
+  ProposalResult,
+} from "../lib/schemas";
 import type {
   AppOutput,
   Chat,
@@ -928,7 +928,7 @@ export class IpcClient {
   public async callMcpTool(
     serverName: string,
     toolName: string,
-    args: Record<string, unknown>
+    args: Record<string, unknown>,
   ) {
     return this.ipcRenderer.invoke("mcp:call-tool", {
       serverName,
@@ -1642,7 +1642,7 @@ export class IpcClient {
   }> {
     return this.ipcRenderer.invoke("transpile-contract", params);
   }
-  
+
   // Aptos Move Version
   public async aptosVersion(): Promise<{
     aptosMoveVersion: string | null;

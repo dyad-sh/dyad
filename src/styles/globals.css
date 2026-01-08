@@ -161,7 +161,7 @@ body[data-scroll-locked] .app-region-drag {
   --popover-foreground: #ffffff;
 
   /* Primary - vibrant Shinso purple matching teaser */
-  --primary: #6B4FBB;
+  --primary: #6b4fbb;
   --primary-foreground: #ffffff;
 
   /* Secondary with richer purple */
@@ -173,7 +173,7 @@ body[data-scroll-locked] .app-region-drag {
   --muted-foreground: #b0b0d0;
 
   /* Accent - cyan/aqua from teaser */
-  --accent: #51FEF1;
+  --accent: #51fef1;
   --accent-foreground: #000000;
 
   /* Destructive */
@@ -183,24 +183,24 @@ body[data-scroll-locked] .app-region-drag {
   /* Sharp borders with purple/blue glow */
   --border: #2d1f4a;
   --input: #1a1030;
-  --ring: #6B4FBB;
+  --ring: #6b4fbb;
 
   /* Charts with vibrant colors */
-  --chart-1: #8B6FDB;
-  --chart-2: #51FEF1;
-  --chart-3: #A78BFA;
-  --chart-4: #60A5FA;
-  --chart-5: #F472B6;
+  --chart-1: #8b6fdb;
+  --chart-2: #51fef1;
+  --chart-3: #a78bfa;
+  --chart-4: #60a5fa;
+  --chart-5: #f472b6;
 
   /* Sidebar - dark with sharp contrast */
   --sidebar: #0a0515;
   --sidebar-foreground: #ffffff;
-  --sidebar-primary: #6B4FBB;
+  --sidebar-primary: #6b4fbb;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #1a1030;
   --sidebar-accent-foreground: #e0e0ff;
   --sidebar-border: #2d1f4a;
-  --sidebar-ring: #6B4FBB;
+  --sidebar-ring: #6b4fbb;
 }
 
 @theme inline {
@@ -397,7 +397,7 @@ body[data-scroll-locked] .app-region-drag {
 }
 
 .sharp-input:focus {
-  border-color: #6B4FBB;
+  border-color: #6b4fbb;
   box-shadow:
     0 0 0 3px rgba(107, 79, 187, 0.15),
     0 0 20px rgba(107, 79, 187, 0.2);
@@ -442,20 +442,20 @@ body[data-scroll-locked] .app-region-drag {
 .menu-item-sharp:hover,
 .menu-item-sharp.active {
   background: rgba(107, 79, 187, 0.1);
-  border-left-color: #6B4FBB;
+  border-left-color: #6b4fbb;
   box-shadow: inset 0 0 12px rgba(107, 79, 187, 0.05);
 }
 
 /* Scrollbar enhancement for dark mode */
 .dark ::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #6B4FBB 0%, #2d1f4a 100%);
+  background: linear-gradient(180deg, #6b4fbb 0%, #2d1f4a 100%);
   border-radius: 6px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
 .dark ::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, #8B6FDB 0%, #6B4FBB 100%);
+  background: linear-gradient(180deg, #8b6fdb 0%, #6b4fbb 100%);
 }
 
 .dark ::-webkit-scrollbar-track {

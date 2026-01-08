@@ -186,7 +186,11 @@ let pendingForceCloseData: any = null;
  * Safely send a message to the main window, checking if it exists and is not destroyed
  */
 function safelySendToMainWindow(channel: string, ...args: any[]) {
-  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+  if (
+    mainWindow &&
+    !mainWindow.isDestroyed() &&
+    !mainWindow.webContents.isDestroyed()
+  ) {
     mainWindow.webContents.send(channel, ...args);
   }
 }

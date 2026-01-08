@@ -173,7 +173,10 @@ export function registerMcpHandlers() {
       },
     ) => {
       // Find server by name
-      const servers = await db.select().from(mcpServers).where(eq(mcpServers.name, params.serverName));
+      const servers = await db
+        .select()
+        .from(mcpServers)
+        .where(eq(mcpServers.name, params.serverName));
       if (servers.length === 0) {
         throw new Error(`MCP server not found: ${params.serverName}`);
       }

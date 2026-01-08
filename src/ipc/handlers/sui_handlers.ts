@@ -1094,7 +1094,7 @@ export function registerSuiHandlers() {
 
               if (fs.existsSync(sourcesDir)) {
                 const files = fs.readdirSync(sourcesDir);
-                const moveFiles = files.filter(f => f.endsWith(".move"));
+                const moveFiles = files.filter((f) => f.endsWith(".move"));
                 allFiles.push(...moveFiles);
               }
 
@@ -1103,7 +1103,9 @@ export function registerSuiHandlers() {
                 allFiles.push("Move.toml");
               }
 
-              logger.info(`Transpilation successful: ${allFiles.length} files created`);
+              logger.info(
+                `Transpilation successful: ${allFiles.length} files created`,
+              );
 
               resolve({
                 success: true,
@@ -1123,7 +1125,10 @@ export function registerSuiHandlers() {
 
               resolve({
                 success: false,
-                error: stderr || stdout || `Transpiler failed with exit code ${code}`,
+                error:
+                  stderr ||
+                  stdout ||
+                  `Transpiler failed with exit code ${code}`,
                 stderr: stderr || undefined,
               });
             }

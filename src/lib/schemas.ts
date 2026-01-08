@@ -266,7 +266,9 @@ export const TranslationPreferencesSchema = z.object({
   lastUsedSourceLanguage: BlockchainLanguageIdSchema.optional(),
   lastUsedTargetLanguage: BlockchainLanguageIdSchema.optional(),
 });
-export type TranslationPreferences = z.infer<typeof TranslationPreferencesSchema>;
+export type TranslationPreferences = z.infer<
+  typeof TranslationPreferencesSchema
+>;
 
 export const UserSettingsSchema = z.object({
   selectedModel: LargeLanguageModelSchema,

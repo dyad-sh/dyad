@@ -45,9 +45,13 @@ import {
   documentPhase,
   buildEnrichedPrompt,
   getContextSummary,
-  generateAIRulesContent
+  generateAIRulesContent,
 } from "@/lib/translation_pipeline";
-import { TranslationPipeline, type PipelinePhase, type PhaseStatus } from "@/components/TranslationPipeline";
+import {
+  TranslationPipeline,
+  type PipelinePhase,
+  type PhaseStatus,
+} from "@/components/TranslationPipeline";
 
 // Adding an export for attachments
 export interface HomeSubmitOptions {
@@ -95,16 +99,17 @@ export default function HomePage() {
 
   // Pipeline state
   const [showPipeline, setShowPipeline] = useState(false);
-  const [currentPhase, setCurrentPhase] = useState<PipelinePhase>('document');
-  const [documentStatus, setDocumentStatus] = useState<PhaseStatus>('pending');
-  const [planStatus, setPlanStatus] = useState<PhaseStatus>('pending');
-  const [actStatus, setActStatus] = useState<PhaseStatus>('pending');
-  const [documentDetails, setDocumentDetails] = useState<string>('');
-  const [planDetails, setPlanDetails] = useState<string>('');
-  const [actDetails, setActDetails] = useState<string>('');
+  const [currentPhase, setCurrentPhase] = useState<PipelinePhase>("document");
+  const [documentStatus, setDocumentStatus] = useState<PhaseStatus>("pending");
+  const [planStatus, setPlanStatus] = useState<PhaseStatus>("pending");
+  const [actStatus, setActStatus] = useState<PhaseStatus>("pending");
+  const [documentDetails, setDocumentDetails] = useState<string>("");
+  const [planDetails, setPlanDetails] = useState<string>("");
+  const [actDetails, setActDetails] = useState<string>("");
 
   // Approval workflow state
-  const [awaitingApproval, setAwaitingApproval] = useState<PipelinePhase | null>(null);
+  const [awaitingApproval, setAwaitingApproval] =
+    useState<PipelinePhase | null>(null);
   const [translationContext, setTranslationContext] = useState<any>(null);
   const [translationParams, setTranslationParams] = useState<{
     sourceLanguage: string;
@@ -121,13 +126,13 @@ export default function HomePage() {
   // Reset pipeline state
   const resetPipeline = () => {
     setShowPipeline(false);
-    setCurrentPhase('document');
-    setDocumentStatus('pending');
-    setPlanStatus('pending');
-    setActStatus('pending');
-    setDocumentDetails('');
-    setPlanDetails('');
-    setActDetails('');
+    setCurrentPhase("document");
+    setDocumentStatus("pending");
+    setPlanStatus("pending");
+    setActStatus("pending");
+    setDocumentDetails("");
+    setPlanDetails("");
+    setActDetails("");
     setAwaitingApproval(null);
     setTranslationContext(null);
     setTranslationParams(null);
@@ -136,7 +141,7 @@ export default function HomePage() {
   // Approve Phase 1 and continue to Phase 2
   const approvePhase1 = async () => {
     if (!translationContext || !translationParams) {
-      console.error('Missing translation context or params');
+      console.error("Missing translation context or params");
       return;
     }
 
@@ -147,7 +152,7 @@ export default function HomePage() {
   // Approve Phase 2 and continue to Phase 3
   const approvePhase2 = async () => {
     if (!translationContext || !translationParams) {
-      console.error('Missing translation context or params');
+      console.error("Missing translation context or params");
       return;
     }
 
@@ -159,9 +164,9 @@ export default function HomePage() {
   const executePhase2 = async () => {
     if (!translationParams) return;
 
-    setCurrentPhase('plan');
-    setPlanStatus('in_progress');
-    setPlanDetails('Analyzing contract structure...');
+    setCurrentPhase("plan");
+    setPlanStatus("in_progress");
+    setPlanDetails("Analyzing contract structure...");
 
     const { code, targetLanguage } = translationParams;
 
@@ -169,62 +174,72 @@ export default function HomePage() {
     const analysis = analyzeContract(code, targetLanguage);
 
     setPlanDetails(analysis);
-    setPlanStatus('completed');
+    setPlanStatus("completed");
 
     // Wait for approval before Phase 3
-    setAwaitingApproval('plan');
+    setAwaitingApproval("plan");
   };
 
   // Helper function to analyze Solidity contract
   const analyzeContract = (code: string, targetLanguage: string): string => {
-
     // Extract contract name
     const contractMatch = code.match(/contract\s+(\w+)/);
-    const contractName = contractMatch ? contractMatch[1] : 'Unknown';
+    const contractName = contractMatch ? contractMatch[1] : "Unknown";
 
     // Count functions
     const functionMatches = code.match(/function\s+\w+/g) || [];
-    const functions = functionMatches.map(f => f.replace('function ', ''));
+    const functions = functionMatches.map((f) => f.replace("function ", ""));
 
     // Extract state variables
     const stateVars: string[] = [];
-    const stateVarRegex = /^\s*(uint\d*|int\d*|address|bool|string|bytes\d*|mapping\([^)]+\))\s+(public|private|internal)?\s*(\w+)/gm;
+    const stateVarRegex =
+      /^\s*(uint\d*|int\d*|address|bool|string|bytes\d*|mapping\([^)]+\))\s+(public|private|internal)?\s*(\w+)/gm;
     let match;
     while ((match = stateVarRegex.exec(code)) !== null) {
       stateVars.push(`${match[1]} ${match[3]}`);
     }
 
     // Detect events
-    const events = (code.match(/event\s+\w+/g) || []).map(e => e.replace('event ', ''));
+    const events = (code.match(/event\s+\w+/g) || []).map((e) =>
+      e.replace("event ", ""),
+    );
 
     // Detect modifiers
-    const modifiers = (code.match(/modifier\s+\w+/g) || []).map(m => m.replace('modifier ', ''));
+    const modifiers = (code.match(/modifier\s+\w+/g) || []).map((m) =>
+      m.replace("modifier ", ""),
+    );
 
     // Detect inheritance
-    const inheritance = (code.match(/is\s+([^{]+)/)?.[1] || '').split(',').map(s => s.trim()).filter(Boolean);
+    const inheritance = (code.match(/is\s+([^{]+)/)?.[1] || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
 
     // Detect patterns that need special attention
     const warnings: string[] = [];
-    if (code.includes('payable')) warnings.push('Payable functions detected');
-    if (code.includes('mapping')) warnings.push('Mapping requires redesign');
-    if (modifiers.length > 0) warnings.push('Modifiers need conversion');
-    if (inheritance.length > 0) warnings.push('Inheritance needs restructuring');
-    if (events.length > 0) warnings.push('Events need emit equivalents');
+    if (code.includes("payable")) warnings.push("Payable functions detected");
+    if (code.includes("mapping")) warnings.push("Mapping requires redesign");
+    if (modifiers.length > 0) warnings.push("Modifiers need conversion");
+    if (inheritance.length > 0)
+      warnings.push("Inheritance needs restructuring");
+    if (events.length > 0) warnings.push("Events need emit equivalents");
 
     // Build detailed summary
-    const ecosystemName = targetLanguage === 'sui_move' ? 'Sui Move' : 'Solana (Anchor)';
+    const ecosystemName =
+      targetLanguage === "sui_move" ? "Sui Move" : "Solana (Anchor)";
 
     let summary = `Contract Analysis: ${contractName}\n\n`;
     summary += `📊 Structure Overview:\n`;
-    summary += `- Functions: ${functions.length} (${functions.slice(0, 3).join(', ')}${functions.length > 3 ? '...' : ''})\n`;
-    summary += `- State variables: ${stateVars.length} (${stateVars.slice(0, 2).join(', ')}${stateVars.length > 2 ? '...' : ''})\n`;
-    summary += `- Events: ${events.length}${events.length > 0 ? ` (${events.join(', ')})` : ''}\n`;
-    summary += `- Modifiers: ${modifiers.length}${modifiers.length > 0 ? ` (${modifiers.join(', ')})` : ''}\n`;
-    if (inheritance.length > 0) summary += `- Inherits: ${inheritance.join(', ')}\n`;
+    summary += `- Functions: ${functions.length} (${functions.slice(0, 3).join(", ")}${functions.length > 3 ? "..." : ""})\n`;
+    summary += `- State variables: ${stateVars.length} (${stateVars.slice(0, 2).join(", ")}${stateVars.length > 2 ? "..." : ""})\n`;
+    summary += `- Events: ${events.length}${events.length > 0 ? ` (${events.join(", ")})` : ""}\n`;
+    summary += `- Modifiers: ${modifiers.length}${modifiers.length > 0 ? ` (${modifiers.join(", ")})` : ""}\n`;
+    if (inheritance.length > 0)
+      summary += `- Inherits: ${inheritance.join(", ")}\n`;
 
     summary += `\n⚠️ Translation Considerations for ${ecosystemName}:\n`;
     if (warnings.length > 0) {
-      warnings.forEach(w => summary += `- ${w}\n`);
+      warnings.forEach((w) => (summary += `- ${w}\n`));
     } else {
       summary += `- No critical warnings detected\n`;
     }
@@ -248,50 +263,73 @@ export default function HomePage() {
       solanaAppId,
       suiAppId,
       transpilerUsed,
-      writtenFiles
+      writtenFiles,
     } = translationParams;
 
-    setCurrentPhase('act');
-    setActStatus('in_progress');
-    setActDetails('Building enriched prompt with context...');
+    setCurrentPhase("act");
+    setActStatus("in_progress");
+    setActDetails("Building enriched prompt with context...");
 
     // Get the dynamic translation prompt for this language pair and enrich with MCP context
-    const basePrompt = generateTranslationPrompt(sourceLanguage, targetLanguage);
+    const basePrompt = generateTranslationPrompt(
+      sourceLanguage,
+      targetLanguage,
+    );
     const enrichedPrompt = buildEnrichedPrompt(basePrompt, context, {
       includeFullDocs: false,
       docsPreviewSize: 50000,
     });
 
     // For Solana, add specific file path instruction
-    const solanaPathInstruction = targetLanguage === "solana_rust"
-      ? `\n\n**IMPORTANT**: The Anchor project has been initialized at \`src/${finalName}/\`.\n\nWrite the translated contract to:\n\`\`\`\nsrc/${finalName}/programs/${finalName}/src/lib.rs\n\`\`\`\n\nUse this exact path in your <dyad-write> tag.`
-      : "";
+    const solanaPathInstruction =
+      targetLanguage === "solana_rust"
+        ? `\n\n**IMPORTANT**: The Anchor project has been initialized at \`src/${finalName}/\`.\n\nWrite the translated contract to:\n\`\`\`\nsrc/${finalName}/programs/${finalName}/src/lib.rs\n\`\`\`\n\nUse this exact path in your <dyad-write> tag.`
+        : "";
 
     // Create the complete translation prompt
     let translationPrompt: string;
 
     if (transpilerUsed && suiAppId && writtenFiles && writtenFiles.length > 0) {
-      const helperFiles = writtenFiles.filter(f => f.match(/^(i8|i16|i32|i64|i128|i256|map)\.move$/));
-      const contractFiles = writtenFiles.filter(f => !f.match(/^(i8|i16|i32|i64|i128|i256|map)\.move$/));
+      const helperFiles = writtenFiles.filter((f) =>
+        f.match(/^(i8|i16|i32|i64|i128|i256|map)\.move$/),
+      );
+      const contractFiles = writtenFiles.filter(
+        (f) => !f.match(/^(i8|i16|i32|i64|i128|i256|map)\.move$/),
+      );
 
       const fileList = [
-        ...(helperFiles.length > 0 ? [`- Helper modules: ${helperFiles.map(f => `\`${f}\``).join(', ')}`] : []),
-        ...(contractFiles.length > 0 ? [`- Main contract(s): ${contractFiles.map(f => `\`${f}\``).join(', ')}`] : []),
-      ].join('\n');
+        ...(helperFiles.length > 0
+          ? [
+              `- Helper modules: ${helperFiles.map((f) => `\`${f}\``).join(", ")}`,
+            ]
+          : []),
+        ...(contractFiles.length > 0
+          ? [
+              `- Main contract(s): ${contractFiles.map((f) => `\`${f}\``).join(", ")}`,
+            ]
+          : []),
+      ].join("\n");
 
       translationPrompt = `${enrichedPrompt}\n\n---\n\n## ✅ Automatic Transpilation Completed\n\n**Project Name:** ${finalName}\n\nThe Solidity contract has been **automatically transpiled** to Sui Move using shinso-transpiler and **all ${writtenFiles.length} files have been written to the codebase** in \`src/${finalName}/sources/\`.\n\n**Files created:**\n${fileList}\n\n**Your Task:**\n1. **Review the transpiled code**\n2. **Verify correctness**\n3. **Add tests**\n4. **Optimize**\n5. **Document**\n6. **Enhance**\n\n**Original Solidity Contract (for reference):**\n\`\`\`solidity\n${code}\n\`\`\`\n\nThe transpiled code is already in the codebase. Focus on review, testing, and enhancement rather than rewriting.`;
     } else {
-      const contractSource = code.trim() || (attachments.length > 0 ? `**See attached ${BLOCKCHAIN_LANGUAGES[sourceLanguage]?.fileExtension || 'source'} files for the contract code.**` : '');
+      const contractSource =
+        code.trim() ||
+        (attachments.length > 0
+          ? `**See attached ${BLOCKCHAIN_LANGUAGES[sourceLanguage]?.fileExtension || "source"} files for the contract code.**`
+          : "");
 
-      translationPrompt = `${enrichedPrompt}\n\n---\n\n## 📋 Translation Context Prepared\n\n**✅ AI_RULES.md Created**: An enriched AI_RULES.md file has been generated with ${(context.ecosystem.size / 1024).toFixed(0)}KB of current ${BLOCKCHAIN_LANGUAGES[targetLanguage]?.displayName || targetLanguage} documentation, version ${context.version.current} guidelines, and feature compatibility patterns. This file will guide your translation with up-to-date context.\n\n---\n\n## Contract to Translate:\n\n**Project Name:** ${finalName}${solanaPathInstruction}\n\n${contractSource}\n\n---\n\nPlease translate this ${BLOCKCHAIN_LANGUAGES[sourceLanguage]?.displayName || sourceLanguage} contract to ${BLOCKCHAIN_LANGUAGES[targetLanguage]?.displayName || targetLanguage} following the guidelines above and in the AI_RULES.md file. Provide a complete, working implementation with inline comments explaining key translation decisions.${attachments.length > 0 ? '\n\n**Note:** The source contract code is provided in the attached files. Please read and translate the attached contract files.' : ''}`;
+      translationPrompt = `${enrichedPrompt}\n\n---\n\n## 📋 Translation Context Prepared\n\n**✅ AI_RULES.md Created**: An enriched AI_RULES.md file has been generated with ${(context.ecosystem.size / 1024).toFixed(0)}KB of current ${BLOCKCHAIN_LANGUAGES[targetLanguage]?.displayName || targetLanguage} documentation, version ${context.version.current} guidelines, and feature compatibility patterns. This file will guide your translation with up-to-date context.\n\n---\n\n## Contract to Translate:\n\n**Project Name:** ${finalName}${solanaPathInstruction}\n\n${contractSource}\n\n---\n\nPlease translate this ${BLOCKCHAIN_LANGUAGES[sourceLanguage]?.displayName || sourceLanguage} contract to ${BLOCKCHAIN_LANGUAGES[targetLanguage]?.displayName || targetLanguage} following the guidelines above and in the AI_RULES.md file. Provide a complete, working implementation with inline comments explaining key translation decisions.${attachments.length > 0 ? "\n\n**Note:** The source contract code is provided in the attached files. Please read and translate the attached contract files." : ""}`;
     }
 
-    const appPath = targetLanguage === "solana_rust" ? `src/${finalName}` : finalName;
+    const appPath =
+      targetLanguage === "solana_rust" ? `src/${finalName}` : finalName;
 
-    setActDetails(`Prompt enriched with ${(context.ecosystem.size / 1024).toFixed(0)}KB context. Submitting to LLM for code generation...`);
-    setActStatus('completed');
+    setActDetails(
+      `Prompt enriched with ${(context.ecosystem.size / 1024).toFixed(0)}KB context. Submitting to LLM for code generation...`,
+    );
+    setActStatus("completed");
 
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
     // Submit to chat
     await handleSubmit({
@@ -381,19 +419,27 @@ export default function HomePage() {
     if (sourceLanguage === "solidity" || sourceLanguage === "vyper") {
       // Solidity/Vyper: contract ContractName
       extractedName = code.match(/contract\s+(\w+)/)?.[1]?.toLowerCase();
-    } else if (sourceLanguage === "sui_move" || sourceLanguage === "aptos_move") {
+    } else if (
+      sourceLanguage === "sui_move" ||
+      sourceLanguage === "aptos_move"
+    ) {
       // Move: module package::module_name
       extractedName = code.match(/module\s+\w+::(\w+)/)?.[1]?.toLowerCase();
     } else if (sourceLanguage === "solana_rust") {
       // Rust: Look for program name in lib.rs
-      extractedName = code.match(/declare_id!\("([^"]+)"\)/)?.[1]?.split("::")[0]?.toLowerCase();
+      extractedName = code
+        .match(/declare_id!\("([^"]+)"\)/)?.[1]
+        ?.split("::")[0]
+        ?.toLowerCase();
     }
 
     // Generate final name with target language suffix
     const targetSuffix = targetLanguage.replace(/_/g, "-");
     const finalName =
       projectName.trim() ||
-      (extractedName ? `${extractedName}-${targetSuffix}` : `translated-${targetSuffix}`);
+      (extractedName
+        ? `${extractedName}-${targetSuffix}`
+        : `translated-${targetSuffix}`);
 
     console.log("handleTranslate - sourceLanguage:", sourceLanguage);
     console.log("handleTranslate - targetLanguage:", targetLanguage);
@@ -413,23 +459,39 @@ export default function HomePage() {
       codeLength: code.length,
     });
 
-    if (sourceLanguage === "solidity" && targetLanguage === "sui_move" && code.trim()) {
+    if (
+      sourceLanguage === "solidity" &&
+      targetLanguage === "sui_move" &&
+      code.trim()
+    ) {
       console.log("✅ Conditions met for transpiler check");
 
       // Detect ERC20 or ERC721 patterns in the code
-      const hasERC20 = /ERC20|IERC20|function\s+transfer\s*\(|function\s+balanceOf\s*\(/i.test(code);
-      const hasERC721 = /ERC721|IERC721|function\s+ownerOf\s*\(|function\s+tokenURI\s*\(/i.test(code);
+      const hasERC20 =
+        /ERC20|IERC20|function\s+transfer\s*\(|function\s+balanceOf\s*\(/i.test(
+          code,
+        );
+      const hasERC721 =
+        /ERC721|IERC721|function\s+ownerOf\s*\(|function\s+tokenURI\s*\(/i.test(
+          code,
+        );
 
       console.log("🔍 Token detection:", {
         hasERC20,
         hasERC721,
-        erc20Matches: code.match(/ERC20|IERC20|function\s+transfer\s*\(|function\s+balanceOf\s*\(/gi),
-        erc721Matches: code.match(/ERC721|IERC721|function\s+ownerOf\s*\(|function\s+tokenURI\s*\(/gi),
+        erc20Matches: code.match(
+          /ERC20|IERC20|function\s+transfer\s*\(|function\s+balanceOf\s*\(/gi,
+        ),
+        erc721Matches: code.match(
+          /ERC721|IERC721|function\s+ownerOf\s*\(|function\s+tokenURI\s*\(/gi,
+        ),
       });
 
       if (hasERC20 || hasERC721) {
         const tokenType = hasERC721 ? "erc721" : "erc20";
-        console.log(`✨ Detected ${tokenType.toUpperCase()} contract, using shinso-transpiler...`);
+        console.log(
+          `✨ Detected ${tokenType.toUpperCase()} contract, using shinso-transpiler...`,
+        );
 
         try {
           setIsLoading(true);
@@ -441,11 +503,15 @@ export default function HomePage() {
             isContractProject: true,
           });
           suiAppId = createResult.app.id;
-          console.log(`✅ Created app with ID: ${suiAppId}, path: ${createResult.app.path}`);
+          console.log(
+            `✅ Created app with ID: ${suiAppId}, path: ${createResult.app.path}`,
+          );
 
           // Run transpiler directly to the app directory
           // Backend will resolve the relative path to absolute
-          console.log("📡 Calling transpiler with direct output to app directory");
+          console.log(
+            "📡 Calling transpiler with direct output to app directory",
+          );
           console.log("  Token type:", tokenType);
           console.log("  Output path:", createResult.app.path);
 
@@ -467,37 +533,55 @@ export default function HomePage() {
             transpilerUsed = true;
             writtenFiles = result.files;
             console.log("✅ Shinso transpiler succeeded!");
-            console.log(`\n✅ Successfully transpiled ${writtenFiles.length} file(s):`);
-            console.table(writtenFiles.map((f, i) => ({
-              '#': i + 1,
-              'File': f,
-              'Location': f === 'Move.toml' ? `src/${finalName}` : `src/${finalName}/sources`
-            })));
+            console.log(
+              `\n✅ Successfully transpiled ${writtenFiles.length} file(s):`,
+            );
+            console.table(
+              writtenFiles.map((f, i) => ({
+                "#": i + 1,
+                File: f,
+                Location:
+                  f === "Move.toml"
+                    ? `src/${finalName}`
+                    : `src/${finalName}/sources`,
+              })),
+            );
 
             if (result.stdout) console.log("Transpiler stdout:", result.stdout);
           } else {
             console.warn("❌ Shinso transpiler failed:", result.error);
-            if (result.stderr) console.warn("Transpiler stderr:", result.stderr);
+            if (result.stderr)
+              console.warn("Transpiler stderr:", result.stderr);
 
             // Check for common unsupported features
             const errorStr = result.error || "";
             if (errorStr.includes("InlineAssembly")) {
-              console.info("ℹ️ Transpiler doesn't support inline assembly yet. Falling back to LLM translation.");
+              console.info(
+                "ℹ️ Transpiler doesn't support inline assembly yet. Falling back to LLM translation.",
+              );
             } else if (errorStr.includes("unknown variant")) {
-              console.info("ℹ️ Transpiler doesn't support this Solidity feature yet. Falling back to LLM translation.");
+              console.info(
+                "ℹ️ Transpiler doesn't support this Solidity feature yet. Falling back to LLM translation.",
+              );
             }
           }
         } catch (error) {
-          console.warn("⚠️ Shinso transpiler error, falling back to LLM:", error);
+          console.warn(
+            "⚠️ Shinso transpiler error, falling back to LLM:",
+            error,
+          );
         } finally {
           setIsLoading(false);
         }
       } else {
-        console.log("⚠️ No ERC20/ERC721 patterns detected, skipping transpiler");
+        console.log(
+          "⚠️ No ERC20/ERC721 patterns detected, skipping transpiler",
+        );
       }
     } else {
       console.log("⚠️ Transpiler conditions not met:", {
-        isRightLanguagePair: sourceLanguage === "solidity" && targetLanguage === "sui_move",
+        isRightLanguagePair:
+          sourceLanguage === "solidity" && targetLanguage === "sui_move",
         hasCode: !!code.trim(),
       });
     }
@@ -506,7 +590,10 @@ export default function HomePage() {
     if (targetLanguage === "sui_move" && !suiAppId) {
       try {
         setIsLoading(true);
-        console.log("📦 Creating Sui Move app for non-token contract:", finalName);
+        console.log(
+          "📦 Creating Sui Move app for non-token contract:",
+          finalName,
+        );
 
         const createResult = await IpcClient.getInstance().createApp({
           name: finalName,
@@ -541,7 +628,10 @@ export default function HomePage() {
           return;
         }
 
-        console.log("Anchor project scaffolded successfully with app ID:", result.appId);
+        console.log(
+          "Anchor project scaffolded successfully with app ID:",
+          result.appId,
+        );
         solanaAppId = result.appId;
       } catch (error) {
         console.error("Error scaffolding Anchor project:", error);
@@ -556,9 +646,9 @@ export default function HomePage() {
     console.log("📚 Starting document phase for", targetLanguage);
     setIsLoading(true); // Ensure loading state is active for pipeline UI
     setShowPipeline(true);
-    setCurrentPhase('document');
-    setDocumentStatus('in_progress');
-    setDocumentDetails('Initializing...');
+    setCurrentPhase("document");
+    setDocumentStatus("in_progress");
+    setDocumentDetails("Initializing...");
 
     const context = await documentPhase(targetLanguage, (msg) => {
       console.log("📚 Document phase:", msg);
@@ -566,8 +656,12 @@ export default function HomePage() {
     });
 
     // Generate enriched AI_RULES.md
-    setDocumentDetails('Generating AI_RULES.md with blockchain context...');
-    const aiRulesContent = generateAIRulesContent(context, targetLanguage, sourceLanguage);
+    setDocumentDetails("Generating AI_RULES.md with blockchain context...");
+    const aiRulesContent = generateAIRulesContent(
+      context,
+      targetLanguage,
+      sourceLanguage,
+    );
 
     // Write AI_RULES.md to the app directory
     const appId = solanaAppId || suiAppId;
@@ -575,19 +669,21 @@ export default function HomePage() {
       try {
         await IpcClient.getInstance().editAppFile(
           appId,
-          'AI_RULES.md',
-          aiRulesContent
+          "AI_RULES.md",
+          aiRulesContent,
         );
-        console.log('✅ AI_RULES.md written successfully');
+        console.log("✅ AI_RULES.md written successfully");
       } catch (error) {
-        console.error('Failed to write AI_RULES.md:', error);
+        console.error("Failed to write AI_RULES.md:", error);
       }
     }
 
     const summary = getContextSummary(context);
     console.log(summary);
-    setDocumentDetails(`${summary}\n\n✅ AI_RULES.md generated (${(aiRulesContent.length / 1024).toFixed(1)}KB)`);
-    setDocumentStatus('completed');
+    setDocumentDetails(
+      `${summary}\n\n✅ AI_RULES.md generated (${(aiRulesContent.length / 1024).toFixed(1)}KB)`,
+    );
+    setDocumentStatus("completed");
 
     // Save translation context and parameters for later phases
     setTranslationContext({ context });
@@ -600,12 +696,12 @@ export default function HomePage() {
       solanaAppId,
       suiAppId,
       transpilerUsed,
-      writtenFiles
+      writtenFiles,
     });
 
     // Wait for user approval before proceeding to Phase 2
-    console.log('⏸️ Pausing for Phase 1 approval...');
-    setAwaitingApproval('document');
+    console.log("⏸️ Pausing for Phase 1 approval...");
+    setAwaitingApproval("document");
   };
 
   const handleSubmit = async (options?: HomeSubmitOptions) => {

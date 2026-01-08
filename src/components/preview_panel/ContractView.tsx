@@ -56,7 +56,9 @@ function detectBlockchainType(files: string[] | undefined): BlockchainType {
   if (!files) return "unknown";
 
   const hasAnchorToml = files.some((f) => f.includes("Anchor.toml"));
-  const hasCargoToml = files.some((f) => f.includes("Cargo.toml") && f.includes("programs/"));
+  const hasCargoToml = files.some(
+    (f) => f.includes("Cargo.toml") && f.includes("programs/"),
+  );
   const hasMoveToml = files.some((f) => f.includes("Move.toml"));
   const hasMoveFiles = files.some((f) => f.endsWith(".move"));
 
@@ -126,7 +128,9 @@ export const ContractView = ({ loading, app }: ContractViewProps) => {
     if (blockchainType === "sui") {
       contractFiles = app.files.filter((f) => f.endsWith(".move"));
     } else if (blockchainType === "solana") {
-      contractFiles = app.files.filter((f) => f.endsWith(".rs") && f.includes("/src/"));
+      contractFiles = app.files.filter(
+        (f) => f.endsWith(".rs") && f.includes("/src/"),
+      );
     }
 
     // If there are contract files and no file is currently selected, select the first one
@@ -177,8 +181,18 @@ export const ContractView = ({ loading, app }: ContractViewProps) => {
   const handleFixErrors = () => {
     if (!selectedChatId || !rawCompileError) return;
 
-    const chainName = blockchainType === "sui" ? "Sui Move" : blockchainType === "solana" ? "Solana/Anchor" : "smart contract";
-    const configFile = blockchainType === "sui" ? "Move.toml" : blockchainType === "solana" ? "Cargo.toml/Anchor.toml" : "config";
+    const chainName =
+      blockchainType === "sui"
+        ? "Sui Move"
+        : blockchainType === "solana"
+          ? "Solana/Anchor"
+          : "smart contract";
+    const configFile =
+      blockchainType === "sui"
+        ? "Move.toml"
+        : blockchainType === "solana"
+          ? "Cargo.toml/Anchor.toml"
+          : "config";
 
     const fixPrompt = `The ${chainName} smart contract failed to compile with the following errors:
 
@@ -241,7 +255,11 @@ Make only the code changes and give no further tips and actions, only a brief su
       } else if (blockchainType === "solana") {
         result = await IpcClient.getInstance().solanaDeploy({
           appPath: app.path,
-          network: network as "localnet" | "devnet" | "testnet" | "mainnet-beta",
+          network: network as
+            | "localnet"
+            | "devnet"
+            | "testnet"
+            | "mainnet-beta",
         });
       } else {
         throw new Error("Unknown blockchain type");
@@ -346,7 +364,7 @@ Make only the code changes and give no further tips and actions, only a brief su
             (f) =>
               f.endsWith(".rs") &&
               (f.includes("/programs/") || f.includes("/src/")) &&
-              f.endsWith("lib.rs")
+              f.endsWith("lib.rs"),
           ) || []
         : [];
 

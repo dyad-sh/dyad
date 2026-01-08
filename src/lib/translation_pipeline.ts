@@ -28,7 +28,7 @@ export interface DocumentPhaseResult {
  */
 function extractVersion(text: string): string {
   const versionMatch = text.match(/v?(\d+\.\d+\.\d+)/);
-  return versionMatch ? versionMatch[1] : 'unknown';
+  return versionMatch ? versionMatch[1] : "unknown";
 }
 
 /**
@@ -42,10 +42,10 @@ function extractUrls(text: string): string[] {
 /**
  * Map target language to ecosystem name for MCP calls
  */
-function getEcosystemName(targetLanguage: string): 'solana' | 'sui' | 'anchor' {
-  if (targetLanguage === 'solana_rust') return 'anchor'; // Anchor for Solana programs
-  if (targetLanguage === 'sui_move') return 'sui';
-  return 'solana'; // fallback
+function getEcosystemName(targetLanguage: string): "solana" | "sui" | "anchor" {
+  if (targetLanguage === "solana_rust") return "anchor"; // Anchor for Solana programs
+  if (targetLanguage === "sui_move") return "sui";
+  return "solana"; // fallback
 }
 
 /**
@@ -59,42 +59,37 @@ function getEcosystemName(targetLanguage: string): 'solana' | 'sui' | 'anchor' {
  */
 export async function documentPhase(
   targetLanguage: string,
-  onProgress?: (message: string) => void
+  onProgress?: (message: string) => void,
 ): Promise<DocumentPhaseResult> {
   const ipc = IpcClient.getInstance();
   const ecosystem = getEcosystemName(targetLanguage);
 
   // For documentation, use 'solana' instead of 'anchor' to get the full llms.txt
-  const docsEcosystem = ecosystem === 'anchor' ? 'solana' : ecosystem;
+  const docsEcosystem = ecosystem === "anchor" ? "solana" : ecosystem;
 
-  onProgress?.('Fetching ecosystem documentation...');
+  onProgress?.("Fetching ecosystem documentation...");
 
   try {
     // Parallel fetch for speed
     const [docsResult, releasesResult, guideResult] = await Promise.all([
       // 1. Get ecosystem documentation (full llms.txt) - use 'solana' for Anchor
-      ipc.callMcpTool(
-        'blockchain-guide',
-        'fetch-ecosystem-docs',
-        { ecosystem: docsEcosystem }
-      ),
+      ipc.callMcpTool("blockchain-guide", "fetch-ecosystem-docs", {
+        ecosystem: docsEcosystem,
+      }),
 
       // 2. Get latest releases with notes - use 'anchor' for Anchor-specific version
-      ipc.callMcpTool(
-        'blockchain-guide',
-        'fetch-latest-releases',
-        { ecosystem }
-      ),
+      ipc.callMcpTool("blockchain-guide", "fetch-latest-releases", {
+        ecosystem,
+      }),
 
       // 3. Get translation guide - use 'solana' for translation
-      ipc.callMcpTool(
-        'blockchain-guide',
-        'get-translation-guide',
-        { from: 'solidity', to: docsEcosystem }
-      ),
+      ipc.callMcpTool("blockchain-guide", "get-translation-guide", {
+        from: "solidity",
+        to: docsEcosystem,
+      }),
     ]);
 
-    onProgress?.('Fetching feature compatibility patterns...');
+    onProgress?.("Fetching feature compatibility patterns...");
 
     // 4. Fetch common feature patterns - use docsEcosystem for consistency
     const patterns = await fetchFeaturePatterns(docsEcosystem, ipc);
@@ -120,12 +115,13 @@ export async function documentPhase(
       },
     };
 
-    onProgress?.(`Context gathered: ${(result.ecosystem.size / 1024).toFixed(0)}KB docs, version ${result.version.current}`);
+    onProgress?.(
+      `Context gathered: ${(result.ecosystem.size / 1024).toFixed(0)}KB docs, version ${result.version.current}`,
+    );
 
     return result;
-
   } catch (error) {
-    console.error('Document phase failed:', error);
+    console.error("Document phase failed:", error);
     throw new Error(`Failed to gather translation context: ${error}`);
   }
 }
@@ -134,22 +130,29 @@ export async function documentPhase(
  * Fetch compatibility patterns for common Solidity features
  */
 async function fetchFeaturePatterns(
-  target: 'solana' | 'sui' | 'anchor',
-  ipc: IpcClient
+  target: "solana" | "sui" | "anchor",
+  ipc: IpcClient,
 ): Promise<Record<string, string>> {
-  const features = ['mapping', 'modifier', 'event', 'inheritance', 'payable', 'constructor'];
-  const targetEcosystem = target === 'anchor' ? 'solana' : target;
+  const features = [
+    "mapping",
+    "modifier",
+    "event",
+    "inheritance",
+    "payable",
+    "constructor",
+  ];
+  const targetEcosystem = target === "anchor" ? "solana" : target;
 
   const patterns: Record<string, string> = {};
 
   // Fetch all patterns in parallel
   const results = await Promise.all(
-    features.map(feature =>
-      ipc.callMcpTool('blockchain-guide', 'check-feature-compatibility', {
+    features.map((feature) =>
+      ipc.callMcpTool("blockchain-guide", "check-feature-compatibility", {
         feature,
         target: targetEcosystem,
-      })
-    )
+      }),
+    ),
   );
 
   // Map results to patterns object
@@ -168,8 +171,8 @@ export function buildEnrichedPrompt(
   context: DocumentPhaseResult,
   options: {
     includeFullDocs?: boolean; // Whether to include all 645KB (may exceed token limits)
-    docsPreviewSize?: number;  // Size of docs preview if not including full
-  } = {}
+    docsPreviewSize?: number; // Size of docs preview if not including full
+  } = {},
 ): string {
   const {
     includeFullDocs = false,
@@ -193,10 +196,14 @@ You have access to up-to-date blockchain documentation and patterns. USE THIS IN
 
 ${context.version.releaseNotes}
 
-${context.version.docLinks.length > 0 ? `
+${
+  context.version.docLinks.length > 0
+    ? `
 ## 📖 Official Documentation Links
-${context.version.docLinks.map(url => `- ${url}`).join('\n')}
-` : ''}
+${context.version.docLinks.map((url) => `- ${url}`).join("\n")}
+`
+    : ""
+}
 
 ## 📘 Ecosystem Documentation (${(context.ecosystem.size / 1024).toFixed(0)}KB)
 
@@ -210,7 +217,7 @@ ${context.translation.guide}
 
 ${Object.entries(context.translation.patterns)
   .map(([feature, pattern]) => `### ${feature}\n${pattern}`)
-  .join('\n\n')}
+  .join("\n\n")}
 
 ---
 
@@ -234,7 +241,7 @@ export function getContextSummary(context: DocumentPhaseResult): string {
 Document Phase Complete:
 - Ecosystem docs: ${(context.ecosystem.size / 1024).toFixed(0)}KB
 - Current version: ${context.version.current}
-- Translation patterns: ${Object.keys(context.translation.patterns).join(', ')}
+- Translation patterns: ${Object.keys(context.translation.patterns).join(", ")}
 - Documentation links: ${context.version.docLinks.length} found
 `.trim();
 }
@@ -246,16 +253,21 @@ Document Phase Complete:
 export function generateAIRulesContent(
   context: DocumentPhaseResult,
   targetLanguage: string,
-  sourceLanguage = 'solidity'
+  sourceLanguage = "solidity",
 ): string {
   const ecosystem = getEcosystemName(targetLanguage);
-  const ecosystemName = ecosystem === 'anchor' ? 'Solana (Anchor)' : ecosystem === 'sui' ? 'Sui Move' : ecosystem;
+  const ecosystemName =
+    ecosystem === "anchor"
+      ? "Solana (Anchor)"
+      : ecosystem === "sui"
+        ? "Sui Move"
+        : ecosystem;
 
   return `# AI Translation Rules and Context
 
 ## Overview
 This document contains the enriched context and guidelines for translating from ${sourceLanguage.toUpperCase()} to ${ecosystemName}.
-Generated on: ${new Date().toISOString().split('T')[0]}
+Generated on: ${new Date().toISOString().split("T")[0]}
 
 ---
 
@@ -267,9 +279,13 @@ Generated on: ${new Date().toISOString().split('T')[0]}
 ### Latest Release Notes
 ${context.version.releaseNotes}
 
-${context.version.docLinks.length > 0 ? `### Official Documentation
-${context.version.docLinks.map(url => `- ${url}`).join('\n')}
-` : ''}
+${
+  context.version.docLinks.length > 0
+    ? `### Official Documentation
+${context.version.docLinks.map((url) => `- ${url}`).join("\n")}
+`
+    : ""
+}
 
 ---
 
@@ -293,10 +309,15 @@ ${context.translation.guide}
 ## 🗺️ Feature Compatibility Matrix
 
 ${Object.entries(context.translation.patterns)
-  .map(([feature, pattern]) => `### ${feature.charAt(0).toUpperCase() + feature.slice(1)}
+  .map(
+    ([
+      feature,
+      pattern,
+    ]) => `### ${feature.charAt(0).toUpperCase() + feature.slice(1)}
 ${pattern}
-`)
-  .join('\n')}
+`,
+  )
+  .join("\n")}
 
 ---
 
@@ -335,7 +356,7 @@ When translating, ensure you:
 ## 📝 Notes
 
 - This context was generated dynamically from official sources
-- Documentation is current as of ${new Date().toISOString().split('T')[0]}
+- Documentation is current as of ${new Date().toISOString().split("T")[0]}
 - Review and update this file if translating to a different version
 - Consult official docs for detailed API references
 
@@ -343,7 +364,7 @@ When translating, ensure you:
 
 ## 🔗 Resources
 
-${context.version.docLinks.map(url => `- ${url}`).join('\n')}
+${context.version.docLinks.map((url) => `- ${url}`).join("\n")}
 
 ---
 

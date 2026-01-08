@@ -1,8 +1,14 @@
-import { CheckCircle2, Circle, Loader2, FileText, ChevronRight } from "lucide-react";
+import {
+  CheckCircle2,
+  Circle,
+  Loader2,
+  FileText,
+  ChevronRight,
+} from "lucide-react";
 import { Button } from "./ui/button";
 
-export type PipelinePhase = 'document' | 'plan' | 'act';
-export type PhaseStatus = 'pending' | 'in_progress' | 'completed';
+export type PipelinePhase = "document" | "plan" | "act";
+export type PhaseStatus = "pending" | "in_progress" | "completed";
 
 interface PhaseInfo {
   name: string;
@@ -38,20 +44,20 @@ export function TranslationPipeline({
 }: TranslationPipelineProps) {
   const phases: PhaseInfo[] = [
     {
-      name: '📚 Document',
-      description: 'Gathering ecosystem context',
+      name: "📚 Document",
+      description: "Gathering ecosystem context",
       status: documentStatus,
       details: documentDetails,
     },
     {
-      name: '📋 Plan',
-      description: 'Analyzing contract structure',
+      name: "📋 Plan",
+      description: "Analyzing contract structure",
       status: planStatus,
       details: planDetails,
     },
     {
-      name: '⚡ Act',
-      description: 'Preparing enriched prompt for LLM',
+      name: "⚡ Act",
+      description: "Preparing enriched prompt for LLM",
       status: actStatus,
       details: actDetails,
     },
@@ -77,7 +83,7 @@ export function TranslationPipeline({
               fill="none"
               className="text-primary transition-all duration-500"
               strokeDasharray={`${2 * Math.PI * 56}`}
-              strokeDashoffset={`${2 * Math.PI * 56 * (1 - (((documentStatus === 'completed' ? 1 : 0) + (planStatus === 'completed' ? 1 : 0) + (actStatus === 'completed' ? 1 : 0)) / 3))}`}
+              strokeDashoffset={`${2 * Math.PI * 56 * (1 - ((documentStatus === "completed" ? 1 : 0) + (planStatus === "completed" ? 1 : 0) + (actStatus === "completed" ? 1 : 0)) / 3)}`}
               strokeLinecap="round"
             />
           </svg>
@@ -86,14 +92,19 @@ export function TranslationPipeline({
           <div className="absolute inset-0 flex items-center justify-center flex-col">
             <span className="text-3xl font-bold text-gray-800 dark:text-gray-200">
               {Math.round(
-                ((documentStatus === 'completed' ? 1 : 0) +
-                  (planStatus === 'completed' ? 1 : 0) +
-                  (actStatus === 'completed' ? 1 : 0)) *
-                  33.33
-              )}%
+                ((documentStatus === "completed" ? 1 : 0) +
+                  (planStatus === "completed" ? 1 : 0) +
+                  (actStatus === "completed" ? 1 : 0)) *
+                  33.33,
+              )}
+              %
             </span>
             <span className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              {currentPhase === 'document' ? 'Researching' : currentPhase === 'plan' ? 'Planning' : 'Preparing'}
+              {currentPhase === "document"
+                ? "Researching"
+                : currentPhase === "plan"
+                  ? "Planning"
+                  : "Preparing"}
             </span>
           </div>
 
@@ -115,18 +126,18 @@ export function TranslationPipeline({
           <div
             key={index}
             className={`relative flex items-start space-x-4 p-4 rounded-lg border-2 transition-all duration-700 ease-in-out transform ${
-              phase.status === 'in_progress'
-                ? 'border-primary bg-primary/5 shadow-lg shadow-primary/20 scale-[1.02]'
-                : phase.status === 'completed'
-                ? 'border-green-500 bg-green-50 dark:bg-green-900/10 scale-100'
-                : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 scale-[0.98] opacity-60'
+              phase.status === "in_progress"
+                ? "border-primary bg-primary/5 shadow-lg shadow-primary/20 scale-[1.02]"
+                : phase.status === "completed"
+                  ? "border-green-500 bg-green-50 dark:bg-green-900/10 scale-100"
+                  : "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 scale-[0.98] opacity-60"
             }`}
           >
             {/* Phase Icon */}
             <div className="flex-shrink-0 mt-1">
-              {phase.status === 'completed' ? (
+              {phase.status === "completed" ? (
                 <CheckCircle2 className="w-6 h-6 text-green-500" />
-              ) : phase.status === 'in_progress' ? (
+              ) : phase.status === "in_progress" ? (
                 <Loader2 className="w-6 h-6 text-primary animate-spin" />
               ) : (
                 <Circle className="w-6 h-6 text-gray-300 dark:text-gray-600" />
@@ -141,18 +152,18 @@ export function TranslationPipeline({
                 </h3>
                 <span
                   className={`text-xs font-medium px-2 py-1 rounded ${
-                    phase.status === 'in_progress'
-                      ? 'bg-primary text-white'
-                      : phase.status === 'completed'
-                      ? 'bg-green-500 text-white'
-                      : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                    phase.status === "in_progress"
+                      ? "bg-primary text-white"
+                      : phase.status === "completed"
+                        ? "bg-green-500 text-white"
+                        : "bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400"
                   }`}
                 >
-                  {phase.status === 'in_progress'
-                    ? 'In Progress'
-                    : phase.status === 'completed'
-                    ? 'Completed'
-                    : 'Pending'}
+                  {phase.status === "in_progress"
+                    ? "In Progress"
+                    : phase.status === "completed"
+                      ? "Completed"
+                      : "Pending"}
                 </span>
               </div>
 
@@ -174,9 +185,9 @@ export function TranslationPipeline({
             {index < phases.length - 1 && (
               <div
                 className={`absolute left-7 top-16 w-0.5 h-6 ${
-                  phase.status === 'completed'
-                    ? 'bg-green-500'
-                    : 'bg-gray-200 dark:bg-gray-700'
+                  phase.status === "completed"
+                    ? "bg-green-500"
+                    : "bg-gray-200 dark:bg-gray-700"
                 }`}
               />
             )}
@@ -187,10 +198,19 @@ export function TranslationPipeline({
       {/* Live Status Message */}
       <div className="mt-8 text-center">
         <p className="text-sm text-gray-600 dark:text-gray-400 animate-pulse">
-          {currentPhase === 'document' && documentStatus === 'in_progress' && '🔍 Gathering blockchain documentation...'}
-          {currentPhase === 'plan' && planStatus === 'in_progress' && '🧠 Analyzing contract patterns...'}
-          {currentPhase === 'act' && actStatus === 'in_progress' && '⚡ Building enriched prompt...'}
-          {documentStatus === 'completed' && planStatus === 'completed' && actStatus === 'completed' && '✅ Ready to generate code!'}
+          {currentPhase === "document" &&
+            documentStatus === "in_progress" &&
+            "🔍 Gathering blockchain documentation..."}
+          {currentPhase === "plan" &&
+            planStatus === "in_progress" &&
+            "🧠 Analyzing contract patterns..."}
+          {currentPhase === "act" &&
+            actStatus === "in_progress" &&
+            "⚡ Building enriched prompt..."}
+          {documentStatus === "completed" &&
+            planStatus === "completed" &&
+            actStatus === "completed" &&
+            "✅ Ready to generate code!"}
         </p>
       </div>
 
@@ -203,26 +223,35 @@ export function TranslationPipeline({
             </div>
             <div className="flex-1">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
-                {awaitingApproval === 'document' && '📚 Phase 1 Complete - Review AI_RULES.md'}
-                {awaitingApproval === 'plan' && '📋 Phase 2 Complete - Review Translation Plan'}
+                {awaitingApproval === "document" &&
+                  "📚 Phase 1 Complete - Review AI_RULES.md"}
+                {awaitingApproval === "plan" &&
+                  "📋 Phase 2 Complete - Review Translation Plan"}
               </h3>
               <p className="text-sm text-gray-700 dark:text-gray-300 mb-4">
-                {awaitingApproval === 'document' && (
+                {awaitingApproval === "document" && (
                   <>
-                    An enriched AI_RULES.md file has been generated with current blockchain documentation,
-                    version information, and translation patterns. Review the details above before proceeding.
+                    An enriched AI_RULES.md file has been generated with current
+                    blockchain documentation, version information, and
+                    translation patterns. Review the details above before
+                    proceeding.
                   </>
                 )}
-                {awaitingApproval === 'plan' && (
+                {awaitingApproval === "plan" && (
                   <>
-                    The contract structure has been analyzed. Review the translation strategy above before proceeding
-                    to code generation.
+                    The contract structure has been analyzed. Review the
+                    translation strategy above before proceeding to code
+                    generation.
                   </>
                 )}
               </p>
               <div className="flex items-center gap-3">
                 <Button
-                  onClick={awaitingApproval === 'document' ? onApprovePhase1 : onApprovePhase2}
+                  onClick={
+                    awaitingApproval === "document"
+                      ? onApprovePhase1
+                      : onApprovePhase2
+                  }
                   className="gap-2"
                 >
                   Approve & Continue

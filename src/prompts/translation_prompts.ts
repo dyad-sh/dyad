@@ -15,7 +15,7 @@ import {
  */
 export function generateTranslationPrompt(
   sourceId: string,
-  targetId: string
+  targetId: string,
 ): string {
   const sourceLanguage = BLOCKCHAIN_LANGUAGES[sourceId];
   const targetLanguage = BLOCKCHAIN_LANGUAGES[targetId];
@@ -27,7 +27,7 @@ export function generateTranslationPrompt(
   const translationPair = isTranslationSupported(sourceId, targetId);
   if (!translationPair) {
     throw new Error(
-      `Translation from ${sourceLanguage.displayName} to ${targetLanguage.displayName} is not yet supported`
+      `Translation from ${sourceLanguage.displayName} to ${targetLanguage.displayName} is not yet supported`,
     );
   }
 
@@ -54,7 +54,10 @@ export function generateTranslationPrompt(
     case "solidity_to_vyper":
       return SOLIDITY_TO_VYPER_PROMPT;
     default:
-      return generateGenericPrompt(sourceLanguage.displayName, targetLanguage.displayName);
+      return generateGenericPrompt(
+        sourceLanguage.displayName,
+        targetLanguage.displayName,
+      );
   }
 }
 
@@ -767,13 +770,14 @@ public entry fun increment(account: &signer) acquires Counter {
 Always explain the architectural shift from object-oriented to account-oriented storage.
 `;
 
-export const APTOS_MOVE_TO_SUI_MOVE_PROMPT = SUI_MOVE_TO_APTOS_MOVE_PROMPT.replace(
-  /Sui Move → Aptos Move/g,
-  "Aptos Move → Sui Move"
-).replace(
-  /Sui Framework → Aptos Framework:/,
-  "Aptos Framework → Sui Framework:"
-);
+export const APTOS_MOVE_TO_SUI_MOVE_PROMPT =
+  SUI_MOVE_TO_APTOS_MOVE_PROMPT.replace(
+    /Sui Move → Aptos Move/g,
+    "Aptos Move → Sui Move",
+  ).replace(
+    /Sui Framework → Aptos Framework:/,
+    "Aptos Framework → Sui Framework:",
+  );
 
 // ====================
 // VYPER ↔ SOLIDITY
@@ -838,7 +842,7 @@ Translation is straightforward since both target EVM. Main changes are syntactic
 
 export const SOLIDITY_TO_VYPER_PROMPT = VYPER_TO_SOLIDITY_PROMPT.replace(
   /Vyper → Solidity/g,
-  "Solidity → Vyper"
+  "Solidity → Vyper",
 );
 
 // ====================

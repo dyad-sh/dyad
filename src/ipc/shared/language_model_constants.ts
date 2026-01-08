@@ -296,7 +296,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       contextWindow: 400_000,
       temperature: 0,
       dollarSigns: 3,
-    }
+    },
   ],
   auto: [
     {

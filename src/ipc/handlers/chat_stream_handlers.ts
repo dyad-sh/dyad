@@ -1606,13 +1606,19 @@ async function prepareMessageWithAttachments(
     const ext = path.extname(filePath).toLowerCase();
     if ([".jpg", ".jpeg", ".png", ".gif", ".webp"].includes(ext)) {
       try {
-        // Read the file as a buffer
+        // Read the file as a buffer and convert to base64 string
+        // Using base64 strings instead of raw Buffers ensures proper JSON serialization
+        // for storage in aiMessagesJson (raw Buffers serialize inefficiently and exceed size limits)
         const imageBuffer = await readFile(filePath);
+        const mimeType =
+          ext === ".jpg" ? "image/jpeg" : `image/${ext.slice(1)}`;
+        const base64Data = imageBuffer.toString("base64");
 
-        // Add the image to the content parts
+        // Add the image to the content parts with base64 data and mediaType
         contentParts.push({
           type: "image",
-          image: imageBuffer,
+          image: base64Data,
+          mediaType: mimeType,
         });
 
         logger.log(`Added image attachment: ${filePath}`);

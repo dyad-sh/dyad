@@ -4,8 +4,8 @@ import log from "electron-log";
 
 const logger = log.scope("ai_messages_utils");
 
-/** Maximum size in bytes for ai_messages_json (1MB) */
-export const MAX_AI_MESSAGES_SIZE = 1_000_000;
+/** Maximum size in bytes for ai_messages_json (10MB) */
+export const MAX_AI_MESSAGES_SIZE = 10_000_000;
 
 /**
  * Check if ai_messages_json is within size limits and return the value to save.

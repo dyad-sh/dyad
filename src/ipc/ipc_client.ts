@@ -82,6 +82,7 @@ import type {
   AgentToolConsentRequestPayload,
   AgentToolConsentResponseParams,
   TelemetryEventPayload,
+  ThemeDto,
 } from "./ipc_types";
 import type { ConsoleEntry } from "../atoms/appAtoms";
 import type { Template } from "../shared/templates";
@@ -433,6 +434,7 @@ export class IpcClient {
       selectedComponents?: ComponentSelection[];
       chatId: number;
       redo?: boolean;
+      themeId?: number;
       attachments?: FileAttachment[];
       onUpdate: (messages: Message[]) => void;
       onEnd: (response: ChatResponseEnd) => void;
@@ -443,6 +445,7 @@ export class IpcClient {
     const {
       chatId,
       redo,
+      themeId,
       attachments,
       selectedComponents,
       onUpdate,
@@ -484,6 +487,7 @@ export class IpcClient {
               prompt,
               chatId,
               redo,
+              themeId,
               selectedComponents,
               attachments: fileDataArray,
             })
@@ -507,6 +511,7 @@ export class IpcClient {
           prompt,
           chatId,
           redo,
+          themeId,
           selectedComponents,
         })
         .catch((err) => {
@@ -1490,5 +1495,18 @@ export class IpcClient {
     params: AnalyseComponentParams,
   ): Promise<{ isDynamic: boolean; hasStaticText: boolean }> {
     return this.ipcRenderer.invoke("analyze-component", params);
+  }
+
+  // --- Themes ---
+  public async seedThemes(force: boolean = true): Promise<number> {
+    return this.ipcRenderer.invoke("themes:seed", force);
+  }
+
+  public async listThemes(): Promise<ThemeDto[]> {
+    return this.ipcRenderer.invoke("themes:list");
+  }
+
+  public async getTheme(id: number): Promise<ThemeDto | null> {
+    return this.ipcRenderer.invoke("themes:get", id);
   }
 }

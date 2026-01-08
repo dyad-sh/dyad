@@ -1,7 +1,7 @@
 import { SendIcon, StopCircleIcon } from "lucide-react";
 
 import { useSettings } from "@/hooks/useSettings";
-import { homeChatInputValueAtom } from "@/atoms/chatAtoms"; // Use a different atom for home input
+import { homeChatInputValueAtom } from "@/atoms/chatAtoms";
 import { useAtom } from "jotai";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { useAttachments } from "@/hooks/useAttachments";
@@ -14,6 +14,9 @@ import { ChatInputControls } from "../ChatInputControls";
 import { LexicalChatInput } from "./LexicalChatInput";
 import { useChatModeToggle } from "@/hooks/useChatModeToggle";
 import { useTypingPlaceholder } from "@/hooks/useTypingPlaceholder";
+import { ThemeSelector } from "./ThemeSelector";
+import { ColorSelector } from "./ColorSelector";
+
 export function HomeChatInput({
   onSubmit,
 }: {
@@ -122,7 +125,11 @@ export function HomeChatInput({
               </button>
             )}
           </div>
-          <div className="px-2 pb-2">
+          <div className="px-2 pb-2 flex items-center justify-between">
+            <div className="flex items-center gap-1">
+              <ThemeSelector />
+              <ColorSelector />
+            </div>
             <ChatInputControls />
           </div>
         </div>

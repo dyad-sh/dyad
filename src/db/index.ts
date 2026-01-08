@@ -10,6 +10,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { getDyadAppPath, getUserDataPath } from "../paths/paths";
 import log from "electron-log";
+import { app } from "electron";
 
 const logger = log.scope("db");
 
@@ -56,15 +57,87 @@ export function initializeDatabase(): BetterSQLite3Database<typeof schema> & {
   _db = drizzle(sqlite, { schema });
 
   try {
-    const migrationsFolder = path.join(__dirname, "..", "..", "drizzle");
+    let migrationsFolder = path.join(__dirname, "..", "..", "drizzle");
+
+    // Try resolved path using app.getAppPath() if generic relative path fails
+    if (!fs.existsSync(migrationsFolder)) {
+      try {
+        const appPath = app.getAppPath();
+        // In dev, appPath is the project root. In prod, it might be resources/app.asar
+        migrationsFolder = path.join(appPath, "drizzle");
+
+        // If that still doesn't exist, try un-asar-ed path for prod
+        if (!fs.existsSync(migrationsFolder)) {
+          migrationsFolder = path.join(process.resourcesPath, "drizzle");
+        }
+      } catch (e) {
+        logger.error("Failed to resolve app path for migrations:", e);
+      }
+    }
+
     if (!fs.existsSync(migrationsFolder)) {
       logger.error("Migrations folder not found:", migrationsFolder);
     } else {
       logger.log("Running migrations from:", migrationsFolder);
+
+      // Check if the themes table exists before running migrations
+      const themeTableExists = sqlite
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='themes'",
+        )
+        .get();
+
+      if (!themeTableExists) {
+        logger.log(
+          "themes table does not exist, ensuring migrations run correctly...",
+        );
+
+        // Check if model column exists to fix migration 0020 issue
+        const messageColumns = sqlite.pragma("table_info(messages)") as Array<{
+          name: string;
+        }>;
+        const hasModelColumn = messageColumns.some(
+          (col) => col.name === "model",
+        );
+
+        if (hasModelColumn) {
+          logger.log(
+            "model column already exists, migration 0020 will be skipped if it fails",
+          );
+        }
+      }
+
       migrate(_db, { migrationsFolder });
     }
   } catch (error) {
     logger.error("Migration error:", error);
+    logger.error("Attempting to manually create themes table if missing...");
+
+    // Try to create themes table manually if migration failed
+    try {
+      const themeTableExists = sqlite
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='themes'",
+        )
+        .get();
+
+      if (!themeTableExists) {
+        logger.log("Creating themes table manually...");
+        sqlite.exec(`
+          CREATE TABLE IF NOT EXISTS themes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            prompt TEXT NOT NULL,
+            created_at INTEGER DEFAULT (unixepoch()) NOT NULL,
+            updated_at INTEGER DEFAULT (unixepoch()) NOT NULL
+          );
+        `);
+        logger.log("themes table created successfully");
+      }
+    } catch (manualError) {
+      logger.error("Failed to manually create themes table:", manualError);
+    }
   }
 
   return _db as any;

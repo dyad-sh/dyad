@@ -34,6 +34,7 @@ export interface ChatStreamParams {
   chatId: number;
   prompt: string;
   redo?: boolean;
+  themeId?: number;
   attachments?: Array<{
     name: string;
     type: string;
@@ -409,6 +410,26 @@ export interface CreatePromptParamsDto {
 }
 
 export interface UpdatePromptParamsDto extends CreatePromptParamsDto {
+  id: number;
+}
+
+// --- Themes ---
+export interface ThemeDto {
+  id: number;
+  title: string;
+  description: string | null;
+  prompt: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CreateThemeParamsDto {
+  title: string;
+  description?: string;
+  prompt: string;
+}
+
+export interface UpdateThemeParamsDto extends CreateThemeParamsDto {
   id: number;
 }
 

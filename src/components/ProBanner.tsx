@@ -8,19 +8,20 @@ import { IpcClient } from "@/ipc/ipc_client";
 import { useState } from "react";
 import { ArrowUpRight, KeyRound, Wallet } from "lucide-react";
 
-import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { Button } from "./ui/button";
 import { cn } from "@/lib/utils";
+import { hasDyadProKey } from "@/lib/schemas";
+import { useSettings } from "@/hooks/useSettings";
 
 export function ProBanner() {
-  const { userBudget } = useUserBudgetInfo();
+  const { settings } = useSettings();
 
   const [selectedBanner] = useState<"ai" | "smart" | "turbo">(() => {
     const options = ["ai", "smart", "turbo"] as const;
     return options[Math.floor(Math.random() * options.length)];
   });
 
-  if (userBudget) {
+  if (settings && hasDyadProKey(settings)) {
     return null;
   }
 

@@ -303,6 +303,27 @@
             "$schema": "http://json-schema.org/draft-07/schema#"
           }
         }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "web_crawl",
+          "description": "\nYou can crawl a website so you can clone it.\n\n### When You MUST Trigger a Crawl\nTrigger a crawl ONLY if BOTH conditions are true:\n\n1. The user's message shows intent to CLONE / COPY / REPLICATE / RECREATE / DUPLICATE / MIMIC a website.\n   - Keywords include: clone, copy, replicate, recreate, duplicate, mimic, build the same, make the same.\n\n2. The user's message contains a URL or something that appears to be a domain name.\n   - e.g. \"example.com\", \"https://example.com\"\n   - Do not require 'http://' or 'https://'.\n",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string",
+                "description": "URL to crawl"
+              }
+            },
+            "required": [
+              "url"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          }
+        }
       }
     ],
     "tool_choice": "auto",

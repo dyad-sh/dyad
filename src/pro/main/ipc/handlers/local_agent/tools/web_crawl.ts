@@ -1,10 +1,6 @@
 import { z } from "zod";
 import log from "electron-log";
-import {
-  ToolDefinition,
-  escapeXmlContent,
-  ToolResultContentPart,
-} from "./types";
+import { ToolDefinition, escapeXmlContent } from "./types";
 import { readSettings } from "@/main/settings";
 
 const logger = log.scope("web_crawl");
@@ -21,15 +17,6 @@ const webCrawlResponseSchema = z.object({
   html: z.string().optional(),
   markdown: z.string().optional(),
   screenshot: z.string().optional(),
-  pages: z.array(
-    z.object({
-      url: z.string(),
-      markdown: z.string().optional(),
-      html: z.string().optional(),
-      screenshot: z.string().optional(),
-      metadata: z.record(z.unknown()).optional(),
-    }),
-  ),
 });
 
 const DESCRIPTION = `
@@ -46,13 +33,9 @@ Trigger a crawl ONLY if BOTH conditions are true:
    - Do not require 'http://' or 'https://'.
 `;
 
-const IMAGE_PLACEHOLDER_INSTRUCTIONS = `
+const CLONE_INSTRUCTIONS = `
 
----
-
-## Instructions for Replicating the Website
-
-You are replicating the website from the provided HTML, markdown, and screenshot.
+Replicate the website from the provided HTML, markdown, and screenshot.
 
 **Use the screenshot as your primary visual reference** to understand the layout, colors, typography, and overall design of the website. The screenshot shows exactly how the page should look.
 
@@ -122,7 +105,7 @@ export const webCrawlTool: ToolDefinition<z.infer<typeof webCrawlSchema>> = {
     return xml;
   },
 
-  execute: async (args) => {
+  execute: async (args, ctx) => {
     logger.log(`Executing web crawl: ${args.url}`);
 
     const result = await callWebCrawl(args.url);
@@ -131,63 +114,47 @@ export const webCrawlTool: ToolDefinition<z.infer<typeof webCrawlSchema>> = {
       throw new Error("Web crawl returned no results");
     }
 
-    // Build markdown content from the crawl result
-    let content = "";
-
-    // Add root page content if available
-    if (result.markdown) {
-      content += result.markdown;
+    if (!result.markdown) {
+      throw new Error("No content available from web crawl");
     }
 
-    // Add content from additional pages
-    if (result.pages && result.pages.length > 0) {
-      for (const page of result.pages) {
-        if (page.markdown) {
-          content += `\n\n---\n\n## ${page.url}\n\n${page.markdown}`;
-        }
-      }
+    if (!result.html) {
+      throw new Error("No HTML available from web crawl");
     }
-
-    if (!content) {
-      content = "No content extracted from the URL.";
+    if (!result.screenshot) {
+      throw new Error("No screenshot available from web crawl");
     }
-
     logger.log(`Web crawl completed for URL: ${args.url}`);
 
-    // Build multi-part result with text and screenshot
-    const contentParts: ToolResultContentPart[] = [];
+    ctx.appendUserMessage([
+      { type: "text", text: CLONE_INSTRUCTIONS },
+      { type: "image-url", url: result.screenshot },
+      {
+        type: "text",
+        text: formatSnippet("Markdown snapshot:", result.markdown, "markdown"),
+      },
+      {
+        type: "text",
+        text: formatSnippet("HTML snapshot:", result.html, "html"),
+      },
+    ]);
 
-    // Add text content with instructions
-    contentParts.push({
-      type: "text",
-      text: content + IMAGE_PLACEHOLDER_INSTRUCTIONS,
-    });
-
-    // Include screenshot as a proper image content part if available
-    if (result.screenshot) {
-      try {
-        // Fetch the screenshot URL and convert to base64
-        const imageResponse = await fetch(result.screenshot);
-        if (imageResponse.ok) {
-          const arrayBuffer = await imageResponse.arrayBuffer();
-          const base64Data = Buffer.from(arrayBuffer).toString("base64");
-          const contentType =
-            imageResponse.headers.get("content-type") || "image/png";
-          contentParts.push({
-            type: "media",
-            data: base64Data,
-            mediaType: contentType,
-          });
-        } else {
-          logger.warn(
-            `Failed to fetch screenshot: ${imageResponse.status} ${imageResponse.statusText}`,
-          );
-        }
-      } catch (error) {
-        logger.warn(`Error fetching screenshot: ${error}`);
-      }
-    }
-
-    return { content: contentParts };
+    return "Web crawl completed.";
   },
 };
+
+const MAX_TEXT_SNIPPET_LENGTH = 16_000;
+
+// Format a code snippet with a label and language, truncating if necessary.
+export function formatSnippet(
+  label: string,
+  value: string,
+  lang: string,
+): string {
+  return `${label}:\n\`\`\`${lang}\n${truncateText(value)}\n\`\`\``;
+}
+
+function truncateText(value: string): string {
+  if (value.length <= MAX_TEXT_SNIPPET_LENGTH) return value;
+  return `${value.slice(0, MAX_TEXT_SNIPPET_LENGTH)}\n<!-- truncated -->`;
+}

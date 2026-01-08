@@ -47,6 +47,12 @@ export interface AgentContext {
     toolDescription?: string | null;
     inputPreview?: string | null;
   }) => Promise<boolean>;
+  /**
+   * Append a user message to be sent after the tool result.
+   * Use this when the tool needs to provide non-text content (like images)
+   * that models don't support in tool result messages.
+   */
+  appendUserMessage: (content: UserMessageContentPart[]) => void;
 }
 
 // ============================================================================
@@ -78,12 +84,17 @@ export function parsePartialJson<T extends Record<string, unknown>>(
 // ============================================================================
 
 /**
- * Content part types for multi-modal tool results
- * Note: AI SDK's LanguageModelV2ToolResultOutput only supports text and media (base64)
+ * Content part types for tool results (text only for model compatibility)
  */
-export type ToolResultContentPart =
+export type ToolResultContentPart = { type: "text"; text: string };
+
+/**
+ * Content part types for user messages (supports images)
+ * These can be appended as follow-up user messages after tool results
+ */
+export type UserMessageContentPart =
   | { type: "text"; text: string }
-  | { type: "media"; data: string; mediaType: string };
+  | { type: "image-url"; url: string };
 
 /**
  * Tool result can be a simple string or a structured result with content parts

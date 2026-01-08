@@ -45,6 +45,7 @@ import {
   parsePartialJson,
   escapeXmlAttr,
   escapeXmlContent,
+  UserMessageContentPart,
 } from "./tools/types";
 import { TOOL_DEFINITIONS } from "./tool_definitions";
 import { parseAiMessagesJson } from "@/ipc/utils/ai_messages_utils";
@@ -140,6 +141,9 @@ export async function handleLocalAgentStream(
   let fullResponse = "";
   let streamingPreview = ""; // Temporary preview for current tool, not persisted
 
+  // Track pending user messages to inject after tool results
+  const pendingUserMessages: UserMessageContentPart[][] = [];
+
   try {
     // Get model client
     const { modelClient } = await getModelClient(
@@ -185,6 +189,9 @@ export async function handleLocalAgentStream(
           inputPreview: params.inputPreview,
         });
       },
+      appendUserMessage: (content: UserMessageContentPart[]) => {
+        pendingUserMessages.push(content);
+      },
     };
 
     // Build tool set (agent tools + MCP tools)
@@ -219,6 +226,29 @@ export async function handleLocalAgentStream(
       tools: allTools,
       stopWhen: stepCountIs(25), // Allow multiple tool call rounds
       abortSignal: abortController.signal,
+      // Inject pending user messages (e.g., images from web_crawl) between steps
+      prepareStep: ({ messages, ...rest }) => {
+        if (pendingUserMessages.length === 0) {
+          return undefined;
+        }
+        // Build user messages from pending content
+        const newMessages = [...messages];
+        for (const content of pendingUserMessages) {
+          newMessages.push({
+            role: "user" as const,
+            content: content.map((part) => {
+              if (part.type === "text") {
+                return { type: "text" as const, text: part.text };
+              }
+              // part.type === "image-url"
+              return { type: "image" as const, image: new URL(part.url) };
+            }),
+          });
+        }
+        // Clear pending messages after injection
+        pendingUserMessages.length = 0;
+        return { messages: newMessages, ...rest };
+      },
       onFinish: async (response) => {
         const totalTokens = response.usage?.totalTokens;
         const inputTokens = response.usage?.inputTokens;

@@ -21,7 +21,7 @@ import { readLogsTool } from "./tools/read_logs";
 import { editFileTool } from "./tools/edit_file";
 import { webSearchTool } from "./tools/web_search";
 import { webCrawlTool } from "./tools/web_crawl";
-import type { LanguageModelV2ToolResultOutput } from "@ai-sdk/provider";
+import type { LanguageModelV3ToolResultOutput } from "@ai-sdk/provider";
 import {
   escapeXmlAttr,
   escapeXmlContent,
@@ -236,25 +236,18 @@ async function processArgPlaceholders<T extends Record<string, any>>(
  */
 function convertToolResultForAiSdk(
   result: ToolResult,
-): LanguageModelV2ToolResultOutput {
+): LanguageModelV3ToolResultOutput {
   if (typeof result === "string") {
     return { type: "text", value: result };
   }
 
-  // Convert our content parts to AI SDK format
+  // Convert our content parts to AI SDK V3 format (text only for tool results)
   return {
     type: "content",
-    value: result.content.map((part) => {
-      if (part.type === "text") {
-        return { type: "text" as const, text: part.text };
-      }
-      // part.type === "media"
-      return {
-        type: "media" as const,
-        data: part.data,
-        mediaType: part.mediaType,
-      };
-    }),
+    value: result.content.map((part) => ({
+      type: "text" as const,
+      text: part.text,
+    })),
   };
 }
 

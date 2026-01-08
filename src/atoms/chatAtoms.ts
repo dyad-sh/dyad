@@ -136,3 +136,14 @@ export const agentTodosByChatIdAtom = atom<Map<number, AgentTodo[]>>(new Map());
 
 // Flag: set when user switches to plan mode from another mode in a chat with messages
 export const needsFreshPlanChatAtom = atom<boolean>(false);
+
+// Queued message (single message per chat, sent after current stream completes)
+export interface QueuedMessage {
+  prompt: string;
+  attachments?: FileAttachment[];
+  selectedComponents?: any[];
+}
+
+export const queuedMessageByIdAtom = atom<Map<number, QueuedMessage>>(
+  new Map(),
+);

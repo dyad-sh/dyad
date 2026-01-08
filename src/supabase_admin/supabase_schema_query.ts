@@ -82,7 +82,10 @@ export function buildSupabaseSchemaQuery(tableName?: string): string {
             JOIN pg_class cls ON pol.polrelid = cls.oid
             WHERE cls.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public')${policyFilter}
         ),
-        functions_result AS (
+        ${
+          tableName
+            ? ""
+            : `functions_result AS (
             SELECT
                 'functions' as result_type,
                 jsonb_build_object(
@@ -102,7 +105,8 @@ export function buildSupabaseSchemaQuery(tableName?: string): string {
             LEFT JOIN pg_description d ON p.oid = d.objoid
             LEFT JOIN pg_language l ON p.prolang = l.oid
             WHERE p.pronamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public') AND p.prokind = 'f'
-        ),
+        ),` // -- 'f' = normal function (otherwise source code fetch fails)
+        }
         triggers_result AS (
             SELECT
                 'triggers' as result_type,
@@ -123,7 +127,7 @@ export function buildSupabaseSchemaQuery(tableName?: string): string {
         FROM (
             SELECT * FROM tables_result
             UNION ALL SELECT * FROM policies_result
-            UNION ALL SELECT * FROM functions_result
+            ${tableName ? "" : "UNION ALL SELECT * FROM functions_result"}
             UNION ALL SELECT * FROM triggers_result
         ) combined_results
         ORDER BY result_type;
@@ -131,3 +135,28 @@ export function buildSupabaseSchemaQuery(tableName?: string): string {
 }
 
 export const SUPABASE_SCHEMA_QUERY = buildSupabaseSchemaQuery();
+
+/**
+ * Query to fetch only database functions from the public schema.
+ */
+export const SUPABASE_FUNCTIONS_QUERY = `
+  SELECT
+    jsonb_build_object(
+      'name', p.proname::text,
+      'description', d.description::text,
+      'arguments', pg_get_function_arguments(p.oid)::text,
+      'return_type', pg_get_function_result(p.oid)::text,
+      'language', l.lanname::text,
+      'volatility', CASE p.provolatile
+        WHEN 'i' THEN 'IMMUTABLE'
+        WHEN 's' THEN 'STABLE'
+        WHEN 'v' THEN 'VOLATILE'
+      END,
+      'source_code', pg_get_functiondef(p.oid)::text
+    )::text as data
+  FROM pg_proc p
+  LEFT JOIN pg_description d ON p.oid = d.objoid
+  LEFT JOIN pg_language l ON p.prolang = l.oid
+  WHERE p.pronamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public')
+    AND p.prokind = 'f';
+`; // 'f' = normal function (otherwise source code fetch fails)

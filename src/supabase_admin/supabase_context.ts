@@ -2,6 +2,7 @@ import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 import { getSupabaseClient } from "./supabase_management_client";
 import {
   SUPABASE_SCHEMA_QUERY,
+  SUPABASE_FUNCTIONS_QUERY,
   buildSupabaseSchemaQuery,
 } from "./supabase_schema_query";
 
@@ -123,16 +124,19 @@ const TABLE_NAMES_QUERY = `
 /**
  * Get high-level Supabase project info: project ID, publishable key, secret names, and table names.
  * This is a lightweight call that doesn't fetch full schema details.
+ * Optionally includes database functions when include_db_functions is true.
  */
 export async function getSupabaseProjectInfo({
   supabaseProjectId,
   organizationSlug,
+  includeDbFunctions,
 }: {
   supabaseProjectId: string;
   organizationSlug: string | null;
+  includeDbFunctions?: boolean;
 }): Promise<string> {
   if (IS_TEST_BUILD) {
-    return `# Supabase Project Info
+    let result = `# Supabase Project Info
 
 ## Project ID
 ${supabaseProjectId}
@@ -146,6 +150,13 @@ test-publishable-key
 ## Table Names
 ["users", "posts", "comments"]
 `;
+    if (includeDbFunctions) {
+      result += `
+## Database Functions
+[{"name": "test_function", "arguments": "", "return_type": "void", "language": "plpgsql"}]
+`;
+    }
+    return result;
   }
 
   const supabase = await getSupabaseClient({ organizationSlug });
@@ -166,7 +177,7 @@ test-publishable-key
       (row) => row.table_name,
     ) ?? [];
 
-  return `# Supabase Project Info
+  let result = `# Supabase Project Info
 
 ## Project ID
 ${supabaseProjectId}
@@ -180,6 +191,19 @@ ${JSON.stringify(secretNames)}
 ## Table Names
 ${JSON.stringify(tableNames)}
 `;
+
+  if (includeDbFunctions) {
+    const functionsResult = await supabase.runQuery(
+      supabaseProjectId,
+      SUPABASE_FUNCTIONS_QUERY,
+    );
+    result += `
+## Database Functions
+${JSON.stringify(functionsResult)}
+`;
+  }
+
+  return result;
 }
 
 /**

@@ -351,7 +351,6 @@ export interface FileChange {
   name: string;
   path: string;
   summary: string;
-  // oog
   type: "write" | "rename" | "delete";
   isServerFunction: boolean;
 }

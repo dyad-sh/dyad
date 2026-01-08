@@ -5,6 +5,7 @@ import {
   HelpCircle,
   Store,
   BookOpen,
+  Blocks,
 } from "lucide-react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar"; // import useSidebar hook
@@ -42,6 +43,11 @@ const items = [
     icon: Inbox,
   },
   {
+    title: "Plugins",
+    to: "/extensions",
+    icon: Blocks,
+  },
+  {
     title: "Settings",
     to: "/settings",
     icon: Settings,
@@ -62,6 +68,7 @@ const items = [
 type HoverState =
   | "start-hover:app"
   | "start-hover:chat"
+  | "start-hover:extensions"
   | "start-hover:settings"
   | "start-hover:library"
   | "clear-hover"
@@ -96,6 +103,8 @@ export function AppSidebar() {
     routerState.location.pathname === "/" ||
     routerState.location.pathname.startsWith("/app-details");
   const isChatRoute = routerState.location.pathname === "/chat";
+  const isExtensionsRoute =
+    routerState.location.pathname.startsWith("/extensions");
   const isSettingsRoute = routerState.location.pathname.startsWith("/settings");
 
   let selectedItem: string | null = null;
@@ -103,6 +112,8 @@ export function AppSidebar() {
     selectedItem = "Apps";
   } else if (hoverState === "start-hover:chat") {
     selectedItem = "Chat";
+  } else if (hoverState === "start-hover:extensions") {
+    selectedItem = "Extensions";
   } else if (hoverState === "start-hover:settings") {
     selectedItem = "Settings";
   } else if (hoverState === "start-hover:library") {
@@ -112,6 +123,8 @@ export function AppSidebar() {
       selectedItem = "Apps";
     } else if (isChatRoute) {
       selectedItem = "Chat";
+    } else if (isExtensionsRoute) {
+      selectedItem = "Extensions";
     } else if (isSettingsRoute) {
       selectedItem = "Settings";
     }
@@ -208,6 +221,8 @@ function AppIcons({
                         onHoverChange("start-hover:app");
                       } else if (item.title === "Chat") {
                         onHoverChange("start-hover:chat");
+                      } else if (item.title === "Plugins") {
+                        onHoverChange("start-hover:extensions");
                       } else if (item.title === "Settings") {
                         onHoverChange("start-hover:settings");
                       } else if (item.title === "Library") {

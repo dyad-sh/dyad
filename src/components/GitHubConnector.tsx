@@ -117,53 +117,39 @@ function ConnectedGitHubConnector({
       setConflicts([]); // Clear conflicts when starting a new sync
 
       try {
-        const result = await IpcClient.getInstance().syncGithubRepo(appId, {
+        await IpcClient.getInstance().syncGithubRepo(appId, {
           force,
           forceWithLease,
         });
-        if (result.success) {
-          setSyncSuccess(true);
-          setRebaseInProgress(false);
-          setConflicts([]); // Clear conflicts on successful sync
-          // Clear rebase status message after successful sync
-          setRebaseStatusMessage(null);
-        } else {
-          if (result.isConflict) {
-            // Fetch the actual conflicts
-            try {
-              const conflicts =
-                await IpcClient.getInstance().getGithubMergeConflicts(appId);
-              if (conflicts.length > 0) {
-                setConflicts(conflicts);
-                setSyncError(
-                  "Merge conflicts detected. Please resolve them in the editor.",
-                );
-                return;
-              }
-            } catch (error) {
-              // If we can't get conflicts, still show the error
-              console.error("Failed to get merge conflicts:", error);
+        // Success - no error thrown
+        setSyncSuccess(true);
+        setRebaseInProgress(false);
+        setConflicts([]); // Clear conflicts on successful sync
+        // Clear rebase status message after successful sync
+        setRebaseStatusMessage(null);
+      } catch (err: any) {
+        // Check if it's a conflict error
+        if (err?.name === "GitConflictError") {
+          // Fetch the actual conflicts
+          try {
+            const conflicts =
+              await IpcClient.getInstance().getGithubMergeConflicts(appId);
+            if (conflicts.length > 0) {
+              setConflicts(conflicts);
+              setSyncError(
+                "Merge conflicts detected. Please resolve them in the editor.",
+              );
+              return;
             }
-          }
-
-          const errorMessage = result.error || "Failed to sync to GitHub.";
-          setSyncError(errorMessage);
-          setRebaseInProgress(errorMessage.includes("rebase-merge"));
-          // Clear any prior rebase success message if push failed
-          setRebaseStatusMessage(null);
-          // If it's a push rejection error, show the force dialog
-          if (
-            result.error?.includes("rejected") ||
-            result.error?.includes("non-fast-forward")
-          ) {
-            // Don't show force dialog immediately, let user see the error first
+          } catch (error) {
+            // If we can't get conflicts, still show the error
+            console.error("Failed to get merge conflicts:", error);
           }
         }
-      } catch (err: any) {
         const errorMessage = err.message || "Failed to sync to GitHub.";
         setSyncError(errorMessage);
         setRebaseInProgress(errorMessage.includes("rebase-merge"));
-        // Clear any prior rebase success message if push errored
+        // Clear any prior rebase success message if push failed
         setRebaseStatusMessage(null);
       } finally {
         setIsSyncing(false);

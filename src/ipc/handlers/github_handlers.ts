@@ -29,6 +29,7 @@ import {
   isGitMergeInProgress,
   isGitRebaseInProgress,
   gitReset,
+  GitConflictError,
 } from "../utils/git_utils";
 import * as schema from "../../db/schema";
 import fs from "node:fs";
@@ -765,95 +766,91 @@ async function handlePushToGithub(
     force?: boolean;
     forceWithLease?: boolean;
   },
-) {
-  try {
-    // Get access token from settings
-    const settings = readSettings();
-    const accessToken = settings.githubAccessToken?.value;
-    if (!accessToken) {
-      return { success: false, error: "Not authenticated with GitHub." };
-    }
-    // Get app info from DB
-    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-    if (!app || !app.githubOrg || !app.githubRepo) {
-      return { success: false, error: "App is not linked to a GitHub repo." };
-    }
-    const appPath = getDyadAppPath(app.path);
-    const branch = app.githubBranch || "main";
+): Promise<void> {
+  // Get access token from settings
+  const settings = readSettings();
+  const accessToken = settings.githubAccessToken?.value;
+  if (!accessToken) {
+    throw new Error("Not authenticated with GitHub.");
+  }
 
-    // Set up remote URL with token
-    const remoteUrl = IS_TEST_BUILD
-      ? `${GITHUB_GIT_BASE}/${app.githubOrg}/${app.githubRepo}.git`
-      : `https://${accessToken}:x-oauth-basic@github.com/${app.githubOrg}/${app.githubRepo}.git`;
-    // Set or update remote URL using git config
-    await gitSetRemoteUrl({
-      path: appPath,
-      remoteUrl,
-    });
+  // Get app info from DB
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app || !app.githubOrg || !app.githubRepo) {
+    throw new Error("App is not linked to a GitHub repo.");
+  }
+  const appPath = getDyadAppPath(app.path);
+  const branch = app.githubBranch || "main";
 
-    // Pull changes first (unless force push)
-    if (!force && !forceWithLease) {
-      try {
-        await gitPull({
-          path: appPath,
-          remote: "origin",
-          branch,
-          accessToken,
-        });
-      } catch (pullError: any) {
-        // Check if it's a conflict
-        const errorMessage = pullError?.message || "";
-        const isMissingRemoteBranch =
-          pullError?.code === "MissingRefError" ||
-          pullError?.code === "NotFoundError" ||
-          errorMessage.includes("couldn't find remote ref") ||
-          errorMessage.includes("not found") ||
-          // isomorphic-git throws a TypeError when the remote repo is empty
-          errorMessage.includes("Cannot read properties of null");
+  // Set up remote URL with token
+  const remoteUrl = IS_TEST_BUILD
+    ? `${GITHUB_GIT_BASE}/${app.githubOrg}/${app.githubRepo}.git`
+    : `https://${accessToken}:x-oauth-basic@github.com/${app.githubOrg}/${app.githubRepo}.git`;
+  // Set or update remote URL using git config
+  await gitSetRemoteUrl({
+    path: appPath,
+    remoteUrl,
+  });
 
-        // Check if it's a conflict error (including GitConflictError)
-        if (
-          pullError?.name === "GitConflictError" ||
-          errorMessage.includes("conflict") ||
-          errorMessage.includes("Merge conflict") ||
-          errorMessage.includes("Fetch_head") ||
-          errorMessage.includes("preimage")
-        ) {
-          return {
-            success: false,
-            error:
-              "Merge conflict detected during pull. Please resolve conflicts before pushing.",
-            isConflict: true,
-          };
-        }
-        // If it's just that remote doesn't have the branch yet, we can ignore and push
-        if (!isMissingRemoteBranch) {
-          throw pullError;
-        } else {
-          logger.debug(
-            "[GitHub Handler] Remote branch missing during pull, continuing with push",
-            errorMessage,
-          );
-        }
+  // Pull changes first (unless force push)
+  if (!force && !forceWithLease) {
+    try {
+      await gitPull({
+        path: appPath,
+        remote: "origin",
+        branch,
+        accessToken,
+      });
+    } catch (pullError: any) {
+      // Check if it's a conflict error (including GitConflictError)
+      if ((pullError as any)?.name === "GitConflictError") {
+        throw GitConflictError(
+          "Merge conflict detected during pull. Please resolve conflicts before pushing.",
+        );
+      }
+
+      // Check for conflict in error message
+      const errorMessage = pullError?.message || "";
+      if (
+        errorMessage.includes("conflict") ||
+        errorMessage.includes("Merge conflict") ||
+        errorMessage.includes("Fetch_head") ||
+        errorMessage.includes("preimage")
+      ) {
+        throw GitConflictError(
+          "Merge conflict detected during pull. Please resolve conflicts before pushing.",
+        );
+      }
+
+      // Check if it's a missing remote branch error
+      const isMissingRemoteBranch =
+        pullError?.code === "MissingRefError" ||
+        pullError?.code === "NotFoundError" ||
+        errorMessage.includes("couldn't find remote ref") ||
+        errorMessage.includes("not found") ||
+        // isomorphic-git throws a TypeError when the remote repo is empty
+        errorMessage.includes("Cannot read properties of null");
+
+      // If it's just that remote doesn't have the branch yet, we can ignore and push
+      if (!isMissingRemoteBranch) {
+        throw pullError;
+      } else {
+        logger.debug(
+          "[GitHub Handler] Remote branch missing during pull, continuing with push",
+          errorMessage,
+        );
       }
     }
-
-    // Push to GitHub
-    await gitPush({
-      path: appPath,
-      branch,
-      accessToken,
-      force,
-      forceWithLease,
-    });
-    return { success: true };
-  } catch (err: any) {
-    return {
-      success: false,
-      error: err.message || "Failed to push to GitHub.",
-      isConflict: err.message?.includes("conflict") ?? false,
-    };
   }
+
+  // Push to GitHub
+  await gitPush({
+    path: appPath,
+    branch,
+    accessToken,
+    force,
+    forceWithLease,
+  });
 }
 
 async function handleAbortRebase(

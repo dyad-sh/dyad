@@ -846,9 +846,9 @@ export class IpcClient {
   public async syncGithubRepo(
     appId: number,
     options: GithubSyncOptions = {},
-  ): Promise<{ success: boolean; error?: string; isConflict?: boolean }> {
+  ): Promise<void> {
     const { force, forceWithLease } = options;
-    return this.ipcRenderer.invoke("github:push", {
+    await this.ipcRenderer.invoke("github:push", {
       appId,
       force,
       forceWithLease,

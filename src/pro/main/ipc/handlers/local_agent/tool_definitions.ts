@@ -232,7 +232,7 @@ async function processArgPlaceholders<T extends Record<string, any>>(
 }
 
 /**
- * Convert our ToolResult to AI SDK's LanguageModelV2ToolResultOutput format
+ * Convert our ToolResult to AI SDK format
  */
 function convertToolResultForAiSdk(
   result: ToolResult,
@@ -240,15 +240,7 @@ function convertToolResultForAiSdk(
   if (typeof result === "string") {
     return { type: "text", value: result };
   }
-
-  // Convert our content parts to AI SDK V3 format (text only for tool results)
-  return {
-    type: "content",
-    value: result.content.map((part) => ({
-      type: "text" as const,
-      text: part.text,
-    })),
-  };
+  throw new Error(`Unsupported tool result type: ${typeof result}`);
 }
 
 /**

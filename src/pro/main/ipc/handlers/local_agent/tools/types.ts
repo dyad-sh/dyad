@@ -84,11 +84,6 @@ export function parsePartialJson<T extends Record<string, unknown>>(
 // ============================================================================
 
 /**
- * Content part types for tool results (text only for model compatibility)
- */
-export type ToolResultContentPart = { type: "text"; text: string };
-
-/**
  * Content part types for user messages (supports images)
  * These can be appended as follow-up user messages after tool results
  */
@@ -99,7 +94,7 @@ export type UserMessageContentPart =
 /**
  * Tool result can be a simple string or a structured result with content parts
  */
-export type ToolResult = string | { content: ToolResultContentPart[] };
+export type ToolResult = string;
 
 // ============================================================================
 // Tool Definition Interface

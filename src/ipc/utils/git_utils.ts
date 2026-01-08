@@ -607,6 +607,10 @@ export async function gitPush({
 
   // isomorphic-git cannot provide "force-with-lease" safety guarantees.
   if (forceWithLease) {
+    logger.warn(
+      "gitPush: 'forceWithLease' requested but not supported when native git is disabled. " +
+        "Rejecting push to prevent unsafe force operation.",
+    );
     throw new Error(
       "gitPush: 'forceWithLease' is not supported when native git is disabled. " +
         "Falling back to plain force could overwrite remote commits. Enable native git or use 'force' explicitly.",

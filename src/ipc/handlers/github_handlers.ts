@@ -1341,7 +1341,7 @@ async function handleRemoveCollaborator(
     }
 
     const response = await fetch(
-      `${GITHUB_API_BASE}/repos/${app.githubOrg}/${app.githubRepo}/collaborators/${username}`,
+      `${GITHUB_API_BASE}/repos/${app.githubOrg}/${app.githubRepo}/collaborators/${encodeURIComponent(username)}`,
       {
         method: "DELETE",
         headers: {

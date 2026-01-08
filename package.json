@@ -180,10 +180,6 @@
     "uuid": "^11.1.0",
     "zod": "^3.25.76"
   },
-  "lint-staged": {
-    "**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx,vue,astro,svelte}": "oxlint",
-    "*.{js,css,md,ts,tsx,jsx,json}": "prettier --write"
-  },
   "overrides": {
     "@vercel/sdk": {
       "@modelcontextprotocol/sdk": "$@modelcontextprotocol/sdk"

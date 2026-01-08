@@ -29,6 +29,8 @@ import { DyadCodeSearch } from "./DyadCodeSearch";
 import { DyadRead } from "./DyadRead";
 import { DyadListFiles } from "./DyadListFiles";
 import { DyadDatabaseSchema } from "./DyadDatabaseSchema";
+import { DyadSupabaseTableSchema } from "./DyadSupabaseTableSchema";
+import { DyadSupabaseProjectInfo } from "./DyadSupabaseProjectInfo";
 import { mapActionToButton } from "./ChatInput";
 import { SuggestedAction } from "@/lib/schemas";
 import { FixAllErrorsButton } from "./FixAllErrorsButton";
@@ -59,6 +61,8 @@ const DYAD_CUSTOM_TAGS = [
   "dyad-mcp-tool-result",
   "dyad-list-files",
   "dyad-database-schema",
+  "dyad-supabase-table-schema",
+  "dyad-supabase-project-info",
 ];
 
 interface DyadMarkdownParserProps {
@@ -632,6 +636,33 @@ function renderCustomTag(
         >
           {content}
         </DyadDatabaseSchema>
+      );
+
+    case "dyad-supabase-table-schema":
+      return (
+        <DyadSupabaseTableSchema
+          node={{
+            properties: {
+              table: attributes.table || "",
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadSupabaseTableSchema>
+      );
+
+    case "dyad-supabase-project-info":
+      return (
+        <DyadSupabaseProjectInfo
+          node={{
+            properties: {
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadSupabaseProjectInfo>
       );
 
     default:

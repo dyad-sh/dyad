@@ -30,7 +30,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   const { app } = useLoadApp(appId);
 
   const handleKeepGoingClick = () => {
-    if (!chatId) {
+    if (chatId === null) {
       showError("No chat found");
       return;
     }

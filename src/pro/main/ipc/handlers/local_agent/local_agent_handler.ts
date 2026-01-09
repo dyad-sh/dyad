@@ -143,6 +143,18 @@ export async function handleLocalAgentStream(
 
   // Track pending user messages to inject after tool results
   const pendingUserMessages: UserMessageContentPart[][] = [];
+  // Store injected messages with their insertion index to re-inject at the same spot each step
+  type FormattedUserMessage = {
+    role: "user";
+    content: Array<
+      { type: "text"; text: string } | { type: "image"; image: URL }
+    >;
+  };
+  type InjectedMessage = {
+    insertAtIndex: number;
+    message: FormattedUserMessage;
+  };
+  const allInjectedMessages: InjectedMessage[] = [];
 
   try {
     // Get model client
@@ -227,26 +239,44 @@ export async function handleLocalAgentStream(
       stopWhen: stepCountIs(25), // Allow multiple tool call rounds
       abortSignal: abortController.signal,
       // Inject pending user messages (e.g., images from web_crawl) between steps
+      // We must re-inject all accumulated messages each step because the AI SDK
+      // doesn't persist dynamically injected messages in its internal state.
+      // We track the insertion index so messages appear at the same position each step.
       prepareStep: ({ messages, ...rest }) => {
-        if (pendingUserMessages.length === 0) {
-          return undefined;
-        }
-        // Build user messages from pending content
-        const newMessages = [...messages];
-        for (const content of pendingUserMessages) {
-          newMessages.push({
-            role: "user" as const,
-            content: content.map((part) => {
-              if (part.type === "text") {
-                return { type: "text" as const, text: part.text };
-              }
-              // part.type === "image-url"
-              return { type: "image" as const, image: new URL(part.url) };
-            }),
+        // Move any new pending messages to the permanent injected list,
+        // recording the current message count as the insertion point
+        while (pendingUserMessages.length > 0) {
+          const content = pendingUserMessages.shift()!;
+          allInjectedMessages.push({
+            insertAtIndex: messages.length,
+            message: {
+              role: "user" as const,
+              content: content.map((part) => {
+                if (part.type === "text") {
+                  return { type: "text" as const, text: part.text };
+                }
+                // part.type === "image-url"
+                return { type: "image" as const, image: new URL(part.url) };
+              }),
+            },
           });
         }
-        // Clear pending messages after injection
-        pendingUserMessages.length = 0;
+
+        // If no messages to inject, don't modify
+        if (allInjectedMessages.length === 0) {
+          return undefined;
+        }
+
+        // Build the new messages array, inserting each message at its recorded index.
+        // We process in reverse order of insertion index to avoid shifting issues.
+        const newMessages = [...messages];
+        const sortedInjections = [...allInjectedMessages].sort(
+          (a, b) => b.insertAtIndex - a.insertAtIndex,
+        );
+        for (const injection of sortedInjections) {
+          newMessages.splice(injection.insertAtIndex, 0, injection.message);
+        }
+
         return { messages: newMessages, ...rest };
       },
       onFinish: async (response) => {

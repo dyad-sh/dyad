@@ -35,7 +35,7 @@ Trigger a crawl ONLY if BOTH conditions are true:
 
 const CLONE_INSTRUCTIONS = `
 
-Replicate the website from the provided HTML, markdown, and screenshot.
+Replicate the website from the provided screenshot image and markdown.
 
 **Use the screenshot as your primary visual reference** to understand the layout, colors, typography, and overall design of the website. The screenshot shows exactly how the page should look.
 
@@ -118,9 +118,6 @@ export const webCrawlTool: ToolDefinition<z.infer<typeof webCrawlSchema>> = {
       throw new Error("No content available from web crawl");
     }
 
-    if (!result.html) {
-      throw new Error("No HTML available from web crawl");
-    }
     if (!result.screenshot) {
       throw new Error("No screenshot available from web crawl");
     }
@@ -132,10 +129,6 @@ export const webCrawlTool: ToolDefinition<z.infer<typeof webCrawlSchema>> = {
       {
         type: "text",
         text: formatSnippet("Markdown snapshot:", result.markdown, "markdown"),
-      },
-      {
-        type: "text",
-        text: formatSnippet("HTML snapshot:", result.html, "html"),
       },
     ]);
 

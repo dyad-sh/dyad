@@ -5,6 +5,12 @@
  * in local_agent_handler.ts, enabling isolated unit testing.
  */
 
+import {
+  ImagePart,
+  ModelMessage,
+  TextPart,
+  UserModelMessage,
+} from "node_modules/ai/dist";
 import type { UserMessageContentPart } from "./tools/types";
 
 /**
@@ -14,26 +20,15 @@ export interface InjectedMessage {
   insertAtIndex: number;
   /** Sequence number to preserve FIFO order for same-index messages */
   sequence: number;
-  message: {
-    role: "user";
-    content: Array<
-      { type: "text"; text: string } | { type: "image"; image: URL }
-    >;
-  };
+  message: UserModelMessage;
 }
-
-/**
- * Represents a generic message in the conversation history.
- * Kept minimal to avoid coupling to AI SDK internals.
- */
-export type GenericMessage = Record<string, unknown>;
 
 /**
  * Transform a UserMessageContentPart to the format expected by the AI SDK.
  */
 export function transformContentPart(
   part: UserMessageContentPart,
-): { type: "text"; text: string } | { type: "image"; image: URL } {
+): TextPart | ImagePart {
   if (part.type === "text") {
     return { type: "text", text: part.text };
   }
@@ -114,7 +109,7 @@ export function injectMessagesAtPositions<T>(
  * @returns Modified options with injected messages, or undefined if no changes needed
  */
 export function prepareStepMessages<
-  TMessage extends GenericMessage,
+  TMessage extends ModelMessage,
   T extends { messages: TMessage[]; [key: string]: unknown },
 >(
   options: T,

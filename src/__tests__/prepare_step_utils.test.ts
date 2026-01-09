@@ -7,6 +7,7 @@ import {
   type InjectedMessage,
 } from "@/pro/main/ipc/handlers/local_agent/prepare_step_utils";
 import type { UserMessageContentPart } from "@/pro/main/ipc/handlers/local_agent/tools/types";
+import { ImagePart, ModelMessage } from "node_modules/ai/dist";
 
 describe("prepare_step_utils", () => {
   describe("transformContentPart", () => {
@@ -116,7 +117,9 @@ describe("prepare_step_utils", () => {
         type: "text",
         text: "Check this image:",
       });
-      expect(allInjectedMessages[0].message.content[1].type).toBe("image");
+      expect(
+        (allInjectedMessages[0].message.content[1] as ImagePart).type,
+      ).toBe("image");
     });
 
     it("does nothing when no pending messages", () => {
@@ -335,7 +338,7 @@ describe("prepare_step_utils", () => {
   describe("prepareStepMessages", () => {
     it("returns undefined when no pending or injected messages", () => {
       const options = {
-        messages: [{ role: "user", content: "Hello" }],
+        messages: [{ role: "user", content: "Hello" }] satisfies ModelMessage[],
         someOtherProp: true,
       };
       const pendingUserMessages: UserMessageContentPart[][] = [];
@@ -352,7 +355,9 @@ describe("prepare_step_utils", () => {
 
     it("processes pending messages and returns modified options", () => {
       const options = {
-        messages: [{ role: "user", content: "Original" }],
+        messages: [
+          { role: "user", content: "Original" },
+        ] satisfies ModelMessage[],
         temperature: 0.7,
       };
       const pendingUserMessages: UserMessageContentPart[][] = [
@@ -380,7 +385,9 @@ describe("prepare_step_utils", () => {
 
       // Step 1: Add first pending message
       pendingUserMessages.push([{ type: "text", text: "Screenshot 1" }]);
-      const step1Messages = [{ role: "assistant", content: "Let me help" }];
+      const step1Messages: ModelMessage[] = [
+        { role: "assistant", content: "Let me help" },
+      ];
 
       let result = prepareStepMessages(
         { messages: step1Messages },
@@ -394,7 +401,7 @@ describe("prepare_step_utils", () => {
 
       // Step 2: AI added a new message, add another pending message
       pendingUserMessages.push([{ type: "text", text: "Screenshot 2" }]);
-      const step2Messages = [
+      const step2Messages: ModelMessage[] = [
         { role: "assistant", content: "Let me help" },
         { role: "assistant", content: "Tool result" },
       ];
@@ -413,7 +420,7 @@ describe("prepare_step_utils", () => {
 
     it("preserves additional options properties", () => {
       const options = {
-        messages: [{ role: "user" }],
+        messages: [{ role: "user", content: "test" }] satisfies ModelMessage[],
         maxTokens: 1000,
         model: "gpt-4",
         tools: ["search", "write"],
@@ -445,7 +452,9 @@ describe("prepare_step_utils", () => {
         },
       };
       const options = {
-        messages: [{ role: "assistant", content: "Response" }],
+        messages: [
+          { role: "assistant", content: "Response" },
+        ] satisfies ModelMessage[],
       };
       const pendingUserMessages: UserMessageContentPart[][] = [];
       const allInjectedMessages: InjectedMessage[] = [existingInjected];
@@ -468,7 +477,9 @@ describe("prepare_step_utils", () => {
       const pendingUserMessages: UserMessageContentPart[][] = [];
 
       // Step 1: User sends initial prompt
-      let currentMessages = [{ role: "user", content: "Build a todo app" }];
+      let currentMessages: ModelMessage[] = [
+        { role: "user", content: "Build a todo app" },
+      ];
       let result = prepareStepMessages(
         { messages: currentMessages },
         pendingUserMessages,

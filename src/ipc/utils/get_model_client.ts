@@ -204,7 +204,8 @@ function getProModelClient({
 }): ModelClient {
   if (
     settings.selectedChatMode === "local-agent" &&
-    model.provider === "auto"
+    model.provider === "auto" &&
+    model.name === "auto"
   ) {
     return {
       // We need to do the fallback here (and not server-side)
@@ -212,12 +213,14 @@ function getProModelClient({
       // full functionality (e.g. thinking summaries).
       model: createFallback({
         models: [
-          provider.responses(`openai/${GPT_5_2_MODEL_NAME}`),
+          // openai requires no prefix.
+          provider.responses(`${GPT_5_2_MODEL_NAME}`),
           provider(`anthropic/${SONNET_4_5}`),
           provider(`gemini/${GEMINI_3_FLASH}`),
         ],
       }),
-      builtinProviderId: model.provider,
+      // Using openAI as the default provider.
+      builtinProviderId: "openai",
     };
   }
   if (

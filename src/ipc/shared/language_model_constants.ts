@@ -18,11 +18,15 @@ export interface ModelOption {
   contextWindow?: number;
 }
 
+export const GPT_5_2_MODEL_NAME = "gpt-5.2";
+export const SONNET_4_5 = "claude-sonnet-4-5-20250929";
+export const GEMINI_3_FLASH = "gemini-3-flash-preview";
+
 export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
   openai: [
     // https://platform.openai.com/docs/models/gpt-5.1
     {
-      name: "gpt-5.2",
+      name: GPT_5_2_MODEL_NAME,
       displayName: "GPT 5.2",
       description: "OpenAI's latest model",
       // Technically it's 128k but OpenAI errors if you set max_tokens instead of max_completion_tokens
@@ -121,7 +125,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       dollarSigns: 5,
     },
     {
-      name: "claude-sonnet-4-5-20250929",
+      name: SONNET_4_5,
       displayName: "Claude Sonnet 4.5",
       description:
         "Anthropic's best model for coding (note: >200k tokens is very expensive!)",
@@ -158,7 +162,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     },
     // https://ai.google.dev/gemini-api/docs/models#gemini-3-pro
     {
-      name: "gemini-3-flash-preview",
+      name: GEMINI_3_FLASH,
       displayName: "Gemini 3 Flash (Preview)",
       description: "Powerful coding model at a good price",
       // See Flash 2.5 comment below (go 1 below just to be safe, even though it seems OK now).

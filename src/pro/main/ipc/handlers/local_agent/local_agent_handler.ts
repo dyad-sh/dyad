@@ -47,6 +47,10 @@ import {
   escapeXmlContent,
   UserMessageContentPart,
 } from "./tools/types";
+import {
+  prepareStepMessages,
+  type InjectedMessage,
+} from "./prepare_step_utils";
 import { TOOL_DEFINITIONS } from "./tool_definitions";
 import { parseAiMessagesJson } from "@/ipc/utils/ai_messages_utils";
 import { parseMcpToolKey, sanitizeMcpName } from "@/ipc/utils/mcp_tool_utils";
@@ -144,16 +148,6 @@ export async function handleLocalAgentStream(
   // Track pending user messages to inject after tool results
   const pendingUserMessages: UserMessageContentPart[][] = [];
   // Store injected messages with their insertion index to re-inject at the same spot each step
-  type FormattedUserMessage = {
-    role: "user";
-    content: Array<
-      { type: "text"; text: string } | { type: "image"; image: URL }
-    >;
-  };
-  type InjectedMessage = {
-    insertAtIndex: number;
-    message: FormattedUserMessage;
-  };
   const allInjectedMessages: InjectedMessage[] = [];
 
   try {
@@ -242,43 +236,8 @@ export async function handleLocalAgentStream(
       // We must re-inject all accumulated messages each step because the AI SDK
       // doesn't persist dynamically injected messages in its internal state.
       // We track the insertion index so messages appear at the same position each step.
-      prepareStep: ({ messages, ...rest }) => {
-        // Move any new pending messages to the permanent injected list,
-        // recording the current message count as the insertion point
-        while (pendingUserMessages.length > 0) {
-          const content = pendingUserMessages.shift()!;
-          allInjectedMessages.push({
-            insertAtIndex: messages.length,
-            message: {
-              role: "user" as const,
-              content: content.map((part) => {
-                if (part.type === "text") {
-                  return { type: "text" as const, text: part.text };
-                }
-                // part.type === "image-url"
-                return { type: "image" as const, image: new URL(part.url) };
-              }),
-            },
-          });
-        }
-
-        // If no messages to inject, don't modify
-        if (allInjectedMessages.length === 0) {
-          return undefined;
-        }
-
-        // Build the new messages array, inserting each message at its recorded index.
-        // We process in reverse order of insertion index to avoid shifting issues.
-        const newMessages = [...messages];
-        const sortedInjections = [...allInjectedMessages].sort(
-          (a, b) => b.insertAtIndex - a.insertAtIndex,
-        );
-        for (const injection of sortedInjections) {
-          newMessages.splice(injection.insertAtIndex, 0, injection.message);
-        }
-
-        return { messages: newMessages, ...rest };
-      },
+      prepareStep: (options) =>
+        prepareStepMessages(options, pendingUserMessages, allInjectedMessages),
       onFinish: async (response) => {
         const totalTokens = response.usage?.totalTokens;
         const inputTokens = response.usage?.inputTokens;

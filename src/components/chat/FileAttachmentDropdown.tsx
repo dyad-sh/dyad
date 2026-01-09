@@ -58,7 +58,10 @@ export function FileAttachmentDropdown({
         <Tooltip>
           <TooltipTrigger asChild>
             <DropdownMenuItem
-              onClick={handleChatContextClick}
+              onSelect={(e) => {
+                e.preventDefault();
+                handleChatContextClick();
+              }}
               className="py-3 px-4"
             >
               <MessageSquare size={16} className="mr-2" />
@@ -75,7 +78,10 @@ export function FileAttachmentDropdown({
         <Tooltip>
           <TooltipTrigger asChild>
             <DropdownMenuItem
-              onClick={handleUploadToCodebaseClick}
+              onSelect={(e) => {
+                e.preventDefault();
+                handleUploadToCodebaseClick();
+              }}
               className="py-3 px-4"
             >
               <Upload size={16} className="mr-2" />

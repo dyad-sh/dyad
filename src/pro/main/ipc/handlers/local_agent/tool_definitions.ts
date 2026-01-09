@@ -23,6 +23,7 @@ import { editFileTool } from "./tools/edit_file";
 import { webSearchTool } from "./tools/web_search";
 import { webCrawlTool } from "./tools/web_crawl";
 import { updateTodosTool } from "./tools/update_todos";
+import { runTypeChecksTool } from "./tools/run_type_checks";
 import type { LanguageModelV3ToolResultOutput } from "@ai-sdk/provider";
 import {
   escapeXmlAttr,
@@ -53,6 +54,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   webSearchTool,
   webCrawlTool,
   updateTodosTool,
+  runTypeChecksTool,
 ];
 // ============================================================================
 // Agent Tool Name Type (derived from TOOL_DEFINITIONS)

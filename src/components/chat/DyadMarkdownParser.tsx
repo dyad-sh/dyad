@@ -31,6 +31,7 @@ import { DyadListFiles } from "./DyadListFiles";
 import { DyadDatabaseSchema } from "./DyadDatabaseSchema";
 import { DyadSupabaseTableSchema } from "./DyadSupabaseTableSchema";
 import { DyadSupabaseProjectInfo } from "./DyadSupabaseProjectInfo";
+import { DyadStatus } from "./DyadStatus";
 import { mapActionToButton } from "./ChatInput";
 import { SuggestedAction } from "@/lib/schemas";
 import { FixAllErrorsButton } from "./FixAllErrorsButton";
@@ -63,6 +64,7 @@ const DYAD_CUSTOM_TAGS = [
   "dyad-database-schema",
   "dyad-supabase-table-schema",
   "dyad-supabase-project-info",
+  "dyad-status",
 ];
 
 interface DyadMarkdownParserProps {
@@ -663,6 +665,20 @@ function renderCustomTag(
         >
           {content}
         </DyadSupabaseProjectInfo>
+      );
+
+    case "dyad-status":
+      return (
+        <DyadStatus
+          node={{
+            properties: {
+              title: attributes.title || "Processing...",
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadStatus>
       );
 
     default:

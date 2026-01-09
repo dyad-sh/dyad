@@ -5,7 +5,7 @@
 import { z } from "zod";
 import { IpcMainInvokeEvent } from "electron";
 import { jsonrepair } from "jsonrepair";
-import { AgentToolConsent } from "@/ipc/ipc_types";
+import { AgentToolConsent, AgentTodo } from "@/ipc/ipc_types";
 
 // ============================================================================
 // XML Escape Helpers
@@ -23,6 +23,13 @@ export function escapeXmlContent(str: string): string {
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// ============================================================================
+// Todo Types
+// ============================================================================
+
+// Re-export AgentTodo as Todo for backwards compatibility within this module
+export type Todo = AgentTodo;
+
 export interface AgentContext {
   event: IpcMainInvokeEvent;
   appPath: string;
@@ -32,6 +39,8 @@ export interface AgentContext {
   messageId: number;
   isSharedModulesChanged: boolean;
   chatSummary?: string;
+  /** Turn-scoped todo list for agent task tracking */
+  todos: Todo[];
   /**
    * Streams accumulated XML to UI without persisting to DB (for live preview).
    * Call this repeatedly with the full accumulated XML so far.
@@ -53,6 +62,11 @@ export interface AgentContext {
    * that models don't support in tool result messages.
    */
   appendUserMessage: (content: UserMessageContentPart[]) => void;
+  /**
+   * Sends updated todos to the renderer for UI display.
+   * Call this when todos are updated to show them in the chat input area.
+   */
+  onUpdateTodos: (todos: Todo[]) => void;
 }
 
 // ============================================================================

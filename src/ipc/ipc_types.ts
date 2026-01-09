@@ -704,6 +704,21 @@ export interface AgentToolConsentResponseParams {
 
 export type AgentToolConsent = "ask" | "always";
 
+// ============================================================================
+// Agent Todo Types
+// ============================================================================
+
+export interface AgentTodo {
+  id: string;
+  content: string;
+  status: "pending" | "in_progress" | "completed";
+}
+
+export interface AgentTodosUpdatePayload {
+  chatId: number;
+  todos: AgentTodo[];
+}
+
 export interface TelemetryEventPayload {
   eventName: string;
   properties?: Record<string, unknown>;

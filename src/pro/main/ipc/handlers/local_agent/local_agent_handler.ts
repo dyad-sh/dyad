@@ -166,6 +166,7 @@ export async function handleLocalAgentStream(
       supabaseOrganizationSlug: chat.app.supabaseOrganizationSlug,
       messageId: placeholderMessageId,
       isSharedModulesChanged: false,
+      todos: [],
       onXmlStream: (accumulatedXml: string) => {
         // Stream accumulated XML to UI without persisting
         streamingPreview = accumulatedXml;
@@ -197,6 +198,12 @@ export async function handleLocalAgentStream(
       },
       appendUserMessage: (content: UserMessageContentPart[]) => {
         pendingUserMessages.push(content);
+      },
+      onUpdateTodos: (todos) => {
+        safeSend(event.sender, "agent-tool:todos-update", {
+          chatId: chat.id,
+          todos,
+        });
       },
     };
 

@@ -1,4 +1,4 @@
-import type { FileAttachment, Message } from "@/ipc/ipc_types";
+import type { FileAttachment, Message, AgentTodo } from "@/ipc/ipc_types";
 import { atom } from "jotai";
 
 // Per-chat atoms implemented with maps keyed by chatId
@@ -28,3 +28,6 @@ export interface PendingAgentConsent {
 }
 
 export const pendingAgentConsentsAtom = atom<PendingAgentConsent[]>([]);
+
+// Agent todos per chat
+export const agentTodosByChatIdAtom = atom<Map<number, AgentTodo[]>>(new Map());

@@ -175,6 +175,8 @@ const validReceiveChannels = [
   "mcp:tool-consent-request",
   // Agent tool consent request from main to renderer
   "agent-tool:consent-request",
+  // Agent todos update from main to renderer
+  "agent-tool:todos-update",
   // Telemetry events from main to renderer
   "telemetry:event",
 ] as const;

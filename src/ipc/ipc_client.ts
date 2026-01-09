@@ -81,6 +81,7 @@ import type {
   SetAgentToolConsentParams,
   AgentToolConsentRequestPayload,
   AgentToolConsentResponseParams,
+  AgentTodosUpdatePayload,
   TelemetryEventPayload,
   ConsoleEntry,
 } from "./ipc_types";
@@ -138,6 +139,7 @@ export class IpcClient {
   >;
   private mcpConsentHandlers: Map<string, (payload: any) => void>;
   private agentConsentHandlers: Map<string, (payload: any) => void>;
+  private agentTodosHandlers: Set<(payload: AgentTodosUpdatePayload) => void>;
   private telemetryEventHandlers: Set<(payload: TelemetryEventPayload) => void>;
   // Global handlers called for any chat stream completion (used for cleanup)
   private globalChatStreamEndHandlers: Set<(chatId: number) => void>;
@@ -148,6 +150,7 @@ export class IpcClient {
     this.helpStreams = new Map();
     this.mcpConsentHandlers = new Map();
     this.agentConsentHandlers = new Map();
+    this.agentTodosHandlers = new Set();
     this.telemetryEventHandlers = new Set();
     this.globalChatStreamEndHandlers = new Set();
     // Set up listeners for stream events
@@ -295,6 +298,13 @@ export class IpcClient {
     this.ipcRenderer.on("agent-tool:consent-request", (payload) => {
       const handler = this.agentConsentHandlers.get("consent");
       if (handler) handler(payload);
+    });
+
+    // Agent todos update from main
+    this.ipcRenderer.on("agent-tool:todos-update", (payload) => {
+      for (const handler of this.agentTodosHandlers) {
+        handler(payload as unknown as AgentTodosUpdatePayload);
+      }
     });
 
     // Telemetry events from main to renderer
@@ -973,6 +983,19 @@ export class IpcClient {
 
   public respondToAgentConsentRequest(params: AgentToolConsentResponseParams) {
     this.ipcRenderer.invoke("agent-tool:consent-response", params);
+  }
+
+  /**
+   * Subscribe to agent todos updates from the local agent.
+   * Called when the agent updates its todo list during a streaming session.
+   */
+  public onAgentTodosUpdate(
+    handler: (payload: AgentTodosUpdatePayload) => void,
+  ) {
+    this.agentTodosHandlers.add(handler);
+    return () => {
+      this.agentTodosHandlers.delete(handler);
+    };
   }
 
   /**

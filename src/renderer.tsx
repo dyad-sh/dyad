@@ -14,7 +14,10 @@ import {
 import { showError, showMcpConsentToast } from "./lib/toast";
 import { IpcClient } from "./ipc/ipc_client";
 import { useSetAtom } from "jotai";
-import { pendingAgentConsentsAtom } from "./atoms/chatAtoms";
+import {
+  pendingAgentConsentsAtom,
+  agentTodosByChatIdAtom,
+} from "./atoms/chatAtoms";
 
 // @ts-ignore
 console.log("Running in mode:", import.meta.env.MODE);
@@ -129,6 +132,21 @@ function App() {
 
   // Agent v2 tool consent requests - queue consents instead of overwriting
   const setPendingAgentConsents = useSetAtom(pendingAgentConsentsAtom);
+  const setAgentTodosByChatId = useSetAtom(agentTodosByChatIdAtom);
+
+  // Agent todos updates
+  useEffect(() => {
+    const ipc = IpcClient.getInstance();
+    const unsubscribe = ipc.onAgentTodosUpdate((payload) => {
+      setAgentTodosByChatId((prev) => {
+        const next = new Map(prev);
+        next.set(payload.chatId, payload.todos);
+        return next;
+      });
+    });
+    return () => unsubscribe();
+  }, [setAgentTodosByChatId]);
+
   useEffect(() => {
     const ipc = IpcClient.getInstance();
     const unsubscribe = ipc.onAgentToolConsentRequest((payload) => {
@@ -146,7 +164,7 @@ function App() {
     return () => unsubscribe();
   }, [setPendingAgentConsents]);
 
-  // Clear pending agent consents when a chat stream ends or errors
+  // Clear pending agent consents and todos when a chat stream ends or errors
   // This prevents stale consent banners from remaining visible after cancellation
   useEffect(() => {
     const ipc = IpcClient.getInstance();
@@ -154,9 +172,15 @@ function App() {
       setPendingAgentConsents((prev) =>
         prev.filter((consent) => consent.chatId !== chatId),
       );
+      // Clear todos for this chat when stream ends
+      setAgentTodosByChatId((prev) => {
+        const next = new Map(prev);
+        next.delete(chatId);
+        return next;
+      });
     });
     return () => unsubscribe();
-  }, [setPendingAgentConsents]);
+  }, [setPendingAgentConsents, setAgentTodosByChatId]);
 
   // Forward telemetry events from main process to PostHog
   useEffect(() => {

@@ -14,7 +14,7 @@ import { useVersions } from "@/hooks/useVersions";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { showError, showWarning } from "@/lib/toast";
 import { IpcClient } from "@/ipc/ipc_client";
-import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
+import { chatMessagesByIdAtom, type QueuedMessage } from "@/atoms/chatAtoms";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useSettings } from "@/hooks/useSettings";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
@@ -52,6 +52,7 @@ interface FooterContext {
   settings: ReturnType<typeof useSettings>["settings"];
   userBudget: ReturnType<typeof useUserBudgetInfo>["userBudget"];
   renderSetupBanner: () => React.ReactNode;
+  queuedMessage: QueuedMessage | null;
 }
 
 // Footer component for Virtuoso - receives context via props
@@ -76,6 +77,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
     settings,
     userBudget,
     renderSetupBanner,
+    queuedMessage,
   } = context;
 
   return (
@@ -244,6 +246,19 @@ function FooterComponent({ context }: { context?: FooterContext }) {
             seed={messages.length * (appId ?? 1) * (selectedChatId ?? 1)}
           />
         )}
+      {/* Show queued message with pending style */}
+      {queuedMessage && (
+        <div className="px-4 opacity-60">
+          <div className="max-w-3xl mx-auto border border-dashed border-border rounded-lg p-4 bg-muted/30 my-2">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
+              <span>Queued - will send after current response</span>
+            </div>
+            <div className="text-sm whitespace-pre-wrap break-words">
+              {queuedMessage.prompt}
+            </div>
+          </div>
+        </div>
+      )}
       <div ref={messagesEndRef} />
       {renderSetupBanner()}
     </>
@@ -263,7 +278,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
   ) {
     const appId = useAtomValue(selectedAppIdAtom);
     const { versions, revertVersion } = useVersions(appId);
-    const { streamMessage, isStreaming } = useStreamChat();
+    const { streamMessage, isStreaming, queuedMessage } = useStreamChat();
     const { isAnyProviderSetup, isProviderSetup } = useLanguageModelProviders();
     const { settings } = useSettings();
     const setMessagesById = useSetAtom(chatMessagesByIdAtom);
@@ -351,6 +366,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         settings,
         userBudget,
         renderSetupBanner,
+        queuedMessage,
       }),
       [
         messages,
@@ -370,6 +386,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         settings,
         userBudget,
         renderSetupBanner,
+        queuedMessage,
       ],
     );
 

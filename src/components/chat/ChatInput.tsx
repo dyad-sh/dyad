@@ -88,8 +88,15 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const { settings } = useSettings();
   const appId = useAtomValue(selectedAppIdAtom);
   const { refreshVersions } = useVersions(appId);
-  const { streamMessage, isStreaming, setIsStreaming, error, setError } =
-    useStreamChat();
+  const {
+    streamMessage,
+    isStreaming,
+    setIsStreaming,
+    error,
+    setError,
+    queueMessage,
+    clearQueuedMessage,
+  } = useStreamChat({ shouldProcessQueue: true });
   const [showError, setShowError] = useState(true);
   const [isApproving, setIsApproving] = useState(false); // State for approving
   const [isRejecting, setIsRejecting] = useState(false); // State for rejecting
@@ -176,11 +183,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   }, [chatId, setMessagesById]);
 
   const handleSubmit = async () => {
-    if (
-      (!inputValue.trim() && attachments.length === 0) ||
-      isStreaming ||
-      !chatId
-    ) {
+    if ((!inputValue.trim() && attachments.length === 0) || !chatId) {
       return;
     }
 
@@ -202,6 +205,18 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       );
     }
 
+    // If streaming, queue the message instead of sending immediately
+    if (isStreaming) {
+      queueMessage({
+        prompt: currentInput,
+        attachments,
+        selectedComponents: componentsToSend,
+      });
+      clearAttachments();
+      posthog.capture("chat:queue");
+      return;
+    }
+
     // Send message with attachments and clear them after sending
     await streamMessage({
       prompt: currentInput,
@@ -219,6 +234,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       IpcClient.getInstance().cancelChatStream(chatId);
     }
     setIsStreaming(false);
+    // Clear queued message when user cancels
+    clearQueuedMessage();
   };
 
   const dismissError = () => {

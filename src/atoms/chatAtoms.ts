@@ -28,3 +28,14 @@ export interface PendingAgentConsent {
 }
 
 export const pendingAgentConsentsAtom = atom<PendingAgentConsent[]>([]);
+
+// Queued message (single message per chat, sent after current stream completes)
+export interface QueuedMessage {
+  prompt: string;
+  attachments?: FileAttachment[];
+  selectedComponents?: any[];
+}
+
+export const queuedMessageByIdAtom = atom<Map<number, QueuedMessage>>(
+  new Map(),
+);

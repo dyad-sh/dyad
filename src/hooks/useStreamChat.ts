@@ -1,9 +1,5 @@
-import { useCallback } from "react";
-import type {
-  ComponentSelection,
-  Message,
-  FileAttachment,
-} from "@/ipc/ipc_types";
+import { useCallback, useEffect } from "react";
+import type { Message, FileAttachment } from "@/ipc/ipc_types";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
   chatErrorByIdAtom,
@@ -11,6 +7,7 @@ import {
   chatStreamCountByIdAtom,
   isStreamingByIdAtom,
   recentStreamChatIdsAtom,
+  queuedMessageByIdAtom,
 } from "@/atoms/chatAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
@@ -35,7 +32,8 @@ export function getRandomNumberId() {
 
 export function useStreamChat({
   hasChatId = true,
-}: { hasChatId?: boolean } = {}) {
+  shouldProcessQueue = false,
+}: { hasChatId?: boolean; shouldProcessQueue?: boolean } = {}) {
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const isStreamingById = useAtomValue(isStreamingByIdAtom);
   const setIsStreamingById = useSetAtom(isStreamingByIdAtom);
@@ -53,6 +51,10 @@ export function useStreamChat({
   const { checkProblems } = useCheckProblems(selectedAppId);
   const { settings } = useSettings();
   const setRecentStreamChatIds = useSetAtom(recentStreamChatIdsAtom);
+  const [queuedMessageById, setQueuedMessageById] = useAtom(
+    queuedMessageByIdAtom,
+  );
+
   const posthog = usePostHog();
   const queryClient = useQueryClient();
   let chatId: number | undefined;
@@ -76,7 +78,7 @@ export function useStreamChat({
       chatId: number;
       redo?: boolean;
       attachments?: FileAttachment[];
-      selectedComponents?: ComponentSelection[];
+      selectedComponents?: any[];
       onSettled?: () => void;
     }) => {
       if (
@@ -157,6 +159,9 @@ export function useStreamChat({
             refreshVersions();
             invalidateTokenCount();
             onSettled?.();
+
+            invalidateTokenCount();
+            onSettled?.();
           },
           onError: (errorMessage: string) => {
             console.error(`[CHAT] Stream error for ${chatId}:`, errorMessage);
@@ -210,6 +215,37 @@ export function useStreamChat({
     ],
   );
 
+  // Process queued message when streaming ends
+  useEffect(() => {
+    if (!chatId || !shouldProcessQueue) return;
+
+    const queuedMessage = queuedMessageById.get(chatId);
+    const isStreaming = isStreamingById.get(chatId);
+
+    if (queuedMessage && !isStreaming) {
+      // Clear queue first to prevent loops
+      setQueuedMessageById((prev) => {
+        const next = new Map(prev);
+        next.delete(chatId);
+        return next;
+      });
+
+      // Send the message
+      streamMessage({
+        prompt: queuedMessage.prompt,
+        chatId,
+        attachments: queuedMessage.attachments,
+        selectedComponents: queuedMessage.selectedComponents,
+      });
+    }
+  }, [
+    chatId,
+    queuedMessageById,
+    isStreamingById,
+    streamMessage,
+    setQueuedMessageById,
+  ]);
+
   return {
     streamMessage,
     isStreaming:
@@ -232,5 +268,30 @@ export function useStreamChat({
         if (chatId !== undefined) next.set(chatId, value);
         return next;
       }),
+    queuedMessage:
+      hasChatId && chatId !== undefined
+        ? (queuedMessageById.get(chatId) ?? null)
+        : null,
+    queueMessage: (message: {
+      prompt: string;
+      attachments?: any[];
+      selectedComponents?: any[];
+    }) => {
+      if (chatId === undefined) return;
+      console.log("[CHAT] Queuing message for chat:", chatId, message);
+      setQueuedMessageById((prev) => {
+        const next = new Map(prev);
+        next.set(chatId, message);
+        return next;
+      });
+    },
+    clearQueuedMessage: () => {
+      if (chatId === undefined) return;
+      setQueuedMessageById((prev) => {
+        const next = new Map(prev);
+        next.delete(chatId);
+        return next;
+      });
+    },
   };
 }

@@ -11,11 +11,7 @@ testSkipIfWindows("local-agent - security review fix", async ({ po }) => {
 
   // First, trigger a security review
   await po.selectPreviewMode("security");
-  await po.page
-    .getByRole("button", { name: "Run Security Review" })
-    .first()
-    .click();
-  await po.waitForChatCompletion();
+  await po.clickRunSecurityReview();
 
   await po.snapshotServerDump("all-messages");
 });

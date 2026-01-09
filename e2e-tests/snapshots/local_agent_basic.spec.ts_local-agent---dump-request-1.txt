@@ -1,6 +1,6 @@
 {
   "body": {
-    "model": "dyad/auto",
+    "model": "anthropic/claude-opus-4-5",
     "max_tokens": 32000,
     "temperature": 0,
     "messages": [
@@ -327,12 +327,7 @@
       }
     ],
     "tool_choice": "auto",
-    "stream": true,
-    "thinking": {
-      "type": "enabled",
-      "include_thoughts": true,
-      "budget_tokens": 4000
-    }
+    "stream": true
   },
   "headers": {
     "authorization": "Bearer testdyadkey"

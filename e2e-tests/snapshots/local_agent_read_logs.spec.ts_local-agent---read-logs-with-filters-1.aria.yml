@@ -9,7 +9,7 @@
 - button:
   - img
 - img
-- text: auto
+- text: claude-opus-4-5
 - img
 - text: less than a minute ago
 - button "Request ID":
@@ -17,7 +17,7 @@
 - paragraph: tc=local-agent/read-logs
 - paragraph: Let me check the recent console logs to see what's happening in the application.
 - img
-- text: /LOGSReading \d+ logs?/
+- text: LOGSReading 1 logs
 - img
 - paragraph: Now let me filter for only error logs to identify any issues.
 - img
@@ -31,7 +31,7 @@
 - button:
   - img
 - img
-- text: auto
+- text: claude-opus-4-5
 - img
 - text: less than a minute ago
 - button "Request ID":

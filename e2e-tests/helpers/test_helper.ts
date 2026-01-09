@@ -326,6 +326,14 @@ export class PageObject {
     }
     await this.setUpDyadProvider();
     await this.goToAppsTab();
+    // Select a non-openAI model for local agent mode,
+    // since openAI models go to the responses API.
+    if (localAgent) {
+      await this.selectModel({
+        provider: "Anthropic",
+        model: "Claude Opus 4.5",
+      });
+    }
   }
 
   async ensurePnpmInstall() {
@@ -722,6 +730,18 @@ export class PageObject {
       name,
       timeout: Timeout.LONG,
     });
+  }
+
+  ////////////////////////////////
+  // Security review
+  ////////////////////////////////
+  async clickRunSecurityReview() {
+    const runSecurityReviewButton = this.page
+      .getByRole("button", { name: "Run Security Review" })
+      .first();
+    await runSecurityReviewButton.click();
+    await runSecurityReviewButton.waitFor({ state: "hidden" });
+    await this.waitForChatCompletion();
   }
 
   async snapshotSecurityFindingsTable() {

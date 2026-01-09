@@ -1,6 +1,6 @@
 {
   "body": {
-    "model": "dyad/auto",
+    "model": "anthropic/claude-opus-4-5",
     "max_tokens": 32000,
     "temperature": 0,
     "messages": [
@@ -14,11 +14,6 @@
       }
     ],
     "stream": true,
-    "thinking": {
-      "type": "enabled",
-      "include_thoughts": true,
-      "budget_tokens": 4000
-    },
     "dyad_options": {
       "files": [
         {

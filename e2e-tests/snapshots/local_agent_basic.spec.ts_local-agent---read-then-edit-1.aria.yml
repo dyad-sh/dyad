@@ -9,7 +9,7 @@
 - button:
   - img
 - img
-- text: auto
+- text: claude-opus-4-5
 - img
 - text: less than a minute ago
 - button "Request ID":
@@ -27,7 +27,7 @@
 - button:
   - img
 - img
-- text: auto
+- text: claude-opus-4-5
 - img
 - text: less than a minute ago
 - button "Request ID":

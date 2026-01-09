@@ -19,14 +19,16 @@ interface AuxiliaryActionsMenuProps {
     files: FileList,
     type: "chat-context" | "upload-to-codebase",
   ) => void;
-  showTokenBar: boolean;
-  toggleShowTokenBar: () => void;
+  showTokenBar?: boolean;
+  toggleShowTokenBar?: () => void;
+  showContextFilesPicker?: boolean;
 }
 
 export function AuxiliaryActionsMenu({
   onFileSelect,
   showTokenBar,
   toggleShowTokenBar,
+  showContextFilesPicker = true,
 }: AuxiliaryActionsMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -47,7 +49,7 @@ export function AuxiliaryActionsMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         {/* Codebase Context */}
-        <ContextFilesPicker />
+        {showContextFilesPicker && <ContextFilesPicker />}
 
         {/* Attach Files Submenu */}
         <DropdownMenuSub>
@@ -58,31 +60,34 @@ export function AuxiliaryActionsMenu({
           <DropdownMenuSubContent>
             <FileAttachmentDropdown
               onFileSelect={onFileSelect}
-              renderAsMenuItems={true}
+              onMenuClose={() => setIsOpen(false)}
             />
           </DropdownMenuSubContent>
         </DropdownMenuSub>
 
-        <DropdownMenuSeparator />
-
         {/* Toggle Token Usage */}
-        <DropdownMenuItem
-          onClick={toggleShowTokenBar}
-          className={`py-2 px-3 group ${showTokenBar ? "bg-primary/10 text-primary" : ""}`}
-          data-testid="token-bar-toggle"
-        >
-          <ChartColumnIncreasing
-            size={16}
-            className={
-              showTokenBar
-                ? "text-primary group-hover:text-accent-foreground"
-                : ""
-            }
-          />
-          <span className="flex-1">
-            {showTokenBar ? "Hide" : "Show"} token usage
-          </span>
-        </DropdownMenuItem>
+        {toggleShowTokenBar !== undefined && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={toggleShowTokenBar}
+              className={`py-2 px-3 group ${showTokenBar ? "bg-primary/10 text-primary" : ""}`}
+              data-testid="token-bar-toggle"
+            >
+              <ChartColumnIncreasing
+                size={16}
+                className={
+                  showTokenBar
+                    ? "text-primary group-hover:text-accent-foreground"
+                    : ""
+                }
+              />
+              <span className="flex-1">
+                {showTokenBar ? "Hide" : "Show"} token usage
+              </span>
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

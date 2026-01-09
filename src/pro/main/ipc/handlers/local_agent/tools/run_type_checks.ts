@@ -8,13 +8,14 @@ import {
 import { generateProblemReport } from "@/ipc/processors/tsc";
 import type { Problem } from "@/ipc/ipc_types";
 import { readSettings } from "@/main/settings";
+import { normalizePath } from "../../../../../../../shared/normalizePath";
 
 const runTypeChecksSchema = z.object({
   paths: z
     .array(z.string())
     .optional()
     .describe(
-      "Optional. An array of paths to files or directories to read linter errors for. You can use either relative paths in the workspace or absolute paths. If provided, returns diagnostics for the specified files/directories only. If not provided, returns diagnostics for all files in the workspace.",
+      "Optional. An array of paths to files or directories to read linter errors for. If provided, returns diagnostics for the specified files/directories only. If not provided, returns diagnostics for all files in the workspace.",
     ),
 });
 
@@ -24,12 +25,14 @@ const runTypeChecksSchema = z.object({
  * starts with the path followed by a separator (directory match).
  */
 function matchesPaths(problemFile: string, paths: string[]): boolean {
-  // Normalize the problem file path (remove leading ./ if present)
-  const normalizedProblemFile = problemFile.replace(/^\.\//, "");
+  // Normalize the problem file path (convert backslashes and remove leading ./)
+  const normalizedProblemFile = normalizePath(problemFile).replace(/^\.\//, "");
 
   for (const targetPath of paths) {
-    // Normalize target path (remove leading ./ and trailing /)
-    const normalizedTarget = targetPath.replace(/^\.\//, "").replace(/\/$/, "");
+    // Normalize target path (convert backslashes, remove leading ./ and trailing /)
+    const normalizedTarget = normalizePath(targetPath)
+      .replace(/^\.\//, "")
+      .replace(/\/$/, "");
 
     // Exact file match
     if (normalizedProblemFile === normalizedTarget) {
@@ -37,10 +40,7 @@ function matchesPaths(problemFile: string, paths: string[]): boolean {
     }
 
     // Directory prefix match (problem file is inside the target directory)
-    if (
-      normalizedProblemFile.startsWith(normalizedTarget + "/") ||
-      normalizedProblemFile.startsWith(normalizedTarget + "\\")
-    ) {
+    if (normalizedProblemFile.startsWith(normalizedTarget + "/")) {
       return true;
     }
   }

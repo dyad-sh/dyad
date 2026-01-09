@@ -12,7 +12,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 
 interface FileAttachmentDropdownProps {
   onFileSelect: (
@@ -32,13 +32,18 @@ export function FileAttachmentDropdown({
 }: FileAttachmentDropdownProps) {
   const chatContextFileInputRef = useRef<HTMLInputElement>(null);
   const uploadToCodebaseFileInputRef = useRef<HTMLInputElement>(null);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
 
   const handleChatContextClick = () => {
     chatContextFileInputRef.current?.click();
+    // Close dropdown after triggering file input
+    setDropdownOpen(false);
   };
 
   const handleUploadToCodebaseClick = () => {
     uploadToCodebaseFileInputRef.current?.click();
+    // Close dropdown after triggering file input
+    setDropdownOpen(false);
   };
 
   const handleFileChange = (
@@ -134,7 +139,7 @@ export function FileAttachmentDropdown({
     <>
       <TooltipProvider>
         <Tooltip>
-          <DropdownMenu>
+          <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
             <DropdownMenuTrigger asChild>
               <TooltipTrigger asChild>
                 <Button

@@ -107,7 +107,10 @@ export async function getModelClient(
       // Do not use free variant (for openrouter).
       const modelName = model.name.split(":free")[0];
       const autoModelClient = {
-        model: provider(`${providerConfig.gatewayPrefix || ""}${modelName}`),
+        model: (settings.selectedChatMode === "local-agent" &&
+          model.provider === "openai"
+          ? provider.responses
+          : provider)(`${providerConfig.gatewayPrefix || ""}${modelName}`),
         builtinProviderId: model.provider,
       };
 

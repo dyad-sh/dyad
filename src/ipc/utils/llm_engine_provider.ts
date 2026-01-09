@@ -1,4 +1,5 @@
 import { OpenAICompatibleChatLanguageModel } from "@ai-sdk/openai-compatible";
+import { OpenAIResponsesLanguageModel } from "@ai-sdk/openai/internal";
 import {
   FetchFunction,
   loadApiKey,
@@ -59,6 +60,8 @@ Creates a chat model for text generation.
     modelId: ExampleChatModelId,
     settings?: ExampleChatSettings,
   ): LanguageModel;
+
+  responses(modelId: ExampleChatModelId): LanguageModel;
 }
 
 export function createDyadEngine(
@@ -99,110 +102,121 @@ export function createDyadEngine(
     fetch: options.fetch,
   });
 
+  // Custom fetch implementation that adds dyad-specific options to the request
+  const createDyadFetch = (): FetchFunction => {
+    return (input: RequestInfo | URL, init?: RequestInit) => {
+      // Use default fetch if no init or body
+      if (!init || !init.body || typeof init.body !== "string") {
+        return (options.fetch || fetch)(input, init);
+      }
+
+      try {
+        // Parse the request body to manipulate it
+        const parsedBody = {
+          ...JSON.parse(init.body),
+          ...getExtraProviderOptions(
+            options.originalProviderId,
+            options.settings,
+          ),
+        };
+        const dyadVersionedFiles = parsedBody.dyadVersionedFiles;
+        if ("dyadVersionedFiles" in parsedBody) {
+          delete parsedBody.dyadVersionedFiles;
+        }
+        const dyadFiles = parsedBody.dyadFiles;
+        if ("dyadFiles" in parsedBody) {
+          delete parsedBody.dyadFiles;
+        }
+        const requestId = parsedBody.dyadRequestId;
+        if ("dyadRequestId" in parsedBody) {
+          delete parsedBody.dyadRequestId;
+        }
+        const dyadAppId = parsedBody.dyadAppId;
+        if ("dyadAppId" in parsedBody) {
+          delete parsedBody.dyadAppId;
+        }
+        const dyadDisableFiles = parsedBody.dyadDisableFiles;
+        if ("dyadDisableFiles" in parsedBody) {
+          delete parsedBody.dyadDisableFiles;
+        }
+        const dyadMentionedApps = parsedBody.dyadMentionedApps;
+        if ("dyadMentionedApps" in parsedBody) {
+          delete parsedBody.dyadMentionedApps;
+        }
+        const dyadSmartContextMode = parsedBody.dyadSmartContextMode;
+        if ("dyadSmartContextMode" in parsedBody) {
+          delete parsedBody.dyadSmartContextMode;
+        }
+
+        // Track and modify requestId with attempt number
+        let modifiedRequestId = requestId;
+        if (requestId) {
+          const currentAttempt = (requestIdAttempts.get(requestId) || 0) + 1;
+          requestIdAttempts.set(requestId, currentAttempt);
+          modifiedRequestId = `${requestId}:attempt-${currentAttempt}`;
+        }
+
+        // Add files to the request if they exist
+        if (!dyadDisableFiles) {
+          parsedBody.dyad_options = {
+            files: dyadFiles,
+            versioned_files: dyadVersionedFiles,
+            enable_lazy_edits: options.dyadOptions.enableLazyEdits,
+            enable_smart_files_context:
+              options.dyadOptions.enableSmartFilesContext,
+            smart_context_mode: dyadSmartContextMode,
+            enable_web_search: options.dyadOptions.enableWebSearch,
+            app_id: dyadAppId,
+          };
+          if (dyadMentionedApps?.length) {
+            parsedBody.dyad_options.mentioned_apps = dyadMentionedApps;
+          }
+        }
+
+        // Return modified request with files included and requestId in headers
+        const modifiedInit = {
+          ...init,
+          headers: {
+            ...init.headers,
+            ...(modifiedRequestId && {
+              "X-Dyad-Request-Id": modifiedRequestId,
+            }),
+          },
+          body: JSON.stringify(parsedBody),
+        };
+
+        // Use the provided fetch or default fetch
+        return (options.fetch || fetch)(input, modifiedInit);
+      } catch (e) {
+        logger.error("Error parsing request body", e);
+        // If parsing fails, use original request
+        return (options.fetch || fetch)(input, init);
+      }
+    };
+  };
+
   const createChatModel = (modelId: ExampleChatModelId) => {
-    // Create configuration with file handling
     const config = {
       ...getCommonModelConfig(),
-      // defaultObjectGenerationMode:
-      //   "tool" as LanguageModelV1ObjectGenerationMode,
-      // Custom fetch implementation that adds files to the request
-      fetch: (input: RequestInfo | URL, init?: RequestInit) => {
-        // Use default fetch if no init or body
-        if (!init || !init.body || typeof init.body !== "string") {
-          return (options.fetch || fetch)(input, init);
-        }
-
-        try {
-          // Parse the request body to manipulate it
-          const parsedBody = {
-            ...JSON.parse(init.body),
-            ...getExtraProviderOptions(
-              options.originalProviderId,
-              options.settings,
-            ),
-          };
-          const dyadVersionedFiles = parsedBody.dyadVersionedFiles;
-          if ("dyadVersionedFiles" in parsedBody) {
-            delete parsedBody.dyadVersionedFiles;
-          }
-          const dyadFiles = parsedBody.dyadFiles;
-          if ("dyadFiles" in parsedBody) {
-            delete parsedBody.dyadFiles;
-          }
-          const requestId = parsedBody.dyadRequestId;
-          if ("dyadRequestId" in parsedBody) {
-            delete parsedBody.dyadRequestId;
-          }
-          const dyadAppId = parsedBody.dyadAppId;
-          if ("dyadAppId" in parsedBody) {
-            delete parsedBody.dyadAppId;
-          }
-          const dyadDisableFiles = parsedBody.dyadDisableFiles;
-          if ("dyadDisableFiles" in parsedBody) {
-            delete parsedBody.dyadDisableFiles;
-          }
-          const dyadMentionedApps = parsedBody.dyadMentionedApps;
-          if ("dyadMentionedApps" in parsedBody) {
-            delete parsedBody.dyadMentionedApps;
-          }
-          const dyadSmartContextMode = parsedBody.dyadSmartContextMode;
-          if ("dyadSmartContextMode" in parsedBody) {
-            delete parsedBody.dyadSmartContextMode;
-          }
-
-          // Track and modify requestId with attempt number
-          let modifiedRequestId = requestId;
-          if (requestId) {
-            const currentAttempt = (requestIdAttempts.get(requestId) || 0) + 1;
-            requestIdAttempts.set(requestId, currentAttempt);
-            modifiedRequestId = `${requestId}:attempt-${currentAttempt}`;
-          }
-
-          // Add files to the request if they exist
-          if (!dyadDisableFiles) {
-            parsedBody.dyad_options = {
-              files: dyadFiles,
-              versioned_files: dyadVersionedFiles,
-              enable_lazy_edits: options.dyadOptions.enableLazyEdits,
-              enable_smart_files_context:
-                options.dyadOptions.enableSmartFilesContext,
-              smart_context_mode: dyadSmartContextMode,
-              enable_web_search: options.dyadOptions.enableWebSearch,
-              app_id: dyadAppId,
-            };
-            if (dyadMentionedApps?.length) {
-              parsedBody.dyad_options.mentioned_apps = dyadMentionedApps;
-            }
-          }
-
-          // Return modified request with files included and requestId in headers
-          const modifiedInit = {
-            ...init,
-            headers: {
-              ...init.headers,
-              ...(modifiedRequestId && {
-                "X-Dyad-Request-Id": modifiedRequestId,
-              }),
-            },
-            body: JSON.stringify(parsedBody),
-          };
-
-          // Use the provided fetch or default fetch
-          return (options.fetch || fetch)(input, modifiedInit);
-        } catch (e) {
-          logger.error("Error parsing request body", e);
-          // If parsing fails, use original request
-          return (options.fetch || fetch)(input, init);
-        }
-      },
+      fetch: createDyadFetch(),
     };
 
     return new OpenAICompatibleChatLanguageModel(modelId, config);
   };
 
+  const createResponsesModel = (modelId: ExampleChatModelId) => {
+    const config = {
+      ...getCommonModelConfig(),
+      fetch: createDyadFetch(),
+    };
+
+    return new OpenAIResponsesLanguageModel(modelId, config);
+  };
+
   const provider = (modelId: ExampleChatModelId) => createChatModel(modelId);
 
   provider.chatModel = createChatModel;
+  provider.responses = createResponsesModel;
 
   return provider;
 }

@@ -7,7 +7,7 @@ import {
   type InjectedMessage,
 } from "@/pro/main/ipc/handlers/local_agent/prepare_step_utils";
 import type { UserMessageContentPart } from "@/pro/main/ipc/handlers/local_agent/tools/types";
-import { ImagePart, ModelMessage } from "node_modules/ai/dist";
+import { ImagePart, ModelMessage } from "ai";
 
 describe("prepare_step_utils", () => {
   describe("transformContentPart", () => {

@@ -5,12 +5,7 @@
  * in local_agent_handler.ts, enabling isolated unit testing.
  */
 
-import {
-  ImagePart,
-  ModelMessage,
-  TextPart,
-  UserModelMessage,
-} from "node_modules/ai/dist";
+import { ImagePart, ModelMessage, TextPart, UserModelMessage } from "ai";
 import type { UserMessageContentPart } from "./tools/types";
 
 /**

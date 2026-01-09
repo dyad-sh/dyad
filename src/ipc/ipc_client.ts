@@ -1007,7 +1007,7 @@ export class IpcClient {
   }
 
   /**
-   * Subscribe to be notified when any chat stream ends (either successfully or with an error).
+   * Subscribe to be notified when any chat stream starts.
    * Useful for cleanup tasks like clearing pending consent requests.
    * @returns Unsubscribe function
    */

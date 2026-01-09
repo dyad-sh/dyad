@@ -147,6 +147,19 @@ function App() {
     return () => unsubscribe();
   }, [setAgentTodosByChatId]);
 
+  // Clear todos when a new stream starts (so previous turn's todos don't persist)
+  useEffect(() => {
+    const ipc = IpcClient.getInstance();
+    const unsubscribe = ipc.onChatStreamStart((chatId) => {
+      setAgentTodosByChatId((prev) => {
+        const next = new Map(prev);
+        next.delete(chatId);
+        return next;
+      });
+    });
+    return () => unsubscribe();
+  }, [setAgentTodosByChatId]);
+
   useEffect(() => {
     const ipc = IpcClient.getInstance();
     const unsubscribe = ipc.onAgentToolConsentRequest((payload) => {
@@ -164,7 +177,7 @@ function App() {
     return () => unsubscribe();
   }, [setPendingAgentConsents]);
 
-  // Clear pending agent consents and todos when a chat stream ends or errors
+  // Clear pending agent consents when a chat stream ends or errors
   // This prevents stale consent banners from remaining visible after cancellation
   useEffect(() => {
     const ipc = IpcClient.getInstance();
@@ -172,15 +185,9 @@ function App() {
       setPendingAgentConsents((prev) =>
         prev.filter((consent) => consent.chatId !== chatId),
       );
-      // Clear todos for this chat when stream ends
-      setAgentTodosByChatId((prev) => {
-        const next = new Map(prev);
-        next.delete(chatId);
-        return next;
-      });
     });
     return () => unsubscribe();
-  }, [setPendingAgentConsents, setAgentTodosByChatId]);
+  }, [setPendingAgentConsents]);
 
   // Forward telemetry events from main process to PostHog
   useEffect(() => {

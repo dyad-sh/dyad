@@ -141,6 +141,8 @@ export class IpcClient {
   private agentConsentHandlers: Map<string, (payload: any) => void>;
   private agentTodosHandlers: Set<(payload: AgentTodosUpdatePayload) => void>;
   private telemetryEventHandlers: Set<(payload: TelemetryEventPayload) => void>;
+  // Global handlers called for any chat stream start (used for cleanup)
+  private globalChatStreamStartHandlers: Set<(chatId: number) => void>;
   // Global handlers called for any chat stream completion (used for cleanup)
   private globalChatStreamEndHandlers: Set<(chatId: number) => void>;
   private constructor() {
@@ -152,6 +154,7 @@ export class IpcClient {
     this.agentConsentHandlers = new Map();
     this.agentTodosHandlers = new Set();
     this.telemetryEventHandlers = new Set();
+    this.globalChatStreamStartHandlers = new Set();
     this.globalChatStreamEndHandlers = new Set();
     // Set up listeners for stream events
     this.ipcRenderer.on("chat:response:chunk", (data) => {
@@ -460,6 +463,11 @@ export class IpcClient {
       onError,
     } = options;
     this.chatStreams.set(chatId, { onUpdate, onEnd, onError });
+
+    // Notify global stream start handlers
+    for (const handler of this.globalChatStreamStartHandlers) {
+      handler(chatId);
+    }
 
     // Handle file attachments if provided
     if (attachments && attachments.length > 0) {
@@ -995,6 +1003,18 @@ export class IpcClient {
     this.agentTodosHandlers.add(handler);
     return () => {
       this.agentTodosHandlers.delete(handler);
+    };
+  }
+
+  /**
+   * Subscribe to be notified when any chat stream ends (either successfully or with an error).
+   * Useful for cleanup tasks like clearing pending consent requests.
+   * @returns Unsubscribe function
+   */
+  public onChatStreamStart(handler: (chatId: number) => void): () => void {
+    this.globalChatStreamStartHandlers.add(handler);
+    return () => {
+      this.globalChatStreamStartHandlers.delete(handler);
     };
   }
 

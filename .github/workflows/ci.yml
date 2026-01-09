@@ -219,6 +219,9 @@ jobs:
       - name: Restore executable permissions (macOS)
         if: contains(matrix.os.name, 'macos')
         run: chmod +x out/dyad-darwin-arm64/dyad.app/Contents/MacOS/dyad
+      - name: Clear macOS quarantine (if present)
+        if: contains(matrix.os.name, 'macos')
+        run: xattr -cr out/dyad-darwin-arm64/dyad.app || true
       - name: Install Chromium browser for Playwright
         run: npx playwright install chromium --with-deps
       - name: E2E tests (Shard ${{ matrix.shard }}/4)

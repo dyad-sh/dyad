@@ -22,6 +22,7 @@ interface AuxiliaryActionsMenuProps {
   showTokenBar?: boolean;
   toggleShowTokenBar?: () => void;
   showContextFilesPicker?: boolean;
+  isStreaming?: boolean;
 }
 
 export function AuxiliaryActionsMenu({
@@ -29,6 +30,7 @@ export function AuxiliaryActionsMenu({
   showTokenBar,
   toggleShowTokenBar,
   showContextFilesPicker = true,
+  isStreaming = false,
 }: AuxiliaryActionsMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -53,7 +55,7 @@ export function AuxiliaryActionsMenu({
 
         {/* Attach Files Submenu */}
         <DropdownMenuSub>
-          <DropdownMenuSubTrigger className="py-2 px-3">
+          <DropdownMenuSubTrigger className="py-2 px-3" disabled={isStreaming}>
             <Paperclip size={16} className="mr-2" />
             Attach files
           </DropdownMenuSubTrigger>

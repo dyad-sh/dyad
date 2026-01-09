@@ -84,6 +84,7 @@ import type {
   AgentTodosUpdatePayload,
   TelemetryEventPayload,
   ConsoleEntry,
+  ProblemsUpdatePayload,
 } from "./ipc_types";
 import type { Template } from "../shared/templates";
 import type {
@@ -141,6 +142,7 @@ export class IpcClient {
   private agentConsentHandlers: Map<string, (payload: any) => void>;
   private agentTodosHandlers: Set<(payload: AgentTodosUpdatePayload) => void>;
   private telemetryEventHandlers: Set<(payload: TelemetryEventPayload) => void>;
+  private problemsUpdateHandlers: Set<(payload: ProblemsUpdatePayload) => void>;
   // Global handlers called for any chat stream start (used for cleanup)
   private globalChatStreamStartHandlers: Set<(chatId: number) => void>;
   // Global handlers called for any chat stream completion (used for cleanup)
@@ -154,6 +156,7 @@ export class IpcClient {
     this.agentConsentHandlers = new Map();
     this.agentTodosHandlers = new Set();
     this.telemetryEventHandlers = new Set();
+    this.problemsUpdateHandlers = new Set();
     this.globalChatStreamStartHandlers = new Set();
     this.globalChatStreamEndHandlers = new Set();
     // Set up listeners for stream events
@@ -315,6 +318,20 @@ export class IpcClient {
       if (payload && typeof payload === "object" && "eventName" in payload) {
         for (const handler of this.telemetryEventHandlers) {
           handler(payload as TelemetryEventPayload);
+        }
+      }
+    });
+
+    // Real-time problem updates from TSC watch
+    this.ipcRenderer.on("problems:update", (payload) => {
+      if (
+        payload &&
+        typeof payload === "object" &&
+        "appId" in payload &&
+        "problemReport" in payload
+      ) {
+        for (const handler of this.problemsUpdateHandlers) {
+          handler(payload as ProblemsUpdatePayload);
         }
       }
     });
@@ -1003,6 +1020,20 @@ export class IpcClient {
     this.agentTodosHandlers.add(handler);
     return () => {
       this.agentTodosHandlers.delete(handler);
+    };
+  }
+
+  /**
+   * Subscribe to real-time problem updates from TSC watch.
+   * Called when the background TypeScript watcher detects changes and reports problems.
+   * @returns Unsubscribe function
+   */
+  public onProblemsUpdate(
+    handler: (payload: ProblemsUpdatePayload) => void,
+  ): () => void {
+    this.problemsUpdateHandlers.add(handler);
+    return () => {
+      this.problemsUpdateHandlers.delete(handler);
     };
   }
 

@@ -6,6 +6,7 @@ import {
   escapeXmlContent,
 } from "./types";
 import { generateProblemReport } from "@/ipc/processors/tsc";
+import { getCachedProblems } from "@/ipc/processors/tsc_watch_manager";
 import type { Problem } from "@/ipc/ipc_types";
 import { readSettings } from "@/main/settings";
 import { normalizePath } from "../../../../../../../shared/normalizePath";
@@ -93,11 +94,16 @@ export const runTypeChecksTool: ToolDefinition<
       `<dyad-status title="${escapeXmlAttr(title)}"></dyad-status>`,
     );
 
-    // Run TypeScript type checking using existing infrastructure
-    const problemReport = await generateProblemReport({
-      fullResponse: "",
-      appPath: ctx.appPath,
-    });
+    // Try to get cached problems from TSC watch first (fast path)
+    let problemReport = getCachedProblems(ctx.appId);
+
+    // If no cache, fall back to running fresh check
+    if (!problemReport) {
+      problemReport = await generateProblemReport({
+        fullResponse: "",
+        appPath: ctx.appPath,
+      });
+    }
 
     let problems = problemReport.problems;
 

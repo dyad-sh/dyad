@@ -120,6 +120,7 @@ export function ProviderSettingsGrid() {
                 className="relative transition-all hover:shadow-md border-border"
               >
                 <CardHeader
+                  data-testid={`provider-card-${provider.id}`}
                   className="p-4 cursor-pointer"
                   onClick={() => handleProviderClick(provider.id)}
                 >
@@ -185,6 +186,7 @@ export function ProviderSettingsGrid() {
 
         {/* Add custom provider button */}
         <Card
+          data-testid="add-custom-provider"
           className="cursor-pointer transition-all hover:shadow-md border-border border-dashed hover:border-primary/70"
           onClick={() => setIsDialogOpen(true)}
         >

@@ -7,7 +7,7 @@ import { createLoggedHandler } from "./safe_handle";
 
 import log from "electron-log";
 import { getDyadAppPath } from "../../paths/paths";
-import { UpdateChatParams } from "../ipc_types";
+import { CreateChatFromPromptEditParams, UpdateChatParams } from "../ipc_types";
 import { getCurrentCommitHash } from "../utils/git_utils";
 
 const logger = log.scope("chat_handlers");
@@ -57,6 +57,100 @@ export function registerChatHandlers() {
     );
     return chat.id;
   });
+
+  handle(
+    "chat:create-from-prompt-edit",
+    async (
+      _,
+      params: CreateChatFromPromptEditParams,
+    ): Promise<{ chatId: number }> => {
+      const { appId, chatId, messageId } = params;
+
+      const chat = await db.query.chats.findFirst({
+        where: eq(chats.id, chatId),
+        with: {
+          messages: {
+            orderBy: (messages, { asc }) => [asc(messages.createdAt)],
+          },
+          app: true,
+        },
+      });
+
+      if (!chat) {
+        throw new Error("Chat not found");
+      }
+
+      if (chat.appId !== appId) {
+        throw new Error("Chat does not belong to the provided app");
+      }
+
+      const targetIndex = chat.messages.findIndex(
+        (message) => message.id === messageId,
+      );
+
+      if (targetIndex === -1) {
+        throw new Error("Message not found in chat");
+      }
+
+      const targetMessage = chat.messages[targetIndex];
+      if (targetMessage.role !== "user") {
+        throw new Error("Only user prompts can be edited");
+      }
+
+      let initialCommitHash = chat.initialCommitHash;
+      if (!initialCommitHash) {
+        try {
+          initialCommitHash = await getCurrentCommitHash({
+            path: getDyadAppPath(chat.app.path),
+            ref: "main",
+          });
+        } catch (error) {
+          logger.error("Error getting git revision:", error);
+        }
+      }
+
+      const { newChat, messagesToCopy } = await db.transaction((tx) => {
+        const [newChat] = tx
+          .insert(chats)
+          .values({
+            appId,
+            initialCommitHash,
+          })
+          .returning()
+          .all();
+
+        const messagesToCopy = chat.messages.slice(0, targetIndex);
+
+        if (messagesToCopy.length) {
+          tx.insert(messages)
+            .values(
+              messagesToCopy.map((message) => {
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                const { id, chatId, ...messageFields } = message;
+                return {
+                  ...messageFields,
+                  chatId: newChat.id,
+                };
+              }),
+            )
+            .run();
+        }
+
+        return { newChat, messagesToCopy };
+      });
+
+      logger.info(
+        "Created chat from prompt edit",
+        newChat.id,
+        "copied messages:",
+        messagesToCopy.length,
+      );
+
+      return {
+        chatId: newChat.id,
+      };
+    },
+  );
 
   ipcMain.handle("get-chat", async (_, chatId: number) => {
     const chat = await db.query.chats.findFirst({

@@ -140,8 +140,7 @@ function ConnectedGitHubConnector({
               throw err;
             }
           } catch (error) {
-            // If we can't get conflicts, still show the error
-            console.error("Failed to get merge conflicts:", error);
+            if (error === err) throw err;
           }
         }
         const errorMessage = err.message || "Failed to sync to GitHub.";
@@ -244,19 +243,28 @@ function ConnectedGitHubConnector({
     // Only auto-sync once per appId
     const alreadySyncedForThisApp = lastAutoSyncedAppIdRef.current === appId;
 
-    if (triggerAutoSync && !alreadySyncedForThisApp) {
+    if (triggerAutoSync && !alreadySyncedForThisApp && !isSyncing) {
       lastAutoSyncedAppIdRef.current = appId;
-
       handleSyncToGithub().finally(() => {
         onAutoSyncComplete?.();
       });
     }
 
     // allow re-sync if triggerAutoSync is explicitly turned off
-    if (!triggerAutoSync && lastAutoSyncedAppIdRef.current === appId) {
+    if (
+      !triggerAutoSync &&
+      !isSyncing &&
+      lastAutoSyncedAppIdRef.current === appId
+    ) {
       lastAutoSyncedAppIdRef.current = null;
     }
-  }, [appId, triggerAutoSync, handleSyncToGithub, onAutoSyncComplete]);
+  }, [
+    appId,
+    triggerAutoSync,
+    isSyncing,
+    handleSyncToGithub,
+    onAutoSyncComplete,
+  ]);
 
   const isForcePushError =
     syncError?.includes("rejected") || syncError?.includes("non-fast-forward");

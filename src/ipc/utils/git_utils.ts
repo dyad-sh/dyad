@@ -941,6 +941,12 @@ export async function gitPull({
           })
         : undefined,
     });
+    // Check for conflicts even if pull succeeded (isomorphic-git may not throw on conflicts)
+    if (hasGitConflictState({ path })) {
+      throw GitConflictError(
+        `Merge conflict detected during pull. Please resolve conflicts before proceeding.`,
+      );
+    }
   } catch (error: any) {
     // Check git state files to detect conflicts instead of parsing error messages
     if (hasGitConflictState({ path })) {

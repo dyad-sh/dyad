@@ -161,9 +161,11 @@ async function prepareLocalBranch({
       }
     }
 
-    // Check for uncommitted changes and commit them before checkout
-    // Use locking to prevent race conditions when multiple operations attempt to commit simultaneously
+    // Use locking to prevent race conditions when multiple operations attempt to modify the repository
+    // The lock covers the entire branch preparation: auto-commit, branch listing, and checkout operations
+    // This ensures atomicity and prevents conflicts between concurrent operations
     await withLock(appId, async () => {
+      // Check for uncommitted changes and commit them before checkout
       const isClean = await isGitStatusClean({ path: appPath });
       if (!isClean) {
         const settings = readSettings();
@@ -213,81 +215,83 @@ async function prepareLocalBranch({
           // Throw the original error after successful cleanup
           throw new Error(
             `Failed to commit uncommitted changes before preparing branch: ${commitError?.message || "Unknown error"}. ` +
-              "Please commit or stash your changes manually and try again.",
+              "Your changes have been unstaged. Please review and commit or stash them manually, then try again.",
           );
         }
       }
-    });
-    const localBranches = await gitListBranches({ path: appPath });
 
-    // Check if branch exists remotely (if remote was set up)
-    let remoteBranches: string[] = [];
-    if (remoteUrl && accessToken) {
-      remoteBranches = await gitListRemoteBranches({
-        path: appPath,
-        remote: "origin",
-      });
-    }
+      // List branches and check if target branch exists
+      const localBranches = await gitListBranches({ path: appPath });
 
-    if (!localBranches.includes(targetBranch)) {
-      // If branch exists remotely, create local tracking branch
-      // Otherwise, create a new local branch
-      if (remoteBranches.includes(targetBranch)) {
-        // For native git: create branch with tracking
-        // For isomorphic-git: checkout remote branch directly (creates tracking branch automatically)
-        const settings = readSettings();
-        if (settings.enableNativeGit) {
-          // Native git: create branch from remote with tracking
-          await gitCreateBranch({
-            path: appPath,
-            branch: targetBranch,
-            from: `origin/${targetBranch}`,
-          });
-          await gitCheckout({ path: appPath, ref: targetBranch });
-        } else {
-          // isomorphic-git: create local branch from the remote commit and checkout so branch name matches native git
-          // gitCreateBranch does not support 'from' when native git is disabled, so resolve the remote ref's commit
-          // and create the local branch at that commit.
-          const remoteRef = `refs/remotes/origin/${targetBranch}`;
-          let commitSha: string;
-          try {
-            commitSha = await getCurrentCommitHash({
+      // Check if branch exists remotely (if remote was set up)
+      let remoteBranches: string[] = [];
+      if (remoteUrl && accessToken) {
+        remoteBranches = await gitListRemoteBranches({
+          path: appPath,
+          remote: "origin",
+        });
+      }
+
+      if (!localBranches.includes(targetBranch)) {
+        // If branch exists remotely, create local tracking branch
+        // Otherwise, create a new local branch
+        if (remoteBranches.includes(targetBranch)) {
+          // For native git: create branch with tracking
+          // For isomorphic-git: checkout remote branch directly (creates tracking branch automatically)
+          const settings = readSettings();
+          if (settings.enableNativeGit) {
+            // Native git: create branch from remote with tracking
+            await gitCreateBranch({
               path: appPath,
-              ref: remoteRef,
+              branch: targetBranch,
+              from: `origin/${targetBranch}`,
             });
-          } catch {
-            // Fallback to short remote ref name if the full refs path isn't present
+            await gitCheckout({ path: appPath, ref: targetBranch });
+          } else {
+            // isomorphic-git: create local branch from the remote commit and checkout so branch name matches native git
+            // gitCreateBranch does not support 'from' when native git is disabled, so resolve the remote ref's commit
+            // and create the local branch at that commit.
+            const remoteRef = `refs/remotes/origin/${targetBranch}`;
+            let commitSha: string;
             try {
               commitSha = await getCurrentCommitHash({
                 path: appPath,
-                ref: `origin/${targetBranch}`,
+                ref: remoteRef,
               });
-            } catch (innerErr: any) {
-              throw new Error(
-                `Failed to resolve remote branch 'origin/${targetBranch}' to a commit. ` +
-                  "Ensure 'git fetch' succeeded and the remote branch exists. " +
-                  `${innerErr?.message || String(innerErr)}`,
-              );
+            } catch {
+              // Fallback to short remote ref name if the full refs path isn't present
+              try {
+                commitSha = await getCurrentCommitHash({
+                  path: appPath,
+                  ref: `origin/${targetBranch}`,
+                });
+              } catch (innerErr: any) {
+                throw new Error(
+                  `Failed to resolve remote branch 'origin/${targetBranch}' to a commit. ` +
+                    "Ensure 'git fetch' succeeded and the remote branch exists. " +
+                    `${innerErr?.message || String(innerErr)}`,
+                );
+              }
             }
-          }
 
-          // Checkout the remote commit (detached HEAD), create branch at that commit, then checkout the branch
-          await gitCheckout({ path: appPath, ref: commitSha });
-          await gitCreateBranch({ path: appPath, branch: targetBranch });
+            // Checkout the remote commit (detached HEAD), create branch at that commit, then checkout the branch
+            await gitCheckout({ path: appPath, ref: commitSha });
+            await gitCreateBranch({ path: appPath, branch: targetBranch });
+            await gitCheckout({ path: appPath, ref: targetBranch });
+          }
+        } else {
+          // Create new local branch
+          await gitCreateBranch({
+            path: appPath,
+            branch: targetBranch,
+          });
           await gitCheckout({ path: appPath, ref: targetBranch });
         }
       } else {
-        // Create new local branch
-        await gitCreateBranch({
-          path: appPath,
-          branch: targetBranch,
-        });
+        // Branch exists locally, just checkout
         await gitCheckout({ path: appPath, ref: targetBranch });
       }
-    } else {
-      // Branch exists locally, just checkout
-      await gitCheckout({ path: appPath, ref: targetBranch });
-    }
+    });
   } catch (gitError: any) {
     logger.error("[GitHub Handler] Failed to prepare local branch:", gitError);
     // Check if error is about uncommitted changes (fallback in case check above missed it)
@@ -1056,6 +1060,16 @@ async function handleCreateBranch(
   event: IpcMainInvokeEvent,
   { appId, branch, from }: { appId: number; branch: string; from?: string },
 ): Promise<void> {
+  // Validate branch name
+  if (!branch || branch.length === 0 || branch.length > 255) {
+    throw new Error("Branch name must be between 1 and 255 characters");
+  }
+  if (!/^[a-zA-Z0-9/_.-]+$/.test(branch) || /\.\./.test(branch)) {
+    throw new Error("Branch name contains invalid characters");
+  }
+  if (branch.startsWith("-") || branch === "HEAD") {
+    throw new Error("Invalid branch name");
+  }
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app) throw new Error("App not found");
   const appPath = getDyadAppPath(app.path);
@@ -1217,18 +1231,19 @@ async function handleRenameBranch(
   if (!app) throw new Error("App not found");
   const appPath = getDyadAppPath(app.path);
 
+  // Check if we're renaming the current branch BEFORE renaming to avoid race conditions
+  const currentBranch = await gitCurrentBranch({ path: appPath });
+  const isRenamingCurrentBranch = currentBranch === oldBranch;
+
   await gitRenameBranch({
     path: appPath,
     oldBranch,
     newBranch,
   });
 
-  // If we renamed the current branch (which is likely), update DB if needed
-  // But gitRenameBranch doesn't change HEAD if we are on it?
-  // Actually git branch -m renames the current branch if on it.
-  // We should check if we were on oldBranch and if so update DB.
-  const current = await gitCurrentBranch({ path: appPath });
-  if (current === newBranch) {
+  // Only update DB if we were on oldBranch before renaming
+  // (git branch -m renames the current branch if we're on it, so HEAD now points to newBranch)
+  if (isRenamingCurrentBranch) {
     await updateAppGithubRepo({
       appId,
       org: app.githubOrg || undefined,
@@ -1431,6 +1446,20 @@ async function handleInviteCollaborator(
   { appId, username }: { appId: number; username: string },
 ): Promise<void> {
   try {
+    // Validate username
+    const trimmedUsername = username.trim();
+    if (!trimmedUsername) {
+      throw new Error("Username cannot be empty.");
+    }
+    if (trimmedUsername.length > 39) {
+      throw new Error("GitHub username cannot exceed 39 characters.");
+    }
+    if (!/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$/.test(trimmedUsername)) {
+      throw new Error(
+        "Invalid GitHub username format. Usernames can only contain alphanumeric characters and hyphens, and cannot start or end with a hyphen.",
+      );
+    }
+
     const settings = readSettings();
     const accessToken = settings.githubAccessToken?.value;
     if (!accessToken) {
@@ -1444,7 +1473,7 @@ async function handleInviteCollaborator(
 
     // GitHub API to add a collaborator (sends an invitation)
     const response = await fetch(
-      `${GITHUB_API_BASE}/repos/${app.githubOrg}/${app.githubRepo}/collaborators/${encodeURIComponent(username)}`,
+      `${GITHUB_API_BASE}/repos/${app.githubOrg}/${app.githubRepo}/collaborators/${encodeURIComponent(trimmedUsername)}`,
       {
         method: "PUT",
         headers: {

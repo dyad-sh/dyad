@@ -1644,7 +1644,7 @@ export class IpcClient {
   }
 
   public cancelHelpChat(sessionId: string): void {
-    this.ipcRenderer.invoke("help:chat:cancel", sessionId).catch(() => { });
+    this.ipcRenderer.invoke("help:chat:cancel", sessionId).catch(() => {});
   }
 
   // --- Visual Editing ---

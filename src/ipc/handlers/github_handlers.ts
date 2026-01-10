@@ -1,7 +1,37 @@
 import { ipcMain, BrowserWindow, IpcMainInvokeEvent } from "electron";
 import fetch from "node-fetch"; // Use node-fetch for making HTTP requests in main process
 import { writeSettings, readSettings } from "../../main/settings";
-import { gitSetRemoteUrl, gitPush, gitClone } from "../utils/git_utils";
+import {
+  gitSetRemoteUrl,
+  gitPush,
+  gitClone,
+  gitPull,
+  gitRebaseAbort,
+  gitRebaseContinue,
+  gitRebase,
+  gitMergeAbort,
+  gitFetch,
+  gitCreateBranch,
+  gitDeleteBranch,
+  gitCheckout,
+  gitMerge,
+  gitGetMergeConflicts,
+  gitCurrentBranch,
+  gitListBranches,
+  gitListRemoteBranches,
+  gitRenameBranch,
+  gitAddAll,
+  gitCommit,
+  isGitStatusClean,
+  getGitUncommittedFiles,
+  getCurrentCommitHash,
+  GitStateError,
+  GIT_ERROR_CODES,
+  isGitMergeInProgress,
+  isGitRebaseInProgress,
+  gitReset,
+  GitConflictError,
+} from "../utils/git_utils";
 import * as schema from "../../db/schema";
 import fs from "node:fs";
 import { getDyadAppPath } from "../../paths/paths";
@@ -12,7 +42,8 @@ import { eq } from "drizzle-orm";
 import { GithubUser } from "../../lib/schemas";
 import log from "electron-log";
 import { IS_TEST_BUILD } from "../utils/test_utils";
-import path from "node:path"; // ← ADD THIS
+import path from "node:path";
+import { withLock } from "../utils/lock_utils";
 
 const logger = log.scope("github_handlers");
 
@@ -85,6 +116,202 @@ export async function getGithubUser(): Promise<GithubUser | null> {
   }
 }
 
+async function prepareLocalBranch({
+  appId,
+  branch,
+  remoteUrl,
+  accessToken,
+}: {
+  appId: number;
+  branch?: string;
+  remoteUrl?: string;
+  accessToken?: string;
+}) {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) {
+    throw new Error("App not found");
+  }
+  const appPath = getDyadAppPath(app.path);
+  const targetBranch = branch || "main";
+
+  try {
+    // Set up remote URL if provided (should be set up before calling this)
+    if (remoteUrl) {
+      await gitSetRemoteUrl({
+        path: appPath,
+        remoteUrl,
+      });
+
+      // Fetch remote branches if we have access token and remote URL
+      // This allows us to check if the branch exists remotely
+      if (accessToken) {
+        try {
+          await gitFetch({
+            path: appPath,
+            remote: "origin",
+            accessToken,
+          });
+        } catch (fetchError: any) {
+          // For new repos, fetch might fail because the repo is empty
+          // This is okay - we'll just create the branch locally
+          logger.debug(
+            `[GitHub Handler] Fetch failed (expected for new repos): ${fetchError?.message || "Unknown error"}`,
+          );
+        }
+      }
+    }
+
+    // Use locking to prevent race conditions when multiple operations attempt to modify the repository
+    // The lock covers the entire branch preparation: auto-commit, branch listing, and checkout operations
+    // This ensures atomicity and prevents conflicts between concurrent operations
+    await withLock(appId, async () => {
+      // Check for uncommitted changes and commit them before checkout
+      const isClean = await isGitStatusClean({ path: appPath });
+      if (!isClean) {
+        const settings = readSettings();
+        if (!settings.enableNativeGit) {
+          throw new Error(
+            "Cannot auto-commit changes because native Git is disabled, and the repository is not clean. " +
+              "Please commit or stash your changes manually and try again.",
+          );
+        }
+        let filesStaged = false;
+        try {
+          const uncommittedFiles = await getGitUncommittedFiles({
+            path: appPath,
+          });
+          // Stage all changes
+          await gitAddAll({ path: appPath });
+          filesStaged = true; // Mark that staging succeeded
+          // Commit with a descriptive message
+          await gitCommit({
+            path: appPath,
+            message: `[dyad] Auto-commit before preparing branch '${targetBranch}': ${uncommittedFiles.length} file(s) changed`,
+          });
+          logger.log(
+            `Auto-committed ${uncommittedFiles.length} file(s) before preparing branch '${targetBranch}'`,
+          );
+        } catch (commitError: any) {
+          // Reset staging area if files were staged but commit failed
+          // This ensures cleanup always happens, preventing inconsistent repository state
+          if (filesStaged) {
+            try {
+              await gitReset({ path: appPath });
+            } catch (resetError) {
+              // If reset fails, log the error and enhance the error message to inform user
+              // This documents the risk: files remain staged if reset fails
+              logger.error(
+                `Failed to reset staging area after commit failure. Files remain staged. ` +
+                  `Original error: ${commitError?.message || "Unknown error"}, ` +
+                  `Reset error: ${resetError}`,
+              );
+              throw new Error(
+                `Failed to commit uncommitted changes before preparing branch: ${commitError?.message || "Unknown error"}. ` +
+                  "Additionally, failed to unstage files - your files are currently staged but not committed. " +
+                  "Please manually unstage using 'git reset HEAD' or commit/stash your changes and try again.",
+              );
+            }
+          }
+          // Throw the original error after successful cleanup
+          throw new Error(
+            `Failed to commit uncommitted changes before preparing branch: ${commitError?.message || "Unknown error"}. ` +
+              "Your changes have been unstaged. Please review and commit or stash them manually, then try again.",
+          );
+        }
+      }
+
+      // List branches and check if target branch exists
+      const localBranches = await gitListBranches({ path: appPath });
+
+      // Check if branch exists remotely (if remote was set up)
+      let remoteBranches: string[] = [];
+      if (remoteUrl && accessToken) {
+        remoteBranches = await gitListRemoteBranches({
+          path: appPath,
+          remote: "origin",
+        });
+      }
+
+      if (!localBranches.includes(targetBranch)) {
+        // If branch exists remotely, create local tracking branch
+        // Otherwise, create a new local branch
+        if (remoteBranches.includes(targetBranch)) {
+          // For native git: create branch with tracking
+          // For isomorphic-git: checkout remote branch directly (creates tracking branch automatically)
+          const settings = readSettings();
+          if (settings.enableNativeGit) {
+            // Native git: create branch from remote with tracking
+            await gitCreateBranch({
+              path: appPath,
+              branch: targetBranch,
+              from: `origin/${targetBranch}`,
+            });
+            await gitCheckout({ path: appPath, ref: targetBranch });
+          } else {
+            // isomorphic-git: create local branch from the remote commit and checkout so branch name matches native git
+            // gitCreateBranch does not support 'from' when native git is disabled, so resolve the remote ref's commit
+            // and create the local branch at that commit.
+            const remoteRef = `refs/remotes/origin/${targetBranch}`;
+            let commitSha: string;
+            try {
+              commitSha = await getCurrentCommitHash({
+                path: appPath,
+                ref: remoteRef,
+              });
+            } catch {
+              // Fallback to short remote ref name if the full refs path isn't present
+              try {
+                commitSha = await getCurrentCommitHash({
+                  path: appPath,
+                  ref: `origin/${targetBranch}`,
+                });
+              } catch (innerErr: any) {
+                throw new Error(
+                  `Failed to resolve remote branch 'origin/${targetBranch}' to a commit. ` +
+                    "Ensure 'git fetch' succeeded and the remote branch exists. " +
+                    `${innerErr?.message || String(innerErr)}`,
+                );
+              }
+            }
+
+            // Checkout the remote commit (detached HEAD), create branch at that commit, then checkout the branch
+            await gitCheckout({ path: appPath, ref: commitSha });
+            await gitCreateBranch({ path: appPath, branch: targetBranch });
+            await gitCheckout({ path: appPath, ref: targetBranch });
+          }
+        } else {
+          // Create new local branch
+          await gitCreateBranch({
+            path: appPath,
+            branch: targetBranch,
+          });
+          await gitCheckout({ path: appPath, ref: targetBranch });
+        }
+      } else {
+        // Branch exists locally, just checkout
+        await gitCheckout({ path: appPath, ref: targetBranch });
+      }
+    });
+  } catch (gitError: any) {
+    logger.error("[GitHub Handler] Failed to prepare local branch:", gitError);
+    // Check if error is about uncommitted changes (fallback in case check above missed it)
+    const errorMessage =
+      gitError?.message ||
+      "Failed to prepare local branch for the connected repository.";
+    const lowerMessage = errorMessage.toLowerCase();
+    if (
+      lowerMessage.includes("local changes") ||
+      lowerMessage.includes("would be overwritten") ||
+      lowerMessage.includes("please commit or stash")
+    ) {
+      throw new Error(
+        `Failed to prepare local branch: uncommitted changes detected. ` +
+          "Unable to automatically handle uncommitted changes. Please commit or stash your changes manually and try again.",
+      );
+    }
+    throw new Error(errorMessage);
+  }
+}
 // function event.sender.send(channel: string, data: any) {
 //   if (currentFlowState?.window && !currentFlowState.window.isDestroyed()) {
 //     currentFlowState.window.webContents.send(channel, data);
@@ -501,6 +728,20 @@ async function handleCreateRepo(
 
     throw new Error(errorMessage);
   }
+
+  // Set up remote URL before preparing branch
+  const remoteUrl = IS_TEST_BUILD
+    ? `${GITHUB_GIT_BASE}/${owner}/${repo}.git`
+    : `https://${accessToken}:x-oauth-basic@github.com/${owner}/${repo}.git`;
+
+  // Prepare local branch with remote URL set up
+  await prepareLocalBranch({
+    appId,
+    branch,
+    remoteUrl,
+    accessToken,
+  });
+
   // Store org, repo, and branch in the app's DB row (apps table)
   await updateAppGithubRepo({ appId, org: owner, repo, branch });
 }
@@ -541,6 +782,19 @@ async function handleConnectToExistingRepo(
       );
     }
 
+    // Set up remote URL before preparing branch
+    const remoteUrl = IS_TEST_BUILD
+      ? `${GITHUB_GIT_BASE}/${owner}/${repo}.git`
+      : `https://${accessToken}:x-oauth-basic@github.com/${owner}/${repo}.git`;
+
+    // Prepare local branch with remote URL set up
+    await prepareLocalBranch({
+      appId,
+      branch,
+      remoteUrl,
+      accessToken,
+    });
+
     // Store org, repo, and branch in the app's DB row
     await updateAppGithubRepo({ appId, org: owner, repo, branch });
   } catch (err: any) {
@@ -552,47 +806,749 @@ async function handleConnectToExistingRepo(
 // --- GitHub Push Handler ---
 async function handlePushToGithub(
   event: IpcMainInvokeEvent,
-  { appId, force }: { appId: number; force?: boolean },
-) {
+  {
+    appId,
+    force,
+    forceWithLease,
+  }: {
+    appId: number;
+    force?: boolean;
+    forceWithLease?: boolean;
+  },
+): Promise<void> {
+  // Get access token from settings
+  const settings = readSettings();
+  const accessToken = settings.githubAccessToken?.value;
+  if (!accessToken) {
+    throw new Error("Not authenticated with GitHub.");
+  }
+
+  // Get app info from DB
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app || !app.githubOrg || !app.githubRepo) {
+    throw new Error("App is not linked to a GitHub repo.");
+  }
+  const appPath = getDyadAppPath(app.path);
+  const branch = app.githubBranch || "main";
+
+  // Set up remote URL with token
+  const remoteUrl = IS_TEST_BUILD
+    ? `${GITHUB_GIT_BASE}/${app.githubOrg}/${app.githubRepo}.git`
+    : `https://${accessToken}:x-oauth-basic@github.com/${app.githubOrg}/${app.githubRepo}.git`;
+  // Set or update remote URL using git config
+  await gitSetRemoteUrl({
+    path: appPath,
+    remoteUrl,
+  });
+
+  // Pull changes first (unless force push)
+  if (!force && !forceWithLease) {
+    try {
+      await gitPull({
+        path: appPath,
+        remote: "origin",
+        branch,
+        accessToken,
+      });
+    } catch (pullError: any) {
+      // Check if it's a conflict error (including GitConflictError)
+      if ((pullError as any)?.name === "GitConflictError") {
+        throw GitConflictError(
+          "Merge conflict detected during pull. Please resolve conflicts before pushing.",
+        );
+      }
+
+      // Check for conflict in error message
+      const errorMessage = pullError?.message || "";
+      if (
+        errorMessage.includes("conflict") ||
+        errorMessage.includes("Merge conflict") ||
+        errorMessage.includes("Fetch_head") ||
+        errorMessage.includes("preimage")
+      ) {
+        throw GitConflictError(
+          "Merge conflict detected during pull. Please resolve conflicts before pushing.",
+        );
+      }
+
+      // Check if it's a missing remote branch error
+      const isMissingRemoteBranch =
+        pullError?.code === "MissingRefError" ||
+        pullError?.code === "NotFoundError" ||
+        errorMessage.includes("couldn't find remote ref") ||
+        errorMessage.includes("not found") ||
+        // isomorphic-git throws a TypeError when the remote repo is empty
+        errorMessage.includes("Cannot read properties of null");
+
+      // If it's just that remote doesn't have the branch yet, we can ignore and push
+      if (!isMissingRemoteBranch) {
+        throw pullError;
+      } else {
+        logger.debug(
+          "[GitHub Handler] Remote branch missing during pull, continuing with push",
+          errorMessage,
+        );
+      }
+    }
+  }
+
+  // Push to GitHub
+  await gitPush({
+    path: appPath,
+    branch,
+    accessToken,
+    force,
+    forceWithLease,
+  });
+}
+
+async function handleAbortRebase(
+  event: IpcMainInvokeEvent,
+  { appId }: { appId: number },
+): Promise<void> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
+
+  await gitRebaseAbort({ path: appPath });
+}
+
+async function handleAbortMerge(
+  event: IpcMainInvokeEvent,
+  { appId }: { appId: number },
+): Promise<void> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
+
+  await gitMergeAbort({ path: appPath });
+}
+
+async function handleContinueRebase(
+  event: IpcMainInvokeEvent,
+  { appId }: { appId: number },
+): Promise<void> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
+
+  await gitRebaseContinue({ path: appPath });
+}
+// --- GitHub Rebase Handler ---
+async function handleRebaseFromGithub(
+  event: IpcMainInvokeEvent,
+  { appId }: { appId: number },
+): Promise<void> {
+  const settings = readSettings();
+  const accessToken = settings.githubAccessToken?.value;
+  if (!accessToken) {
+    throw new Error("Not authenticated with GitHub.");
+  }
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app || !app.githubOrg || !app.githubRepo) {
+    throw new Error("App is not linked to a GitHub repo.");
+  }
+  const appPath = getDyadAppPath(app.path);
+  const branch = app.githubBranch || "main";
+
+  // Set up remote URL with token
+  const remoteUrl = IS_TEST_BUILD
+    ? `${GITHUB_GIT_BASE}/${app.githubOrg}/${app.githubRepo}.git`
+    : `https://${accessToken}:x-oauth-basic@github.com/${app.githubOrg}/${app.githubRepo}.git`;
+  // Set or update remote URL using git config
+  await gitSetRemoteUrl({
+    path: appPath,
+    remoteUrl,
+  });
+
+  // Fetch latest changes from remote first
+  await gitFetch({
+    path: appPath,
+    remote: "origin",
+    accessToken,
+  });
+
+  // Check for uncommitted changes - Git requires a clean working directory for rebase
+  await withLock(appId, async () => {
+    const isClean = await isGitStatusClean({ path: appPath });
+    if (!isClean) {
+      const settings = readSettings();
+      if (!settings.enableNativeGit) {
+        throw new Error(
+          "Cannot auto-commit changes because native Git is disabled, and the repository is not clean. " +
+            "Please commit or stash your changes manually and try again.",
+        );
+      }
+      let filesStaged = false;
+      try {
+        // Get list of uncommitted files for the commit message
+        const uncommittedFiles = await getGitUncommittedFiles({
+          path: appPath,
+        });
+        // Stage all changes
+        await gitAddAll({ path: appPath });
+        filesStaged = true; // Mark that staging succeeded
+        // Commit with a descriptive message
+        await gitCommit({
+          path: appPath,
+          message: `[dyad] Auto-commit before rebase: ${uncommittedFiles.length} file(s) changed`,
+        });
+        logger.log(
+          `Auto-committed ${uncommittedFiles.length} file(s) before rebase`,
+        );
+      } catch (commitError: any) {
+        // Reset staging area if files were staged but commit failed
+        // This ensures cleanup always happens, preventing inconsistent repository state
+        if (filesStaged) {
+          try {
+            await gitReset({ path: appPath });
+          } catch (resetError) {
+            // If reset fails, log the error and enhance the error message to inform user
+            logger.error(
+              `Failed to reset staging area after commit failure. Files remain staged. ` +
+                `Original error: ${commitError?.message || "Unknown error"}, ` +
+                `Reset error: ${resetError}`,
+            );
+            throw new Error(
+              `Failed to commit uncommitted changes before rebase: ${commitError?.message || "Unknown error"}. ` +
+                "Additionally, failed to unstage files - your files are currently staged but not committed. " +
+                "Please manually unstage using 'git reset HEAD' or commit/stash your changes and try again.",
+            );
+          }
+        }
+        // Throw the original error after successful cleanup
+        throw new Error(
+          `Failed to commit uncommitted changes before rebase: ${commitError?.message || "Unknown error"}. ` +
+            "Please commit or stash your changes manually and try again.",
+        );
+      }
+    }
+  });
+  // Perform the rebase
+  await gitRebase({
+    path: appPath,
+    branch,
+  });
+}
+
+// --- GitHub Fetch Handler ---
+async function handleFetchFromGithub(
+  event: IpcMainInvokeEvent,
+  { appId }: { appId: number },
+): Promise<void> {
+  const settings = readSettings();
+  const accessToken = settings.githubAccessToken?.value;
+  if (!accessToken) {
+    throw new Error("Not authenticated with GitHub.");
+  }
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app || !app.githubOrg || !app.githubRepo) {
+    throw new Error("App is not linked to a GitHub repo.");
+  }
+  const appPath = getDyadAppPath(app.path);
+
+  await gitFetch({
+    path: appPath,
+    remote: "origin",
+    accessToken,
+  });
+}
+
+// --- GitHub Branch Handlers ---
+
+async function handleCreateBranch(
+  event: IpcMainInvokeEvent,
+  { appId, branch, from }: { appId: number; branch: string; from?: string },
+): Promise<void> {
+  // Validate branch name
+  if (!branch || branch.length === 0 || branch.length > 255) {
+    throw new Error("Branch name must be between 1 and 255 characters");
+  }
+  if (!/^[a-zA-Z0-9/_.-]+$/.test(branch) || /\.\./.test(branch)) {
+    throw new Error("Branch name contains invalid characters");
+  }
+  if (branch.startsWith("-") || branch === "HEAD") {
+    throw new Error("Invalid branch name");
+  }
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
+
+  await gitCreateBranch({
+    path: appPath,
+    branch,
+    from,
+  });
+}
+
+async function handleDeleteBranch(
+  event: IpcMainInvokeEvent,
+  { appId, branch }: { appId: number; branch: string },
+): Promise<void> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
+
+  await gitDeleteBranch({
+    path: appPath,
+    branch,
+  });
+}
+
+async function handleSwitchBranch(
+  event: IpcMainInvokeEvent,
+  { appId, branch }: { appId: number; branch: string },
+): Promise<void> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
+
+  // Check for merge or rebase in progress before attempting to switch
+  // This provides structured error codes instead of relying on string matching
+  if (isGitMergeInProgress({ path: appPath })) {
+    throw GitStateError(
+      "Cannot switch branches: merge in progress. Please complete or abort the merge first.",
+      GIT_ERROR_CODES.MERGE_IN_PROGRESS,
+    );
+  }
+
+  if (isGitRebaseInProgress({ path: appPath })) {
+    throw GitStateError(
+      "Cannot switch branches: rebase in progress. Please complete or abort the rebase first.",
+      GIT_ERROR_CODES.REBASE_IN_PROGRESS,
+    );
+  }
+
+  // Check for uncommitted changes and commit them before switching branches
+  await withLock(appId, async () => {
+    const isClean = await isGitStatusClean({ path: appPath });
+    if (!isClean) {
+      const settings = readSettings();
+      if (!settings.enableNativeGit) {
+        throw new Error(
+          "Cannot auto-commit changes because native Git is disabled, and the repository is not clean. " +
+            "Please commit or stash your changes manually and try again.",
+        );
+      }
+      let filesStaged = false;
+      try {
+        const uncommittedFiles = await getGitUncommittedFiles({
+          path: appPath,
+        });
+        // Stage all changes
+        await gitAddAll({ path: appPath });
+        filesStaged = true; // Mark that staging succeeded
+        // Commit with a descriptive message
+        await gitCommit({
+          path: appPath,
+          message: `[dyad] Auto-commit before switching to branch '${branch}': ${uncommittedFiles.length} file(s) changed`,
+        });
+        logger.log(
+          `Auto-committed ${uncommittedFiles.length} file(s) before switching to branch '${branch}'`,
+        );
+      } catch (commitError: any) {
+        // Reset staging area if files were staged but commit failed
+        // This ensures cleanup always happens, preventing inconsistent repository state
+        if (filesStaged) {
+          try {
+            await gitReset({ path: appPath });
+          } catch (resetError) {
+            // If reset fails, log the error and enhance the error message to inform user
+            logger.error(
+              `Failed to reset staging area after commit failure. Files remain staged. ` +
+                `Original error: ${commitError?.message || "Unknown error"}, ` +
+                `Reset error: ${resetError}`,
+            );
+            throw new Error(
+              `Failed to commit uncommitted changes before switching branch: ${commitError?.message || "Unknown error"}. ` +
+                "Additionally, failed to unstage files - your files are currently staged but not committed. " +
+                "Please manually unstage using 'git reset HEAD' or commit/stash your changes and try again.",
+            );
+          }
+        }
+        // Throw the original error after successful cleanup
+        throw new Error(
+          `Failed to commit uncommitted changes before switching branch: ${commitError?.message || "Unknown error"}. ` +
+            "Please commit or stash your changes manually and try again.",
+        );
+      }
+    }
+  });
   try {
-    // Get access token from settings
+    await gitCheckout({
+      path: appPath,
+      ref: branch,
+    });
+  } catch (checkoutError: any) {
+    const errorMessage = checkoutError?.message || "Failed to switch branch.";
+    // Check if error is about uncommitted changes (fallback in case check above missed it)
+    const lowerMessage = errorMessage.toLowerCase();
+    if (
+      lowerMessage.includes("local changes") ||
+      lowerMessage.includes("would be overwritten") ||
+      lowerMessage.includes("please commit or stash")
+    ) {
+      throw new Error(
+        `Failed to switch branch: uncommitted changes detected. ` +
+          "Attempting to commit automatically failed. Please commit or stash your changes manually and try again.",
+      );
+    }
+    throw checkoutError;
+  }
+
+  // Update DB with new branch
+  await updateAppGithubRepo({
+    appId,
+    org: app.githubOrg || undefined,
+    repo: app.githubRepo || "",
+    branch,
+  });
+}
+
+async function handleGetGitState(
+  event: IpcMainInvokeEvent,
+  { appId }: { appId: number },
+): Promise<{ mergeInProgress: boolean; rebaseInProgress: boolean }> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
+
+  const mergeInProgress = isGitMergeInProgress({ path: appPath });
+  const rebaseInProgress = isGitRebaseInProgress({ path: appPath });
+
+  return { mergeInProgress, rebaseInProgress };
+}
+
+async function handleRenameBranch(
+  event: IpcMainInvokeEvent,
+  {
+    appId,
+    oldBranch,
+    newBranch,
+  }: { appId: number; oldBranch: string; newBranch: string },
+): Promise<void> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
+
+  // Check if we're renaming the current branch BEFORE renaming to avoid race conditions
+  const currentBranch = await gitCurrentBranch({ path: appPath });
+  const isRenamingCurrentBranch = currentBranch === oldBranch;
+
+  await gitRenameBranch({
+    path: appPath,
+    oldBranch,
+    newBranch,
+  });
+
+  // Only update DB if we were on oldBranch before renaming
+  // (git branch -m renames the current branch if we're on it, so HEAD now points to newBranch)
+  if (isRenamingCurrentBranch) {
+    await updateAppGithubRepo({
+      appId,
+      org: app.githubOrg || undefined,
+      repo: app.githubRepo || "",
+      branch: newBranch,
+    });
+  }
+}
+
+// Custom error class for merge conflicts
+class MergeConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "MergeConflictError";
+  }
+}
+
+async function handleMergeBranch(
+  event: IpcMainInvokeEvent,
+  { appId, branch }: { appId: number; branch: string },
+): Promise<void> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
+
+  // Check if branch exists locally, if not, check if it's a remote branch
+  const localBranches = await gitListBranches({ path: appPath });
+  const remoteBranches: string[] = await gitListRemoteBranches({
+    path: appPath,
+  }).catch(() => []);
+
+  let mergeBranchRef = branch;
+
+  // If branch doesn't exist locally but exists remotely, use remote ref
+  if (!localBranches.includes(branch) && remoteBranches.includes(branch)) {
+    mergeBranchRef = `origin/${branch}`;
+  }
+
+  // Check for uncommitted changes and commit them before merging
+  await withLock(appId, async () => {
+    const isClean = await isGitStatusClean({ path: appPath });
+    if (!isClean) {
+      const settings = readSettings();
+      if (!settings.enableNativeGit) {
+        throw new Error(
+          "Cannot auto-commit changes because native Git is disabled, and the repository is not clean. " +
+            "Please commit or stash your changes manually and try again.",
+        );
+      }
+      let filesStaged = false;
+      try {
+        const uncommittedFiles = await getGitUncommittedFiles({
+          path: appPath,
+        });
+        // Stage all changes
+        await gitAddAll({ path: appPath });
+        filesStaged = true; // Mark that staging succeeded
+        // Commit with a descriptive message
+        await gitCommit({
+          path: appPath,
+          message: `[dyad] Auto-commit before merging branch '${branch}': ${uncommittedFiles.length} file(s) changed`,
+        });
+        logger.log(
+          `Auto-committed ${uncommittedFiles.length} file(s) before merging branch '${branch}'`,
+        );
+      } catch (commitError: any) {
+        // Reset staging area if files were staged but commit failed
+        // This ensures cleanup always happens, preventing inconsistent repository state
+        if (filesStaged) {
+          try {
+            await gitReset({ path: appPath });
+          } catch (resetError) {
+            // If reset fails, log the error and enhance the error message to inform user
+            logger.error(
+              `Failed to reset staging area after commit failure. Files remain staged. ` +
+                `Original error: ${commitError?.message || "Unknown error"}, ` +
+                `Reset error: ${resetError}`,
+            );
+            throw new Error(
+              `Failed to commit uncommitted changes before merge: ${commitError?.message || "Unknown error"}. ` +
+                "Additionally, failed to unstage files - your files are currently staged but not committed. " +
+                "Please manually unstage using 'git reset HEAD' or commit/stash your changes and try again.",
+            );
+          }
+        }
+        // Throw the original error after successful cleanup
+        throw new Error(
+          `Failed to commit uncommitted changes before merge: ${commitError?.message || "Unknown error"}. ` +
+            "Please commit or stash your changes manually and try again.",
+        );
+      }
+    }
+  });
+  try {
+    await gitMerge({
+      path: appPath,
+      branch: mergeBranchRef,
+    });
+  } catch (mergeError: any) {
+    const errorMessage = mergeError?.message || "Failed to merge branch.";
+    const lowerMessage = errorMessage.toLowerCase();
+    const isConflict =
+      lowerMessage.includes("conflict") ||
+      lowerMessage.includes("merge conflict");
+
+    // Check if error is about uncommitted changes (fallback in case check above missed it)
+    if (
+      (lowerMessage.includes("local changes") ||
+        lowerMessage.includes("would be overwritten") ||
+        lowerMessage.includes("please commit or stash")) &&
+      !isConflict
+    ) {
+      throw new Error(
+        `Failed to merge branch: uncommitted changes detected. ` +
+          "Attempting to commit automatically failed. Please commit or stash your changes manually and try again.",
+      );
+    }
+
+    // If it's a conflict, throw MergeConflictError
+    if (isConflict) {
+      throw new MergeConflictError(errorMessage);
+    }
+
+    // Otherwise, throw the original error
+    throw mergeError;
+  }
+}
+
+async function handleListLocalBranches(
+  event: IpcMainInvokeEvent,
+  { appId }: { appId: number },
+): Promise<{ branches: string[]; current: string | null }> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
+
+  const branches = await gitListBranches({ path: appPath });
+  const current = await gitCurrentBranch({ path: appPath });
+  return { branches, current: current || null };
+}
+
+async function handleListRemoteBranches(
+  event: IpcMainInvokeEvent,
+  { appId, remote = "origin" }: { appId: number; remote?: string },
+): Promise<string[]> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
+
+  const branches = await gitListRemoteBranches({ path: appPath, remote });
+  return branches;
+}
+
+async function handleListCollaborators(
+  event: IpcMainInvokeEvent,
+  { appId }: { appId: number },
+): Promise<{ login: string; avatar_url: string; permissions: any }[]> {
+  try {
     const settings = readSettings();
     const accessToken = settings.githubAccessToken?.value;
     if (!accessToken) {
-      return { success: false, error: "Not authenticated with GitHub." };
+      throw new Error("Not authenticated with GitHub.");
     }
-    // Get app info from DB
+
     const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
     if (!app || !app.githubOrg || !app.githubRepo) {
-      return { success: false, error: "App is not linked to a GitHub repo." };
+      throw new Error("App is not linked to a GitHub repo.");
     }
-    const appPath = getDyadAppPath(app.path);
-    const branch = app.githubBranch || "main";
 
-    // Set up remote URL with token
-    const remoteUrl = IS_TEST_BUILD
-      ? `${GITHUB_GIT_BASE}/${app.githubOrg}/${app.githubRepo}.git`
-      : `https://${accessToken}:x-oauth-basic@github.com/${app.githubOrg}/${app.githubRepo}.git`;
-    // Set or update remote URL using git config
-    await gitSetRemoteUrl({
-      path: appPath,
-      remoteUrl,
-    });
+    const response = await fetch(
+      `${GITHUB_API_BASE}/repos/${app.githubOrg}/${app.githubRepo}/collaborators`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: "application/vnd.github+json",
+        },
+      },
+    );
 
-    // Push to GitHub
-    await gitPush({
-      path: appPath,
-      branch,
-      accessToken,
-      force,
-    });
-    return { success: true };
+    if (!response.ok) {
+      throw new Error(
+        `Failed to list collaborators: ${response.status} ${response.statusText}`,
+      );
+    }
+
+    const collaborators = await response.json();
+    return collaborators.map((c: any) => ({
+      login: c.login,
+      avatar_url: c.avatar_url,
+      permissions: c.permissions,
+    }));
   } catch (err: any) {
-    return {
-      success: false,
-      error: err.message || "Failed to push to GitHub.",
-    };
+    logger.error("[GitHub Handler] Failed to list collaborators:", err);
+    throw new Error(err.message || "Failed to list collaborators.");
   }
+}
+
+async function handleInviteCollaborator(
+  event: IpcMainInvokeEvent,
+  { appId, username }: { appId: number; username: string },
+): Promise<void> {
+  try {
+    // Validate username
+    const trimmedUsername = username.trim();
+    if (!trimmedUsername) {
+      throw new Error("Username cannot be empty.");
+    }
+    if (trimmedUsername.length > 39) {
+      throw new Error("GitHub username cannot exceed 39 characters.");
+    }
+    if (!/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$/.test(trimmedUsername)) {
+      throw new Error(
+        "Invalid GitHub username format. Usernames can only contain alphanumeric characters and hyphens, and cannot start or end with a hyphen.",
+      );
+    }
+
+    const settings = readSettings();
+    const accessToken = settings.githubAccessToken?.value;
+    if (!accessToken) {
+      throw new Error("Not authenticated with GitHub.");
+    }
+
+    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+    if (!app || !app.githubOrg || !app.githubRepo) {
+      throw new Error("App is not linked to a GitHub repo.");
+    }
+
+    // GitHub API to add a collaborator (sends an invitation)
+    const response = await fetch(
+      `${GITHUB_API_BASE}/repos/${app.githubOrg}/${app.githubRepo}/collaborators/${encodeURIComponent(trimmedUsername)}`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: "application/vnd.github+json",
+        },
+        body: JSON.stringify({
+          permission: "push", // Default to write access
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(
+        data.message ||
+          `Failed to invite collaborator: ${response.status} ${response.statusText}`,
+      );
+    }
+  } catch (err: any) {
+    logger.error("[GitHub Handler] Failed to invite collaborator:", err);
+    throw new Error(err.message || "Failed to invite collaborator.");
+  }
+}
+
+async function handleRemoveCollaborator(
+  event: IpcMainInvokeEvent,
+  { appId, username }: { appId: number; username: string },
+): Promise<void> {
+  try {
+    const settings = readSettings();
+    const accessToken = settings.githubAccessToken?.value;
+    if (!accessToken) {
+      throw new Error("Not authenticated with GitHub.");
+    }
+
+    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+    if (!app || !app.githubOrg || !app.githubRepo) {
+      throw new Error("App is not linked to a GitHub repo.");
+    }
+
+    const response = await fetch(
+      `${GITHUB_API_BASE}/repos/${app.githubOrg}/${app.githubRepo}/collaborators/${encodeURIComponent(username)}`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: "application/vnd.github+json",
+        },
+      },
+    );
+
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(
+        data.message ||
+          `Failed to remove collaborator: ${response.status} ${response.statusText}`,
+      );
+    }
+  } catch (err: any) {
+    logger.error("[GitHub Handler] Failed to remove collaborator:", err);
+    throw new Error(err.message || "Failed to remove collaborator.");
+  }
+}
+
+async function handleGetMergeConflicts(
+  event: IpcMainInvokeEvent,
+  { appId }: { appId: number },
+): Promise<string[]> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
+
+  const conflicts = await gitGetMergeConflicts({ path: appPath });
+  return conflicts;
 }
 
 async function handleDisconnectGithubRepo(
@@ -745,7 +1701,24 @@ export function registerGithubHandlers() {
       args: { owner: string; repo: string; branch: string; appId: number },
     ) => handleConnectToExistingRepo(event, args),
   );
+  ipcMain.handle("github:rebase", handleRebaseFromGithub);
   ipcMain.handle("github:push", handlePushToGithub);
+  ipcMain.handle("github:rebase-abort", handleAbortRebase);
+  ipcMain.handle("github:merge-abort", handleAbortMerge);
+  ipcMain.handle("github:rebase-continue", handleContinueRebase);
+  ipcMain.handle("github:fetch", handleFetchFromGithub);
+  ipcMain.handle("github:create-branch", handleCreateBranch);
+  ipcMain.handle("github:delete-branch", handleDeleteBranch);
+  ipcMain.handle("github:switch-branch", handleSwitchBranch);
+  ipcMain.handle("github:rename-branch", handleRenameBranch);
+  ipcMain.handle("github:merge-branch", handleMergeBranch);
+  ipcMain.handle("github:list-local-branches", handleListLocalBranches);
+  ipcMain.handle("github:list-remote-branches", handleListRemoteBranches);
+  ipcMain.handle("github:list-collaborators", handleListCollaborators);
+  ipcMain.handle("github:invite-collaborator", handleInviteCollaborator);
+  ipcMain.handle("github:remove-collaborator", handleRemoveCollaborator);
+  ipcMain.handle("github:get-conflicts", handleGetMergeConflicts);
+  ipcMain.handle("github:get-git-state", handleGetGitState);
   ipcMain.handle("github:disconnect", (event, args: { appId: number }) =>
     handleDisconnectGithubRepo(event, args),
   );

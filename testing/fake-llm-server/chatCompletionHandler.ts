@@ -202,9 +202,9 @@ export default Index;
       lastMessage &&
       (Array.isArray(lastMessage.content)
         ? lastMessage.content.some(
-          (part: { type: string; text: string }) =>
-            part.type === "text" && part.text.includes("[dump]"),
-        )
+            (part: { type: string; text: string }) =>
+              part.type === "text" && part.text.includes("[dump]"),
+          )
         : lastMessage.content.includes("[dump]"))
     ) {
       messageContent = generateDump(req);
@@ -434,10 +434,10 @@ export default Index;
         // Send the final chunk with optional usage info for high token simulation
         const usage = highTokensValue
           ? {
-            prompt_tokens: highTokensValue - 100,
-            completion_tokens: 100,
-            total_tokens: highTokensValue,
-          }
+              prompt_tokens: highTokensValue - 100,
+              completion_tokens: 100,
+              total_tokens: highTokensValue,
+            }
           : undefined;
         res.write(createStreamChunk("", "assistant", true, usage));
         clearInterval(interval);

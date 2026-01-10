@@ -104,15 +104,15 @@ const config: ForgeConfig = {
     osxSign: isEndToEndTestBuild
       ? undefined
       : {
-        identity: process.env.APPLE_TEAM_ID,
-      },
+          identity: process.env.APPLE_TEAM_ID,
+        },
     osxNotarize: isEndToEndTestBuild
       ? undefined
       : {
-        appleId: process.env.APPLE_ID!,
-        appleIdPassword: process.env.APPLE_PASSWORD!,
-        teamId: process.env.APPLE_TEAM_ID!,
-      },
+          appleId: process.env.APPLE_ID!,
+          appleIdPassword: process.env.APPLE_PASSWORD!,
+          teamId: process.env.APPLE_TEAM_ID!,
+        },
     asar: true,
     ignore,
     extraResource: ["node_modules/dugite/git", "./drizzle"],

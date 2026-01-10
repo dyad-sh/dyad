@@ -73,7 +73,7 @@ class McpManager {
     // Create raw client for direct tool calling
     const rawClient = new Client(
       { name: "shinso-mcp-client", version: "1.0.0" },
-      { capabilities: {} }
+      { capabilities: {} },
     );
     await rawClient.connect(transport);
     this.rawClients.set(serverId, rawClient);
@@ -90,7 +90,9 @@ class McpManager {
         env,
       });
     } else {
-      mcpTransport = new StreamableHTTPClientTransport(new URL(s.url as string));
+      mcpTransport = new StreamableHTTPClientTransport(
+        new URL(s.url as string),
+      );
     }
 
     const client = await createMCPClient({

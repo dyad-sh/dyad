@@ -212,7 +212,7 @@ function registerMoveMonarch() {
       "=>",
     ],
 
-    symbols: /[=><!~?:&|+\-*\/\^%]+/,
+    symbols: /[=><!~?:&|+\-*/^%]+/,
     escapes:
       /\\(?:[abfnrtv\\"']|x[0-9A-Fa-f]{1,4}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8})/,
 
@@ -257,7 +257,7 @@ function registerMoveMonarch() {
         [/\d+/, "number"],
 
         // Delimiters
-        [/[{}()\[\]]/, "@brackets"],
+        [/[{}()[\]]/, "@brackets"],
         [/[<>](?!@symbols)/, "@brackets"],
         [
           /@symbols/,
@@ -286,10 +286,10 @@ function registerMoveMonarch() {
       ],
 
       comment: [
-        [/[^\/*]+/, "comment"],
+        [/[^/*]+/, "comment"],
         [/\/\*/, "comment", "@push"],
         [/\*\//, "comment", "@pop"],
-        [/[\/*]/, "comment"],
+        [/[/*]/, "comment"],
       ],
 
       string: [
@@ -374,7 +374,7 @@ function registerTomlLanguage() {
         [/[ \t\r\n]+/, "white"],
 
         // Delimiters
-        [/[{}()\[\]]/, "@brackets"],
+        [/[{}()[\]]/, "@brackets"],
         [/[,.]/, "delimiter"],
       ],
 

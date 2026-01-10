@@ -1,4 +1,10 @@
-import { test as base, Page, expect, APIRequestContext, request } from "@playwright/test";
+import {
+  test as base,
+  Page,
+  expect,
+  APIRequestContext,
+  request,
+} from "@playwright/test";
 import * as eph from "electron-playwright-helpers";
 import { ElectronApplication, _electron as electron } from "playwright";
 import fs from "fs";
@@ -78,7 +84,7 @@ export class ContextFilesPickerDialog {
   constructor(
     public page: Page,
     public close: () => Promise<void>,
-  ) { }
+  ) {}
 
   async addManualContextFile(path: string) {
     await this.page.getByTestId("manual-context-files-input").fill(path);
@@ -123,7 +129,7 @@ class ProModesDialog {
   constructor(
     public page: Page,
     public close: () => Promise<void>,
-  ) { }
+  ) {}
 
   async setSmartContextMode(mode: "balanced" | "off" | "deep") {
     await this.page
@@ -151,7 +157,7 @@ class GitHubConnector {
   constructor(
     public page: Page,
     private apiContext: APIRequestContext,
-  ) { }
+  ) {}
 
   async connect() {
     await this.page.getByRole("button", { name: "Connect to GitHub" }).click();
@@ -264,7 +270,7 @@ class GitHubConnector {
     if (!matchingEvent) {
       throw new Error(
         `Expected push event not found. Expected: ${JSON.stringify(expectedEvent)}. ` +
-        `Actual events: ${JSON.stringify(pushEvents)}`,
+          `Actual events: ${JSON.stringify(pushEvents)}`,
       );
     }
 
@@ -278,7 +284,10 @@ export class PageObject {
   constructor(
     public electronApp: ElectronApplication,
     public page: Page,
-    { userDataDir, apiContext }: { userDataDir: string; apiContext: APIRequestContext },
+    {
+      userDataDir,
+      apiContext,
+    }: { userDataDir: string; apiContext: APIRequestContext },
   ) {
     this.userDataDir = userDataDir;
     this.githubConnector = new GitHubConnector(this.page, apiContext);
@@ -291,7 +300,7 @@ export class PageObject {
     try {
       await telemetryLater.waitFor({ state: "visible", timeout: 5000 });
       await telemetryLater.click();
-    } catch (e) {
+    } catch {
       // Ignore if it doesn't appear
     }
   }
@@ -785,7 +794,10 @@ export class PageObject {
     // Read the JSON file
     const dumpContent: string = (
       fs.readFileSync(dumpFilePath, "utf-8") as any
-    ).replaceAll(/\[\[shinso-dump-path=([^\]]+)\]\]/g, "[[shinso-dump-path=*]]");
+    ).replaceAll(
+      /\[\[shinso-dump-path=([^\]]+)\]\]/g,
+      "[[shinso-dump-path=*]]",
+    );
     // Perform snapshot comparison
     const parsedDump = JSON.parse(dumpContent);
     if (type === "request") {
@@ -1304,7 +1316,7 @@ export const test = base.extend<{
   po: PageObject;
 }>({
   electronConfig: [
-    async ({ }, use) => {
+    async ({}, use) => {
       // Default configuration - tests can override this fixture
       await use({});
     },
@@ -1442,7 +1454,7 @@ export const test = base.extend<{
 
 export function testWithConfig(config: ElectronConfig) {
   return test.extend({
-    electronConfig: async ({ }, use) => {
+    electronConfig: async ({}, use) => {
       await use(config);
     },
   });
@@ -1453,7 +1465,7 @@ export function testWithConfigSkipIfWindows(config: ElectronConfig) {
     return test.skip;
   }
   return test.extend({
-    electronConfig: async ({ }, use) => {
+    electronConfig: async ({}, use) => {
       await use(config);
     },
   });
@@ -1476,17 +1488,17 @@ function prettifyDump(
       const content = Array.isArray(message.content)
         ? JSON.stringify(message.content)
         : message.content
-          .replace(BUILD_SYSTEM_PREFIX, "\n${BUILD_SYSTEM_PREFIX}")
-          .replace(BUILD_SYSTEM_POSTFIX, "${BUILD_SYSTEM_POSTFIX}")
-          // Normalize line endings to always use \n
-          .replace(/\r\n/g, "\n")
-          // We remove package.json because it's flaky.
-          // Depending on whether pnpm install is run, it will be modified,
-          // and the contents and timestamp (thus affecting order) will be affected.
-          .replace(
-            /\n<dyad-file path="package\.json">[\s\S]*?<\/dyad-file>\n/g,
-            "",
-          );
+            .replace(BUILD_SYSTEM_PREFIX, "\n${BUILD_SYSTEM_PREFIX}")
+            .replace(BUILD_SYSTEM_POSTFIX, "${BUILD_SYSTEM_POSTFIX}")
+            // Normalize line endings to always use \n
+            .replace(/\r\n/g, "\n")
+            // We remove package.json because it's flaky.
+            // Depending on whether pnpm install is run, it will be modified,
+            // and the contents and timestamp (thus affecting order) will be affected.
+            .replace(
+              /\n<dyad-file path="package\.json">[\s\S]*?<\/dyad-file>\n/g,
+              "",
+            );
       return `===\nrole: ${message.role}\nmessage: ${content}`;
     })
     .join("\n\n");

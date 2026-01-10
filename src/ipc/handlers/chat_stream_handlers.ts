@@ -1559,7 +1559,7 @@ ${problemReport.problems
     // Clean up uploads state for this chat
     try {
       FileUploadsState.getInstance().clear(chatId);
-    } catch (error) {
+    } catch {
       // Ignore cleanup errors
     }
 

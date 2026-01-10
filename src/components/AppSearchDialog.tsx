@@ -24,7 +24,6 @@ export function AppSearchDialog({
   onOpenChange,
   onSelectApp,
   allApps,
-  entityName = "App",
   entityNamePlural = "Apps",
 }: AppSearchDialogProps) {
   const [searchQuery, setSearchQuery] = useState<string>("");

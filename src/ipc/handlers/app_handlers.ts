@@ -12,11 +12,10 @@ import type {
   ChangeAppLocationParams,
   ChangeAppLocationResult,
 } from "../ipc_types";
-import fs from "node:fs";
+import fs, { promises as fsPromises } from "node:fs";
 import path from "node:path";
 import { getDyadAppPath, getUserDataPath } from "../../paths/paths";
 import { ChildProcess, spawn } from "node:child_process";
-import { promises as fsPromises } from "node:fs";
 
 // Import our utility modules
 import { withLock } from "../utils/lock_utils";
@@ -1315,7 +1314,7 @@ sui move test
         if (pathChanged) {
           const invalidChars = /[<>:"|?*/\\]/;
           const hasInvalidChars =
-            invalidChars.test(appPath) || /[\x00-\x1f]/.test(appPath);
+            invalidChars.test(appPath) || /\p{Cc}/u.test(appPath);
 
           if (hasInvalidChars) {
             throw new Error(

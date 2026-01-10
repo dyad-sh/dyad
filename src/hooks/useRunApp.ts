@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { atom , useAtom, useAtomValue, useSetAtom } from "jotai";
+import { atom, useAtom, useAtomValue, useSetAtom } from "jotai";
 import { IpcClient } from "@/ipc/ipc_client";
 import {
   appConsoleEntriesAtom,

@@ -149,7 +149,6 @@ export function AppList({ show }: { show?: boolean }) {
         onOpenChange={setIsSearchDialogOpen}
         onSelectApp={handleAppClick}
         allApps={allApps}
-        entityName={entityName}
         entityNamePlural={entityNamePlural}
       />
     </>

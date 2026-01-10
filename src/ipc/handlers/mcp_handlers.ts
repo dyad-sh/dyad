@@ -5,7 +5,7 @@ import { mcpServers, mcpToolConsents } from "../../db/schema";
 import { eq, and } from "drizzle-orm";
 import { createLoggedHandler } from "./safe_handle";
 
-import { resolveConsent , getStoredConsent } from "../utils/mcp_consent";
+import { resolveConsent, getStoredConsent } from "../utils/mcp_consent";
 import { mcpManager } from "../utils/mcp_manager";
 import { CreateMcpServer, McpServerUpdate, McpTool } from "../ipc_types";
 
@@ -62,7 +62,7 @@ export function registerMcpHandlers() {
       try {
         mcpManager.dispose(params.id);
       } catch (e) {
-        console.error(e)
+        console.error(e);
       }
       return result[0];
     },
@@ -74,7 +74,7 @@ export function registerMcpHandlers() {
       try {
         mcpManager.dispose(id);
       } catch (e) {
-        console.error(e)
+        console.error(e);
       }
       await db.delete(mcpServers).where(eq(mcpServers.id, id));
       return { success: true };

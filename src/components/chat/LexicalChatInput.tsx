@@ -45,21 +45,23 @@ const CustomMenuItem = forwardRef<
   const value = (item as any)?.value;
   return (
     <li
-      className={`m-0 flex items-center px-3 py-2 cursor-pointer whitespace-nowrap ${selected
-        ? "bg-accent text-accent-foreground"
-        : "bg-popover text-popover-foreground hover:bg-accent/50"
-        }`}
+      className={`m-0 flex items-center px-3 py-2 cursor-pointer whitespace-nowrap ${
+        selected
+          ? "bg-accent text-accent-foreground"
+          : "bg-popover text-popover-foreground hover:bg-accent/50"
+      }`}
       {...props}
       ref={ref}
     >
       <div className="flex items-center space-x-2 min-w-0">
         <span
-          className={`px-2 py-0.5 text-xs font-medium rounded-md flex-shrink-0 ${isPrompt
-            ? "bg-purple-500 text-white"
-            : isApp
-              ? "bg-primary text-primary-foreground"
-              : "bg-blue-600 text-white"
-            }`}
+          className={`px-2 py-0.5 text-xs font-medium rounded-md flex-shrink-0 ${
+            isPrompt
+              ? "bg-purple-500 text-white"
+              : isApp
+                ? "bg-primary text-primary-foreground"
+                : "bg-blue-600 text-white"
+          }`}
         >
           {label}
         </span>

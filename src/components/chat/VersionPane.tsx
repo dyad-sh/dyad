@@ -1,5 +1,6 @@
 import { useAtom, useAtomValue } from "jotai";
 import { selectedAppIdAtom, selectedVersionIdAtom } from "@/atoms/appAtoms";
+import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useVersions } from "@/hooks/useVersions";
 import { formatDistanceToNow } from "date-fns";
 import { RotateCcw, X, Database, Loader2 } from "lucide-react";
@@ -13,8 +14,13 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useNavigate } from "@tanstack/react-router";
+import { IpcClient } from "@/ipc/ipc_client";
+import { toast } from "sonner";
+import { showError } from "@/lib/toast";
 
 import { useRunApp } from "@/hooks/useRunApp";
+import { useChats } from "@/hooks/useChats";
 
 interface VersionPaneProps {
   isVisible: boolean;
@@ -25,6 +31,9 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
   const appId = useAtomValue(selectedAppIdAtom);
   const { refreshApp, app } = useLoadApp(appId);
   const { restartApp } = useRunApp();
+  const navigate = useNavigate();
+  const [selectedChatId, setSelectedChatId] = useAtom(selectedChatIdAtom);
+  const { invalidateChats } = useChats(appId);
   const {
     versions: liveVersions,
     refreshVersions,
@@ -227,6 +236,9 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                           onClick={async (e) => {
                             e.stopPropagation();
 
+                            // Store the previous chat ID before creating a new one
+                            const previousChatId = selectedChatId;
+
                             await revertVersion({
                               versionId: version.oid,
                             });
@@ -235,6 +247,46 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                             onClose();
                             if (version.dbTimestamp) {
                               await restartApp();
+                            }
+
+                            // Create a new chat and navigate to it
+                            if (appId) {
+                              try {
+                                const newChatId =
+                                  await IpcClient.getInstance().createChat(
+                                    appId,
+                                  );
+                                setSelectedChatId(newChatId);
+                                await navigate({
+                                  to: "/chat",
+                                  search: { id: newChatId },
+                                });
+
+                                // Refresh the chat list
+                                await invalidateChats();
+
+                                // Show toast with action to go back to previous chat
+                                if (previousChatId) {
+                                  toast("Switched to new chat", {
+                                    description:
+                                      "We've switched you to a new chat to give the AI a clean context.",
+                                    action: {
+                                      label: "Go to previous chat",
+                                      onClick: async () => {
+                                        setSelectedChatId(previousChatId);
+                                        await navigate({
+                                          to: "/chat",
+                                          search: { id: previousChatId },
+                                        });
+                                      },
+                                    },
+                                  });
+                                }
+                              } catch (error) {
+                                showError(
+                                  `Failed to create new chat: ${(error as any).toString()}`,
+                                );
+                              }
                             }
                           }}
                           disabled={isRevertingVersion}

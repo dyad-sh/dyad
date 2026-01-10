@@ -148,7 +148,11 @@ export function GithubBranchManager({
       setShowCreateDialog(false);
       await loadBranches();
       // Automatically switch to the newly created branch
-      await handleSwitchBranch(branchName);
+      try {
+        await handleSwitchBranch(branchName);
+      } catch (switchError: any) {
+        showError(switchError.message || `Failed to switch to branch '${branchName}'. You can switch to it manually.`);
+      }
     } catch (error: any) {
       showError(error.message || "Failed to create branch");
     } finally {

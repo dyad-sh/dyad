@@ -292,9 +292,25 @@ async function prepareLocalBranch({
             }
 
             // Checkout the remote commit (detached HEAD), create branch at that commit, then checkout the branch
-            await gitCheckout({ path: appPath, ref: commitSha });
-            await gitCreateBranch({ path: appPath, branch: targetBranch });
-            await gitCheckout({ path: appPath, ref: targetBranch });
+            // Store current branch to restore on error
+            const previousBranch = await gitCurrentBranch({ path: appPath });
+            try {
+              await gitCheckout({ path: appPath, ref: commitSha });
+              await gitCreateBranch({ path: appPath, branch: targetBranch });
+              await gitCheckout({ path: appPath, ref: targetBranch });
+            } catch (error: any) {
+              // If anything fails, restore the previous branch to avoid leaving repo in detached HEAD
+              if (previousBranch) {
+                try {
+                  await gitCheckout({ path: appPath, ref: previousBranch });
+                } catch (restoreError) {
+                  logger.error(
+                    `Failed to restore branch '${previousBranch}' after error: ${restoreError}`,
+                  );
+                }
+              }
+              throw error;
+            }
           }
         } else {
           // Create new local branch
@@ -1220,28 +1236,23 @@ async function handleMergeBranch(
       branch: mergeBranchRef,
     });
   } catch (mergeError: any) {
+    // Convert to MergeConflictError for component compatibility
+    if (mergeError?.name === "GitConflictError") {
+      throw new MergeConflictError(mergeError.message);
+    }
+
+    // Fallback: Check if error is about uncommitted changes
     const errorMessage = mergeError?.message || "Failed to merge branch.";
     const lowerMessage = errorMessage.toLowerCase();
-    const isConflict =
-      lowerMessage.includes("conflict") ||
-      lowerMessage.includes("merge conflict");
-
-    // Check if error is about uncommitted changes (fallback in case check above missed it)
     if (
-      (lowerMessage.includes("local changes") ||
-        lowerMessage.includes("would be overwritten") ||
-        lowerMessage.includes("please commit or stash")) &&
-      !isConflict
+      lowerMessage.includes("local changes") ||
+      lowerMessage.includes("would be overwritten") ||
+      lowerMessage.includes("please commit or stash")
     ) {
       throw new Error(
         `Failed to merge branch: uncommitted changes detected. ` +
           "Attempting to commit automatically failed. Please commit or stash your changes manually and try again.",
       );
-    }
-
-    // If it's a conflict, throw MergeConflictError
-    if (isConflict) {
-      throw new MergeConflictError(errorMessage);
     }
 
     // Otherwise, throw the original error

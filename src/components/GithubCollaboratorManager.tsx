@@ -73,12 +73,13 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
 
   const handleInvite = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!inviteUsername.trim()) return;
+    const trimmedUsername = inviteUsername.trim();
+    if (!trimmedUsername) return;
 
     setIsInviting(true);
     try {
-      await IpcClient.getInstance().inviteCollaborator(appId, inviteUsername);
-      showSuccess(`Invited ${inviteUsername} to the project.`);
+      await IpcClient.getInstance().inviteCollaborator(appId, trimmedUsername);
+      showSuccess(`Invited ${trimmedUsername} to the project.`);
       setInviteUsername("");
       // Reload list (though they might be pending)
       loadCollaborators();

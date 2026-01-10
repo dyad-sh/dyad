@@ -306,12 +306,13 @@ export function GithubBranchManager({
     if (!branchToRename || !renameBranchName.trim()) return;
     setIsRenaming(true);
     try {
+      const trimmedNewName = renameBranchName.trim();
       await IpcClient.getInstance().renameGithubBranch(
         appId,
         branchToRename,
-        renameBranchName.trim(),
+        trimmedNewName,
       );
-      showSuccess(`Renamed '${branchToRename}' to '${renameBranchName}'`);
+      showSuccess(`Renamed '${branchToRename}' to '${trimmedNewName}'`);
       setBranchToRename(null);
       setRenameBranchName("");
       await loadBranches();
@@ -333,8 +334,10 @@ export function GithubBranchManager({
       setBranchToMerge(null);
       await loadBranches(); // Refresh to see any status changes if we implement them
     } catch (error: any) {
-      // Check if it's a merge conflict error
-      const isConflict = error?.name === "MergeConflictError";
+      // Check if it's a merge conflict error (handler converts GitConflictError to MergeConflictError)
+      const isConflict =
+        error?.name === "MergeConflictError" ||
+        error?.name === "GitConflictError";
 
       if (isConflict) {
         showInfo("Merge conflict detected. Please resolve them in the editor.");

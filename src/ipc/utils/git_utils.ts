@@ -996,9 +996,23 @@ export async function gitMerge({
 }: GitMergeParams): Promise<void> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
+    // Use withGitAuthor since merge may need to create merge commits
+    // and requires user.name and user.email
     const args = await withGitAuthor(["merge", branch]);
-    await execOrThrow(args, path, `Failed to merge branch ${branch}`);
-  } else {
+    try {
+      await execOrThrow(args, path, `Failed to merge branch ${branch}`);
+    } catch (error: any) {
+      // Check git state files to detect conflicts instead of parsing error messages
+      if (hasGitConflictState({ path })) {
+        throw GitConflictError(
+          `Merge conflict detected during merge. Please resolve conflicts before proceeding.`,
+        );
+      }
+      throw error;
+    }
+    return;
+  }
+  try {
     await git.merge({
       fs,
       dir: path,
@@ -1006,6 +1020,20 @@ export async function gitMerge({
       theirs: branch,
       author: author || (await getGitAuthor()),
     });
+    // Check for conflicts even if merge succeeded (isomorphic-git may not throw on conflicts)
+    if (hasGitConflictState({ path })) {
+      throw GitConflictError(
+        `Merge conflict detected during merge. Please resolve conflicts before proceeding.`,
+      );
+    }
+  } catch (error: any) {
+    // Check git state files to detect conflicts instead of parsing error messages
+    if (hasGitConflictState({ path })) {
+      throw GitConflictError(
+        `Merge conflict detected during merge. Please resolve conflicts before proceeding.`,
+      );
+    }
+    throw error;
   }
 }
 

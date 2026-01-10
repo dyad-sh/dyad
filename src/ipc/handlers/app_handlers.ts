@@ -62,6 +62,7 @@ import {
   deployAllSupabaseFunctions,
   extractFunctionNameFromPath,
 } from "@/supabase_admin/supabase_utils";
+import { startTscWatch, stopTscWatch } from "../processors/tsc_watch_manager";
 import { getVercelTeamSlug } from "../utils/vercel_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import { AppSearchResult } from "@/lib/schemas";
@@ -879,6 +880,15 @@ export function registerAppHandlers() {
             startCommand: app.startCommand,
           });
 
+          // Start TSC watch if in local-agent mode with auto-fix enabled
+          const settings = readSettings();
+          if (
+            settings.selectedChatMode === "local-agent" &&
+            settings.enableAutoFixProblems
+          ) {
+            startTscWatch(appId, appPath, event.sender);
+          }
+
           return;
         } catch (error: any) {
           logger.error(`Error running app ${appId}:`, error);
@@ -902,6 +912,9 @@ export function registerAppHandlers() {
         `Attempting to stop app ${appId}. Current running apps: ${runningApps.size}`,
       );
       return withLock(appId, async () => {
+        // Stop TSC watch if running
+        stopTscWatch(appId);
+
         const appInfo = runningApps.get(appId);
 
         if (!appInfo) {

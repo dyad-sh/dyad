@@ -32,6 +32,7 @@ export type Todo = AgentTodo;
 
 export interface AgentContext {
   event: IpcMainInvokeEvent;
+  appId: number;
   appPath: string;
   chatId: number;
   supabaseProjectId: string | null;

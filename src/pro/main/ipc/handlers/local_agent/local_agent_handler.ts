@@ -160,6 +160,7 @@ export async function handleLocalAgentStream(
     // Build tool execute context
     const ctx: AgentContext = {
       event,
+      appId: chat.app.id,
       appPath,
       chatId: chat.id,
       supabaseProjectId: chat.app.supabaseProjectId,

@@ -179,6 +179,8 @@ const validReceiveChannels = [
   "agent-tool:todos-update",
   // Telemetry events from main to renderer
   "telemetry:event",
+  // Real-time problem updates from TSC watch
+  "problems:update",
 ] as const;
 
 type ValidInvokeChannel = (typeof validInvokeChannels)[number];

@@ -24,6 +24,7 @@ import {
   gitCommit,
   isGitStatusClean,
   getGitUncommittedFiles,
+  getCurrentCommitHash,
   GitStateError,
   GIT_ERROR_CODES,
   isGitMergeInProgress,
@@ -165,6 +166,13 @@ async function prepareLocalBranch({
     await withLock(appId, async () => {
       const isClean = await isGitStatusClean({ path: appPath });
       if (!isClean) {
+        const settings = readSettings();
+        if (!settings.enableNativeGit) {
+          throw new Error(
+            "Cannot auto-commit changes because native Git is disabled, and the repository is not clean. " +
+              "Please commit or stash your changes manually and try again.",
+          );
+        }
         let filesStaged = false;
         try {
           const uncommittedFiles = await getGitUncommittedFiles({
@@ -210,7 +218,6 @@ async function prepareLocalBranch({
         }
       }
     });
-
     const localBranches = await gitListBranches({ path: appPath });
 
     // Check if branch exists remotely (if remote was set up)
@@ -238,12 +245,36 @@ async function prepareLocalBranch({
           });
           await gitCheckout({ path: appPath, ref: targetBranch });
         } else {
-          // isomorphic-git: checkout remote branch directly
-          // This automatically creates a local tracking branch
-          await gitCheckout({
-            path: appPath,
-            ref: `origin/${targetBranch}`,
-          });
+          // isomorphic-git: create local branch from the remote commit and checkout so branch name matches native git
+          // gitCreateBranch does not support 'from' when native git is disabled, so resolve the remote ref's commit
+          // and create the local branch at that commit.
+          const remoteRef = `refs/remotes/origin/${targetBranch}`;
+          let commitSha: string;
+          try {
+            commitSha = await getCurrentCommitHash({
+              path: appPath,
+              ref: remoteRef,
+            });
+          } catch {
+            // Fallback to short remote ref name if the full refs path isn't present
+            try {
+              commitSha = await getCurrentCommitHash({
+                path: appPath,
+                ref: `origin/${targetBranch}`,
+              });
+            } catch (innerErr: any) {
+              throw new Error(
+                `Failed to resolve remote branch 'origin/${targetBranch}' to a commit. ` +
+                  "Ensure 'git fetch' succeeded and the remote branch exists. " +
+                  `${innerErr?.message || String(innerErr)}`,
+              );
+            }
+          }
+
+          // Checkout the remote commit (detached HEAD), create branch at that commit, then checkout the branch
+          await gitCheckout({ path: appPath, ref: commitSha });
+          await gitCreateBranch({ path: appPath, branch: targetBranch });
+          await gitCheckout({ path: appPath, ref: targetBranch });
         }
       } else {
         // Create new local branch
@@ -934,31 +965,61 @@ async function handleRebaseFromGithub(
   });
 
   // Check for uncommitted changes - Git requires a clean working directory for rebase
-  const isClean = await isGitStatusClean({ path: appPath });
-  if (!isClean) {
-    try {
-      // Get list of uncommitted files for the commit message
-      const uncommittedFiles = await getGitUncommittedFiles({
-        path: appPath,
-      });
-      // Stage all changes
-      await gitAddAll({ path: appPath });
-      // Commit with a descriptive message
-      await gitCommit({
-        path: appPath,
-        message: `[dyad] Auto-commit before rebase: ${uncommittedFiles.length} file(s) changed`,
-      });
-      logger.log(
-        `Auto-committed ${uncommittedFiles.length} file(s) before rebase`,
-      );
-    } catch (commitError: any) {
-      throw new Error(
-        `Failed to commit uncommitted changes before rebase: ${commitError?.message || "Unknown error"}. ` +
-          "Please commit or stash your changes manually and try again.",
-      );
+  await withLock(appId, async () => {
+    const isClean = await isGitStatusClean({ path: appPath });
+    if (!isClean) {
+      const settings = readSettings();
+      if (!settings.enableNativeGit) {
+        throw new Error(
+          "Cannot auto-commit changes because native Git is disabled, and the repository is not clean. " +
+            "Please commit or stash your changes manually and try again.",
+        );
+      }
+      let filesStaged = false;
+      try {
+        // Get list of uncommitted files for the commit message
+        const uncommittedFiles = await getGitUncommittedFiles({
+          path: appPath,
+        });
+        // Stage all changes
+        await gitAddAll({ path: appPath });
+        filesStaged = true; // Mark that staging succeeded
+        // Commit with a descriptive message
+        await gitCommit({
+          path: appPath,
+          message: `[dyad] Auto-commit before rebase: ${uncommittedFiles.length} file(s) changed`,
+        });
+        logger.log(
+          `Auto-committed ${uncommittedFiles.length} file(s) before rebase`,
+        );
+      } catch (commitError: any) {
+        // Reset staging area if files were staged but commit failed
+        // This ensures cleanup always happens, preventing inconsistent repository state
+        if (filesStaged) {
+          try {
+            await gitReset({ path: appPath });
+          } catch (resetError) {
+            // If reset fails, log the error and enhance the error message to inform user
+            logger.error(
+              `Failed to reset staging area after commit failure. Files remain staged. ` +
+                `Original error: ${commitError?.message || "Unknown error"}, ` +
+                `Reset error: ${resetError}`,
+            );
+            throw new Error(
+              `Failed to commit uncommitted changes before rebase: ${commitError?.message || "Unknown error"}. ` +
+                "Additionally, failed to unstage files - your files are currently staged but not committed. " +
+                "Please manually unstage using 'git reset HEAD' or commit/stash your changes and try again.",
+            );
+          }
+        }
+        // Throw the original error after successful cleanup
+        throw new Error(
+          `Failed to commit uncommitted changes before rebase: ${commitError?.message || "Unknown error"}. ` +
+            "Please commit or stash your changes manually and try again.",
+        );
+      }
     }
-  }
-
+  });
   // Perform the rebase
   await gitRebase({
     path: appPath,
@@ -1045,30 +1106,60 @@ async function handleSwitchBranch(
   }
 
   // Check for uncommitted changes and commit them before switching branches
-  const isClean = await isGitStatusClean({ path: appPath });
-  if (!isClean) {
-    try {
-      const uncommittedFiles = await getGitUncommittedFiles({
-        path: appPath,
-      });
-      // Stage all changes
-      await gitAddAll({ path: appPath });
-      // Commit with a descriptive message
-      await gitCommit({
-        path: appPath,
-        message: `[dyad] Auto-commit before switching to branch '${branch}': ${uncommittedFiles.length} file(s) changed`,
-      });
-      logger.log(
-        `Auto-committed ${uncommittedFiles.length} file(s) before switching to branch '${branch}'`,
-      );
-    } catch (commitError: any) {
-      throw new Error(
-        `Failed to commit uncommitted changes before switching branch: ${commitError?.message || "Unknown error"}. ` +
-          "Please commit or stash your changes manually and try again.",
-      );
+  await withLock(appId, async () => {
+    const isClean = await isGitStatusClean({ path: appPath });
+    if (!isClean) {
+      const settings = readSettings();
+      if (!settings.enableNativeGit) {
+        throw new Error(
+          "Cannot auto-commit changes because native Git is disabled, and the repository is not clean. " +
+            "Please commit or stash your changes manually and try again.",
+        );
+      }
+      let filesStaged = false;
+      try {
+        const uncommittedFiles = await getGitUncommittedFiles({
+          path: appPath,
+        });
+        // Stage all changes
+        await gitAddAll({ path: appPath });
+        filesStaged = true; // Mark that staging succeeded
+        // Commit with a descriptive message
+        await gitCommit({
+          path: appPath,
+          message: `[dyad] Auto-commit before switching to branch '${branch}': ${uncommittedFiles.length} file(s) changed`,
+        });
+        logger.log(
+          `Auto-committed ${uncommittedFiles.length} file(s) before switching to branch '${branch}'`,
+        );
+      } catch (commitError: any) {
+        // Reset staging area if files were staged but commit failed
+        // This ensures cleanup always happens, preventing inconsistent repository state
+        if (filesStaged) {
+          try {
+            await gitReset({ path: appPath });
+          } catch (resetError) {
+            // If reset fails, log the error and enhance the error message to inform user
+            logger.error(
+              `Failed to reset staging area after commit failure. Files remain staged. ` +
+                `Original error: ${commitError?.message || "Unknown error"}, ` +
+                `Reset error: ${resetError}`,
+            );
+            throw new Error(
+              `Failed to commit uncommitted changes before switching branch: ${commitError?.message || "Unknown error"}. ` +
+                "Additionally, failed to unstage files - your files are currently staged but not committed. " +
+                "Please manually unstage using 'git reset HEAD' or commit/stash your changes and try again.",
+            );
+          }
+        }
+        // Throw the original error after successful cleanup
+        throw new Error(
+          `Failed to commit uncommitted changes before switching branch: ${commitError?.message || "Unknown error"}. ` +
+            "Please commit or stash your changes manually and try again.",
+        );
+      }
     }
-  }
-
+  });
   try {
     await gitCheckout({
       path: appPath,
@@ -1177,30 +1268,60 @@ async function handleMergeBranch(
   }
 
   // Check for uncommitted changes and commit them before merging
-  const isClean = await isGitStatusClean({ path: appPath });
-  if (!isClean) {
-    try {
-      const uncommittedFiles = await getGitUncommittedFiles({
-        path: appPath,
-      });
-      // Stage all changes
-      await gitAddAll({ path: appPath });
-      // Commit with a descriptive message
-      await gitCommit({
-        path: appPath,
-        message: `[dyad] Auto-commit before merging branch '${branch}': ${uncommittedFiles.length} file(s) changed`,
-      });
-      logger.log(
-        `Auto-committed ${uncommittedFiles.length} file(s) before merging branch '${branch}'`,
-      );
-    } catch (commitError: any) {
-      throw new Error(
-        `Failed to commit uncommitted changes before merge: ${commitError?.message || "Unknown error"}. ` +
-          "Please commit or stash your changes manually and try again.",
-      );
+  await withLock(appId, async () => {
+    const isClean = await isGitStatusClean({ path: appPath });
+    if (!isClean) {
+      const settings = readSettings();
+      if (!settings.enableNativeGit) {
+        throw new Error(
+          "Cannot auto-commit changes because native Git is disabled, and the repository is not clean. " +
+            "Please commit or stash your changes manually and try again.",
+        );
+      }
+      let filesStaged = false;
+      try {
+        const uncommittedFiles = await getGitUncommittedFiles({
+          path: appPath,
+        });
+        // Stage all changes
+        await gitAddAll({ path: appPath });
+        filesStaged = true; // Mark that staging succeeded
+        // Commit with a descriptive message
+        await gitCommit({
+          path: appPath,
+          message: `[dyad] Auto-commit before merging branch '${branch}': ${uncommittedFiles.length} file(s) changed`,
+        });
+        logger.log(
+          `Auto-committed ${uncommittedFiles.length} file(s) before merging branch '${branch}'`,
+        );
+      } catch (commitError: any) {
+        // Reset staging area if files were staged but commit failed
+        // This ensures cleanup always happens, preventing inconsistent repository state
+        if (filesStaged) {
+          try {
+            await gitReset({ path: appPath });
+          } catch (resetError) {
+            // If reset fails, log the error and enhance the error message to inform user
+            logger.error(
+              `Failed to reset staging area after commit failure. Files remain staged. ` +
+                `Original error: ${commitError?.message || "Unknown error"}, ` +
+                `Reset error: ${resetError}`,
+            );
+            throw new Error(
+              `Failed to commit uncommitted changes before merge: ${commitError?.message || "Unknown error"}. ` +
+                "Additionally, failed to unstage files - your files are currently staged but not committed. " +
+                "Please manually unstage using 'git reset HEAD' or commit/stash your changes and try again.",
+            );
+          }
+        }
+        // Throw the original error after successful cleanup
+        throw new Error(
+          `Failed to commit uncommitted changes before merge: ${commitError?.message || "Unknown error"}. ` +
+            "Please commit or stash your changes manually and try again.",
+        );
+      }
     }
-  }
-
+  });
   try {
     await gitMerge({
       path: appPath,

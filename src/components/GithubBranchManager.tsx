@@ -129,45 +129,8 @@ export function GithubBranchManager({
   }, [appId]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    const load = async () => {
-      setIsLoading(true);
-      try {
-        const [localResult, remoteBranches] = await Promise.all([
-          IpcClient.getInstance().listLocalGithubBranches(appId),
-          IpcClient.getInstance()
-            .listRemoteGithubBranches(appId)
-            .catch(() => []),
-        ]);
-
-        if (!cancelled) {
-          // Merge local and remote branches, removing duplicates
-          const allBranches = new Set([
-            ...localResult.branches,
-            ...remoteBranches,
-          ]);
-
-          setBranches(Array.from(allBranches).sort());
-          setCurrentBranch(localResult.current || null);
-        }
-      } catch (error: any) {
-        if (!cancelled) {
-          showError(error.message || "Failed to load branches");
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [appId]);
+    loadBranches();
+  }, [loadBranches]);
 
   const handleCreateBranch = async () => {
     if (!newBranchName.trim()) return;
@@ -375,9 +338,7 @@ export function GithubBranchManager({
       await loadBranches(); // Refresh to see any status changes if we implement them
     } catch (error: any) {
       // Check if it's a merge conflict error
-      const isConflict =
-        error?.name === "MergeConflictError" ||
-        error?.message?.toLowerCase().includes("conflict");
+      const isConflict = error?.name === "MergeConflictError";
 
       if (isConflict) {
         showInfo("Merge conflict detected. Please resolve them in the editor.");

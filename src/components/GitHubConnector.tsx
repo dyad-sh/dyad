@@ -86,10 +86,7 @@ function ConnectedGitHubConnector({
     "abort" | "continue" | "safe-push" | null
   >(null);
   const [rebaseInProgress, setRebaseInProgress] = useState(false);
-  const autoSyncTriggeredRef = useRef(false);
-  const prevHandleSyncRef = useRef<
-    ((options?: GithubSyncOptions) => Promise<void>) | null
-  >(null);
+  const lastAutoSyncedAppIdRef = useRef<number | null>(null);
 
   const handleDisconnectRepo = async () => {
     setIsDisconnecting(true);
@@ -139,7 +136,8 @@ function ConnectedGitHubConnector({
               setSyncError(
                 "Merge conflicts detected. Please resolve them in the editor.",
               );
-              return;
+              // Re-throw so callers can handle the error appropriately
+              throw err;
             }
           } catch (error) {
             // If we can't get conflicts, still show the error
@@ -151,6 +149,8 @@ function ConnectedGitHubConnector({
         setRebaseInProgress(errorMessage.includes("rebase-merge"));
         // Clear any prior rebase success message if push failed
         setRebaseStatusMessage(null);
+        // Re-throw the error so callers can handle it appropriately
+        throw err;
       } finally {
         setIsSyncing(false);
       }
@@ -205,7 +205,6 @@ function ConnectedGitHubConnector({
   }, [handleSyncToGithub]);
 
   const handleRebaseAndSync = useCallback(async () => {
-    setIsSyncing(true); // Set loading state at the start to prevent multiple clicks
     try {
       // First, perform the rebase
       await IpcClient.getInstance().rebaseGithubRepo(appId);
@@ -213,9 +212,10 @@ function ConnectedGitHubConnector({
         "Rebase completed successfully. Pushing to GitHub...",
       );
       // Then, sync (push) to GitHub using the existing handler
-      // Note: handleSyncToGithub will manage isSyncing state, but we've already set it
+      // handleSyncToGithub will manage isSyncing state and re-throw errors if they occur
       await handleSyncToGithub();
     } catch (err: any) {
+      // This catch block now handles both rebase errors and sync errors (since handleSyncToGithub re-throws)
       const errorMessage =
         err.message || "Failed to rebase and sync to GitHub.";
       setSyncError(errorMessage);
@@ -226,31 +226,37 @@ function ConnectedGitHubConnector({
           "Rebase failed. You may need to resolve conflicts or abort the rebase.",
         );
       }
-      // Reset syncing state on error (handleSyncToGithub wasn't called or failed)
+      // Clear any stale rebase success message if sync failed after rebase
+      if (errorMessage.includes("sync") || errorMessage.includes("push")) {
+        setRebaseStatusMessage(null);
+      }
+      // Ensure syncing state is reset (handleSyncToGithub's finally block also does this, but this is a safety net)
+      // Note: handleSyncToGithub's finally block will have already set isSyncing to false if it was called
+      // This is only needed if rebase fails before handleSyncToGithub is called
       setIsSyncing(false);
     }
-    // Note: If handleSyncToGithub succeeds, it will reset isSyncing in its own finally block
-    // If it fails, the catch block above handles it
   }, [appId, handleSyncToGithub]);
 
   // Auto-sync when triggerAutoSync prop is true
   useEffect(() => {
-    // Reset the ref when appId changes (handleSyncToGithub changes) to allow sync for new app
-    if (prevHandleSyncRef.current !== handleSyncToGithub) {
-      autoSyncTriggeredRef.current = false;
-      prevHandleSyncRef.current = handleSyncToGithub;
-    }
+    if (!appId) return;
 
-    if (triggerAutoSync && !autoSyncTriggeredRef.current) {
-      autoSyncTriggeredRef.current = true;
+    // Only auto-sync once per appId
+    const alreadySyncedForThisApp = lastAutoSyncedAppIdRef.current === appId;
+
+    if (triggerAutoSync && !alreadySyncedForThisApp) {
+      lastAutoSyncedAppIdRef.current = appId;
+
       handleSyncToGithub().finally(() => {
         onAutoSyncComplete?.();
       });
-    } else if (!triggerAutoSync) {
-      // Reset the ref when triggerAutoSync becomes false
-      autoSyncTriggeredRef.current = false;
     }
-  }, [triggerAutoSync, handleSyncToGithub, onAutoSyncComplete]); // Include handleSyncToGithub to ensure we use the latest version with current appId
+
+    // allow re-sync if triggerAutoSync is explicitly turned off
+    if (!triggerAutoSync && lastAutoSyncedAppIdRef.current === appId) {
+      lastAutoSyncedAppIdRef.current = null;
+    }
+  }, [appId, triggerAutoSync, handleSyncToGithub, onAutoSyncComplete]);
 
   const isForcePushError =
     syncError?.includes("rejected") || syncError?.includes("non-fast-forward");

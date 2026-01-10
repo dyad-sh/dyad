@@ -130,23 +130,53 @@ function ConnectedGitHubConnector({
       } catch (err: any) {
         if (err?.name === "GitConflictError") {
           try {
-            const conflicts =
+            const mergeConflicts =
               await IpcClient.getInstance().getGithubMergeConflicts(appId);
-            if (conflicts.length > 0) {
-              setConflicts(conflicts);
+            if (mergeConflicts.length > 0) {
+              setConflicts(mergeConflicts);
               setSyncError(
                 "Merge conflicts detected. Please resolve them in the editor.",
               );
               (err as Error & { handled?: boolean }).handled = true;
               return { error: err, handled: true };
             }
-          } catch (error) {
-            if (error === err) return { error: err };
+          } catch {
+            // If getGithubMergeConflicts fails, fall through to handle the original GitConflictError
+            // The error from getGithubMergeConflicts is intentionally not handled here
+            // so the original GitConflictError can be displayed to the user
           }
         }
+
+        // Check for structured error codes instead of parsing error messages
+        const errorCode = err?.code as
+          | "REBASE_IN_PROGRESS"
+          | "MERGE_IN_PROGRESS"
+          | undefined;
+
+        // Fallback: query backend git state if structured error code is missing
+        let inferredRebaseInProgress = false;
+        if (!errorCode) {
+          try {
+            const state = await IpcClient.getInstance().getGithubState(appId);
+            inferredRebaseInProgress = state.rebaseInProgress;
+          } catch {
+            // ignore state inference errors
+          }
+        }
+
+        // Final fallback: inspect error message for known rebase markers when state fetch fails
+        const messageIndicatesRebase =
+          typeof err?.message === "string" &&
+          err.message.toLowerCase().includes("rebase-merge");
+
+        const rebaseInProgressState =
+          errorCode === "REBASE_IN_PROGRESS" ||
+          inferredRebaseInProgress ||
+          messageIndicatesRebase;
+
         const errorMessage = err.message || "Failed to sync to GitHub.";
         setSyncError(errorMessage);
-        setRebaseInProgress(errorMessage.includes("rebase-merge"));
+        setRebaseInProgress(rebaseInProgressState);
         setRebaseStatusMessage(null);
         return { error: err };
       } finally {

@@ -506,7 +506,7 @@ export async function gitRenameBranch({
       dir: path,
       ref: `refs/heads/${newBranch}`,
       value: oid,
-      force: true,
+      force: false,
     });
 
     // 4. If we were on the old branch, switch HEAD to the new branch

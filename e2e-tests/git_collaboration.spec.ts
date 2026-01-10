@@ -200,7 +200,7 @@ test.describe("Git Collaboration", () => {
     await po.page.getByTestId("collaborator-invite-input").fill(fakeUser);
     await po.page.getByTestId("collaborator-invite-button").click();
     // Let's check for a toast.
-    await po.waitForToast();
+    await po.waitForToast("success");
 
     // verify collaborator appears in the list
     await expect(

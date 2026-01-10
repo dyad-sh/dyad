@@ -222,13 +222,9 @@ export function GithubBranchManager({
             const conflicts =
               await IpcClient.getInstance().getGithubMergeConflicts(appId);
             hasConflicts = conflicts.length > 0;
-          } catch (error) {
+          } catch {
             // If we can't get conflicts, assume there might be conflicts to be safe
             hasConflicts = true;
-            console.debug(
-              "Failed to get merge conflicts, assuming conflicts exist:",
-              error,
-            );
           }
 
           // Show confirmation dialog instead of auto-aborting
@@ -313,7 +309,7 @@ export function GithubBranchManager({
       await IpcClient.getInstance().renameGithubBranch(
         appId,
         branchToRename,
-        renameBranchName,
+        renameBranchName.trim(),
       );
       showSuccess(`Renamed '${branchToRename}' to '${renameBranchName}'`);
       setBranchToRename(null);

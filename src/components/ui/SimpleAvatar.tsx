@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface SimpleAvatarProps {
   src?: string;
@@ -8,6 +8,11 @@ interface SimpleAvatarProps {
 
 export function SimpleAvatar({ src, alt, fallbackText }: SimpleAvatarProps) {
   const [hasError, setHasError] = useState(false);
+
+  // Reset error state when src changes so new images can be attempted
+  useEffect(() => {
+    setHasError(false);
+  }, [src]);
 
   const showImage = src && !hasError;
 

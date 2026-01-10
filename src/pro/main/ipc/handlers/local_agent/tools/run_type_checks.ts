@@ -67,12 +67,12 @@ export const runTypeChecksTool: ToolDefinition<
   z.infer<typeof runTypeChecksSchema>
 > = {
   name: "run_type_checks",
-  description: `Read and display linter errors from the current workspace. You can provide paths to specific files or directories, or omit the argument to get diagnostics for all files.
+  description: `Run TypeScript type checks on the current workspace. You can provide paths to specific files or directories, or omit the argument to get diagnostics for all files.
 
 - If a file path is provided, returns diagnostics for that file only
 - If a directory path is provided, returns diagnostics for all files within that directory
 - If no path is provided, returns diagnostics for all files in the workspace
-- This tool can return linter errors that were already present before your edits, so avoid calling it with a very wide scope of files
+- This tool can return type errors that were already present before your edits, so avoid calling it with a very wide scope of files
 - NEVER call this tool on a file unless you've edited it or are about to edit it`,
   inputSchema: runTypeChecksSchema,
   defaultConsent: "always",

@@ -1052,7 +1052,7 @@ message: [dump] tc=3
 
 ===
 role: assistant
-message: [[dyad-dump-path=*]]
+message: [[shinso-dump-path=*]]
 
 ===
 role: user

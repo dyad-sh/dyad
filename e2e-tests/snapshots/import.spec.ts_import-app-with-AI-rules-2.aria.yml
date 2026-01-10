@@ -1,4 +1,4 @@
 - paragraph: "[dump]"
-- paragraph: "[[dyad-dump-path=*]]"
+- paragraph: "[[shinso-dump-path=*]]"
 - button "Retry":
   - img

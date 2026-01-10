@@ -43,7 +43,7 @@
 - button "Request ID":
   - img
 - paragraph: "[dump]"
-- paragraph: "[[dyad-dump-path=*]]"
+- paragraph: "[[shinso-dump-path=*]]"
 - button:
   - img
 - img

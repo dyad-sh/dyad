@@ -148,6 +148,13 @@
       "when": 1766529533747,
       "tag": "0020_nebulous_patch",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1767951260264,
+      "tag": "0021_sticky_patriot",
+      "breakpoints": true
     }
   ]
 }

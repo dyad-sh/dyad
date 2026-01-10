@@ -16,7 +16,7 @@
 - text: bad-file.ts
 - img
 - text: "src/bad-file.ts Summary: Fix remaining error."
-- paragraph: "[[dyad-dump-path=*]]"
+- paragraph: "[[shinso-dump-path=*]]"
 - img
 - text: Auto-fix1 problems
 - img
@@ -24,6 +24,6 @@
 - text: bad-file.ts
 - img
 - text: "src/bad-file.ts Summary: Fix remaining error."
-- paragraph: "[[dyad-dump-path=*]]"
+- paragraph: "[[shinso-dump-path=*]]"
 - button "Retry":
   - img

@@ -214,7 +214,7 @@ x.nonExistentMethod2();
 
       
 
-[[dyad-dump-path=*]]
+[[shinso-dump-path=*]]
 
 ===
 role: user

@@ -12,7 +12,7 @@
   - img
 - img
 - text: "src/bad-file.ts Summary: Fix 2 errors and introduce a new error."
-- paragraph: "[[dyad-dump-path=*]]"
+- paragraph: "[[shinso-dump-path=*]]"
 - button:
   - img
 - img

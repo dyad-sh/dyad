@@ -1,23 +1,47 @@
 - paragraph: basic
 - img
 - text: file1.txt
+- button "Edit":
+  - img
+  - text: ""
 - img
 - text: file1.txt
 - paragraph: More EOM
+- button:
+  - img
 - img
 - text: Approved
+- img
+- text: test-model
+- img
+- text: less than a minute ago
+- img
+- text: wrote 1 file(s)
 - paragraph: "[[UPLOAD_IMAGE_TO_CODEBASE]]"
 - paragraph: "Attachments:"
 - paragraph: "File to upload to codebase: logo.png (file id: DYAD_ATTACHMENT_0)"
 - paragraph: Uploading image to codebase
 - img
 - text: file.png
+- button "Edit":
+  - img
+  - text: ""
 - img
 - text: "new/image/file.png Summary: Uploaded image to codebase"
-- paragraph: "[[dyad-dump-path=*]]"
+- paragraph: "[[shinso-dump-path=*]]"
+- button:
+  - img
 - img
 - text: Approved
+- img
+- text: test-model
+- img
+- text: less than a minute ago
+- img
+- text: wrote 1 file(s)
 - button "Undo":
   - img
+  - text: ""
 - button "Retry":
   - img
+  - text: ""

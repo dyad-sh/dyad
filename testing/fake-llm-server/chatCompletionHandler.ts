@@ -142,7 +142,7 @@ x.toString(); // replaced with existing method
       <dyad-write path="src/pages/Index.tsx">
       
 
-import { MadeWithDyad } from "@/components/made-with-dyad";
+import { MadeWithShinso } from "@/components/made-with-shinso";
 
 const Index = () => {
   return (
@@ -150,7 +150,7 @@ const Index = () => {
       <div className="text-center">
         <h1 className="text-4xl font-bold mb-4">No more errors!</h1>
       </div>
-      <MadeWithDyad />
+      <MadeWithShinso />
     </div>
   );
 };
@@ -202,9 +202,9 @@ export default Index;
       lastMessage &&
       (Array.isArray(lastMessage.content)
         ? lastMessage.content.some(
-            (part: { type: string; text: string }) =>
-              part.type === "text" && part.text.includes("[dump]"),
-          )
+          (part: { type: string; text: string }) =>
+            part.type === "text" && part.text.includes("[dump]"),
+        )
         : lastMessage.content.includes("[dump]"))
     ) {
       messageContent = generateDump(req);
@@ -285,7 +285,7 @@ export default Index;
       lastMessage.content &&
       lastMessage.content.includes("[call_tool=calculator_add]")
     );
-    let message = {
+    const message = {
       role: "assistant",
       content: messageContent,
     } as any;
@@ -434,10 +434,10 @@ export default Index;
         // Send the final chunk with optional usage info for high token simulation
         const usage = highTokensValue
           ? {
-              prompt_tokens: highTokensValue - 100,
-              completion_tokens: 100,
-              total_tokens: highTokensValue,
-            }
+            prompt_tokens: highTokensValue - 100,
+            completion_tokens: 100,
+            total_tokens: highTokensValue,
+          }
           : undefined;
         res.write(createStreamChunk("", "assistant", true, usage));
         clearInterval(interval);
@@ -471,7 +471,7 @@ function generateDump(req: Request) {
       "utf-8",
     );
     console.log(`* Dumped messages to: ${dumpFilePath}`);
-    return `[[dyad-dump-path=${dumpFilePath}]]`;
+    return `[[shinso-dump-path=${dumpFilePath}]]`;
   } catch (error) {
     console.error(`* Error writing dump file: ${error}`);
     return `Error: Could not write dump file: ${error}`;

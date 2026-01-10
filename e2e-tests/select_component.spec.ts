@@ -42,7 +42,7 @@ testSkipIfWindows("select multiple components", async ({ po }) => {
   await po
     .getPreviewIframeElement()
     .contentFrame()
-    .getByText("Made with Dyad")
+    .getByText("Made with Shinso")
     .click();
 
   await po.snapshotPreview();
@@ -98,7 +98,7 @@ testSkipIfWindows(
     await po
       .getPreviewIframeElement()
       .contentFrame()
-      .getByText("Made with Dyad")
+      .getByText("Made with Shinso")
       .click();
 
     await po.snapshotSelectedComponentsDisplay();

@@ -13,7 +13,7 @@
 - img
 - text: file1.txt
 - paragraph: More EOM
-- paragraph: "[[dyad-dump-path=*]]"
+- paragraph: "[[shinso-dump-path=*]]"
 - img
 - text: Auto-fix5 problems
 - img
@@ -42,6 +42,6 @@
 - img
 - text: file1.txt
 - paragraph: More EOM
-- paragraph: "[[dyad-dump-path=*]]"
+- paragraph: "[[shinso-dump-path=*]]"
 - button "Retry":
   - img

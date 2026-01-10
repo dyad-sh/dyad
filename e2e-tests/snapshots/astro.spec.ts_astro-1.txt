@@ -89,10 +89,6 @@ dist-ssr
 
 </dyad-file>
 
-<dyad-file path="file1.txt">
-// File contents excluded from context
-</dyad-file>
-
 <dyad-file path="index.html">
 <!doctype html>
 <html lang="en">
@@ -219,9 +215,9 @@ message: Generate an AI_RULES.md file for this app. Describe the tech stack in 5
 
 ===
 role: assistant
-message: <dyad-write path="file1.txt">
+message: <shinso-write path="file1.txt">
   A file (2)
-  </dyad-write>
+  </shinso-write>
   More
   EOM
 

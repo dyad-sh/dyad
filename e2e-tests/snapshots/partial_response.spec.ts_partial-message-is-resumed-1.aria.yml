@@ -12,7 +12,7 @@
 - text: new-file.ts
 - img
 - text: "src/new-file.ts Summary: this file will be partially written"
-- paragraph: "[[dyad-dump-path=*]]"
+- paragraph: "[[shinso-dump-path=*]]"
 - img
 - text: Approved
 - button "Undo":

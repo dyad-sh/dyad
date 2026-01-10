@@ -7,7 +7,7 @@ test("auto update - disable and enable", async ({ po }) => {
   const beforeSettings = po.recordSettings();
   await po.toggleAutoUpdate();
   await expect(
-    po.page.getByRole("button", { name: "Restart Dyad" }),
+    po.page.getByRole("button", { name: "Restart" }),
   ).toBeVisible();
   po.snapshotSettingsDelta(beforeSettings);
 

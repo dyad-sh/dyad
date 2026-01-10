@@ -22,7 +22,7 @@
       },
       {
         "role": "assistant",
-        "content": "[[dyad-dump-path=*]]"
+        "content": "[[shinso-dump-path=*]]"
       },
       {
         "role": "user",
@@ -30,7 +30,7 @@
       },
       {
         "role": "assistant",
-        "content": "[[dyad-dump-path=*]]"
+        "content": "[[shinso-dump-path=*]]"
       },
       {
         "role": "user",

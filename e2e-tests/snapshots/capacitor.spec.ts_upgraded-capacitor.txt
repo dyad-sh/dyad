@@ -2275,17 +2275,17 @@ const App = () => (
 export default App;
 
 
-=== src/components/made-with-dyad.tsx ===
-export const MadeWithDyad = () => {
+=== src/components/made-with-shinso.tsx ===
+export const MadeWithShinso = () => {
   return (
     <div className="p-4 text-center">
       <a
-        href="https://www.dyad.sh/"
+        href="https://www.shinso.ai/"
         target="_blank"
         rel="noopener noreferrer"
         className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
       >
-        Made with Dyad
+        Made with Shinso
       </a>
     </div>
   );
@@ -7549,7 +7549,7 @@ createRoot(document.getElementById("root")!).render(<App />);
 === src/pages/Index.tsx ===
 // Update this page (the content is just a fallback if you fail to update the page)
 
-import { MadeWithDyad } from "@/components/made-with-dyad";
+import { MadeWithShinso } from "@/components/made-with-shinso";
 
 const Index = () => {
   return (
@@ -7560,7 +7560,7 @@ const Index = () => {
           Start building your amazing project here!
         </p>
       </div>
-      <MadeWithDyad />
+      <MadeWithShinso />
     </div>
   );
 };

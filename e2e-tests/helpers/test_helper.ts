@@ -1,4 +1,4 @@
-import { test as base, Page, expect } from "@playwright/test";
+import { test as base, Page, expect, APIRequestContext, request } from "@playwright/test";
 import * as eph from "electron-playwright-helpers";
 import { ElectronApplication, _electron as electron } from "playwright";
 import fs from "fs";
@@ -78,7 +78,7 @@ export class ContextFilesPickerDialog {
   constructor(
     public page: Page,
     public close: () => Promise<void>,
-  ) {}
+  ) { }
 
   async addManualContextFile(path: string) {
     await this.page.getByTestId("manual-context-files-input").fill(path);
@@ -123,7 +123,7 @@ class ProModesDialog {
   constructor(
     public page: Page,
     public close: () => Promise<void>,
-  ) {}
+  ) { }
 
   async setSmartContextMode(mode: "balanced" | "off" | "deep") {
     await this.page
@@ -148,7 +148,10 @@ class ProModesDialog {
 }
 
 class GitHubConnector {
-  constructor(public page: Page) {}
+  constructor(
+    public page: Page,
+    private apiContext: APIRequestContext,
+  ) { }
 
   async connect() {
     await this.page.getByRole("button", { name: "Connect to GitHub" }).click();
@@ -230,7 +233,7 @@ class GitHubConnector {
   }
 
   async clearPushEvents() {
-    const response = await this.page.request.post(
+    const response = await this.apiContext.post(
       "http://localhost:3500/github/api/test/clear-push-events",
     );
     return await response.json();
@@ -240,7 +243,7 @@ class GitHubConnector {
     const url = repo
       ? `http://localhost:3500/github/api/test/push-events?repo=${repo}`
       : "http://localhost:3500/github/api/test/push-events";
-    const response = await this.page.request.get(url);
+    const response = await this.apiContext.get(url);
     return await response.json();
   }
 
@@ -261,7 +264,7 @@ class GitHubConnector {
     if (!matchingEvent) {
       throw new Error(
         `Expected push event not found. Expected: ${JSON.stringify(expectedEvent)}. ` +
-          `Actual events: ${JSON.stringify(pushEvents)}`,
+        `Actual events: ${JSON.stringify(pushEvents)}`,
       );
     }
 
@@ -275,14 +278,22 @@ export class PageObject {
   constructor(
     public electronApp: ElectronApplication,
     public page: Page,
-    { userDataDir }: { userDataDir: string },
+    { userDataDir, apiContext }: { userDataDir: string; apiContext: APIRequestContext },
   ) {
     this.userDataDir = userDataDir;
-    this.githubConnector = new GitHubConnector(this.page);
+    this.githubConnector = new GitHubConnector(this.page, apiContext);
   }
 
   private async baseSetup() {
     await this.githubConnector.clearPushEvents();
+    // Dismiss telemetry dialog if it appears
+    const telemetryLater = this.page.getByTestId("telemetry-later-button");
+    try {
+      await telemetryLater.waitFor({ state: "visible", timeout: 5000 });
+      await telemetryLater.click();
+    } catch (e) {
+      // Ignore if it doesn't appear
+    }
   }
 
   async setUp({
@@ -334,7 +345,7 @@ export class PageObject {
       throw new Error("No app selected");
     }
 
-    const maxDurationMs = 180_000; // 3 minutes
+    const maxDurationMs = 15_000; // 15 seconds
     const retryIntervalMs = 15_000;
     const startTime = Date.now();
     let lastOutput = "";
@@ -378,15 +389,9 @@ export class PageObject {
   }
 
   async setUpDyadProvider() {
-    await this.page
-      .locator("div")
-      .filter({ hasText: /^DyadNeeds Setup$/ })
-      .nth(1)
-      .click();
-    await this.page.getByRole("textbox", { name: "Set Dyad API Key" }).click();
-    await this.page
-      .getByRole("textbox", { name: "Set Dyad API Key" })
-      .fill("testdyadkey");
+    await this.page.getByTestId("provider-card-auto").click();
+    await this.page.locator("#apiKeyInput").click();
+    await this.page.locator("#apiKeyInput").fill("testdyadkey");
     await this.page.getByRole("button", { name: "Save Key" }).click();
   }
 
@@ -511,7 +516,7 @@ export class PageObject {
     timeout,
   }: { replaceDumpPath?: boolean; timeout?: number } = {}) {
     if (replaceDumpPath) {
-      // Update page so that "[[dyad-dump-path=*]]" is replaced with a placeholder path
+      // Update page so that "[[shinso-dump-path=*]]" is replaced with a placeholder path
       // which is stable across runs.
       await this.page.evaluate(() => {
         const messagesList = document.querySelector(
@@ -521,8 +526,8 @@ export class PageObject {
           throw new Error("Messages list not found");
         }
         messagesList.innerHTML = messagesList.innerHTML.replace(
-          /\[\[dyad-dump-path=([^\]]+)\]\]/g,
-          "[[dyad-dump-path=*]]",
+          /\[\[shinso-dump-path=([^\]]+)\]\]/g,
+          "[[shinso-dump-path=*]]",
         );
       });
     }
@@ -608,6 +613,10 @@ export class PageObject {
     await this.page.getByTestId("toggle-preview-panel-button").click();
   }
 
+  async toggleSidebar() {
+    await this.page.getByRole("button", { name: "Toggle Sidebar" }).click();
+  }
+
   async clickPreviewPickElement() {
     await this.page
       .getByTestId("preview-pick-element-button")
@@ -648,7 +657,7 @@ export class PageObject {
   async clickPreviewAnnotatorButton() {
     await this.page
       .getByTestId("preview-annotator-button")
-      .click({ timeout: Timeout.EXTRA_LONG });
+      .click({ timeout: Timeout.EXTRA_LONG, force: true });
   }
 
   async waitForAnnotatorMode() {
@@ -741,7 +750,7 @@ export class PageObject {
 
     // Find ALL dump paths using global regex
     const dumpPathMatches = messagesListText?.match(
-      /\[\[dyad-dump-path=([^\]]+)\]\]/g,
+      /\[\[shinso-dump-path=([^\]]+)\]\]/g,
     );
 
     if (!dumpPathMatches || dumpPathMatches.length === 0) {
@@ -751,7 +760,7 @@ export class PageObject {
     // Extract the actual paths from the matches
     const dumpPaths = dumpPathMatches
       .map((match) => {
-        const pathMatch = match.match(/\[\[dyad-dump-path=([^\]]+)\]\]/);
+        const pathMatch = match.match(/\[\[shinso-dump-path=([^\]]+)\]\]/);
         return pathMatch ? pathMatch[1] : null;
       })
       .filter(Boolean);
@@ -776,7 +785,7 @@ export class PageObject {
     // Read the JSON file
     const dumpContent: string = (
       fs.readFileSync(dumpFilePath, "utf-8") as any
-    ).replaceAll(/\[\[dyad-dump-path=([^\]]+)\]\]/g, "[[dyad-dump-path=*]]");
+    ).replaceAll(/\[\[shinso-dump-path=([^\]]+)\]\]/g, "[[shinso-dump-path=*]]");
     // Perform snapshot comparison
     const parsedDump = JSON.parse(dumpContent);
     if (type === "request") {
@@ -833,9 +842,7 @@ export class PageObject {
   }
 
   getChatInput() {
-    return this.page.locator(
-      '[data-lexical-editor="true"][aria-placeholder="Ask Shinsō to build..."]',
-    );
+    return this.page.getByTestId("chat-input").first();
   }
 
   clickNewChat({ index = 0 }: { index?: number } = {}) {
@@ -921,7 +928,7 @@ export class PageObject {
   }
 
   async setUpTestProvider() {
-    await this.page.getByText("Add custom providerConnect to").click();
+    await this.page.getByTestId("add-custom-provider").click();
     // Fill out provider dialog
     await this.page
       .getByRole("textbox", { name: "Provider ID" })
@@ -1297,7 +1304,7 @@ export const test = base.extend<{
   po: PageObject;
 }>({
   electronConfig: [
-    async ({}, use) => {
+    async ({ }, use) => {
       // Default configuration - tests can override this fixture
       await use({});
     },
@@ -1307,10 +1314,17 @@ export const test = base.extend<{
     async ({ electronApp }, use) => {
       const page = await electronApp.firstWindow();
 
+      // Create a separate API request context that doesn't inherit Electron's headers
+      const apiContext = await request.newContext();
+
       const po = new PageObject(electronApp, page, {
         userDataDir: (electronApp as any).$dyadUserDataDir,
+        apiContext,
       });
       await use(po);
+
+      // Dispose of the API request context after the test
+      await apiContext.dispose();
     },
     { auto: true },
   ],
@@ -1387,6 +1401,7 @@ export const test = base.extend<{
       electronApp.on("window", async (page) => {
         const filename = page.url()?.split("/").pop();
         console.log(`Window opened: ${filename}`);
+        await page.setViewportSize({ width: 1400, height: 900 });
 
         // capture errors
         page.on("pageerror", (error) => {
@@ -1427,7 +1442,7 @@ export const test = base.extend<{
 
 export function testWithConfig(config: ElectronConfig) {
   return test.extend({
-    electronConfig: async ({}, use) => {
+    electronConfig: async ({ }, use) => {
       await use(config);
     },
   });
@@ -1438,7 +1453,7 @@ export function testWithConfigSkipIfWindows(config: ElectronConfig) {
     return test.skip;
   }
   return test.extend({
-    electronConfig: async ({}, use) => {
+    electronConfig: async ({ }, use) => {
       await use(config);
     },
   });
@@ -1461,17 +1476,17 @@ function prettifyDump(
       const content = Array.isArray(message.content)
         ? JSON.stringify(message.content)
         : message.content
-            .replace(BUILD_SYSTEM_PREFIX, "\n${BUILD_SYSTEM_PREFIX}")
-            .replace(BUILD_SYSTEM_POSTFIX, "${BUILD_SYSTEM_POSTFIX}")
-            // Normalize line endings to always use \n
-            .replace(/\r\n/g, "\n")
-            // We remove package.json because it's flaky.
-            // Depending on whether pnpm install is run, it will be modified,
-            // and the contents and timestamp (thus affecting order) will be affected.
-            .replace(
-              /\n<dyad-file path="package\.json">[\s\S]*?<\/dyad-file>\n/g,
-              "",
-            );
+          .replace(BUILD_SYSTEM_PREFIX, "\n${BUILD_SYSTEM_PREFIX}")
+          .replace(BUILD_SYSTEM_POSTFIX, "${BUILD_SYSTEM_POSTFIX}")
+          // Normalize line endings to always use \n
+          .replace(/\r\n/g, "\n")
+          // We remove package.json because it's flaky.
+          // Depending on whether pnpm install is run, it will be modified,
+          // and the contents and timestamp (thus affecting order) will be affected.
+          .replace(
+            /\n<dyad-file path="package\.json">[\s\S]*?<\/dyad-file>\n/g,
+            "",
+          );
       return `===\nrole: ${message.role}\nmessage: ${content}`;
     })
     .join("\n\n");

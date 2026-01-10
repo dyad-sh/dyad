@@ -188,7 +188,7 @@
   - text: ","
   - code: "`nginx.conf`"
 - text: </dyad-security-finding>
-- paragraph: /\[\[dyad-dump-path=\/Users\/will\/Documents\/GitHub\/dyad-zero\/testing\/fake-llm-server\/dist\/generated\/\d+\.json\]\]/
+- paragraph: /\[\[shinso-dump-path=\/Users\/will\/Documents\/GitHub\/dyad-zero\/testing\/fake-llm-server\/dist\/generated\/\d+\.json\]\]/
 - button:
   - img
 - img

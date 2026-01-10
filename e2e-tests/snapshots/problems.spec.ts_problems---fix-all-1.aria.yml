@@ -13,7 +13,7 @@
 - img
 - text: file1.txt
 - paragraph: More EOM
-- paragraph: "[[dyad-dump-path=*]]"
+- paragraph: "[[shinso-dump-path=*]]"
 - img
 - text: Auto-fix5 problems
 - img
@@ -22,7 +22,7 @@
 - img
 - text: file1.txt
 - paragraph: More EOM
-- paragraph: "[[dyad-dump-path=*]]"
+- paragraph: "[[shinso-dump-path=*]]"
 - paragraph: "Fix these 3 TypeScript compile-time errors:"
 - list:
   - listitem: src/bad-file.tsx:2:1 - Cannot find name 'nonExistentFunction1'. (TS2304)
@@ -39,7 +39,7 @@
 - img
 - text: file1.txt
 - paragraph: More EOM
-- paragraph: "[[dyad-dump-path=*]]"
+- paragraph: "[[shinso-dump-path=*]]"
 - img
 - text: Auto-fix3 problems
 - img
@@ -48,7 +48,7 @@
 - img
 - text: file1.txt
 - paragraph: More EOM
-- paragraph: "[[dyad-dump-path=*]]"
+- paragraph: "[[shinso-dump-path=*]]"
 - img
 - text: Auto-fix3 problems
 - img
@@ -57,6 +57,6 @@
 - img
 - text: file1.txt
 - paragraph: More EOM
-- paragraph: "[[dyad-dump-path=*]]"
+- paragraph: "[[shinso-dump-path=*]]"
 - button "Retry":
   - img

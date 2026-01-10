@@ -235,7 +235,7 @@ message: <dyad-write path="file1.txt">
   More
   EOM
 
-[[dyad-dump-path=*]]
+[[shinso-dump-path=*]]
 
 ===
 role: user

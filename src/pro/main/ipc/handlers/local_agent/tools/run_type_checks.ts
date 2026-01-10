@@ -15,7 +15,7 @@ const runTypeChecksSchema = z.object({
     .array(z.string())
     .optional()
     .describe(
-      "Optional. An array of paths to files or directories to read linter errors for. If provided, returns diagnostics for the specified files/directories only. If not provided, returns diagnostics for all files in the workspace.",
+      "Optional. An array of paths to files or directories to read type errors for. If provided, returns diagnostics for the specified files/directories only. If not provided, returns diagnostics for all files in the workspace.",
     ),
 });
 

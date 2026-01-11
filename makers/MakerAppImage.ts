@@ -70,7 +70,7 @@ export class MakerAppImage extends MakerBase<{ icon?: string }> {
         `Could not fetch AppImage runtime: ${res.status} ${res.statusText}`,
       );
 
-    const runtime = await res.bytes();
+    const runtime = Buffer.from(await res.arrayBuffer());
 
     // Verify SHA256 hash
     const hash = createHash("sha256").update(runtime).digest("hex");

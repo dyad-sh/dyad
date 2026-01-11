@@ -1,11 +1,13 @@
-import { appConsoleEntriesAtom } from "@/atoms/appAtoms";
+import { appConsoleEntriesAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import type { ConsoleEntry } from "@/ipc/ipc_types";
-import { useAtomValue } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
+import { IpcClient } from "@/ipc/ipc_client";
 import { useEffect, useRef, useState, useMemo, useCallback, memo } from "react";
 import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
 import { ConsoleEntryComponent } from "./ConsoleEntry";
 import { ConsoleFilters } from "./ConsoleFilters";
 import { useSettings } from "@/hooks/useSettings";
+import { showError } from "@/lib/toast";
 
 // Placeholder component shown during fast scrolling
 const ScrollSeekPlaceholder = () => {
@@ -64,6 +66,8 @@ ConsoleItem.displayName = "ConsoleItem";
 // Console component
 export const Console = () => {
   const consoleEntries = useAtomValue(appConsoleEntriesAtom);
+  const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
+  const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { settings } = useSettings();
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -103,6 +107,21 @@ export const Console = () => {
     setTypeFilter("all");
     setSourceFilter("");
   };
+
+  const handleClearLogs = useCallback(async () => {
+    if (selectedAppId) {
+      try {
+        // Clear logs from backend store
+        await IpcClient.getInstance().clearLogs(selectedAppId);
+        // Clear logs from UI
+        setConsoleEntries([]);
+      } catch (error) {
+        showError(
+          error instanceof Error ? error.message : "Failed to clear logs",
+        );
+      }
+    }
+  }, [selectedAppId, setConsoleEntries]);
 
   useEffect(() => {
     const container = containerRef.current?.parentElement;
@@ -219,6 +238,7 @@ export const Console = () => {
         onTypeFilterChange={setTypeFilter}
         onSourceFilterChange={setSourceFilter}
         onClearFilters={handleClearFilters}
+        onClearLogs={handleClearLogs}
         uniqueSources={uniqueSources}
         totalLogs={filteredEntries.length}
         showFilters={showFilters}

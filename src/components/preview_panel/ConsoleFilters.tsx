@@ -1,4 +1,10 @@
-import { Filter, X } from "lucide-react";
+import { Filter, X, Trash2 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface ConsoleFiltersProps {
   levelFilter: "all" | "info" | "warn" | "error";
@@ -22,6 +28,7 @@ interface ConsoleFiltersProps {
   ) => void;
   onSourceFilterChange: (value: string) => void;
   onClearFilters: () => void;
+  onClearLogs: () => void;
   uniqueSources: string[];
   totalLogs: number;
   showFilters: boolean;
@@ -35,6 +42,7 @@ export const ConsoleFilters = ({
   onTypeFilterChange,
   onSourceFilterChange,
   onClearFilters,
+  onClearLogs,
   uniqueSources,
   totalLogs,
   showFilters,
@@ -111,9 +119,25 @@ export const ConsoleFilters = ({
           className="text-xs px-2 py-1 flex items-center gap-1 border border-border rounded bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
         >
           <X size={12} />
-          Clear
+          Clear Filters
         </button>
       )}
+
+      {/* Clear logs button */}
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={onClearLogs}
+              className="p-1 border border-border rounded bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              data-testid="clear-logs-button"
+            >
+              <Trash2 size={14} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Clear logs</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
 
       <div className="ml-auto text-xs text-gray-500">{totalLogs} logs</div>
     </div>

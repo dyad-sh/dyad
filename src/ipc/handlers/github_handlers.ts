@@ -20,16 +20,12 @@ import {
   gitListBranches,
   gitListRemoteBranches,
   gitRenameBranch,
-  gitAddAll,
-  gitCommit,
   isGitStatusClean,
-  getGitUncommittedFiles,
   getCurrentCommitHash,
   GitStateError,
   GIT_ERROR_CODES,
   isGitMergeInProgress,
   isGitRebaseInProgress,
-  gitReset,
   GitConflictError,
 } from "../utils/git_utils";
 import * as schema from "../../db/schema";
@@ -117,72 +113,18 @@ export async function getGithubUser(): Promise<GithubUser | null> {
 }
 
 /**
- * Ensures the git workspace is clean by auto-committing uncommitted changes if necessary.
- * This helper function eliminates code duplication across multiple handlers.
- *
- * @param appPath - The path to the application directory
- * @param operationDescription - Description of the operation for commit messages (e.g., "preparing branch 'main'", "rebase", "switching to branch 'feature'")
- * @throws Error if native Git is disabled and workspace is not clean, or if commit fails
+ * Ensures the git workspace is clean before continuing an operation.
  */
 async function ensureCleanWorkspace(
   appPath: string,
   operationDescription: string,
 ): Promise<void> {
   const isClean = await isGitStatusClean({ path: appPath });
-  if (!isClean) {
-    const settings = readSettings();
-    if (!settings.enableNativeGit) {
-      throw new Error(
-        "Cannot auto-commit changes because native Git is disabled, and the repository is not clean. " +
-          "Please commit or stash your changes manually and try again.",
-      );
-    }
-    let filesStaged = false;
-    try {
-      const uncommittedFiles = await getGitUncommittedFiles({
-        path: appPath,
-      });
-      // Stage all changes
-      await gitAddAll({ path: appPath });
-      filesStaged = true; // Mark that staging succeeded
-      // Commit with a descriptive message
-      await gitCommit({
-        path: appPath,
-        message: `[dyad] Auto-commit before ${operationDescription}: ${uncommittedFiles.length} file(s) changed`,
-      });
-      logger.log(
-        `Auto-committed ${uncommittedFiles.length} file(s) before ${operationDescription}`,
-      );
-    } catch (commitError: any) {
-      // Reset staging area if files were staged but commit failed
-      // This ensures cleanup always happens, preventing inconsistent repository state
-      if (filesStaged) {
-        try {
-          await gitReset({ path: appPath });
-        } catch (resetError) {
-          // If reset fails, log the error and enhance the error message to inform user
-          logger.error(
-            `Failed to reset staging area after commit failure. Files remain staged. ` +
-              `Original error: ${commitError?.message || "Unknown error"}, ` +
-              `Reset error: ${resetError}`,
-          );
-          throw new Error(
-            `Failed to commit uncommitted changes before ${operationDescription}: ${commitError?.message || "Unknown error"}. ` +
-              "Additionally, failed to unstage files - your files are currently staged but not committed. " +
-              "Please manually unstage using 'git reset HEAD' or commit/stash your changes and try again.",
-          );
-        }
-      }
-      // Throw the original error after successful cleanup
-      const cleanupMessage = filesStaged
-        ? "Your changes have been unstaged. Please review and commit or stash them manually, then try again."
-        : "Please commit or stash your changes manually and try again.";
-      throw new Error(
-        `Failed to commit uncommitted changes before ${operationDescription}: ${commitError?.message || "Unknown error"}. ` +
-          cleanupMessage,
-      );
-    }
-  }
+  if (isClean) return;
+  throw new Error(
+    `Workspace is not clean before ${operationDescription}. ` +
+      "Please commit or stash your changes manually and try again.",
+  );
 }
 
 async function prepareLocalBranch({
@@ -231,10 +173,9 @@ async function prepareLocalBranch({
     }
 
     // Use locking to prevent race conditions when multiple operations attempt to modify the repository
-    // The lock covers the entire branch preparation: auto-commit, branch listing, and checkout operations
     // This ensures atomicity and prevents conflicts between concurrent operations
     await withLock(appId, async () => {
-      // Check for uncommitted changes and commit them before checkout
+      // Check for uncommitted changes
       await ensureCleanWorkspace(appPath, `preparing branch '${targetBranch}'`);
 
       // List branches and check if target branch exists
@@ -308,6 +249,11 @@ async function prepareLocalBranch({
                     `Failed to restore branch '${previousBranch}' after error: ${restoreError}`,
                   );
                 }
+              } else {
+                logger.warn(
+                  "[GitHub Handler] Previous branch unknown; repository may remain in detached HEAD at " +
+                    `${commitSha}.`,
+                );
               }
               throw error;
             }
@@ -894,10 +840,10 @@ async function handlePushToGithub(
       // Check for conflict in error message
       const errorMessage = pullError?.message || "";
       if (
-        errorMessage.includes("conflict") ||
+        errorMessage.includes("merge conflict") ||
         errorMessage.includes("Merge conflict") ||
-        errorMessage.includes("Fetch_head") ||
-        errorMessage.includes("preimage")
+        errorMessage.includes("CONFLICT (") ||
+        errorMessage.match(/failed to merge.*conflict/i)
       ) {
         throw GitConflictError(
           "Merge conflict detected during pull. Please resolve conflicts before pushing.",
@@ -907,9 +853,10 @@ async function handlePushToGithub(
       // Check if it's a missing remote branch error
       const isMissingRemoteBranch =
         pullError?.code === "MissingRefError" ||
-        pullError?.code === "NotFoundError" ||
+        (pullError?.code === "NotFoundError" &&
+          (errorMessage.includes("remote ref") ||
+            errorMessage.includes("remote branch"))) ||
         errorMessage.includes("couldn't find remote ref") ||
-        errorMessage.includes("not found") ||
         // isomorphic-git throws a TypeError when the remote repo is empty
         errorMessage.includes("Cannot read properties of null");
 
@@ -1108,7 +1055,7 @@ async function handleSwitchBranch(
     );
   }
 
-  // Check for uncommitted changes and commit them before switching branches
+  // Check for uncommitted changes
   await withLock(appId, async () => {
     await ensureCleanWorkspace(appPath, `switching to branch '${branch}'`);
   });
@@ -1128,7 +1075,7 @@ async function handleSwitchBranch(
     ) {
       throw new Error(
         `Failed to switch branch: uncommitted changes detected. ` +
-          "Attempting to commit automatically failed. Please commit or stash your changes manually and try again.",
+          "Please commit or stash your changes manually and try again.",
       );
     }
     throw checkoutError;
@@ -1226,7 +1173,7 @@ async function handleMergeBranch(
     mergeBranchRef = `origin/${branch}`;
   }
 
-  // Check for uncommitted changes and commit them before merging
+  // Check for uncommitted changes
   await withLock(appId, async () => {
     await ensureCleanWorkspace(appPath, `merging branch '${branch}'`);
   });
@@ -1251,7 +1198,7 @@ async function handleMergeBranch(
     ) {
       throw new Error(
         `Failed to merge branch: uncommitted changes detected. ` +
-          "Attempting to commit automatically failed. Please commit or stash your changes manually and try again.",
+          "Please commit or stash your changes manually and try again.",
       );
     }
 

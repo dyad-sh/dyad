@@ -237,14 +237,19 @@ function ConnectedGitHubConnector({
     try {
       // First, perform the rebase
       await IpcClient.getInstance().rebaseGithubRepo(appId);
-      setRebaseStatusMessage(
-        "Rebase completed successfully. Pushing to GitHub...",
-      );
+      setRebaseStatusMessage(null);
       const syncResult = await handleSyncToGithub();
-      if (syncResult?.error && !syncResult.handled) {
-        throw syncResult.error;
+      if (syncResult?.error) {
+        if (!syncResult.handled) {
+          throw syncResult.error;
+        }
+        return;
       }
+      setRebaseStatusMessage("Rebase and push completed successfully.");
     } catch (err: any) {
+      if (err?.handled) {
+        return;
+      }
       const errorMessage =
         err?.message || "Failed to rebase and sync to GitHub.";
       setSyncError(errorMessage);

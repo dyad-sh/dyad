@@ -38,6 +38,7 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { useCheckName } from "@/hooks/useCheckName";
 import { AppUpgrades } from "@/components/AppUpgrades";
 import { CapacitorControls } from "@/components/CapacitorControls";
+import { GithubCollaboratorManager } from "@/components/GithubCollaboratorManager";
 
 export default function AppDetailsPage() {
   const navigate = useNavigate();
@@ -391,6 +392,11 @@ export default function AppDetailsPage() {
           </Button>
           <div className="border border-gray-200 rounded-md p-4">
             <GitHubConnector appId={appId} folderName={selectedApp.path} />
+            {selectedApp.githubOrg && selectedApp.githubRepo && appId && (
+              <div className="pt-4 border-t border-gray-100 dark:border-gray-800">
+                <GithubCollaboratorManager appId={appId} />
+              </div>
+            )}
           </div>
           {appId && <SupabaseConnector appId={appId} />}
           {appId && <CapacitorControls appId={appId} />}

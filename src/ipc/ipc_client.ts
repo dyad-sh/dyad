@@ -83,6 +83,7 @@ import type {
   AgentToolConsentResponseParams,
   AgentTodosUpdatePayload,
   TelemetryEventPayload,
+  GithubSyncOptions,
   ConsoleEntry,
 } from "./ipc_types";
 import type { Template } from "../shared/templates";
@@ -844,12 +845,36 @@ export class IpcClient {
   // Sync (push) local repo to GitHub
   public async syncGithubRepo(
     appId: number,
-    force?: boolean,
-  ): Promise<{ success: boolean; error?: string }> {
-    return this.ipcRenderer.invoke("github:push", {
+    options: GithubSyncOptions = {},
+  ): Promise<void> {
+    const { force, forceWithLease } = options;
+    await this.ipcRenderer.invoke("github:push", {
       appId,
       force,
+      forceWithLease,
     });
+  }
+
+  public async abortGithubRebase(appId: number): Promise<void> {
+    await this.ipcRenderer.invoke("github:rebase-abort", {
+      appId,
+    });
+  }
+
+  public async abortGithubMerge(appId: number): Promise<void> {
+    await this.ipcRenderer.invoke("github:merge-abort", {
+      appId,
+    });
+  }
+
+  public async continueGithubRebase(appId: number): Promise<void> {
+    await this.ipcRenderer.invoke("github:rebase-continue", {
+      appId,
+    });
+  }
+
+  public async rebaseGithubRepo(appId: number): Promise<void> {
+    await this.ipcRenderer.invoke("github:rebase", { appId });
   }
 
   public async disconnectGithubRepo(appId: number): Promise<void> {
@@ -857,6 +882,106 @@ export class IpcClient {
       appId,
     });
   }
+
+  public async fetchGithubRepo(appId: number): Promise<void> {
+    await this.ipcRenderer.invoke("github:fetch", { appId });
+  }
+
+  public async createGithubBranch(
+    appId: number,
+    branch: string,
+    from?: string,
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("github:create-branch", {
+      appId,
+      branch,
+      from,
+    });
+  }
+
+  public async deleteGithubBranch(
+    appId: number,
+    branch: string,
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("github:delete-branch", { appId, branch });
+  }
+
+  public async switchGithubBranch(
+    appId: number,
+    branch: string,
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("github:switch-branch", { appId, branch });
+  }
+
+  public async renameGithubBranch(
+    appId: number,
+    oldBranch: string,
+    newBranch: string,
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("github:rename-branch", {
+      appId,
+      oldBranch,
+      newBranch,
+    });
+  }
+
+  public async mergeGithubBranch(appId: number, branch: string): Promise<void> {
+    await this.ipcRenderer.invoke("github:merge-branch", { appId, branch });
+  }
+
+  public async getGithubMergeConflicts(appId: number): Promise<string[]> {
+    return this.ipcRenderer.invoke("github:get-conflicts", { appId });
+  }
+
+  public async listLocalGithubBranches(
+    appId: number,
+  ): Promise<{ branches: string[]; current: string | null }> {
+    return this.ipcRenderer.invoke("github:list-local-branches", { appId });
+  }
+
+  public async listRemoteGithubBranches(
+    appId: number,
+    remote = "origin",
+  ): Promise<string[]> {
+    return this.ipcRenderer.invoke("github:list-remote-branches", {
+      appId,
+      remote,
+    });
+  }
+
+  public async getGithubState(appId: number): Promise<{
+    mergeInProgress: boolean;
+    rebaseInProgress: boolean;
+  }> {
+    return this.ipcRenderer.invoke("github:get-git-state", { appId });
+  }
+
+  public async listCollaborators(
+    appId: number,
+  ): Promise<{ login: string; avatar_url: string; permissions: any }[]> {
+    return this.ipcRenderer.invoke("github:list-collaborators", { appId });
+  }
+
+  public async inviteCollaborator(
+    appId: number,
+    username: string,
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("github:invite-collaborator", {
+      appId,
+      username,
+    });
+  }
+
+  public async removeCollaborator(
+    appId: number,
+    username: string,
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("github:remove-collaborator", {
+      appId,
+      username,
+    });
+  }
+
   // --- End GitHub Repo Management ---
 
   // --- Vercel Token Management ---

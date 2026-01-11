@@ -577,7 +577,13 @@ export class PageObject {
   ////////////////////////////////
 
   async selectPreviewMode(
-    mode: "code" | "problems" | "preview" | "configure" | "security",
+    mode:
+      | "code"
+      | "problems"
+      | "preview"
+      | "configure"
+      | "security"
+      | "publish",
   ) {
     await this.page.getByTestId(`${mode}-mode-button`).click();
   }

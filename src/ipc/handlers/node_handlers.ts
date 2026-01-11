@@ -11,7 +11,40 @@ import { readSettings } from "../../main/settings";
 
 const logger = log.scope("node_handlers");
 
+// Test-only: Mock state for Node.js installation status
+// null = use real check, true = mock as installed, false = mock as not installed
+let mockNodeInstalled: boolean | null = null;
+
+function getNodeDownloadUrl(): string {
+  // Default to mac download url.
+  let nodeDownloadUrl = "https://nodejs.org/dist/v22.14.0/node-v22.14.0.pkg";
+  if (platform() == "win32") {
+    if (arch() === "arm64" || arch() === "arm") {
+      nodeDownloadUrl =
+        "https://nodejs.org/dist/v22.14.0/node-v22.14.0-arm64.msi";
+    } else {
+      // x64 is the most common architecture for Windows so it's the
+      // default download url.
+      nodeDownloadUrl =
+        "https://nodejs.org/dist/v22.14.0/node-v22.14.0-x64.msi";
+    }
+  }
+  return nodeDownloadUrl;
+}
+
 export function registerNodeHandlers() {
+  // Test-only handler to control Node.js mock state
+  // Guarded by E2E_TEST_BUILD environment variable
+  if (process.env.E2E_TEST_BUILD === "true") {
+    ipcMain.handle(
+      "test:set-node-mock",
+      async (_, { installed }: { installed: boolean | null }) => {
+        logger.log("test:set-node-mock called with installed:", installed);
+        mockNodeInstalled = installed;
+      },
+    );
+  }
+
   ipcMain.handle("nodejs-status", async (): Promise<NodeSystemInfo> => {
     logger.log(
       "handling ipc: nodejs-status for platform:",
@@ -19,6 +52,22 @@ export function registerNodeHandlers() {
       "and arch:",
       arch(),
     );
+
+    const nodeDownloadUrl = getNodeDownloadUrl();
+
+    // Test-only: Return mock state if set
+    if (process.env.E2E_TEST_BUILD === "true" && mockNodeInstalled !== null) {
+      logger.log("Using mock Node.js status:", mockNodeInstalled);
+      if (mockNodeInstalled) {
+        return {
+          nodeVersion: "v22.14.0",
+          pnpmVersion: "9.0.0",
+          nodeDownloadUrl,
+        };
+      }
+      return { nodeVersion: null, pnpmVersion: null, nodeDownloadUrl };
+    }
+
     // Run checks in parallel
     const [nodeVersion, pnpmVersion] = await Promise.all([
       runShellCommand("node --version"),
@@ -29,19 +78,6 @@ export function registerNodeHandlers() {
         "pnpm --version || (corepack enable pnpm && pnpm --version) || (npm install -g pnpm@latest-10 && pnpm --version)",
       ),
     ]);
-    // Default to mac download url.
-    let nodeDownloadUrl = "https://nodejs.org/dist/v22.14.0/node-v22.14.0.pkg";
-    if (platform() == "win32") {
-      if (arch() === "arm64" || arch() === "arm") {
-        nodeDownloadUrl =
-          "https://nodejs.org/dist/v22.14.0/node-v22.14.0-arm64.msi";
-      } else {
-        // x64 is the most common architecture for Windows so it's the
-        // default download url.
-        nodeDownloadUrl =
-          "https://nodejs.org/dist/v22.14.0/node-v22.14.0-x64.msi";
-      }
-    }
     return { nodeVersion, pnpmVersion, nodeDownloadUrl };
   });
 

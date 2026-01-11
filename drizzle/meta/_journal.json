@@ -148,6 +148,13 @@
       "when": 1766619976318,
       "tag": "0020_nebulous_patch",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1768167214574,
+      "tag": "0021_kind_luckman",
+      "breakpoints": true
     }
   ]
 }

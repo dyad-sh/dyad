@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { Plus, Paperclip, ChartColumnIncreasing } from "lucide-react";
+import {
+  Plus,
+  Paperclip,
+  ChartColumnIncreasing,
+  Palette,
+  Check,
+} from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,6 +19,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { ContextFilesPicker } from "@/components/ContextFilesPicker";
 import { FileAttachmentDropdown } from "./FileAttachmentDropdown";
+import { useThemes } from "@/hooks/useThemes";
+import { useAppTheme, APP_THEME_QUERY_KEY } from "@/hooks/useAppTheme";
+import { useSettings } from "@/hooks/useSettings";
+import { IpcClient } from "@/ipc/ipc_client";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface AuxiliaryActionsMenuProps {
   onFileSelect: (
@@ -22,6 +33,7 @@ interface AuxiliaryActionsMenuProps {
   showTokenBar?: boolean;
   toggleShowTokenBar?: () => void;
   hideContextFilesPicker?: boolean;
+  appId?: number;
 }
 
 export function AuxiliaryActionsMenu({
@@ -29,8 +41,35 @@ export function AuxiliaryActionsMenu({
   showTokenBar,
   toggleShowTokenBar,
   hideContextFilesPicker,
+  appId,
 }: AuxiliaryActionsMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const { themes } = useThemes();
+  const { themeId: appThemeId } = useAppTheme(appId);
+  const { settings, updateSettings } = useSettings();
+  const queryClient = useQueryClient();
+
+  // Determine current theme: use app theme if appId exists, otherwise use settings
+  const currentThemeId = appId
+    ? appThemeId
+    : (settings?.selectedThemeId ?? null);
+
+  const handleThemeSelect = async (themeId: string) => {
+    const resolvedThemeId = themeId === "none" ? null : themeId;
+
+    if (appId) {
+      // Update app-specific theme
+      await IpcClient.getInstance().setAppTheme({
+        appId,
+        themeId: resolvedThemeId,
+      });
+      // Invalidate app theme query to refresh
+      queryClient.invalidateQueries({ queryKey: APP_THEME_QUERY_KEY(appId) });
+    } else {
+      // Update default theme in settings (for new apps)
+      await updateSettings({ selectedThemeId: themeId });
+    }
+  };
 
   return (
     <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
@@ -65,7 +104,38 @@ export function AuxiliaryActionsMenu({
           </DropdownMenuSubContent>
         </DropdownMenuSub>
 
-        {/* Toggle Token Usage */}
+        {/* Themes Submenu - show always when themes are available */}
+        {themes && themes.length > 0 && (
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger className="py-2 px-3">
+              <Palette size={16} className="mr-2" />
+              Themes
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              {themes.map((theme) => {
+                const isSelected =
+                  (currentThemeId === null && theme.id === "none") ||
+                  currentThemeId === theme.id;
+                return (
+                  <DropdownMenuItem
+                    key={theme.id}
+                    onClick={() => handleThemeSelect(theme.id)}
+                    className={`py-2 px-3 ${isSelected ? "bg-primary/10" : ""}`}
+                    data-testid={`theme-option-${theme.id}`}
+                  >
+                    <div className="flex items-center w-full">
+                      <span className="flex-1">{theme.name}</span>
+                      {isSelected && (
+                        <Check size={16} className="text-primary ml-2" />
+                      )}
+                    </div>
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        )}
+
         {toggleShowTokenBar && (
           <>
             <DropdownMenuSeparator />

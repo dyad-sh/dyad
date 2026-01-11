@@ -287,6 +287,7 @@ export const UserSettingsSchema = z.object({
   enableProWebSearch: z.boolean().optional(),
   proSmartContextOption: SmartContextModeSchema.optional(),
   selectedTemplateId: z.string(),
+  selectedThemeId: z.string().optional(),
   enableSupabaseWriteSqlMigration: z.boolean().optional(),
   selectedChatMode: ChatModeSchema.optional(),
   acceptedCommunityCode: z.boolean().optional(),

@@ -27,7 +27,6 @@ import {
   chatMessagesByIdAtom,
   selectedChatIdAtom,
   pendingAgentConsentsAtom,
-  agentTodosByChatIdAtom,
 } from "@/atoms/chatAtoms";
 import { atom, useAtom, useSetAtom, useAtomValue } from "jotai";
 import { useStreamChat } from "@/hooks/useStreamChat";
@@ -64,7 +63,6 @@ import { useSummarizeInNewChat } from "./SummarizeInNewChatButton";
 import { ChatInputControls } from "../ChatInputControls";
 import { ChatErrorBox } from "./ChatErrorBox";
 import { AgentConsentBanner } from "./AgentConsentBanner";
-import { TodoList } from "./TodoList";
 import {
   selectedComponentsPreviewAtom,
   previewIframeRefAtom,
@@ -123,10 +121,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     (c) => c.chatId === chatId,
   );
   const pendingAgentConsent = consentsForThisChat[0] ?? null;
-
-  // Get todos for this chat
-  const agentTodosByChatId = useAtomValue(agentTodosByChatIdAtom);
-  const chatTodos = chatId ? (agentTodosByChatId.get(chatId) ?? []) : [];
   const { checkProblems } = useCheckProblems(appId);
   const { refreshAppIframe } = useRunApp();
   // Use the attachments hook
@@ -325,8 +319,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
-          {/* Show todo list if there are todos for this chat */}
-          {chatTodos.length > 0 && <TodoList todos={chatTodos} />}
           {/* Show agent consent banner if there's a pending consent request */}
           {pendingAgentConsent && (
             <AgentConsentBanner
@@ -486,6 +478,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               onFileSelect={handleFileSelect}
               showTokenBar={showTokenBar}
               toggleShowTokenBar={toggleShowTokenBar}
+              appId={appId ?? undefined}
             />
           </div>
           {/* TokenBar is only displayed when showTokenBar is true */}

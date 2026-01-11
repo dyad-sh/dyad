@@ -88,6 +88,7 @@ import type {
   ConsoleEntry,
 } from "./ipc_types";
 import type { Template } from "../shared/templates";
+import type { Theme } from "../shared/themes";
 import type {
   AppChatContext,
   AppSearchResult,
@@ -1612,6 +1613,22 @@ export class IpcClient {
   // Template methods
   public async getTemplates(): Promise<Template[]> {
     return this.ipcRenderer.invoke("get-templates");
+  }
+
+  // --- Themes ---
+  public async getThemes(): Promise<Theme[]> {
+    return this.ipcRenderer.invoke("get-themes");
+  }
+
+  public async setAppTheme(params: {
+    appId: number;
+    themeId: string | null;
+  }): Promise<void> {
+    await this.ipcRenderer.invoke("set-app-theme", params);
+  }
+
+  public async getAppTheme(appId: number): Promise<string | null> {
+    return this.ipcRenderer.invoke("get-app-theme", { appId });
   }
 
   // --- Prompts Library ---

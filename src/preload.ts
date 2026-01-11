@@ -167,6 +167,10 @@ const validInvokeChannels = [
   // Console logs
   "add-log",
   "clear-logs",
+  // Themes
+  "get-themes",
+  "set-app-theme",
+  "get-app-theme",
   // Test-only channels
   // These should ALWAYS be guarded with IS_TEST_BUILD in the main process.
   // We can't detect with IS_TEST_BUILD in the preload script because

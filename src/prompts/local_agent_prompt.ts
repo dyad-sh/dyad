@@ -87,9 +87,19 @@ Available packages and libraries:
 - Use prebuilt components from the shadcn/ui library after importing them. Note that these files shouldn't be edited, so make new components if you need to change them.
 `;
 
-export function constructLocalAgentPrompt(aiRules: string | undefined): string {
-  return LOCAL_AGENT_SYSTEM_PROMPT.replace(
+export function constructLocalAgentPrompt(
+  aiRules: string | undefined,
+  themePrompt?: string,
+): string {
+  let prompt = LOCAL_AGENT_SYSTEM_PROMPT.replace(
     "[[AI_RULES]]",
     aiRules ?? DEFAULT_AI_RULES,
   );
+
+  // Append theme prompt if provided
+  if (themePrompt) {
+    prompt += "\n\n" + themePrompt;
+  }
+
+  return prompt;
 }

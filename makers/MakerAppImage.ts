@@ -49,7 +49,6 @@ export class MakerAppImage extends MakerBase<{ icon?: string }> {
     dir,
     makeDir,
     packageJSON,
-    targetArch,
   }: MakerOptions): Promise<string[]> {
     const version = packageJSON["version"];
 
@@ -58,7 +57,7 @@ export class MakerAppImage extends MakerBase<{ icon?: string }> {
 
     const { icon } = this.config;
 
-    const exeName = `${appName}_${version}_${targetArch}.AppImage`;
+    const exeName = `${appName}_${version}_x86_64.AppImage`;
     const outputDir = resolve(makeDir, "AppImage");
     const outputFilePath = resolve(outputDir, exeName);
 

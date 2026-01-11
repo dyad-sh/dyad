@@ -281,7 +281,7 @@ testSkipIfWindows("clear logs button clears all logs", async ({ po }) => {
   expect(countBeforeClear).toBeGreaterThan(0);
 
   // Click the Clear Logs button
-  const clearLogsButton = po.page.getByRole("button", { name: "Clear Logs" });
+  const clearLogsButton = po.page.getByTestId("clear-logs-button");
   await expect(clearLogsButton).toBeVisible();
   await clearLogsButton.click();
 

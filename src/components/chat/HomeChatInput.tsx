@@ -123,8 +123,7 @@ export function HomeChatInput({
 
             <AuxiliaryActionsMenu
               onFileSelect={handleFileSelect}
-              showContextFilesPicker={false}
-              isStreaming={isStreaming}
+              hideContextFilesPicker
             />
           </div>
         </div>

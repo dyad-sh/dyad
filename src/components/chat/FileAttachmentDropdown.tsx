@@ -13,12 +13,12 @@ interface FileAttachmentDropdownProps {
     files: FileList,
     type: "chat-context" | "upload-to-codebase",
   ) => void;
-  onMenuClose?: () => void;
+  closeMenu?: () => void;
 }
 
 export function FileAttachmentDropdown({
   onFileSelect,
-  onMenuClose,
+  closeMenu,
 }: FileAttachmentDropdownProps) {
   const chatContextFileInputRef = useRef<HTMLInputElement>(null);
   const uploadToCodebaseFileInputRef = useRef<HTMLInputElement>(null);
@@ -40,7 +40,7 @@ export function FileAttachmentDropdown({
       // Clear the input value so the same file can be selected again
       e.target.value = "";
       // Close the parent menu after file selection
-      onMenuClose?.();
+      closeMenu?.();
     }
   };
 
@@ -51,6 +51,8 @@ export function FileAttachmentDropdown({
           <TooltipTrigger asChild>
             <DropdownMenuItem
               onSelect={(e) => {
+                // Prevent default so menu doesn't close in order to keep the hidden inputs in the DOM
+                // Manually close menu after file selection
                 e.preventDefault();
                 handleChatContextClick();
               }}
@@ -71,6 +73,8 @@ export function FileAttachmentDropdown({
           <TooltipTrigger asChild>
             <DropdownMenuItem
               onSelect={(e) => {
+                // Prevent default so menu doesn't close in order to keep the hidden inputs in the DOM
+                // Manually close menu after file selection
                 e.preventDefault();
                 handleUploadToCodebaseClick();
               }}

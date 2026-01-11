@@ -21,16 +21,14 @@ interface AuxiliaryActionsMenuProps {
   ) => void;
   showTokenBar?: boolean;
   toggleShowTokenBar?: () => void;
-  showContextFilesPicker?: boolean;
-  isStreaming?: boolean;
+  hideContextFilesPicker?: boolean;
 }
 
 export function AuxiliaryActionsMenu({
   onFileSelect,
   showTokenBar,
   toggleShowTokenBar,
-  showContextFilesPicker = true,
-  isStreaming = false,
+  hideContextFilesPicker,
 }: AuxiliaryActionsMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -51,24 +49,24 @@ export function AuxiliaryActionsMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         {/* Codebase Context */}
-        {showContextFilesPicker && <ContextFilesPicker />}
+        {!hideContextFilesPicker && <ContextFilesPicker />}
 
         {/* Attach Files Submenu */}
         <DropdownMenuSub>
-          <DropdownMenuSubTrigger className="py-2 px-3" disabled={isStreaming}>
+          <DropdownMenuSubTrigger className="py-2 px-3">
             <Paperclip size={16} className="mr-2" />
             Attach files
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent>
             <FileAttachmentDropdown
               onFileSelect={onFileSelect}
-              onMenuClose={() => setIsOpen(false)}
+              closeMenu={() => setIsOpen(false)}
             />
           </DropdownMenuSubContent>
         </DropdownMenuSub>
 
         {/* Toggle Token Usage */}
-        {toggleShowTokenBar !== undefined && (
+        {toggleShowTokenBar && (
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem

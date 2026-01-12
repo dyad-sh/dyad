@@ -6,11 +6,11 @@ networks:
 
 services:
   # The main Node.js backend
-  dyad-server:
+  dyad-web:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: dyad-server
+    container_name: dyad-web
     restart: unless-stopped
     ports:
       - "3007:3007"

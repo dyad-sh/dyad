@@ -27,7 +27,7 @@ http:
       loadBalancer:
         servers:
           # Point directly to Node.js backend (Middleware in index.ts handles routing)
-          - url: "http://dyad-server:3007"
+          - url: "http://dyad-web:3007"
 
   middlewares:
     dyad-apps-headers:

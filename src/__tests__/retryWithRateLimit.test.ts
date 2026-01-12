@@ -1,11 +1,56 @@
 import {
   isRateLimitError,
   retryWithRateLimit,
+  RateLimitError,
+  fetchWithRetry,
 } from "@/ipc/utils/retryWithRateLimit";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+describe("RateLimitError", () => {
+  it("should be an instance of Error", () => {
+    const mockResponse = new Response(null, { status: 429 });
+    const error = new RateLimitError("Rate limited", mockResponse);
+    expect(error).toBeInstanceOf(Error);
+  });
+
+  it("should have status 429", () => {
+    const mockResponse = new Response(null, { status: 429 });
+    const error = new RateLimitError("Rate limited", mockResponse);
+    expect(error.status).toBe(429);
+  });
+
+  it("should have the correct name", () => {
+    const mockResponse = new Response(null, { status: 429 });
+    const error = new RateLimitError("Rate limited", mockResponse);
+    expect(error.name).toBe("RateLimitError");
+  });
+
+  it("should store the response", () => {
+    const mockResponse = new Response(null, { status: 429 });
+    const error = new RateLimitError("Rate limited", mockResponse);
+    expect(error.response).toBe(mockResponse);
+  });
+
+  it("should store the message", () => {
+    const mockResponse = new Response(null, { status: 429 });
+    const error = new RateLimitError("Custom rate limit message", mockResponse);
+    expect(error.message).toBe("Custom rate limit message");
+  });
+});
+
 describe("isRateLimitError", () => {
   describe("returns true for rate limit errors", () => {
+    it("should return true for RateLimitError instance", () => {
+      const mockResponse = new Response(null, { status: 429 });
+      const error = new RateLimitError("Rate limited", mockResponse);
+      expect(isRateLimitError(error)).toBe(true);
+    });
+
+    it("should return true for error with status === 429 directly", () => {
+      const error = { status: 429 };
+      expect(isRateLimitError(error)).toBe(true);
+    });
+
     it("should return true for error with response.status === 429", () => {
       const error = { response: { status: 429 } };
       expect(isRateLimitError(error)).toBe(true);
@@ -371,5 +416,159 @@ describe("retryWithRateLimit", () => {
 
       expect(result).toBeUndefined();
     });
+  });
+});
+
+describe("fetchWithRetry", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("should return successful response on first attempt", async () => {
+    const successResponse = new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+    });
+    vi.mocked(fetch).mockResolvedValue(successResponse);
+
+    const result = await fetchWithRetry(
+      "https://example.com/api",
+      { method: "GET" },
+      "test-fetch",
+    );
+
+    expect(result).toBe(successResponse);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledWith("https://example.com/api", {
+      method: "GET",
+    });
+  });
+
+  it("should retry on 429 response and succeed", async () => {
+    const rateLimitResponse = new Response(null, {
+      status: 429,
+      statusText: "Too Many Requests",
+    });
+    const successResponse = new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+    });
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(rateLimitResponse)
+      .mockResolvedValueOnce(successResponse);
+
+    const resultPromise = fetchWithRetry(
+      "https://example.com/api",
+      { method: "GET" },
+      "test-fetch",
+      { baseDelay: 100 },
+    );
+
+    // First attempt fails, wait for retry delay
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(200);
+
+    const result = await resultPromise;
+
+    expect(result).toBe(successResponse);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("should exhaust retries on persistent 429 responses", async () => {
+    const rateLimitResponse = new Response(null, {
+      status: 429,
+      statusText: "Too Many Requests",
+    });
+
+    vi.mocked(fetch).mockResolvedValue(rateLimitResponse);
+
+    const resultPromise = fetchWithRetry(
+      "https://example.com/api",
+      { method: "GET" },
+      "test-fetch",
+      { maxRetries: 2, baseDelay: 100 },
+    );
+
+    const expectation = expect(resultPromise).rejects.toThrow(RateLimitError);
+
+    await vi.runAllTimersAsync();
+
+    await expectation;
+    expect(fetch).toHaveBeenCalledTimes(3); // 1 initial + 2 retries
+  });
+
+  it("should pass through non-429 error responses without retrying", async () => {
+    const badRequestResponse = new Response(null, {
+      status: 400,
+      statusText: "Bad Request",
+    });
+
+    vi.mocked(fetch).mockResolvedValue(badRequestResponse);
+
+    const result = await fetchWithRetry(
+      "https://example.com/api",
+      { method: "GET" },
+      "test-fetch",
+      { baseDelay: 100 },
+    );
+
+    expect(result).toBe(badRequestResponse);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("should propagate fetch network errors without retrying", async () => {
+    const networkError = new Error("Network failure");
+    vi.mocked(fetch).mockRejectedValue(networkError);
+
+    await expect(
+      fetchWithRetry(
+        "https://example.com/api",
+        { method: "GET" },
+        "test-fetch",
+      ),
+    ).rejects.toThrow("Network failure");
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("should pass request body correctly", async () => {
+    const successResponse = new Response(null, { status: 201 });
+    vi.mocked(fetch).mockResolvedValue(successResponse);
+
+    const body = JSON.stringify({ name: "test" });
+    await fetchWithRetry(
+      "https://example.com/api",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+      },
+      "test-fetch",
+    );
+
+    expect(fetch).toHaveBeenCalledWith("https://example.com/api", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+    });
+  });
+
+  it("should handle undefined init options", async () => {
+    const successResponse = new Response(null, { status: 200 });
+    vi.mocked(fetch).mockResolvedValue(successResponse);
+
+    const result = await fetchWithRetry(
+      "https://example.com/api",
+      undefined,
+      "test-fetch",
+    );
+
+    expect(result).toBe(successResponse);
+    expect(fetch).toHaveBeenCalledWith("https://example.com/api", undefined);
   });
 });

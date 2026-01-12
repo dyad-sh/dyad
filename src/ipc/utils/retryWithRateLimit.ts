@@ -3,9 +3,33 @@ import log from "electron-log";
 export const logger = log.scope("retryWithRateLimit");
 
 /**
+ * Custom error class for rate limit errors thrown from fetch responses.
+ * This allows retryWithRateLimit to detect and retry on 429 responses.
+ */
+export class RateLimitError extends Error {
+  public readonly status = 429;
+  public readonly response: Response;
+
+  constructor(message: string, response: Response) {
+    super(message);
+    this.name = "RateLimitError";
+    this.response = response;
+  }
+}
+
+/**
  * Checks if an error is a rate limit error (HTTP 429).
  */
 export function isRateLimitError(error: any): boolean {
+  // Check for RateLimitError instance
+  if (error instanceof RateLimitError) {
+    return true;
+  }
+  // Check for status property directly on error (e.g., RateLimitError)
+  if (error?.status === 429) {
+    return true;
+  }
+  // Check for nested response.status (legacy pattern)
   const status = error?.response?.status;
   return status === 429;
 }
@@ -84,4 +108,36 @@ export async function retryWithRateLimit<T>(
   }
 
   throw lastError;
+}
+
+/**
+ * Wrapper around fetch that automatically retries on rate limit (429) responses.
+ * Uses exponential backoff via retryWithRateLimit.
+ *
+ * @param input - The fetch input (URL or Request)
+ * @param init - Optional fetch init options
+ * @param context - A descriptive context string for logging
+ * @param retryOptions - Optional retry configuration
+ * @returns The fetch Response (will not be a 429 response unless retries exhausted)
+ */
+export async function fetchWithRetry(
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+  context: string,
+  retryOptions?: RetryWithRateLimitOptions,
+): Promise<Response> {
+  return retryWithRateLimit(
+    async () => {
+      const response = await fetch(input, init);
+      if (response.status === 429) {
+        throw new RateLimitError(
+          `Rate limited (429): ${response.statusText}`,
+          response,
+        );
+      }
+      return response;
+    },
+    context,
+    retryOptions,
+  );
 }

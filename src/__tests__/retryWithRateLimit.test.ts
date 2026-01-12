@@ -277,7 +277,7 @@ describe("retryWithRateLimit", () => {
       await vi.runAllTimersAsync();
 
       await expectation;
-      expect(operation).toHaveBeenCalledTimes(7); // 1 initial + 6 retries
+      expect(operation).toHaveBeenCalledTimes(9); // 1 initial + 8 retries
     });
   });
 

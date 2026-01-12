@@ -1,4 +1,5 @@
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
+import { retryWithRateLimit } from "@/ipc/utils/retryWithRateLimit";
 import { getSupabaseClient } from "./supabase_management_client";
 import {
   SUPABASE_SCHEMA_QUERY,
@@ -20,7 +21,10 @@ async function getPublishableKey({
   const supabase = await getSupabaseClient({ organizationSlug });
   let keys;
   try {
-    keys = await supabase.getProjectApiKeys(projectId);
+    keys = await retryWithRateLimit(
+      () => supabase.getProjectApiKeys(projectId),
+      `Get API keys for ${projectId}`,
+    );
   } catch (error) {
     throw new Error(
       `Failed to fetch API keys for Supabase project "${projectId}". This could be due to: 1) Invalid project ID, 2) Network connectivity issues, or 3) Supabase API unavailability. Original error: ${error instanceof Error ? error.message : String(error)}`,
@@ -84,12 +88,15 @@ export async function getSupabaseContext({
     projectId: supabaseProjectId,
     organizationSlug,
   });
-  const schema = await supabase.runQuery(
-    supabaseProjectId,
-    SUPABASE_SCHEMA_QUERY,
+  const schema = await retryWithRateLimit(
+    () => supabase.runQuery(supabaseProjectId, SUPABASE_SCHEMA_QUERY),
+    `Get schema for ${supabaseProjectId}`,
   );
 
-  const secrets = await supabase.getSecrets(supabaseProjectId);
+  const secrets = await retryWithRateLimit(
+    () => supabase.getSecrets(supabaseProjectId),
+    `Get secrets for ${supabaseProjectId}`,
+  );
   const secretNames = secrets?.map((secret) => secret.name);
 
   // TODO: include EDGE FUNCTIONS and SECRETS!
@@ -165,12 +172,15 @@ test-publishable-key
     organizationSlug,
   });
 
-  const secrets = await supabase.getSecrets(supabaseProjectId);
+  const secrets = await retryWithRateLimit(
+    () => supabase.getSecrets(supabaseProjectId),
+    `Get secrets for ${supabaseProjectId}`,
+  );
   const secretNames = secrets?.map((secret) => secret.name) ?? [];
 
-  const tableResult = await supabase.runQuery(
-    supabaseProjectId,
-    TABLE_NAMES_QUERY,
+  const tableResult = await retryWithRateLimit(
+    () => supabase.runQuery(supabaseProjectId, TABLE_NAMES_QUERY),
+    `Get table names for ${supabaseProjectId}`,
   );
   const tableNames =
     (tableResult as unknown as { table_name: string }[] | undefined)?.map(
@@ -193,9 +203,9 @@ ${JSON.stringify(tableNames)}
 `;
 
   if (includeDbFunctions) {
-    const functionsResult = await supabase.runQuery(
-      supabaseProjectId,
-      SUPABASE_FUNCTIONS_QUERY,
+    const functionsResult = await retryWithRateLimit(
+      () => supabase.runQuery(supabaseProjectId, SUPABASE_FUNCTIONS_QUERY),
+      `Get DB functions for ${supabaseProjectId}`,
     );
     result += `
 ## Database Functions
@@ -225,7 +235,10 @@ export async function getSupabaseTableSchema({
 
   const supabase = await getSupabaseClient({ organizationSlug });
   const query = buildSupabaseSchemaQuery(tableName);
-  const schemaResult = await supabase.runQuery(supabaseProjectId, query);
+  const schemaResult = await retryWithRateLimit(
+    () => supabase.runQuery(supabaseProjectId, query),
+    `Get table schema for ${supabaseProjectId}${tableName ? `:${tableName}` : ""}`,
+  );
 
   return JSON.stringify(schemaResult);
 }

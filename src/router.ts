@@ -8,12 +8,17 @@ import { appDetailsRoute } from "./routes/app-details";
 import { hubRoute } from "./routes/hub";
 import { libraryRoute } from "./routes/library";
 
+import { restApiRoute } from "./routes/rest-api";
+import { logsRoute } from "./routes/logs";
+
 const routeTree = rootRoute.addChildren([
   homeRoute,
   hubRoute,
   libraryRoute,
   chatRoute,
   appDetailsRoute,
+  restApiRoute,
+  logsRoute,
   settingsRoute.addChildren([providerSettingsRoute]),
 ]);
 

@@ -28,6 +28,7 @@ import providersRoutes from "./routes/providers.js";
 import chatSSERoutes from "./routes/chatSSE.js";
 import { setupChatWebSocket } from "./routes/chatStream.js";
 import { setupTerminalWebSocket } from "./routes/terminal.js";
+import logsRoutes from "./routes/logs.js";
 
 // Load environment variables
 dotenv.config();
@@ -152,6 +153,7 @@ async function main() {
     app.use("/api/mcp", mcpRoutes);
     app.use("/api/prompts", promptsRoutes);
     app.use("/api/chat", chatSSERoutes);  // SSE fallback for chat streaming
+    app.use("/api/logs", logsRoutes);
     app.use("/api", providersRoutes);
 
 

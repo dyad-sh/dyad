@@ -5,6 +5,8 @@ import {
   HelpCircle,
   Store,
   BookOpen,
+  FileCode,
+  ScrollText,
 } from "lucide-react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar"; // import useSidebar hook
@@ -56,6 +58,16 @@ const items = [
     to: "/hub",
     icon: Store,
   },
+  {
+    title: "Rest API",
+    to: "/rest-api",
+    icon: FileCode,
+  },
+  {
+    title: "Logs",
+    to: "/logs",
+    icon: ScrollText,
+  },
 ];
 
 // Hover state types
@@ -64,6 +76,8 @@ type HoverState =
   | "start-hover:chat"
   | "start-hover:settings"
   | "start-hover:library"
+  | "start-hover:rest-api"
+  | "start-hover:logs"
   | "clear-hover"
   | "no-hover";
 
@@ -97,6 +111,8 @@ export function AppSidebar() {
     routerState.location.pathname.startsWith("/app-details");
   const isChatRoute = routerState.location.pathname === "/chat";
   const isSettingsRoute = routerState.location.pathname.startsWith("/settings");
+  const isRestApiRoute = routerState.location.pathname === "/rest-api";
+  const isLogsRoute = routerState.location.pathname === "/logs";
 
   let selectedItem: string | null = null;
   if (hoverState === "start-hover:app") {
@@ -107,6 +123,10 @@ export function AppSidebar() {
     selectedItem = "Settings";
   } else if (hoverState === "start-hover:library") {
     selectedItem = "Library";
+  } else if (hoverState === "start-hover:rest-api") {
+    selectedItem = "Rest API";
+  } else if (hoverState === "start-hover:logs") {
+    selectedItem = "Logs";
   } else if (state === "expanded") {
     if (isAppRoute) {
       selectedItem = "Apps";
@@ -114,6 +134,10 @@ export function AppSidebar() {
       selectedItem = "Chat";
     } else if (isSettingsRoute) {
       selectedItem = "Settings";
+    } else if (isRestApiRoute) {
+      selectedItem = "Rest API";
+    } else if (isLogsRoute) {
+      selectedItem = "Logs";
     }
   }
 
@@ -200,9 +224,8 @@ function AppIcons({
                 >
                   <Link
                     to={item.to}
-                    className={`flex flex-col items-center gap-1 h-14 mb-2 rounded-2xl ${
-                      isActive ? "bg-sidebar-accent" : ""
-                    }`}
+                    className={`flex flex-col items-center gap-1 h-14 mb-2 rounded-2xl ${isActive ? "bg-sidebar-accent" : ""
+                      }`}
                     onMouseEnter={() => {
                       if (item.title === "Apps") {
                         onHoverChange("start-hover:app");
@@ -212,6 +235,10 @@ function AppIcons({
                         onHoverChange("start-hover:settings");
                       } else if (item.title === "Library") {
                         onHoverChange("start-hover:library");
+                      } else if (item.title === "Rest API") {
+                        onHoverChange("start-hover:rest-api");
+                      } else if (item.title === "Logs") {
+                        onHoverChange("start-hover:logs");
                       }
                     }}
                   >

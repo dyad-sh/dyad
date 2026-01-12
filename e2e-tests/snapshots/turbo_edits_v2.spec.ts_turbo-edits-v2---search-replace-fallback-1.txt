@@ -30,7 +30,6 @@
       }
     ],
     "stream": true,
-    "reasoning_effort": "medium",
     "dyad_options": {
       "versioned_files": {
         "fileIdToContent": {

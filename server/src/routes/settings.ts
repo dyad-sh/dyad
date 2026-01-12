@@ -81,7 +81,7 @@ router.get("/", async (req, res, next) => {
         try {
             const db = getDb();
             const providers = await db.select().from(language_model_providers);
-            const sysSettings = await db.select().from(system_settings).where(inArray(system_settings.key, ["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "defaultModel"]));
+            const sysSettings = await db.select().from(system_settings).where(inArray(system_settings.key, ["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "defaultModel", "hasRunBefore"]));
 
             // Map DB keys to settings object
             for (const provider of providers) {
@@ -114,6 +114,7 @@ router.get("/", async (req, res, next) => {
                 if (setting.key === "GITHUB_CLIENT_ID") settings = { ...settings, githubClientId: setting.value } as any;
                 if (setting.key === "GITHUB_CLIENT_SECRET") settings = { ...settings, githubClientSecret: setting.value } as any;
                 if (setting.key === "defaultModel") settings = { ...settings, defaultModel: setting.value } as any;
+                if (setting.key === "hasRunBefore") settings = { ...settings, hasRunBefore: setting.value === "true" } as any;
             }
 
             // Check Env Vars for System Settings too
@@ -223,6 +224,10 @@ router.put("/", async (req, res, next) => {
             // Save defaultModel to DB
             if (body.defaultModel !== undefined) {
                 await upsertSystemSetting("defaultModel", body.defaultModel, "Default AI model for chat");
+            }
+
+            if (body.hasRunBefore !== undefined) {
+                await upsertSystemSetting("hasRunBefore", String(body.hasRunBefore), "Application setup state");
             }
 
         } catch (e) {

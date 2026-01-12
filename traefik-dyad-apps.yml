@@ -1,18 +1,20 @@
-# Traefik Configuration for Dyad App Subdomains (TLS OnDemand)
+# Traefik Configuration for Dyad App Subdomains
 # File: /data/coolify/proxy/dynamic/dyad-apps.yml
 
 http:
   routers:
     dyad-apps:
-      # Match subdomains like app-dyad-72.dyad1.ty-dev.site (flat structure)
-      rule: "HostRegexp(`{subdomain:app-dyad-[0-9]+}.dyad1.ty-dev.site`) || HostRegexp(`{subdomain:app-dyad-[0-9]+}.ty-dev.site`)"
+      # Match subdomains like app-dyad-72.ty-dev.site OR app-dyad-72.dyad1.ty-dev.site
+      rule: "HostRegexp(`{subdomain:app-dyad-[0-9]+}.ty-dev.site`) || HostRegexp(`{subdomain:app-dyad-[0-9]+}.dyad1.ty-dev.site`)"
       entryPoints:
         - https
       service: dyad-apps-service
       tls: {}
-        # certResolver: letsencrypt (Removed per user request)
+      # Cloudflare handles SSL termination, so we don't need a certResolver here.
+      # If you were using Let's Encrypt directly, you would uncomment:
+      # certResolver: letsencrypt
 
-    # WebSocket Router for Main Domain
+    # WebSocket Router for Main Domain (Terminal/Chat)
     dyad-ws:
       rule: "Host(`dyad1.ty-dev.site`) && PathPrefix(`/ws/`)"
       entryPoints:
@@ -24,7 +26,7 @@ http:
     dyad-apps-service:
       loadBalancer:
         servers:
-          # Point directly to Node.js backend (Middleware handles routing)
+          # Point directly to Node.js backend (Middleware in index.ts handles routing)
           - url: "http://dyad-server:3007"
 
   middlewares:
@@ -36,12 +38,3 @@ http:
           Access-Control-Allow-Origin: "*"
           Access-Control-Allow-Methods: "GET,POST,PUT,DELETE,OPTIONS"
           Access-Control-Allow-Headers: "Content-Type,Authorization"
-
-tls:
-  options:
-    ondemand:
-      onDemand:
-        # Ask allows Traefik to check if it should issue a cert.
-        # Ideally enable this and point to an API: http://dyad-server:3007/api/check-domain
-        # For now, commented out to ensure it works immediately (but less secure against spam)
-        # ask: http://dyad-server:3007/api/allow-cert

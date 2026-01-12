@@ -33,11 +33,12 @@ export function isRateLimitError(error: any): boolean {
   const status = error?.response?.status;
   return status === 429;
 }
+
 // Retry configuration
 const RETRY_CONFIG = {
-  maxRetries: 6,
+  maxRetries: 8,
   baseDelay: 2_000, // 2 seconds
-  maxDelay: 180_000, // 180 seconds
+  maxDelay: 30_000, // 30 seconds
   jitterFactor: 0.1, // 10% jitter
 };
 

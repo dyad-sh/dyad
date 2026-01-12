@@ -54,7 +54,10 @@ export function useLanguageModelProviders() {
       return true;
     }
     const providerData = queryResult.data?.find((p) => p.id === provider);
-    if (providerData?.envVarName && envVars[providerData.envVarName]) {
+    if (
+      (providerData?.envVarName && envVars[providerData.envVarName]) ||
+      providerData?.apiKey
+    ) {
       return true;
     }
     return false;

@@ -71,7 +71,14 @@ deploy_traefik_config() {
 # Start command
 start() {
     print_header "Starting Dyad Web Application (Server - Node Native)"
-    deploy_traefik_config
+    
+    # Copy Traefik dynamic config if running in Coolify environment
+    if [ -d "/data/coolify/proxy/dynamic" ]; then
+        print_header "Updating Traefik Config"
+        cp traefik-dyad-apps.yml /data/coolify/proxy/dynamic/dyad-apps.yml
+        print_success "Traefik configuration updated"
+    fi
+
     docker compose up -d
     print_success "Dyad is running."
     print_success "- Backend: http://localhost:3007"

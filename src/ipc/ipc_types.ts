@@ -196,6 +196,7 @@ export interface LanguageModelProvider {
   secondary?: boolean;
   envVarName?: string;
   apiBaseUrl?: string;
+  apiKey?: string;
   type: "custom" | "local" | "cloud";
 }
 

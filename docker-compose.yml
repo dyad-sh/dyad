@@ -35,6 +35,26 @@ services:
       retries: 3
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    labels:
+      - "traefik.enable=true"
+      # Router: dyad-apps (Subdomains)
+      - "traefik.http.routers.dyad-apps.rule=HostRegexp(`^app-dyad-[0-9]+\\.ty-dev\\.site$`)"
+      - "traefik.http.routers.dyad-apps.entrypoints=https"
+      - "traefik.http.routers.dyad-apps.tls=true"
+      - "traefik.http.routers.dyad-apps.middlewares=dyad-apps-headers"
+      - "traefik.http.services.dyad-web.loadbalancer.server.port=3007"
+
+      # Middleware: Headers
+      - "traefik.http.middlewares.dyad-apps-headers.headers.customrequestheaders.X-Forwarded-Proto=https"
+      - "traefik.http.middlewares.dyad-apps-headers.headers.customresponseheaders.Access-Control-Allow-Origin=*"
+      - "traefik.http.middlewares.dyad-apps-headers.headers.customresponseheaders.Access-Control-Allow-Methods=GET,POST,PUT,DELETE,OPTIONS"
+      - "traefik.http.middlewares.dyad-apps-headers.headers.customresponseheaders.Access-Control-Allow-Headers=Content-Type,Authorization"
+
+      # Router: dyad-ws (WebSocket/Main Domain)
+      - "traefik.http.routers.dyad-ws.rule=Host(`dyad1.ty-dev.site`) && PathPrefix(`/ws/`)"
+      - "traefik.http.routers.dyad-ws.priority=1000"
+      - "traefik.http.routers.dyad-ws.entrypoints=https"
+      - "traefik.http.routers.dyad-ws.tls=true"
 
 volumes:
   dyad-data:

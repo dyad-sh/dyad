@@ -16,6 +16,14 @@ import { isDyadProEnabled } from "@/lib/schemas";
 import { cn } from "@/lib/utils";
 import { detectIsMac } from "@/hooks/useChatModeToggle";
 
+function ExperimentalBadge() {
+  return (
+    <span className="inline-flex items-center rounded-full px-2 text-[11px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+      Experimental
+    </span>
+  );
+}
+
 export function ChatModeSelector() {
   const { settings, updateSettings } = useSettings();
 
@@ -87,7 +95,9 @@ export function ChatModeSelector() {
         </SelectItem>
         <SelectItem value="agent">
           <div className="flex flex-col items-start">
-            <span className="font-medium">Build with MCP (experimental)</span>
+            <div className="flex items-center gap-1.5">
+              <span className="font-medium">Build with MCP</span>
+            </div>
             <span className="text-xs text-muted-foreground">
               Like Build, but can use tools (MCP) to generate code
             </span>
@@ -96,9 +106,12 @@ export function ChatModeSelector() {
         {isProEnabled && settings?.experiments?.enableLocalAgent && (
           <SelectItem value="local-agent">
             <div className="flex flex-col items-start">
-              <span className="font-medium">Agent v2 (experimental)</span>
+              <div className="flex items-center gap-1.5">
+                <span className="font-medium">Agent v2</span>
+                <ExperimentalBadge />
+              </div>
               <span className="text-xs text-muted-foreground">
-                More autonomous (note: may have bugs)
+                Better at bigger tasks and debugging
               </span>
             </div>
           </SelectItem>

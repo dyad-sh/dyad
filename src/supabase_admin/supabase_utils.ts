@@ -6,7 +6,6 @@ import {
   deploySupabaseFunction,
   type DeployedFunctionResponse,
 } from "./supabase_management_client";
-import { retryWithRateLimit } from "@/ipc/utils/retryWithRateLimit";
 
 const logger = log.scope("supabase_utils");
 
@@ -140,17 +139,13 @@ export async function deployAllSupabaseFunctions({
     const deployResults = await Promise.allSettled(
       validFunctions.map(async (functionName) => {
         logger.info(`Bundling function: ${functionName}`);
-        const result = await retryWithRateLimit(
-          () =>
-            deploySupabaseFunction({
-              supabaseProjectId,
-              organizationSlug: supabaseOrganizationSlug,
-              functionName,
-              appPath,
-              bundleOnly: true,
-            }),
-          `Deploy function ${functionName}`,
-        );
+        const result = deploySupabaseFunction({
+          supabaseProjectId,
+          organizationSlug: supabaseOrganizationSlug,
+          functionName,
+          appPath,
+          bundleOnly: true,
+        });
         logger.info(`Successfully bundled function: ${functionName}`);
         return result;
       }),
@@ -177,15 +172,11 @@ export async function deployAllSupabaseFunctions({
         `Activating ${successfulDeploys.length} functions via bulk update...`,
       );
       try {
-        await retryWithRateLimit(
-          () =>
-            bulkUpdateFunctions({
-              supabaseProjectId,
-              functions: successfulDeploys,
-              organizationSlug: supabaseOrganizationSlug,
-            }),
-          "Bulk update functions",
-        );
+        bulkUpdateFunctions({
+          supabaseProjectId,
+          functions: successfulDeploys,
+          organizationSlug: supabaseOrganizationSlug,
+        });
         logger.info(
           `Successfully activated ${successfulDeploys.length} functions`,
         );

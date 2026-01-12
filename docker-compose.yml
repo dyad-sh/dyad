@@ -56,6 +56,11 @@ services:
       - "traefik.http.routers.dyad-ws.entrypoints=https"
       - "traefik.http.routers.dyad-ws.tls=true"
 
+      # Router: dyad-web-root (Main Domain HTTP)
+      - "traefik.http.routers.dyad-web-root.rule=Host(`dyad1.ty-dev.site`)"
+      - "traefik.http.routers.dyad-web-root.entrypoints=https"
+      - "traefik.http.routers.dyad-web-root.tls=true"
+
 volumes:
   dyad-data:
     driver: local

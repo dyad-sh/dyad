@@ -57,23 +57,58 @@ async function main() {
 
     // WebSocket server for chat streaming
     // Disable perMessageDeflate to prevent "Invalid frame header" errors through proxies
+    // WebSocket Servers with manual upgrade handling
+    // We use noServer: true and handle the upgrade event manually to route to the correct WSS
     const wss = new WebSocketServer({
-        server,
+        noServer: true,
         path: "/ws/chat",
-        perMessageDeflate: false  // Cloudflare and some proxies don't handle compression well
+        perMessageDeflate: false
     });
     setupChatWebSocket(wss);
 
     const termWss = new WebSocketServer({
-        server,
+        noServer: true,
         path: "/ws/terminal",
         perMessageDeflate: false
     });
     setupTerminalWebSocket(termWss);
 
+    // Manual Upgrade Handling
+    server.on('upgrade', (request, socket, head) => {
+        console.log(`[Server] 🟢 UPGRADE REQUEST received for: ${request.url}`);
+        console.log(`[Server] Headers: ${JSON.stringify(request.headers)}`);
+
+        // Use a relative URL for parsing to avoid host issues
+        // We only care about the path
+        let pathname = request.url;
+        try {
+            // Handle full URLs if present
+            const url = new URL(request.url!, `http://${request.headers.host}`);
+            pathname = url.pathname;
+        } catch (e) {
+            // fallback to raw url if parsing fails (likely relative path)
+        }
+
+        if (pathname === '/ws/chat') {
+            wss.handleUpgrade(request, socket, head, (ws) => {
+                wss.emit('connection', ws, request);
+            });
+        } else if (pathname === '/ws/terminal' || pathname?.startsWith('/ws/terminal')) {
+            // Allow for query params in path check logic if strict equality failed above, 
+            // but URL parsing should handle it. Being safe:
+            termWss.handleUpgrade(request, socket, head, (ws) => {
+                termWss.emit('connection', ws, request);
+            });
+        } else {
+            console.log(`[Server] Unknown upgrade path: ${pathname}`);
+            socket.destroy();
+        }
+    });
+
     // Middleware
     app.use(helmet({
         contentSecurityPolicy: false, // Disable for API
+        frameguard: false, // Allow iframes (Critical for App Previews)
     }));
     app.use(cors({
         origin: process.env.CORS_ORIGIN || "*",

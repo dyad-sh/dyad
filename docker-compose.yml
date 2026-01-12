@@ -18,11 +18,13 @@ services:
       - coolify
     volumes:
       - dyad-data:/app/data
+      - dyad-projects:/app/projects
     environment:
       - NODE_ENV=production
       - PORT=3007
       - HOST=0.0.0.0
       - DATA_DIR=/app/data
+      - APPS_DIR=/app/projects
       - CORS_ORIGIN=*
       # Database
       - DATABASE_URL=${DATABASE_URL}
@@ -36,4 +38,6 @@ services:
 
 volumes:
   dyad-data:
+    driver: local
+  dyad-projects:
     driver: local

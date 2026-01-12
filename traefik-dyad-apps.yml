@@ -17,6 +17,7 @@ http:
     # WebSocket Router for Main Domain (Terminal/Chat)
     dyad-ws:
       rule: "Host(`dyad1.ty-dev.site`) && PathPrefix(`/ws/`)"
+      priority: 1000
       entryPoints:
         - https
       service: dyad-apps-service

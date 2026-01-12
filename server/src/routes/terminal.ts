@@ -27,7 +27,7 @@ export function setupTerminalWebSocket(wss: WebSocketServer) {
         }
 
         const appId = Number(appIdStr);
-        const appDir = path.join(os.tmpdir(), "dyad-apps", appIdStr);
+        const appDir = path.join(process.env.APPS_DIR || path.join(os.tmpdir(), "dyad-apps"), appIdStr);
 
         // Ensure directory exists
         if (!fs.existsSync(appDir)) {

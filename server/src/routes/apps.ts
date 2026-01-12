@@ -34,6 +34,10 @@ interface RunningApp {
 const runningApps = new Map<number, RunningApp>();
 const startingApps = new Map<number, Promise<any>>();
 
+// Persistent Apps Directory
+const APPS_ROOT = process.env.APPS_DIR || path.join(os.tmpdir(), "dyad-apps");
+console.log(`[WebBackend] Apps directory set to: ${APPS_ROOT}`);
+
 // Package manager detection
 async function detectPackageManager(): Promise<'pnpm' | 'npm'> {
     try {
@@ -554,7 +558,7 @@ router.post("/:id/run", async (req, res, next) => {
         const startPromise = (async () => {
             try {
                 // 1. Prepare Directory
-                const targetDir = path.join(os.tmpdir(), 'dyad-apps', String(id));
+                const targetDir = path.join(APPS_ROOT, String(id));
                 await fs.emptyDir(targetDir);
                 await writeAppToDisk(appId, targetDir);
 

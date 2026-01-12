@@ -107,8 +107,9 @@ async function main() {
 
     // Middleware
     app.use(helmet({
-        contentSecurityPolicy: false, // Disable for API
-        frameguard: false, // Allow iframes (Critical for App Previews)
+        contentSecurityPolicy: false,
+        crossOriginEmbedderPolicy: false,
+        frameguard: false, // Critical: Allows iframes from any origin
     }));
     app.use(cors({
         origin: process.env.CORS_ORIGIN || "*",

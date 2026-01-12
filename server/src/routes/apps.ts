@@ -788,7 +788,7 @@ router.use('/:id/proxy', (req, res, next) => {
         target,
         ws: true,
         changeOrigin: true,
-        // selfHandleResponse: true, // Not in v3 types, handled by manual response via proxyRes
+        selfHandleResponse: true, // Required for body modification (injection) avoiding double-response
         pathRewrite: {
             [`^/api/apps/${id}/proxy`]: '',
         },
@@ -798,6 +798,10 @@ router.use('/:id/proxy', (req, res, next) => {
                 proxyReq.setHeader('Accept-Encoding', 'identity');
             },
             proxyRes: (proxyRes: any, req: any, res: any) => {
+                // Strip framing headers from the UPSTREAM response immediately
+                delete proxyRes.headers['x-frame-options'];
+                delete proxyRes.headers['content-security-policy'];
+
                 let originalBody: Buffer[] = [];
 
                 proxyRes.on('data', (chunk: any) => {

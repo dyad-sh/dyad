@@ -99,9 +99,8 @@ export const TitleBar = () => {
           data-testid="title-bar-app-name-button"
           variant="outline"
           size="sm"
-          className={`hidden @2xl:block no-app-region-drag text-xs max-w-38 truncate font-medium ${
-            selectedApp ? "cursor-pointer" : ""
-          }`}
+          className={`hidden @2xl:block no-app-region-drag text-xs max-w-38 truncate font-medium ${selectedApp ? "cursor-pointer" : ""
+            }`}
           onClick={handleAppClick}
         >
           {displayText}
@@ -122,26 +121,25 @@ export const TitleBar = () => {
               e.stopPropagation();
               handleModeChange("generate");
             }}
-            className={`px-3 py-1 rounded-full text-xs font-medium transition-all duration-200 ${
-              homeMode === "generate"
+            className={`px-3 py-1 rounded-full text-xs font-medium transition-all duration-200 ${homeMode === "generate"
                 ? "bg-primary text-white shadow-sm shadow-primary/20"
                 : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
-            }`}
+              }`}
             style={{ cursor: "pointer", pointerEvents: "auto" }}
           >
             ✨ App
           </button>
           <button
             type="button"
+            data-testid="contract-mode-toggle"
             onClick={(e) => {
               e.stopPropagation();
               handleModeChange("translate");
             }}
-            className={`px-3 py-1 rounded-full text-xs font-medium transition-all duration-200 ${
-              homeMode === "translate"
+            className={`px-3 py-1 rounded-full text-xs font-medium transition-all duration-200 ${homeMode === "translate"
                 ? "bg-primary text-white shadow-sm shadow-primary/20"
                 : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
-            }`}
+              }`}
             style={{ cursor: "pointer", pointerEvents: "auto" }}
           >
             🔄 Contract

@@ -300,13 +300,13 @@ export default function HomePage() {
       const fileList = [
         ...(helperFiles.length > 0
           ? [
-              `- Helper modules: ${helperFiles.map((f) => `\`${f}\``).join(", ")}`,
-            ]
+            `- Helper modules: ${helperFiles.map((f) => `\`${f}\``).join(", ")}`,
+          ]
           : []),
         ...(contractFiles.length > 0
           ? [
-              `- Main contract(s): ${contractFiles.map((f) => `\`${f}\``).join(", ")}`,
-            ]
+            `- Main contract(s): ${contractFiles.map((f) => `\`${f}\``).join(", ")}`,
+          ]
           : []),
       ].join("\n");
 
@@ -413,6 +413,8 @@ export default function HomePage() {
   ) => {
     // Reset pipeline state at the start
     resetPipeline();
+    setShowPipeline(true);
+    setIsLoading(true);
 
     // Extract contract name based on source language
     let extractedName: string | undefined;
@@ -494,8 +496,6 @@ export default function HomePage() {
         );
 
         try {
-          setIsLoading(true);
-
           // Create the app first to get the output path
           console.log("📦 Creating Sui Move app...");
           const createResult = await IpcClient.getInstance().createApp({
@@ -570,8 +570,6 @@ export default function HomePage() {
             "⚠️ Shinso transpiler error, falling back to LLM:",
             error,
           );
-        } finally {
-          setIsLoading(false);
         }
       } else {
         console.log(
@@ -589,7 +587,6 @@ export default function HomePage() {
     // If target is Sui and no app was created by transpiler, create one now
     if (targetLanguage === "sui_move" && !suiAppId) {
       try {
-        setIsLoading(true);
         console.log(
           "📦 Creating Sui Move app for non-token contract:",
           finalName,
@@ -604,9 +601,9 @@ export default function HomePage() {
       } catch (error) {
         console.error("Error creating Sui app:", error);
         showError("Failed to create Sui app: " + (error as Error).message);
-        return;
-      } finally {
         setIsLoading(false);
+        setShowPipeline(false);
+        return;
       }
     }
 
@@ -614,7 +611,6 @@ export default function HomePage() {
     let solanaAppId: number | undefined;
     if (targetLanguage === "solana_rust") {
       try {
-        setIsLoading(true);
         console.log("Scaffolding Anchor project:", finalName);
 
         const result = await IpcClient.getInstance().solanaInitProject({
@@ -624,7 +620,8 @@ export default function HomePage() {
 
         if (!result.success) {
           console.error("Failed to scaffold Anchor project:", result.error);
-          // Show error to user
+          setIsLoading(false);
+          setShowPipeline(false);
           return;
         }
 
@@ -635,20 +632,19 @@ export default function HomePage() {
         solanaAppId = result.appId;
       } catch (error) {
         console.error("Error scaffolding Anchor project:", error);
-        // Show error to user
-        return;
-      } finally {
         setIsLoading(false);
+        setShowPipeline(false);
+        return;
       }
     }
 
     // PHASE 1: DOCUMENT - Gather MCP context for target ecosystem
     console.log("📚 Starting document phase for", targetLanguage);
-    setIsLoading(true); // Ensure loading state is active for pipeline UI
-    setShowPipeline(true);
     setCurrentPhase("document");
     setDocumentStatus("in_progress");
     setDocumentDetails("Initializing...");
+
+
 
     const context = await documentPhase(targetLanguage, (msg) => {
       console.log("📚 Document phase:", msg);

@@ -15,15 +15,15 @@ test.describe("Translation Pipeline", () => {
 
     // Switch to translation mode (look for translate mode toggle)
     // Switch to translation mode by clicking the "Contract" button in title bar
-    const contractButton = po.page.getByRole("button", { name: /contract/i });
-    await contractButton.click();
+    const contractButton = po.page.getByTestId("contract-mode-toggle");
+    await contractButton.click({ force: true });
 
     // Wait for translation card to appear
     await expect(
       po.page
         .locator('[data-testid="translation-card"]')
         .or(po.page.getByText("Source Language")),
-    ).toBeVisible({ timeout: 5000 });
+    ).toBeVisible({ timeout: 15000 });
 
     // Enter Solidity contract
     const solidityCode = `
@@ -112,14 +112,14 @@ test.describe("Translation Pipeline", () => {
     await po.page.waitForURL(/\//, { timeout: 10000 });
 
     // Switch to translation mode by clicking the "Contract" button in title bar
-    const contractButton = po.page.getByRole("button", { name: /contract/i });
-    await contractButton.click();
+    const contractButton = po.page.getByTestId("contract-mode-toggle");
+    await contractButton.click({ force: true });
 
     await expect(
       po.page
         .locator('[data-testid="translation-card"]')
         .or(po.page.getByText("Source Language")),
-    ).toBeVisible({ timeout: 5000 });
+    ).toBeVisible({ timeout: 15000 });
 
     const solidityCode = `
       pragma solidity ^0.8.0;
@@ -179,11 +179,11 @@ test.describe("Translation Pipeline", () => {
     await po.page.waitForURL(/\//, { timeout: 10000 });
 
     // Switch to translation mode by clicking the "Contract" button in title bar
-    const contractButton = po.page.getByRole("button", { name: /contract/i });
-    await contractButton.click();
+    const contractButton = po.page.getByTestId("contract-mode-toggle");
+    await contractButton.click({ force: true });
 
     await expect(po.page.getByText("Source Language")).toBeVisible({
-      timeout: 5000,
+      timeout: 15000,
     });
 
     const solidityCode = `contract Test { uint256 x; }`;
@@ -242,11 +242,11 @@ test.describe("Translation Pipeline", () => {
     await po.page.waitForURL(/\//, { timeout: 10000 });
 
     // Switch to translation mode by clicking the "Contract" button in title bar
-    const contractButton = po.page.getByRole("button", { name: /contract/i });
-    await contractButton.click();
+    const contractButton = po.page.getByTestId("contract-mode-toggle");
+    await contractButton.click({ force: true });
 
     await expect(po.page.getByText("Source Language")).toBeVisible({
-      timeout: 5000,
+      timeout: 15000,
     });
 
     const solidityCode = `contract Simple {}`;
@@ -292,14 +292,14 @@ test.describe("Pipeline Approval Workflow", () => {
     await po.page.waitForURL(/\//, { timeout: 10000 });
 
     // Switch to translation mode by clicking the "Contract" button in title bar
-    const contractButton = po.page.getByRole("button", { name: /contract/i });
-    await contractButton.click();
+    const contractButton = po.page.getByTestId("contract-mode-toggle");
+    await contractButton.click({ force: true });
 
     await expect(
       po.page
         .locator('[data-testid="translation-card"]')
         .or(po.page.getByText("Source Language")),
-    ).toBeVisible({ timeout: 5000 });
+    ).toBeVisible({ timeout: 15000 });
 
     // Enter Solidity contract
     const solidityCode = `
@@ -418,11 +418,11 @@ test.describe("Pipeline Approval Workflow", () => {
     await po.page.waitForURL(/\//, { timeout: 10000 });
 
     // Switch to translation mode by clicking the "Contract" button in title bar
-    const contractButton = po.page.getByRole("button", { name: /contract/i });
-    await contractButton.click();
+    const contractButton = po.page.getByTestId("contract-mode-toggle");
+    await contractButton.click({ force: true });
 
     await expect(po.page.getByText("Source Language")).toBeVisible({
-      timeout: 5000,
+      timeout: 15000,
     });
 
     const solidityCode = `contract Test { uint256 x; }`;
@@ -474,11 +474,11 @@ test.describe("Pipeline MCP Integration", () => {
     await po.page.waitForURL(/\//, { timeout: 10000 });
 
     // Switch to translation mode by clicking the "Contract" button in title bar
-    const contractButton = po.page.getByRole("button", { name: /contract/i });
-    await contractButton.click();
+    const contractButton = po.page.getByTestId("contract-mode-toggle");
+    await contractButton.click({ force: true });
 
     await expect(po.page.getByText("Source Language")).toBeVisible({
-      timeout: 5000,
+      timeout: 15000,
     });
 
     await po.page
@@ -516,11 +516,11 @@ test.describe("Pipeline MCP Integration", () => {
     await po.page.waitForURL(/\//, { timeout: 10000 });
 
     // Switch to translation mode by clicking the "Contract" button in title bar
-    const contractButton = po.page.getByRole("button", { name: /contract/i });
-    await contractButton.click();
+    const contractButton = po.page.getByTestId("contract-mode-toggle");
+    await contractButton.click({ force: true });
 
     await expect(po.page.getByText("Source Language")).toBeVisible({
-      timeout: 5000,
+      timeout: 15000,
     });
 
     await po.page

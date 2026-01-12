@@ -174,7 +174,7 @@ export function MultiChainTranslationCard({
   }, [targetLanguage]);
 
   return (
-    <Card className="w-full border-2 border-primary/20 shadow-lg">
+    <Card className="w-full border-2 border-primary/20 shadow-lg" data-testid="translation-card">
       <CardHeader className="pb-3">
         <div className="flex items-center gap-2">
           <Code2 className="w-5 h-5 text-primary" />
@@ -190,7 +190,7 @@ export function MultiChainTranslationCard({
         <div className="grid grid-cols-3 md:grid-cols-[1fr,auto,1fr] gap-3 items-center">
           {/* Source Language */}
           <div className="space-y-2">
-            {/* <Label htmlFor="source-language">From</Label> */}
+            <Label htmlFor="source-language">Source Language</Label>
             <Select value={sourceLanguage} onValueChange={handleSourceChange}>
               <SelectTrigger id="source-language">
                 <SelectValue />
@@ -212,7 +212,7 @@ export function MultiChainTranslationCard({
           </div>
 
           {/* Swap Button */}
-          <div className="flex items-center justify-center">
+          <div className="flex items-center justify-center pt-6">
             <Button
               variant="ghost"
               size="icon"
@@ -230,7 +230,7 @@ export function MultiChainTranslationCard({
 
           {/* Target Language */}
           <div className="space-y-2">
-            {/* <Label htmlFor="target-language">To</Label> */}
+            <Label htmlFor="target-language">Target Language</Label>
             <Select value={targetLanguage} onValueChange={setTargetLanguage}>
               <SelectTrigger id="target-language">
                 <SelectValue />
@@ -256,13 +256,12 @@ export function MultiChainTranslationCard({
         {translationPair && (
           <div className="flex items-center gap-2 text-sm">
             <div
-              className={`px-2 py-1 rounded-md text-xs font-medium ${
-                translationPair.status === "implemented"
+              className={`px-2 py-1 rounded-md text-xs font-medium ${translationPair.status === "implemented"
                   ? "bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400"
                   : translationPair.status === "experimental"
                     ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400"
                     : "bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400"
-              }`}
+                }`}
             >
               {translationPair.status === "implemented"
                 ? "✓ Fully Supported"

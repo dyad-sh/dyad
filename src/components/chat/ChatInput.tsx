@@ -217,7 +217,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       selectedComponents: componentsToSend,
     });
     clearAttachments();
-    posthog.capture("chat:submit");
+    posthog.capture("chat:submit", { chatMode: settings?.selectedChatMode });
   };
 
   const handleCancel = () => {

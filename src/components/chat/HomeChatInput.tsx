@@ -59,7 +59,9 @@ export function HomeChatInput({
 
     // Clear attachments as part of submission process
     clearAttachments();
-    posthog.capture("chat:home_submit");
+    posthog.capture("chat:home_submit", {
+      chatMode: settings?.selectedChatMode,
+    });
   };
 
   if (!settings) {

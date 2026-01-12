@@ -12,8 +12,8 @@ services:
       dockerfile: Dockerfile
     container_name: dyad-web
     restart: unless-stopped
-    ports:
-      - "3007:3007"
+    # ports:
+    #  - "3007:3007"
     networks:
       - coolify
     volumes:

@@ -42,6 +42,7 @@ services:
       - "traefik.http.routers.dyad-apps.entrypoints=https"
       - "traefik.http.routers.dyad-apps.tls=true"
       - "traefik.http.routers.dyad-apps.middlewares=dyad-apps-headers"
+      - "traefik.http.routers.dyad-apps.service=dyad-web"
       - "traefik.http.services.dyad-web.loadbalancer.server.port=3007"
 
       # Middleware: Headers

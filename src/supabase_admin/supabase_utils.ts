@@ -139,7 +139,7 @@ export async function deployAllSupabaseFunctions({
     const deployResults = await Promise.allSettled(
       validFunctions.map(async (functionName) => {
         logger.info(`Bundling function: ${functionName}`);
-        const result = deploySupabaseFunction({
+        const result = await deploySupabaseFunction({
           supabaseProjectId,
           organizationSlug: supabaseOrganizationSlug,
           functionName,
@@ -172,7 +172,7 @@ export async function deployAllSupabaseFunctions({
         `Activating ${successfulDeploys.length} functions via bulk update...`,
       );
       try {
-        bulkUpdateFunctions({
+        await bulkUpdateFunctions({
           supabaseProjectId,
           functions: successfulDeploys,
           organizationSlug: supabaseOrganizationSlug,

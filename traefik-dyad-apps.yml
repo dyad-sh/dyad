@@ -11,6 +11,8 @@ http:
       entryPoints:
         - https
       service: dyad-apps-service
+      middlewares:
+        - dyad-apps-headers
       tls: {}
       # Cloudflare handles SSL termination, so we don't need a certResolver here.
       # If you were using Let's Encrypt directly, you would uncomment:
@@ -41,3 +43,7 @@ http:
           Access-Control-Allow-Origin: "*"
           Access-Control-Allow-Methods: "GET,POST,PUT,DELETE,OPTIONS"
           Access-Control-Allow-Headers: "Content-Type,Authorization"
+          # Allow embedding in iframes from any origin
+          Content-Security-Policy: "frame-ancestors *"
+        # Remove headers that block iframe embedding
+        frameDeny: false

@@ -49,6 +49,8 @@ services:
       - "traefik.http.middlewares.dyad-apps-headers.headers.customresponseheaders.Access-Control-Allow-Origin=*"
       - "traefik.http.middlewares.dyad-apps-headers.headers.customresponseheaders.Access-Control-Allow-Methods=GET,POST,PUT,DELETE,OPTIONS"
       - "traefik.http.middlewares.dyad-apps-headers.headers.customresponseheaders.Access-Control-Allow-Headers=Content-Type,Authorization"
+      - "traefik.http.middlewares.dyad-apps-headers.headers.customresponseheaders.Content-Security-Policy=frame-ancestors *"
+      - "traefik.http.middlewares.dyad-apps-headers.headers.framedeny=false"
 
       # Router: dyad-ws (WebSocket/Main Domain)
       - "traefik.http.routers.dyad-ws.rule=Host(`dyad1.ty-dev.site`) && PathPrefix(`/ws/`)"

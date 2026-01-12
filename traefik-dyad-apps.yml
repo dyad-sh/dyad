@@ -5,7 +5,9 @@ http:
   routers:
     dyad-apps:
       # Match subdomains like app-dyad-72.ty-dev.site OR app-dyad-72.dyad1.ty-dev.site
-      rule: "HostRegexp(`{subdomain:app-dyad-[0-9]+}.ty-dev.site`) || HostRegexp(`{subdomain:app-dyad-[0-9]+}.dyad1.ty-dev.site`)"
+      # Match subdomains like app-dyad-72.ty-dev.site
+      # Match ONLY flat subdomains (Standard Regex)
+      rule: "HostRegexp(`^app-dyad-[0-9]+\\.ty-dev\\.site$`)"
       entryPoints:
         - https
       service: dyad-apps-service

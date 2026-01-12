@@ -56,9 +56,22 @@ build() {
     print_success "Build complete"
 }
 
+# Deploy Traefik Config
+deploy_traefik_config() {
+    print_header "Deploying Traefik Configuration"
+    if [ -d "/data/coolify/proxy/dynamic" ]; then
+        cp traefik-dyad-apps.yml /data/coolify/proxy/dynamic/dyad-apps.yml
+        print_success "Traefik config copied to /data/coolify/proxy/dynamic/dyad-apps.yml"
+    else
+        print_warning "Coolify proxy folder not found at /data/coolify/proxy/dynamic"
+        print_warning "Skipping Traefik config deployment. Please manually copy traefik-dyad-apps.yml to your proxy's dynamic config folder."
+    fi
+}
+
 # Start command
 start() {
     print_header "Starting Dyad Web Application (Server - Node Native)"
+    deploy_traefik_config
     docker compose up -d
     print_success "Dyad is running."
     print_success "- Backend: http://localhost:3007"

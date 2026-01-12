@@ -817,7 +817,7 @@ router.use('/:id/proxy', (req, res, next) => {
 
                             // Update headers
                             Object.keys(proxyRes.headers).forEach(key => {
-                                if (key !== 'content-length' && key !== 'content-encoding' && key !== 'etag' && key !== 'transfer-encoding') {
+                                if (key !== 'content-length' && key !== 'content-encoding' && key !== 'etag' && key !== 'transfer-encoding' && key !== 'x-frame-options' && key !== 'content-security-policy') {
                                     res.setHeader(key, proxyRes.headers[key] as string | string[]);
                                 }
                             });
@@ -833,7 +833,9 @@ router.use('/:id/proxy', (req, res, next) => {
                     } else {
                         // Pass through non-HTML content
                         Object.keys(proxyRes.headers).forEach(key => {
-                            res.setHeader(key, proxyRes.headers[key] as string | string[]);
+                            if (key !== 'x-frame-options' && key !== 'content-security-policy') {
+                                res.setHeader(key, proxyRes.headers[key] as string | string[]);
+                            }
                         });
                         res.statusCode = proxyRes.statusCode || 200;
                         res.end(body);

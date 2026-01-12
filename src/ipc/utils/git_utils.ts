@@ -63,6 +63,32 @@ export async function withGitAuthor(args: string[]): Promise<string[]> {
   ];
 }
 
+/**
+ * Adds a directory to git's global safe.directory list.
+ * This is required on Windows when git operations are performed on directories
+ * owned by different users.
+ * Only works for native git.
+ */
+export async function gitAddSafeDirectory(directory: string): Promise<void> {
+  try {
+    const result = await exec(
+      ["config", "--global", "--add", "safe.directory", directory],
+      ".",
+    );
+    if (result.exitCode !== 0) {
+      logger.warn(
+        `Failed to add safe directory '${directory}': ${result.stderr.trim() || result.stdout.trim()}`,
+      );
+    } else {
+      logger.info(`Added safe directory: ${directory}`);
+    }
+  } catch (error: any) {
+    logger.warn(
+      `Failed to add safe directory '${directory}': ${error.message}`,
+    );
+  }
+}
+
 export async function getCurrentCommitHash({
   path,
   ref = "HEAD",

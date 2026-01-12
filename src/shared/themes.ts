@@ -5,8 +5,6 @@ export interface Theme {
   prompt: string;
 }
 
-export const DEFAULT_THEME_ID = "none";
-
 const DEFAULT_THEME_PROMPT = `
 <theme>
 Any instruction in this theme should override other instructions if there's a contradiction.
@@ -61,12 +59,6 @@ Follow this workflow when building web apps:
 
 export const themesData: Theme[] = [
   {
-    id: "none",
-    name: "No Theme",
-    description: "Minimal styling guidance - uses the default AI behavior.",
-    prompt: "",
-  },
-  {
     id: "default",
     name: "Default Theme",
     description:
@@ -75,14 +67,19 @@ export const themesData: Theme[] = [
   },
 ];
 
-export function getThemeById(themeId: string | null): Theme | undefined {
+export function getThemeById(themeId: string | null): Theme | null {
+  // null means "no theme" - return null
   if (!themeId) {
-    return themesData.find((t) => t.id === DEFAULT_THEME_ID);
+    return null;
   }
-  return themesData.find((t) => t.id === themeId);
+  return themesData.find((t) => t.id === themeId) ?? null;
 }
 
 export function getThemePrompt(themeId: string | null): string {
+  // null means "no theme" - return empty string (no prompt)
+  if (!themeId) {
+    return "";
+  }
   const theme = getThemeById(themeId);
   return theme?.prompt ?? "";
 }

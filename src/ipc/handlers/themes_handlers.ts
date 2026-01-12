@@ -20,16 +20,14 @@ export function registerThemesHandlers() {
       params: { appId: number; themeId: string | null },
     ): Promise<void> => {
       const { appId, themeId } = params;
-      // Use raw SQL to properly set NULL when themeId is null/undefined
-      if (themeId === null || themeId === undefined || themeId === "none") {
+      // Use raw SQL to properly set NULL when themeId is null (representing "no theme")
+      if (!themeId) {
         await db
           .update(apps)
           .set({ themeId: sql`NULL` })
           .where(eq(apps.id, appId));
-        logger.log(`Set theme for app ${appId} to none`);
       } else {
         await db.update(apps).set({ themeId }).where(eq(apps.id, appId));
-        logger.log(`Set theme for app ${appId} to ${themeId}`);
       }
     },
   );

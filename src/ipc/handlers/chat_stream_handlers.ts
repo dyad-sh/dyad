@@ -610,7 +610,7 @@ ${componentSnippet}
 
         const aiRules = await readAiRules(getDyadAppPath(updatedChat.app.path));
 
-        // Get theme prompt for the app (null/undefined themeId means "no theme")
+        // Get theme prompt for the app (null themeId means "no theme")
         const themePrompt = getThemePrompt(updatedChat.app.themeId);
         logger.log(
           `Theme for app ${updatedChat.app.id}: ${updatedChat.app.themeId ?? "none"}, prompt length: ${themePrompt.length} chars`,

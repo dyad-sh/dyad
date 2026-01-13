@@ -211,74 +211,106 @@ export function MultiChainTranslationCard({
         </Tabs>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Language Selection */}
-        <div className="grid grid-cols-3 md:grid-cols-[1fr,auto,1fr] gap-3 items-center">
-          {/* Source Language */}
-          <div className="space-y-2">
-            <Label htmlFor="source-language">Source Language</Label>
-            <Select value={sourceLanguage} onValueChange={handleSourceChange}>
-              <SelectTrigger id="source-language">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {sourceLanguages.map((lang) => (
-                  <SelectItem key={lang.id} value={lang.id}>
-                    <div className="flex items-center gap-2">
-                      {lang.icon && <span>{lang.icon}</span>}
-                      <span>{lang.displayName}</span>
-                      <span className="text-xs text-muted-foreground">
-                        ({lang.ecosystem[0]})
-                      </span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        {/* Language Selection - Translate Mode */}
+        {mode === 'translate' && (
+          <div className="grid grid-cols-3 md:grid-cols-[1fr,auto,1fr] gap-3 items-center">
+            {/* Source Language */}
+            <div className="space-y-2">
+              <Label htmlFor="source-language">Source Language</Label>
+              <Select value={sourceLanguage} onValueChange={handleSourceChange}>
+                <SelectTrigger id="source-language">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {sourceLanguages.map((lang) => (
+                    <SelectItem key={lang.id} value={lang.id}>
+                      <div className="flex items-center gap-2">
+                        {lang.icon && <span>{lang.icon}</span>}
+                        <span>{lang.displayName}</span>
+                        <span className="text-xs text-muted-foreground">
+                          ({lang.ecosystem[0]})
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-          {/* Swap Button */}
-          <div className="flex items-center justify-center pt-6">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleSwapLanguages}
-              disabled={!canSwap || isTranslating}
-              title={
-                canSwap
-                  ? "Swap source and target languages"
-                  : "Reverse translation not available"
-              }
-            >
-              <ArrowLeftRight className="w-4 h-4" />
-            </Button>
-          </div>
+            {/* Swap Button */}
+            <div className="flex items-center justify-center pt-6">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleSwapLanguages}
+                disabled={!canSwap || isTranslating}
+                title={
+                  canSwap
+                    ? "Swap source and target languages"
+                    : "Reverse translation not available"
+                }
+              >
+                <ArrowLeftRight className="w-4 h-4" />
+              </Button>
+            </div>
 
-          {/* Target Language */}
+            {/* Target Language */}
+            <div className="space-y-2">
+              <Label htmlFor="target-language">Target Language</Label>
+              <Select value={targetLanguage} onValueChange={setTargetLanguage}>
+                <SelectTrigger id="target-language">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {targetLanguages.map((lang) => (
+                    <SelectItem key={lang.id} value={lang.id}>
+                      <div className="flex items-center gap-2">
+                        {lang.icon && <span>{lang.icon}</span>}
+                        <span>{lang.displayName}</span>
+                        <span className="text-xs text-muted-foreground">
+                          ({lang.ecosystem[0]})
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        )}
+
+        {/* Target Blockchain Selector - Generate Mode */}
+        {mode === 'generate' && (
           <div className="space-y-2">
-            <Label htmlFor="target-language">Target Language</Label>
+            <Label htmlFor="generate-target-language">Target Blockchain</Label>
             <Select value={targetLanguage} onValueChange={setTargetLanguage}>
-              <SelectTrigger id="target-language">
+              <SelectTrigger id="generate-target-language" data-testid="generate-target-selector">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {targetLanguages.map((lang) => (
+                {Object.values(BLOCKCHAIN_LANGUAGES).map((lang) => (
                   <SelectItem key={lang.id} value={lang.id}>
                     <div className="flex items-center gap-2">
                       {lang.icon && <span>{lang.icon}</span>}
                       <span>{lang.displayName}</span>
                       <span className="text-xs text-muted-foreground">
-                        ({lang.ecosystem[0]})
+                        ({lang.ecosystem.join(', ')})
                       </span>
                     </div>
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            {targetLang && (
+              <p className="text-xs text-muted-foreground">
+                {targetLang.description}
+              </p>
+            )}
           </div>
-        </div>
+        )}
 
         {/* Translation Status Badge */}
-        {translationPair && (
+        {mode === 'translate' && translationPair && (
           <div className="flex items-center gap-2 text-sm">
             <div
               className={`px-2 py-1 rounded-md text-xs font-medium ${translationPair.status === "implemented"
@@ -383,40 +415,72 @@ export function MultiChainTranslationCard({
 
         {/* Actions */}
         <div className="flex items-center justify-between gap-2">
-          <FileAttachmentDropdown
-            onFileSelect={handleFileSelect}
-            disabled={isTranslating}
-          />
+          {mode === 'translate' ? (
+            <FileAttachmentDropdown
+              onFileSelect={handleFileSelect}
+              disabled={isTranslating}
+            />
+          ) : (
+            <div /> /* Spacer for generate mode */
+          )}
 
-          <Button
-            data-testid="main-translate-button"
-            onClick={handleTranslate}
-            disabled={
-              (!code.trim() && attachments.length === 0) ||
-              isTranslating ||
-              !translationPair ||
-              translationPair.status === "planned" ||
-              !toolchainSetup
-            }
-            className="gap-2"
-            size="lg"
-          >
-            {isTranslating ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Translating...
-              </>
-            ) : (
-              <>
-                Translate to {targetLang?.displayName || "Target"}
-                <ArrowRight className="w-4 h-4" />
-              </>
-            )}
-          </Button>
+          {mode === 'translate' ? (
+            <Button
+              data-testid="main-translate-button"
+              onClick={handleTranslate}
+              disabled={
+                (!code.trim() && attachments.length === 0) ||
+                isTranslating ||
+                !translationPair ||
+                translationPair.status === "planned" ||
+                !toolchainSetup
+              }
+              className="gap-2"
+              size="lg"
+            >
+              {isTranslating ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Translating...
+                </>
+              ) : (
+                <>
+                  Translate to {targetLang?.displayName || "Target"}
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </Button>
+          ) : (
+            <Button
+              data-testid="main-generate-button"
+              onClick={handleTranslate}
+              disabled={
+                !nlDescription.trim() ||
+                nlDescription.length > NL_DESCRIPTION_MAX_LENGTH ||
+                isTranslating ||
+                !targetLanguage ||
+                !toolchainSetup
+              }
+              className="gap-2"
+              size="lg"
+            >
+              {isTranslating ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4" />
+                  Generate {targetLang?.displayName || "Contract"}
+                </>
+              )}
+            </Button>
+          )}
         </div>
 
-        {/* Info */}
-        {translationPair && (
+        {/* Info - Translate Mode Only */}
+        {mode === 'translate' && translationPair && (
           <div className="text-xs text-muted-foreground space-y-1 border-t pt-3">
             <p className="font-medium">Translation Details:</p>
             {translationPair.notes && <p>• {translationPair.notes}</p>}

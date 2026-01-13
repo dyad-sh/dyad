@@ -61,6 +61,9 @@ export interface ChatProblemsEvent {
 export interface CreateAppParams {
   name: string;
   isContractProject?: boolean;
+  // Generation mode support
+  nlPrompt?: string; // Natural language prompt for contract generation
+  generationMetadata?: GenerationMetadata; // Metadata for tracking generation details
 }
 
 export interface CreateAppResult {

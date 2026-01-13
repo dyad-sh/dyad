@@ -170,6 +170,8 @@ export async function requireAgentToolConsent(
   const current = getAgentToolConsent(params.toolName);
 
   if (current === "always") return true;
+  if (current === "never")
+    throw new Error("Should not ask for consent for a tool marked as 'never'");
 
   // Ask renderer for a decision via event bridge
   const requestId = `agent:${params.toolName}:${crypto.randomUUID()}`;

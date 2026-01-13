@@ -257,10 +257,10 @@ export function MultiChainTranslationCard({
           <div className="flex items-center gap-2 text-sm">
             <div
               className={`px-2 py-1 rounded-md text-xs font-medium ${translationPair.status === "implemented"
-                  ? "bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400"
-                  : translationPair.status === "experimental"
-                    ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400"
-                    : "bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400"
+                ? "bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400"
+                : translationPair.status === "experimental"
+                  ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400"
+                  : "bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400"
                 }`}
             >
               {translationPair.status === "implemented"
@@ -334,6 +334,7 @@ export function MultiChainTranslationCard({
           />
 
           <Button
+            data-testid="main-translate-button"
             onClick={handleTranslate}
             disabled={
               (!code.trim() && attachments.length === 0) ||

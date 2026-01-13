@@ -300,13 +300,13 @@ export default function HomePage() {
       const fileList = [
         ...(helperFiles.length > 0
           ? [
-            `- Helper modules: ${helperFiles.map((f) => `\`${f}\``).join(", ")}`,
-          ]
+              `- Helper modules: ${helperFiles.map((f) => `\`${f}\``).join(", ")}`,
+            ]
           : []),
         ...(contractFiles.length > 0
           ? [
-            `- Main contract(s): ${contractFiles.map((f) => `\`${f}\``).join(", ")}`,
-          ]
+              `- Main contract(s): ${contractFiles.map((f) => `\`${f}\``).join(", ")}`,
+            ]
           : []),
       ].join("\n");
 
@@ -643,8 +643,6 @@ export default function HomePage() {
     setCurrentPhase("document");
     setDocumentStatus("in_progress");
     setDocumentDetails("Initializing...");
-
-
 
     const context = await documentPhase(targetLanguage, (msg) => {
       console.log("📚 Document phase:", msg);

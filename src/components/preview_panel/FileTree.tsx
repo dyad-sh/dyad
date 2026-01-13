@@ -104,22 +104,14 @@ export const FileTree = ({ appId, files }: FileTreeProps) => {
   const prevAppIdRef = useRef<number | null>(appId);
 
   // Reset search when appId changes to prevent unnecessary IPC calls with old search term
-  const effectiveSearchValue = useMemo(() => {
-    const appIdChanged = prevAppIdRef.current !== appId;
-    if (appIdChanged) {
-      prevAppIdRef.current = appId;
-      return "";
-    }
-    return searchValue;
-  }, [appId, searchValue]);
-  // Sync state with effective value when appId changes
   useEffect(() => {
-    if (effectiveSearchValue === "" && searchValue !== "") {
+    if (prevAppIdRef.current !== appId) {
+      prevAppIdRef.current = appId;
       setSearchValue("");
     }
-  }, [effectiveSearchValue, searchValue]);
+  }, [appId]);
 
-  const debouncedSearch = useDebouncedValue(effectiveSearchValue, 250);
+  const debouncedSearch = useDebouncedValue(searchValue, 250);
   const isSearchMode = debouncedSearch.trim().length > 0;
 
   const {

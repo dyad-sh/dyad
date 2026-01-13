@@ -17,6 +17,7 @@ export interface BlockchainLanguage {
   icon?: string; // Optional emoji or icon identifier
   documentationUrl?: string;
   installationUrl: string;
+  generationStatus: "supported" | "experimental" | "planned"; // NL→code generation status
   features: {
     hasObjects?: boolean; // Object-oriented like Sui Move
     hasCapabilities?: boolean; // Capability-based security
@@ -39,6 +40,7 @@ export const BLOCKCHAIN_LANGUAGES: Record<string, BlockchainLanguage> = {
     documentationUrl: "https://docs.soliditylang.org",
     installationUrl:
       "https://docs.soliditylang.org/en/latest/installing-solidity.html",
+    generationStatus: "supported",
     features: {
       hasObjects: false,
       hasCapabilities: false,
@@ -60,6 +62,7 @@ export const BLOCKCHAIN_LANGUAGES: Record<string, BlockchainLanguage> = {
     documentationUrl: "https://docs.sui.io/build/move",
     installationUrl:
       "https://docs.sui.io/guides/developer/getting-started/sui-install",
+    generationStatus: "supported",
     features: {
       hasObjects: true,
       hasCapabilities: true,
@@ -80,6 +83,7 @@ export const BLOCKCHAIN_LANGUAGES: Record<string, BlockchainLanguage> = {
     icon: "🅰️",
     documentationUrl: "https://aptos.dev/move/move-on-aptos",
     installationUrl: "https://aptos.dev/build/cli",
+    generationStatus: "experimental",
     features: {
       hasObjects: false,
       hasCapabilities: true,
@@ -102,6 +106,7 @@ export const BLOCKCHAIN_LANGUAGES: Record<string, BlockchainLanguage> = {
     documentationUrl:
       "https://docs.solana.com/developing/on-chain-programs/overview",
     installationUrl: "https://solana.com/docs/intro/installation",
+    generationStatus: "supported",
     features: {
       hasObjects: false,
       hasCapabilities: false,
@@ -123,6 +128,7 @@ export const BLOCKCHAIN_LANGUAGES: Record<string, BlockchainLanguage> = {
     documentationUrl: "https://www.cairo-lang.org/docs",
     installationUrl:
       "https://www.cairo-lang.org/tutorial/getting-started-with-cairo/",
+    generationStatus: "experimental",
     features: {
       hasObjects: false,
       hasCapabilities: false,
@@ -144,6 +150,7 @@ export const BLOCKCHAIN_LANGUAGES: Record<string, BlockchainLanguage> = {
     documentationUrl: "https://docs.vyperlang.org",
     installationUrl:
       "https://docs.vyperlang.org/en/stable/installing-vyper.html",
+    generationStatus: "experimental",
     features: {
       hasObjects: false,
       hasCapabilities: false,
@@ -164,6 +171,7 @@ export const BLOCKCHAIN_LANGUAGES: Record<string, BlockchainLanguage> = {
     icon: "⚛️",
     documentationUrl: "https://docs.cosmwasm.com",
     installationUrl: "https://cosmwasm.github.io/wasmd",
+    generationStatus: "planned",
     features: {
       hasObjects: false,
       hasCapabilities: false,

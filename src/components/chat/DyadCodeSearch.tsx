@@ -5,7 +5,7 @@ import { CustomTagState } from "./stateTypes";
 
 interface DyadCodeSearchProps {
   children?: ReactNode;
-  node?: any;
+  node?: { properties?: { query?: string; state?: CustomTagState } };
 }
 
 export const DyadCodeSearch: React.FC<DyadCodeSearchProps> = ({

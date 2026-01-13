@@ -72,9 +72,26 @@ import type {
 
   SelectNodeFolderResult,
 
+  DeepLinkData,
+  GitHubDeviceFlowUpdateData,
+  GitHubDeviceFlowSuccessData,
+  GitHubDeviceFlowErrorData,
+  ApplyVisualEditingChangesParams,
+  AnalyseComponentParams,
+  AgentTool,
+  SetAgentToolConsentParams,
+  AgentToolConsentRequestPayload,
+  AgentToolConsentResponseParams,
+  AgentTodosUpdatePayload,
+  TelemetryEventPayload,
+  SupabaseOrganizationInfo,
+  DeleteSupabaseOrganizationParams,
+  SupabaseProject,
+  SupabaseLog,
+  Template,
 } from "./ipc_types";
 import type { IBackendClient } from "./backend_interface";
-import type { Template } from "../shared/templates";
+
 import type {
   AppChatContext,
   AppSearchResult,
@@ -82,7 +99,7 @@ import type {
   ProposalResult,
 } from "@/lib/schemas";
 import { showError } from "@/lib/toast";
-import { DeepLinkData } from "./deep_link_data";
+
 
 export interface ChatStreamCallbacks {
   onUpdate: (messages: Message[]) => void;
@@ -94,19 +111,7 @@ export interface AppStreamCallbacks {
   onOutput: (output: AppOutput) => void;
 }
 
-export interface GitHubDeviceFlowUpdateData {
-  userCode?: string;
-  verificationUri?: string;
-  message?: string;
-}
 
-export interface GitHubDeviceFlowSuccessData {
-  message?: string;
-}
-
-export interface GitHubDeviceFlowErrorData {
-  error: string;
-}
 
 interface DeleteCustomModelParams {
   providerId: string;
@@ -1135,9 +1140,6 @@ export class ElectronBackend implements IBackendClient {
     return this.ipcRenderer.invoke("neon:get-project", params);
   }
 
-  // --- End Neon Management ---
-
-  // --- Portal Management ---
   public async portalMigrateCreate(params: {
     appId: number;
   }): Promise<{ output: string }> {
@@ -1146,6 +1148,8 @@ export class ElectronBackend implements IBackendClient {
   }
 
   // --- End Portal Management ---
+
+
 
   public async getSystemDebugInfo(): Promise<SystemDebugInfo> {
     if (!this.ipcRenderer) {
@@ -1453,7 +1457,7 @@ export class ElectronBackend implements IBackendClient {
   public async getLatestSecurityReview(
     appId: number,
   ): Promise<SecurityReviewResult> {
-    if (!this.ipcRenderer) return { riskScore: 0, issues: [] };
+    if (!this.ipcRenderer) return { findings: [], timestamp: "", chatId: 0 };
     return this.ipcRenderer.invoke("get-latest-security-review", appId);
   }
 
@@ -1488,7 +1492,7 @@ export class ElectronBackend implements IBackendClient {
   public async getChatContextResults(params: {
     appId: number;
   }): Promise<ContextPathResults> {
-    if (!this.ipcRenderer) return { files: [], symbols: [] };
+    if (!this.ipcRenderer) return { contextPaths: [], smartContextAutoIncludes: [], excludePaths: [] };
     return this.ipcRenderer.invoke("get-context-paths", params);
   }
 
@@ -1609,4 +1613,126 @@ export class ElectronBackend implements IBackendClient {
     if (!this.ipcRenderer) return;
     this.ipcRenderer.invoke("help:chat:cancel", sessionId).catch(() => { });
   }
+
+  // Visual Editing
+  public async applyVisualEditingChanges(
+    params: ApplyVisualEditingChangesParams,
+  ): Promise<void> {
+    if (!this.ipcRenderer) return;
+    await this.ipcRenderer.invoke("apply-visual-editing-changes", params);
+  }
+
+  public async analyseComponent(
+    params: AnalyseComponentParams,
+  ): Promise<{ isDynamic: boolean; hasStaticText: boolean }> {
+    if (!this.ipcRenderer)
+      return { isDynamic: false, hasStaticText: false };
+    return this.ipcRenderer.invoke("analyze-component", params);
+  }
+
+  // Agent Tools
+  public async getAgentTools(): Promise<AgentTool[]> {
+    if (!this.ipcRenderer) return [];
+    return this.ipcRenderer.invoke("agent-tool:get-tools");
+  }
+
+  public async setAgentToolConsent(
+    params: SetAgentToolConsentParams,
+  ): Promise<void> {
+    if (!this.ipcRenderer) return;
+    await this.ipcRenderer.invoke("agent-tool:set-consent", params);
+  }
+
+  public onAgentToolConsentRequest(
+    handler: (payload: AgentToolConsentRequestPayload) => void,
+  ): () => void {
+    if (!this.ipcRenderer) return () => { };
+    const listener = (_event: any, payload: any) => handler(payload);
+    this.ipcRenderer.on("agent-tool:consent-request", listener);
+    return () => {
+      this.ipcRenderer.removeListener("agent-tool:consent-request", listener);
+    };
+  }
+
+  public async respondToAgentConsentRequest(
+    params: AgentToolConsentResponseParams,
+  ): Promise<void> {
+    if (!this.ipcRenderer) return;
+    await this.ipcRenderer.invoke("agent-tool:consent-response", params);
+  }
+
+  public onAgentTodosUpdate(
+    handler: (payload: AgentTodosUpdatePayload) => void,
+  ): () => void {
+    if (!this.ipcRenderer) return () => { };
+    const listener = (_event: any, payload: any) => handler(payload);
+    this.ipcRenderer.on("agent-tool:todos-update", listener);
+    return () => {
+      this.ipcRenderer.removeListener("agent-tool:todos-update", listener);
+    };
+  }
+
+  public onChatStreamStart(
+    handler: (payload: { chatId: number }) => void,
+  ): () => void {
+    // Placeholder implementation
+    return () => { };
+  }
+
+  public onChatStreamEnd(
+    handler: (payload: { chatId: number }) => void,
+  ): () => void {
+    // Placeholder implementation
+    return () => { };
+  }
+
+  public onTelemetryEvent(
+    handler: (payload: TelemetryEventPayload) => void,
+  ): () => void {
+    // Placeholder implementation
+    return () => { };
+  }
+
+  public onForceCloseDetected(
+    handler: () => void,
+  ): () => void {
+    if (!this.ipcRenderer) return () => { };
+    const listener = (_event: any) => {
+      handler();
+    };
+    this.ipcRenderer.on("force-close-detected", listener);
+    return () => {
+      this.ipcRenderer?.removeListener("force-close-detected", listener);
+    };
+  }
+
+  // Supabase Org Mgmt
+  public async listSupabaseOrganizations(): Promise<
+    SupabaseOrganizationInfo[]
+  > {
+    if (!this.ipcRenderer) return [];
+    return this.ipcRenderer.invoke("supabase:list-organizations");
+  }
+
+  public async deleteSupabaseOrganization(
+    params: DeleteSupabaseOrganizationParams,
+  ): Promise<void> {
+    if (!this.ipcRenderer) return;
+    await this.ipcRenderer.invoke("supabase:delete-organization", params);
+  }
+
+  public async listAllSupabaseProjects(): Promise<SupabaseProject[]> {
+    if (!this.ipcRenderer) return [];
+    return this.ipcRenderer.invoke("supabase:list-all-projects");
+  }
+
+  public async getSupabaseEdgeLogs(params: {
+    projectId: string;
+    functionSlug: string;
+  }): Promise<SupabaseLog[]> {
+    if (!this.ipcRenderer) return [];
+    return this.ipcRenderer.invoke("supabase:get-edge-logs", params);
+  }
+
+
 }

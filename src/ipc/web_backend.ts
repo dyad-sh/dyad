@@ -9,7 +9,8 @@ import {
     templatesApi,
     createChatStream,
     ChatMessage,
-    StreamCallbacks
+    StreamCallbacks,
+    githubApi,
 } from "@/api/client";
 import {
     ChatSummariesSchema,
@@ -95,7 +96,19 @@ import type {
     VercelProject,
     Version,
     Message,
-    ChatProblemsEvent
+    ChatProblemsEvent,
+    ApplyVisualEditingChangesParams,
+    AnalyseComponentParams,
+    AgentTool,
+    SetAgentToolConsentParams,
+    AgentToolConsentRequestPayload,
+    AgentToolConsentResponseParams,
+    AgentTodosUpdatePayload,
+    TelemetryEventPayload,
+    SupabaseOrganizationInfo,
+    DeleteSupabaseOrganizationParams,
+    SupabaseProject,
+    SupabaseLog,
 } from "./ipc_types";
 
 export class WebBackend implements IBackendClient {
@@ -408,7 +421,7 @@ export class WebBackend implements IBackendClient {
     async countTokens(params: TokenCountParams): Promise<TokenCountResult> {
         return { estimatedTotalTokens: 0, actualMaxTokens: 0, messageHistoryTokens: 0, codebaseTokens: 0, mentionedAppsTokens: 0, inputTokens: 0, systemPromptTokens: 0, contextWindow: 0 };
     }
-    async getChatContextResults(): Promise<ContextPathResults> { return { files: [], symbols: [] }; }
+    async getChatContextResults(): Promise<ContextPathResults> { return { contextPaths: [], smartContextAutoIncludes: [], excludePaths: [] }; }
     async setChatContext(): Promise<void> { }
 
     async getUserSettings(): Promise<UserSettings> {
@@ -456,7 +469,8 @@ export class WebBackend implements IBackendClient {
     }
 
     async syncGithubRepo(appId: number, force?: boolean): Promise<{ success: boolean; error?: string }> {
-        return githubApi.push(appId, force);
+        const res = await githubApi.push(appId, force);
+        return { success: res.pushed };
     }
 
     async disconnectGithubRepo(appId: number): Promise<void> {
@@ -492,7 +506,7 @@ export class WebBackend implements IBackendClient {
     async takeScreenshot(): Promise<void> { }
 
     async checkAiRules(): Promise<{ exists: boolean }> { return { exists: false }; }
-    async getLatestSecurityReview(): Promise<SecurityReviewResult> { return { riskScore: 0, issues: [] }; }
+    async getLatestSecurityReview(): Promise<SecurityReviewResult> { return { findings: [], timestamp: "", chatId: 0 }; }
     async importApp(): Promise<ImportAppResult> { throw new Error("Not supported"); }
     async checkAppName(): Promise<{ exists: boolean }> { return { exists: false }; }
     async getAppUpgrades(): Promise<AppUpgrade[]> { return []; }
@@ -502,7 +516,7 @@ export class WebBackend implements IBackendClient {
     async syncCapacitor(): Promise<void> { }
     async openIos(): Promise<void> { }
     async openAndroid(): Promise<void> { }
-    async checkProblems(): Promise<ProblemReport> { return { missingEnvVars: [], missingFiles: [] }; }
+    async checkProblems(): Promise<ProblemReport> { return { problems: [], missingFiles: [] }; }
 
     async getTemplates(): Promise<Template[]> {
         try {
@@ -692,6 +706,32 @@ export class WebBackend implements IBackendClient {
     async unsetSupabaseAppProject() { }
     async fakeHandleSupabaseConnect() { }
     async fakeHandleNeonConnect() { }
+    public onForceCloseDetected(handler: () => void): () => void {
+        console.warn("onForceCloseDetected not supported in web");
+        return () => { };
+    }
     async createNeonProject(params: CreateNeonProjectParams): Promise<NeonProject> { throw new Error("Not supported"); }
+
     async getNeonProject(params: GetNeonProjectParams): Promise<GetNeonProjectResponse> { throw new Error("Not supported"); }
+
+    // Visual Editing (Stub)
+    async applyVisualEditingChanges(params: ApplyVisualEditingChangesParams): Promise<void> { console.warn("applyVisualEditingChanges not supported in web"); }
+    async analyseComponent(params: AnalyseComponentParams): Promise<{ isDynamic: boolean; hasStaticText: boolean }> { return { isDynamic: false, hasStaticText: false }; }
+
+    // Agent Tools (Stub)
+    async getAgentTools(): Promise<AgentTool[]> { return []; }
+    async setAgentToolConsent(params: SetAgentToolConsentParams): Promise<void> { }
+    onAgentToolConsentRequest(handler: (payload: AgentToolConsentRequestPayload) => void): () => void { return () => { }; }
+    async respondToAgentConsentRequest(params: AgentToolConsentResponseParams): Promise<void> { }
+    onAgentTodosUpdate(handler: (payload: AgentTodosUpdatePayload) => void): () => void { return () => { }; }
+
+    onChatStreamStart(handler: (payload: { chatId: number }) => void): () => void { return () => { }; }
+    onChatStreamEnd(handler: (payload: { chatId: number }) => void): () => void { return () => { }; }
+    onTelemetryEvent(handler: (payload: TelemetryEventPayload) => void): () => void { return () => { }; }
+
+    // Supabase Org Mgmt (Stub)
+    async listSupabaseOrganizations(): Promise<SupabaseOrganizationInfo[]> { return []; }
+    async deleteSupabaseOrganization(params: DeleteSupabaseOrganizationParams): Promise<void> { }
+    async listAllSupabaseProjects(): Promise<SupabaseProject[]> { return []; }
+    async getSupabaseEdgeLogs(params: { projectId: string; functionSlug: string; }): Promise<SupabaseLog[]> { return []; }
 }

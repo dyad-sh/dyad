@@ -315,7 +315,12 @@ export class PageObject {
   async setUpDyadPro({
     autoApprove = false,
     localAgent = false,
-  }: { autoApprove?: boolean; localAgent?: boolean } = {}) {
+    localAgentUseAutoModel = false,
+  }: {
+    autoApprove?: boolean;
+    localAgent?: boolean;
+    localAgentUseAutoModel?: boolean;
+  } = {}) {
     await this.baseSetup();
     await this.goToSettingsTab();
     if (autoApprove) {
@@ -328,7 +333,7 @@ export class PageObject {
     await this.goToAppsTab();
     // Select a non-openAI model for local agent mode,
     // since openAI models go to the responses API.
-    if (localAgent) {
+    if (localAgent && !localAgentUseAutoModel) {
       await this.selectModel({
         provider: "Anthropic",
         model: "Claude Opus 4.5",
@@ -816,9 +821,15 @@ export class PageObject {
       return;
     }
     expect(
-      prettifyDump(parsedDump["body"]["messages"], {
-        onlyLastMessage: type === "last-message",
-      }),
+      prettifyDump(
+        // responses API
+        parsedDump["body"]["input"] ??
+          // chat completion API
+          parsedDump["body"]["messages"],
+        {
+          onlyLastMessage: type === "last-message",
+        },
+      ),
     ).toMatchSnapshot(name);
   }
 

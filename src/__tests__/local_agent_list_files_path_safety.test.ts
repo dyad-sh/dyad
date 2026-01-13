@@ -11,13 +11,22 @@ describe("resolveDirectoryWithinAppPath", () => {
     expect(relativePathFromApp).toBe("src");
   });
 
+  it("rejects any '..' segment (Windows)", () => {
+    expect(() =>
+      resolveDirectoryWithinAppPath({
+        appPath: "C:/Users/project",
+        directory: "src\\..\\src",
+      }),
+    ).toThrow(/contains "\.\." path traversal segment/);
+  });
+
   it("rejects traversal outside appPath (Windows)", () => {
     expect(() =>
       resolveDirectoryWithinAppPath({
         appPath: "C:/Users/project",
         directory: "..\\..\\Windows",
       }),
-    ).toThrow(/escapes the project directory/);
+    ).toThrow(/contains "\.\." path traversal segment/);
   });
 
   it("rejects absolute paths outside appPath (Windows)", () => {
@@ -38,13 +47,22 @@ describe("resolveDirectoryWithinAppPath", () => {
     expect(relativePathFromApp).toBe("src");
   });
 
+  it("rejects any '..' segment (POSIX)", () => {
+    expect(() =>
+      resolveDirectoryWithinAppPath({
+        appPath: "/Users/project",
+        directory: "src/../src",
+      }),
+    ).toThrow(/contains "\.\." path traversal segment/);
+  });
+
   it("rejects traversal outside appPath on POSIX paths", () => {
     expect(() =>
       resolveDirectoryWithinAppPath({
         appPath: "/Users/project",
         directory: "../../etc",
       }),
-    ).toThrow(/escapes the project directory/);
+    ).toThrow(/contains "\.\." path traversal segment/);
   });
 
   it("rejects absolute paths outside appPath on POSIX paths", () => {

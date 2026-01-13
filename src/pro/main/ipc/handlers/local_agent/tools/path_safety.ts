@@ -14,6 +14,14 @@ export function resolveDirectoryWithinAppPath(params: {
   appPath: string;
   directory: string;
 }): string {
+  // Disallow any ".." path segment (even if the resolved path would remain within root).
+  // This makes path traversal attempts explicit and avoids surprising "a/../b" style inputs.
+  if (/(^|[\\/])\.\.([\\/]|$)/.test(params.directory)) {
+    throw new Error(
+      `Invalid directory path: "${params.directory}" contains ".." path traversal segment`,
+    );
+  }
+
   // We sometimes persist Windows paths with forward slashes (e.g. "C:/..."),
   // so detect win32-style roots and use win32 semantics for the safety check.
   const looksLikeWin32Path =

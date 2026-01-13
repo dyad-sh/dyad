@@ -486,88 +486,582 @@ export const SOLANA_GENERATION_PROMPT = `
 
 You are an expert Solana developer using the Anchor framework. Generate production-ready Solana programs based on user requirements.
 
-## Anchor Framework Fundamentals
+## Solana Account Model Fundamentals
 
-### Account Model
-- All state is stored in accounts, not in the program
-- Accounts must be passed explicitly to instructions
-- Use PDAs (Program Derived Addresses) for deterministic account addresses
+### Core Concepts
 
-### Key Macros
-- \`#[program]\`: Defines the program module
-- \`#[derive(Accounts)]\`: Account validation struct
-- \`#[account]\`: Data account struct with automatic (de)serialization
-- \`#[account(init, payer, space)]\`: Initialize new accounts
+Solana uses an **account-based model** fundamentally different from EVM:
 
-## Output Format
+**Key Differences from EVM:**
+- **Programs are stateless**: All state is stored in accounts, not in the program itself
+- **Accounts are explicit**: Every account must be passed as a parameter to instructions
+- **Parallel execution**: Transactions on different accounts can execute in parallel
+- **Rent**: Accounts must maintain minimum balance (rent-exempt threshold) to exist
 
-**IMPORTANT**: The Anchor project structure is already initialized. You only need to provide the lib.rs file.
+**Account Structure:**
+- Every account has: owner (program), lamports (balance), data (arbitrary bytes), executable flag
+- Only the owner program can modify an account's data
+- System Program owns all wallet accounts
+- Your program owns accounts it creates
 
-<dyad-write path="src/<program-name>/programs/<program-name>/src/lib.rs" description="Create Solana program">
-use anchor_lang::prelude::*;
+### Program Derived Addresses (PDAs)
 
-declare_id!("YourProgramIdHere11111111111111111111111111");
+PDAs are deterministic addresses derived from seeds and your program ID:
 
-#[program]
-pub mod <program_name> {
-    use super::*;
+\`\`\`rust
+// Derive a PDA
+let (pda, bump) = Pubkey::find_program_address(
+    &[b"user-stats", user.key().as_ref()],
+    program_id
+);
 
-    /// Initialize instruction
-    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
-        // initialization logic
-        Ok(())
-    }
+// In Anchor account validation
+#[account(
+    seeds = [b"user-stats", user.key().as_ref()],
+    bump
+)]
+pub user_stats: Account<'info, UserStats>,
+\`\`\`
 
-    /// Other instructions...
-}
+**PDA Use Cases:**
+- Store user-specific data (e.g., \`[b"user-stats", user_pubkey]\`)
+- Create singleton config accounts (e.g., \`[b"config"]\`)
+- Build hierarchical data structures (e.g., \`[b"post", author, post_id]\`)
+- Enable CPIs without private keys (PDAs can "sign" via the program)
 
+### Account Ownership & Validation
+
+**Account Types in Anchor:**
+- \`Account<'info, T>\`: Deserialized account owned by your program
+- \`Signer<'info>\`: Account that must sign the transaction
+- \`SystemAccount<'info>\`: Account owned by System Program (wallets)
+- \`Program<'info, T>\`: Validated program account
+- \`UncheckedAccount<'info>\`: No validation (use with caution)
+
+## Anchor Framework Patterns
+
+### Account Initialization Pattern
+
+\`\`\`rust
 #[derive(Accounts)]
 pub struct Initialize<'info> {
-    #[account(init, payer = authority, space = 8 + DataAccount::INIT_SPACE)]
-    pub data_account: Account<'info, DataAccount>,
+    #[account(
+        init,                          // Create new account
+        payer = authority,             // Who pays rent
+        space = 8 + Counter::INIT_SPACE // 8-byte discriminator + data
+    )]
+    pub counter: Account<'info, Counter>,
+
     #[account(mut)]
-    pub authority: Signer<'info>,
+    pub authority: Signer<'info>,      // Must sign & pay
+
+    pub system_program: Program<'info, System>, // Required for init
+}
+
+#[account]
+#[derive(InitSpace)]  // Auto-calculate space
+pub struct Counter {
+    pub authority: Pubkey,  // 32 bytes
+    pub count: u64,         // 8 bytes
+}
+\`\`\`
+
+### PDA Account Pattern
+
+\`\`\`rust
+#[derive(Accounts)]
+pub struct CreateUserProfile<'info> {
+    #[account(
+        init,
+        payer = user,
+        space = 8 + UserProfile::INIT_SPACE,
+        seeds = [b"profile", user.key().as_ref()],  // PDA seeds
+        bump                                         // Store bump for later
+    )]
+    pub profile: Account<'info, UserProfile>,
+
+    #[account(mut)]
+    pub user: Signer<'info>,
+
     pub system_program: Program<'info, System>,
 }
 
 #[account]
 #[derive(InitSpace)]
-pub struct DataAccount {
-    pub field: u64,
+pub struct UserProfile {
+    pub owner: Pubkey,
+    #[max_len(50)]  // Required for String/Vec
+    pub username: String,
+    pub created_at: i64,
+    pub bump: u8,   // Store bump for future PDAs
+}
+\`\`\`
+
+### Authority Pattern (Access Control)
+
+\`\`\`rust
+#[derive(Accounts)]
+pub struct AdminAction<'info> {
+    #[account(
+        mut,
+        has_one = authority  // Verify config.authority == authority.key()
+    )]
+    pub config: Account<'info, Config>,
+
+    pub authority: Signer<'info>,  // Must be the stored authority
+}
+
+#[account]
+pub struct Config {
     pub authority: Pubkey,
+    pub paused: bool,
+}
+\`\`\`
+
+### Close Account Pattern
+
+\`\`\`rust
+#[derive(Accounts)]
+pub struct CloseAccount<'info> {
+    #[account(
+        mut,
+        close = recipient,  // Close and send lamports to recipient
+        has_one = owner
+    )]
+    pub data_account: Account<'info, DataAccount>,
+
+    pub owner: Signer<'info>,
+
+    /// CHECK: Just receives lamports
+    #[account(mut)]
+    pub recipient: UncheckedAccount<'info>,
+}
+\`\`\`
+
+### Cross-Program Invocation (CPI) Pattern
+
+\`\`\`rust
+use anchor_spl::token::{self, Token, TokenAccount, Transfer};
+
+#[derive(Accounts)]
+pub struct TransferTokens<'info> {
+    #[account(mut)]
+    pub from: Account<'info, TokenAccount>,
+
+    #[account(mut)]
+    pub to: Account<'info, TokenAccount>,
+
+    pub authority: Signer<'info>,
+
+    pub token_program: Program<'info, Token>,
+}
+
+pub fn transfer_tokens(ctx: Context<TransferTokens>, amount: u64) -> Result<()> {
+    let cpi_accounts = Transfer {
+        from: ctx.accounts.from.to_account_info(),
+        to: ctx.accounts.to.to_account_info(),
+        authority: ctx.accounts.authority.to_account_info(),
+    };
+    let cpi_program = ctx.accounts.token_program.to_account_info();
+    let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
+
+    token::transfer(cpi_ctx, amount)?;
+    Ok(())
+}
+\`\`\`
+
+### PDA Signer Pattern (for CPIs)
+
+\`\`\`rust
+// When your program's PDA needs to sign a CPI
+pub fn transfer_from_vault(ctx: Context<VaultTransfer>, amount: u64) -> Result<()> {
+    let seeds = &[
+        b"vault",
+        ctx.accounts.authority.key().as_ref(),
+        &[ctx.accounts.vault.bump],
+    ];
+    let signer_seeds = &[&seeds[..]];
+
+    let cpi_ctx = CpiContext::new_with_signer(
+        ctx.accounts.token_program.to_account_info(),
+        Transfer {
+            from: ctx.accounts.vault_token.to_account_info(),
+            to: ctx.accounts.recipient_token.to_account_info(),
+            authority: ctx.accounts.vault.to_account_info(),
+        },
+        signer_seeds,
+    );
+
+    token::transfer(cpi_ctx, amount)?;
+    Ok(())
+}
+\`\`\`
+
+## Output Format
+
+**IMPORTANT**: The Anchor project structure is already initialized. You only need to provide the lib.rs file.
+
+The project structure already exists:
+- ✓ Anchor.toml (workspace config)
+- ✓ Cargo.toml (program dependencies)
+- ✓ programs/<program-name>/src/lib.rs (you will replace this)
+- ✓ tests/ (test files)
+- ✓ .gitignore
+
+**Your task**: Provide the complete lib.rs with the translated/generated program.
+
+### Program Template
+
+<dyad-write path="src/<program-name>/programs/<program-name>/src/lib.rs" description="Create Solana program">
+use anchor_lang::prelude::*;
+
+declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg4VNwxRDpDo");
+
+#[program]
+pub mod program_name {
+    use super::*;
+
+    /// Initialize the program state
+    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
+        let state = &mut ctx.accounts.state;
+        state.authority = ctx.accounts.authority.key();
+        state.count = 0;
+        Ok(())
+    }
+
+    /// Increment the counter
+    pub fn increment(ctx: Context<Increment>) -> Result<()> {
+        let state = &mut ctx.accounts.state;
+        state.count = state.count.checked_add(1).ok_or(ErrorCode::Overflow)?;
+
+        emit!(CounterIncremented {
+            authority: state.authority,
+            new_count: state.count,
+        });
+
+        Ok(())
+    }
+}
+
+// ============ Events ============
+
+#[event]
+pub struct CounterIncremented {
+    pub authority: Pubkey,
+    pub new_count: u64,
+}
+
+// ============ Errors ============
+
+#[error_code]
+pub enum ErrorCode {
+    #[msg("Arithmetic overflow")]
+    Overflow,
+    #[msg("Unauthorized access")]
+    Unauthorized,
+}
+
+// ============ Account Structs ============
+
+#[derive(Accounts)]
+pub struct Initialize<'info> {
+    #[account(
+        init,
+        payer = authority,
+        space = 8 + State::INIT_SPACE
+    )]
+    pub state: Account<'info, State>,
+
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct Increment<'info> {
+    #[account(
+        mut,
+        has_one = authority
+    )]
+    pub state: Account<'info, State>,
+
+    pub authority: Signer<'info>,
+}
+
+// ============ Data Accounts ============
+
+#[account]
+#[derive(InitSpace)]
+pub struct State {
+    pub authority: Pubkey,
+    pub count: u64,
+}
+</dyad-write>
+
+## Example: Complete Counter Program
+
+<dyad-write path="src/counter/programs/counter/src/lib.rs" description="Complete Counter program example">
+use anchor_lang::prelude::*;
+
+declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg4VNwxRDpDo");
+
+#[program]
+pub mod counter {
+    use super::*;
+
+    /// Initialize a new counter account
+    /// Creates a PDA-based counter for the given authority
+    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
+        let counter = &mut ctx.accounts.counter;
+        counter.authority = ctx.accounts.authority.key();
+        counter.count = 0;
+        counter.bump = ctx.bumps.counter;
+
+        emit!(CounterInitialized {
+            authority: counter.authority,
+            counter: ctx.accounts.counter.key(),
+        });
+
+        Ok(())
+    }
+
+    /// Increment the counter by 1
+    pub fn increment(ctx: Context<Update>) -> Result<()> {
+        let counter = &mut ctx.accounts.counter;
+        let old_count = counter.count;
+        counter.count = counter.count.checked_add(1).ok_or(ErrorCode::Overflow)?;
+
+        emit!(CounterUpdated {
+            counter: ctx.accounts.counter.key(),
+            old_count,
+            new_count: counter.count,
+        });
+
+        Ok(())
+    }
+
+    /// Decrement the counter by 1
+    pub fn decrement(ctx: Context<Update>) -> Result<()> {
+        let counter = &mut ctx.accounts.counter;
+        require!(counter.count > 0, ErrorCode::Underflow);
+
+        let old_count = counter.count;
+        counter.count = counter.count.checked_sub(1).ok_or(ErrorCode::Underflow)?;
+
+        emit!(CounterUpdated {
+            counter: ctx.accounts.counter.key(),
+            old_count,
+            new_count: counter.count,
+        });
+
+        Ok(())
+    }
+
+    /// Reset counter to zero (authority only)
+    pub fn reset(ctx: Context<Update>) -> Result<()> {
+        let counter = &mut ctx.accounts.counter;
+        let old_count = counter.count;
+        counter.count = 0;
+
+        emit!(CounterUpdated {
+            counter: ctx.accounts.counter.key(),
+            old_count,
+            new_count: 0,
+        });
+
+        Ok(())
+    }
+
+    /// Close the counter account and recover rent
+    pub fn close(ctx: Context<Close>) -> Result<()> {
+        emit!(CounterClosed {
+            counter: ctx.accounts.counter.key(),
+            authority: ctx.accounts.authority.key(),
+        });
+
+        Ok(())
+    }
+}
+
+// ============ Events ============
+
+#[event]
+pub struct CounterInitialized {
+    pub authority: Pubkey,
+    pub counter: Pubkey,
+}
+
+#[event]
+pub struct CounterUpdated {
+    pub counter: Pubkey,
+    pub old_count: u64,
+    pub new_count: u64,
+}
+
+#[event]
+pub struct CounterClosed {
+    pub counter: Pubkey,
+    pub authority: Pubkey,
+}
+
+// ============ Errors ============
+
+#[error_code]
+pub enum ErrorCode {
+    #[msg("Counter overflow")]
+    Overflow,
+    #[msg("Counter underflow - cannot go below zero")]
+    Underflow,
+}
+
+// ============ Account Validation Structs ============
+
+#[derive(Accounts)]
+pub struct Initialize<'info> {
+    #[account(
+        init,
+        payer = authority,
+        space = 8 + Counter::INIT_SPACE,
+        seeds = [b"counter", authority.key().as_ref()],
+        bump
+    )]
+    pub counter: Account<'info, Counter>,
+
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct Update<'info> {
+    #[account(
+        mut,
+        seeds = [b"counter", authority.key().as_ref()],
+        bump = counter.bump,
+        has_one = authority
+    )]
+    pub counter: Account<'info, Counter>,
+
+    pub authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct Close<'info> {
+    #[account(
+        mut,
+        close = authority,
+        seeds = [b"counter", authority.key().as_ref()],
+        bump = counter.bump,
+        has_one = authority
+    )]
+    pub counter: Account<'info, Counter>,
+
+    #[account(mut)]
+    pub authority: Signer<'info>,
+}
+
+// ============ Data Accounts ============
+
+#[account]
+#[derive(InitSpace)]
+pub struct Counter {
+    /// The authority who can modify this counter
+    pub authority: Pubkey,
+    /// Current count value
+    pub count: u64,
+    /// PDA bump seed for verification
+    pub bump: u8,
 }
 </dyad-write>
 
 ## Type Guidelines
 
-- Use \`u64\` for most numeric values (use \`u128\` if needed)
-- Use \`Pubkey\` for addresses (32-byte public keys)
-- Use \`String\` for strings (with \`#[max_len(N)]\` constraint)
-- Use \`Vec<T>\` for dynamic arrays
+| Type | Usage | Notes |
+|------|-------|-------|
+| \`u8, u16, u32, u64, u128\` | Numeric values | Use \`.checked_*\` methods for safety |
+| \`i8, i16, i32, i64, i128\` | Signed integers | For timestamps use \`i64\` |
+| \`Pubkey\` | Addresses | 32-byte public keys |
+| \`bool\` | Boolean values | true/false |
+| \`String\` | Variable text | Requires \`#[max_len(N)]\` in accounts |
+| \`Vec<T>\` | Dynamic arrays | Requires \`#[max_len(N)]\` in accounts |
+| \`[T; N]\` | Fixed arrays | No length annotation needed |
+| \`Option<T>\` | Optional values | \`Some(val)\` or \`None\` |
 
-## Account Constraints
+### Space Calculation
 
-- \`#[account(mut)]\`: Account is mutable
-- \`#[account(signer)]\`: Account must sign transaction
-- \`#[account(init, payer = X, space = N)]\`: Initialize new account
-- \`#[account(seeds = [...], bump)]\`: PDA validation
-- \`#[account(constraint = condition)]\`: Custom constraints
+For \`#[derive(InitSpace)]\`:
+- \`Pubkey\`: 32 bytes
+- \`u64/i64\`: 8 bytes
+- \`u128/i128\`: 16 bytes
+- \`bool\`: 1 byte
+- \`u8\`: 1 byte
+- \`String\` with \`#[max_len(N)]\`: 4 + N bytes
+- \`Vec<T>\` with \`#[max_len(N)]\`: 4 + (N * size_of::<T>()) bytes
+- \`Option<T>\`: 1 + size_of::<T>() bytes
+
+Always add 8 bytes for the account discriminator: \`space = 8 + YourStruct::INIT_SPACE\`
+
+## Account Constraints Reference
+
+| Constraint | Description | Example |
+|------------|-------------|---------|
+| \`init\` | Create new account | \`#[account(init, payer = user, space = 100)]\` |
+| \`mut\` | Account is mutable | \`#[account(mut)]\` |
+| \`seeds\` | PDA seeds | \`#[account(seeds = [b"seed", user.key().as_ref()], bump)]\` |
+| \`bump\` | PDA bump seed | Use with \`seeds\` |
+| \`has_one\` | Field must match | \`#[account(has_one = authority)]\` |
+| \`constraint\` | Custom check | \`#[account(constraint = amount > 0)]\` |
+| \`close\` | Close account | \`#[account(mut, close = recipient)]\` |
+| \`realloc\` | Resize account | \`#[account(mut, realloc = new_size, realloc::payer = payer, realloc::zero = false)]\` |
 
 ## Security Considerations
 
-1. **Signer Validation**: Ensure proper \`Signer\` checks
-2. **Account Ownership**: Verify account owners in constraints
-3. **Overflow Protection**: Use \`.checked_add()\`, \`.checked_sub()\`
-4. **PDA Seeds**: Use unique, deterministic seeds
-5. **Rent Exemption**: Initialize with sufficient lamports
+1. **Signer Validation**
+   - Always verify \`Signer<'info>\` for authority accounts
+   - Use \`has_one\` to verify stored authority matches signer
+
+2. **Account Ownership**
+   - Anchor automatically verifies account ownership for \`Account<'info, T>\`
+   - Use \`owner = program_id\` constraint for additional checks
+
+3. **Overflow Protection**
+   - Always use \`.checked_add()\`, \`.checked_sub()\`, \`.checked_mul()\`, \`.checked_div()\`
+   - Return custom errors on overflow instead of panicking
+
+4. **PDA Security**
+   - Use unique, collision-resistant seeds
+   - Include user pubkey in seeds for user-specific data
+   - Store bump in account data for efficient verification
+
+5. **Rent Exemption**
+   - Anchor handles this automatically with \`init\`
+   - Manually check for non-Anchor patterns
+
+6. **Reentrancy**
+   - Less common in Solana due to single-threaded execution
+   - Still update state BEFORE making CPIs
+
+7. **Account Reallocation**
+   - Be careful with \`realloc\` - validate new size
+   - Consider who pays for additional rent
 
 ## Best Practices
 
-- Use descriptive names for instructions and accounts
-- Add documentation comments (///)
-- Follow Rust naming conventions
-- Use \`#[derive(InitSpace)]\` for automatic space calculation
-- Emit events using \`emit!()\` macro for important actions
+- **Naming**: Use snake_case for functions, PascalCase for types
+- **Documentation**: Add /// comments to all public functions
+- **Events**: Emit events for all important state changes using \`emit!()\`
+- **Errors**: Define descriptive custom errors with \`#[error_code]\`
+- **InitSpace**: Use \`#[derive(InitSpace)]\` for automatic space calculation
+- **Modularity**: Split large programs into multiple files/modules
+- **Testing**: Write comprehensive tests using Anchor's testing framework
+
+## File Structure Requirements
+
+- The lib.rs file path: src/<program-name>/programs/<program-name>/src/lib.rs
+- The program name MUST match the contract's purpose (e.g., "counter", "escrow", "staking")
+- Use underscores for multi-word names (e.g., "token_vault")
 `;
 
 // ====================

@@ -1,5 +1,11 @@
+import path from "node:path";
 import { z } from "zod";
-import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
+import {
+  ToolDefinition,
+  AgentContext,
+  escapeXmlAttr,
+  escapeXmlContent,
+} from "./types";
 import { extractCodebase } from "../../../../../../utils/codebase";
 
 const listFilesSchema = z.object({
@@ -37,11 +43,28 @@ export const listFilesTool: ToolDefinition<z.infer<typeof listFilesSchema>> = {
   },
 
   execute: async (args, ctx: AgentContext) => {
-    console.log("list_files", args);
+    // Validate directory path to prevent path traversal attacks
+    let sanitizedDirectory: string | undefined;
+    if (args.directory) {
+      // Resolve the directory path relative to appPath
+      const resolvedPath = path.resolve(ctx.appPath, args.directory);
+      // Ensure the resolved path is within appPath (prevent ../ traversal)
+      if (
+        !resolvedPath.startsWith(ctx.appPath + path.sep) &&
+        resolvedPath !== ctx.appPath
+      ) {
+        throw new Error(
+          `Invalid directory path: "${args.directory}" escapes the project directory`,
+        );
+      }
+      // Get the relative path from appPath for use in glob
+      sanitizedDirectory = path.relative(ctx.appPath, resolvedPath);
+    }
+
     // Use "**" for recursive, "*" for non-recursive (immediate children only)
     const globSuffix = args.recursive ? "/**" : "/*";
-    const globPath = args.directory
-      ? args.directory + globSuffix
+    const globPath = sanitizedDirectory
+      ? sanitizedDirectory + globSuffix
       : globSuffix.slice(1); // Remove leading "/" for root directory
 
     const { files } = await extractCodebase({
@@ -75,7 +98,7 @@ export const listFilesTool: ToolDefinition<z.infer<typeof listFilesSchema>> = {
     const recursiveAttr =
       args.recursive !== undefined ? ` recursive="${args.recursive}"` : "";
     ctx.onXmlComplete(
-      `<dyad-list-files${dirAttr}${recursiveAttr}>${abbreviatedList}${countInfo}</dyad-list-files>`,
+      `<dyad-list-files${dirAttr}${recursiveAttr}>${escapeXmlContent(abbreviatedList + countInfo)}</dyad-list-files>`,
     );
 
     // Return full file list for LLM

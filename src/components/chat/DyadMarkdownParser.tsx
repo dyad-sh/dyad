@@ -642,6 +642,7 @@ function renderCustomTag(
           node={{
             properties: {
               directory: attributes.directory || "",
+              recursive: attributes.recursive || "",
               state: getState({ isStreaming, inProgress }),
             },
           }}

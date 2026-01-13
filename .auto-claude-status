@@ -3,7 +3,7 @@
   "spec": "001-feature-natural-language-to-smart-contract-generat",
   "state": "building",
   "subtasks": {
-    "completed": 10,
+    "completed": 11,
     "total": 29,
     "in_progress": 1,
     "failed": 0
@@ -18,8 +18,8 @@
     "max": 1
   },
   "session": {
-    "number": 11,
+    "number": 12,
     "started_at": "2026-01-13T13:52:13.998606"
   },
-  "last_update": "2026-01-13T14:20:38.865972"
+  "last_update": "2026-01-13T14:23:12.534417"
 }

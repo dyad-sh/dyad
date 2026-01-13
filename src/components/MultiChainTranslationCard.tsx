@@ -40,10 +40,16 @@ interface MultiChainTranslationCardProps {
     sourceLanguage: string,
     targetLanguage: string,
   ) => void;
+  onGenerate?: (
+    description: string,
+    projectName: string,
+    targetLanguage: string,
+  ) => void;
 }
 
 export function MultiChainTranslationCard({
   onTranslate,
+  onGenerate,
 }: MultiChainTranslationCardProps) {
   // Mode state for dual-mode support (translation vs generation)
   const [mode, setMode] = useState<ContractMode>('translate');
@@ -125,6 +131,27 @@ export function MultiChainTranslationCard({
       clearAttachments();
     } catch (error) {
       console.error("Translation failed:", error);
+    } finally {
+      setIsTranslating(false);
+    }
+  };
+
+  const handleGenerate = async () => {
+    if (!nlDescription.trim()) return;
+    if (!targetLanguage) return;
+    if (!onGenerate) return;
+
+    setIsTranslating(true);
+    try {
+      await onGenerate(
+        nlDescription,
+        projectName,
+        targetLanguage,
+      );
+      setNlDescription("");
+      setProjectName("");
+    } catch (error) {
+      console.error("Generation failed:", error);
     } finally {
       setIsTranslating(false);
     }
@@ -453,13 +480,14 @@ export function MultiChainTranslationCard({
           ) : (
             <Button
               data-testid="main-generate-button"
-              onClick={handleTranslate}
+              onClick={handleGenerate}
               disabled={
                 !nlDescription.trim() ||
                 nlDescription.length > NL_DESCRIPTION_MAX_LENGTH ||
                 isTranslating ||
                 !targetLanguage ||
-                !toolchainSetup
+                !toolchainSetup ||
+                !onGenerate
               }
               className="gap-2"
               size="lg"

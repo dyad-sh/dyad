@@ -9,6 +9,11 @@ import {
 import log from "electron-log";
 import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
 import type { SupabaseOrganizationCredentials } from "../lib/schemas";
+import {
+  fetchWithRetry,
+  RateLimitError,
+  retryWithRateLimit,
+} from "../ipc/utils/retryWithRateLimit";
 
 const fsPromises = fs.promises;
 
@@ -353,19 +358,26 @@ export async function getSupabaseClientForOrganization(
 export async function listSupabaseOrganizations(
   accessToken: string,
 ): Promise<SupabaseOrganizationDetails[]> {
-  const response = await fetch("https://api.supabase.com/v1/organizations", {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
+  const response = await fetchWithRetry(
+    "https://api.supabase.com/v1/organizations",
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
     },
-  });
+    "List Supabase organizations",
+  );
 
   if (response.status !== 200) {
     const errorText = await response.text();
     logger.error(
       `Failed to fetch organizations (${response.status}): ${errorText}`,
     );
-    throw new Error(`Failed to fetch organizations: ${response.statusText}`);
+    throw new SupabaseManagementAPIError(
+      `Failed to fetch organizations: ${response.statusText}`,
+      response,
+    );
   }
 
   const organizations: SupabaseOrganizationDetails[] = await response.json();
@@ -407,7 +419,7 @@ export async function getOrganizationMembers(
   const client = await getSupabaseClientForOrganization(organizationSlug);
   const accessToken = (client as any).options.accessToken;
 
-  const response = await fetch(
+  const response = await fetchWithRetry(
     `https://api.supabase.com/v1/organizations/${organizationSlug}/members`,
     {
       method: "GET",
@@ -415,6 +427,7 @@ export async function getOrganizationMembers(
         Authorization: `Bearer ${accessToken}`,
       },
     },
+    `Get organization members for ${organizationSlug}`,
   );
 
   if (response.status !== 200) {
@@ -422,8 +435,9 @@ export async function getOrganizationMembers(
     logger.error(
       `Failed to fetch organization members (${response.status}): ${errorText}`,
     );
-    throw new Error(
+    throw new SupabaseManagementAPIError(
       `Failed to fetch organization members: ${response.statusText}`,
+      response,
     );
   }
 
@@ -459,7 +473,7 @@ export async function getOrganizationDetails(
   const client = await getSupabaseClientForOrganization(organizationSlug);
   const accessToken = (client as any).options.accessToken;
 
-  const response = await fetch(
+  const response = await fetchWithRetry(
     `https://api.supabase.com/v1/organizations/${organizationSlug}`,
     {
       method: "GET",
@@ -467,6 +481,7 @@ export async function getOrganizationDetails(
         Authorization: `Bearer ${accessToken}`,
       },
     },
+    `Get organization details for ${organizationSlug}`,
   );
 
   if (response.status !== 200) {
@@ -474,8 +489,9 @@ export async function getOrganizationDetails(
     logger.error(
       `Failed to fetch organization details (${response.status}): ${errorText}`,
     );
-    throw new Error(
+    throw new SupabaseManagementAPIError(
       `Failed to fetch organization details: ${response.statusText}`,
+      response,
     );
   }
 
@@ -496,7 +512,10 @@ export async function getSupabaseProjectName(
   }
 
   const supabase = await getSupabaseClient({ organizationSlug });
-  const projects = await supabase.getProjects();
+  const projects = await retryWithRateLimit(
+    () => supabase.getProjects(),
+    `Get Supabase projects for ${projectId}`,
+  );
   const project = projects?.find((p) => p.id === projectId);
   return project?.name || `<project not found for: ${projectId}>`;
 }
@@ -539,18 +558,23 @@ LIMIT 1000`;
 
   logger.info(`Fetching logs from: ${url}`);
 
-  const response = await fetch(url, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${(supabase as any).options.accessToken}`,
+  const response = await fetchWithRetry(
+    url,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${(supabase as any).options.accessToken}`,
+      },
     },
-  });
+    `Get Supabase project logs for ${projectId}`,
+  );
 
   if (response.status !== 200) {
     const errorText = await response.text();
     logger.error(`Failed to fetch logs (${response.status}): ${errorText}`);
-    throw new Error(
+    throw new SupabaseManagementAPIError(
       `Failed to fetch logs: ${response.statusText} (${response.status}) - ${errorText}`,
+      response,
     );
   }
 
@@ -574,7 +598,10 @@ export async function executeSupabaseSql({
   }
 
   const supabase = await getSupabaseClient({ organizationSlug });
-  const result = await supabase.runQuery(supabaseProjectId, query);
+  const result = await retryWithRateLimit(
+    () => supabase.runQuery(supabaseProjectId, query),
+    `Execute SQL on ${supabaseProjectId}`,
+  );
   return JSON.stringify(result);
 }
 
@@ -591,7 +618,10 @@ export async function deleteSupabaseFunction({
     `Deleting Supabase function: ${functionName} from project: ${supabaseProjectId}`,
   );
   const supabase = await getSupabaseClient({ organizationSlug });
-  await supabase.deleteFunction(supabaseProjectId, functionName);
+  await retryWithRateLimit(
+    () => supabase.deleteFunction(supabaseProjectId, functionName),
+    `Delete function ${functionName}`,
+  );
   logger.info(
     `Deleted Supabase function: ${functionName} from project: ${supabaseProjectId}`,
   );
@@ -627,7 +657,7 @@ export async function listSupabaseBranches({
   logger.info(`Listing Supabase branches for project: ${supabaseProjectId}`);
   const supabase = await getSupabaseClient({ organizationSlug });
 
-  const response = await fetch(
+  const response = await fetchWithRetry(
     `https://api.supabase.com/v1/projects/${supabaseProjectId}/branches`,
     {
       method: "GET",
@@ -635,6 +665,7 @@ export async function listSupabaseBranches({
         Authorization: `Bearer ${(supabase as any).options.accessToken}`,
       },
     },
+    `List Supabase branches for ${supabaseProjectId}`,
   );
 
   if (response.status !== 200) {
@@ -704,24 +735,26 @@ export async function deploySupabaseFunction({
 
   // 5) Prepare multipart form-data
   const supabase = await getSupabaseClient({ organizationSlug });
-  const formData = new FormData();
+  function buildFormData() {
+    const formData = new FormData();
 
-  // Metadata: instruct Supabase to use our import map
-  const metadata = {
-    entrypoint_path: entrypointPath,
-    name: functionName,
-    verify_jwt: false,
-    import_map_path: importMapRelPath,
-  };
+    const metadata = {
+      entrypoint_path: entrypointPath,
+      name: functionName,
+      verify_jwt: false,
+      import_map_path: importMapRelPath,
+    };
 
-  formData.append("metadata", JSON.stringify(metadata));
+    formData.append("metadata", JSON.stringify(metadata));
 
-  // Add all files to form data
-  for (const f of filesToUpload) {
-    const buf: Buffer = f.content;
-    const mime = guessMimeType(f.relativePath);
-    const blob = new Blob([new Uint8Array(buf)], { type: mime });
-    formData.append("file", blob, f.relativePath);
+    for (const f of filesToUpload) {
+      const buf: Buffer = f.content;
+      const mime = guessMimeType(f.relativePath);
+      const blob = new Blob([new Uint8Array(buf)], { type: mime });
+      formData.append("file", blob, f.relativePath);
+    }
+
+    return formData;
   }
 
   // 6) Perform the deploy request
@@ -729,19 +762,26 @@ export async function deploySupabaseFunction({
     supabaseProjectId,
   )}/functions/deploy?slug=${encodeURIComponent(functionName)}${bundleOnly ? "&bundleOnly=true" : ""}`;
 
-  const response = await fetch(deployUrl, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${(supabase as any).options.accessToken}`,
-    },
-    body: formData,
-  });
+  const response = await retryWithRateLimit(async () => {
+    const res = await fetch(deployUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${(supabase as any).options.accessToken}`,
+      },
+      // Safer to rebuild form data each time.
+      body: buildFormData(),
+    });
+    if (res.status === 429) {
+      throw new RateLimitError(`Rate limited (429): ${res.statusText}`, res);
+    }
+    return res;
+  }, `Deploy Supabase function ${functionName}`);
 
   if (response.status !== 201) {
     throw await createResponseError(response, "create function");
   }
 
-  const result: DeployedFunctionResponse = await response.json();
+  const result = (await response.json()) as DeployedFunctionResponse;
 
   logger.info(
     `Deployed Supabase function: ${functionName} to project: ${supabaseProjectId}${bundleOnly ? " (bundle only)" : ""}`,
@@ -765,7 +805,7 @@ export async function bulkUpdateFunctions({
 
   const supabase = await getSupabaseClient({ organizationSlug });
 
-  const response = await fetch(
+  const response = await fetchWithRetry(
     `https://api.supabase.com/v1/projects/${encodeURIComponent(supabaseProjectId)}/functions`,
     {
       method: "PUT",
@@ -775,6 +815,7 @@ export async function bulkUpdateFunctions({
       },
       body: JSON.stringify(functions),
     },
+    `Bulk update functions for ${supabaseProjectId}`,
   );
 
   if (response.status !== 200) {

@@ -7,7 +7,7 @@ import {
 } from "./types";
 import { generateProblemReport } from "@/ipc/processors/tsc";
 import type { Problem } from "@/ipc/ipc_types";
-import { readSettings } from "@/main/settings";
+
 import { normalizePath } from "../../../../../../../shared/normalizePath";
 
 const runTypeChecksSchema = z.object({
@@ -76,7 +76,6 @@ export const runTypeChecksTool: ToolDefinition<
 - NEVER call this tool on a file unless you've edited it or are about to edit it`,
   inputSchema: runTypeChecksSchema,
   defaultConsent: "always",
-  isEnabled: () => !!readSettings().enableAutoFixProblems,
 
   getConsentPreview: (args) =>
     args.paths && args.paths.length > 0

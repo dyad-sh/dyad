@@ -7,6 +7,7 @@ import { promises as fsPromises } from "node:fs";
 import pathModule from "node:path";
 import { readSettings } from "../../main/settings";
 import log from "electron-log";
+import { normalizePath } from "../../../shared/normalizePath";
 const logger = log.scope("git_utils");
 import type {
   GitBaseParams,
@@ -66,6 +67,53 @@ export async function withGitAuthor(args: string[]): Promise<string[]> {
     `user.email=${author.email}`,
     ...args,
   ];
+}
+
+/**
+ * Adds a directory to git's global safe.directory list.
+ * This is required on Windows when git operations are performed on directories
+ * owned by different users.
+ * Only works for native git.
+ */
+export async function gitAddSafeDirectory(directory: string): Promise<void> {
+  // Normalize path to use forward slashes (important for Windows compatibility with git)
+  directory = normalizePath(directory);
+
+  try {
+    // First check if the directory is already in the safe.directory list
+    const checkResult = await exec(
+      ["config", "--global", "--get-all", "safe.directory"],
+      ".",
+    );
+
+    // Parse existing safe directories (one per line), normalizing for comparison
+    const existingSafeDirectories = checkResult.stdout
+      .split("\n")
+      .map((line) => normalizePath(line.trim()))
+      .filter((line) => line.length > 0);
+
+    // Check if already present (exact match after normalization)
+    if (existingSafeDirectories.includes(directory)) {
+      logger.debug(`Safe directory already exists: ${directory}`);
+      return;
+    }
+
+    const result = await exec(
+      ["config", "--global", "--add", "safe.directory", directory],
+      ".",
+    );
+    if (result.exitCode !== 0) {
+      logger.warn(
+        `Failed to add safe directory '${directory}': ${result.stderr.trim() || result.stdout.trim()}`,
+      );
+    } else {
+      logger.info(`Added safe directory: ${directory}`);
+    }
+  } catch (error: any) {
+    logger.warn(
+      `Failed to add safe directory '${directory}': ${error.message}`,
+    );
+  }
 }
 
 export async function getCurrentCommitHash({

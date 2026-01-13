@@ -409,12 +409,12 @@ export class PageObject {
 
   async selectChatMode(mode: "build" | "ask" | "agent" | "local-agent") {
     await this.page.getByTestId("chat-mode-selector").click();
-    // local-agent appears as "Agent v2 (experimental)" in the UI
+    // local-agent appears as "Agent v2" in the UI
     const optionName =
       mode === "local-agent"
-        ? "Agent v2 (experimental)"
+        ? "Agent v2"
         : mode === "agent"
-          ? "Build with MCP (experimental)"
+          ? "Build with MCP"
           : mode;
     await this.page
       .getByRole("option", {

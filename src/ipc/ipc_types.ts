@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ProblemReport, Problem } from "../../shared/tsc_types";
+import { AgentToolConsent } from "@/lib/schemas";
 export type { ProblemReport, Problem };
 
 export interface AppOutput {
@@ -134,6 +135,17 @@ export interface App {
   startCommand: string | null;
   isFavorite: boolean;
   resolvedPath?: string;
+}
+
+export interface AppFileSearchResult {
+  path: string;
+  matchesContent: boolean;
+  snippets?: Array<{
+    before: string;
+    match: string;
+    after: string;
+    line: number;
+  }>;
 }
 
 export interface Version {
@@ -703,12 +715,6 @@ export interface AgentToolConsentResponseParams {
   requestId: string;
   decision: AgentToolConsentDecision;
 }
-
-// ============================================================================
-// Consent Types
-// ============================================================================
-
-export type AgentToolConsent = "ask" | "always";
 
 // ============================================================================
 // Agent Todo Types

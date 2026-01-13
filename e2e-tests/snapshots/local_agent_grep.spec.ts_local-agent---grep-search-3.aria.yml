@@ -1,0 +1,8 @@
+- img
+- text: GREP"App" in *.tsx(4 matches)
+- img
+- text: log
+- button "Copy":
+  - img
+- text: log
+- code: "src/main.tsx:2: import App from \"./App.tsx\"; src/main.tsx:4: createRoot(document.getElementById(\"root\")!).render(&lt;App /&gt;); src/App.tsx:1: const App = () =&gt; &lt;div&gt;Minimal imported app&lt;/div&gt;; src/App.tsx:3: export default App;"

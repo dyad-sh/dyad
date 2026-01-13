@@ -36,6 +36,7 @@ import type {
   UserBudgetInfo,
   CopyAppParams,
   App,
+  AppFileSearchResult,
   ComponentSelection,
   AppUpgrade,
   ProblemReport,
@@ -414,6 +415,22 @@ export class IpcClient {
     try {
       const data = await this.ipcRenderer.invoke("search-app", searchQuery);
       return AppSearchResultsSchema.parse(data);
+    } catch (error) {
+      showError(error);
+      throw error;
+    }
+  }
+
+  public async searchAppFiles(
+    appId: number,
+    query: string,
+  ): Promise<AppFileSearchResult[]> {
+    try {
+      const results = await this.ipcRenderer.invoke("search-app-files", {
+        appId,
+        query,
+      });
+      return results as AppFileSearchResult[];
     } catch (error) {
       showError(error);
       throw error;

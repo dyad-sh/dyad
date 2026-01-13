@@ -7,6 +7,7 @@ import { DyadDelete } from "./DyadDelete";
 import { DyadAddDependency } from "./DyadAddDependency";
 import { DyadExecuteSql } from "./DyadExecuteSql";
 import { DyadLogs } from "./DyadLogs";
+import { DyadGrep } from "./DyadGrep";
 import { DyadAddIntegration } from "./DyadAddIntegration";
 import { DyadEdit } from "./DyadEdit";
 import { DyadSearchReplace } from "./DyadSearchReplace";
@@ -48,6 +49,7 @@ const DYAD_CUSTOM_TAGS = [
   "dyad-problem-report",
   "dyad-chat-summary",
   "dyad-edit",
+  "dyad-grep",
   "dyad-search-replace",
   "dyad-codebase-context",
   "dyad-web-search-result",
@@ -274,7 +276,7 @@ function parseCustomTags(content: string): ContentPiece[] {
 
     // Parse attributes
     const attributes: Record<string, string> = {};
-    const attrPattern = /(\w+)="([^"]*)"/g;
+    const attrPattern = /([\w-]+)="([^"]*)"/g;
     let attrMatch;
     while ((attrMatch = attrPattern.exec(attributesStr)) !== null) {
       attributes[attrMatch[1]] = attrMatch[2];
@@ -372,7 +374,10 @@ function renderCustomTag(
       return (
         <DyadCodeSearch
           node={{
-            properties: {},
+            properties: {
+              query: attributes.query || "",
+              state: getState({ isStreaming, inProgress }),
+            },
           }}
         >
           {content}
@@ -496,6 +501,24 @@ function renderCustomTag(
         >
           {content}
         </DyadLogs>
+      );
+
+    case "dyad-grep":
+      return (
+        <DyadGrep
+          node={{
+            properties: {
+              state: getState({ isStreaming, inProgress }),
+              query: attributes.query || "",
+              include: attributes.include || "",
+              exclude: attributes.exclude || "",
+              "case-sensitive": attributes["case-sensitive"] || "",
+              count: attributes.count || "",
+            },
+          }}
+        >
+          {content}
+        </DyadGrep>
       );
 
     case "dyad-add-integration":

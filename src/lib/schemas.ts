@@ -242,13 +242,28 @@ export const SmartContextModeSchema = z.enum([
 ]);
 export type SmartContextMode = z.infer<typeof SmartContextModeSchema>;
 
-export const AgentToolConsentSchema = z.enum(["ask", "always"]);
+export const AgentToolConsentSchema = z.enum(["ask", "always", "never"]);
 export type AgentToolConsent = z.infer<typeof AgentToolConsentSchema>;
 
 /**
  * Zod schema for user settings
  */
 export const UserSettingsSchema = z.object({
+  ////////////////////////////////
+  // E2E TESTING ONLY.
+  ////////////////////////////////
+  isTestMode: z.boolean().optional(),
+
+  ////////////////////////////////
+  // DEPRECATED.
+  ////////////////////////////////
+  enableProSaverMode: z.boolean().optional(),
+  dyadProBudget: DyadProBudgetSchema.optional(),
+  runtimeMode: RuntimeModeSchema.optional(),
+
+  ////////////////////////////////
+  // ACTIVE FIELDS.
+  ////////////////////////////////
   selectedModel: LargeLanguageModelSchema,
   providerSettings: z.record(z.string(), ProviderSettingSchema),
   agentToolConsents: z.record(z.string(), AgentToolConsentSchema).optional(),
@@ -294,18 +309,7 @@ export const UserSettingsSchema = z.object({
       systemCpuPercent: z.number().optional(),
     })
     .optional(),
-
-  ////////////////////////////////
-  // E2E TESTING ONLY.
-  ////////////////////////////////
-  isTestMode: z.boolean().optional(),
-
-  ////////////////////////////////
-  // DEPRECATED.
-  ////////////////////////////////
-  enableProSaverMode: z.boolean().optional(),
-  dyadProBudget: DyadProBudgetSchema.optional(),
-  runtimeMode: RuntimeModeSchema.optional(),
+  hideLocalAgentNewChatToast: z.boolean().optional(),
 });
 
 /**

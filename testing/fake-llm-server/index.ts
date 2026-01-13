@@ -215,6 +215,27 @@ app.post("/engine/v1/tools/turbo-file-edit", (req, res) => {
   }
 });
 
+// Dyad Engine code-search endpoint for code_search tool
+app.post("/engine/v1/tools/code-search", (req, res) => {
+  const { query, filesContext } = req.body;
+  console.log(
+    `* code-search: "${query}" - searching ${filesContext?.length || 0} files`,
+  );
+
+  try {
+    // Return mock relevant files based on the files provided
+    // For testing, return the first few files that exist in the context
+    const relevantFiles = (filesContext || [])
+      .slice(0, 3)
+      .map((f: { path: string }) => f.path);
+
+    res.json({ relevantFiles });
+  } catch (error) {
+    console.error(`* code-search error:`, error);
+    res.status(400).json({ error: String(error) });
+  }
+});
+
 // Start the server
 const server = createServer(app);
 server.listen(PORT, () => {

@@ -1,10 +1,10 @@
 import { expect } from "@playwright/test";
-import { test, testSkipIfWindows } from "./helpers/test_helper";
+import { testSkipIfWindows } from "./helpers/test_helper";
 import fs from "fs-extra";
 import path from "path";
 import { execSync } from "child_process";
 
-test("supabase migrations", async ({ po }) => {
+testSkipIfWindows("supabase migrations", async ({ po }) => {
   await po.setUp({ autoApprove: true });
   await po.sendPrompt("tc=add-supabase");
 

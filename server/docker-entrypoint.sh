@@ -14,6 +14,25 @@ MAX_RETRIES=30
 RETRY_COUNT=0
 
 while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    # Diagnostic: Resolve hostname
+    echo "[ENTRYPOINT] Diagnostic: Converting DATABASE_URL hostname to IP..."
+    node -e "
+        const url = require('url');
+        const dns = require('dns');
+        try {
+            const dbUrl = process.env.DATABASE_URL;
+            if (!dbUrl) throw new Error('DATABASE_URL not set');
+            const hostname = new url.URL(dbUrl).hostname;
+            console.log('Hostname:', hostname);
+            dns.lookup(hostname, (err, address) => {
+                if (err) console.error('DNS Lookup Failed:', err);
+                else console.log('DNS Lookup Success:', address);
+            });
+        } catch (e) {
+            console.error('URL Parse Error:', e.message);
+        }
+    " 2>/dev/null
+
     if node -e "
         const { Pool } = require('pg');
         const pool = new Pool({ connectionString: process.env.DATABASE_URL });

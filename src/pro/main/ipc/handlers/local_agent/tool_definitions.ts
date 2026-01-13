@@ -33,7 +33,7 @@ import {
   type AgentContext,
   type ToolResult,
 } from "./tools/types";
-import type { AgentToolConsent } from "@/ipc/ipc_types";
+import { AgentToolConsent } from "@/lib/schemas";
 import { getSupabaseClientCode } from "@/supabase_admin/supabase_context";
 // Combined tool definitions array
 export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
@@ -258,6 +258,11 @@ export function buildAgentToolSet(ctx: AgentContext) {
   const toolSet: Record<string, any> = {};
 
   for (const tool of TOOL_DEFINITIONS) {
+    const consent = getAgentToolConsent(tool.name);
+    if (consent === "never") {
+      continue;
+    }
+
     if (tool.isEnabled && !tool.isEnabled(ctx)) {
       continue;
     }

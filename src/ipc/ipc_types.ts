@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ProblemReport, Problem } from "../../shared/tsc_types";
+import { AgentToolConsent } from "@/lib/schemas";
 export type { ProblemReport, Problem };
 
 export interface AppOutput {
@@ -708,12 +709,6 @@ export interface AgentToolConsentResponseParams {
   requestId: string;
   decision: AgentToolConsentDecision;
 }
-
-// ============================================================================
-// Consent Types
-// ============================================================================
-
-export type AgentToolConsent = "ask" | "always";
 
 // ============================================================================
 // Agent Todo Types

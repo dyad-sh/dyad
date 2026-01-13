@@ -1,0 +1,31 @@
+# =============================================================================
+# Backend Server - Development Dockerfile
+# Hot reload avec tsx watch
+# =============================================================================
+
+FROM node:20-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm install
+
+# Copy source files (will be overridden by volume mount in dev)
+COPY . .
+
+# Expose port
+EXPOSE 3007
+
+# Start development server with hot reload
+CMD ["npm", "run", "dev"]

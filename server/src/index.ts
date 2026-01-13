@@ -17,7 +17,7 @@ import { initializeDatabase } from "./db/index.js";
 
 // Routes
 import healthRoutes from "./routes/health.js";
-import appsRoutes from "./routes/apps.js";
+import appsRoutes, { getRunningApp } from "./routes/apps.js";
 import templatesRoutes from "./routes/templates.js";
 import chatsRoutes from "./routes/chats.js";
 import settingsRoutes from "./routes/settings.js";
@@ -29,6 +29,9 @@ import chatSSERoutes from "./routes/chatSSE.js";
 import { setupChatWebSocket } from "./routes/chatStream.js";
 import { setupTerminalWebSocket } from "./routes/terminal.js";
 import logsRoutes from "./routes/logs.js";
+import { createProxyServer } from "http-proxy";
+
+const proxy = createProxyServer({});
 
 // Load environment variables
 dotenv.config();
@@ -76,7 +79,32 @@ async function main() {
 
     // Manual Upgrade Handling
     server.on('upgrade', (request, socket, head) => {
-        console.log(`[Server] 🟢 UPGRADE REQUEST received for: ${request.url}`);
+        const host = request.headers.host || '';
+        console.log(`[Server] 🟢 UPGRADE REQUEST received for: ${request.url} (Host: ${host})`);
+
+        // Check for App Subdomain: app-dyad-{id}.domain.com
+        const appMatch = host.match(/^app-dyad-(\d+)\./);
+        if (appMatch && appMatch[1]) {
+            const appId = parseInt(appMatch[1], 10);
+            const runningApp = getRunningApp(appId);
+
+            if (runningApp) {
+                console.log(`[Server] Proxying WebSocket for App ${appId} to port ${runningApp.port}`);
+                proxy.ws(request, socket, head, {
+                    target: `ws://localhost:${runningApp.port}`,
+                    ignorePath: false
+                }, (err) => {
+                    console.error(`[Server] WebSocket Proxy Error for App ${appId}:`, err);
+                    socket.destroy();
+                });
+                return;
+            } else {
+                console.warn(`[Server] WebSocket Upgrade failed: App ${appId} not running`);
+                socket.destroy();
+                return;
+            }
+        }
+
         console.log(`[Server] Headers: ${JSON.stringify(request.headers)}`);
 
         // Use a relative URL for parsing to avoid host issues

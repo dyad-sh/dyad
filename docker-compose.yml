@@ -6,8 +6,8 @@ services:
     container_name: dyad-web-u0s4g4kwowsgg48gckoko8gw-174347525851
     restart: unless-stopped
     networks:
-      coolify: null
-      u0s4g4kwowsgg48gckoko8gw: null
+            - coolify
+            - u0s4g4kwowsgg48gckoko8gw
     volumes:
       - 'u0s4g4kwowsgg48gckoko8gw_dyad-data:/app/data'
       - 'u0s4g4kwowsgg48gckoko8gw_dyad-projects:/app/projects'

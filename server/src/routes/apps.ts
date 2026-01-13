@@ -36,6 +36,11 @@ interface RunningApp {
 const runningApps = new Map<number, RunningApp>();
 const startingApps = new Map<number, Promise<any>>();
 
+// Export helper for index.ts to find running app ports
+export function getRunningApp(appId: number): RunningApp | undefined {
+    return runningApps.get(appId);
+}
+
 // Persistent Apps Directory
 const APPS_ROOT = process.env.APPS_DIR || path.join(os.tmpdir(), "dyad-apps");
 console.log(`[WebBackend] Apps directory set to: ${APPS_ROOT}`);

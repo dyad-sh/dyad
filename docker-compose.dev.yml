@@ -1,0 +1,110 @@
+# =============================================================================
+# Docker Compose - Development Environment
+# Démarre tous les services Dyad en mode développement
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Backend API Server (Port 3007)
+  # ---------------------------------------------------------------------------
+  dyad-backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile.dev
+    container_name: dyad-backend-dev
+    restart: unless-stopped
+    ports:
+      - "3007:3007"
+    volumes:
+      - ./server/src:/app/src:ro
+      - ./server/drizzle:/app/drizzle:ro
+      - ./shared:/app/shared:ro
+      - dyad-data:/app/data
+      - dyad-projects:/app/projects
+    environment:
+      NODE_ENV: development
+      PORT: 3007
+      HOST: 0.0.0.0
+      DATA_DIR: /app/data
+      APPS_DIR: /app/projects
+      CORS_ORIGIN: "*"
+      # AI Provider Keys (from .env)
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GOOGLE_GENERATIVE_AI_API_KEY: ${GOOGLE_GENERATIVE_AI_API_KEY:-}
+      # Database
+      DATABASE_URL: ${DATABASE_URL:-}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3007/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - dyad-network
+
+  # ---------------------------------------------------------------------------
+  # MCP HTTP Server (Port 3008)
+  # ---------------------------------------------------------------------------
+  dyad-mcp-server:
+    build:
+      context: ./mcp-server
+      dockerfile: Dockerfile.dev
+    container_name: dyad-mcp-server-dev
+    restart: unless-stopped
+    ports:
+      - "3008:3008"
+    volumes:
+      - ./mcp-server/src:/app/src:ro
+      - dyad-data:/app/data:ro
+    environment:
+      NODE_ENV: development
+      MCP_HTTP_PORT: 3008
+      MCP_HTTP_HOST: 0.0.0.0
+      DYAD_DB_PATH: /app/data/sqlite.db
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3008/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - dyad-network
+    depends_on:
+      - dyad-backend
+
+  # ---------------------------------------------------------------------------
+  # Frontend (Port 5173)
+  # ---------------------------------------------------------------------------
+  dyad-frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend.dev
+    container_name: dyad-frontend-dev
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./src:/app/src:ro
+      - ./assets:/app/assets:ro
+      - ./shared:/app/shared:ro
+      - ./index.html:/app/index.html:ro
+      - ./vite.web.config.mts:/app/vite.web.config.mts:ro
+      - ./tsconfig.json:/app/tsconfig.json:ro
+      - ./tailwind.config.ts:/app/tailwind.config.ts:ro
+    environment:
+      VITE_API_URL: http://localhost:3007/api
+      VITE_WS_URL: ws://localhost:3007
+      VITE_WEB_MODE: "true"
+    networks:
+      - dyad-network
+    depends_on:
+      - dyad-backend
+
+volumes:
+  dyad-data:
+    driver: local
+  dyad-projects:
+    driver: local
+
+networks:
+  dyad-network:
+    driver: bridge

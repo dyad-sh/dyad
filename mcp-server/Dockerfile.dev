@@ -1,0 +1,31 @@
+# =============================================================================
+# MCP HTTP Server - Development Dockerfile
+# Build + watch mode
+# =============================================================================
+
+FROM node:20-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm install
+
+# Copy source files
+COPY . .
+
+# Build TypeScript
+RUN npm run build
+
+# Expose port
+EXPOSE 3008
+
+# Start HTTP server
+CMD ["node", "dist/http-server.js"]

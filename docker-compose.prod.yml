@@ -1,0 +1,87 @@
+# =============================================================================
+# Docker Compose - Production Environment
+# Build et déploie l'application complète en production
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Production Web Application (Frontend + Backend combinés)
+  # ---------------------------------------------------------------------------
+  dyad-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NODE_ENV: production
+    container_name: dyad-web-prod
+    restart: unless-stopped
+    ports:
+      - "3007:3007"
+    volumes:
+      - dyad-data-prod:/app/data
+      - dyad-projects-prod:/app/projects
+    environment:
+      NODE_ENV: production
+      PORT: 3007
+      HOST: 0.0.0.0
+      DATA_DIR: /app/data
+      APPS_DIR: /app/projects
+      CORS_ORIGIN: "*"
+      # Base domain for app subdomains
+      APP_BASE_DOMAIN: ${APP_BASE_DOMAIN:-localhost}
+      APP_PROTOCOL: ${APP_PROTOCOL:-http}
+      # AI Provider Keys
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GOOGLE_GENERATIVE_AI_API_KEY: ${GOOGLE_GENERATIVE_AI_API_KEY:-}
+      # Database
+      DATABASE_URL: ${DATABASE_URL:-}
+      # Static files directory
+      STATIC_DIR: /app/dist-web
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3007/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - dyad-network
+
+  # ---------------------------------------------------------------------------
+  # MCP HTTP Server (Production)
+  # ---------------------------------------------------------------------------
+  dyad-mcp-server:
+    build:
+      context: ./mcp-server
+      dockerfile: Dockerfile.prod
+    container_name: dyad-mcp-server-prod
+    restart: unless-stopped
+    ports:
+      - "3008:3008"
+    volumes:
+      - dyad-data-prod:/app/data:ro
+    environment:
+      NODE_ENV: production
+      MCP_HTTP_PORT: 3008
+      MCP_HTTP_HOST: 0.0.0.0
+      DYAD_DB_PATH: /app/data/sqlite.db
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3008/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - dyad-network
+    depends_on:
+      dyad-web:
+        condition: service_healthy
+
+volumes:
+  dyad-data-prod:
+    driver: local
+  dyad-projects-prod:
+    driver: local
+
+networks:
+  dyad-network:
+    driver: bridge

@@ -10,10 +10,7 @@ export function useSearchAppFiles(appId: number | null, query: string) {
     queryKey: ["search-app-files", appId, trimmedQuery],
     enabled,
     queryFn: async (): Promise<AppFileSearchResult[]> => {
-      if (!appId) {
-        return [];
-      }
-      return IpcClient.getInstance().searchAppFiles(appId, trimmedQuery);
+      return IpcClient.getInstance().searchAppFiles(appId!, trimmedQuery);
     },
   });
 

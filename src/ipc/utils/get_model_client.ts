@@ -91,7 +91,6 @@ export async function getModelClient(
       const provider = createDyadEngine({
         apiKey: dyadApiKey,
         baseURL: dyadEngineUrl ?? "https://engine.dyad.sh/v1",
-        originalProviderId: model.provider,
         dyadOptions: {
           enableLazyEdits:
             settings.selectedChatMode === "ask"
@@ -214,12 +213,13 @@ function getProModelClient({
       model: createFallback({
         models: [
           // openai requires no prefix.
-          provider.responses(`${GPT_5_2_MODEL_NAME}`),
-          provider(`anthropic/${SONNET_4_5}`),
-          provider(`gemini/${GEMINI_3_FLASH}`),
+          provider.responses(`${GPT_5_2_MODEL_NAME}`, { providerId: "openai" }),
+          provider(`anthropic/${SONNET_4_5}`, { providerId: "anthropic" }),
+          provider(`gemini/${GEMINI_3_FLASH}`, { providerId: "google" }),
         ],
       }),
       // Using openAI as the default provider.
+      // TODO: we should remove this and rely on the provider id passed into the provider().
       builtinProviderId: "openai",
     };
   }
@@ -228,12 +228,12 @@ function getProModelClient({
     model.provider === "openai"
   ) {
     return {
-      model: provider.responses(modelId),
+      model: provider.responses(modelId, { providerId: model.provider }),
       builtinProviderId: model.provider,
     };
   }
   return {
-    model: provider(modelId),
+    model: provider(modelId, { providerId: model.provider }),
     builtinProviderId: model.provider,
   };
 }

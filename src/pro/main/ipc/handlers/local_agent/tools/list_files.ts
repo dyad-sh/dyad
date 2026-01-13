@@ -16,7 +16,18 @@ const listFilesSchema = z.object({
     .describe("Whether to list files recursively (default: false)"),
 });
 
-export const listFilesTool: ToolDefinition<z.infer<typeof listFilesSchema>> = {
+type ListFilesArgs = z.infer<typeof listFilesSchema>;
+
+function getXmlAttributes(args: ListFilesArgs) {
+  const dirAttr = args.directory
+    ? ` directory="${escapeXmlAttr(args.directory)}"`
+    : "";
+  const recursiveAttr =
+    args.recursive !== undefined ? ` recursive="${args.recursive}"` : "";
+  return `${dirAttr}${recursiveAttr}`;
+}
+
+export const listFilesTool: ToolDefinition<ListFilesArgs> = {
   name: "list_files",
   description:
     "List files in the application directory. By default, lists only the immediate directory contents. Use recursive=true to list all files recursively. If you are not sure, list all files by omitting the directory parameter.",
@@ -34,12 +45,7 @@ export const listFilesTool: ToolDefinition<z.infer<typeof listFilesSchema>> = {
     if (isComplete) {
       return undefined;
     }
-    const dirAttr = args.directory
-      ? ` directory="${escapeXmlAttr(args.directory)}"`
-      : "";
-    const recursiveAttr =
-      args.recursive !== undefined ? ` recursive="${args.recursive}"` : "";
-    return `<dyad-list-files${dirAttr}${recursiveAttr}></dyad-list-files>`;
+    return `<dyad-list-files${getXmlAttributes(args)}></dyad-list-files>`;
   },
 
   execute: async (args, ctx: AgentContext) => {
@@ -92,13 +98,8 @@ export const listFilesTool: ToolDefinition<z.infer<typeof listFilesSchema>> = {
         : `\n(${totalCount} files total)`;
 
     // Write abbreviated list to UI
-    const dirAttr = args.directory
-      ? ` directory="${escapeXmlAttr(args.directory)}"`
-      : "";
-    const recursiveAttr =
-      args.recursive !== undefined ? ` recursive="${args.recursive}"` : "";
     ctx.onXmlComplete(
-      `<dyad-list-files${dirAttr}${recursiveAttr}>${escapeXmlContent(abbreviatedList + countInfo)}</dyad-list-files>`,
+      `<dyad-list-files${getXmlAttributes(args)}>${escapeXmlContent(abbreviatedList + countInfo)}</dyad-list-files>`,
     );
 
     // Return full file list for LLM

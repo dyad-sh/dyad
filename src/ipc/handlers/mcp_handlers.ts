@@ -89,9 +89,9 @@ export function registerMcpHandlers() {
         const client = await mcpManager.getClient(serverId);
         const remoteTools = await client.tools();
         const tools = await Promise.all(
-          Object.entries(remoteTools).map(async ([name, tool]) => ({
+          Object.entries(remoteTools).map(async ([name, mcpTool]) => ({
             name,
-            description: tool.description ?? null,
+            description: mcpTool.description ?? null,
             consent: await getStoredConsent(serverId, name),
           })),
         );

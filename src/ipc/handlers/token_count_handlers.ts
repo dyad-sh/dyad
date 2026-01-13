@@ -63,7 +63,11 @@ export function registerTokenCountHandlers() {
       // Count system prompt tokens
       let systemPrompt = constructSystemPrompt({
         aiRules: await readAiRules(getDyadAppPath(chat.app.path)),
-        chatMode: settings.selectedChatMode,
+        chatMode:
+          settings.selectedChatMode === "agent" ||
+          settings.selectedChatMode === "local-agent"
+            ? "build"
+            : settings.selectedChatMode,
         enableTurboEditsV2: isTurboEditsV2Enabled(settings),
       });
       let supabaseContext = "";
@@ -72,6 +76,7 @@ export function registerTokenCountHandlers() {
         systemPrompt += "\n\n" + SUPABASE_AVAILABLE_SYSTEM_PROMPT;
         supabaseContext = await getSupabaseContext({
           supabaseProjectId: chat.app.supabaseProjectId,
+          organizationSlug: chat.app.supabaseOrganizationSlug ?? null,
         });
       } else if (
         // Neon projects don't need Supabase.

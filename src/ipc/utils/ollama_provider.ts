@@ -1,7 +1,7 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { FetchFunction } from "@ai-sdk/provider-utils";
 import { withoutTrailingSlash } from "@ai-sdk/provider-utils";
-import type { LanguageModelV2 } from "@ai-sdk/provider";
+import type { LanguageModel } from "ai";
 
 type OllamaChatModelId = string;
 
@@ -19,7 +19,7 @@ export interface OllamaProviderOptions {
 export interface OllamaChatSettings {}
 
 export interface OllamaProvider {
-  (modelId: OllamaChatModelId, settings?: OllamaChatSettings): LanguageModelV2;
+  (modelId: OllamaChatModelId, settings?: OllamaChatSettings): LanguageModel;
 }
 
 export function createOllamaProvider(

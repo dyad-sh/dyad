@@ -13,6 +13,5 @@ export const useCheckName = (appName: string) => {
     refetchOnMount: false,
     refetchOnReconnect: false,
     retry: false,
-    staleTime: 300000, // 5 minutes
   });
 };

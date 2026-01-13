@@ -5,11 +5,16 @@ test("switching smart context mode saves the right setting", async ({ po }) => {
   const proModesDialog = await po.openProModesDialog({
     location: "home-chat-input-container",
   });
-  await po.snapshotSettings();
+
+  const beforeSettings1 = po.recordSettings();
   await proModesDialog.setSmartContextMode("balanced");
-  await po.snapshotSettings();
+  po.snapshotSettingsDelta(beforeSettings1);
+
+  const beforeSettings2 = po.recordSettings();
   await proModesDialog.setSmartContextMode("off");
-  await po.snapshotSettings();
+  po.snapshotSettingsDelta(beforeSettings2);
+
+  const beforeSettings3 = po.recordSettings();
   await proModesDialog.setSmartContextMode("deep");
-  await po.snapshotSettings();
+  po.snapshotSettingsDelta(beforeSettings3);
 });

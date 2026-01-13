@@ -1,0 +1,218 @@
+import fs from "node:fs";
+import path from "node:path";
+import { z } from "zod";
+import log from "electron-log";
+import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
+import { safeJoin } from "@/ipc/utils/path_utils";
+import { deploySupabaseFunction } from "../../../../../../supabase_admin/supabase_management_client";
+import {
+  isServerFunction,
+  isSharedServerModule,
+} from "../../../../../../supabase_admin/supabase_utils";
+import { readSettings } from "@/main/settings";
+
+const readFile = fs.promises.readFile;
+const logger = log.scope("edit_file");
+
+const DYAD_ENGINE_URL =
+  process.env.DYAD_ENGINE_URL ?? "https://engine.dyad.sh/v1";
+
+const editFileSchema = z.object({
+  path: z.string().describe("The file path relative to the app root"),
+  content: z.string().describe("The updated code snippet to apply"),
+  description: z.string().optional().describe("Brief description of the edit"),
+});
+
+const turboFileEditResponseSchema = z.object({
+  result: z.string(),
+});
+
+async function callTurboFileEdit(params: {
+  path: string;
+  content: string;
+  originalContent: string;
+  description?: string;
+}): Promise<string> {
+  const settings = readSettings();
+  const apiKey = settings.providerSettings?.auto?.apiKey?.value;
+
+  if (!apiKey) {
+    throw new Error("Dyad Pro API key is required for edit_file tool");
+  }
+
+  const response = await fetch(`${DYAD_ENGINE_URL}/tools/turbo-file-edit`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      path: params.path,
+      content: params.content,
+      originalContent: params.originalContent,
+      description: params.description ?? "",
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `File edit failed: ${response.status} ${response.statusText} - ${errorText}`,
+    );
+  }
+
+  const data = turboFileEditResponseSchema.parse(await response.json());
+  return data.result;
+}
+
+const DESCRIPTION = `
+## When to Use edit_file
+
+Use the \`edit_file\` tool ONLY when you are editing an existing file. The edit output will be read by a less intelligent model, which will quickly apply the edit. You should make it clear what the edit is, while also minimizing the unchanged code you write.
+
+**Use only ONE edit_file call per file.** If you need to make multiple changes to the same file, include all edits in sequence within a single call using \`// ... existing code ...\` comments between them.
+
+## When NOT to Use edit_file
+
+Do NOT use this tool when:
+- You are creating a brand-new file (use file creation tools instead).
+- You are rewriting most of an existing file (in those cases, output the complete file instead).
+
+## Basic Format
+
+When writing the edit, you should specify each edit in sequence, with the special comment // ... existing code ... to represent unchanged code in between edited lines.
+
+Basic example:
+\`\`\`
+edit_file(path="file.js", description="change code", content="""
+// ... existing code ...
+FIRST_EDIT
+// ... existing code ...
+SECOND_EDIT
+// ... existing code ...
+THIRD_EDIT
+// ... existing code ...
+""")
+\`\`\`
+
+## General Principles
+
+You should bias towards repeating as few lines of the original file as possible to convey the change.
+
+NEVER show unmodified code in the edit, unless sufficient context of unchanged lines around the code you're editing is needed to resolve ambiguity.
+
+DO NOT omit spans of pre-existing code without using the // ... existing code ... comment to indicate its absence.
+
+## Example: Basic Edit
+\`\`\`
+edit_file(path="LandingPage.tsx", description="Update title.", content="""
+// ... existing code ...
+
+const LandingPage = () => {
+  // ... existing code ...
+  return (
+    <div>hello</div>
+  );
+};
+
+// ... existing code ...
+""")
+\`\`\`
+
+## Example: Deleting Code
+
+**When deleting code, you must provide surrounding context and leave an explicit comment indicating what was removed.**
+\`\`\`
+edit_file(path="utils.ts", description="Remove deprecated helper function", content="""
+// ... existing code ...
+
+export function currentHelper() {
+  return "active";
+}
+
+// REMOVED: deprecatedHelper() function
+
+export function anotherHelper() {
+  return "working";
+}
+
+// ... existing code ...
+""")
+\`\`\`
+`;
+export const editFileTool: ToolDefinition<z.infer<typeof editFileSchema>> = {
+  name: "edit_file",
+  description: DESCRIPTION,
+  inputSchema: editFileSchema,
+  defaultConsent: "always",
+
+  getConsentPreview: (args) => `Edit ${args.path}`,
+
+  buildXml: (args, isComplete) => {
+    if (!args.path) return undefined;
+
+    let xml = `<dyad-edit path="${escapeXmlAttr(args.path)}" description="${escapeXmlAttr(args.description ?? "")}">\n${args.content ?? ""}`;
+    if (isComplete) {
+      xml += "\n</dyad-edit>";
+    }
+    return xml;
+  },
+
+  execute: async (args, ctx: AgentContext) => {
+    const fullFilePath = safeJoin(ctx.appPath, args.path);
+
+    // Track if this is a shared module
+    if (isSharedServerModule(args.path)) {
+      ctx.isSharedModulesChanged = true;
+    }
+
+    // Read original file content
+    if (!fs.existsSync(fullFilePath)) {
+      throw new Error(`File does not exist: ${args.path}`);
+    }
+
+    const originalContent = await readFile(fullFilePath, "utf8");
+
+    // Call the turbo-file-edit endpoint
+    const newContent = await callTurboFileEdit({
+      path: args.path,
+      content: args.content,
+      originalContent,
+      description: args.description,
+    });
+
+    if (!newContent) {
+      throw new Error(
+        "Failed to extract content from turbo-file-edit response",
+      );
+    }
+
+    // Ensure directory exists
+    const dirPath = path.dirname(fullFilePath);
+    fs.mkdirSync(dirPath, { recursive: true });
+
+    // Write file content
+    fs.writeFileSync(fullFilePath, newContent);
+    logger.log(`Successfully edited file: ${fullFilePath}`);
+
+    // Deploy Supabase function if applicable
+    if (
+      ctx.supabaseProjectId &&
+      isServerFunction(args.path) &&
+      !ctx.isSharedModulesChanged
+    ) {
+      try {
+        await deploySupabaseFunction({
+          supabaseProjectId: ctx.supabaseProjectId,
+          functionName: path.basename(path.dirname(args.path)),
+          appPath: ctx.appPath,
+          organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+        });
+      } catch (error) {
+        return `File edited, but failed to deploy Supabase function: ${error}`;
+      }
+    }
+
+    return `Successfully edited ${args.path}`;
+  },
+};

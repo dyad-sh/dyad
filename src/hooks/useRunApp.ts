@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { atom } from "jotai";
 import { IpcClient } from "@/ipc/ipc_client";
 import {
-  appOutputAtom,
+  appConsoleEntriesAtom,
   appUrlAtom,
   currentAppAtom,
   previewPanelKeyAtom,
@@ -18,7 +18,7 @@ const useRunAppLoadingAtom = atom(false);
 export function useRunApp() {
   const [loading, setLoading] = useAtom(useRunAppLoadingAtom);
   const [app, setApp] = useAtom(currentAppAtom);
-  const setAppOutput = useSetAtom(appOutputAtom);
+  const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
   const [, setAppUrlObj] = useAtom(appUrlAtom);
   const setPreviewPanelKey = useSetAtom(previewPanelKeyAtom);
   const appId = useAtomValue(selectedAppIdAtom);
@@ -69,13 +69,31 @@ export function useRunApp() {
         return; // Don't add to regular output
       }
 
-      // Add to regular app output
-      setAppOutput((prev) => [...prev, output]);
+      // Add to console entries
+      const logEntry = {
+        level:
+          output.type === "stderr" || output.type === "client-error"
+            ? ("error" as const)
+            : ("info" as const),
+        type: "build-time" as const,
+        message: output.message,
+        appId: output.appId,
+        timestamp: output.timestamp,
+      };
+
+      // Only send client-error logs to central store
+      // Server logs (stdout/stderr) are already stored in the main process
+      if (output.type === "client-error") {
+        IpcClient.getInstance().addLog(logEntry);
+      }
+
+      // Also update UI state
+      setConsoleEntries((prev) => [...prev, logEntry]);
 
       // Process proxy server output
       processProxyServerOutput(output);
     },
-    [setAppOutput],
+    [setConsoleEntries],
   );
   const runApp = useCallback(
     async (appId: number) => {
@@ -92,15 +110,19 @@ export function useRunApp() {
           return prevAppUrlObj; // No change needed
         });
 
-        setAppOutput((prev) => [
-          ...prev,
-          {
-            message: "Trying to restart app...",
-            type: "stdout",
-            appId,
-            timestamp: Date.now(),
-          },
-        ]);
+        const logEntry = {
+          level: "info" as const,
+          type: "build-time" as const,
+          message: "Trying to restart app...",
+          appId,
+          timestamp: Date.now(),
+        };
+
+        // Send to central log store
+        IpcClient.getInstance().addLog(logEntry);
+
+        // Also update UI state
+        setConsoleEntries((prev) => [...prev, logEntry]);
         const app = await ipcClient.getApp(appId);
         setApp(app);
         await ipcClient.runApp(appId, processAppOutput);
@@ -240,15 +262,24 @@ export function useRunApp() {
 
         // Clear the URL and add restart message
         setAppUrlObj({ appUrl: null, appId: null, originalUrl: null });
-        setAppOutput((prev) => [
-          ...prev,
-          {
-            message: "Restarting app...",
-            type: "stdout",
-            appId,
-            timestamp: Date.now(),
-          },
-        ]);
+
+        // Clear logs in both the backend store and UI state
+        await ipcClient.clearLogs(appId);
+        setConsoleEntries([]);
+
+        const logEntry = {
+          level: "info" as const,
+          type: "build-time" as const,
+          message: "Restarting app...",
+          appId: appId!,
+          timestamp: Date.now(),
+        };
+
+        // Send to central log store
+        IpcClient.getInstance().addLog(logEntry);
+
+        // Also update UI state
+        setConsoleEntries((prev) => [...prev, logEntry]);
 
         const app = await ipcClient.getApp(appId);
         setApp(app);
@@ -285,7 +316,7 @@ export function useRunApp() {
     [
       appId,
       setApp,
-      setAppOutput,
+      setConsoleEntries,
       setAppUrlObj,
       setPreviewPanelKey,
       processAppOutput,

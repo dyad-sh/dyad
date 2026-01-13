@@ -9,6 +9,14 @@ import {
   unique,
   integer,
 } from "drizzle-orm/pg-core";
+import type { ModelMessage } from "ai";
+
+export const AI_MESSAGES_SDK_VERSION = "ai@v6" as const;
+
+export type AiMessagesJsonV6 = {
+  messages: ModelMessage[];
+  sdkVersion: typeof AI_MESSAGES_SDK_VERSION;
+};
 
 export const prompts = pgTable("prompts", {
   id: serial("id").primaryKey(),
@@ -31,6 +39,8 @@ export const apps = pgTable("apps", {
   githubBranch: text("github_branch"),
   supabaseProjectId: text("supabase_project_id"),
   supabaseParentProjectId: text("supabase_parent_project_id"),
+  // Supabase organization slug for credential lookup
+  supabaseOrganizationSlug: text("supabase_organization_slug"),
   neonProjectId: text("neon_project_id"),
   neonDevelopmentBranchId: text("neon_development_branch_id"),
   neonPreviewBranchId: text("neon_preview_branch_id"),
@@ -69,6 +79,10 @@ export const messages = pgTable("messages", {
   commitHash: text("commit_hash"),
   requestId: text("request_id"),
   maxTokensUsed: integer("max_tokens_used"),
+  // Model name used for this message (only for assistant messages)
+  model: text("model"),
+  // AI SDK messages (v5 envelope) for preserving tool calls/results in agent mode
+  aiMessagesJson: jsonb("ai_messages_json").$type<AiMessagesJsonV6 | null>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

@@ -390,3 +390,38 @@ export function getLanguageDisplayText(languageId: string): string {
   }
   return lang.displayName;
 }
+
+/**
+ * Generation target information for natural language to smart contract generation
+ */
+export interface GenerationTarget {
+  language: BlockchainLanguage;
+  isRecommended: boolean;
+  generationNotes?: string;
+}
+
+/**
+ * Get all blockchain languages that support natural language to code generation.
+ * Returns languages with generation metadata for the NL→code feature.
+ */
+export function getGenerationTargets(): GenerationTarget[] {
+  // Define recommended languages for generation (well-documented, widely used)
+  const recommendedIds = new Set(["solidity", "sui_move", "solana_rust"]);
+
+  // Define generation notes for specific languages
+  const generationNotes: Record<string, string> = {
+    solidity: "Most widely used smart contract language with extensive tooling",
+    sui_move: "Object-centric design with built-in safety features",
+    aptos_move: "Account-centric Move with strong formal verification",
+    solana_rust: "High-performance programs using Anchor framework",
+    cairo: "StarkNet's provable computation language",
+    vyper: "Python-like syntax, security-focused for EVM",
+    cosmwasm_rust: "WebAssembly contracts for Cosmos ecosystem",
+  };
+
+  return Object.values(BLOCKCHAIN_LANGUAGES).map((language) => ({
+    language,
+    isRecommended: recommendedIds.has(language.id),
+    generationNotes: generationNotes[language.id],
+  }));
+}

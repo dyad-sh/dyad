@@ -3,23 +3,23 @@
   "spec": "001-feature-natural-language-to-smart-contract-generat",
   "state": "building",
   "subtasks": {
-    "completed": 13,
+    "completed": 22,
     "total": 29,
     "in_progress": 1,
     "failed": 0
   },
   "phase": {
-    "current": "Pipeline Mode Support",
+    "current": "Blockchain Registry Updates",
     "id": null,
-    "total": 3
+    "total": 2
   },
   "workers": {
     "active": 0,
     "max": 1
   },
   "session": {
-    "number": 14,
+    "number": 23,
     "started_at": "2026-01-13T13:52:13.998606"
   },
-  "last_update": "2026-01-13T14:25:51.468587"
+  "last_update": "2026-01-13T14:45:58.906127"
 }

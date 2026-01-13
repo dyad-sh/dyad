@@ -228,6 +228,27 @@
       {
         "type": "function",
         "function": {
+          "name": "code_search",
+          "description": "Search the codebase semantically to find files relevant to a query. Use this tool when you need to discover which files contain code related to a specific concept, feature, or functionality. Returns a list of file paths that are most relevant to the search query.\n\n### When to Use This Tool\n\n- Explore unfamiliar codebases\n- Ask \"how / where / what\" questions to understand behavior\n- Find code by meaning rather than exact text\n\n### When NOT to Use\n\nSkip this tool for:\n1. Exact text matches (use `grep`)\n2. Reading known files (use `read_file`)\n3. Simple symbol lookups (use `grep`)\n",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "description": "Search query to find relevant files"
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
           "name": "set_chat_summary",
           "description": "Set the title/summary for this chat message. You should always call this message at the end of the turn when you have finished calling all the other tools.",
           "parameters": {

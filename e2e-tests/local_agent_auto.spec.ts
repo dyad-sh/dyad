@@ -6,5 +6,5 @@ testSkipIfWindows("local-agent - auto model", async ({ po }) => {
   await po.selectLocalAgentMode();
 
   await po.sendPrompt("[dump]");
-  await po.snapshotServerDump("last-message");
+  await po.snapshotServerDump("request");
 });

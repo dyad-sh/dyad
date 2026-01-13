@@ -805,14 +805,26 @@ export class PageObject {
     // Perform snapshot comparison
     const parsedDump = JSON.parse(dumpContent);
     if (type === "request") {
-      parsedDump["body"]["messages"] = parsedDump["body"]["messages"].map(
-        (message: any) => {
-          if (message.role === "system") {
-            message.content = "[[SYSTEM_MESSAGE]]";
-          }
-          return message;
-        },
-      );
+      if (parsedDump["body"]["input"]) {
+        parsedDump["body"]["input"] = parsedDump["body"]["input"].map(
+          (input: any) => {
+            if (input.role === "system") {
+              input.content = "[[SYSTEM_MESSAGE]]";
+            }
+            return input;
+          },
+        );
+      }
+      if (parsedDump["body"]["messages"]) {
+        parsedDump["body"]["messages"] = parsedDump["body"]["messages"].map(
+          (message: any) => {
+            if (message.role === "system") {
+              message.content = "[[SYSTEM_MESSAGE]]";
+            }
+            return message;
+          },
+        );
+      }
       // Normalize fileIds to be deterministic based on content
       normalizeVersionedFiles(parsedDump);
       expect(

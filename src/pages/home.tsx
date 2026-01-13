@@ -51,7 +51,9 @@ import {
   TranslationPipeline,
   type PipelinePhase,
   type PhaseStatus,
+  type PipelineMode,
 } from "@/components/TranslationPipeline";
+import { generateContractPrompt } from "@/prompts/generation_prompts";
 
 // Adding an export for attachments
 export interface HomeSubmitOptions {
@@ -99,6 +101,7 @@ export default function HomePage() {
 
   // Pipeline state
   const [showPipeline, setShowPipeline] = useState(false);
+  const [pipelineMode, setPipelineMode] = useState<PipelineMode>("translate");
   const [currentPhase, setCurrentPhase] = useState<PipelinePhase>("document");
   const [documentStatus, setDocumentStatus] = useState<PhaseStatus>("pending");
   const [planStatus, setPlanStatus] = useState<PhaseStatus>("pending");
@@ -126,6 +129,7 @@ export default function HomePage() {
   // Reset pipeline state
   const resetPipeline = () => {
     setShowPipeline(false);
+    setPipelineMode("translate");
     setCurrentPhase("document");
     setDocumentStatus("pending");
     setPlanStatus("pending");
@@ -698,6 +702,123 @@ export default function HomePage() {
     setAwaitingApproval("document");
   };
 
+  // Handle natural language contract generation
+  const handleGenerate = async (
+    nlDescription: string,
+    projectName: string,
+    targetLanguage: string,
+  ) => {
+    // Reset pipeline state and set to generation mode
+    resetPipeline();
+    setPipelineMode("generate");
+    setShowPipeline(true);
+    setIsLoading(true);
+
+    console.log("handleGenerate - nlDescription:", nlDescription.substring(0, 100) + "...");
+    console.log("handleGenerate - projectName:", projectName);
+    console.log("handleGenerate - targetLanguage:", targetLanguage);
+
+    // Generate final project name
+    const targetSuffix = targetLanguage.replace(/_/g, "-");
+    const finalName = projectName.trim() || `generated-${targetSuffix}`;
+
+    // Create the app for the target language
+    let appId: number | undefined;
+
+    try {
+      if (targetLanguage === "solana_rust") {
+        // Scaffold Anchor project for Solana
+        console.log("Scaffolding Anchor project:", finalName);
+        const result = await IpcClient.getInstance().solanaInitProject({
+          projectName: finalName,
+          parentPath: "src",
+        });
+
+        if (!result.success) {
+          console.error("Failed to scaffold Anchor project:", result.error);
+          showError("Failed to scaffold Anchor project: " + result.error);
+          setIsLoading(false);
+          setShowPipeline(false);
+          return;
+        }
+
+        console.log("Anchor project scaffolded with app ID:", result.appId);
+        appId = result.appId;
+      } else {
+        // Create standard app for Sui Move, Solidity, etc.
+        console.log("Creating app for:", finalName);
+        const createResult = await IpcClient.getInstance().createApp({
+          name: finalName,
+          isContractProject: true,
+        });
+        appId = createResult.app.id;
+        console.log("Created app with ID:", appId);
+      }
+    } catch (error) {
+      console.error("Error creating app:", error);
+      showError("Failed to create app: " + (error as Error).message);
+      setIsLoading(false);
+      setShowPipeline(false);
+      return;
+    }
+
+    // PHASE 1: DOCUMENT - Gather MCP context for target ecosystem
+    console.log("📚 Starting document phase for generation:", targetLanguage);
+    setCurrentPhase("document");
+    setDocumentStatus("in_progress");
+    setDocumentDetails("Gathering blockchain documentation...");
+
+    const context = await documentPhase(targetLanguage, (msg) => {
+      console.log("📚 Document phase:", msg);
+      setDocumentDetails(msg);
+    });
+
+    // Generate enriched AI_RULES.md for generation
+    setDocumentDetails("Generating AI_RULES.md with blockchain context...");
+    const aiRulesContent = generateAIRulesContent(
+      context,
+      targetLanguage,
+      "natural_language", // Source is NL description
+    );
+
+    // Write AI_RULES.md to the app directory
+    if (appId) {
+      try {
+        await IpcClient.getInstance().editAppFile(
+          appId,
+          "AI_RULES.md",
+          aiRulesContent,
+        );
+        console.log("✅ AI_RULES.md written successfully");
+      } catch (error) {
+        console.error("Failed to write AI_RULES.md:", error);
+      }
+    }
+
+    const summary = getContextSummary(context);
+    console.log(summary);
+    setDocumentDetails(
+      `${summary}\n\n✅ AI_RULES.md generated (${(aiRulesContent.length / 1024).toFixed(1)}KB)`,
+    );
+    setDocumentStatus("completed");
+
+    // Save generation context and parameters for later phases
+    setTranslationContext({ context });
+    setTranslationParams({
+      sourceLanguage: "natural_language",
+      targetLanguage,
+      code: nlDescription, // Store NL description in code field for simplicity
+      attachments: [],
+      finalName,
+      solanaAppId: targetLanguage === "solana_rust" ? appId : undefined,
+      suiAppId: targetLanguage === "sui_move" ? appId : undefined,
+    });
+
+    // Wait for user approval before proceeding to Phase 2
+    console.log("⏸️ Pausing for Phase 1 approval (generation)...");
+    setAwaitingApproval("document");
+  };
+
   const handleSubmit = async (options?: HomeSubmitOptions) => {
     const attachments = options?.attachments || [];
     // Use provided prompt or fall back to inputValue
@@ -778,8 +899,9 @@ export default function HomePage() {
       <div className="flex flex-col items-center justify-center max-w-3xl m-auto p-8">
         <div className="w-full flex flex-col items-center">
           {showPipeline ? (
-            // Show pipeline progress during translation
+            // Show pipeline progress during translation/generation
             <TranslationPipeline
+              mode={pipelineMode}
               currentPhase={currentPhase}
               documentStatus={documentStatus}
               planStatus={planStatus}
@@ -827,7 +949,7 @@ export default function HomePage() {
         {mode === "translate" ? (
           /* Code Translation Section */
           <>
-            <MultiChainTranslationCard onTranslate={handleTranslate} />
+            <MultiChainTranslationCard onTranslate={handleTranslate} onGenerate={handleGenerate} />
 
             {/* ERC Template Quick Access */}
             <div className="mt-8">

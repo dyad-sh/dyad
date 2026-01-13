@@ -18,6 +18,8 @@ import { detectIsMac } from "@/hooks/useChatModeToggle";
 import { useRouterState } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { LocalAgentNewChatToast } from "./LocalAgentNewChatToast";
+import { useAtomValue } from "jotai";
+import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
 
 function ExperimentalBadge() {
   return (
@@ -31,6 +33,9 @@ export function ChatModeSelector() {
   const { settings, updateSettings } = useSettings();
   const routerState = useRouterState();
   const isChatRoute = routerState.location.pathname === "/chat";
+  const messagesById = useAtomValue(chatMessagesByIdAtom);
+  const chatId = routerState.location.search.id as number | undefined;
+  const currentChatMessages = chatId ? (messagesById.get(chatId) ?? []) : [];
 
   const selectedMode = settings?.selectedChatMode || "build";
   const isProEnabled = settings ? isDyadProEnabled(settings) : false;
@@ -39,10 +44,17 @@ export function ChatModeSelector() {
     const newMode = value as ChatMode;
     updateSettings({ selectedChatMode: newMode });
 
-    // Show toast when switching to local-agent mode on chat page
+    // We want to show a toast when user is switching to the new agent mode
+    // because they might weird results mixing Build and Agent mode in the same chat.
+    //
+    // Only show toast if:
+    // - User is switching to the new agent mode
+    // - User is on the chat (not home page) with existing messages
+    // - User has not explicitly disabled the toast
     if (
       newMode === "local-agent" &&
       isChatRoute &&
+      currentChatMessages.length > 0 &&
       !settings?.hideLocalAgentNewChatToast
     ) {
       toast.custom(

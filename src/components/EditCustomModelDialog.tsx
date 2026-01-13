@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { IpcClient } from "@/ipc/ipc_client";
+import { useSettings } from "@/hooks/useSettings";
 import { useMutation } from "@tanstack/react-query";
 import { showError, showSuccess } from "@/lib/toast";
 
@@ -44,6 +45,7 @@ export function EditCustomModelDialog({
   const [description, setDescription] = useState("");
   const [maxOutputTokens, setMaxOutputTokens] = useState<string>("");
   const [contextWindow, setContextWindow] = useState<string>("");
+  const { settings, updateSettings } = useSettings();
 
   const ipcClient = IpcClient.getInstance();
 
@@ -89,7 +91,22 @@ export function EditCustomModelDialog({
       // Then create the new model
       await ipcClient.createCustomLanguageModel(newParams);
     },
-    onSuccess: () => {
+    onSuccess: async () => {
+      if (
+        settings?.selectedModel?.name === model?.apiName &&
+        settings?.selectedModel?.provider === providerId
+      ) {
+        const newModel = {
+          ...settings.selectedModel,
+          name: apiName,
+        };
+        try {
+          await updateSettings({ selectedModel: newModel });
+        } catch {
+          showError("Failed to update settings");
+          return; // stop closing dialog
+        }
+      }
       showSuccess("Custom model updated successfully!");
       onSuccess();
       onClose();

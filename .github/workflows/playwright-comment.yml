@@ -1,0 +1,108 @@
+name: Playwright Report Comment
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  actions: read
+
+jobs:
+  comment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Find PR number for this CI run (works for forks)
+        id: pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const workflowRun = context.payload.workflow_run;
+            const sha = workflowRun.head_sha;
+            const headBranch = workflowRun.head_branch;
+            const headRepoOwner = workflowRun.head_repository?.owner?.login;
+
+            core.info(`Looking up PR for sha=${sha}, branch=${headBranch}, headRepoOwner=${headRepoOwner}`);
+
+            // Method 1: Try listPullRequestsAssociatedWithCommit (works for same-repo PRs)
+            const res = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner,
+              repo,
+              commit_sha: sha,
+            });
+
+            let pr = res.data?.[0];
+
+            // Method 2: Fallback for fork PRs - search by head reference
+            if (!pr && headRepoOwner && headBranch) {
+              core.info(`Trying fallback: searching for PRs with head=${headRepoOwner}:${headBranch}`);
+              const pullsRes = await github.rest.pulls.list({
+                owner,
+                repo,
+                state: 'open',
+                head: `${headRepoOwner}:${headBranch}`,
+              });
+              pr = pullsRes.data?.[0];
+            }
+
+            if (!pr) {
+              core.info("No PR associated with this workflow_run. Likely a push/schedule run.");
+              core.setOutput("number", "");
+              return;
+            }
+
+            core.info(`Found PR #${pr.number}`);
+            core.setOutput("number", String(pr.number));
+
+      - name: Stop if no PR found
+        if: ${{ steps.pr.outputs.number == '' }}
+        run: echo "No PR found for this CI run; skipping."
+
+      - name: Checkout repository (base branch)
+        if: ${{ steps.pr.outputs.number != '' }}
+        uses: actions/checkout@v4
+        with:
+          # base_ref is typically the target branch (e.g., main) and is safe to fetch
+          ref: ${{ github.event.workflow_run.base_ref }}
+
+      - name: Setup Node.js
+        if: ${{ steps.pr.outputs.number != '' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Download Playwright HTML report
+        if: ${{ steps.pr.outputs.number != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: html-report--attempt-${{ github.event.workflow_run.run_attempt }}
+          path: playwright-report
+          github-token: ${{ github.token }}
+          repository: ${{ github.event.workflow_run.repository.full_name }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: Download blob reports
+        if: ${{ steps.pr.outputs.number != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          path: all-blob-reports
+          pattern: blob-report-*
+          merge-multiple: true
+          github-token: ${{ github.token }}
+          repository: ${{ github.event.workflow_run.repository.full_name }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: Generate Playwright summary comment
+        if: ${{ steps.pr.outputs.number != '' }}
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          PLAYWRIGHT_RUN_ID: ${{ github.event.workflow_run.id }}
+        with:
+          script: |
+            const { run } = require('./scripts/generate-playwright-summary.js');
+            await run({ github, context, core });

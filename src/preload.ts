@@ -5,6 +5,8 @@ import { contextBridge, ipcRenderer, webFrame } from "electron";
 
 // Whitelist of valid channels
 const validInvokeChannels = [
+  "analyze-component",
+  "apply-visual-editing-changes",
   "get-language-models",
   "get-language-models-by-providers",
   "create-custom-language-model",
@@ -28,6 +30,7 @@ const validInvokeChannels = [
   "get-chat-logs",
   "list-apps",
   "get-app",
+  "search-app-files",
   "get-app-env-vars",
   "set-app-env-vars",
   "edit-app-file",
@@ -76,8 +79,11 @@ const validInvokeChannels = [
   "approve-proposal",
   "reject-proposal",
   "get-system-debug-info",
-  "supabase:list-projects",
+  "supabase:list-organizations",
+  "supabase:delete-organization",
+  "supabase:list-all-projects",
   "supabase:list-branches",
+  "supabase:get-edge-logs",
   "supabase:set-app-project",
   "supabase:unset-app-project",
   "local-models:list-ollama",
@@ -98,6 +104,8 @@ const validInvokeChannels = [
   "check-app-name",
   "rename-branch",
   "clear-session-data",
+  "select-app-location",
+  "change-app-location",
   "get-user-budget",
   "get-context-paths",
   "set-context-paths",
@@ -121,6 +129,10 @@ const validInvokeChannels = [
   "mcp:set-tool-consent",
   // MCP consent response from renderer to main
   "mcp:tool-consent-response",
+  // Agent Tools (Local Agent v2)
+  "agent-tool:get-tools",
+  "agent-tool:set-consent",
+  "agent-tool:consent-response",
   // Help
   "take-screenshot",
   // Help bot
@@ -135,6 +147,9 @@ const validInvokeChannels = [
   "add-to-favorite",
   "github:clone-repo-from-url",
   "get-latest-security-review",
+  // Console logs
+  "add-log",
+  "clear-logs",
   // Test-only channels
   // These should ALWAYS be guarded with IS_TEST_BUILD in the main process.
   // We can't detect with IS_TEST_BUILD in the preload script because
@@ -152,12 +167,19 @@ const validReceiveChannels = [
   "github:flow-success",
   "github:flow-error",
   "deep-link-received",
+  "force-close-detected",
   // Help bot
   "help:chat:response:chunk",
   "help:chat:response:end",
   "help:chat:response:error",
   // MCP consent request from main to renderer
   "mcp:tool-consent-request",
+  // Agent tool consent request from main to renderer
+  "agent-tool:consent-request",
+  // Agent todos update from main to renderer
+  "agent-tool:todos-update",
+  // Telemetry events from main to renderer
+  "telemetry:event",
 ] as const;
 
 type ValidInvokeChannel = (typeof validInvokeChannels)[number];

@@ -1,21 +1,3 @@
-{
-  "selectedModel": {
-    "name": "auto",
-    "provider": "auto"
-  },
-  "providerSettings": {},
-  "telemetryConsent": "unset",
-  "telemetryUserId": "[UUID]",
-  "hasRunBefore": true,
-  "experiments": {},
-  "lastShownReleaseNotesVersion": "[scrubbed]",
-  "enableProLazyEditsMode": true,
-  "enableProSmartFilesContextMode": true,
-  "selectedTemplateId": "jeff-kazzee/dyad-template-angular",
-  "selectedChatMode": "build",
-  "acceptedCommunityCode": true,
-  "enableAutoFixProblems": false,
-  "enableAutoUpdate": true,
-  "releaseChannel": "stable",
-  "isTestMode": true
-}
++ "acceptedCommunityCode": true
+- "selectedTemplateId": "react"
++ "selectedTemplateId": "jeff-kazzee/dyad-template-angular"

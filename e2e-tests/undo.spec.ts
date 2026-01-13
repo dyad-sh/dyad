@@ -1,8 +1,8 @@
-import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
+import { PageObject, testSkipIfWindows, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
-testSkipIfWindows("undo", async ({ po }) => {
-  await po.setUp({ autoApprove: true });
+const runUndoTest = async (po: PageObject, nativeGit: boolean) => {
+  await po.setUp({ autoApprove: true, disableNativeGit: !nativeGit });
   await po.sendPrompt("tc=write-index");
   await po.sendPrompt("tc=write-index-2");
 
@@ -29,6 +29,40 @@ testSkipIfWindows("undo", async ({ po }) => {
     iframe.contentFrame().getByText("Welcome to Your Blank App"),
   ).toBeVisible({
     // Also, could be slow.
+    timeout: Timeout.LONG,
+  });
+};
+
+testSkipIfWindows("undo", async ({ po }) => {
+  await runUndoTest(po, false);
+});
+
+testSkipIfWindows("undo with native git", async ({ po }) => {
+  await runUndoTest(po, true);
+});
+
+testSkipIfWindows("undo after assistant with no code", async ({ po }) => {
+  await po.setUp({ autoApprove: true });
+
+  // First prompt - no code generated
+  await po.sendPrompt("tc=no-code-response");
+
+  // Second prompt - generates code
+  await po.sendPrompt("tc=write-index");
+
+  const iframe = po.getPreviewIframeElement();
+  await expect(
+    iframe.contentFrame().getByText("Testing:write-index!"),
+  ).toBeVisible({
+    timeout: Timeout.LONG,
+  });
+
+  // Undo should work even though first assistant had no commit
+  await po.clickUndo();
+
+  await expect(
+    iframe.contentFrame().getByText("Welcome to Your Blank App"),
+  ).toBeVisible({
     timeout: Timeout.LONG,
   });
 });

@@ -44,6 +44,7 @@ export function GitHubIntegration() {
     try {
       const result = await updateSettings({
         githubAccessToken: undefined,
+        githubUser: undefined,
       });
       if (result) {
         showSuccess("Successfully disconnected from GitHub");

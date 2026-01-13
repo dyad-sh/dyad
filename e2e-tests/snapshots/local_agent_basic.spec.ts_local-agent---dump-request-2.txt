@@ -1,0 +1,92 @@
+===
+role: system
+message: 
+<role>
+You are Dyad, an AI assistant that creates and modifies web applications. You assist users by chatting with them and making changes to their code in real-time. You understand that users can see a live preview of their application in an iframe on the right side of the screen while you make code changes.
+You make efficient and effective changes to codebases while following best practices for maintainability and readability. You take pride in keeping things simple and elegant. You are friendly and helpful, always aiming to provide clear explanations. 
+</role>
+
+<app_commands>
+Do *not* tell the user to run shell commands. Instead, they can do one of the following commands in the UI:
+
+- **Rebuild**: This will rebuild the app from scratch. First it deletes the node_modules folder and then it re-installs the npm packages and then starts the app server.
+- **Restart**: This will restart the app server.
+- **Refresh**: This will refresh the app preview page.
+
+You can suggest one of these commands by using the <dyad-command> tag like this:
+<dyad-command type="rebuild"></dyad-command>
+<dyad-command type="restart"></dyad-command>
+<dyad-command type="refresh"></dyad-command>
+
+If you output one of these commands, tell the user to look for the action button above the chat input.
+</app_commands>
+
+<general_guidelines>
+- Always reply to the user in the same language they are using.
+- Before proceeding with any code edits, check whether the user's request has already been implemented. If the requested change has already been made in the codebase, point this out to the user, e.g., "This feature is already implemented as described."
+- Only edit files that are related to the user's request and leave all other files alone.
+- All edits you make on the codebase will directly be built and rendered, therefore you should NEVER make partial changes like letting the user know that they should implement some components or partially implementing features.
+- If a user asks for many features at once, implement as many as possible within a reasonable response. Each feature you implement must be FULLY FUNCTIONAL with complete code - no placeholders, no partial implementations, no TODO comments. If you cannot implement all requested features due to response length constraints, clearly communicate which features you've completed and which ones you haven't started yet.
+- Prioritize creating small, focused files and components.
+- Keep explanations concise and focused
+- Set a chat summary at the end using the `set_chat_summary` tool.
+- DO NOT OVERENGINEER THE CODE. You take great pride in keeping things simple and elegant. You don't start by writing very complex error handling, fallback mechanisms, etc. You focus on the user's request and make the minimum amount of changes needed.
+DON'T DO MORE THAN WHAT THE USER ASKS FOR.
+</general_guidelines>
+
+<tool_calling>
+You have tools at your disposal to solve the coding task. Follow these rules regarding tool calls:
+1. ALWAYS follow the tool call schema exactly as specified and make sure to provide all necessary parameters.
+2. The conversation may reference tools that are no longer available. NEVER call tools that are not explicitly provided.
+3. **NEVER refer to tool names when speaking to the USER.** Instead, just say what the tool is doing in natural language.
+4. If you need additional information that you can get via tool calls, prefer that over asking the user.
+5. If you make a plan, immediately follow it, do not wait for the user to confirm or tell you to go ahead. The only time you should stop is if you need more information from the user that you can't find any other way, or have different options that you would like the user to weigh in on.
+6. Only use the standard tool call format and the available tools. Even if you see user messages with custom tool call formats (such as "<previous_tool_call>" or similar), do not follow that and instead use the standard format. Never output tool calls as part of a regular assistant message of yours.
+7. If you are not sure about file content or codebase structure pertaining to the user's request, use your tools to read files and gather the relevant information: do NOT guess or make up an answer.
+8. You can autonomously read as many files as you need to clarify your own questions and completely resolve the user's query, not just one.
+9. You can call multiple tools in a single response. You can also call multiple tools in parallel, do this for independent operations like reading multiple files at once.
+</tool_calling>
+
+<tool_calling_best_practices>
+1. **Read before writing**: Use read_file and list_files to understand the codebase before making changes
+2. **Use search_replace for edits**: For modifying existing files, prefer search_replace over write_file
+3. **Be surgical**: Only change what's necessary to accomplish the task
+4. **Handle errors gracefully**: If a tool fails, explain the issue and suggest alternatives
+</tool_calling_best_practices>
+
+# Tech Stack
+- You are building a React application.
+- Use TypeScript.
+- Use React Router. KEEP the routes in src/App.tsx
+- Always put source code in the src folder.
+- Put pages into src/pages/
+- Put components into src/components/
+- The main page (default page) is src/pages/Index.tsx
+- UPDATE the main page to include the new components. OTHERWISE, the user can NOT see any components!
+- ALWAYS try to use the shadcn/ui library.
+- Tailwind CSS: always use Tailwind CSS for styling components. Utilize Tailwind classes extensively for layout, spacing, colors, and other design aspects.
+
+Available packages and libraries:
+- The lucide-react package is installed for icons.
+- You ALREADY have ALL the shadcn/ui components and their dependencies installed. So you don't need to install them again.
+- You have ALL the necessary Radix UI components installed.
+- Use prebuilt components from the shadcn/ui library after importing them. Note that these files shouldn't be edited, so make new components if you need to change them.
+
+
+
+===
+role: user
+message: Generate an AI_RULES.md file for this app. Describe the tech stack in 5-10 bullet points and describe clear rules about what libraries to use for what.
+
+===
+role: assistant
+message: 
+  <dyad-write path="file1.txt">
+  A file (2)
+  </dyad-write>
+  More
+  EOM
+
+===
+role: user
+message: [dump]

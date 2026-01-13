@@ -143,3 +143,36 @@ test("create and sync to existing repo - custom branch", async ({ po }) => {
     operation: "create",
   });
 });
+
+test("github clear integration settings", async ({ po }) => {
+  await po.setUp({ autoApprove: true });
+  await po.sendPrompt("tc=basic");
+
+  await po.getTitleBarAppNameButton().click();
+  await po.githubConnector.connect();
+  await expect(po.githubConnector.getCreateNewRepoModeButton()).toBeVisible();
+
+  // Capture settings before disconnecting
+
+  await po.clickOpenInChatButton();
+  // Make sure we are committing so that githubUser.email is getting set.
+  await po.sendPrompt("tc=write-index");
+  const beforeSettings = po.recordSettings();
+
+  // Navigate to settings
+  await po.goToSettingsTab();
+
+  // Verify the "Disconnect from GitHub" button is visible (meaning we're connected)
+  const disconnectButton = po.page.getByRole("button", {
+    name: "Disconnect from GitHub",
+  });
+
+  // Click disconnect
+  await disconnectButton.click();
+
+  // Verify the button is no longer visible (component returns null when not connected)
+  await expect(disconnectButton).not.toBeVisible();
+
+  // Snapshot only the settings that changed (GitHub token/user removed)
+  po.snapshotSettingsDelta(beforeSettings);
+});

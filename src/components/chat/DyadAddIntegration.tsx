@@ -2,9 +2,11 @@ import React from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useAtomValue } from "jotai";
 import { showError } from "@/lib/toast";
 import { useLoadApp } from "@/hooks/useLoadApp";
+import { useStreamChat } from "@/hooks/useStreamChat";
 
 interface DyadAddIntegrationProps {
   node: {
@@ -20,10 +22,23 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   children,
 }) => {
   const navigate = useNavigate();
+  const { streamMessage, isStreaming } = useStreamChat();
 
   const { provider } = node.properties;
   const appId = useAtomValue(selectedAppIdAtom);
+  const chatId = useAtomValue(selectedChatIdAtom);
   const { app } = useLoadApp(appId);
+
+  const handleKeepGoingClick = () => {
+    if (chatId === null) {
+      showError("No chat found");
+      return;
+    }
+    streamMessage({
+      prompt: "Continue. I have completed the Supabase integration.",
+      chatId,
+    });
+  };
 
   const handleSetupClick = () => {
     if (!appId) {
@@ -69,8 +84,15 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
               {app.supabaseProjectName}
             </span>
           </p>
-          <p>Click the chat suggestion "Keep going" to continue.</p>
         </div>
+        <Button
+          onClick={handleKeepGoingClick}
+          className="self-start mt-2"
+          variant="outline"
+          disabled={isStreaming}
+        >
+          Continue
+        </Button>
       </div>
     );
   }

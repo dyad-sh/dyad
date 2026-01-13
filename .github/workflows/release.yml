@@ -21,7 +21,7 @@ jobs:
             { name: "windows", image: "windows-latest" },
             # See https://github.com/dyad-sh/dyad/issues/96
             { name: "linux", image: "ubuntu-22.04" },
-            { name: "macos-intel", image: "macos-13" },
+            { name: "macos-intel", image: "macos-15-intel" },
             { name: "macos", image: "macos-latest" },
           ]
     runs-on: ${{ matrix.os.image }}
@@ -65,13 +65,16 @@ jobs:
         # Publish (all platforms)
       - name: Publish app
         env:
+          DEBUG: "@electron/*,electron-forge:*,electron-windows-installer:main"
           NODE_OPTIONS: "--max-old-space-size=4096"
           SM_CODE_SIGNING_CERT_SHA1_HASH: ${{ secrets.SM_CODE_SIGNING_CERT_SHA1_HASH }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-        run: npm run publish
+        # Don't use npm run because we don't get logs
+        # https://github.com/electron/forge/blob/main/SUPPORT.md
+        run: ./node_modules/.bin/electron-forge publish
 
   verify-assets:
     name: Verify Release Assets

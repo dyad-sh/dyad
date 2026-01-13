@@ -15,10 +15,23 @@ const SNAPSHOT_NAME = "attach-image";
 test("attach image - home chat", async ({ po }) => {
   await po.setUp();
 
+  // Open auxiliary actions menu
   await po
     .getHomeChatInputContainer()
+    .getByTestId("auxiliary-actions-menu")
+    .click();
+
+  // Hover over "Attach files" to open submenu
+  await po.page.getByRole("menuitem", { name: "Attach files" }).hover();
+
+  // attach via file input (click-to-upload)
+  await po.page
     .getByTestId("chat-context-file-input")
     .setInputFiles("e2e-tests/fixtures/images/logo.png");
+
+  // Close the menu by pressing Escape
+  await po.page.keyboard.press("Escape");
+
   await po.sendPrompt("[dump]");
   await po.snapshotServerDump("last-message", { name: SNAPSHOT_NAME });
   await po.snapshotMessages({ replaceDumpPath: true });
@@ -28,11 +41,23 @@ test("attach image - chat", async ({ po }) => {
   await po.setUp({ autoApprove: true });
   await po.sendPrompt("basic");
 
-  // attach via file input (click-to-upload)
+  // Open auxiliary actions menu
   await po
     .getChatInputContainer()
+    .getByTestId("auxiliary-actions-menu")
+    .click();
+
+  // Hover over "Attach files" to open submenu
+  await po.page.getByRole("menuitem", { name: "Attach files" }).hover();
+
+  // attach via file input (click-to-upload)
+  await po.page
     .getByTestId("chat-context-file-input")
     .setInputFiles("e2e-tests/fixtures/images/logo.png");
+
+  // Close the menu by pressing Escape
+  await po.page.keyboard.press("Escape");
+
   await po.sendPrompt("[dump]");
   await po.snapshotServerDump("last-message", { name: SNAPSHOT_NAME });
   await po.snapshotMessages({ replaceDumpPath: true });
@@ -42,11 +67,23 @@ test("attach image - chat - upload to codebase", async ({ po }) => {
   await po.setUp({ autoApprove: true });
   await po.sendPrompt("basic");
 
-  // attach via file input (click-to-upload)
+  // Open auxiliary actions menu
   await po
     .getChatInputContainer()
+    .getByTestId("auxiliary-actions-menu")
+    .click();
+
+  // Hover over "Attach files" to open submenu
+  await po.page.getByRole("menuitem", { name: "Attach files" }).hover();
+
+  // attach via file input (click-to-upload)
+  await po.page
     .getByTestId("upload-to-codebase-file-input")
     .setInputFiles("e2e-tests/fixtures/images/logo.png");
+
+  // Close the menu by pressing Escape
+  await po.page.keyboard.press("Escape");
+
   await po.sendPrompt("[[UPLOAD_IMAGE_TO_CODEBASE]]");
 
   await po.snapshotServerDump("last-message", { name: "upload-to-codebase" });

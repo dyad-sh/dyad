@@ -63,7 +63,7 @@ export const TURBO_EDITS_PROMO_MESSAGE: MessageConfig = {
 
 export const SMART_CONTEXT_PROMO_MESSAGE: MessageConfig = {
   spans: [
-    { type: "text", content: "Save up to 5x on AI costs with " },
+    { type: "text", content: "Save up to 3x on AI costs with " },
     {
       type: "link",
       content: "Dyad Pro's Smart Context",

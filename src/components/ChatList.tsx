@@ -36,7 +36,7 @@ export function ChatList({ show }: { show?: boolean }) {
   const [selectedAppId] = useAtom(selectedAppIdAtom);
   const [, setIsDropdownOpen] = useAtom(dropdownOpenAtom);
 
-  const { chats, loading, refreshChats } = useChats(selectedAppId);
+  const { chats, loading, invalidateChats } = useChats(selectedAppId);
   const routerState = useRouterState();
   const isChatRoute = routerState.location.pathname === "/chat";
 
@@ -95,7 +95,7 @@ export function ChatList({ show }: { show?: boolean }) {
         });
 
         // Refresh the chat list
-        await refreshChats();
+        await invalidateChats();
       } catch (error) {
         // DO A TOAST
         showError(`Failed to create new chat: ${(error as any).toString()}`);
@@ -118,7 +118,7 @@ export function ChatList({ show }: { show?: boolean }) {
       }
 
       // Refresh the chat list
-      await refreshChats();
+      await invalidateChats();
     } catch (error) {
       showError(`Failed to delete chat: ${(error as any).toString()}`);
     }
@@ -278,7 +278,7 @@ export function ChatList({ show }: { show?: boolean }) {
           currentTitle={renameChatTitle}
           isOpen={isRenameDialogOpen}
           onOpenChange={handleRenameDialogClose}
-          onRename={refreshChats}
+          onRename={invalidateChats}
         />
       )}
 

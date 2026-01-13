@@ -1,20 +1,2 @@
-{
-  "selectedModel": {
-    "name": "auto",
-    "provider": "auto"
-  },
-  "providerSettings": {},
-  "telemetryConsent": "unset",
-  "telemetryUserId": "[UUID]",
-  "hasRunBefore": true,
-  "experiments": {},
-  "lastShownReleaseNotesVersion": "[scrubbed]",
-  "enableProLazyEditsMode": true,
-  "enableProSmartFilesContextMode": true,
-  "selectedTemplateId": "react",
-  "selectedChatMode": "build",
-  "enableAutoFixProblems": false,
-  "enableAutoUpdate": true,
-  "releaseChannel": "beta",
-  "isTestMode": true
-}
+- "releaseChannel": "stable"
++ "releaseChannel": "beta"

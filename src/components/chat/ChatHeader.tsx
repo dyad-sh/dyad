@@ -47,7 +47,7 @@ export function ChatHeader({
   const { versions, loading: versionsLoading } = useVersions(appId);
   const { navigate } = useRouter();
   const [selectedChatId, setSelectedChatId] = useAtom(selectedChatIdAtom);
-  const { refreshChats } = useChats(appId);
+  const { invalidateChats } = useChats(appId);
   const { isStreaming } = useStreamChat();
   const isAnyCheckoutVersionInProgress = useAtomValue(
     isAnyCheckoutVersionInProgressAtom,
@@ -90,7 +90,7 @@ export function ChatHeader({
           to: "/chat",
           search: { id: chatId },
         });
-        await refreshChats();
+        await invalidateChats();
       } catch (error) {
         showError(`Failed to create new chat: ${(error as any).toString()}`);
       }

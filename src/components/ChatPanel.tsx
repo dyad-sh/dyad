@@ -14,6 +14,7 @@ import { VersionPane } from "./chat/VersionPane";
 import { ChatError } from "./chat/ChatError";
 import { Button } from "@/components/ui/button";
 import { ArrowDown } from "lucide-react";
+import { useSettings } from "@/hooks/useSettings";
 
 interface ChatPanelProps {
   chatId?: number;
@@ -32,92 +33,90 @@ export function ChatPanel({
   const [error, setError] = useState<string | null>(null);
   const streamCountById = useAtomValue(chatStreamCountByIdAtom);
   const isStreamingById = useAtomValue(isStreamingByIdAtom);
-  // Reference to store the processed prompt so we don't submit it twice
+  const { settings } = useSettings();
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
 
-  // Scroll-related properties
-  const [isUserScrolling, setIsUserScrolling] = useState(false);
+  // Scroll-related state
   const [showScrollButton, setShowScrollButton] = useState(false);
+  const [isUserScrolling, setIsUserScrolling] = useState(false);
+
+  // Refs for scroll tracking (both test and Virtuoso modes)
+  const distanceFromBottomRef = useRef<number>(0);
   const userScrollTimeoutRef = useRef<number | null>(null);
-  const lastScrollTopRef = useRef<number>(0);
+  // Ref to store cleanup function for Virtuoso scroller event listener
+  const scrollerCleanupRef = useRef<(() => void) | null>(null);
+  // Ref to track previous streaming state
+  const prevIsStreamingRef = useRef(false);
+
   const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
     messagesEndRef.current?.scrollIntoView({ behavior });
   };
 
   const handleScrollButtonClick = () => {
-    if (!messagesContainerRef.current) return;
-
     scrollToBottom("smooth");
   };
 
-  const getDistanceFromBottom = () => {
-    if (!messagesContainerRef.current) return 0;
-    const container = messagesContainerRef.current;
-    return (
-      container.scrollHeight - (container.scrollTop + container.clientHeight)
-    );
-  };
-
-  const isNearBottom = (threshold: number = 100) => {
-    return getDistanceFromBottom() <= threshold;
-  };
-
-  const scrollAwayThreshold = 150; // pixels from bottom to consider "scrolled away"
-
-  const handleScroll = useCallback(() => {
-    if (!messagesContainerRef.current) return;
-
-    const container = messagesContainerRef.current;
+  // Unified scroll tracking handler for both test and Virtuoso modes
+  const handleScrollTracking = useCallback((container: HTMLElement) => {
     const distanceFromBottom =
       container.scrollHeight - (container.scrollTop + container.clientHeight);
+    distanceFromBottomRef.current = distanceFromBottom;
+
+    const scrollAwayThreshold = 150; // pixels from bottom to consider "scrolled away"
 
     // User has scrolled away from bottom
     if (distanceFromBottom > scrollAwayThreshold) {
       setIsUserScrolling(true);
       setShowScrollButton(true);
 
+      // Clear existing timeout
       if (userScrollTimeoutRef.current) {
         window.clearTimeout(userScrollTimeoutRef.current);
       }
 
+      // Reset isUserScrolling after 2 seconds
       userScrollTimeoutRef.current = window.setTimeout(() => {
         setIsUserScrolling(false);
-      }, 2000); // Increased timeout to 2 seconds
+      }, 2000);
     } else {
       // User is near bottom
       setIsUserScrolling(false);
       setShowScrollButton(false);
     }
-    lastScrollTopRef.current = container.scrollTop;
   }, []);
+
+  // Callback to receive scrollerRef from Virtuoso (production mode)
+  // scrollerRef is called with the element on mount and null on unmount
+  const handleScrollerRef = useCallback(
+    (ref: HTMLElement | Window | null) => {
+      // Always cleanup previous listener first
+      if (scrollerCleanupRef.current) {
+        scrollerCleanupRef.current();
+        scrollerCleanupRef.current = null;
+      }
+
+      // If ref is null or window, nothing to attach to
+      if (!ref || ref === window) return;
+
+      const element = ref as HTMLElement;
+      const handleScroll = () => handleScrollTracking(element);
+      element.addEventListener("scroll", handleScroll, { passive: true });
+
+      // Store cleanup function for later invocation
+      scrollerCleanupRef.current = () => {
+        element.removeEventListener("scroll", handleScroll);
+      };
+    },
+    [handleScrollTracking],
+  );
 
   useEffect(() => {
     const streamCount = chatId ? (streamCountById.get(chatId) ?? 0) : 0;
     console.log("streamCount - scrolling to bottom", streamCount);
     scrollToBottom();
-  }, [
-    chatId,
-    chatId ? (streamCountById.get(chatId) ?? 0) : 0,
-    chatId ? (isStreamingById.get(chatId) ?? false) : false,
-  ]);
-
-  useEffect(() => {
-    const container = messagesContainerRef.current;
-    if (container) {
-      container.addEventListener("scroll", handleScroll, { passive: true });
-    }
-
-    return () => {
-      if (container) {
-        container.removeEventListener("scroll", handleScroll);
-      }
-      if (userScrollTimeoutRef.current) {
-        window.clearTimeout(userScrollTimeoutRef.current);
-      }
-    };
-  }, [handleScroll]);
+  }, [chatId, chatId ? (streamCountById.get(chatId) ?? 0) : 0]);
 
   const fetchChatMessages = useCallback(async () => {
     if (!chatId) {
@@ -139,22 +138,69 @@ export function ChatPanel({
   const messages = chatId ? (messagesById.get(chatId) ?? []) : [];
   const isStreaming = chatId ? (isStreamingById.get(chatId) ?? false) : false;
 
-  // Auto-scroll effect when messages change during streaming
+  // Scroll to bottom when streaming completes to ensure footer content is visible
   useEffect(() => {
+    const wasStreaming = prevIsStreamingRef.current;
+    prevIsStreamingRef.current = isStreaming;
+
+    // When streaming transitions from true to false
+    if (wasStreaming && !isStreaming) {
+      // Double RAF ensures DOM is fully updated with footer content
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          scrollToBottom("smooth");
+        });
+      });
+    }
+  }, [isStreaming]);
+
+  // Test mode only: Attach scroll listener to messagesContainerRef
+  // In production mode, handleScrollerRef attaches to Virtuoso's scroller
+  useEffect(() => {
+    const isTestMode = settings?.isTestMode;
+    if (!isTestMode) return; // Only for test mode
+
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => handleScrollTracking(container);
+    container.addEventListener("scroll", handleScroll, { passive: true });
+
+    return () => {
+      container.removeEventListener("scroll", handleScroll);
+    };
+  }, [handleScrollTracking, settings?.isTestMode, isVersionPaneOpen]);
+
+  // Test mode: Auto-scroll during streaming (280px threshold)
+  // Note: Virtuoso handles this via followOutput in production mode
+  useEffect(() => {
+    const isTestMode = settings?.isTestMode;
+    if (!isTestMode) return; // Only for test mode
+
     if (
       !isUserScrolling &&
       isStreaming &&
-      messagesContainerRef.current &&
-      messages.length > 0
+      messagesEndRef.current &&
+      distanceFromBottomRef.current <= 280
     ) {
-      // Only auto-scroll if user is close to bottom
-      if (isNearBottom(280)) {
-        requestAnimationFrame(() => {
-          scrollToBottom("instant");
-        });
-      }
+      requestAnimationFrame(() => {
+        scrollToBottom("instant");
+      });
     }
-  }, [messages, isUserScrolling, isStreaming]);
+  }, [messages, isUserScrolling, isStreaming, settings?.isTestMode]);
+
+  // Cleanup timeout and scroller listener on unmount
+  useEffect(() => {
+    return () => {
+      if (userScrollTimeoutRef.current) {
+        window.clearTimeout(userScrollTimeoutRef.current);
+      }
+      if (scrollerCleanupRef.current) {
+        scrollerCleanupRef.current();
+        scrollerCleanupRef.current = null;
+      }
+    };
+  }, []);
 
   return (
     <div className="flex flex-col h-full">
@@ -172,6 +218,9 @@ export function ChatPanel({
                 messages={messages}
                 messagesEndRef={messagesEndRef}
                 ref={messagesContainerRef}
+                onScrollerRef={handleScrollerRef}
+                distanceFromBottomRef={distanceFromBottomRef}
+                isUserScrolling={isUserScrolling}
               />
 
               {/* Scroll to bottom button */}

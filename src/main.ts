@@ -24,6 +24,14 @@ import {
   AddPromptDataSchema,
   AddPromptPayload,
 } from "./ipc/deep_link_data";
+import {
+  startPerformanceMonitoring,
+  stopPerformanceMonitoring,
+} from "./utils/performance_monitor";
+import { cleanupOldAiMessagesJson } from "./pro/main/ipc/handlers/local_agent/ai_messages_cleanup";
+import fs from "fs";
+import { gitAddSafeDirectory } from "./ipc/utils/git_utils";
+import { getDyadAppsBaseDirectory } from "./paths/paths";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -40,6 +48,22 @@ registerIpcHandlers();
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
   app.quit();
+}
+
+// Decide the git directory depending on environment
+function resolveLocalGitDirectory() {
+  if (!app.isPackaged) {
+    // Dev: app.getAppPath() is the project root
+    return path.join(app.getAppPath(), "node_modules/dugite/git");
+  }
+
+  // Packaged app: git is bundled via extraResource
+  return path.join(process.resourcesPath, "git");
+}
+
+const gitDir = resolveLocalGitDirectory();
+if (fs.existsSync(gitDir)) {
+  process.env.LOCAL_GIT_DIRECTORY = gitDir;
 }
 
 // https://www.electronjs.org/docs/latest/tutorial/launch-app-from-url-in-another-app#main-process-mainjs
@@ -64,7 +88,36 @@ export async function onReady() {
     logger.error("Error initializing backup manager", e);
   }
   initializeDatabase();
+
+  // Cleanup old ai_messages_json entries to prevent database bloat
+  cleanupOldAiMessagesJson();
+
   const settings = readSettings();
+
+  // Add dyad-apps directory to git safe.directory (required for Windows)
+  if (settings.enableNativeGit) {
+    // Don't need to await because this only needs to run before
+    // the user starts interacting with Dyad app and uses a git-related feature.
+    gitAddSafeDirectory(getDyadAppsBaseDirectory());
+  }
+
+  // Check if app was force-closed
+  if (settings.isRunning) {
+    logger.warn("App was force-closed on previous run");
+
+    // Store performance data to send after window is created
+    if (settings.lastKnownPerformance) {
+      logger.warn("Last known performance:", settings.lastKnownPerformance);
+      pendingForceCloseData = settings.lastKnownPerformance;
+    }
+  }
+
+  // Set isRunning to true at startup
+  writeSettings({ isRunning: true });
+
+  // Start performance monitoring
+  startPerformanceMonitoring();
+
   await onFirstRunMaybe(settings);
   createWindow();
 
@@ -134,6 +187,7 @@ declare global {
 }
 
 let mainWindow: BrowserWindow | null = null;
+let pendingForceCloseData: any = null;
 
 const createWindow = () => {
   // Create the browser window.
@@ -168,6 +222,16 @@ const createWindow = () => {
   if (process.env.NODE_ENV === "development") {
     // Open the DevTools.
     mainWindow.webContents.openDevTools();
+  }
+
+  // Send force-close event if it was detected
+  if (pendingForceCloseData) {
+    mainWindow.webContents.once("did-finish-load", () => {
+      mainWindow?.webContents.send("force-close-detected", {
+        performanceData: pendingForceCloseData,
+      });
+      pendingForceCloseData = null;
+    });
   }
 
   // Enable native context menu on right-click
@@ -253,7 +317,7 @@ app.on("open-url", (event, url) => {
   handleDeepLinkReturn(url);
 });
 
-function handleDeepLinkReturn(url: string) {
+async function handleDeepLinkReturn(url: string) {
   // example url: "dyad://supabase-oauth-return?token=a&refreshToken=b"
   let parsed: URL;
   try {
@@ -306,7 +370,7 @@ function handleDeepLinkReturn(url: string) {
       );
       return;
     }
-    handleSupabaseOAuthReturn({ token, refreshToken, expiresIn });
+    await handleSupabaseOAuthReturn({ token, refreshToken, expiresIn });
     // Send message to renderer to trigger re-render
     mainWindow?.webContents.send("deep-link-received", {
       type: parsed.hostname,
@@ -395,6 +459,16 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
   }
+});
+
+// Only set isRunning to false when the app is properly quit by the user
+app.on("will-quit", () => {
+  logger.info("App is quitting, setting isRunning to false");
+
+  // Stop performance monitoring and capture final metrics
+  stopPerformanceMonitoring();
+
+  writeSettings({ isRunning: false });
 });
 
 app.on("activate", () => {

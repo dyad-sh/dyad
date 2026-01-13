@@ -1,0 +1,33 @@
+- paragraph: /Generate an AI_RULES\.md file for this app\. Describe the tech stack in 5-\d+ bullet points and describe clear rules about what libraries to use for what\./
+- img
+- text: file1.txt
+- button "Edit":
+  - img
+- img
+- text: file1.txt
+- paragraph: More EOM
+- button:
+  - img
+- img
+- text: less than a minute ago
+- button "Request ID":
+  - img
+- paragraph: tc=local-agent/mcp-calculator
+- paragraph: I'll calculate the sum of 5 and 3 using the calculator.
+- img
+- text: Tool Call
+- img
+- text: testing-mcp-server calculator_add
+- img
+- text: Tool Result
+- img
+- text: testing-mcp-server calculator_add
+- paragraph: The sum of 5 and 3 is 8. The calculation was performed successfully using the MCP calculator tool.
+- button:
+  - img
+- img
+- text: less than a minute ago
+- button "Request ID":
+  - img
+- button "Retry":
+  - img

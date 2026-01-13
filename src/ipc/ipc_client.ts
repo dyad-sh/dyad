@@ -1,3 +1,4 @@
+
 import type { IBackendClient } from "./backend_interface";
 import { ElectronBackend } from "./electron_backend";
 import { WebBackend } from "./web_backend";
@@ -23,59 +24,69 @@ import type {
   CreateCustomLanguageModelParams,
   CreateCustomLanguageModelProviderParams,
   CreateMcpServer,
+  DoesReleaseNoteExistParams,
+  ImportAppResult,
+  ImportAppParams,
+  RenameBranchParams,
+  UserBudgetInfo,
+  AppFileSearchResult,
+  ProblemReport,
+  EditAppFileReturnType,
+  GetAppEnvVarsParams,
+  SetAppEnvVarsParams,
+  IsVercelProjectAvailableResponse,
+  CreateVercelProjectParams,
+  VercelDeployment,
+  GetVercelDeploymentsParams,
+  DisconnectVercelProjectParams,
+  SecurityReviewResult,
+  IsVercelProjectAvailableParams,
+  SaveVercelAccessTokenParams,
+  VercelProject,
+  UpdateChatParams,
+  FileAttachment,
+  SupabaseBranch,
+  SetSupabaseAppProjectParams,
+  SupabaseOrganizationInfo,
+  SupabaseProject,
+  DeleteSupabaseOrganizationParams,
+  SelectNodeFolderResult,
+  ChangeAppLocationParams,
+  ChangeAppLocationResult,
+  ApplyVisualEditingChangesParams,
+  AnalyseComponentParams,
+  AgentTool,
+  SetAgentToolConsentParams,
+  AgentToolConsentRequestPayload,
+  AgentToolConsentResponseParams,
+  AgentTodosUpdatePayload,
+  TelemetryEventPayload,
+  ConsoleEntry,
+  NeonProject,
+  NodeSystemInfo,
+  PromptDto,
+  AppChatContext,
+  ProposalResult,
+  RespondToAppInputParams,
+  RevertVersionParams,
+  RevertVersionResponse,
+  SystemDebugInfo,
+  TokenCountParams,
+  TokenCountResult,
+  UpdatePromptParamsDto,
+  UserSettings,
+  Version,
+  Message,
+  ChatProblemsEvent,
   CreateNeonProjectParams,
   CreatePromptParamsDto,
-  CreateVercelProjectParams,
-  DeepLinkData,
-  DisconnectVercelProjectParams,
-  DoesReleaseNoteExistParams,
-  EditAppFileReturnType,
-  FileAttachment,
-  GetAppEnvVarsParams,
-  GetNeonProjectParams,
-  GetNeonProjectResponse,
-  GetVercelDeploymentsParams,
-  GitHubDeviceFlowErrorData,
-  GitHubDeviceFlowSuccessData,
-  GitHubDeviceFlowUpdateData,
-  ImportAppParams,
-  ImportAppResult,
-  IsVercelProjectAvailableParams,
-  IsVercelProjectAvailableResponse,
   LanguageModel,
   LanguageModelProvider,
   ListAppsResponse,
   LocalModel,
   McpServerUpdate,
-  NeonProject,
-  NodeSystemInfo,
-  ProblemReport,
-  PromptDto,
-  ProposalResult,
-  RenameBranchParams,
-  RespondToAppInputParams,
-  RevertVersionParams,
-  RevertVersionResponse,
-  SaveVercelAccessTokenParams,
-  SecurityReviewResult,
-  SelectNodeFolderResult,
-  SetAppEnvVarsParams,
-  SetSupabaseAppProjectParams,
-  SupabaseBranch,
-  SystemDebugInfo,
-  Template,
-  TokenCountParams,
-  TokenCountResult,
-  UpdateChatParams,
-  UpdatePromptParamsDto,
-  UserBudgetInfo,
-  UserSettings,
-  VercelDeployment,
-  VercelProject,
-  Version,
-  Message,
-  ChatProblemsEvent
 } from "./ipc_types";
+import type { Template } from "../shared/templates";
 
 export class IpcClient implements IBackendClient {
   private static instance: IpcClient;
@@ -249,4 +260,23 @@ export class IpcClient implements IBackendClient {
   public deleteCustomModel(params: any) { return this.backend.deleteCustomModel(params); }
   public deleteCustomLanguageModelProvider(providerId: string) { return this.backend.deleteCustomLanguageModelProvider(providerId); }
   public portalMigrateCreate(params: any) { return this.backend.portalMigrateCreate(params); }
+
+  // --- Added missing methods from Upstream ---
+  public onForceCloseDetected(cb: any) { return this.backend.onForceCloseDetected(cb); }
+  public getAgentTools() { return this.backend.getAgentTools(); }
+  public setAgentToolConsent(params: any) { return this.backend.setAgentToolConsent(params); }
+  public onAgentToolConsentRequest(handler: any) { return this.backend.onAgentToolConsentRequest(handler); }
+  public respondToAgentConsentRequest(params: any) { return this.backend.respondToAgentConsentRequest(params); }
+  public onAgentTodosUpdate(handler: any) { return this.backend.onAgentTodosUpdate(handler); }
+  public onChatStreamStart(handler: any) { return this.backend.onChatStreamStart(handler); }
+  public onChatStreamEnd(handler: any) { return this.backend.onChatStreamEnd(handler); }
+  public onTelemetryEvent(handler: any) { return this.backend.onTelemetryEvent(handler); }
+  public listSupabaseOrganizations() { return this.backend.listSupabaseOrganizations(); }
+  public deleteSupabaseOrganization(params: any) { return this.backend.deleteSupabaseOrganization(params); }
+  public listAllSupabaseProjects() { return this.backend.listAllSupabaseProjects(); }
+  public getSupabaseEdgeLogs(params: any) { return this.backend.getSupabaseEdgeLogs(params); }
+
+  public analyseComponent(params: AnalyseComponentParams) { return this.backend.analyseComponent(params); }
+  public applyVisualEditingChanges(params: ApplyVisualEditingChangesParams) { return this.backend.applyVisualEditingChanges(params); }
+  public addLog(entry: any) { console.log("[App Log]", entry); }
 }

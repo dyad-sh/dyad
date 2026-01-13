@@ -1,17 +1,11 @@
-import { Paperclip, MessageSquare, Upload } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { MessageSquare, Upload } from "lucide-react";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Button } from "@/components/ui/button";
 import { useRef } from "react";
 
 interface FileAttachmentDropdownProps {
@@ -19,14 +13,12 @@ interface FileAttachmentDropdownProps {
     files: FileList,
     type: "chat-context" | "upload-to-codebase",
   ) => void;
-  disabled?: boolean;
-  className?: string;
+  closeMenu?: () => void;
 }
 
 export function FileAttachmentDropdown({
   onFileSelect,
-  disabled,
-  className,
+  closeMenu,
 }: FileAttachmentDropdownProps) {
   const chatContextFileInputRef = useRef<HTMLInputElement>(null);
   const uploadToCodebaseFileInputRef = useRef<HTMLInputElement>(null);
@@ -47,69 +39,61 @@ export function FileAttachmentDropdown({
       onFileSelect(e.target.files, type);
       // Clear the input value so the same file can be selected again
       e.target.value = "";
+      // Close the parent menu after file selection
+      closeMenu?.();
     }
   };
 
-  return (
+  const menuItems = (
     <>
       <TooltipProvider>
         <Tooltip>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={disabled}
-                  title="Attach files"
-                  className={className}
-                >
-                  <Paperclip size={20} />
-                </Button>
-              </TooltipTrigger>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <DropdownMenuItem
-                      onClick={handleChatContextClick}
-                      className="py-3 px-4"
-                    >
-                      <MessageSquare size={16} className="mr-2" />
-                      Attach file as chat context
-                    </DropdownMenuItem>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">
-                    Example use case: screenshot of the app to point out a UI
-                    issue
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <DropdownMenuItem
-                      onClick={handleUploadToCodebaseClick}
-                      className="py-3 px-4"
-                    >
-                      <Upload size={16} className="mr-2" />
-                      Upload file to codebase
-                    </DropdownMenuItem>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">
-                    Example use case: add an image to use for your app
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <TooltipContent>Attach files</TooltipContent>
+          <TooltipTrigger asChild>
+            <DropdownMenuItem
+              onSelect={(e) => {
+                // Prevent default so menu doesn't close in order to keep the hidden inputs in the DOM
+                // Manually close menu after file selection
+                e.preventDefault();
+                handleChatContextClick();
+              }}
+              className="py-3 px-4"
+            >
+              <MessageSquare size={16} className="mr-2" />
+              Attach file as chat context
+            </DropdownMenuItem>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            Example use case: screenshot of the app to point out a UI issue
+          </TooltipContent>
         </Tooltip>
       </TooltipProvider>
 
-      {/* Hidden file inputs */}
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DropdownMenuItem
+              onSelect={(e) => {
+                // Prevent default so menu doesn't close in order to keep the hidden inputs in the DOM
+                // Manually close menu after file selection
+                e.preventDefault();
+                handleUploadToCodebaseClick();
+              }}
+              className="py-3 px-4"
+            >
+              <Upload size={16} className="mr-2" />
+              Upload file to codebase
+            </DropdownMenuItem>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            Example use case: add an image to use for your app
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </>
+  );
+
+  const hiddenInputs = (
+    <>
       <input
         type="file"
         data-testid="chat-context-file-input"
@@ -128,6 +112,13 @@ export function FileAttachmentDropdown({
         multiple
         accept=".jpg,.jpeg,.png,.gif,.webp,.txt,.md,.js,.ts,.html,.css,.json,.csv"
       />
+    </>
+  );
+
+  return (
+    <>
+      {menuItems}
+      {hiddenInputs}
     </>
   );
 }

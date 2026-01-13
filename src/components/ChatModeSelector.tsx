@@ -12,13 +12,23 @@ import {
 } from "@/components/ui/tooltip";
 import { useSettings } from "@/hooks/useSettings";
 import type { ChatMode } from "@/lib/schemas";
+import { isDyadProEnabled } from "@/lib/schemas";
 import { cn } from "@/lib/utils";
 import { detectIsMac } from "@/hooks/useChatModeToggle";
+
+function ExperimentalBadge() {
+  return (
+    <span className="inline-flex items-center rounded-full px-2 text-[11px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+      Experimental
+    </span>
+  );
+}
 
 export function ChatModeSelector() {
   const { settings, updateSettings } = useSettings();
 
   const selectedMode = settings?.selectedChatMode || "build";
+  const isProEnabled = settings ? isDyadProEnabled(settings) : false;
 
   const handleModeChange = (value: string) => {
     updateSettings({ selectedChatMode: value as ChatMode });
@@ -31,6 +41,8 @@ export function ChatModeSelector() {
       case "ask":
         return "Ask";
       case "agent":
+        return "Build (MCP)";
+      case "local-agent":
         return "Agent";
       default:
         return "Build";
@@ -46,7 +58,7 @@ export function ChatModeSelector() {
             data-testid="chat-mode-selector"
             className={cn(
               "h-6 w-fit px-1.5 py-0 text-xs-sm font-medium shadow-none gap-0.5",
-              selectedMode === "build"
+              selectedMode === "build" || selectedMode === "local-agent"
                 ? "bg-background hover:bg-muted/50 focus:bg-muted/50"
                 : "bg-primary/10 hover:bg-primary/20 focus:bg-primary/20 text-primary border-primary/20 dark:bg-primary/20 dark:hover:bg-primary/30 dark:focus:bg-primary/30",
             )}
@@ -83,12 +95,27 @@ export function ChatModeSelector() {
         </SelectItem>
         <SelectItem value="agent">
           <div className="flex flex-col items-start">
-            <span className="font-medium">Agent (experimental)</span>
+            <div className="flex items-center gap-1.5">
+              <span className="font-medium">Build with MCP</span>
+            </div>
             <span className="text-xs text-muted-foreground">
-              Agent can use tools (MCP) and generate code
+              Like Build, but can use tools (MCP) to generate code
             </span>
           </div>
         </SelectItem>
+        {isProEnabled && settings?.experiments?.enableLocalAgent && (
+          <SelectItem value="local-agent">
+            <div className="flex flex-col items-start">
+              <div className="flex items-center gap-1.5">
+                <span className="font-medium">Agent v2</span>
+                <ExperimentalBadge />
+              </div>
+              <span className="text-xs text-muted-foreground">
+                Better at bigger tasks and debugging
+              </span>
+            </div>
+          </SelectItem>
+        )}
       </SelectContent>
     </Select>
   );

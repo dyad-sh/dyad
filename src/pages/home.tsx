@@ -30,7 +30,7 @@ import { invalidateAppQuery } from "@/hooks/useLoadApp";
 import { useQueryClient } from "@tanstack/react-query";
 import { ForceCloseDialog } from "@/components/ForceCloseDialog";
 
-import type { FileAttachment } from "@/ipc/ipc_types";
+import type { FileAttachment, GenerationMetadata } from "@/ipc/ipc_types";
 import {
   NEON_TEMPLATE_IDS,
   contractTranslationTemplates,
@@ -891,6 +891,20 @@ export default function HomePage() {
     const targetSuffix = targetLanguage.replace(/_/g, "-");
     const finalName = projectName.trim() || `generated-${targetSuffix}`;
 
+    // Create generation metadata to store with the app
+    const generationMetadata: GenerationMetadata = {
+      model: "pending", // Will be updated after generation completes
+      generationTime: 0, // Will be updated after generation completes
+      phasesCompleted: {
+        document: false,
+        plan: false,
+        act: false,
+      },
+      createdAt: new Date().toISOString(),
+      targetBlockchain: targetLanguage,
+      promptLength: nlDescription.length,
+    };
+
     // Create the app for the target language
     let appId: number | undefined;
 
@@ -901,6 +915,8 @@ export default function HomePage() {
         const result = await IpcClient.getInstance().solanaInitProject({
           projectName: finalName,
           parentPath: "src",
+          nlPrompt: nlDescription,
+          generationMetadata,
         });
 
         if (!result.success) {
@@ -919,6 +935,8 @@ export default function HomePage() {
         const createResult = await IpcClient.getInstance().createApp({
           name: finalName,
           isContractProject: true,
+          nlPrompt: nlDescription,
+          generationMetadata,
         });
         appId = createResult.app.id;
         console.log("Created app with ID:", appId);

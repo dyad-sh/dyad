@@ -590,6 +590,9 @@ export function registerAppHandlers() {
           // Use the name as the path for now
           path: appPath,
           isContractProject: params.isContractProject || false,
+          // Store NL prompt and generation metadata for contract generation
+          nlPrompt: params.nlPrompt || null,
+          generationMetadata: params.generationMetadata || null,
         })
         .returning();
 

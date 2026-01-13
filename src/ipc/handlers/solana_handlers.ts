@@ -632,14 +632,26 @@ export function registerSolanaHandlers() {
     "solana-init-project",
     async (
       _,
-      params: { projectName: string; parentPath: string },
+      params: {
+        projectName: string;
+        parentPath: string;
+        nlPrompt?: string;
+        generationMetadata?: {
+          model: string;
+          generationTime: number;
+          phasesCompleted: { document: boolean; plan: boolean; act: boolean };
+          createdAt: string;
+          targetBlockchain: string;
+          promptLength: number;
+        };
+      },
     ): Promise<{
       success: boolean;
       output: string;
       error?: string;
       appId?: number;
     }> => {
-      const { projectName, parentPath } = params;
+      const { projectName, parentPath, nlPrompt, generationMetadata } = params;
       const fullParentPath = getDyadAppPath(parentPath);
 
       logger.info(
@@ -761,6 +773,9 @@ export function registerSolanaHandlers() {
                 .values({
                   name: projectName,
                   path: projectPath,
+                  isContractProject: true,
+                  nlPrompt: nlPrompt || null,
+                  generationMetadata: generationMetadata || null,
                 })
                 .returning();
 

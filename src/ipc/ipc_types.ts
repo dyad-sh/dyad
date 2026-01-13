@@ -702,6 +702,26 @@ export interface TelemetryEventPayload {
   properties?: Record<string, unknown>;
 }
 
+// --- Smart Contract Generation Types ---
+export interface GenerationParams {
+  nlPrompt: string; // Natural language description of the contract
+  targetBlockchain: string; // Target blockchain (sui_move, solana_rust, solidity)
+  projectName: string; // Name for the generated project
+}
+
+export interface GenerationMetadata {
+  model: string; // AI model used for generation
+  generationTime: number; // Time taken in milliseconds
+  phasesCompleted: {
+    document: boolean;
+    plan: boolean;
+    act: boolean;
+  };
+  createdAt: string; // ISO timestamp of generation
+  targetBlockchain: string; // Target blockchain used
+  promptLength: number; // Length of the NL prompt
+}
+
 // --- Shinso Transpiler Types ---
 export interface TranspileContractParams {
   code: string;

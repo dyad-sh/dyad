@@ -306,6 +306,7 @@ export const UserSettingsSchema = z.object({
   enableProSaverMode: z.boolean().optional(),
   dyadProBudget: DyadProBudgetSchema.optional(),
   runtimeMode: RuntimeModeSchema.optional(),
+  hideLocalAgentNewChatToast: z.boolean().optional(),
 });
 
 /**

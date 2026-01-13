@@ -15,6 +15,9 @@ import type { ChatMode } from "@/lib/schemas";
 import { isDyadProEnabled } from "@/lib/schemas";
 import { cn } from "@/lib/utils";
 import { detectIsMac } from "@/hooks/useChatModeToggle";
+import { useRouterState } from "@tanstack/react-router";
+import { toast } from "sonner";
+import { LocalAgentNewChatToast } from "./LocalAgentNewChatToast";
 
 function ExperimentalBadge() {
   return (
@@ -26,12 +29,34 @@ function ExperimentalBadge() {
 
 export function ChatModeSelector() {
   const { settings, updateSettings } = useSettings();
+  const routerState = useRouterState();
+  const isChatRoute = routerState.location.pathname === "/chat";
 
   const selectedMode = settings?.selectedChatMode || "build";
   const isProEnabled = settings ? isDyadProEnabled(settings) : false;
 
   const handleModeChange = (value: string) => {
-    updateSettings({ selectedChatMode: value as ChatMode });
+    const newMode = value as ChatMode;
+    updateSettings({ selectedChatMode: newMode });
+
+    // Show toast when switching to local-agent mode on chat page
+    if (
+      newMode === "local-agent" &&
+      isChatRoute &&
+      !settings?.hideLocalAgentNewChatToast
+    ) {
+      toast.custom(
+        (t) => (
+          <LocalAgentNewChatToast
+            toastId={t}
+            onNeverShowAgain={() => {
+              updateSettings({ hideLocalAgentNewChatToast: true });
+            }}
+          />
+        ),
+        { duration: 8000 },
+      );
+    }
   };
 
   const getModeDisplayName = (mode: ChatMode) => {

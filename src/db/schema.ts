@@ -68,6 +68,19 @@ export const apps = sqliteTable("apps", {
     Record<string, any>
   >(), // Chain-specific deployment data
   deployedAt: integer("deployed_at", { mode: "timestamp" }), // Deployment timestamp
+  // Natural language contract generation fields
+  nlPrompt: text("nl_prompt"), // Original NL description used to generate the contract
+  generationMetadata: text("generation_metadata", { mode: "json" }).$type<{
+    model?: string; // Model used for generation
+    generatedAt?: number; // Generation timestamp (unix epoch)
+    targetBlockchain?: string; // Target blockchain (sui_move, solana_rust, solidity)
+    phases?: {
+      document?: { status: string; completedAt?: number };
+      plan?: { status: string; completedAt?: number };
+      act?: { status: string; completedAt?: number };
+    };
+    regenerationCount?: number; // Number of times regenerated
+  } | null>(), // Generation metadata for NL-to-contract feature
 });
 
 export const chats = sqliteTable("chats", {

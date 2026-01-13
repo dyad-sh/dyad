@@ -155,6 +155,13 @@
       "when": 1767951260264,
       "tag": "0021_sticky_patriot",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1768305162731,
+      "tag": "0022_unknown_blade",
+      "breakpoints": true
     }
   ]
 }

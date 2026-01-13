@@ -17,7 +17,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowRight, Loader2, Code2, ArrowLeftRight } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { ArrowRight, Loader2, Code2, ArrowLeftRight, Sparkles } from "lucide-react";
+
+export type ContractMode = 'translate' | 'generate';
 import { FileAttachmentDropdown } from "@/components/chat/FileAttachmentDropdown";
 import { useAttachments } from "@/hooks/useAttachments";
 import { AttachmentsList } from "@/components/chat/AttachmentsList";
@@ -42,6 +45,9 @@ interface MultiChainTranslationCardProps {
 export function MultiChainTranslationCard({
   onTranslate,
 }: MultiChainTranslationCardProps) {
+  // Mode state for dual-mode support (translation vs generation)
+  const [mode, setMode] = useState<ContractMode>('translate');
+
   // Language selection
   const [sourceLanguage, setSourceLanguage] = useState<string>("solidity");
   const [targetLanguage, setTargetLanguage] = useState<string>("sui_move");
@@ -178,12 +184,26 @@ export function MultiChainTranslationCard({
       <CardHeader className="pb-3">
         <div className="flex items-center gap-2">
           <Code2 className="w-5 h-5 text-primary" />
-          <CardTitle>Multi-Chain Smart Contract Translation</CardTitle>
+          <CardTitle>Multi-Chain Smart Contract Studio</CardTitle>
         </div>
         <CardDescription>
-          Translate smart contracts between different blockchain languages and
-          platforms
+          {mode === 'translate'
+            ? 'Translate smart contracts between different blockchain languages and platforms'
+            : 'Generate smart contracts from natural language descriptions'}
         </CardDescription>
+        {/* Mode Tabs */}
+        <Tabs value={mode} onValueChange={(value) => setMode(value as ContractMode)} className="w-full mt-4">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="translate" className="flex items-center gap-2">
+              <ArrowLeftRight className="w-4 h-4" />
+              <span>Translate</span>
+            </TabsTrigger>
+            <TabsTrigger value="generate" className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4" />
+              <span>Generate</span>
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Language Selection */}

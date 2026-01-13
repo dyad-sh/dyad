@@ -139,6 +139,8 @@ export class WebBackend implements IBackendClient {
             appPath: "n/a",
             tempPath: "n/a",
             homePath: "n/a",
+            pnpmVersion: "n/a",
+            nodePath: "n/a",
             env: {},
             networkInterfaces: {},
             telemetryId: "web",
@@ -175,7 +177,13 @@ export class WebBackend implements IBackendClient {
         const { apps } = await this.listApps();
         return apps
             .filter(a => a.name.toLowerCase().includes(searchQuery.toLowerCase()))
-            .map(a => ({ id: a.id, name: a.name, path: a.path, lastModified: new Date(a.updatedAt).getTime() }));
+            .map(a => ({
+                id: a.id,
+                name: a.name,
+                createdAt: new Date(a.createdAt),
+                matchedChatTitle: null,
+                matchedChatMessage: null
+            }));
     }
 
     async deleteApp(appId: number): Promise<void> {
@@ -516,7 +524,7 @@ export class WebBackend implements IBackendClient {
     async syncCapacitor(): Promise<void> { }
     async openIos(): Promise<void> { }
     async openAndroid(): Promise<void> { }
-    async checkProblems(): Promise<ProblemReport> { return { problems: [], missingFiles: [] }; }
+    async checkProblems(): Promise<ProblemReport> { return { problems: [] }; }
 
     async getTemplates(): Promise<Template[]> {
         try {

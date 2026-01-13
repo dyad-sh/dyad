@@ -51,6 +51,7 @@ export interface RespondToAppInputParams {
 
 export interface ListAppsResponse {
   apps: App[];
+  appBasePath: string;
 }
 
 export interface ChatStreamParams {
@@ -179,6 +180,25 @@ export interface NodeSystemInfo {
 }
 
 export interface SystemDebugInfo {
+  os: string;
+  arch: string;
+  release: string;
+  hostname: string;
+  totalmem: number;
+  freemem: number;
+  cpus: any[];
+  uptime: number;
+  shell: string;
+  electronVersion: string;
+  chromeVersion: string;
+  appVersion: string;
+  userDataPath: string;
+  logsPath: string;
+  appPath: string;
+  tempPath: string;
+  homePath: string;
+  env: Record<string, string | undefined>;
+  networkInterfaces: any;
   nodeVersion: string | null;
   pnpmVersion: string | null;
   nodePath: string | null;
@@ -532,12 +552,12 @@ export interface HelpChatResponseError {
 export interface McpServer {
   id: number;
   name: string;
-  transport: string;
-  command?: string | null;
-  args?: string[] | null;
-  cwd?: string | null;
-  envJson?: Record<string, string> | null;
-  url?: string | null;
+  transport: "stdio" | "http";
+  command?: string;
+  args?: string[];
+  cwd?: string;
+  envJson?: Record<string, string>;
+  url?: string;
   enabled: boolean;
   createdAt: number;
   updatedAt: number;

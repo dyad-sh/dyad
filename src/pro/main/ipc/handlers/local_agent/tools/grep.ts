@@ -74,7 +74,7 @@ async function runRipgrep({
       args.push("--glob", `!${excludePat}`);
     }
 
-    args.push(query, ".");
+    args.push("--", query, ".");
 
     const rg = spawn(getRgExecutablePath(), args, { cwd: appPath });
     let buffer = "";

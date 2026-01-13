@@ -55,6 +55,7 @@ export default defineConfig({
     // Define environment variables for web mode
     define: {
         "import.meta.env.VITE_WEB_MODE": JSON.stringify(true),
+        "process.env.DYAD_DEV_PRO_BYPASS": JSON.stringify(process.env.DYAD_DEV_PRO_BYPASS),
         // Don't define URLs here to let src/api/client.ts use dynamic defaults
     },
 

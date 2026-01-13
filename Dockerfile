@@ -32,6 +32,7 @@ COPY src ./src
 COPY assets ./assets
 COPY shared ./shared
 
+ARG DYAD_DEV_PRO_BYPASS
 # Build frontend for production
 RUN npm run web:build
 

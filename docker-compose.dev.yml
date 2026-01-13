@@ -28,6 +28,8 @@ services:
       DATA_DIR: /app/data
       APPS_DIR: /app/projects
       CORS_ORIGIN: "*"
+      # Dyad Pro Dev Mode
+      DYAD_DEV_PRO_BYPASS: "true"
       # AI Provider Keys (from .env)
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}

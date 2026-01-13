@@ -313,11 +313,24 @@ export const UserSettingsSchema = z.object({
  */
 export type UserSettings = z.infer<typeof UserSettingsSchema>;
 
+/**
+ * Check if Dyad Pro is enabled
+ * In development mode (DYAD_DEV_PRO_BYPASS=true), bypasses API key check
+ */
 export function isDyadProEnabled(settings: UserSettings): boolean {
+  // Force enable in dev mode if flag is set
+  if (process.env.DYAD_DEV_PRO_BYPASS === 'true' || settings.isTestMode) {
+    return settings.enableDyadPro === true;
+  }
+  
   return settings.enableDyadPro === true && hasDyadProKey(settings);
 }
 
 export function hasDyadProKey(settings: UserSettings): boolean {
+  // Bypass in dev mode
+  if (process.env.DYAD_DEV_PRO_BYPASS === 'true') {
+    return true;
+  }
   return !!settings.providerSettings?.auto?.apiKey?.value;
 }
 

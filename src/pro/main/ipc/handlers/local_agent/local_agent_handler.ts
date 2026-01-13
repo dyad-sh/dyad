@@ -107,14 +107,21 @@ export async function handleLocalAgentStream(
 ): Promise<void> {
   const settings = readSettings();
 
-  // Check Pro status
-  if (!isDyadProEnabled(settings)) {
+  // Check Pro status (bypassed in dev mode)
+  const isProEnabled = isDyadProEnabled(settings);
+  const isDevMode = process.env.DYAD_DEV_PRO_BYPASS === 'true' || settings.isTestMode;
+  
+  if (!isProEnabled && !isDevMode) {
     safeSend(event.sender, "chat:response:error", {
       chatId: req.chatId,
       error:
         "Agent v2 requires Dyad Pro. Please enable Dyad Pro in Settings → Pro.",
     });
     return;
+  }
+  
+  if (isDevMode) {
+    logger.info(`Running in DEV mode - Pro features enabled without key`);
   }
 
   // Get the chat and app

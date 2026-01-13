@@ -13,6 +13,7 @@ services:
       dockerfile: Dockerfile
       args:
         NODE_ENV: production
+        DYAD_DEV_PRO_BYPASS: ${DYAD_DEV_PRO_BYPASS:-false}
     container_name: dyad-web-prod
     restart: unless-stopped
     ports:
@@ -24,6 +25,8 @@ services:
       NODE_ENV: production
       PORT: 3007
       HOST: 0.0.0.0
+      # Dev Pro Bypass (Caution: Enable only for testing)
+      DYAD_DEV_PRO_BYPASS: ${DYAD_DEV_PRO_BYPASS:-false}
       DATA_DIR: /app/data
       APPS_DIR: /app/projects
       CORS_ORIGIN: "*"
@@ -39,7 +42,7 @@ services:
       # Static files directory
       STATIC_DIR: /app/dist-web
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3007/api/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:3007/api/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -66,7 +69,7 @@ services:
       MCP_HTTP_HOST: 0.0.0.0
       DYAD_DB_PATH: /app/data/sqlite.db
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3008/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:3008/health" ]
       interval: 30s
       timeout: 10s
       retries: 3

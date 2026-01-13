@@ -71,6 +71,18 @@ import type {
     VercelDeployment,
     VercelProject,
     Version,
+    ApplyVisualEditingChangesParams,
+    AnalyseComponentParams,
+    AgentTool,
+    SetAgentToolConsentParams,
+    AgentToolConsentRequestPayload,
+    AgentToolConsentResponseParams,
+    AgentTodosUpdatePayload,
+    TelemetryEventPayload,
+    SupabaseOrganizationInfo,
+    DeleteSupabaseOrganizationParams,
+    SupabaseProject,
+    SupabaseLog,
 } from "./ipc_types";
 import { Message } from "./ipc_types";
 import { ChatProblemsEvent } from "./ipc_types";
@@ -261,4 +273,25 @@ export interface IBackendClient {
 
     // Portal
     portalMigrateCreate(params: { appId: number }): Promise<{ output: string }>;
+
+    // Visual Editing
+    applyVisualEditingChanges(params: ApplyVisualEditingChangesParams): Promise<void>;
+    analyseComponent(params: AnalyseComponentParams): Promise<{ isDynamic: boolean; hasStaticText: boolean }>;
+    onForceCloseDetected(callback: () => void): () => void;
+
+    // Agent Tools
+    getAgentTools(): Promise<AgentTool[]>;
+    setAgentToolConsent(params: SetAgentToolConsentParams): Promise<void>;
+    onAgentToolConsentRequest(handler: (payload: AgentToolConsentRequestPayload) => void): () => void;
+    respondToAgentConsentRequest(params: AgentToolConsentResponseParams): Promise<void>;
+    onAgentTodosUpdate(handler: (payload: AgentTodosUpdatePayload) => void): () => void;
+    onChatStreamStart(handler: (payload: { chatId: number }) => void): () => void;
+    onChatStreamEnd(handler: (payload: { chatId: number }) => void): () => void;
+    onTelemetryEvent(handler: (payload: TelemetryEventPayload) => void): () => void;
+
+    // Supabase Org Mgmt
+    listSupabaseOrganizations(): Promise<SupabaseOrganizationInfo[]>;
+    deleteSupabaseOrganization(params: DeleteSupabaseOrganizationParams): Promise<void>;
+    listAllSupabaseProjects(): Promise<SupabaseProject[]>;
+    getSupabaseEdgeLogs(params: { projectId: string; functionSlug: string }): Promise<SupabaseLog[]>;
 }

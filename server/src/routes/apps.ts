@@ -29,6 +29,8 @@ interface RunningApp {
     port: number;
     dir: string;
     startTime: number;
+    lastOutput: string[];
+    lastError: string[];
 }
 
 const runningApps = new Map<number, RunningApp>();
@@ -591,11 +593,31 @@ router.post("/:id/run", async (req, res, next) => {
                 console.log(`[WebBackend] Starting dev server for app ${id} on port ${port}`);
                 console.log(`[WebBackend] 🌐 Direct access: http://localhost:${port}`);
                 console.log(`[WebBackend] 🔗 Public access: ${getAppPreviewUrl(appId, port, req)}`);
+
+                // Capture output for debugging
+                const lastOutput: string[] = [];
+                const lastError: string[] = [];
+                const MAX_LOG_LINES = 50;
+
                 // "next dev" expects -p PORT
                 const devProcess = spawn('npm', ['run', 'dev', '--', '-p', String(port)], {
                     cwd: targetDir,
                     shell: true,
-                    stdio: 'inherit' // For now let's pipe to stdout to see logs
+                    stdio: ['ignore', 'pipe', 'pipe'] // Capture stdout and stderr
+                });
+
+                devProcess.stdout?.on('data', (data) => {
+                    const line = data.toString();
+                    console.log(`[App ${id}] ${line}`);
+                    lastOutput.push(line);
+                    if (lastOutput.length > MAX_LOG_LINES) lastOutput.shift();
+                });
+
+                devProcess.stderr?.on('data', (data) => {
+                    const line = data.toString();
+                    console.error(`[App ${id} ERR] ${line}`);
+                    lastError.push(line);
+                    if (lastError.length > MAX_LOG_LINES) lastError.shift();
                 });
 
                 devProcess.on('error', (err) => {
@@ -603,8 +625,11 @@ router.post("/:id/run", async (req, res, next) => {
                     runningApps.delete(appId);
                 });
 
-                devProcess.on('exit', (code) => {
-                    console.log(`[WebBackend] App ${id} exited with code ${code}`);
+                devProcess.on('exit', (code, signal) => {
+                    console.log(`[WebBackend] App ${id} exited with code ${code}, signal ${signal}`);
+                    if (lastError.length > 0) {
+                        console.error(`[WebBackend] App ${id} last errors:\n${lastError.join('')}`);
+                    }
                     runningApps.delete(appId);
                 });
 
@@ -617,7 +642,9 @@ router.post("/:id/run", async (req, res, next) => {
                     process: devProcess,
                     port,
                     dir: targetDir,
-                    startTime: Date.now()
+                    startTime: Date.now(),
+                    lastOutput,
+                    lastError
                 });
 
                 return {
@@ -723,6 +750,94 @@ router.post("/:id/stop", async (req, res, next) => {
     }
 });
 
+
+/**
+ * GET /api/apps/:id/status
+ * Check if an app is running and get its status
+ */
+router.get("/:id/status", async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const appId = Number(id);
+
+        const running = runningApps.get(appId);
+        const starting = startingApps.has(appId);
+
+        if (starting) {
+            res.json({
+                success: true,
+                data: {
+                    status: 'starting',
+                    message: 'App is currently starting...'
+                }
+            });
+            return;
+        }
+
+        if (!running) {
+            res.json({
+                success: true,
+                data: {
+                    status: 'stopped',
+                    message: 'App is not running'
+                }
+            });
+            return;
+        }
+
+        // Check if process is still alive
+        const isAlive = running.process.pid && !running.process.killed;
+        const uptime = Date.now() - running.startTime;
+
+        res.json({
+            success: true,
+            data: {
+                status: isAlive ? 'running' : 'crashed',
+                port: running.port,
+                processId: running.process.pid,
+                uptime: Math.floor(uptime / 1000),
+                uptimeFormatted: `${Math.floor(uptime / 60000)}m ${Math.floor((uptime % 60000) / 1000)}s`,
+                previewUrl: getAppPreviewUrl(appId, running.port, req),
+                lastOutput: running.lastOutput.slice(-10),
+                lastError: running.lastError.slice(-10)
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+
+/**
+ * GET /api/apps/running/list
+ * List all running apps
+ */
+router.get("/running/list", async (req, res, next) => {
+    try {
+        const apps: any[] = [];
+        for (const [appId, running] of runningApps.entries()) {
+            const isAlive = running.process.pid && !running.process.killed;
+            apps.push({
+                appId,
+                status: isAlive ? 'running' : 'crashed',
+                port: running.port,
+                processId: running.process.pid,
+                uptime: Math.floor((Date.now() - running.startTime) / 1000),
+                previewUrl: getAppPreviewUrl(appId, running.port, req)
+            });
+        }
+
+        res.json({
+            success: true,
+            data: {
+                count: apps.length,
+                apps
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+});
 
 /**
  * POST /api/apps/:id/copy

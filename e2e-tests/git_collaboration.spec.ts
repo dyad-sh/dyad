@@ -1,5 +1,5 @@
 import { expect } from "@playwright/test";
-import { test } from "./helpers/test_helper";
+import { test, Timeout } from "./helpers/test_helper";
 import fs from "fs";
 import path from "path";
 import { execSync } from "child_process";
@@ -22,7 +22,7 @@ test.describe("Git Collaboration", () => {
 
     // Wait for repo to be connected
     await expect(po.page.getByTestId("github-connected-repo")).toBeVisible({
-      timeout: 20000,
+      timeout: Timeout.MEDIUM,
     });
     await po.githubConnector.snapshotConnectedRepo();
 
@@ -70,6 +70,16 @@ test.describe("Git Collaboration", () => {
     await expect(po.page.getByTestId("current-branch-display")).toHaveText(
       featureBranch2,
     );
+
+    {
+      const appPath = await po.getCurrentAppPath();
+      if (!appPath) throw new Error("App path not found");
+      const gitStatus = execSync("git status --porcelain", {
+        cwd: appPath,
+        encoding: "utf8",
+      }).trim();
+      expect(gitStatus).toBe("");
+    }
 
     // 3. Rename Branch
     // Switch back to main first since we can't rename the branch we're currently on

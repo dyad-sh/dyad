@@ -1,0 +1,309 @@
+import { ipcMain, IpcMainInvokeEvent } from "electron";
+import { readSettings } from "../../main/settings";
+import {
+  gitMergeAbort,
+  gitFetch,
+  gitCreateBranch,
+  gitDeleteBranch,
+  gitCheckout,
+  gitMerge,
+  gitCurrentBranch,
+  gitListBranches,
+  gitListRemoteBranches,
+  gitRenameBranch,
+  GitStateError,
+  GIT_ERROR_CODES,
+  isGitMergeInProgress,
+  isGitRebaseInProgress,
+} from "../utils/git_utils";
+import { getDyadAppPath } from "../../paths/paths";
+import { db } from "../../db";
+import { apps } from "../../db/schema";
+import { eq } from "drizzle-orm";
+import log from "electron-log";
+import { withLock } from "../utils/lock_utils";
+import { updateAppGithubRepo, ensureCleanWorkspace } from "./github_handlers";
+
+const logger = log.scope("git_branch_handlers");
+
+async function handleAbortMerge(
+  event: IpcMainInvokeEvent,
+  { appId }: { appId: number },
+): Promise<void> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
+
+  await gitMergeAbort({ path: appPath });
+}
+
+// --- GitHub Fetch Handler ---
+async function handleFetchFromGithub(
+  event: IpcMainInvokeEvent,
+  { appId }: { appId: number },
+): Promise<void> {
+  const settings = readSettings();
+  const accessToken = settings.githubAccessToken?.value;
+  if (!accessToken) {
+    throw new Error("Not authenticated with GitHub.");
+  }
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app || !app.githubOrg || !app.githubRepo) {
+    throw new Error("App is not linked to a GitHub repo.");
+  }
+  const appPath = getDyadAppPath(app.path);
+
+  await gitFetch({
+    path: appPath,
+    remote: "origin",
+    accessToken,
+  });
+}
+
+// --- GitHub Branch Handlers ---
+async function handleCreateBranch(
+  event: IpcMainInvokeEvent,
+  { appId, branch, from }: { appId: number; branch: string; from?: string },
+): Promise<void> {
+  // Validate branch name
+  if (!branch || branch.length === 0 || branch.length > 255) {
+    throw new Error("Branch name must be between 1 and 255 characters");
+  }
+  if (!/^[a-zA-Z0-9/_.-]+$/.test(branch) || /\.\./.test(branch)) {
+    throw new Error("Branch name contains invalid characters");
+  }
+  if (
+    branch.startsWith("-") ||
+    branch === "HEAD" ||
+    branch.endsWith(".") ||
+    branch.endsWith(".lock") ||
+    branch.startsWith("/") ||
+    branch.endsWith("/") ||
+    branch.includes("@{")
+  ) {
+    throw new Error("Invalid branch name");
+  }
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
+
+  await gitCreateBranch({
+    path: appPath,
+    branch,
+    from,
+  });
+}
+
+async function handleDeleteBranch(
+  event: IpcMainInvokeEvent,
+  { appId, branch }: { appId: number; branch: string },
+): Promise<void> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
+
+  await gitDeleteBranch({
+    path: appPath,
+    branch,
+  });
+}
+
+async function handleSwitchBranch(
+  event: IpcMainInvokeEvent,
+  { appId, branch }: { appId: number; branch: string },
+): Promise<void> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
+
+  // Check for merge or rebase in progress before attempting to switch
+  // This provides structured error codes instead of relying on string matching
+  if (isGitMergeInProgress({ path: appPath })) {
+    throw GitStateError(
+      "Cannot switch branches: merge in progress. Please complete or abort the merge first.",
+      GIT_ERROR_CODES.MERGE_IN_PROGRESS,
+    );
+  }
+
+  if (isGitRebaseInProgress({ path: appPath })) {
+    throw GitStateError(
+      "Cannot switch branches: rebase in progress. Please complete or abort the rebase first.",
+      GIT_ERROR_CODES.REBASE_IN_PROGRESS,
+    );
+  }
+
+  // Check for uncommitted changes
+  await withLock(appId, async () => {
+    await ensureCleanWorkspace(appPath, `switching to branch '${branch}'`);
+  });
+  try {
+    await gitCheckout({
+      path: appPath,
+      ref: branch,
+    });
+  } catch (checkoutError: any) {
+    const errorMessage = checkoutError?.message || "Failed to switch branch.";
+    // Check if error is about uncommitted changes (fallback in case check above missed it)
+    const lowerMessage = errorMessage.toLowerCase();
+    if (
+      lowerMessage.includes("local changes") ||
+      lowerMessage.includes("would be overwritten") ||
+      lowerMessage.includes("please commit or stash")
+    ) {
+      throw new Error(
+        `Failed to switch branch: uncommitted changes detected. ` +
+          "Please commit or stash your changes manually and try again.",
+      );
+    }
+    throw checkoutError;
+  }
+
+  // Update DB with new branch
+  await updateAppGithubRepo({
+    appId,
+    org: app.githubOrg || undefined,
+    repo: app.githubRepo || "",
+    branch,
+  });
+}
+
+async function handleRenameBranch(
+  event: IpcMainInvokeEvent,
+  {
+    appId,
+    oldBranch,
+    newBranch,
+  }: { appId: number; oldBranch: string; newBranch: string },
+): Promise<void> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
+
+  // Check if we're renaming the current branch BEFORE renaming to avoid race conditions
+  const currentBranch = await gitCurrentBranch({ path: appPath });
+  const isRenamingCurrentBranch = currentBranch === oldBranch;
+
+  await gitRenameBranch({
+    path: appPath,
+    oldBranch,
+    newBranch,
+  });
+
+  // Only update DB if we were on oldBranch before renaming
+  // (git branch -m renames the current branch if we're on it, so HEAD now points to newBranch)
+  if (isRenamingCurrentBranch) {
+    await updateAppGithubRepo({
+      appId,
+      org: app.githubOrg || undefined,
+      repo: app.githubRepo || "",
+      branch: newBranch,
+    });
+  }
+}
+
+// Custom error class for merge conflicts
+class MergeConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "MergeConflictError";
+  }
+}
+
+async function handleMergeBranch(
+  event: IpcMainInvokeEvent,
+  { appId, branch }: { appId: number; branch: string },
+): Promise<void> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
+
+  // Check if branch exists locally, if not, check if it's a remote branch
+  const localBranches = await gitListBranches({ path: appPath });
+  let remoteBranches: string[] = [];
+  try {
+    remoteBranches = await gitListRemoteBranches({
+      path: appPath,
+    });
+  } catch (error: any) {
+    logger.warn(`Failed to list remote branches: ${error.message}`);
+    // Continue with empty remote branches list
+  }
+
+  let mergeBranchRef = branch;
+
+  // If branch doesn't exist locally but exists remotely, use remote ref
+  if (!localBranches.includes(branch) && remoteBranches.includes(branch)) {
+    mergeBranchRef = `origin/${branch}`;
+  }
+
+  // Check for uncommitted changes
+  await withLock(appId, async () => {
+    await ensureCleanWorkspace(appPath, `merging branch '${branch}'`);
+  });
+  try {
+    await gitMerge({
+      path: appPath,
+      branch: mergeBranchRef,
+    });
+  } catch (mergeError: any) {
+    // Convert to MergeConflictError for component compatibility
+    if (mergeError?.name === "GitConflictError") {
+      throw new MergeConflictError(mergeError.message);
+    }
+
+    // Fallback: Check if error is about uncommitted changes
+    const errorMessage = mergeError?.message || "Failed to merge branch.";
+    const lowerMessage = errorMessage.toLowerCase();
+    if (
+      lowerMessage.includes("local changes") ||
+      lowerMessage.includes("would be overwritten") ||
+      lowerMessage.includes("please commit or stash")
+    ) {
+      throw new Error(
+        `Failed to merge branch: uncommitted changes detected. ` +
+          "Please commit or stash your changes manually and try again.",
+      );
+    }
+
+    // Otherwise, throw the original error
+    throw mergeError;
+  }
+}
+
+async function handleListLocalBranches(
+  event: IpcMainInvokeEvent,
+  { appId }: { appId: number },
+): Promise<{ branches: string[]; current: string | null }> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
+
+  const branches = await gitListBranches({ path: appPath });
+  const current = await gitCurrentBranch({ path: appPath });
+  return { branches, current: current || null };
+}
+
+async function handleListRemoteBranches(
+  event: IpcMainInvokeEvent,
+  { appId, remote = "origin" }: { appId: number; remote?: string },
+): Promise<string[]> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
+
+  const branches = await gitListRemoteBranches({ path: appPath, remote });
+  return branches;
+}
+
+// --- Registration ---
+export function registerGithubBranchHandlers() {
+  ipcMain.handle("github:merge-abort", handleAbortMerge);
+  ipcMain.handle("github:fetch", handleFetchFromGithub);
+  ipcMain.handle("github:create-branch", handleCreateBranch);
+  ipcMain.handle("github:delete-branch", handleDeleteBranch);
+  ipcMain.handle("github:switch-branch", handleSwitchBranch);
+  ipcMain.handle("github:rename-branch", handleRenameBranch);
+  ipcMain.handle("github:merge-branch", handleMergeBranch);
+  ipcMain.handle("github:list-local-branches", handleListLocalBranches);
+  ipcMain.handle("github:list-remote-branches", handleListRemoteBranches);
+}

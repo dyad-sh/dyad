@@ -65,7 +65,8 @@ export function MultiChainTranslationCard({
   const [isTranslating, setIsTranslating] = useState(false);
   const [toolchainSetup, setToolchainSetup] = useState(false);
 
-  // Constants for NL description
+  // Constants for NL description validation
+  const NL_DESCRIPTION_MIN_LENGTH = 10;
   const NL_DESCRIPTION_MAX_LENGTH = 2000;
 
   const { attachments, handleFileSelect, removeAttachment, clearAttachments } =
@@ -83,6 +84,27 @@ export function MultiChainTranslationCard({
     const pairs = getSupportedTargets(sourceLanguage);
     return pairs.find((p) => p.target === targetLanguage);
   }, [sourceLanguage, targetLanguage]);
+
+  // NL description validation
+  const nlDescriptionValidation = useMemo(() => {
+    const trimmed = nlDescription.trim();
+    if (trimmed.length === 0) {
+      return { isValid: false, error: null }; // Don't show error for empty field
+    }
+    if (trimmed.length < NL_DESCRIPTION_MIN_LENGTH) {
+      return {
+        isValid: false,
+        error: `Description must be at least ${NL_DESCRIPTION_MIN_LENGTH} characters`
+      };
+    }
+    if (nlDescription.length > NL_DESCRIPTION_MAX_LENGTH) {
+      return {
+        isValid: false,
+        error: `Description exceeds maximum length of ${NL_DESCRIPTION_MAX_LENGTH} characters`
+      };
+    }
+    return { isValid: true, error: null };
+  }, [nlDescription]);
 
   // Handle source language change
   const handleSourceChange = (newSource: string) => {
@@ -389,12 +411,12 @@ export function MultiChainTranslationCard({
               placeholder="Describe the smart contract you want to generate in natural language...\n\nExample: Create an ERC-20 token with a maximum supply of 1 million tokens, transfer fees of 2%, and an owner-only pause function."
               value={nlDescription}
               onChange={(e) => setNlDescription(e.target.value)}
-              className="min-h-[200px] text-sm"
+              className={`min-h-[200px] text-sm ${nlDescriptionValidation.error ? 'border-destructive focus-visible:ring-destructive' : ''}`}
               disabled={isTranslating}
             />
-            {nlDescription.length > NL_DESCRIPTION_MAX_LENGTH && (
-              <p className="text-xs text-destructive">
-                Description exceeds maximum length of {NL_DESCRIPTION_MAX_LENGTH} characters
+            {nlDescriptionValidation.error && (
+              <p className="text-xs text-destructive" data-testid="nl-description-error">
+                {nlDescriptionValidation.error}
               </p>
             )}
           </div>
@@ -483,7 +505,7 @@ export function MultiChainTranslationCard({
               onClick={handleGenerate}
               disabled={
                 !nlDescription.trim() ||
-                nlDescription.length > NL_DESCRIPTION_MAX_LENGTH ||
+                !nlDescriptionValidation.isValid ||
                 isTranslating ||
                 !targetLanguage ||
                 !toolchainSetup ||

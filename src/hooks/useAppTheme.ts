@@ -12,7 +12,7 @@ export function useAppTheme(appId: number | undefined) {
   const query = useQuery({
     queryKey: APP_THEME_QUERY_KEY(appId),
     queryFn: async (): Promise<string | null> => {
-      return IpcClient.getInstance().getAppTheme(appId!);
+      return IpcClient.getInstance().getAppTheme({ appId: appId! });
     },
     enabled: !!appId,
     staleTime: 30000,

@@ -2,8 +2,11 @@ export interface Theme {
   id: string;
   name: string;
   description: string;
+  icon: string;
   prompt: string;
 }
+
+export const DEFAULT_THEME_ID = "default";
 
 const DEFAULT_THEME_PROMPT = `
 <theme>
@@ -24,7 +27,7 @@ All the rules are critical and must be strictly followed, otherwise it's a failu
 - Establish a clear and confident color system.
 - Centralize colors through variables to maintain consistency.
 - Avoid using gradient backgrounds.
-- Avoid using black as the primary color.Aim for colorful websites.
+- Avoid using black as the primary color. Aim for colorful websites.
 #### Motion & Interaction
 - Apply motion with restraint and purpose.
 - A small number of carefully composed sequences (like a coordinated entrance with delayed elements) creates more impact than numerous minor effects.
@@ -63,6 +66,7 @@ export const themesData: Theme[] = [
     name: "Default Theme",
     description:
       "Balanced design system emphasizing aesthetics, contrast, and functionality.",
+    icon: "palette",
     prompt: DEFAULT_THEME_PROMPT,
   },
 ];

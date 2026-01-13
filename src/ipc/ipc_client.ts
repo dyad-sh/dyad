@@ -86,6 +86,8 @@ import type {
   TelemetryEventPayload,
   GithubSyncOptions,
   ConsoleEntry,
+  SetAppThemeParams,
+  GetAppThemeParams,
 } from "./ipc_types";
 import type { Template } from "../shared/templates";
 import type { Theme } from "../shared/themes";
@@ -1620,15 +1622,12 @@ export class IpcClient {
     return this.ipcRenderer.invoke("get-themes");
   }
 
-  public async setAppTheme(params: {
-    appId: number;
-    themeId: string | null;
-  }): Promise<void> {
+  public async setAppTheme(params: SetAppThemeParams): Promise<void> {
     await this.ipcRenderer.invoke("set-app-theme", params);
   }
 
-  public async getAppTheme(appId: number): Promise<string | null> {
-    return this.ipcRenderer.invoke("get-app-theme", { appId });
+  public async getAppTheme(params: GetAppThemeParams): Promise<string | null> {
+    return this.ipcRenderer.invoke("get-app-theme", params);
   }
 
   // --- Prompts Library ---

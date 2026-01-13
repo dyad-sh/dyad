@@ -5,6 +5,7 @@ import {
   ChartColumnIncreasing,
   Palette,
   Check,
+  Ban,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -16,6 +17,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { ContextFilesPicker } from "@/components/ContextFilesPicker";
 import { FileAttachmentDropdown } from "./FileAttachmentDropdown";
@@ -116,6 +122,7 @@ export function AuxiliaryActionsMenu({
               data-testid="theme-option-none"
             >
               <div className="flex items-center w-full">
+                <Ban size={16} className="mr-2 text-muted-foreground" />
                 <span className="flex-1">No Theme</span>
                 {currentThemeId === null && (
                   <Check size={16} className="text-primary ml-2" />
@@ -127,19 +134,31 @@ export function AuxiliaryActionsMenu({
             {themes?.map((theme) => {
               const isSelected = currentThemeId === theme.id;
               return (
-                <DropdownMenuItem
-                  key={theme.id}
-                  onClick={() => handleThemeSelect(theme.id)}
-                  className={`py-2 px-3 ${isSelected ? "bg-primary/10" : ""}`}
-                  data-testid={`theme-option-${theme.id}`}
-                >
-                  <div className="flex items-center w-full">
-                    <span className="flex-1">{theme.name}</span>
-                    {isSelected && (
-                      <Check size={16} className="text-primary ml-2" />
-                    )}
-                  </div>
-                </DropdownMenuItem>
+                <Tooltip key={theme.id}>
+                  <TooltipTrigger asChild>
+                    <DropdownMenuItem
+                      onClick={() => handleThemeSelect(theme.id)}
+                      className={`py-2 px-3 ${isSelected ? "bg-primary/10" : ""}`}
+                      data-testid={`theme-option-${theme.id}`}
+                    >
+                      <div className="flex items-center w-full">
+                        {theme.icon === "palette" && (
+                          <Palette
+                            size={16}
+                            className="mr-2 text-muted-foreground"
+                          />
+                        )}
+                        <span className="flex-1">{theme.name}</span>
+                        {isSelected && (
+                          <Check size={16} className="text-primary ml-2" />
+                        )}
+                      </div>
+                    </DropdownMenuItem>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">
+                    {theme.description}
+                  </TooltipContent>
+                </Tooltip>
               );
             })}
           </DropdownMenuSubContent>

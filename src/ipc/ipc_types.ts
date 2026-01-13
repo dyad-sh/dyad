@@ -735,3 +735,13 @@ export interface TelemetryEventPayload {
   eventName: string;
   properties?: Record<string, unknown>;
 }
+
+// --- Theme Types ---
+export interface SetAppThemeParams {
+  appId: number;
+  themeId: string | null;
+}
+
+export interface GetAppThemeParams {
+  appId: number;
+}

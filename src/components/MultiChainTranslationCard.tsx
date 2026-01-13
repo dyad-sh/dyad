@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowRight, Loader2, Code2, ArrowLeftRight, Sparkles } from "lucide-react";
 
 export type ContractMode = 'translate' | 'generate';
@@ -55,8 +55,12 @@ export function MultiChainTranslationCard({
   // Form state
   const [code, setCode] = useState("");
   const [projectName, setProjectName] = useState("");
+  const [nlDescription, setNlDescription] = useState("");
   const [isTranslating, setIsTranslating] = useState(false);
   const [toolchainSetup, setToolchainSetup] = useState(false);
+
+  // Constants for NL description
+  const NL_DESCRIPTION_MAX_LENGTH = 2000;
 
   const { attachments, handleFileSelect, removeAttachment, clearAttachments } =
     useAttachments();
@@ -117,6 +121,7 @@ export function MultiChainTranslationCard({
       );
       setCode("");
       setProjectName("");
+      setNlDescription("");
       clearAttachments();
     } catch (error) {
       console.error("Translation failed:", error);
@@ -308,27 +313,57 @@ export function MultiChainTranslationCard({
           />
         </div>
 
-        {/* Code Input */}
-        <div className="space-y-2">
-          <Label htmlFor="source-code">
-            {sourceLang?.displayName || "Source"} Code
-          </Label>
-          <Textarea
-            id="source-code"
-            placeholder={`// Paste your ${sourceLang?.displayName || "source"} code here...\n// or upload ${sourceLang?.fileExtension || ""} files`}
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            className="min-h-[200px] font-mono text-sm"
-            disabled={isTranslating}
-          />
-
-          {attachments.length > 0 && (
-            <AttachmentsList
-              attachments={attachments}
-              onRemove={removeAttachment}
+        {/* NL Description Input (Generate Mode) */}
+        {mode === 'generate' && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="nl-description">
+                Contract Description
+              </Label>
+              <span className={`text-xs ${nlDescription.length > NL_DESCRIPTION_MAX_LENGTH ? 'text-destructive' : 'text-muted-foreground'}`}>
+                {nlDescription.length}/{NL_DESCRIPTION_MAX_LENGTH}
+              </span>
+            </div>
+            <Textarea
+              id="nl-description"
+              data-testid="nl-description-textarea"
+              placeholder="Describe the smart contract you want to generate in natural language...\n\nExample: Create an ERC-20 token with a maximum supply of 1 million tokens, transfer fees of 2%, and an owner-only pause function."
+              value={nlDescription}
+              onChange={(e) => setNlDescription(e.target.value)}
+              className="min-h-[200px] text-sm"
+              disabled={isTranslating}
             />
-          )}
-        </div>
+            {nlDescription.length > NL_DESCRIPTION_MAX_LENGTH && (
+              <p className="text-xs text-destructive">
+                Description exceeds maximum length of {NL_DESCRIPTION_MAX_LENGTH} characters
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Code Input (Translate Mode) */}
+        {mode === 'translate' && (
+          <div className="space-y-2">
+            <Label htmlFor="source-code">
+              {sourceLang?.displayName || "Source"} Code
+            </Label>
+            <Textarea
+              id="source-code"
+              placeholder={`// Paste your ${sourceLang?.displayName || "source"} code here...\n// or upload ${sourceLang?.fileExtension || ""} files`}
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              className="min-h-[200px] font-mono text-sm"
+              disabled={isTranslating}
+            />
+
+            {attachments.length > 0 && (
+              <AttachmentsList
+                attachments={attachments}
+                onRemove={removeAttachment}
+              />
+            )}
+          </div>
+        )}
         {!toolchainSetup && (
           <div className="max-w-3xl mx-auto mt-4 py-2 px-3 text-sm bg-red-100 border border-red-200 rounded-lg dark:bg-red-800/10 dark:border-red-900">
             {targetLang.displayName} compiler is required but not installed on

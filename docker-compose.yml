@@ -1,71 +1,114 @@
-version: '3.8'
-
-networks:
-  coolify:
-    external: true
-
 services:
-  # The main Node.js backend
   dyad-web:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: dyad-web
+    container_name: dyad-web-u0s4g4kwowsgg48gckoko8gw-174347525851
     restart: unless-stopped
-    # ports:
-    #  - "3007:3007"
     networks:
-      - coolify
+      coolify: null
+      u0s4g4kwowsgg48gckoko8gw: null
     volumes:
-      - dyad-data:/app/data
-      - dyad-projects:/app/projects
+      - 'u0s4g4kwowsgg48gckoko8gw_dyad-data:/app/data'
+      - 'u0s4g4kwowsgg48gckoko8gw_dyad-projects:/app/projects'
     environment:
-      - NODE_ENV=production
-      - PORT=3007
-      - HOST=0.0.0.0
-      - DATA_DIR=/app/data
-      - APPS_DIR=/app/projects
-      - CORS_ORIGIN=*
-      # Database
-      - DATABASE_URL=${DATABASE_URL}
+      NODE_ENV: production
+      PORT: '3007'
+      HOST: 0.0.0.0
+      DATA_DIR: /app/data
+      APPS_DIR: /app/projects
+      CORS_ORIGIN: '*'
+      DATABASE_URL: '${DATABASE_URL}'
+      COOLIFY_BRANCH: '"main"'
+      COOLIFY_RESOURCE_UUID: u0s4g4kwowsgg48gckoko8gw
+      COOLIFY_CONTAINER_NAME: dyad-web-u0s4g4kwowsgg48gckoko8gw-174347525851
+      SERVICE_URL_DYAD_WEB: 'https://dyad1.ty-dev.site'
+      SERVICE_FQDN_DYAD_WEB: dyad1.ty-dev.site
+      COOLIFY_URL: 'https://dyad1.ty-dev.site'
+      COOLIFY_FQDN: dyad1.ty-dev.site
+      SERVICE_NAME_DYAD_WEB: dyad-web
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:3007/api/health" ]
+      test:
+        - CMD
+        - curl
+        - '-f'
+        - 'http://localhost:3007/api/health'
       interval: 30s
       timeout: 10s
       retries: 3
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - 'host.docker.internal:host-gateway'
     labels:
-      - "traefik.enable=true"
-      # Router: dyad-apps (Subdomains)
-      - "traefik.http.routers.dyad-apps.rule=HostRegexp(`^app-dyad-[0-9]+\\.ty-dev\\.site$`)"
-      - "traefik.http.routers.dyad-apps.entrypoints=https"
-      - "traefik.http.routers.dyad-apps.tls=true"
-      - "traefik.http.routers.dyad-apps.middlewares=dyad-apps-headers"
-      - "traefik.http.routers.dyad-apps.service=dyad-web"
-      - "traefik.http.services.dyad-web.loadbalancer.server.port=3007"
-
-      # Middleware: Headers
-      - "traefik.http.middlewares.dyad-apps-headers.headers.customrequestheaders.X-Forwarded-Proto=https"
-      - "traefik.http.middlewares.dyad-apps-headers.headers.customresponseheaders.Access-Control-Allow-Origin=*"
-      - "traefik.http.middlewares.dyad-apps-headers.headers.customresponseheaders.Access-Control-Allow-Methods=GET,POST,PUT,DELETE,OPTIONS"
-      - "traefik.http.middlewares.dyad-apps-headers.headers.customresponseheaders.Access-Control-Allow-Headers=Content-Type,Authorization"
-      - "traefik.http.middlewares.dyad-apps-headers.headers.customresponseheaders.Content-Security-Policy=frame-ancestors *"
-      - "traefik.http.middlewares.dyad-apps-headers.headers.framedeny=false"
-
-      # Router: dyad-ws (WebSocket/Main Domain)
-      - "traefik.http.routers.dyad-ws.rule=Host(`dyad1.ty-dev.site`) && PathPrefix(`/ws/`)"
-      - "traefik.http.routers.dyad-ws.priority=1000"
-      - "traefik.http.routers.dyad-ws.entrypoints=https"
-      - "traefik.http.routers.dyad-ws.tls=true"
-
-      # Router: dyad-web-root (Main Domain HTTP)
-      - "traefik.http.routers.dyad-web-root.rule=Host(`dyad1.ty-dev.site`)"
-      - "traefik.http.routers.dyad-web-root.entrypoints=https"
-      - "traefik.http.routers.dyad-web-root.tls=true"
-
+      - traefik.enable=true
+      # App Subdomains Router
+      - 'traefik.http.routers.dyad-apps.rule=HostRegexp(`{subdomain:app-dyad-[0-9]+}.ty-dev.site`)'
+      - traefik.http.routers.dyad-apps.entrypoints=https
+      - traefik.http.routers.dyad-apps.tls=true
+      - traefik.http.routers.dyad-apps.middlewares=dyad-apps-headers
+      - traefik.http.routers.dyad-apps.service=dyad-web
+      - traefik.http.services.dyad-web.loadbalancer.server.port=3007
+      # Headers Middleware
+      - traefik.http.middlewares.dyad-apps-headers.headers.customrequestheaders.X-Forwarded-Proto=https
+      - 'traefik.http.middlewares.dyad-apps-headers.headers.customresponseheaders.Access-Control-Allow-Origin=*'
+      - 'traefik.http.middlewares.dyad-apps-headers.headers.customresponseheaders.Access-Control-Allow-Methods=GET,POST,PUT,DELETE,OPTIONS'
+      - 'traefik.http.middlewares.dyad-apps-headers.headers.customresponseheaders.Access-Control-Allow-Headers=Content-Type,Authorization'
+      - 'traefik.http.middlewares.dyad-apps-headers.headers.customresponseheaders.Content-Security-Policy=frame-ancestors *'
+      - traefik.http.middlewares.dyad-apps-headers.headers.framedeny=false
+      # WebSocket Router
+      - 'traefik.http.routers.dyad-ws.rule=Host(`dyad1.ty-dev.site`) && PathPrefix(`/ws/`)'
+      - traefik.http.routers.dyad-ws.priority=1000
+      - traefik.http.routers.dyad-ws.entrypoints=https
+      - traefik.http.routers.dyad-ws.tls=true
+      - traefik.http.routers.dyad-ws.service=dyad-web
+      # Main Domain Router
+      - traefik.http.routers.dyad-web-root.rule=Host(`dyad1.ty-dev.site`)
+      - traefik.http.routers.dyad-web-root.entrypoints=https
+      - traefik.http.routers.dyad-web-root.tls=true
+      - traefik.http.routers.dyad-web-root.service=dyad-web
+      # Coolify labels
+      - coolify.managed=true
+      - coolify.version=4.0.0-beta.460
+      - coolify.applicationId=55
+      - coolify.type=application
+      - coolify.name=dyad-web-u0s4g4kwowsgg48gckoko8gw-174347525851
+      - coolify.resourceName=dyad
+      - coolify.projectName=dyad
+      - coolify.serviceName=dyad
+      - coolify.environmentName=production
+      - coolify.pullRequestId=0
+      # Redirect HTTP to HTTPS
+      - traefik.http.middlewares.gzip.compress=true
+      - traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https
+      - traefik.http.routers.http-0-u0s4g4kwowsgg48gckoko8gw-dyad-web.entryPoints=http
+      - traefik.http.routers.http-0-u0s4g4kwowsgg48gckoko8gw-dyad-web.middlewares=redirect-to-https
+      - 'traefik.http.routers.http-0-u0s4g4kwowsgg48gckoko8gw-dyad-web.rule=Host(`dyad1.ty-dev.site`) && PathPrefix(`/`)'
+      - traefik.http.routers.https-0-u0s4g4kwowsgg48gckoko8gw-dyad-web.entryPoints=https
+      - 'traefik.http.routers.https-0-u0s4g4kwowsgg48gckoko8gw-dyad-web.middlewares=gzip,dyad-apps-headers'
+      - 'traefik.http.routers.https-0-u0s4g4kwowsgg48gckoko8gw-dyad-web.rule=Host(`dyad1.ty-dev.site`) && PathPrefix(`/`)'
+      - traefik.http.routers.https-0-u0s4g4kwowsgg48gckoko8gw-dyad-web.tls.certresolver=letsencrypt
+      - traefik.http.routers.https-0-u0s4g4kwowsgg48gckoko8gw-dyad-web.tls=true
+      - 'caddy_0.encode=zstd gzip'
+      - 'caddy_0.handle_path.0_reverse_proxy={{upstreams}}'
+      - 'caddy_0.handle_path=/*'
+      - caddy_0.header=-Server
+      - 'caddy_0.try_files={path} /index.html /index.php'
+      - 'caddy_0=https://dyad1.ty-dev.site'
+      - caddy_ingress_network=u0s4g4kwowsgg48gckoko8gw
+    env_file:
+      - .env
+    image: 'u0s4g4kwowsgg48gckoko8gw_dyad-web:cb467e8ff89d2a5e549082c6d684dcf5ea1b461a'
 volumes:
   dyad-data:
     driver: local
   dyad-projects:
     driver: local
+  u0s4g4kwowsgg48gckoko8gw_dyad-data:
+    name: u0s4g4kwowsgg48gckoko8gw_dyad-data
+  u0s4g4kwowsgg48gckoko8gw_dyad-projects:
+    name: u0s4g4kwowsgg48gckoko8gw_dyad-projects
+networks:
+  coolify:
+    external: true
+  u0s4g4kwowsgg48gckoko8gw:
+    name: u0s4g4kwowsgg48gckoko8gw
+    external: true

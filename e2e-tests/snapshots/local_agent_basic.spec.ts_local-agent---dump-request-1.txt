@@ -195,6 +195,39 @@
       {
         "type": "function",
         "function": {
+          "name": "grep",
+          "description": "Search for a regex pattern in the codebase using ripgrep.\n\n- Returns matching lines with file paths and line numbers\n- By default, the search is case-insensitive\n- Use include_pattern to filter by file type (e.g. '*.tsx')\n- Use exclude_pattern to skip certain files (e.g. '*.test.ts')",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "description": "The regex pattern to search for"
+              },
+              "include_pattern": {
+                "type": "string",
+                "description": "Glob pattern for files to include (e.g. '*.ts' for TypeScript files)"
+              },
+              "exclude_pattern": {
+                "type": "string",
+                "description": "Glob pattern for files to exclude"
+              },
+              "case_sensitive": {
+                "type": "boolean",
+                "description": "Whether the search should be case sensitive (default: false)"
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
           "name": "set_chat_summary",
           "description": "Set the title/summary for this chat message. You should always call this message at the end of the turn when you have finished calling all the other tools.",
           "parameters": {

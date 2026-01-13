@@ -48,9 +48,9 @@ export function LocalAgentNewChatToast({
 
             {/* Message */}
             <div className="mb-4">
-              <p className="text-sm text-blue-800 dark:text-slate-200 leading-relaxed">
-                For best results with Agent mode, we recommend starting a new
-                chat. This ensures the agent has a clean context to work with.
+              <p className="text-[14px] text-blue-800 dark:text-slate-200 leading-relaxed">
+                <strong>Tip: Create a new chat</strong> to give the agent a
+                clean context for better results.
               </p>
             </div>
 

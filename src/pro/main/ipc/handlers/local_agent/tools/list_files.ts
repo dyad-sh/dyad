@@ -7,6 +7,7 @@ import {
   escapeXmlContent,
 } from "./types";
 import { extractCodebase } from "../../../../../../utils/codebase";
+import { resolveDirectoryWithinAppPath } from "./path_safety";
 
 const listFilesSchema = z.object({
   directory: z.string().optional().describe("Optional subdirectory to list"),
@@ -52,19 +53,19 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
     // Validate directory path to prevent path traversal attacks
     let sanitizedDirectory: string | undefined;
     if (args.directory) {
-      // Resolve the directory path relative to appPath
-      const resolvedPath = path.resolve(ctx.appPath, args.directory);
-      // Ensure the resolved path is within appPath (prevent ../ traversal)
-      if (
-        !resolvedPath.startsWith(ctx.appPath + path.sep) &&
-        resolvedPath !== ctx.appPath
-      ) {
-        throw new Error(
-          `Invalid directory path: "${args.directory}" escapes the project directory`,
-        );
-      }
-      // Get the relative path from appPath for use in glob
-      sanitizedDirectory = path.relative(ctx.appPath, resolvedPath);
+      const relativePathFromApp = resolveDirectoryWithinAppPath({
+        appPath: ctx.appPath,
+        directory: args.directory,
+      });
+
+      // Normalize for glob usage (glob treats "\" as an escape on Windows)
+      const normalizedRelativePath = relativePathFromApp
+        .split(path.sep)
+        .join("/")
+        .replace(/\\/g, "/");
+
+      // Empty means "root"
+      sanitizedDirectory = normalizedRelativePath || undefined;
     }
 
     // Use "**" for recursive, "*" for non-recursive (immediate children only)

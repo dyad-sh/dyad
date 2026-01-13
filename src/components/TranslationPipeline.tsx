@@ -55,7 +55,7 @@ export function TranslationPipeline({
   const phases: PhaseInfo[] = [
     {
       name: "📚 Document",
-      description: "Gathering ecosystem context",
+      description: isTranslate ? "Gathering ecosystem context" : "Analyzing requirements and patterns",
       status: documentStatus,
       details: documentDetails,
     },
@@ -111,10 +111,10 @@ export function TranslationPipeline({
             </span>
             <span className="text-xs text-gray-500 dark:text-gray-400 mt-1">
               {currentPhase === "document"
-                ? "Researching"
+                ? isTranslate ? "Researching" : "Analyzing"
                 : currentPhase === "plan"
                   ? "Planning"
-                  : "Preparing"}
+                  : isTranslate ? "Preparing" : "Generating"}
             </span>
           </div>
 
@@ -210,7 +210,7 @@ export function TranslationPipeline({
         <p className="text-sm text-gray-600 dark:text-gray-400 animate-pulse">
           {currentPhase === "document" &&
             documentStatus === "in_progress" &&
-            "🔍 Gathering blockchain documentation..."}
+            (isTranslate ? "🔍 Gathering blockchain documentation..." : "🔍 Analyzing requirements...")}
           {currentPhase === "plan" &&
             planStatus === "in_progress" &&
             (isTranslate ? "🧠 Analyzing contract patterns..." : "🧠 Planning contract architecture...")}
@@ -234,25 +234,41 @@ export function TranslationPipeline({
             <div className="flex-1">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
                 {awaitingApproval === "document" &&
-                  "📚 Phase 1 Complete - Review AI_RULES.md"}
+                  (isTranslate ? "📚 Phase 1 Complete - Review AI_RULES.md" : "📚 Phase 1 Complete - Review Generation Context")}
                 {awaitingApproval === "plan" &&
-                  "📋 Phase 2 Complete - Review Translation Plan"}
+                  (isTranslate ? "📋 Phase 2 Complete - Review Translation Plan" : "📋 Phase 2 Complete - Review Generation Plan")}
               </h3>
               <p className="text-sm text-gray-700 dark:text-gray-300 mb-4">
                 {awaitingApproval === "document" && (
-                  <>
-                    An enriched AI_RULES.md file has been generated with current
-                    blockchain documentation, version information, and
-                    translation patterns. Review the details above before
-                    proceeding.
-                  </>
+                  isTranslate ? (
+                    <>
+                      An enriched AI_RULES.md file has been generated with current
+                      blockchain documentation, version information, and
+                      translation patterns. Review the details above before
+                      proceeding.
+                    </>
+                  ) : (
+                    <>
+                      Generation context has been prepared with blockchain
+                      documentation and best practices. Review the details
+                      above before proceeding.
+                    </>
+                  )
                 )}
                 {awaitingApproval === "plan" && (
-                  <>
-                    The contract structure has been analyzed. Review the
-                    translation strategy above before proceeding to code
-                    generation.
-                  </>
+                  isTranslate ? (
+                    <>
+                      The contract structure has been analyzed. Review the
+                      translation strategy above before proceeding to code
+                      generation.
+                    </>
+                  ) : (
+                    <>
+                      The contract architecture has been planned. Review the
+                      generation strategy above before proceeding to code
+                      generation.
+                    </>
+                  )
                 )}
               </p>
               <div className="flex items-center gap-3">

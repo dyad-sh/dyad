@@ -13,7 +13,16 @@ import { CustomTagState } from "./stateTypes";
 
 interface DyadGrepProps {
   children?: ReactNode;
-  node?: any;
+  node?: {
+    properties?: {
+      state?: CustomTagState;
+      query?: string;
+      include?: string;
+      exclude?: string;
+      "case-sensitive"?: string;
+      count?: string;
+    };
+  };
 }
 
 export const DyadGrep: React.FC<DyadGrepProps> = ({ children, node }) => {

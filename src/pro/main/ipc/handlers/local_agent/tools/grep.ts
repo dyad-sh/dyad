@@ -11,6 +11,9 @@ import {
   MAX_FILE_SEARCH_SIZE,
   RIPGREP_EXCLUDED_GLOBS,
 } from "@/ipc/utils/ripgrep_utils";
+import log from "electron-log";
+
+const logger = log.scope("grep");
 
 const grepSchema = z.object({
   query: z.string().describe("The regex pattern to search for"),
@@ -34,6 +37,29 @@ interface RipgrepMatch {
   path: string;
   lineNumber: number;
   lineText: string;
+}
+
+function buildGrepAttributes(
+  args: Partial<z.infer<typeof grepSchema>>,
+  count?: number,
+): string {
+  const attrs: string[] = [];
+  if (args.query) {
+    attrs.push(`query="${escapeXmlAttr(args.query)}"`);
+  }
+  if (args.include_pattern) {
+    attrs.push(`include="${escapeXmlAttr(args.include_pattern)}"`);
+  }
+  if (args.exclude_pattern) {
+    attrs.push(`exclude="${escapeXmlAttr(args.exclude_pattern)}"`);
+  }
+  if (args.case_sensitive) {
+    attrs.push(`case-sensitive="true"`);
+  }
+  if (count !== undefined) {
+    attrs.push(`count="${count}"`);
+  }
+  return attrs.join(" ");
 }
 
 async function runRipgrep({
@@ -116,8 +142,8 @@ async function runRipgrep({
       }
     });
 
-    rg.stderr.on("data", () => {
-      // Ignore stderr (binary file warnings, etc.)
+    rg.stderr.on("data", (data) => {
+      logger.warn("ripgrep stderr", data.toString());
     });
 
     rg.on("close", (code) => {
@@ -161,16 +187,7 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
     }
 
     if (!args.query) return undefined;
-    let attrs = `query="${escapeXmlAttr(args.query)}"`;
-    if (args.include_pattern) {
-      attrs += ` include="${escapeXmlAttr(args.include_pattern)}"`;
-    }
-    if (args.exclude_pattern) {
-      attrs += ` exclude="${escapeXmlAttr(args.exclude_pattern)}"`;
-    }
-    if (args.case_sensitive) {
-      attrs += ` case-sensitive="true"`;
-    }
+    const attrs = buildGrepAttributes(args);
     return `<dyad-grep ${attrs}>Searching...</dyad-grep>`;
   },
 
@@ -183,18 +200,7 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
       caseSensitive: args.case_sensitive,
     });
 
-    // Build attributes
-    let attrs = `query="${escapeXmlAttr(args.query)}"`;
-    if (args.include_pattern) {
-      attrs += ` include="${escapeXmlAttr(args.include_pattern)}"`;
-    }
-    if (args.exclude_pattern) {
-      attrs += ` exclude="${escapeXmlAttr(args.exclude_pattern)}"`;
-    }
-    if (args.case_sensitive) {
-      attrs += ` case-sensitive="true"`;
-    }
-    attrs += ` count="${matches.length}"`;
+    const attrs = buildGrepAttributes(args, matches.length);
 
     if (matches.length === 0) {
       ctx.onXmlComplete(`<dyad-grep ${attrs}>No matches found.</dyad-grep>`);

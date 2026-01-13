@@ -276,7 +276,7 @@ function parseCustomTags(content: string): ContentPiece[] {
 
     // Parse attributes
     const attributes: Record<string, string> = {};
-    const attrPattern = /(\w+)="([^"]*)"/g;
+    const attrPattern = /([\w-]+)="([^"]*)"/g;
     let attrMatch;
     while ((attrMatch = attrPattern.exec(attributesStr)) !== null) {
       attributes[attrMatch[1]] = attrMatch[2];

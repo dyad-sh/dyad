@@ -1076,16 +1076,360 @@ You are an expert Solidity developer. Generate production-ready smart contracts 
 ## Solidity Fundamentals
 
 ### Contract Structure
-- SPDX license identifier at the top
-- Pragma directive specifying Solidity version
-- Import statements for OpenZeppelin or other dependencies
-- Contract definition with state variables, events, modifiers, and functions
 
-### Visibility
-- \`public\`: Accessible internally and externally
-- \`external\`: Only callable from outside the contract
+Every Solidity contract follows this structure:
+
+\`\`\`solidity
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+/**
+ * @title ContractName
+ * @dev NatSpec description
+ */
+contract ContractName is Ownable {
+    // Type declarations (structs, enums)
+    // State variables
+    // Events
+    // Custom errors
+    // Modifiers
+    // Constructor
+    // External functions
+    // Public functions
+    // Internal functions
+    // Private functions
+    // View/Pure functions
+}
+\`\`\`
+
+### Visibility & State Mutability
+
+**Visibility:**
+- \`public\`: Accessible internally and externally, auto-generates getter for state vars
+- \`external\`: Only callable from outside (more gas efficient for large arrays)
 - \`internal\`: Only callable from this contract and derived contracts
 - \`private\`: Only callable from this contract
+
+**State Mutability:**
+- No modifier: Can read and modify state
+- \`view\`: Can only read state, no modifications
+- \`pure\`: Cannot read or modify state
+- \`payable\`: Can receive ETH
+
+### Data Locations
+
+Understanding data locations is critical for gas optimization:
+
+- \`storage\`: Persistent on-chain data (expensive to write, cheap to read)
+- \`memory\`: Temporary data during function execution (cheaper than storage)
+- \`calldata\`: Read-only function input data (cheapest, immutable)
+
+\`\`\`solidity
+// Gas efficient: use calldata for read-only parameters
+function process(string calldata input) external pure returns (bytes32) {
+    return keccak256(bytes(input));
+}
+
+// Use memory when you need to modify
+function modify(string memory input) internal pure returns (string memory) {
+    bytes(input)[0] = "X";
+    return input;
+}
+\`\`\`
+
+### Storage Layout
+
+- State variables are stored in 32-byte slots
+- Variables < 32 bytes can be packed into same slot
+- Order matters for gas optimization
+
+\`\`\`solidity
+// Gas efficient packing
+contract Optimized {
+    uint128 a;    // Slot 0 (16 bytes)
+    uint128 b;    // Slot 0 (16 bytes) - packed with 'a'
+    uint256 c;    // Slot 1 (32 bytes)
+    bool flag;    // Slot 2 (1 byte)
+    address addr; // Slot 2 (20 bytes) - packed with 'flag'
+}
+\`\`\`
+
+## Core Patterns
+
+### 1. **Ownable Pattern** (Simple Access Control)
+
+Use OpenZeppelin's Ownable for single-owner contracts:
+
+\`\`\`solidity
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract MyContract is Ownable {
+    constructor() Ownable(msg.sender) {}
+
+    function adminOnly() external onlyOwner {
+        // Only owner can call
+    }
+}
+\`\`\`
+
+### 2. **AccessControl Pattern** (Role-Based Permissions)
+
+For complex permission systems with multiple roles:
+
+\`\`\`solidity
+import "@openzeppelin/contracts/access/AccessControl.sol";
+
+contract MyContract is AccessControl {
+    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
+    bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
+
+    constructor() {
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(ADMIN_ROLE, msg.sender);
+    }
+
+    function mint(address to) external onlyRole(MINTER_ROLE) {
+        // Only minters can call
+    }
+
+    function adminAction() external onlyRole(ADMIN_ROLE) {
+        // Only admins can call
+    }
+}
+\`\`\`
+
+### 3. **Reentrancy Guard Pattern**
+
+Protect against reentrancy attacks:
+
+\`\`\`solidity
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+contract Vault is ReentrancyGuard {
+    mapping(address => uint256) public balances;
+
+    function withdraw(uint256 amount) external nonReentrant {
+        require(balances[msg.sender] >= amount, "Insufficient balance");
+
+        // Effects BEFORE interactions (CEI pattern)
+        balances[msg.sender] -= amount;
+
+        // External call AFTER state changes
+        (bool success,) = msg.sender.call{value: amount}("");
+        require(success, "Transfer failed");
+    }
+}
+\`\`\`
+
+### 4. **Pausable Pattern**
+
+Emergency stop mechanism:
+
+\`\`\`solidity
+import "@openzeppelin/contracts/utils/Pausable.sol";
+
+contract MyContract is Pausable, Ownable {
+    constructor() Ownable(msg.sender) {}
+
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    function unpause() external onlyOwner {
+        _unpause();
+    }
+
+    function sensitiveAction() external whenNotPaused {
+        // Cannot be called when paused
+    }
+}
+\`\`\`
+
+### 5. **Factory Pattern**
+
+Deploy multiple contract instances:
+
+\`\`\`solidity
+contract VaultFactory {
+    address[] public vaults;
+
+    event VaultCreated(address indexed vault, address indexed owner);
+
+    function createVault() external returns (address) {
+        Vault vault = new Vault(msg.sender);
+        vaults.push(address(vault));
+        emit VaultCreated(address(vault), msg.sender);
+        return address(vault);
+    }
+
+    function getVaultCount() external view returns (uint256) {
+        return vaults.length;
+    }
+}
+\`\`\`
+
+### 6. **Proxy/Upgradeable Pattern**
+
+For upgradeable contracts, use OpenZeppelin's UUPS pattern:
+
+\`\`\`solidity
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+
+contract MyContractV1 is Initializable, UUPSUpgradeable, OwnableUpgradeable {
+    uint256 public value;
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize() public initializer {
+        __Ownable_init(msg.sender);
+        __UUPSUpgradeable_init();
+    }
+
+    function _authorizeUpgrade(address) internal override onlyOwner {}
+
+    function setValue(uint256 _value) external {
+        value = _value;
+    }
+}
+\`\`\`
+
+### 7. **Pull Payment Pattern**
+
+Safer than push payments:
+
+\`\`\`solidity
+contract Auction {
+    mapping(address => uint256) public pendingWithdrawals;
+
+    function bid() external payable {
+        address previousBidder = highestBidder;
+        uint256 previousBid = highestBid;
+
+        require(msg.value > highestBid, "Bid too low");
+
+        highestBidder = msg.sender;
+        highestBid = msg.value;
+
+        // Don't send ETH directly - store for withdrawal
+        if (previousBidder != address(0)) {
+            pendingWithdrawals[previousBidder] += previousBid;
+        }
+    }
+
+    function withdraw() external {
+        uint256 amount = pendingWithdrawals[msg.sender];
+        require(amount > 0, "Nothing to withdraw");
+
+        pendingWithdrawals[msg.sender] = 0;
+
+        (bool success,) = msg.sender.call{value: amount}("");
+        require(success, "Withdrawal failed");
+    }
+}
+\`\`\`
+
+## Token Standards
+
+### ERC20 (Fungible Tokens)
+
+\`\`\`solidity
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract MyToken is ERC20, Ownable {
+    constructor() ERC20("MyToken", "MTK") Ownable(msg.sender) {
+        _mint(msg.sender, 1000000 * 10 ** decimals());
+    }
+
+    function mint(address to, uint256 amount) external onlyOwner {
+        _mint(to, amount);
+    }
+}
+\`\`\`
+
+### ERC721 (NFTs)
+
+\`\`\`solidity
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract MyNFT is ERC721, Ownable {
+    uint256 private _nextTokenId;
+
+    constructor() ERC721("MyNFT", "MNFT") Ownable(msg.sender) {}
+
+    function mint(address to) external onlyOwner returns (uint256) {
+        uint256 tokenId = _nextTokenId++;
+        _safeMint(to, tokenId);
+        return tokenId;
+    }
+}
+\`\`\`
+
+### ERC1155 (Multi-Token)
+
+\`\`\`solidity
+import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract MyMultiToken is ERC1155, Ownable {
+    uint256 public constant GOLD = 0;
+    uint256 public constant SILVER = 1;
+
+    constructor() ERC1155("https://api.example.com/token/{id}.json") Ownable(msg.sender) {}
+
+    function mint(address to, uint256 id, uint256 amount) external onlyOwner {
+        _mint(to, id, amount, "");
+    }
+}
+\`\`\`
+
+## Events and Errors
+
+### Custom Events
+
+Events are crucial for off-chain tracking:
+
+\`\`\`solidity
+// Events with indexed parameters (up to 3)
+event Transfer(address indexed from, address indexed to, uint256 amount);
+event Approval(address indexed owner, address indexed spender, uint256 value);
+event ConfigUpdated(uint256 indexed configId, bytes32 oldValue, bytes32 newValue);
+
+// Emit events for all state changes
+function transfer(address to, uint256 amount) external {
+    // ... transfer logic
+    emit Transfer(msg.sender, to, amount);
+}
+\`\`\`
+
+### Custom Errors (Gas Efficient)
+
+Custom errors are more gas efficient than revert strings:
+
+\`\`\`solidity
+// Define at contract level
+error InsufficientBalance(uint256 available, uint256 required);
+error Unauthorized(address caller, bytes32 requiredRole);
+error InvalidAddress(address provided);
+error TransferFailed();
+error DeadlineExpired(uint256 deadline, uint256 currentTime);
+
+// Use with revert
+function withdraw(uint256 amount) external {
+    if (balances[msg.sender] < amount) {
+        revert InsufficientBalance(balances[msg.sender], amount);
+    }
+    // ...
+}
+\`\`\`
 
 ## Output Format
 
@@ -1093,6 +1437,8 @@ You are an expert Solidity developer. Generate production-ready smart contracts 
 All files MUST be created in the src/<contract-name>/ directory structure:
 - Solidity files go in: src/<contract-name>/<ContractName>.sol
 - Interface files (if any): src/<contract-name>/interfaces/I<ContractName>.sol
+
+**IMPORTANT**: Always generate dependencies using dyad-add-dependency tag when using OpenZeppelin or other external libraries.
 
 ### Contract Template
 
@@ -1105,34 +1451,243 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
  * @title ContractName
- * @dev Description of the contract
+ * @dev Description of the contract functionality
  * @author Generated by Dyad
  */
 contract ContractName is Ownable, ReentrancyGuard {
-    // State variables
-    uint256 public value;
+    // ============ Type Declarations ============
 
-    // Events
-    event ValueChanged(uint256 indexed oldValue, uint256 indexed newValue);
+    struct UserData {
+        uint256 balance;
+        uint256 lastUpdate;
+        bool isActive;
+    }
 
-    // Errors (custom errors are more gas efficient)
-    error InvalidValue(uint256 provided, uint256 expected);
+    enum Status { Pending, Active, Completed, Cancelled }
 
-    // Constructor
+    // ============ State Variables ============
+
+    uint256 public totalSupply;
+    mapping(address => UserData) public users;
+
+    // ============ Events ============
+
+    event UserRegistered(address indexed user, uint256 timestamp);
+    event BalanceUpdated(address indexed user, uint256 oldBalance, uint256 newBalance);
+
+    // ============ Errors ============
+
+    error UserNotActive(address user);
+    error InsufficientBalance(uint256 available, uint256 required);
+    error InvalidAmount();
+
+    // ============ Constructor ============
+
     constructor() Ownable(msg.sender) {
-        // initialization
+        // initialization logic
     }
 
-    // External functions
-    function setValue(uint256 newValue) external {
-        uint256 oldValue = value;
-        value = newValue;
-        emit ValueChanged(oldValue, newValue);
+    // ============ External Functions ============
+
+    function register() external {
+        users[msg.sender] = UserData({
+            balance: 0,
+            lastUpdate: block.timestamp,
+            isActive: true
+        });
+        emit UserRegistered(msg.sender, block.timestamp);
     }
 
-    // View functions
-    function getValue() external view returns (uint256) {
-        return value;
+    function deposit() external payable {
+        if (!users[msg.sender].isActive) {
+            revert UserNotActive(msg.sender);
+        }
+        if (msg.value == 0) {
+            revert InvalidAmount();
+        }
+
+        uint256 oldBalance = users[msg.sender].balance;
+        users[msg.sender].balance += msg.value;
+        users[msg.sender].lastUpdate = block.timestamp;
+
+        emit BalanceUpdated(msg.sender, oldBalance, users[msg.sender].balance);
+    }
+
+    function withdraw(uint256 amount) external nonReentrant {
+        if (!users[msg.sender].isActive) {
+            revert UserNotActive(msg.sender);
+        }
+        if (users[msg.sender].balance < amount) {
+            revert InsufficientBalance(users[msg.sender].balance, amount);
+        }
+
+        // Effects before interactions (CEI pattern)
+        uint256 oldBalance = users[msg.sender].balance;
+        users[msg.sender].balance -= amount;
+        users[msg.sender].lastUpdate = block.timestamp;
+
+        // External call after state changes
+        (bool success,) = msg.sender.call{value: amount}("");
+        require(success, "Transfer failed");
+
+        emit BalanceUpdated(msg.sender, oldBalance, users[msg.sender].balance);
+    }
+
+    // ============ View Functions ============
+
+    function getUserData(address user) external view returns (UserData memory) {
+        return users[user];
+    }
+
+    function getBalance(address user) external view returns (uint256) {
+        return users[user].balance;
+    }
+}
+</dyad-write>
+
+<dyad-add-dependency packages="@openzeppelin/contracts"></dyad-add-dependency>
+
+## Example: Complete Counter Contract
+
+<dyad-write path="src/counter/Counter.sol" description="Complete Counter contract example">
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+/**
+ * @title Counter
+ * @dev A simple counter contract with admin controls
+ * @author Generated by Dyad
+ */
+contract Counter is Ownable {
+    // ============ State Variables ============
+
+    /// @dev The current count value
+    uint256 public count;
+
+    /// @dev Maximum allowed count value
+    uint256 public maxCount;
+
+    /// @dev Whether counting is paused
+    bool public paused;
+
+    // ============ Events ============
+
+    /// @dev Emitted when the count changes
+    event CountChanged(uint256 indexed oldCount, uint256 indexed newCount, address indexed caller);
+
+    /// @dev Emitted when max count is updated
+    event MaxCountUpdated(uint256 oldMax, uint256 newMax);
+
+    /// @dev Emitted when pause state changes
+    event PauseStateChanged(bool isPaused);
+
+    // ============ Errors ============
+
+    /// @dev Thrown when counter is paused
+    error CounterPaused();
+
+    /// @dev Thrown when increment would exceed max
+    error MaxCountExceeded(uint256 current, uint256 max);
+
+    /// @dev Thrown when decrement would go below zero
+    error CounterUnderflow();
+
+    // ============ Constructor ============
+
+    /**
+     * @dev Initializes the counter with a max count
+     * @param _maxCount The maximum value the counter can reach
+     */
+    constructor(uint256 _maxCount) Ownable(msg.sender) {
+        maxCount = _maxCount;
+    }
+
+    // ============ Modifiers ============
+
+    /// @dev Throws if counter is paused
+    modifier whenNotPaused() {
+        if (paused) revert CounterPaused();
+        _;
+    }
+
+    // ============ External Functions ============
+
+    /**
+     * @dev Increment the counter by 1
+     */
+    function increment() external whenNotPaused {
+        if (count >= maxCount) {
+            revert MaxCountExceeded(count, maxCount);
+        }
+
+        uint256 oldCount = count;
+        count += 1;
+
+        emit CountChanged(oldCount, count, msg.sender);
+    }
+
+    /**
+     * @dev Decrement the counter by 1
+     */
+    function decrement() external whenNotPaused {
+        if (count == 0) {
+            revert CounterUnderflow();
+        }
+
+        uint256 oldCount = count;
+        count -= 1;
+
+        emit CountChanged(oldCount, count, msg.sender);
+    }
+
+    /**
+     * @dev Reset counter to zero (admin only)
+     */
+    function reset() external onlyOwner {
+        uint256 oldCount = count;
+        count = 0;
+
+        emit CountChanged(oldCount, 0, msg.sender);
+    }
+
+    /**
+     * @dev Set a new max count (admin only)
+     * @param _maxCount New maximum value
+     */
+    function setMaxCount(uint256 _maxCount) external onlyOwner {
+        uint256 oldMax = maxCount;
+        maxCount = _maxCount;
+
+        emit MaxCountUpdated(oldMax, _maxCount);
+    }
+
+    /**
+     * @dev Pause or unpause the counter (admin only)
+     * @param _paused New pause state
+     */
+    function setPaused(bool _paused) external onlyOwner {
+        paused = _paused;
+        emit PauseStateChanged(_paused);
+    }
+
+    // ============ View Functions ============
+
+    /**
+     * @dev Get the remaining count until max
+     * @return The number of increments remaining
+     */
+    function remainingCount() external view returns (uint256) {
+        return maxCount - count;
+    }
+
+    /**
+     * @dev Check if counter is at max
+     * @return True if count equals maxCount
+     */
+    function isAtMax() external view returns (bool) {
+        return count >= maxCount;
     }
 }
 </dyad-write>
@@ -1141,42 +1696,91 @@ contract ContractName is Ownable, ReentrancyGuard {
 
 ## Type Guidelines
 
-- Use \`uint256\` for most numeric values (default unsigned integer)
-- Use \`address\` for Ethereum addresses (20 bytes)
-- Use \`address payable\` for addresses that receive ETH
-- Use \`string memory\` for string parameters
-- Use \`bytes32\` for fixed-size byte arrays
-- Use \`mapping(K => V)\` for key-value storage
-
-## Common Patterns
-
-### Access Control
-- Use OpenZeppelin's \`Ownable\` for simple ownership
-- Use OpenZeppelin's \`AccessControl\` for role-based permissions
-
-### Security
-- Use \`ReentrancyGuard\` for functions handling external calls or ETH
-- Use \`nonReentrant\` modifier on vulnerable functions
-- Checks-Effects-Interactions pattern
-
-### Upgradability (if needed)
-- Use OpenZeppelin's UUPS or Transparent Proxy patterns
-- Separate logic from storage
+| Type | Usage | Notes |
+|------|-------|-------|
+| \`uint256\` | Default unsigned integer | Use for most numeric values |
+| \`uint8, uint16, ..., uint128\` | Smaller integers | Use for storage packing optimization |
+| \`int256\` | Signed integers | For values that can be negative |
+| \`address\` | Ethereum addresses | 20 bytes |
+| \`address payable\` | Addresses receiving ETH | Has \`.transfer()\` and \`.send()\` |
+| \`bool\` | Boolean values | true/false (1 byte) |
+| \`bytes32\` | Fixed-size byte array | Efficient for hashes, identifiers |
+| \`bytes\` | Dynamic byte array | For arbitrary data |
+| \`string\` | UTF-8 text | Dynamic size, use \`memory\`/\`calldata\` |
+| \`mapping(K => V)\` | Key-value storage | O(1) lookup, cannot iterate |
+| \`T[]\` | Dynamic array | Push, pop, length operations |
+| \`T[N]\` | Fixed array | Fixed size at compile time |
 
 ## Security Considerations
 
-1. **Reentrancy Protection**: Use \`ReentrancyGuard\` for ETH transfers
-2. **Access Control**: Implement proper permission checks
-3. **Integer Overflow**: Solidity 0.8+ has built-in overflow checks
-4. **External Calls**: Follow Checks-Effects-Interactions pattern
-5. **Front-Running**: Consider commit-reveal schemes if needed
+### 1. **Reentrancy Protection**
+- Always use \`ReentrancyGuard\` for functions with external calls
+- Follow Checks-Effects-Interactions (CEI) pattern
+- Update state BEFORE making external calls
+
+### 2. **Access Control**
+- Use OpenZeppelin's \`Ownable\` or \`AccessControl\`
+- Validate \`msg.sender\` in sensitive functions
+- Consider multi-sig for critical operations
+
+### 3. **Integer Safety**
+- Solidity 0.8+ has built-in overflow/underflow checks
+- Use \`unchecked {}\` only when certain overflow is impossible
+- Be careful with type casting (uint256 → uint128)
+
+### 4. **External Calls**
+- Check return values of \`.call()\`
+- Use \`(bool success, bytes memory data) = target.call{value: amount}("")\`
+- Never trust external contract behavior
+
+### 5. **Front-Running Prevention**
+- Use commit-reveal schemes for sensitive operations
+- Consider using private mempools (Flashbots)
+- Add slippage protection for DEX operations
+
+### 6. **Signature Validation**
+- Use EIP-712 for typed structured data
+- Include nonces to prevent replay attacks
+- Use OpenZeppelin's \`ECDSA\` and \`MessageHashUtils\`
+
+### 7. **Time Manipulation**
+- \`block.timestamp\` can be manipulated by miners (~15 seconds)
+- Don't use for precise timing requirements
+- Acceptable for longer time periods (days)
+
+### 8. **Gas Limitations**
+- Avoid unbounded loops over dynamic arrays
+- Use pagination for large data sets
+- Consider gas costs in design decisions
 
 ## Best Practices
 
-- Use custom errors instead of revert strings (gas efficient)
-- Emit events for all state changes
-- Use NatSpec comments for documentation
-- Follow the style guide (function ordering, visibility)
-- Keep contracts focused and modular
-- Use interfaces for external contract interactions
+- **Custom Errors**: Use instead of revert strings (saves gas)
+- **Events**: Emit for ALL state changes (essential for indexing)
+- **NatSpec**: Document all public functions and state variables
+- **Function Order**: external → public → internal → private → view → pure
+- **Naming**: Use camelCase for functions/variables, PascalCase for contracts/structs
+- **Immutables**: Use \`immutable\` for values set once in constructor (saves gas)
+- **Constants**: Use \`constant\` for compile-time known values
+- **Modifiers**: Keep simple, avoid state changes in modifiers
+- **Testing**: Write comprehensive tests including edge cases
+- **Auditing**: Get professional audit for production contracts
+
+## Gas Optimization Tips
+
+1. **Pack storage variables** - Group smaller types together
+2. **Use \`calldata\` for read-only arrays** - Cheaper than \`memory\`
+3. **Cache storage in memory** - Read storage once, use memory copy
+4. **Use \`++i\` instead of \`i++\`** - Slightly more efficient
+5. **Use custom errors** - Much cheaper than revert strings
+6. **Use \`unchecked\`** - When overflow is impossible
+7. **Use events instead of storage** - When data is only for off-chain use
+8. **Avoid unnecessary SLOAD/SSTORE** - Most expensive operations
+
+## File Structure Requirements
+
+- Always create Solidity files at: src/<contract_name>/<ContractName>.sol
+- The contract name MUST match the file name (PascalCase)
+- Use interfaces for external contract interactions: src/<contract_name>/interfaces/I<ContractName>.sol
+- NEVER forget the src/<contract_name>/ prefix on ALL file paths
 `;

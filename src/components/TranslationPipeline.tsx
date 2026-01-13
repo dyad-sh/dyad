@@ -9,6 +9,8 @@ import { Button } from "./ui/button";
 
 export type PipelinePhase = "document" | "plan" | "act";
 export type PhaseStatus = "pending" | "in_progress" | "completed";
+// Pipeline mode: "translate" for code translation, "generate" for new contract generation
+export type PipelineMode = "translate" | "generate";
 
 interface PhaseInfo {
   name: string;
@@ -28,6 +30,7 @@ interface TranslationPipelineProps {
   awaitingApproval?: PipelinePhase | null;
   onApprovePhase1?: () => void;
   onApprovePhase2?: () => void;
+  mode?: PipelineMode;
 }
 
 export function TranslationPipeline({
@@ -41,7 +44,14 @@ export function TranslationPipeline({
   awaitingApproval,
   onApprovePhase1,
   onApprovePhase2,
+  mode = "translate",
 }: TranslationPipelineProps) {
+  // Mode-specific labels
+  const isTranslate = mode === "translate";
+  const pipelineTitle = isTranslate ? "Translation Pipeline" : "Generation Pipeline";
+  const pipelineSubtitle = isTranslate
+    ? "Using advanced context-aware translation"
+    : "Using advanced context-aware generation";
   const phases: PhaseInfo[] = [
     {
       name: "📚 Document",
@@ -51,13 +61,13 @@ export function TranslationPipeline({
     },
     {
       name: "📋 Plan",
-      description: "Analyzing contract structure",
+      description: isTranslate ? "Analyzing contract structure" : "Planning contract architecture",
       status: planStatus,
       details: planDetails,
     },
     {
       name: "⚡ Act",
-      description: "Preparing enriched prompt for LLM",
+      description: isTranslate ? "Preparing enriched prompt for LLM" : "Generating smart contract code",
       status: actStatus,
       details: actDetails,
     },
@@ -113,10 +123,10 @@ export function TranslationPipeline({
         </div>
 
         <h2 className="text-2xl font-bold mb-2 text-gray-800 dark:text-gray-200">
-          Translation Pipeline
+          {pipelineTitle}
         </h2>
         <p className="text-gray-600 dark:text-gray-400">
-          Using advanced context-aware translation
+          {pipelineSubtitle}
         </p>
       </div>
 
@@ -203,14 +213,14 @@ export function TranslationPipeline({
             "🔍 Gathering blockchain documentation..."}
           {currentPhase === "plan" &&
             planStatus === "in_progress" &&
-            "🧠 Analyzing contract patterns..."}
+            (isTranslate ? "🧠 Analyzing contract patterns..." : "🧠 Planning contract architecture...")}
           {currentPhase === "act" &&
             actStatus === "in_progress" &&
-            "⚡ Building enriched prompt..."}
+            (isTranslate ? "⚡ Building enriched prompt..." : "⚡ Generating smart contract...")}
           {documentStatus === "completed" &&
             planStatus === "completed" &&
             actStatus === "completed" &&
-            "✅ Ready to generate code!"}
+            (isTranslate ? "✅ Ready to generate code!" : "✅ Contract generation complete!")}
         </p>
       </div>
 

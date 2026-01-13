@@ -68,37 +68,11 @@ import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils"
 import { AppSearchResult } from "@/lib/schemas";
 
 import { getAppPort } from "../../../shared/ports";
-import os from "node:os";
-
-const MAX_FILE_SEARCH_SIZE = 1024 * 1024;
-const RIPGREP_EXCLUDED_GLOBS = ["!node_modules/**", "!.git/**", "!.next/**"];
-
-// Replace node_modules.asar with node_modules.asar.unpacked for Electron packaged apps
-// This is necessary because native binaries are unpacked from the asar archive
-function getRgExecutablePath(): string {
-  const isWindows = os.platform() === "win32";
-  const executableName = isWindows ? "rg.exe" : "rg";
-  if (!app.isPackaged) {
-    // Dev: app.getAppPath() is the project root (same pattern as dugite)
-    return path.join(
-      app.getAppPath(),
-      "node_modules",
-      "@vscode",
-      "ripgrep",
-      "bin",
-      executableName,
-    );
-  }
-  // Packaged app: ripgrep is bundled via extraResource
-  // Since we extract "node_modules/@vscode/ripgrep", it's at resources/@vscode/ripgrep
-  return path.join(
-    process.resourcesPath,
-    "@vscode",
-    "ripgrep",
-    "bin",
-    executableName,
-  );
-}
+import {
+  getRgExecutablePath,
+  MAX_FILE_SEARCH_SIZE,
+  RIPGREP_EXCLUDED_GLOBS,
+} from "../utils/ripgrep_utils";
 
 const logger = log.scope("app_handlers");
 const handle = createLoggedHandler(logger);

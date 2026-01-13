@@ -24,6 +24,7 @@ import { webSearchTool } from "./tools/web_search";
 import { webCrawlTool } from "./tools/web_crawl";
 import { updateTodosTool } from "./tools/update_todos";
 import { runTypeChecksTool } from "./tools/run_type_checks";
+import { grepTool } from "./tools/grep";
 import type { LanguageModelV3ToolResultOutput } from "@ai-sdk/provider";
 import {
   escapeXmlAttr,
@@ -46,6 +47,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   // searchReplaceTool,
   readFileTool,
   listFilesTool,
+  grepTool,
   getSupabaseProjectInfoTool,
   getSupabaseTableSchemaTool,
   setChatSummaryTool,

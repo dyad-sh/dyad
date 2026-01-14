@@ -1,4 +1,3 @@
-import { OpenAICompatibleChatLanguageModel } from "@ai-sdk/openai-compatible";
 import { OpenAIResponsesLanguageModel } from "@ai-sdk/openai/internal";
 import {
   FetchFunction,
@@ -10,6 +9,7 @@ import log from "electron-log";
 import { getExtraProviderOptions } from "./thinking_utils";
 import type { UserSettings } from "../../lib/schemas";
 import type { LanguageModel } from "ai";
+import { OpenAICompatibleChatLanguageModel } from "./ai_sdk/chat/openai-compatible-chat-language-model";
 
 const logger = log.scope("llm_engine_provider");
 
@@ -118,6 +118,7 @@ export function createDyadEngine(
           ...JSON.parse(init.body),
           ...getExtraProviderOptions(providerId, options.settings),
         };
+        console.log("***parsedBody***", JSON.stringify(parsedBody, null, 2));
         const dyadVersionedFiles = parsedBody.dyadVersionedFiles;
         if ("dyadVersionedFiles" in parsedBody) {
           delete parsedBody.dyadVersionedFiles;

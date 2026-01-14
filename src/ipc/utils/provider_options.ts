@@ -99,7 +99,7 @@ export function getAiHeaders({
 }: GetAiHeadersParams): Record<string, string> | undefined {
   if (builtinProviderId === "anthropic") {
     return {
-      "anthropic-beta": "context-1m-2025-08-07",
+      "anthropic-beta": "context-1m-2025-08-07,interleaved-thinking-2025-05-14",
     };
   }
   return undefined;

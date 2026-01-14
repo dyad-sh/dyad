@@ -120,7 +120,8 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       // Set to 32k since context window is 1M tokens
       maxOutputTokens: 32_000,
       contextWindow: 200_000,
-      temperature: 0,
+      // Requires temperature of 1 to enable thinking
+      temperature: 1,
       dollarSigns: 5,
     },
     {
@@ -131,7 +132,8 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       // Set to 32k since context window is 1M tokens
       maxOutputTokens: 32_000,
       contextWindow: 1_000_000,
-      temperature: 0,
+      // Requires temperature of 1 to enable thinking
+      temperature: 1,
       dollarSigns: 5,
     },
     {
@@ -141,7 +143,8 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       // Set to 32k since context window is 1M tokens
       maxOutputTokens: 32_000,
       contextWindow: 1_000_000,
-      temperature: 0,
+      // Requires temperature of 1 to enable thinking
+      temperature: 1,
       dollarSigns: 5,
     },
   ],

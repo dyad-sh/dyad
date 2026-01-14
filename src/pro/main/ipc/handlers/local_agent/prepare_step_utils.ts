@@ -112,6 +112,7 @@ export function prepareStepMessages<
   allInjectedMessages: InjectedMessage[],
 ): (Omit<T, "messages"> & { messages: TMessage[] }) | undefined {
   const { messages, ...rest } = options;
+  console.log("prepareStepMessages", JSON.stringify(messages, null, 2));
 
   // Move any new pending messages to the permanent injected list
   processPendingMessages(

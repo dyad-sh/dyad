@@ -1,18 +1,19 @@
-import { PROVIDERS_THAT_SUPPORT_THINKING } from "../shared/language_model_constants";
+import { PROVIDERS_THAT_SUPPORT_THINKING as GOOGLE_THINKING_PROVIDERS } from "../shared/language_model_constants";
 import type { UserSettings } from "../../lib/schemas";
 
 function getThinkingBudgetTokens(
-  thinkingBudget?: "low" | "medium" | "high",
+  thinkingBudget: "low" | "medium" | "high" | undefined,
+  { supportsDynamicBudget }: { supportsDynamicBudget: boolean },
 ): number {
   switch (thinkingBudget) {
     case "low":
-      return 1_000;
-    case "medium":
       return 4_000;
+    case "medium":
+      return 16_000;
     case "high":
-      return -1;
+      return supportsDynamicBudget ? -1 : 32_000;
     default:
-      return 4_000; // Default to medium
+      return 16_000; // Default to medium
   }
 }
 
@@ -34,8 +35,16 @@ export function getExtraProviderOptions(
     }
     return { reasoning_effort: "medium" };
   }
-  if (PROVIDERS_THAT_SUPPORT_THINKING.includes(providerId)) {
-    const budgetTokens = getThinkingBudgetTokens(settings?.thinkingBudget);
+  if (providerId === "anthropic") {
+    const budgetTokens = getThinkingBudgetTokens(settings?.thinkingBudget, {
+      supportsDynamicBudget: false,
+    });
+    return { thinking: { type: "enabled", budget_tokens: budgetTokens } };
+  }
+  if (GOOGLE_THINKING_PROVIDERS.includes(providerId)) {
+    const budgetTokens = getThinkingBudgetTokens(settings?.thinkingBudget, {
+      supportsDynamicBudget: true,
+    });
     return {
       thinking: {
         type: "enabled",

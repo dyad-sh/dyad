@@ -441,7 +441,10 @@ test.describe("Generation Pipeline - Target Blockchain Selection", () => {
 
     await po.page.getByTestId("generate-target-selector").click();
 
-    // Options should show ecosystem info like "Sui", "Solana"
+    // Options should show ecosystem info like "Ethereum", "Sui", "Solana"
+    await expect(
+      po.page.getByRole("option", { name: /Ethereum/i }),
+    ).toBeVisible();
     await expect(po.page.getByRole("option", { name: /Sui/i })).toBeVisible();
     await expect(
       po.page.getByRole("option", { name: /Solana/i }).or(
@@ -504,12 +507,9 @@ test.describe("Generation Pipeline - Pipeline UI Display", () => {
       timeout: 10000,
     });
 
-    // Should mention generation or smart contract
+    // Should mention generation from description
     await expect(
-      po.page
-        .getByText(/generating/i)
-        .or(po.page.getByText(/smart contract/i))
-        .first(),
+      po.page.getByText(/generating smart contract from description/i),
     ).toBeVisible();
   });
 
@@ -535,10 +535,10 @@ test.describe("Generation Pipeline - Pipeline UI Display", () => {
       timeout: 10000,
     });
 
-    // All three phases should be visible (use headings to be specific)
-    await expect(po.page.getByRole("heading", { name: /Document/i })).toBeVisible();
-    await expect(po.page.getByRole("heading", { name: /Plan/i })).toBeVisible();
-    await expect(po.page.getByRole("heading", { name: /Act/i })).toBeVisible();
+    // All three phases should be visible
+    await expect(po.page.getByText("Document")).toBeVisible();
+    await expect(po.page.getByText("Plan")).toBeVisible();
+    await expect(po.page.getByText("Act")).toBeVisible();
   });
 
   test("should show generation-specific phase descriptions", async ({ po }) => {
@@ -563,22 +563,12 @@ test.describe("Generation Pipeline - Pipeline UI Display", () => {
       timeout: 10000,
     });
 
-    // Generation-specific descriptions (flexible matching for actual UI text)
+    // Generation-specific descriptions
     await expect(
-      po.page
-        .getByText(/fetching|understanding|analyzing/i)
-        .first(),
+      po.page.getByText(/understanding requirements/i),
     ).toBeVisible();
-    await expect(
-      po.page
-        .getByText(/planning|architecture|designing/i)
-        .first(),
-    ).toBeVisible();
-    await expect(
-      po.page
-        .getByText(/generating|contract/i)
-        .first(),
-    ).toBeVisible();
+    await expect(po.page.getByText(/designing architecture/i)).toBeVisible();
+    await expect(po.page.getByText(/generating contract code/i)).toBeVisible();
   });
 
   test("should show Document phase as In Progress initially", async ({
@@ -766,13 +756,9 @@ test.describe("Generation Pipeline - Document Phase", () => {
       po.page.getByRole("button", { name: /approve & continue/i }),
     ).toBeVisible({ timeout: 30000 });
 
-    // Approval section should mention AI_RULES.md or document/rules
+    // Approval section should mention AI_RULES.md
     await expect(
-      po.page
-        .getByText(/AI_RULES/i)
-        .or(po.page.getByText(/document.*generated/i))
-        .or(po.page.getByText(/review/i))
-        .first(),
+      po.page.getByText(/AI_RULES\.md file has been generated/i),
     ).toBeVisible();
   });
 });
@@ -810,8 +796,8 @@ test.describe("Generation Pipeline - Plan Phase", () => {
     ).toBeVisible({ timeout: 30000 });
     await po.page.getByRole("button", { name: /approve & continue/i }).click();
 
-    // Plan phase should start (use heading to be specific)
-    await expect(po.page.getByRole("heading", { name: /Plan/i }).first()).toBeVisible();
+    // Plan phase should start
+    await expect(po.page.getByText("Plan")).toBeVisible();
   });
 
   test("should show requirements analysis in Plan phase for generation", async ({
@@ -855,8 +841,7 @@ test.describe("Generation Pipeline - Plan Phase", () => {
         .getByText(/contract types/i)
         .or(po.page.getByText(/functionality/i))
         .or(po.page.getByText(/requirements/i))
-        .or(po.page.getByText(/analyzing/i))
-        .first(),
+        .or(po.page.getByText(/analyzing/i)),
     ).toBeVisible({ timeout: 5000 });
   });
 
@@ -936,8 +921,8 @@ test.describe("Generation Pipeline - Act Phase", () => {
     ).toBeVisible({ timeout: 30000 });
     await po.page.getByRole("button", { name: /approve & continue/i }).click();
 
-    // Act phase should be visible (use heading to be specific)
-    await expect(po.page.getByRole("heading", { name: /Act/i })).toBeVisible();
+    // Act phase should be visible
+    await expect(po.page.getByText("Act")).toBeVisible();
   });
 
   test("should navigate to chat view after Act phase completes", async ({
@@ -1096,7 +1081,58 @@ test.describe("Generation Pipeline - Full E2E Flow (Solana/Anchor)", () => {
   });
 });
 
-// Ethereum/Solidity test removed - not supported yet
+test.describe("Generation Pipeline - Full E2E Flow (Ethereum/Solidity)", () => {
+  test("should complete full generation flow for Ethereum/Solidity", async ({
+    po,
+  }) => {
+    await po.page.waitForURL(/\//, { timeout: 10000 });
+
+    const contractButton = po.page.getByTestId("contract-mode-toggle");
+    await contractButton.click({ force: true });
+
+    await expect(po.page.getByTestId("translation-card")).toBeVisible({
+      timeout: 15000,
+    });
+
+    // Step 1: Switch to Generate mode
+    await po.page.getByRole("tab", { name: /generate/i }).click();
+
+    // Step 2: Select Solidity as target
+    await po.page.getByTestId("generate-target-selector").click();
+    await po.page.getByRole("option", { name: /Solidity/i }).click();
+
+    // Step 3: Enter NL description
+    await po.page
+      .getByTestId("nl-description-textarea")
+      .fill("Create an ERC-20 token with burn and mint functions");
+
+    // Step 4: Enter project name
+    await po.page.locator("#project-name").fill("e2e-erc20-token");
+
+    // Step 5: Click Generate
+    await po.page.getByTestId("main-generate-button").click();
+
+    // Step 6: Verify pipeline appears
+    await expect(po.page.getByText("Generation Pipeline")).toBeVisible({
+      timeout: 10000,
+    });
+
+    // Step 7: Approve Document phase
+    await expect(
+      po.page.getByRole("button", { name: /approve & continue/i }),
+    ).toBeVisible({ timeout: 30000 });
+    await po.page.getByRole("button", { name: /approve & continue/i }).click();
+
+    // Step 8: Approve Plan phase
+    await expect(
+      po.page.getByRole("button", { name: /approve & continue/i }),
+    ).toBeVisible({ timeout: 30000 });
+    await po.page.getByRole("button", { name: /approve & continue/i }).click();
+
+    // Step 9: Navigate to chat
+    await expect(po.page).toHaveURL(/\/chat/, { timeout: 60000 });
+  });
+});
 
 // ============================================================================
 // SECTION 9: MCP INTEGRATION
@@ -1204,8 +1240,7 @@ test.describe("Generation Pipeline - Error Handling", () => {
     await expect(
       po.page
         .getByText(/generation pipeline/i)
-        .or(po.page.getByText(/document/i))
-        .first(),
+        .or(po.page.getByText(/document/i)),
     ).toBeVisible({ timeout: 15000 });
 
     // Should not show raw connection error

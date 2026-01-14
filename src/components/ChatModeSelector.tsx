@@ -66,7 +66,8 @@ export function ChatModeSelector() {
             }}
           />
         ),
-        { duration: 8000 },
+        // Make the toast shorter in test mode for faster tests.
+        { duration: settings?.isTestMode ? 50 : 8000 },
       );
     }
   };

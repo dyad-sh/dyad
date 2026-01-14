@@ -14,7 +14,9 @@ import type { LanguageModel } from "ai";
 const logger = log.scope("llm_engine_provider");
 
 export type ExampleChatModelId = string & {};
-export interface ExampleChatSettings {}
+export interface ChatParams {
+  providerId: string;
+}
 export interface ExampleProviderSettings {
   /**
 Example API key.
@@ -38,7 +40,6 @@ or to provide a custom fetch implementation for e.g. testing.
 */
   fetch?: FetchFunction;
 
-  originalProviderId: string;
   dyadOptions: {
     enableLazyEdits?: boolean;
     enableSmartFilesContext?: boolean;
@@ -51,17 +52,14 @@ export interface DyadEngineProvider {
   /**
 Creates a model for text generation.
 */
-  (modelId: ExampleChatModelId, settings?: ExampleChatSettings): LanguageModel;
+  (modelId: ExampleChatModelId, chatParams: ChatParams): LanguageModel;
 
   /**
 Creates a chat model for text generation.
 */
-  chatModel(
-    modelId: ExampleChatModelId,
-    settings?: ExampleChatSettings,
-  ): LanguageModel;
+  chatModel(modelId: ExampleChatModelId, chatParams: ChatParams): LanguageModel;
 
-  responses(modelId: ExampleChatModelId): LanguageModel;
+  responses(modelId: ExampleChatModelId, chatParams: ChatParams): LanguageModel;
 }
 
 export function createDyadEngine(
@@ -103,7 +101,11 @@ export function createDyadEngine(
   });
 
   // Custom fetch implementation that adds dyad-specific options to the request
-  const createDyadFetch = (): FetchFunction => {
+  const createDyadFetch = ({
+    providerId,
+  }: {
+    providerId: string;
+  }): FetchFunction => {
     return (input: RequestInfo | URL, init?: RequestInit) => {
       // Use default fetch if no init or body
       if (!init || !init.body || typeof init.body !== "string") {
@@ -114,10 +116,7 @@ export function createDyadEngine(
         // Parse the request body to manipulate it
         const parsedBody = {
           ...JSON.parse(init.body),
-          ...getExtraProviderOptions(
-            options.originalProviderId,
-            options.settings,
-          ),
+          ...getExtraProviderOptions(providerId, options.settings),
         };
         const dyadVersionedFiles = parsedBody.dyadVersionedFiles;
         if ("dyadVersionedFiles" in parsedBody) {
@@ -195,25 +194,32 @@ export function createDyadEngine(
     };
   };
 
-  const createChatModel = (modelId: ExampleChatModelId) => {
+  const createChatModel = (
+    modelId: ExampleChatModelId,
+    chatParams: ChatParams,
+  ) => {
     const config = {
       ...getCommonModelConfig(),
-      fetch: createDyadFetch(),
+      fetch: createDyadFetch({ providerId: chatParams.providerId }),
     };
 
     return new OpenAICompatibleChatLanguageModel(modelId, config);
   };
 
-  const createResponsesModel = (modelId: ExampleChatModelId) => {
+  const createResponsesModel = (
+    modelId: ExampleChatModelId,
+    chatParams: ChatParams,
+  ) => {
     const config = {
       ...getCommonModelConfig(),
-      fetch: createDyadFetch(),
+      fetch: createDyadFetch({ providerId: chatParams.providerId }),
     };
 
     return new OpenAIResponsesLanguageModel(modelId, config);
   };
 
-  const provider = (modelId: ExampleChatModelId) => createChatModel(modelId);
+  const provider = (modelId: ExampleChatModelId, chatParams: ChatParams) =>
+    createChatModel(modelId, chatParams);
 
   provider.chatModel = createChatModel;
   provider.responses = createResponsesModel;

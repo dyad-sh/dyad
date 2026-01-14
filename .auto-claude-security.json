@@ -128,17 +128,29 @@
     "zsh"
   ],
   "stack_commands": [
+    "ar",
     "biome",
+    "clang",
+    "clang++",
+    "cmake",
     "drizzle-kit",
     "electron",
     "electron-builder",
     "eslint",
+    "g++",
+    "gcc",
     "ipython",
     "jupyter",
+    "ld",
+    "make",
+    "meson",
+    "ninja",
+    "nm",
     "node",
     "notebook",
     "npm",
     "npx",
+    "objdump",
     "oxlint",
     "pdb",
     "pip",
@@ -150,6 +162,7 @@
     "python",
     "python3",
     "react-scripts",
+    "strip",
     "ts-node",
     "tsc",
     "tsx",
@@ -167,7 +180,8 @@
     "languages": [
       "python",
       "javascript",
-      "typescript"
+      "typescript",
+      "c"
     ],
     "package_managers": [
       "npm"
@@ -227,7 +241,7 @@
     "cargo_aliases": [],
     "shell_scripts": []
   },
-  "project_dir": "/Users/vargaelod/shinso/dyad/.auto-claude/worktrees/tasks/001-feature-natural-language-to-smart-contract-generat",
-  "created_at": "2026-01-13T13:52:40.486311",
-  "project_hash": "10045732a296a20256bb2b7a55a0c52d"
+  "project_dir": "/Users/vargaelod/shinso/dyad/.auto-claude/worktrees/tasks/002-implement-vector-database-for-smart-contract-conte",
+  "created_at": "2026-01-14T12:25:20.070022",
+  "project_hash": "4fb7e0fd094eb92fd5972d206662b538"
 }

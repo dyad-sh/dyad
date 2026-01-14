@@ -31,6 +31,10 @@ import {
 } from "./utils/performance_monitor";
 import { cleanupOldAiMessagesJson } from "./pro/main/ipc/handlers/local_agent/ai_messages_cleanup";
 import fs from "fs";
+import { mcpManager } from "./ipc/utils/mcp_manager";
+import { db } from "./db";
+import { mcpServers } from "./db/schema";
+import { eq } from "drizzle-orm";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -76,6 +80,69 @@ if (process.defaultApp) {
   app.setAsDefaultProtocolClient("shinso");
 }
 
+/**
+ * Warm up the vector store by pre-ingesting documentation for default ecosystems.
+ * This runs in the background and doesn't block app startup.
+ * First-time run will download the embedding model (~22MB) and ingest docs.
+ */
+async function warmupVectorStore(): Promise<void> {
+  const ecosystems = ["solana", "sui"] as const;
+
+  logger.info("[VectorStore] Starting warmup for ecosystems:", ecosystems);
+
+  // Find the blockchain-guide MCP server
+  const servers = await db
+    .select()
+    .from(mcpServers)
+    .where(eq(mcpServers.name, "blockchain-guide"));
+
+  if (servers.length === 0) {
+    logger.warn("[VectorStore] blockchain-guide MCP server not found, skipping warmup");
+    return;
+  }
+
+  const server = servers[0];
+  logger.info(`[VectorStore] Found blockchain-guide server (id: ${server.id})`);
+
+  // Get the raw MCP client
+  const client = await mcpManager.getRawClient(server.id);
+
+  for (const ecosystem of ecosystems) {
+    try {
+      const startTime = Date.now();
+      logger.info(`[VectorStore] Ingesting ${ecosystem} documentation...`);
+
+      // Call the ingest-docs tool directly
+      const result = await client.callTool({
+        name: "ingest-docs",
+        arguments: { ecosystem, force: false },
+      });
+
+      const duration = Date.now() - startTime;
+      const responseText =
+        result?.content?.[0]?.type === "text"
+          ? (result.content[0] as { type: "text"; text: string }).text
+          : "";
+
+      if (
+        responseText.includes("Ingestion Complete") ||
+        responseText.includes("Already Ingested")
+      ) {
+        logger.info(
+          `[VectorStore] ${ecosystem} ready (${(duration / 1000).toFixed(1)}s)`,
+        );
+      } else {
+        logger.warn(`[VectorStore] ${ecosystem} ingestion response:`, responseText);
+      }
+    } catch (error) {
+      // Don't fail startup if warmup fails - it will be retried on first use
+      logger.warn(`[VectorStore] Failed to warmup ${ecosystem}:`, error);
+    }
+  }
+
+  logger.info("[VectorStore] Warmup complete");
+}
+
 export async function onReady() {
   try {
     const backupManager = new BackupManager({
@@ -92,6 +159,13 @@ export async function onReady() {
   cleanupOldAiMessagesJson();
 
   await runSeeds(); // Seed default data (like blockchain-guide MCP server)
+
+  // Warm up vector store in background (don't await - let it run while app loads)
+  // This pre-ingests documentation so translations are fast on first use
+  warmupVectorStore().catch((error) => {
+    logger.warn("[VectorStore] Background warmup failed:", error);
+  });
+
   const settings = readSettings();
 
   // Check if app was force-closed

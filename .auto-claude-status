@@ -1,15 +1,15 @@
 {
   "active": true,
-  "spec": "001-feature-natural-language-to-smart-contract-generat",
+  "spec": "002-implement-vector-database-for-smart-contract-conte",
   "state": "building",
   "subtasks": {
-    "completed": 24,
-    "total": 29,
+    "completed": 19,
+    "total": 23,
     "in_progress": 1,
     "failed": 0
   },
   "phase": {
-    "current": "Integration and Verification",
+    "current": "Testing & Optimization",
     "id": null,
     "total": 5
   },
@@ -18,8 +18,8 @@
     "max": 1
   },
   "session": {
-    "number": 25,
-    "started_at": "2026-01-13T13:52:13.998606"
+    "number": 3,
+    "started_at": "2026-01-14T12:25:02.309542"
   },
-  "last_update": "2026-01-13T14:48:32.249974"
+  "last_update": "2026-01-14T12:30:51.317905"
 }

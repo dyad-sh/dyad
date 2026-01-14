@@ -10,6 +10,13 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { join } from "path";
+import { homedir } from "os";
+
+// Import vector database modules
+import { VectorDB, type DocumentChunk } from "./src/vector_db.js";
+import { chunkMarkdown, type Chunk } from "./src/chunker.js";
+import { getEmbeddingGenerator, type EmbeddingProgress } from "./src/embeddings.js";
 
 // ============================================================================
 // Configuration
@@ -41,6 +48,63 @@ interface CacheEntry {
 
 const docsCache = new Map<string, CacheEntry>();
 const CACHE_TTL = 1000 * 60 * 60; // 1 hour
+
+// ============================================================================
+// Vector Database Configuration
+// ============================================================================
+
+/** Path to store vector database files */
+const VECTOR_DB_PATH = join(homedir(), ".dyad", "vectors");
+
+/** Ingestion batch size for embeddings */
+const EMBEDDING_BATCH_SIZE = 50;
+
+/** Table name prefix for ecosystem docs */
+const DOCS_TABLE_PREFIX = "docs_";
+
+/** Singleton VectorDB instance */
+let vectorDB: VectorDB | null = null;
+
+/**
+ * Get or create the VectorDB instance
+ */
+async function getVectorDB(): Promise<VectorDB> {
+  if (!vectorDB) {
+    vectorDB = new VectorDB({ dataPath: VECTOR_DB_PATH });
+    await vectorDB.connect();
+  }
+  return vectorDB;
+}
+
+/**
+ * Ingestion metadata for tracking versions
+ */
+interface IngestionMetadata {
+  ecosystem: string;
+  source: string;
+  version: string;
+  chunkCount: number;
+  embeddingModel: string;
+  ingestedAt: number;
+}
+
+/** In-memory metadata cache (would be stored in SQLite in production) */
+const ingestionMetadataCache = new Map<string, IngestionMetadata>();
+
+/**
+ * Version information for remote documentation
+ */
+interface VersionInfo {
+  ecosystem: string;
+  remoteVersion: string;
+  storedVersion: string | null;
+  needsUpdate: boolean;
+  lastChecked: number;
+}
+
+/** Cache for version checks to avoid excessive network requests */
+const versionCheckCache = new Map<string, { version: string; timestamp: number }>();
+const VERSION_CHECK_TTL = 1000 * 60 * 5; // 5 minutes
 
 // ============================================================================
 // Helper Functions
@@ -221,6 +285,322 @@ function extractSection(text: string, keywords: string[]): string | null {
 function extractUrls(text: string): string[] {
   const urlRegex = /https?:\/\/[^\s)]+/g;
   return text.match(urlRegex) || [];
+}
+
+// ============================================================================
+// Version Checking Functions
+// ============================================================================
+
+/**
+ * Compute a content hash for version tracking.
+ * Uses a simple hash based on content length and sampling for efficiency.
+ */
+function computeContentHash(content: string): string {
+  // Sample content at multiple positions to detect changes
+  const sampleSize = 1000;
+  const contentLength = content.length;
+  const samples: string[] = [];
+
+  // Take samples from start, middle, and end
+  samples.push(content.slice(0, sampleSize));
+  samples.push(content.slice(Math.floor(contentLength / 2), Math.floor(contentLength / 2) + sampleSize));
+  samples.push(content.slice(-sampleSize));
+
+  // Create a simple hash from length + sample characters
+  let hash = contentLength.toString(36);
+  const combined = samples.join("");
+  let charSum = 0;
+  for (let i = 0; i < combined.length; i++) {
+    charSum = (charSum + combined.charCodeAt(i)) % 0xFFFFFFFF;
+  }
+  hash += "-" + charSum.toString(36);
+
+  return hash;
+}
+
+/**
+ * Fetch the current version of remote documentation.
+ * Uses content hashing to detect changes.
+ */
+async function fetchRemoteVersion(ecosystem: string): Promise<string> {
+  // Check cache first
+  const cached = versionCheckCache.get(ecosystem);
+  const now = Date.now();
+  if (cached && now - cached.timestamp < VERSION_CHECK_TTL) {
+    return cached.version;
+  }
+
+  let content: string;
+  if (ecosystem === "solana" && DOCS_SOURCES.solana) {
+    content = await fetchDocs(DOCS_SOURCES.solana);
+  } else if (ecosystem === "sui") {
+    content = await fetchSuiDocs();
+  } else {
+    throw new Error(`Unknown ecosystem: ${ecosystem}`);
+  }
+
+  const version = computeContentHash(content);
+  versionCheckCache.set(ecosystem, { version, timestamp: now });
+  return version;
+}
+
+/**
+ * Check if the stored documentation needs to be updated.
+ * Compares the stored version hash with the remote version hash.
+ *
+ * @param ecosystem - The ecosystem to check (solana, sui)
+ * @returns VersionInfo with needsUpdate flag
+ */
+async function needsUpdate(ecosystem: string): Promise<VersionInfo> {
+  const storedMetadata = ingestionMetadataCache.get(ecosystem);
+  const storedVersion = storedMetadata?.version || null;
+
+  // Fetch remote version
+  const remoteVersion = await fetchRemoteVersion(ecosystem);
+
+  // Compare versions
+  const updateNeeded = storedVersion !== remoteVersion;
+
+  return {
+    ecosystem,
+    remoteVersion,
+    storedVersion,
+    needsUpdate: updateNeeded,
+    lastChecked: Date.now(),
+  };
+}
+
+/**
+ * Check version staleness based on age.
+ * Documentation older than the threshold is considered stale.
+ */
+function isVersionStale(ecosystem: string, maxAgeHours: number = 24): boolean {
+  const storedMetadata = ingestionMetadataCache.get(ecosystem);
+  if (!storedMetadata) {
+    return true; // No stored version means we need to ingest
+  }
+
+  const ageMs = Date.now() - storedMetadata.ingestedAt;
+  const ageHours = ageMs / (1000 * 60 * 60);
+  return ageHours > maxAgeHours;
+}
+
+// ============================================================================
+// Automatic Re-Ingestion Functions
+// ============================================================================
+
+/**
+ * Result of an auto-ingest operation
+ */
+interface AutoIngestResult {
+  /** Whether ingestion was performed */
+  ingested: boolean;
+  /** Reason for the action taken */
+  reason: "up_to_date" | "version_changed" | "not_indexed" | "stale" | "forced" | "error";
+  /** Ecosystem that was checked/ingested */
+  ecosystem: string;
+  /** Error message if ingestion failed */
+  error?: string;
+  /** Number of chunks if ingestion was performed */
+  chunkCount?: number;
+  /** Duration in seconds if ingestion was performed */
+  durationSeconds?: number;
+  /** Version hash after operation */
+  version?: string;
+}
+
+/**
+ * Automatically ingest documentation if the version has changed or if not indexed.
+ * This is the main entry point for automatic re-ingestion.
+ *
+ * @param ecosystem - The ecosystem to check and potentially ingest
+ * @param options - Configuration options
+ * @returns Result indicating what action was taken
+ */
+async function autoIngestIfNeeded(
+  ecosystem: string,
+  options: {
+    /** Force re-ingestion regardless of version */
+    force?: boolean;
+    /** Consider docs stale if older than this (hours) */
+    maxAgeHours?: number;
+    /** Check for remote version changes */
+    checkRemote?: boolean;
+  } = {}
+): Promise<AutoIngestResult> {
+  const { force = false, maxAgeHours = 24, checkRemote = true } = options;
+  const tableName = `${DOCS_TABLE_PREFIX}${ecosystem}`;
+  const startTime = Date.now();
+
+  try {
+    // Check if forced
+    if (force) {
+      return await performIngestion(ecosystem, tableName, startTime, "forced");
+    }
+
+    // Check if not indexed at all
+    const db = await getVectorDB();
+    const tableExists = await db.tableExists(tableName);
+    const storedMetadata = ingestionMetadataCache.get(ecosystem);
+
+    if (!tableExists || !storedMetadata) {
+      return await performIngestion(ecosystem, tableName, startTime, "not_indexed");
+    }
+
+    // Check staleness by age
+    if (isVersionStale(ecosystem, maxAgeHours)) {
+      return await performIngestion(ecosystem, tableName, startTime, "stale");
+    }
+
+    // Check for remote version changes if enabled
+    if (checkRemote) {
+      const versionInfo = await needsUpdate(ecosystem);
+      if (versionInfo.needsUpdate) {
+        return await performIngestion(ecosystem, tableName, startTime, "version_changed");
+      }
+    }
+
+    // No update needed
+    return {
+      ingested: false,
+      reason: "up_to_date",
+      ecosystem,
+      version: storedMetadata.version,
+      chunkCount: storedMetadata.chunkCount,
+    };
+  } catch (error) {
+    return {
+      ingested: false,
+      reason: "error",
+      ecosystem,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/**
+ * Helper function to perform the actual ingestion
+ */
+async function performIngestion(
+  ecosystem: string,
+  tableName: string,
+  startTime: number,
+  reason: AutoIngestResult["reason"]
+): Promise<AutoIngestResult> {
+  try {
+    // Fetch documentation
+    let docsContent: string;
+    let sourceUrl: string;
+
+    if (ecosystem === "solana" && DOCS_SOURCES.solana) {
+      docsContent = await fetchDocs(DOCS_SOURCES.solana);
+      sourceUrl = DOCS_SOURCES.solana;
+    } else if (ecosystem === "sui") {
+      docsContent = await fetchSuiDocs();
+      sourceUrl = "https://docs.sui.io";
+    } else {
+      return {
+        ingested: false,
+        reason: "error",
+        ecosystem,
+        error: `Documentation source not configured for ${ecosystem}`,
+      };
+    }
+
+    // Chunk the documentation
+    const chunks = chunkMarkdown(docsContent);
+
+    if (chunks.length === 0) {
+      return {
+        ingested: false,
+        reason: "error",
+        ecosystem,
+        error: "No content to ingest - documentation may be empty",
+      };
+    }
+
+    // Generate embeddings in batches
+    const embeddingGenerator = getEmbeddingGenerator();
+    const documentChunks: DocumentChunk[] = [];
+    const batchCount = Math.ceil(chunks.length / EMBEDDING_BATCH_SIZE);
+
+    for (let batchIdx = 0; batchIdx < batchCount; batchIdx++) {
+      const batchStart = batchIdx * EMBEDDING_BATCH_SIZE;
+      const batchEnd = Math.min(batchStart + EMBEDDING_BATCH_SIZE, chunks.length);
+      const batchChunks = chunks.slice(batchStart, batchEnd);
+
+      const texts = batchChunks.map((c: Chunk) => c.text);
+      const embedResult = await embeddingGenerator.embedBatch(texts);
+
+      for (let i = 0; i < batchChunks.length; i++) {
+        const chunk = batchChunks[i];
+        documentChunks.push({
+          id: `${ecosystem}-${chunk.index}`,
+          text: chunk.text,
+          source: ecosystem,
+          section: chunk.section || "general",
+          vector: embedResult.embeddings[i],
+          chunkIndex: chunk.index,
+          createdAt: Date.now(),
+        });
+      }
+    }
+
+    // Store in vector database (overwrite existing)
+    const db = await getVectorDB();
+    await db.createTable(tableName, documentChunks, true);
+
+    // Create index if we have enough rows
+    if (documentChunks.length > 1000) {
+      await db.createIndex(tableName);
+    }
+
+    // Update metadata cache
+    const contentVersion = computeContentHash(docsContent);
+    const metadata: IngestionMetadata = {
+      ecosystem,
+      source: sourceUrl,
+      version: contentVersion,
+      chunkCount: documentChunks.length,
+      embeddingModel: embeddingGenerator.getModelId(),
+      ingestedAt: Date.now(),
+    };
+    ingestionMetadataCache.set(ecosystem, metadata);
+    versionCheckCache.set(ecosystem, { version: contentVersion, timestamp: Date.now() });
+
+    const durationSeconds = (Date.now() - startTime) / 1000;
+
+    return {
+      ingested: true,
+      reason,
+      ecosystem,
+      chunkCount: documentChunks.length,
+      durationSeconds,
+      version: contentVersion,
+    };
+  } catch (error) {
+    return {
+      ingested: false,
+      reason: "error",
+      ecosystem,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/**
+ * Convenience function to check and update documentation if needed.
+ * Alias for autoIngestIfNeeded for semantic clarity.
+ */
+async function updateIfNeeded(
+  ecosystem: string,
+  options?: {
+    force?: boolean;
+    maxAgeHours?: number;
+    checkRemote?: boolean;
+  }
+): Promise<AutoIngestResult> {
+  return autoIngestIfNeeded(ecosystem, options);
 }
 
 // ============================================================================
@@ -711,6 +1091,516 @@ server.registerTool(
         },
       ],
     };
+  },
+);
+
+// ============================================================================
+// Tool 5: Ingest Documentation into Vector Database
+// ============================================================================
+
+server.registerTool(
+  "ingest-docs",
+  {
+    description:
+      "Ingest documentation for a blockchain ecosystem into the vector database. Fetches docs, chunks them semantically, generates embeddings, and stores in LanceDB for fast retrieval. Use this to prepare docs for vector search.",
+    inputSchema: z.object({
+      ecosystem: z
+        .enum(["solana", "sui"])
+        .describe("Which blockchain ecosystem to ingest docs for"),
+      force: z
+        .boolean()
+        .optional()
+        .describe("Force re-ingestion even if docs are already indexed (default: false)"),
+    }),
+  },
+  async (args) => {
+    const { ecosystem, force = false } = args;
+    const tableName = `${DOCS_TABLE_PREFIX}${ecosystem}`;
+    const startTime = Date.now();
+
+    try {
+      // Check if already ingested and not forcing refresh
+      const existingMetadata = ingestionMetadataCache.get(ecosystem);
+      if (existingMetadata && !force) {
+        const ageMs = Date.now() - existingMetadata.ingestedAt;
+        const ageHours = Math.floor(ageMs / (1000 * 60 * 60));
+        return {
+          content: [
+            {
+              type: "text",
+              text: `# Already Ingested\n\nEcosystem: ${ecosystem}\nChunks: ${existingMetadata.chunkCount}\nIngested: ${ageHours}h ago\n\nUse force=true to re-ingest.`,
+            },
+          ],
+        };
+      }
+
+      // Step 1: Fetch documentation
+      let docsContent: string;
+      let sourceUrl: string;
+
+      if (ecosystem === "solana" && DOCS_SOURCES.solana) {
+        docsContent = await fetchDocs(DOCS_SOURCES.solana);
+        sourceUrl = DOCS_SOURCES.solana;
+      } else if (ecosystem === "sui") {
+        docsContent = await fetchSuiDocs();
+        sourceUrl = "https://docs.sui.io";
+      } else {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Documentation source not configured for ${ecosystem}`,
+            },
+          ],
+        };
+      }
+
+      // Step 2: Chunk the documentation
+      const chunks = chunkMarkdown(docsContent);
+
+      if (chunks.length === 0) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `No content to ingest for ${ecosystem}. Documentation may be empty.`,
+            },
+          ],
+        };
+      }
+
+      // Step 3: Generate embeddings in batches
+      const embeddingGenerator = getEmbeddingGenerator({
+        onProgress: (progress: EmbeddingProgress) => {
+          // Progress is logged to stderr for debugging
+          if (progress.status === "downloading" && progress.progress) {
+            console.error(`Model download: ${progress.progress.toFixed(1)}%`);
+          }
+        },
+      });
+
+      // Prepare document chunks with embeddings
+      const documentChunks: DocumentChunk[] = [];
+      const batchCount = Math.ceil(chunks.length / EMBEDDING_BATCH_SIZE);
+
+      for (let batchIdx = 0; batchIdx < batchCount; batchIdx++) {
+        const batchStart = batchIdx * EMBEDDING_BATCH_SIZE;
+        const batchEnd = Math.min(batchStart + EMBEDDING_BATCH_SIZE, chunks.length);
+        const batchChunks = chunks.slice(batchStart, batchEnd);
+
+        // Extract texts for embedding
+        const texts = batchChunks.map((c: Chunk) => c.text);
+
+        // Generate embeddings for this batch
+        const embedResult = await embeddingGenerator.embedBatch(texts);
+
+        // Create document chunks with embeddings
+        for (let i = 0; i < batchChunks.length; i++) {
+          const chunk = batchChunks[i];
+          documentChunks.push({
+            id: `${ecosystem}-${chunk.index}`,
+            text: chunk.text,
+            source: ecosystem,
+            section: chunk.section || "general",
+            vector: embedResult.embeddings[i],
+            chunkIndex: chunk.index,
+            createdAt: Date.now(),
+          });
+        }
+      }
+
+      // Step 4: Store in vector database
+      const db = await getVectorDB();
+      await db.createTable(tableName, documentChunks, true);
+
+      // Step 5: Create index if we have enough rows (>1000)
+      if (documentChunks.length > 1000) {
+        await db.createIndex(tableName);
+      }
+
+      // Step 6: Update metadata cache with content hash for version tracking
+      const contentVersion = computeContentHash(docsContent);
+      const metadata: IngestionMetadata = {
+        ecosystem,
+        source: sourceUrl,
+        version: contentVersion, // Use content hash for version comparison
+        chunkCount: documentChunks.length,
+        embeddingModel: embeddingGenerator.getModelId(),
+        ingestedAt: Date.now(),
+      };
+      ingestionMetadataCache.set(ecosystem, metadata);
+
+      // Also update version check cache to avoid redundant fetches
+      versionCheckCache.set(ecosystem, { version: contentVersion, timestamp: Date.now() });
+
+      const durationSec = ((Date.now() - startTime) / 1000).toFixed(1);
+      const docsKB = (docsContent.length / 1024).toFixed(0);
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `# Ingestion Complete\n\n` +
+              `**Ecosystem:** ${ecosystem}\n` +
+              `**Source:** ${sourceUrl}\n` +
+              `**Original Size:** ${docsKB}KB\n` +
+              `**Chunks Created:** ${documentChunks.length}\n` +
+              `**Index Created:** ${documentChunks.length > 1000 ? "Yes" : "No (brute force faster for <1000 rows)"}\n` +
+              `**Duration:** ${durationSec}s\n` +
+              `**Model:** ${embeddingGenerator.getModelId()}\n\n` +
+              `Ready for vector search with search-docs tool.`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `# Ingestion Failed\n\n` +
+              `**Ecosystem:** ${ecosystem}\n` +
+              `**Error:** ${error instanceof Error ? error.message : String(error)}\n\n` +
+              `Please check that all dependencies are installed and try again.`,
+          },
+        ],
+      };
+    }
+  },
+);
+
+// ============================================================================
+// Tool 6: Search Documentation with Vector Similarity
+// ============================================================================
+
+server.registerTool(
+  "search-docs",
+  {
+    description:
+      "Search documentation using semantic vector similarity. Find relevant documentation chunks based on natural language queries. Requires docs to be ingested first via ingest-docs.",
+    inputSchema: z.object({
+      query: z
+        .string()
+        .describe("Natural language search query (e.g., 'how to create a token', 'PDA account validation')"),
+      ecosystem: z
+        .enum(["solana", "sui"])
+        .describe("Which ecosystem's documentation to search"),
+      limit: z
+        .number()
+        .min(1)
+        .max(20)
+        .optional()
+        .describe("Maximum number of results to return (default: 5, max: 20)"),
+    }),
+  },
+  async (args) => {
+    const { query, ecosystem, limit = 5 } = args;
+    const tableName = `${DOCS_TABLE_PREFIX}${ecosystem}`;
+
+    try {
+      // Check if docs have been ingested
+      const db = await getVectorDB();
+      const tableExists = await db.tableExists(tableName);
+
+      if (!tableExists) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `# No Documentation Indexed\n\n` +
+                `The ${ecosystem} documentation has not been ingested yet.\n\n` +
+                `**To index documentation, run:**\n` +
+                `\`\`\`\ningest-docs({ ecosystem: '${ecosystem}' })\n\`\`\`\n\n` +
+                `This will fetch, chunk, and embed the documentation for vector search.`,
+            },
+          ],
+        };
+      }
+
+      // Generate embedding for the query
+      const embeddingGenerator = getEmbeddingGenerator();
+      const queryResult = await embeddingGenerator.embed(query);
+
+      // Search for similar documents
+      const results = await db.search(
+        queryResult.embedding,
+        tableName,
+        limit,
+      );
+
+      if (results.length === 0) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `# No Results Found\n\n` +
+                `No matching documentation found for: "${query}"\n\n` +
+                `**Suggestions:**\n` +
+                `- Try different keywords or phrasing\n` +
+                `- Use more specific technical terms\n` +
+                `- Check if the documentation covers this topic`,
+            },
+          ],
+        };
+      }
+
+      // Format results
+      const formattedResults = results.map((result, index) => {
+        const distance = result._distance !== undefined
+          ? ` (similarity: ${(1 - result._distance).toFixed(3)})`
+          : "";
+        return `## Result ${index + 1}${distance}\n\n` +
+          `**Section:** ${result.section}\n` +
+          `**Source:** ${result.source}\n\n` +
+          `${result.text}\n`;
+      });
+
+      const metadata = ingestionMetadataCache.get(ecosystem);
+      const metadataInfo = metadata
+        ? `\n---\n*Index: ${metadata.chunkCount} chunks, model: ${metadata.embeddingModel}*`
+        : "";
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `# Search Results for "${query}"\n\n` +
+              `**Ecosystem:** ${ecosystem}\n` +
+              `**Results:** ${results.length}\n\n` +
+              formattedResults.join("\n---\n\n") +
+              metadataInfo,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `# Search Failed\n\n` +
+              `**Query:** ${query}\n` +
+              `**Ecosystem:** ${ecosystem}\n` +
+              `**Error:** ${error instanceof Error ? error.message : String(error)}\n\n` +
+              `Please ensure the documentation has been ingested and try again.`,
+          },
+        ],
+      };
+    }
+  },
+);
+
+// ============================================================================
+// Tool 7: Check Documentation Version
+// ============================================================================
+
+server.registerTool(
+  "check-version",
+  {
+    description:
+      "Check if the indexed documentation is up-to-date with the remote source. Returns version information and whether re-ingestion is needed. Use this before search-docs to ensure you have the latest documentation.",
+    inputSchema: z.object({
+      ecosystem: z
+        .enum(["solana", "sui"])
+        .describe("Which ecosystem's documentation to check"),
+      maxAgeHours: z
+        .number()
+        .min(1)
+        .max(168) // max 1 week
+        .optional()
+        .describe("Consider docs stale if older than this (default: 24 hours)"),
+    }),
+  },
+  async (args) => {
+    const { ecosystem, maxAgeHours = 24 } = args;
+
+    try {
+      // Get stored metadata
+      const storedMetadata = ingestionMetadataCache.get(ecosystem);
+
+      // Check if we have any stored version
+      if (!storedMetadata) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `# Version Check: ${ecosystem.toUpperCase()}\n\n` +
+                `**Status:** Not Indexed\n` +
+                `**Recommendation:** Run ingest-docs first\n\n` +
+                `The ${ecosystem} documentation has not been ingested yet.\n` +
+                `Use \`ingest-docs({ ecosystem: '${ecosystem}' })\` to index the documentation.`,
+            },
+          ],
+        };
+      }
+
+      // Check version against remote
+      const versionInfo = await needsUpdate(ecosystem);
+
+      // Check staleness by age
+      const isStale = isVersionStale(ecosystem, maxAgeHours);
+      const ageMs = Date.now() - storedMetadata.ingestedAt;
+      const ageHours = Math.floor(ageMs / (1000 * 60 * 60));
+      const ageDays = Math.floor(ageHours / 24);
+
+      // Format age string
+      let ageStr: string;
+      if (ageDays > 0) {
+        ageStr = `${ageDays} day${ageDays > 1 ? "s" : ""} ${ageHours % 24} hour${(ageHours % 24) !== 1 ? "s" : ""}`;
+      } else {
+        ageStr = `${ageHours} hour${ageHours !== 1 ? "s" : ""}`;
+      }
+
+      // Determine status and recommendation
+      let status: string;
+      let recommendation: string;
+
+      if (versionInfo.needsUpdate) {
+        status = "Outdated - Remote content has changed";
+        recommendation = `Run \`ingest-docs({ ecosystem: '${ecosystem}', force: true })\` to update`;
+      } else if (isStale) {
+        status = `Stale - Last indexed ${ageStr} ago (exceeds ${maxAgeHours}h threshold)`;
+        recommendation = `Consider running \`ingest-docs({ ecosystem: '${ecosystem}', force: true })\` to refresh`;
+      } else {
+        status = "Up-to-date";
+        recommendation = "No action needed";
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `# Version Check: ${ecosystem.toUpperCase()}\n\n` +
+              `**Status:** ${status}\n` +
+              `**Needs Update:** ${versionInfo.needsUpdate || isStale ? "Yes" : "No"}\n\n` +
+              `## Stored Version\n` +
+              `- **Version Hash:** ${storedMetadata.version}\n` +
+              `- **Chunks:** ${storedMetadata.chunkCount}\n` +
+              `- **Model:** ${storedMetadata.embeddingModel}\n` +
+              `- **Indexed:** ${ageStr} ago\n` +
+              `- **Source:** ${storedMetadata.source}\n\n` +
+              `## Remote Version\n` +
+              `- **Version Hash:** ${versionInfo.remoteVersion}\n` +
+              `- **Changed:** ${versionInfo.needsUpdate ? "Yes - content differs" : "No - content matches"}\n\n` +
+              `## Recommendation\n` +
+              `${recommendation}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `# Version Check Failed\n\n` +
+              `**Ecosystem:** ${ecosystem}\n` +
+              `**Error:** ${error instanceof Error ? error.message : String(error)}\n\n` +
+              `Could not complete version check. This may be due to:\n` +
+              `- Network connectivity issues\n` +
+              `- Remote documentation unavailable\n` +
+              `- Invalid ecosystem specified`,
+          },
+        ],
+      };
+    }
+  },
+);
+
+// ============================================================================
+// Tool 8: Auto-Ingest Documentation (Automatic Re-Ingestion)
+// ============================================================================
+
+server.registerTool(
+  "auto-ingest",
+  {
+    description:
+      "Automatically check and re-ingest documentation if the version has changed. This combines version checking with automatic re-ingestion - use this before search-docs to ensure documentation is up-to-date. More efficient than manually checking version and then running ingest-docs.",
+    inputSchema: z.object({
+      ecosystem: z
+        .enum(["solana", "sui"])
+        .describe("Which ecosystem's documentation to auto-update"),
+      force: z
+        .boolean()
+        .optional()
+        .describe("Force re-ingestion regardless of version (default: false)"),
+      maxAgeHours: z
+        .number()
+        .min(1)
+        .max(168)
+        .optional()
+        .describe("Consider docs stale if older than this (default: 24 hours)"),
+      checkRemote: z
+        .boolean()
+        .optional()
+        .describe("Check for remote version changes (default: true, set to false for offline mode)"),
+    }),
+  },
+  async (args) => {
+    const { ecosystem, force = false, maxAgeHours = 24, checkRemote = true } = args;
+
+    const result = await autoIngestIfNeeded(ecosystem, {
+      force,
+      maxAgeHours,
+      checkRemote,
+    });
+
+    // Format result based on what action was taken
+    if (result.ingested) {
+      const reasonText = {
+        version_changed: "Remote documentation content changed",
+        not_indexed: "Documentation was not previously indexed",
+        stale: `Documentation was stale (older than ${maxAgeHours} hours)`,
+        forced: "Forced re-ingestion requested",
+        up_to_date: "Documentation is up-to-date",
+        error: "Error during ingestion",
+      };
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `# Auto-Ingest Complete\n\n` +
+              `**Ecosystem:** ${ecosystem}\n` +
+              `**Action:** Re-ingested\n` +
+              `**Reason:** ${reasonText[result.reason]}\n\n` +
+              `## Results\n` +
+              `- **Chunks Created:** ${result.chunkCount}\n` +
+              `- **Duration:** ${result.durationSeconds?.toFixed(1)}s\n` +
+              `- **Version Hash:** ${result.version}\n\n` +
+              `Documentation is now ready for vector search.`,
+          },
+        ],
+      };
+    } else if (result.reason === "up_to_date") {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `# Auto-Ingest: No Update Needed\n\n` +
+              `**Ecosystem:** ${ecosystem}\n` +
+              `**Status:** Up-to-date\n\n` +
+              `## Current Index\n` +
+              `- **Chunks:** ${result.chunkCount}\n` +
+              `- **Version Hash:** ${result.version}\n\n` +
+              `Documentation is current and ready for vector search.`,
+          },
+        ],
+      };
+    } else {
+      // Error case
+      return {
+        content: [
+          {
+            type: "text",
+            text: `# Auto-Ingest Failed\n\n` +
+              `**Ecosystem:** ${ecosystem}\n` +
+              `**Error:** ${result.error}\n\n` +
+              `Please check the error and try again. You may need to:\n` +
+              `- Verify network connectivity\n` +
+              `- Check if the documentation source is available\n` +
+              `- Ensure all dependencies are installed`,
+          },
+        ],
+      };
+    }
   },
 );
 

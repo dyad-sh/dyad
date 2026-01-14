@@ -68,19 +68,6 @@ export const apps = sqliteTable("apps", {
     Record<string, any>
   >(), // Chain-specific deployment data
   deployedAt: integer("deployed_at", { mode: "timestamp" }), // Deployment timestamp
-  // Natural language contract generation fields
-  nlPrompt: text("nl_prompt"), // Original NL description used to generate the contract
-  generationMetadata: text("generation_metadata", { mode: "json" }).$type<{
-    model?: string; // Model used for generation
-    generatedAt?: number; // Generation timestamp (unix epoch)
-    targetBlockchain?: string; // Target blockchain (sui_move, solana_rust, solidity)
-    phases?: {
-      document?: { status: string; completedAt?: number };
-      plan?: { status: string; completedAt?: number };
-      act?: { status: string; completedAt?: number };
-    };
-    regenerationCount?: number; // Number of times regenerated
-  } | null>(), // Generation metadata for NL-to-contract feature
 });
 
 export const chats = sqliteTable("chats", {
@@ -266,3 +253,19 @@ export const mcpToolConsents = sqliteTable(
   },
   (table) => [unique("uniq_mcp_consent").on(table.serverId, table.toolName)],
 );
+
+// --- Vector Database Metadata ---
+// Tracks document versions for incremental vector database updates
+export const vectorMetadata = sqliteTable("vector_metadata", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  docSource: text("doc_source").notNull(), // Source identifier (e.g., "solana-docs", "sui-docs")
+  version: text("version").notNull(), // Version hash or timestamp for change detection
+  chunkCount: integer("chunk_count").notNull(), // Number of chunks generated from this source
+  embeddingModel: text("embedding_model").notNull(), // Model used for embeddings (e.g., "Xenova/all-MiniLM-L6-v2")
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});

@@ -11,11 +11,14 @@
     "build:watch": "tsc --watch",
     "start": "node dist/index.js",
     "dev": "tsx index.ts",
-    "test": "npm run build && tsx test.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run -t 'chunker|embedding'",
+    "test:mcp": "npm run build && tsx test.ts",
     "test:simple": "npm run build && tsx test-simple.ts",
     "test:dynamic": "npm run build && tsx test-dynamic.ts",
     "test:comprehensive": "npm run build && tsx test-comprehensive.ts",
-    "test:all": "npm run test && npm run test:simple",
+    "test:all": "npm run test && npm run test:mcp",
     "clean": "rm -rf dist",
     "rebuild": "npm run clean && npm run build",
     "verify": "npm run rebuild && npm run test:simple"
@@ -30,12 +33,16 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@huggingface/transformers": "^3.8.1",
+    "@lancedb/lancedb": "^0.23.0",
     "@modelcontextprotocol/sdk": "^1.24.3",
+    "apache-arrow": "^18.1.0",
     "zod": "^4.1.13"
   },
   "devDependencies": {
     "@types/node": "^20.19.25",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^2.1.8"
   }
 }

@@ -1,9 +1,50 @@
 /**
  * Translation Pipeline - Document Phase
  * Implements context gathering via MCP before translation
+ * Uses vector-based RAG for efficient context retrieval
  */
 
 import { IpcClient } from "@/ipc/ipc_client";
+import {
+  VectorStore,
+  VectorEcosystem,
+  type ContextResult,
+} from "@/lib/vector_store";
+
+/**
+ * Performance metrics for document phase operations
+ */
+export interface DocumentPhasePerformance {
+  totalTimeMs: number;
+  retrievalTimeMs: number;
+  contextSizeKB: number;
+  chunkCount: number;
+  method: "vector_search" | "full_fetch";
+}
+
+/**
+ * Log performance metrics for the document phase
+ * Used for monitoring and optimizing RAG retrieval
+ */
+function logPerformanceMetrics(
+  metrics: DocumentPhasePerformance,
+  onProgress?: (message: string) => void,
+): void {
+  const performanceLog = `[Performance] Document phase completed: retrieval ${metrics.retrievalTimeMs}ms, context ${metrics.contextSizeKB.toFixed(1)}KB (${metrics.chunkCount} chunks), method: ${metrics.method}, total: ${metrics.totalTimeMs}ms`;
+  onProgress?.(performanceLog);
+
+  // Target metrics from spec: retrieval <100ms, context <50KB
+  if (metrics.retrievalTimeMs > 100) {
+    onProgress?.(
+      `[Performance Warning] Retrieval time ${metrics.retrievalTimeMs}ms exceeds 100ms target`,
+    );
+  }
+  if (metrics.contextSizeKB > 50) {
+    onProgress?.(
+      `[Performance Warning] Context size ${metrics.contextSizeKB.toFixed(1)}KB exceeds 50KB target`,
+    );
+  }
+}
 
 export interface DocumentPhaseResult {
   ecosystem: {
@@ -49,115 +90,119 @@ function getEcosystemName(targetLanguage: string): "solana" | "sui" | "anchor" {
 }
 
 /**
- * Create a fallback DocumentPhaseResult when MCP is unavailable
- * Exported for testing
- */
-export function createFallbackContext(targetLanguage: string): DocumentPhaseResult {
-  const ecosystem = getEcosystemName(targetLanguage);
-  const ecosystemName =
-    ecosystem === "anchor"
-      ? "Solana/Anchor"
-      : ecosystem === "sui"
-        ? "Sui Move"
-        : "Blockchain";
-
-  const fallbackDocs = `# ${ecosystemName} Development Guide
-
-This is a fallback context generated because the MCP documentation server was unavailable.
-Please refer to the official documentation for the most up-to-date information.
-
-## Key Resources
-- For Sui Move: https://docs.sui.io/
-- For Solana/Anchor: https://www.anchor-lang.com/docs/
-- For Ethereum/Solidity: https://docs.soliditylang.org/
-
-## Best Practices
-- Follow the target ecosystem's idiomatic patterns
-- Use proper error handling
-- Implement security best practices
-- Test thoroughly before deployment
-`;
-
-  return {
-    ecosystem: {
-      docs: fallbackDocs,
-      size: fallbackDocs.length,
-    },
-    version: {
-      current: "latest",
-      releaseNotes: "Version information unavailable - MCP server not connected",
-      docLinks: [],
-    },
-    translation: {
-      guide: `Follow standard ${ecosystemName} patterns and conventions.`,
-      patterns: {
-        mapping: "Use appropriate data structures for the target platform",
-        modifier: "Use access control patterns native to the target platform",
-        event: "Use event/emit patterns native to the target platform",
-        inheritance: "Use composition or module patterns as appropriate",
-        payable: "Handle value transfer using native mechanisms",
-        constructor: "Use initialization patterns native to the target platform",
-      },
-    },
-  };
-}
-
-/**
- * Check if an error is an MCP connection error
- * Exported for testing
- */
-export function isMcpConnectionError(error: unknown): boolean {
-  if (error instanceof Error) {
-    const message = error.message.toLowerCase();
-    return (
-      message.includes("connection closed") ||
-      message.includes("mcp error") ||
-      message.includes("mcp:call-tool") ||
-      message.includes("connection refused") ||
-      message.includes("econnrefused") ||
-      message.includes("timeout")
-    );
-  }
-  return false;
-}
-
-/**
  * PHASE 1: DOCUMENT - Gather all context via MCP
  *
  * This phase fetches:
- * - Full ecosystem documentation (645KB for Solana)
+ * - Relevant documentation via vector search (optimized RAG) OR full docs as fallback
  * - Latest version + release notes
  * - Translation patterns
  * - Feature compatibility matrix
- *
- * If MCP is unavailable, returns a fallback context to allow generation to proceed.
  */
 export async function documentPhase(
   targetLanguage: string,
   onProgress?: (message: string) => void,
+  sourceCode?: string,
 ): Promise<DocumentPhaseResult> {
+  const phaseStartTime = performance.now();
   const ipc = IpcClient.getInstance();
+  const vectorStore = VectorStore.getInstance();
   const ecosystem = getEcosystemName(targetLanguage);
 
   // For documentation, use 'solana' instead of 'anchor' to get the full llms.txt
   const docsEcosystem = ecosystem === "anchor" ? "solana" : ecosystem;
+  // Map ecosystem to VectorEcosystem type
+  const vectorEcosystem: VectorEcosystem =
+    docsEcosystem === "solana" ? "solana" : "sui";
 
   onProgress?.("Fetching ecosystem documentation...");
 
-  try {
-    // Parallel fetch for speed
-    const [docsResult, releasesResult, guideResult] = await Promise.all([
-      // 1. Get ecosystem documentation (full llms.txt) - use 'solana' for Anchor
-      ipc.callMcpTool("blockchain-guide", "fetch-ecosystem-docs", {
-        ecosystem: docsEcosystem,
-      }),
+  // Performance tracking
+  let retrievalStartTime = 0;
+  let retrievalEndTime = 0;
+  let chunkCount = 0;
 
-      // 2. Get latest releases with notes - use 'anchor' for Anchor-specific version
+  try {
+    // Try vector-based retrieval first for optimized context
+    let docsText = "";
+    let usedVectorSearch = false;
+    let vectorSearchError: string | null = null;
+
+    // Attempt vector-based retrieval with graceful fallback on any error
+    if (sourceCode) {
+      try {
+        // Check if vector store is ready for this ecosystem
+        const vectorReady = await vectorStore.isReady(vectorEcosystem);
+
+        if (vectorReady) {
+          onProgress?.("Using vector search for relevant context...");
+          retrievalStartTime = performance.now();
+
+          // Build search queries based on source code and translation needs
+          const searchQueries = buildSearchQueries(sourceCode, docsEcosystem);
+
+          // Query vector store for relevant documentation chunks
+          const vectorResult = await vectorStore.queryMultiple(
+            vectorEcosystem,
+            searchQueries,
+            { limit: 15, minSimilarity: 0.4 },
+          );
+
+          retrievalEndTime = performance.now();
+
+          if (vectorResult.context && vectorResult.chunkCount > 0) {
+            docsText = vectorResult.context;
+            usedVectorSearch = true;
+            chunkCount = vectorResult.chunkCount;
+            onProgress?.(
+              `Vector search retrieved ${vectorResult.chunkCount} relevant chunks (${(vectorResult.size / 1024).toFixed(1)}KB) in ${vectorResult.retrievalTimeMs}ms`,
+            );
+          }
+        }
+      } catch (vectorError) {
+        // Graceful fallback: log the error but continue with full docs fetch
+        vectorSearchError =
+          vectorError instanceof Error ? vectorError.message : String(vectorError);
+        onProgress?.(
+          `Vector search failed (${vectorSearchError}), falling back to full documentation...`,
+        );
+      }
+    }
+
+    // Fallback to full documentation fetch if:
+    // - Vector search not available (no sourceCode)
+    // - Vector store not ready
+    // - Vector search returned empty results
+    // - Vector search threw an error
+    if (!docsText) {
+      if (!vectorSearchError) {
+        onProgress?.(
+          sourceCode
+            ? "Vector search returned no results, falling back to full docs..."
+            : "No source code provided, fetching full documentation...",
+        );
+      }
+
+      retrievalStartTime = performance.now();
+      const docsResult = await ipc.callMcpTool(
+        "blockchain-guide",
+        "fetch-ecosystem-docs",
+        {
+          ecosystem: docsEcosystem,
+        },
+      );
+      docsText = docsResult.content[0].text;
+      retrievalEndTime = performance.now();
+      chunkCount = 1; // Full doc is 1 "chunk"
+    }
+
+    // Parallel fetch for releases and translation guide (always needed)
+    const [releasesResult, guideResult] = await Promise.all([
+      // Get latest releases with notes - use 'anchor' for Anchor-specific version
       ipc.callMcpTool("blockchain-guide", "fetch-latest-releases", {
         ecosystem,
       }),
 
-      // 3. Get translation guide - use 'solana' for translation
+      // Get translation guide - use 'solana' for translation
       ipc.callMcpTool("blockchain-guide", "get-translation-guide", {
         from: "solidity",
         to: docsEcosystem,
@@ -166,11 +211,10 @@ export async function documentPhase(
 
     onProgress?.("Fetching feature compatibility patterns...");
 
-    // 4. Fetch common feature patterns - use docsEcosystem for consistency
+    // Fetch common feature patterns - use docsEcosystem for consistency
     const patterns = await fetchFeaturePatterns(docsEcosystem, ipc);
 
     // Parse the results
-    const docsText = docsResult.content[0].text;
     const releasesText = releasesResult.content[0].text;
     const guideText = guideResult.content[0].text;
 
@@ -190,34 +234,85 @@ export async function documentPhase(
       },
     };
 
+    // Calculate and log performance metrics
+    const phaseEndTime = performance.now();
+    const retrievalTimeMs = Math.round(retrievalEndTime - retrievalStartTime);
+    const totalTimeMs = Math.round(phaseEndTime - phaseStartTime);
+    const contextSizeKB = result.ecosystem.size / 1024;
+
+    const performanceMetrics: DocumentPhasePerformance = {
+      totalTimeMs,
+      retrievalTimeMs,
+      contextSizeKB,
+      chunkCount,
+      method: usedVectorSearch ? "vector_search" : "full_fetch",
+    };
+
+    logPerformanceMetrics(performanceMetrics, onProgress);
+
+    const retrievalMethod = usedVectorSearch ? "vector search" : "full fetch";
     onProgress?.(
-      `Context gathered: ${(result.ecosystem.size / 1024).toFixed(0)}KB docs, version ${result.version.current}`,
+      `Context gathered via ${retrievalMethod}: ${(result.ecosystem.size / 1024).toFixed(0)}KB docs, version ${result.version.current}`,
     );
 
     return result;
   } catch (error) {
-    console.error("Document phase MCP error:", error);
-
-    // Check if this is an MCP connection error - if so, use fallback context
-    if (isMcpConnectionError(error)) {
-      console.warn(
-        "MCP server unavailable, using fallback context for generation",
-      );
-      onProgress?.(
-        "MCP unavailable - using built-in knowledge for generation...",
-      );
-
-      const fallbackResult = createFallbackContext(targetLanguage);
-      onProgress?.(
-        `Using fallback context: ${(fallbackResult.ecosystem.size / 1024).toFixed(1)}KB`,
-      );
-
-      return fallbackResult;
-    }
-
-    // For other errors, still throw
+    console.error("Document phase failed:", error);
     throw new Error(`Failed to gather translation context: ${error}`);
   }
+}
+
+/**
+ * Build search queries based on source code analysis
+ * Extracts relevant topics from Solidity code to find matching documentation
+ */
+function buildSearchQueries(
+  sourceCode: string,
+  targetEcosystem: string,
+): string[] {
+  const queries: string[] = [];
+
+  // Base query for the target ecosystem
+  queries.push(`${targetEcosystem} smart contract development guide`);
+
+  // Detect Solidity patterns and create relevant queries
+  const patterns: Array<{ pattern: RegExp; query: string }> = [
+    { pattern: /mapping\s*\(/i, query: `${targetEcosystem} storage mapping state` },
+    { pattern: /modifier\s+\w+/i, query: `${targetEcosystem} access control modifier` },
+    { pattern: /event\s+\w+/i, query: `${targetEcosystem} events emit logging` },
+    { pattern: /payable/i, query: `${targetEcosystem} transfer tokens SOL` },
+    {
+      pattern: /msg\.sender/i,
+      query: `${targetEcosystem} caller signer account`,
+    },
+    {
+      pattern: /require\s*\(/i,
+      query: `${targetEcosystem} error handling require assert`,
+    },
+    { pattern: /struct\s+\w+/i, query: `${targetEcosystem} account data struct` },
+    { pattern: /import\s+/i, query: `${targetEcosystem} program imports modules` },
+    {
+      pattern: /constructor\s*\(/i,
+      query: `${targetEcosystem} initialization initialize`,
+    },
+    {
+      pattern: /ERC20|ERC721|token/i,
+      query: `${targetEcosystem} token SPL fungible NFT`,
+    },
+    {
+      pattern: /onlyOwner|Ownable/i,
+      query: `${targetEcosystem} owner authority admin`,
+    },
+  ];
+
+  for (const { pattern, query } of patterns) {
+    if (pattern.test(sourceCode)) {
+      queries.push(query);
+    }
+  }
+
+  // Limit to reasonable number of queries
+  return queries.slice(0, 5);
 }
 
 /**

@@ -15,7 +15,6 @@ export function useAppTheme(appId: number | undefined) {
       return IpcClient.getInstance().getAppTheme({ appId: appId! });
     },
     enabled: !!appId,
-    staleTime: 30000,
   });
 
   const invalidate = () => {

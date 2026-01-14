@@ -57,7 +57,8 @@ export function AuxiliaryActionsMenu({
 
   // Determine current theme: use app theme if appId exists, otherwise use settings
   // Note: settings stores empty string for "no theme", convert to null
-  const currentThemeId = appId ? appThemeId : settings?.selectedThemeId || null;
+  const currentThemeId =
+    appId != null ? appThemeId : settings?.selectedThemeId || null;
 
   const handleThemeSelect = async (themeId: string | null) => {
     if (appId) {

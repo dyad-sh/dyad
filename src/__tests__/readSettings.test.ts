@@ -70,6 +70,7 @@ describe("readSettings", () => {
             "provider": "auto",
           },
           "selectedTemplateId": "react",
+          "selectedThemeId": "default",
           "telemetryConsent": "unset",
           "telemetryUserId": "[scrubbed]",
         }
@@ -319,6 +320,7 @@ describe("readSettings", () => {
             "provider": "auto",
           },
           "selectedTemplateId": "react",
+          "selectedThemeId": "default",
           "telemetryConsent": "unset",
           "telemetryUserId": "[scrubbed]",
         }

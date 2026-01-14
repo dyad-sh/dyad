@@ -123,6 +123,10 @@ test.describe("Git Collaboration", () => {
     const mergeTestFilePath = path.join(appPath, mergeTestFile);
     const featureContent = "Content from feature-1 branch";
     fs.writeFileSync(mergeTestFilePath, featureContent);
+    // Configure git user for commit
+    execSync("git config user.email 'test@example.com'", { cwd: appPath });
+    execSync("git config user.name 'Test User'", { cwd: appPath });
+    execSync("git config commit.gpgsign false", { cwd: appPath });
     execSync(
       `git add ${mergeTestFile} && git commit -m "Add merge test file"`,
       {

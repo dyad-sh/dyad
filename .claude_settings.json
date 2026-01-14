@@ -1,0 +1,39 @@
+{
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true
+  },
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Read(./**)",
+      "Write(./**)",
+      "Edit(./**)",
+      "Glob(./**)",
+      "Grep(./**)",
+      "Read(/Users/vargaelod/shinso/dyad/.auto-claude/worktrees/tasks/001-feature-natural-language-to-smart-contract-generat/**)",
+      "Write(/Users/vargaelod/shinso/dyad/.auto-claude/worktrees/tasks/001-feature-natural-language-to-smart-contract-generat/**)",
+      "Edit(/Users/vargaelod/shinso/dyad/.auto-claude/worktrees/tasks/001-feature-natural-language-to-smart-contract-generat/**)",
+      "Glob(/Users/vargaelod/shinso/dyad/.auto-claude/worktrees/tasks/001-feature-natural-language-to-smart-contract-generat/**)",
+      "Grep(/Users/vargaelod/shinso/dyad/.auto-claude/worktrees/tasks/001-feature-natural-language-to-smart-contract-generat/**)",
+      "Read(/Users/vargaelod/shinso/dyad/.auto-claude/worktrees/tasks/001-feature-natural-language-to-smart-contract-generat/.auto-claude/specs/001-feature-natural-language-to-smart-contract-generat/**)",
+      "Write(/Users/vargaelod/shinso/dyad/.auto-claude/worktrees/tasks/001-feature-natural-language-to-smart-contract-generat/.auto-claude/specs/001-feature-natural-language-to-smart-contract-generat/**)",
+      "Edit(/Users/vargaelod/shinso/dyad/.auto-claude/worktrees/tasks/001-feature-natural-language-to-smart-contract-generat/.auto-claude/specs/001-feature-natural-language-to-smart-contract-generat/**)",
+      "Read(/Users/vargaelod/shinso/dyad/.auto-claude/**)",
+      "Write(/Users/vargaelod/shinso/dyad/.auto-claude/**)",
+      "Edit(/Users/vargaelod/shinso/dyad/.auto-claude/**)",
+      "Glob(/Users/vargaelod/shinso/dyad/.auto-claude/**)",
+      "Grep(/Users/vargaelod/shinso/dyad/.auto-claude/**)",
+      "Bash(*)",
+      "WebFetch(*)",
+      "WebSearch(*)",
+      "mcp__context7__resolve-library-id(*)",
+      "mcp__context7__get-library-docs(*)",
+      "mcp__graphiti-memory__search_nodes(*)",
+      "mcp__graphiti-memory__search_facts(*)",
+      "mcp__graphiti-memory__add_episode(*)",
+      "mcp__graphiti-memory__get_episodes(*)",
+      "mcp__graphiti-memory__get_entity_edge(*)"
+    ]
+  }
+}

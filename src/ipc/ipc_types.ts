@@ -61,6 +61,9 @@ export interface ChatProblemsEvent {
 export interface CreateAppParams {
   name: string;
   isContractProject?: boolean;
+  // Generation mode support
+  nlPrompt?: string; // Natural language prompt for contract generation
+  generationMetadata?: GenerationMetadata; // Metadata for tracking generation details
 }
 
 export interface CreateAppResult {
@@ -700,6 +703,26 @@ export type AgentToolConsent = "ask" | "always";
 export interface TelemetryEventPayload {
   eventName: string;
   properties?: Record<string, unknown>;
+}
+
+// --- Smart Contract Generation Types ---
+export interface GenerationParams {
+  nlPrompt: string; // Natural language description of the contract
+  targetBlockchain: string; // Target blockchain (sui_move, solana_rust, solidity)
+  projectName: string; // Name for the generated project
+}
+
+export interface GenerationMetadata {
+  model: string; // AI model used for generation
+  generationTime: number; // Time taken in milliseconds
+  phasesCompleted: {
+    document: boolean;
+    plan: boolean;
+    act: boolean;
+  };
+  createdAt: string; // ISO timestamp of generation
+  targetBlockchain: string; // Target blockchain used
+  promptLength: number; // Length of the NL prompt
 }
 
 // --- Shinso Transpiler Types ---

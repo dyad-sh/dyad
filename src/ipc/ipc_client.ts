@@ -1617,6 +1617,8 @@ export class IpcClient {
   public async solanaInitProject(params: {
     projectName: string;
     parentPath: string;
+    nlPrompt?: string;
+    generationMetadata?: import("./ipc_types").GenerationMetadata;
   }): Promise<{
     success: boolean;
     output: string;

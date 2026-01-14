@@ -49,6 +49,79 @@ function getEcosystemName(targetLanguage: string): "solana" | "sui" | "anchor" {
 }
 
 /**
+ * Create a fallback DocumentPhaseResult when MCP is unavailable
+ * Exported for testing
+ */
+export function createFallbackContext(targetLanguage: string): DocumentPhaseResult {
+  const ecosystem = getEcosystemName(targetLanguage);
+  const ecosystemName =
+    ecosystem === "anchor"
+      ? "Solana/Anchor"
+      : ecosystem === "sui"
+        ? "Sui Move"
+        : "Blockchain";
+
+  const fallbackDocs = `# ${ecosystemName} Development Guide
+
+This is a fallback context generated because the MCP documentation server was unavailable.
+Please refer to the official documentation for the most up-to-date information.
+
+## Key Resources
+- For Sui Move: https://docs.sui.io/
+- For Solana/Anchor: https://www.anchor-lang.com/docs/
+- For Ethereum/Solidity: https://docs.soliditylang.org/
+
+## Best Practices
+- Follow the target ecosystem's idiomatic patterns
+- Use proper error handling
+- Implement security best practices
+- Test thoroughly before deployment
+`;
+
+  return {
+    ecosystem: {
+      docs: fallbackDocs,
+      size: fallbackDocs.length,
+    },
+    version: {
+      current: "latest",
+      releaseNotes: "Version information unavailable - MCP server not connected",
+      docLinks: [],
+    },
+    translation: {
+      guide: `Follow standard ${ecosystemName} patterns and conventions.`,
+      patterns: {
+        mapping: "Use appropriate data structures for the target platform",
+        modifier: "Use access control patterns native to the target platform",
+        event: "Use event/emit patterns native to the target platform",
+        inheritance: "Use composition or module patterns as appropriate",
+        payable: "Handle value transfer using native mechanisms",
+        constructor: "Use initialization patterns native to the target platform",
+      },
+    },
+  };
+}
+
+/**
+ * Check if an error is an MCP connection error
+ * Exported for testing
+ */
+export function isMcpConnectionError(error: unknown): boolean {
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+    return (
+      message.includes("connection closed") ||
+      message.includes("mcp error") ||
+      message.includes("mcp:call-tool") ||
+      message.includes("connection refused") ||
+      message.includes("econnrefused") ||
+      message.includes("timeout")
+    );
+  }
+  return false;
+}
+
+/**
  * PHASE 1: DOCUMENT - Gather all context via MCP
  *
  * This phase fetches:
@@ -56,6 +129,8 @@ function getEcosystemName(targetLanguage: string): "solana" | "sui" | "anchor" {
  * - Latest version + release notes
  * - Translation patterns
  * - Feature compatibility matrix
+ *
+ * If MCP is unavailable, returns a fallback context to allow generation to proceed.
  */
 export async function documentPhase(
   targetLanguage: string,
@@ -121,7 +196,26 @@ export async function documentPhase(
 
     return result;
   } catch (error) {
-    console.error("Document phase failed:", error);
+    console.error("Document phase MCP error:", error);
+
+    // Check if this is an MCP connection error - if so, use fallback context
+    if (isMcpConnectionError(error)) {
+      console.warn(
+        "MCP server unavailable, using fallback context for generation",
+      );
+      onProgress?.(
+        "MCP unavailable - using built-in knowledge for generation...",
+      );
+
+      const fallbackResult = createFallbackContext(targetLanguage);
+      onProgress?.(
+        `Using fallback context: ${(fallbackResult.ecosystem.size / 1024).toFixed(1)}KB`,
+      );
+
+      return fallbackResult;
+    }
+
+    // For other errors, still throw
     throw new Error(`Failed to gather translation context: ${error}`);
   }
 }

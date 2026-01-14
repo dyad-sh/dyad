@@ -9,6 +9,8 @@ import { Button } from "./ui/button";
 
 export type PipelinePhase = "document" | "plan" | "act";
 export type PhaseStatus = "pending" | "in_progress" | "completed";
+// Pipeline mode: "translate" for code translation, "generate" for new contract generation
+export type PipelineMode = "translate" | "generate";
 
 interface PhaseInfo {
   name: string;
@@ -28,6 +30,7 @@ interface TranslationPipelineProps {
   awaitingApproval?: PipelinePhase | null;
   onApprovePhase1?: () => void;
   onApprovePhase2?: () => void;
+  mode?: PipelineMode;
 }
 
 export function TranslationPipeline({
@@ -41,23 +44,30 @@ export function TranslationPipeline({
   awaitingApproval,
   onApprovePhase1,
   onApprovePhase2,
+  mode = "translate",
 }: TranslationPipelineProps) {
+  // Mode-specific labels
+  const isTranslate = mode === "translate";
+  const pipelineTitle = isTranslate ? "Translation Pipeline" : "Generation Pipeline";
+  const pipelineSubtitle = isTranslate
+    ? "Using advanced context-aware translation"
+    : "Using advanced context-aware generation";
   const phases: PhaseInfo[] = [
     {
       name: "📚 Document",
-      description: "Gathering ecosystem context",
+      description: isTranslate ? "Gathering ecosystem context" : "Analyzing requirements and patterns",
       status: documentStatus,
       details: documentDetails,
     },
     {
       name: "📋 Plan",
-      description: "Analyzing contract structure",
+      description: isTranslate ? "Analyzing contract structure" : "Planning contract architecture",
       status: planStatus,
       details: planDetails,
     },
     {
       name: "⚡ Act",
-      description: "Preparing enriched prompt for LLM",
+      description: isTranslate ? "Preparing enriched prompt for LLM" : "Generating smart contract code",
       status: actStatus,
       details: actDetails,
     },
@@ -101,10 +111,10 @@ export function TranslationPipeline({
             </span>
             <span className="text-xs text-gray-500 dark:text-gray-400 mt-1">
               {currentPhase === "document"
-                ? "Researching"
+                ? isTranslate ? "Researching" : "Analyzing"
                 : currentPhase === "plan"
                   ? "Planning"
-                  : "Preparing"}
+                  : isTranslate ? "Preparing" : "Generating"}
             </span>
           </div>
 
@@ -113,10 +123,10 @@ export function TranslationPipeline({
         </div>
 
         <h2 className="text-2xl font-bold mb-2 text-gray-800 dark:text-gray-200">
-          Translation Pipeline
+          {pipelineTitle}
         </h2>
         <p className="text-gray-600 dark:text-gray-400">
-          Using advanced context-aware translation
+          {pipelineSubtitle}
         </p>
       </div>
 
@@ -200,17 +210,17 @@ export function TranslationPipeline({
         <p className="text-sm text-gray-600 dark:text-gray-400 animate-pulse">
           {currentPhase === "document" &&
             documentStatus === "in_progress" &&
-            "🔍 Gathering blockchain documentation..."}
+            (isTranslate ? "🔍 Gathering blockchain documentation..." : "🔍 Analyzing requirements...")}
           {currentPhase === "plan" &&
             planStatus === "in_progress" &&
-            "🧠 Analyzing contract patterns..."}
+            (isTranslate ? "🧠 Analyzing contract patterns..." : "🧠 Planning contract architecture...")}
           {currentPhase === "act" &&
             actStatus === "in_progress" &&
-            "⚡ Building enriched prompt..."}
+            (isTranslate ? "⚡ Building enriched prompt..." : "⚡ Generating smart contract...")}
           {documentStatus === "completed" &&
             planStatus === "completed" &&
             actStatus === "completed" &&
-            "✅ Ready to generate code!"}
+            (isTranslate ? "✅ Ready to generate code!" : "✅ Contract generation complete!")}
         </p>
       </div>
 
@@ -224,25 +234,41 @@ export function TranslationPipeline({
             <div className="flex-1">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
                 {awaitingApproval === "document" &&
-                  "📚 Phase 1 Complete - Review AI_RULES.md"}
+                  (isTranslate ? "📚 Phase 1 Complete - Review AI_RULES.md" : "📚 Phase 1 Complete - Review Generation Context")}
                 {awaitingApproval === "plan" &&
-                  "📋 Phase 2 Complete - Review Translation Plan"}
+                  (isTranslate ? "📋 Phase 2 Complete - Review Translation Plan" : "📋 Phase 2 Complete - Review Generation Plan")}
               </h3>
               <p className="text-sm text-gray-700 dark:text-gray-300 mb-4">
                 {awaitingApproval === "document" && (
-                  <>
-                    An enriched AI_RULES.md file has been generated with current
-                    blockchain documentation, version information, and
-                    translation patterns. Review the details above before
-                    proceeding.
-                  </>
+                  isTranslate ? (
+                    <>
+                      An enriched AI_RULES.md file has been generated with current
+                      blockchain documentation, version information, and
+                      translation patterns. Review the details above before
+                      proceeding.
+                    </>
+                  ) : (
+                    <>
+                      Generation context has been prepared with blockchain
+                      documentation and best practices. Review the details
+                      above before proceeding.
+                    </>
+                  )
                 )}
                 {awaitingApproval === "plan" && (
-                  <>
-                    The contract structure has been analyzed. Review the
-                    translation strategy above before proceeding to code
-                    generation.
-                  </>
+                  isTranslate ? (
+                    <>
+                      The contract structure has been analyzed. Review the
+                      translation strategy above before proceeding to code
+                      generation.
+                    </>
+                  ) : (
+                    <>
+                      The contract architecture has been planned. Review the
+                      generation strategy above before proceeding to code
+                      generation.
+                    </>
+                  )
                 )}
               </p>
               <div className="flex items-center gap-3">

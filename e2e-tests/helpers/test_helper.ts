@@ -326,9 +326,6 @@ export class PageObject {
     if (autoApprove) {
       await this.toggleAutoApprove();
     }
-    if (localAgent) {
-      await this.toggleLocalAgentMode();
-    }
     await this.setUpDyadProvider();
     await this.goToAppsTab();
     // Select a non-openAI model for local agent mode,

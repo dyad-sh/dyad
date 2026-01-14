@@ -1,16 +1,13 @@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import { useScrollAndNavigateTo } from "@/hooks/useScrollAndNavigateTo";
 import { useAtom } from "jotai";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
-import { useSettings } from "@/hooks/useSettings";
-import type { UserSettings } from "@/lib/schemas";
 
 type SettingsSection = {
   id: string;
   label: string;
-  isEnabled?: (settings: UserSettings | null) => boolean;
 };
 
 const SETTINGS_SECTIONS: SettingsSection[] = [
@@ -23,7 +20,6 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
   {
     id: "agent-permissions",
     label: "Agent Permissions",
-    isEnabled: (settings) => !!settings?.experiments?.enableLocalAgent,
   },
   { id: "tools-mcp", label: "Tools (MCP)" },
   { id: "experiments", label: "Experiments" },
@@ -32,17 +28,13 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
 
 export function SettingsList({ show }: { show: boolean }) {
   const [activeSection, setActiveSection] = useAtom(activeSettingsSectionAtom);
-  const { settings } = useSettings();
+
   const scrollAndNavigateTo = useScrollAndNavigateTo("/settings", {
     behavior: "smooth",
     block: "start",
   });
 
-  const settingsSections = useMemo(() => {
-    return SETTINGS_SECTIONS.filter(
-      (section) => !section.isEnabled || section.isEnabled(settings ?? null),
-    );
-  }, [settings]);
+  const settingsSections = SETTINGS_SECTIONS;
 
   useEffect(() => {
     const observer = new IntersectionObserver(

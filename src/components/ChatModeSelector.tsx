@@ -141,7 +141,7 @@ export function ChatModeSelector() {
             </span>
           </div>
         </SelectItem>
-        {isProEnabled && settings?.experiments?.enableLocalAgent && (
+        {isProEnabled && (
           <SelectItem value="local-agent">
             <div className="flex flex-col items-start">
               <div className="flex items-center gap-1.5">

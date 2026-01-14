@@ -91,7 +91,7 @@ function extractTestCaseName(promptText: string): string | null {
   // - "tc=foo"
   // - "[dump] tc=foo"
   // Stops at "[" to mimic existing fixture naming convention.
-  const m = promptText.match(/(?:^|\s)tc=([^\[]+)/);
+  const m = promptText.match(/(?:^|\s)tc=([^[]+)/);
   if (!m) return null;
   return m[1].trim().split(/\s+/)[0] || null;
 }

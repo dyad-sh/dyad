@@ -2,6 +2,9 @@ import { IpcClient } from "@/ipc/ipc_client";
 import { getAppPort } from "../../shared/ports";
 
 import { v4 as uuidv4 } from "uuid";
+import log from "electron-log";
+
+const logger = log.scope("template_hook");
 
 export async function neonTemplateHook({
   appId,
@@ -10,13 +13,13 @@ export async function neonTemplateHook({
   appId: number;
   appName: string;
 }) {
-  console.log("Creating Neon project");
+  logger.info("Creating Neon project");
   const neonProject = await IpcClient.getInstance().createNeonProject({
     name: appName,
     appId: appId,
   });
 
-  console.log("Neon project created", neonProject);
+  logger.info("Neon project created", neonProject);
   await IpcClient.getInstance().setAppEnvVars({
     appId: appId,
     envVars: [
@@ -42,5 +45,5 @@ export async function neonTemplateHook({
       },
     ],
   });
-  console.log("App env vars set");
+  logger.info("App env vars set");
 }

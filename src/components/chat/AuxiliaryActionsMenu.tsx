@@ -6,6 +6,7 @@ import {
   Palette,
   Check,
   Ban,
+  Apple,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -145,6 +146,12 @@ export function AuxiliaryActionsMenu({
                       <div className="flex items-center w-full">
                         {theme.icon === "palette" && (
                           <Palette
+                            size={16}
+                            className="mr-2 text-muted-foreground"
+                          />
+                        )}
+                        {theme.icon === "apple" && (
+                          <Apple
                             size={16}
                             className="mr-2 text-muted-foreground"
                           />

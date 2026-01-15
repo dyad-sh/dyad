@@ -1,7 +1,8 @@
 /**
- * DO NOT USE LOGGER HERE.
- * Environment variables are sensitive and should not be logged.
+ * IMPORTANT: Do not log environment variable values as they are sensitive.
+ * Only log errors and operational messages without sensitive data.
  */
+import log from "electron-log";
 import { ipcMain } from "electron";
 import * as fs from "fs";
 import * as path from "path";
@@ -15,6 +16,8 @@ import {
   parseEnvFile,
   serializeEnvFile,
 } from "../utils/app_env_var_utils";
+
+const logger = log.scope("app_env_vars_handlers");
 
 export function registerAppEnvVarsHandlers() {
   // Handler to get app environment variables
@@ -45,7 +48,7 @@ export function registerAppEnvVarsHandlers() {
 
         return envVars;
       } catch (error) {
-        console.error("Error getting app environment variables:", error);
+        logger.error("Error getting app environment variables:", error);
         throw new Error(
           `Failed to get environment variables: ${error instanceof Error ? error.message : "Unknown error"}`,
         );
@@ -75,7 +78,7 @@ export function registerAppEnvVarsHandlers() {
         // Write to .env.local file
         await fs.promises.writeFile(envFilePath, content, "utf8");
       } catch (error) {
-        console.error("Error setting app environment variables:", error);
+        logger.error("Error setting app environment variables:", error);
         throw new Error(
           `Failed to set environment variables: ${error instanceof Error ? error.message : "Unknown error"}`,
         );

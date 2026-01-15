@@ -1,5 +1,8 @@
+import log from "electron-log";
 import { safeSend } from "../utils/safe_sender";
 import { cleanFullResponse } from "../utils/cleanFullResponse";
+
+const logger = log.scope("testing_chat_handlers");
 
 // e.g. [dyad-qa=add-dep]
 // Canned responses for test prompts
@@ -72,7 +75,7 @@ export async function streamTestResponse(
   abortController: AbortController,
   updatedChat: any,
 ): Promise<string> {
-  console.log(`Using canned response for test prompt`);
+  logger.debug("Using canned response for test prompt");
 
   // Simulate streaming by splitting the response into chunks
   const chunks = testResponse.split(" ");

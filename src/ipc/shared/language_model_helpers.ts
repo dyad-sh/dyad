@@ -5,12 +5,15 @@ import {
 } from "@/db/schema";
 import type { LanguageModelProvider, LanguageModel } from "@/ipc/ipc_types";
 import { eq } from "drizzle-orm";
+import log from "electron-log";
 import {
   LOCAL_PROVIDERS,
   CLOUD_PROVIDERS,
   MODEL_OPTIONS,
   PROVIDER_TO_ENV_VAR,
 } from "./language_model_constants";
+
+const logger = log.scope("language_model_helpers");
 /**
  * Fetches language model providers from both the database (custom) and hardcoded constants (cloud),
  * merging them with custom providers taking precedence.
@@ -91,7 +94,7 @@ export async function getLanguageModels({
   const provider = allProviders.find((p) => p.id === providerId);
 
   if (!provider) {
-    console.warn(`Provider with ID "${providerId}" not found.`);
+    logger.warn(`Provider with ID "${providerId}" not found.`);
     return [];
   }
 
@@ -124,7 +127,7 @@ export async function getLanguageModels({
       type: "custom",
     }));
   } catch (error) {
-    console.error(
+    logger.error(
       `Error fetching custom models for provider "${providerId}" from DB:`,
       error,
     );
@@ -142,7 +145,7 @@ export async function getLanguageModels({
         type: "cloud",
       }));
     } else {
-      console.warn(
+      logger.warn(
         `Provider "${providerId}" is cloud type but not found in MODEL_OPTIONS.`,
       );
     }

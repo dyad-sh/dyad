@@ -27,6 +27,9 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import log from "electron-log";
+
+const logger = log.scope("github_connector");
 
 interface GitHubConnectorProps {
   appId: number | null;
@@ -358,7 +361,7 @@ export function UnconnectedGitHubConnector({
     // Listener for updates (user code, verification uri, status messages)
     const removeUpdateListener =
       IpcClient.getInstance().onGithubDeviceFlowUpdate((data) => {
-        console.log("Received github:flow-update", data);
+        logger.info("Received github:flow-update", data);
         if (data.userCode) {
           setGithubUserCode(data.userCode);
         }
@@ -383,7 +386,7 @@ export function UnconnectedGitHubConnector({
     // Listener for success
     const removeSuccessListener =
       IpcClient.getInstance().onGithubDeviceFlowSuccess((data) => {
-        console.log("Received github:flow-success", data);
+        logger.info("Received github:flow-success", data);
         setGithubStatusMessage("Successfully connected to GitHub!");
         setGithubUserCode(null); // Clear user-facing info
         setGithubVerificationUri(null);
@@ -397,7 +400,7 @@ export function UnconnectedGitHubConnector({
     // Listener for errors
     const removeErrorListener = IpcClient.getInstance().onGithubDeviceFlowError(
       (data) => {
-        console.log("Received github:flow-error", data);
+        logger.info("Received github:flow-error", data);
         setGithubError(data.error || "An unknown error occurred.");
         setGithubStatusMessage(null);
         setGithubUserCode(null);
@@ -432,7 +435,7 @@ export function UnconnectedGitHubConnector({
       const repos = await IpcClient.getInstance().listGithubRepos();
       setAvailableRepos(repos);
     } catch (error) {
-      console.error("Failed to load GitHub repos:", error);
+      logger.error("Failed to load GitHub repos:", error);
     } finally {
       setIsLoadingRepos(false);
     }
@@ -466,7 +469,7 @@ export function UnconnectedGitHubConnector({
         setSelectedBranch(defaultBranch.name);
       }
     } catch (error) {
-      console.error("Failed to load repo branches:", error);
+      logger.error("Failed to load repo branches:", error);
     } finally {
       setIsLoadingBranches(false);
     }
@@ -630,7 +633,7 @@ export function UnconnectedGitHubConnector({
                             setTimeout(() => setCodeCopied(false), 2000);
                           })
                           .catch((err) =>
-                            console.error("Failed to copy code:", err),
+                            logger.error("Failed to copy code:", err),
                           );
                       }
                     }}

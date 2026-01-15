@@ -4,6 +4,9 @@ import React from "react";
 import { CustomErrorToast } from "../components/CustomErrorToast";
 import { InputRequestToast } from "../components/InputRequestToast";
 import { McpConsentToast } from "../components/McpConsentToast";
+import log from "electron-log";
+
+const logger = log.scope("toast");
 
 /**
  * Toast utility functions for consistent notifications across the app
@@ -23,7 +26,7 @@ export const showSuccess = (message: string) => {
  */
 export const showError = (message: any) => {
   const errorMessage = message.toString();
-  console.error(message);
+  logger.error(message);
 
   const onCopy = (toastId: string | number) => {
     navigator.clipboard.writeText(errorMessage);
@@ -78,7 +81,7 @@ export const showError = (message: any) => {
  */
 export const showWarning = (message: string) => {
   toast.warning(message);
-  console.warn(message);
+  logger.warn(message);
 };
 
 /**

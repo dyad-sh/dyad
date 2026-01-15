@@ -10,6 +10,9 @@ import {
   VectorEcosystem,
   type ContextResult,
 } from "@/lib/vector_store";
+import log from "electron-log";
+
+const logger = log.scope("translation_pipeline");
 
 /**
  * Performance metrics for document phase operations
@@ -257,7 +260,7 @@ export async function documentPhase(
 
     return result;
   } catch (error) {
-    console.error("Document phase failed:", error);
+    logger.error("Document phase failed:", error);
     throw new Error(`Failed to gather translation context: ${error}`);
   }
 }

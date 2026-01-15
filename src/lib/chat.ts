@@ -1,5 +1,8 @@
 import { IpcClient } from "../ipc/ipc_client";
 import type { CreateAppParams, CreateAppResult } from "../ipc/ipc_types";
+import log from "electron-log";
+
+const logger = log.scope("chat");
 
 /**
  * Create a new app with an initial chat and prompt
@@ -12,7 +15,7 @@ export async function createApp(
   try {
     return await IpcClient.getInstance().createApp(params);
   } catch (error) {
-    console.error("[CHAT] Error creating app:", error);
+    logger.error("[CHAT] Error creating app:", error);
     throw error;
   }
 }

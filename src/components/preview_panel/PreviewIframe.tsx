@@ -69,6 +69,9 @@ import { useAttachments } from "@/hooks/useAttachments";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { Annotator } from "@/pro/ui/components/Annotator/Annotator";
 import { VisualEditingToolbar } from "./VisualEditingToolbar";
+import log from "electron-log";
+
+const logger = log.scope("preview_iframe");
 
 interface ErrorBannerProps {
   error: { message: string; source: "preview-app" | "dyad-app" } | undefined;
@@ -251,7 +254,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         );
       }
     } catch (err) {
-      console.error("Failed to analyze component", err);
+      logger.error("Failed to analyze component:", err);
       setIsDynamicComponent(false);
       setHasStaticText(false);
     }
@@ -266,7 +269,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     const lineNumber = parseInt(lineStr, 10);
 
     if (!filePath || isNaN(lineNumber)) {
-      console.error("Invalid componentId format:", componentId);
+      logger.error("Invalid componentId format:", componentId);
       return;
     }
 
@@ -307,7 +310,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         "*",
       );
     } catch (error) {
-      console.error("Failed to get element styles:", error);
+      logger.error("Failed to get element styles:", error);
     }
   };
   useEffect(() => {
@@ -438,7 +441,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       }
 
       if (event.data?.type === "dyad-component-selected") {
-        console.log("Component picked:", event.data);
+        logger.info("Component picked:", event.data);
 
         const component = parseComponentSelection(event.data);
 
@@ -550,7 +553,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         const errorMessage = `Error ${
           payload?.message || payload?.reason
         }\nStack trace: ${stack}`;
-        console.error("Iframe error:", errorMessage);
+        logger.error("Iframe error:", errorMessage);
         setErrorMessage({ message: errorMessage, source: "preview-app" });
         setConsoleEntries((prev) => [
           ...prev,
@@ -563,7 +566,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           },
         ]);
       } else if (type === "build-error-report") {
-        console.debug(`Build error report: ${payload}`);
+        logger.debug("Build error report:", payload);
         const errorMessage = `${payload?.message} from file ${payload?.file}.\n\nSource code:\n${payload?.frame}`;
         setErrorMessage({ message: errorMessage, source: "preview-app" });
         setConsoleEntries((prev) => [
@@ -577,7 +580,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           },
         ]);
       } else if (type === "pushState" || type === "replaceState") {
-        console.debug(`Navigation event: ${type}`, payload);
+        logger.debug("Navigation event:", type, payload);
 
         // Update navigation history based on the type of state change
         if (type === "pushState" && payload?.newUrl) {
@@ -730,7 +733,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     setCurrentComponentCoordinates(null);
     // Optionally, add logic here if you need to explicitly stop/start the app again
     // For now, just changing the key should remount the iframe
-    console.debug("Reloading iframe preview for app", selectedAppId);
+    logger.debug("Reloading iframe preview for app:", selectedAppId);
   };
 
   // Function to navigate to a specific route
@@ -1130,7 +1133,7 @@ function parseComponentSelection(data: any): ComponentSelection | null {
   // The id is expected to be in the format "filepath:line:column"
   const parts = id.split(":");
   if (parts.length < 3) {
-    console.error(`Invalid component selection id format: "${id}"`);
+    logger.error(`Invalid component selection id format: "${id}"`);
     return null;
   }
 
@@ -1139,7 +1142,7 @@ function parseComponentSelection(data: any): ComponentSelection | null {
   const relativePath = parts.join(":");
 
   if (!columnStr || !lineStr || !relativePath) {
-    console.error(`Could not parse component selection from id: "${id}"`);
+    logger.error(`Could not parse component selection from id: "${id}"`);
     return null;
   }
 
@@ -1147,7 +1150,7 @@ function parseComponentSelection(data: any): ComponentSelection | null {
   const columnNumber = parseInt(columnStr, 10);
 
   if (isNaN(lineNumber) || isNaN(columnNumber)) {
-    console.error(`Could not parse line/column from id: "${id}"`);
+    logger.error(`Could not parse line/column from id: "${id}"`);
     return null;
   }
 

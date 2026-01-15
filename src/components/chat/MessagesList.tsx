@@ -4,6 +4,7 @@ import { forwardRef, useState, useCallback, useMemo } from "react";
 import { Virtuoso } from "react-virtuoso";
 import ChatMessage from "./ChatMessage";
 import { OpenRouterSetupBanner, SetupBanner } from "../SetupBanner";
+import log from "electron-log";
 
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
@@ -21,6 +22,8 @@ import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { PromoMessage } from "./PromoMessage";
 import { ContextLimitBanner } from "./ContextLimitBanner";
 import { useCountTokens } from "@/hooks/useCountTokens";
+
+const logger = log.scope("messages-list");
 
 interface MessagesListProps {
   messages: Message[];
@@ -98,7 +101,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
                 disabled={isUndoLoading}
                 onClick={async () => {
                   if (!selectedChatId || !appId) {
-                    console.error("No chat selected or app ID not available");
+                    logger.error("No chat selected or app ID not available");
                     return;
                   }
 
@@ -108,7 +111,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
                     // The user message that triggered this assistant response
                     const userMessage = messages[messages.length - 2];
                     if (currentMessage?.sourceCommitHash) {
-                      console.debug(
+                      logger.debug(
                         "Reverting to source commit hash",
                         currentMessage.sourceCommitHash,
                       );
@@ -134,7 +137,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
                       );
                     }
                   } catch (error) {
-                    console.error("Error during undo operation:", error);
+                    logger.error("Error during undo operation:", error);
                     showError("Failed to undo changes");
                   } finally {
                     setIsUndoLoading(false);
@@ -156,7 +159,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
               disabled={isRetryLoading}
               onClick={async () => {
                 if (!selectedChatId) {
-                  console.error("No chat selected");
+                  logger.error("No chat selected");
                   return;
                 }
 
@@ -176,7 +179,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
                       previousAssistantMessage?.role === "assistant" &&
                       previousAssistantMessage?.commitHash
                     ) {
-                      console.debug("Reverting to previous assistant version");
+                      logger.debug("Reverting to previous assistant version");
                       await revertVersion({
                         versionId: previousAssistantMessage.commitHash,
                       });
@@ -185,7 +188,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
                       const chat =
                         await IpcClient.getInstance().getChat(selectedChatId);
                       if (chat.initialCommitHash) {
-                        console.debug(
+                        logger.debug(
                           "Reverting to initial commit hash",
                           chat.initialCommitHash,
                         );
@@ -205,12 +208,12 @@ function FooterComponent({ context }: { context?: FooterContext }) {
                     .reverse()
                     .find((message) => message.role === "user");
                   if (!lastUserMessage) {
-                    console.error("No user message found");
+                    logger.error("No user message found");
                     return;
                   }
                   // Need to do a redo, if we didn't delete the message from a revert.
                   const redo = shouldRedo;
-                  console.debug("Streaming message with redo", redo);
+                  logger.debug("Streaming message with redo", redo);
 
                   streamMessage({
                     prompt: lastUserMessage.content,
@@ -218,7 +221,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
                     redo,
                   });
                 } catch (error) {
-                  console.error("Error during retry operation:", error);
+                  logger.error("Error during retry operation:", error);
                   showError("Failed to retry message");
                 } finally {
                   setIsRetryLoading(false);

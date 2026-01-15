@@ -4,6 +4,9 @@ import { ProviderSettingsGrid } from "@/components/ProviderSettings";
 import ConfirmationDialog from "@/components/ConfirmationDialog";
 import { IpcClient } from "@/ipc/ipc_client";
 import { showSuccess, showError } from "@/lib/toast";
+import log from "electron-log";
+
+const logger = log.scope("settings");
 import { AutoApproveSwitch } from "@/components/AutoApproveSwitch";
 import { TelemetrySwitch } from "@/components/TelemetrySwitch";
 import { MaxChatTurnsSelector } from "@/components/MaxChatTurnsSelector";
@@ -50,7 +53,7 @@ export default function SettingsPage() {
       await ipcClient.resetAll();
       showSuccess("Successfully reset everything. Restart the application.");
     } catch (error) {
-      console.error("Error resetting:", error);
+      logger.error("Error resetting:", error);
       showError(
         error instanceof Error ? error.message : "An unknown error occurred",
       );

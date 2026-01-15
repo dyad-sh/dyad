@@ -6,6 +6,9 @@ import { IpcClient } from "@/ipc/ipc_client";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import log from "electron-log";
+
+const logger = log.scope("app-details");
 import {
   ArrowLeft,
   MoreVertical,
@@ -127,7 +130,7 @@ export default function AppDetailsPage() {
       setIsRenameConfirmDialogOpen(false);
       await refreshApps();
     } catch (error) {
-      console.error("Failed to rename app:", error);
+      logger.error("Failed to rename app:", error);
       const errorMessage = (
         error instanceof Error ? error.message : String(error)
       ).replace(/^Error invoking remote method 'rename-app': Error: /, "");
@@ -151,7 +154,7 @@ export default function AppDetailsPage() {
       setIsRenameFolderDialogOpen(false);
       await refreshApps();
     } catch (error) {
-      console.error("Failed to rename folder:", error);
+      logger.error("Failed to rename folder:", error);
       const errorMessage = (
         error instanceof Error ? error.message : String(error)
       ).replace(/^Error invoking remote method 'rename-app': Error: /, "");
@@ -378,7 +381,7 @@ export default function AppDetailsPage() {
           <Button
             onClick={() => {
               if (!appId) {
-                console.error("No app id found");
+                logger.error("No app id found");
                 return;
               }
               navigate({ to: "/chat" });

@@ -28,6 +28,9 @@ import { ImportAppButton } from "@/components/ImportAppButton";
 import { showError } from "@/lib/toast";
 import { invalidateAppQuery } from "@/hooks/useLoadApp";
 import { useQueryClient } from "@tanstack/react-query";
+import log from "electron-log";
+
+const logger = log.scope("home");
 import { ForceCloseDialog } from "@/components/ForceCloseDialog";
 
 import type { FileAttachment, GenerationMetadata } from "@/ipc/ipc_types";
@@ -145,7 +148,7 @@ export default function HomePage() {
   // Approve Phase 1 and continue to Phase 2
   const approvePhase1 = async () => {
     if (!translationContext || !translationParams) {
-      console.error("Missing translation context or params");
+      logger.error("Missing translation context or params");
       return;
     }
 
@@ -156,7 +159,7 @@ export default function HomePage() {
   // Approve Phase 2 and continue to Phase 3
   const approvePhase2 = async () => {
     if (!translationContext || !translationParams) {
-      console.error("Missing translation context or params");
+      logger.error("Missing translation context or params");
       return;
     }
 
@@ -541,7 +544,7 @@ export default function HomePage() {
             setReleaseNotesOpen(true);
           }
         } catch (err) {
-          console.warn(
+          logger.warn(
             "Unable to check if release note exists for: " + appVersion,
             err,
           );
@@ -616,18 +619,18 @@ export default function HomePage() {
         ? `${extractedName}-${targetSuffix}`
         : `translated-${targetSuffix}`);
 
-    console.log("handleTranslate - sourceLanguage:", sourceLanguage);
-    console.log("handleTranslate - targetLanguage:", targetLanguage);
-    console.log("handleTranslate - projectName:", projectName);
-    console.log("handleTranslate - extractedName:", extractedName);
-    console.log("handleTranslate - finalName:", finalName);
+    logger.debug("handleTranslate - sourceLanguage:", sourceLanguage);
+    logger.debug("handleTranslate - targetLanguage:", targetLanguage);
+    logger.debug("handleTranslate - projectName:", projectName);
+    logger.debug("handleTranslate - extractedName:", extractedName);
+    logger.debug("handleTranslate - finalName:", finalName);
 
     // Try shinso-transpiler for Solidity → Sui Move token standards
     let transpilerUsed = false;
     let suiAppId: number | undefined;
     let writtenFiles: string[] = [];
 
-    console.log("🔍 Transpiler check:", {
+    logger.debug("🔍 Transpiler check:", {
       sourceLanguage,
       targetLanguage,
       hasCode: !!code.trim(),
@@ -639,7 +642,7 @@ export default function HomePage() {
       targetLanguage === "sui_move" &&
       code.trim()
     ) {
-      console.log("✅ Conditions met for transpiler check");
+      logger.debug("✅ Conditions met for transpiler check");
 
       // Detect ERC20 or ERC721 patterns in the code
       const hasERC20 =
@@ -651,7 +654,7 @@ export default function HomePage() {
           code,
         );
 
-      console.log("🔍 Token detection:", {
+      logger.debug("🔍 Token detection:", {
         hasERC20,
         hasERC721,
         erc20Matches: code.match(
@@ -664,29 +667,29 @@ export default function HomePage() {
 
       if (hasERC20 || hasERC721) {
         const tokenType = hasERC721 ? "erc721" : "erc20";
-        console.log(
+        logger.debug(
           `✨ Detected ${tokenType.toUpperCase()} contract, using shinso-transpiler...`,
         );
 
         try {
           // Create the app first to get the output path
-          console.log("📦 Creating Sui Move app...");
+          logger.debug("📦 Creating Sui Move app...");
           const createResult = await IpcClient.getInstance().createApp({
             name: finalName,
             isContractProject: true,
           });
           suiAppId = createResult.app.id;
-          console.log(
+          logger.debug(
             `✅ Created app with ID: ${suiAppId}, path: ${createResult.app.path}`,
           );
 
           // Run transpiler directly to the app directory
           // Backend will resolve the relative path to absolute
-          console.log(
+          logger.debug(
             "📡 Calling transpiler with direct output to app directory",
           );
-          console.log("  Token type:", tokenType);
-          console.log("  Output path:", createResult.app.path);
+          logger.debug("  Token type:", tokenType);
+          logger.debug("  Output path:", createResult.app.path);
 
           const result = await IpcClient.getInstance().transpileContract({
             code,
@@ -695,7 +698,7 @@ export default function HomePage() {
             outputPath: createResult.app.path, // Backend will resolve to absolute path
           });
 
-          console.log("📥 Transpiler result:", {
+          logger.debug("📥 Transpiler result:", {
             success: result.success,
             filesCount: result.files?.length || 0,
             files: result.files,
@@ -705,11 +708,11 @@ export default function HomePage() {
           if (result.success && result.files) {
             transpilerUsed = true;
             writtenFiles = result.files;
-            console.log("✅ Shinso transpiler succeeded!");
-            console.log(
+            logger.debug("✅ Shinso transpiler succeeded!");
+            logger.debug(
               `\n✅ Successfully transpiled ${writtenFiles.length} file(s):`,
             );
-            console.table(
+            logger.debug(
               writtenFiles.map((f, i) => ({
                 "#": i + 1,
                 File: f,
@@ -720,37 +723,37 @@ export default function HomePage() {
               })),
             );
 
-            if (result.stdout) console.log("Transpiler stdout:", result.stdout);
+            if (result.stdout) logger.debug("Transpiler stdout:", result.stdout);
           } else {
-            console.warn("❌ Shinso transpiler failed:", result.error);
+            logger.warn("❌ Shinso transpiler failed:", result.error);
             if (result.stderr)
-              console.warn("Transpiler stderr:", result.stderr);
+              logger.warn("Transpiler stderr:", result.stderr);
 
             // Check for common unsupported features
             const errorStr = result.error || "";
             if (errorStr.includes("InlineAssembly")) {
-              console.info(
+              logger.info(
                 "ℹ️ Transpiler doesn't support inline assembly yet. Falling back to LLM translation.",
               );
             } else if (errorStr.includes("unknown variant")) {
-              console.info(
+              logger.info(
                 "ℹ️ Transpiler doesn't support this Solidity feature yet. Falling back to LLM translation.",
               );
             }
           }
         } catch (error) {
-          console.warn(
+          logger.warn(
             "⚠️ Shinso transpiler error, falling back to LLM:",
             error,
           );
         }
       } else {
-        console.log(
+        logger.debug(
           "⚠️ No ERC20/ERC721 patterns detected, skipping transpiler",
         );
       }
     } else {
-      console.log("⚠️ Transpiler conditions not met:", {
+      logger.debug("⚠️ Transpiler conditions not met:", {
         isRightLanguagePair:
           sourceLanguage === "solidity" && targetLanguage === "sui_move",
         hasCode: !!code.trim(),
@@ -760,7 +763,7 @@ export default function HomePage() {
     // If target is Sui and no app was created by transpiler, create one now
     if (targetLanguage === "sui_move" && !suiAppId) {
       try {
-        console.log(
+        logger.debug(
           "📦 Creating Sui Move app for non-token contract:",
           finalName,
         );
@@ -770,9 +773,9 @@ export default function HomePage() {
           isContractProject: true,
         });
         suiAppId = createResult.app.id;
-        console.log(`✅ Created Sui app with ID: ${suiAppId}`);
+        logger.debug(`✅ Created Sui app with ID: ${suiAppId}`);
       } catch (error) {
-        console.error("Error creating Sui app:", error);
+        logger.error("Error creating Sui app:", error);
         showError("Failed to create Sui app: " + (error as Error).message);
         setIsLoading(false);
         setShowPipeline(false);
@@ -784,7 +787,7 @@ export default function HomePage() {
     let solanaAppId: number | undefined;
     if (targetLanguage === "solana_rust") {
       try {
-        console.log("Scaffolding Anchor project:", finalName);
+        logger.debug("Scaffolding Anchor project:", finalName);
 
         const result = await IpcClient.getInstance().solanaInitProject({
           projectName: finalName,
@@ -792,19 +795,19 @@ export default function HomePage() {
         });
 
         if (!result.success) {
-          console.error("Failed to scaffold Anchor project:", result.error);
+          logger.error("Failed to scaffold Anchor project:", result.error);
           setIsLoading(false);
           setShowPipeline(false);
           return;
         }
 
-        console.log(
+        logger.debug(
           "Anchor project scaffolded successfully with app ID:",
           result.appId,
         );
         solanaAppId = result.appId;
       } catch (error) {
-        console.error("Error scaffolding Anchor project:", error);
+        logger.error("Error scaffolding Anchor project:", error);
         setIsLoading(false);
         setShowPipeline(false);
         return;
@@ -812,13 +815,13 @@ export default function HomePage() {
     }
 
     // PHASE 1: DOCUMENT - Gather MCP context for target ecosystem
-    console.log("📚 Starting document phase for", targetLanguage);
+    logger.debug("📚 Starting document phase for", targetLanguage);
     setCurrentPhase("document");
     setDocumentStatus("in_progress");
     setDocumentDetails("Initializing...");
 
     const context = await documentPhase(targetLanguage, (msg) => {
-      console.log("📚 Document phase:", msg);
+      logger.debug("📚 Document phase:", msg);
       setDocumentDetails(msg);
     });
 
@@ -839,14 +842,14 @@ export default function HomePage() {
           "AI_RULES.md",
           aiRulesContent,
         );
-        console.log("✅ AI_RULES.md written successfully");
+        logger.debug("✅ AI_RULES.md written successfully");
       } catch (error) {
-        console.error("Failed to write AI_RULES.md:", error);
+        logger.error("Failed to write AI_RULES.md:", error);
       }
     }
 
     const summary = getContextSummary(context);
-    console.log(summary);
+    logger.debug(summary);
     setDocumentDetails(
       `${summary}\n\n✅ AI_RULES.md generated (${(aiRulesContent.length / 1024).toFixed(1)}KB)`,
     );
@@ -867,7 +870,7 @@ export default function HomePage() {
     });
 
     // Wait for user approval before proceeding to Phase 2
-    console.log("⏸️ Pausing for Phase 1 approval...");
+    logger.debug("⏸️ Pausing for Phase 1 approval...");
     setAwaitingApproval("document");
   };
 
@@ -883,9 +886,9 @@ export default function HomePage() {
     setShowPipeline(true);
     setIsLoading(true);
 
-    console.log("handleGenerate - nlDescription:", nlDescription.substring(0, 100) + "...");
-    console.log("handleGenerate - projectName:", projectName);
-    console.log("handleGenerate - targetLanguage:", targetLanguage);
+    logger.debug("handleGenerate - nlDescription:", nlDescription.substring(0, 100) + "...");
+    logger.debug("handleGenerate - projectName:", projectName);
+    logger.debug("handleGenerate - targetLanguage:", targetLanguage);
 
     // Generate final project name
     const targetSuffix = targetLanguage.replace(/_/g, "-");
@@ -911,7 +914,7 @@ export default function HomePage() {
     try {
       if (targetLanguage === "solana_rust") {
         // Scaffold Anchor project for Solana
-        console.log("Scaffolding Anchor project:", finalName);
+        logger.debug("Scaffolding Anchor project:", finalName);
         const result = await IpcClient.getInstance().solanaInitProject({
           projectName: finalName,
           parentPath: "src",
@@ -920,18 +923,18 @@ export default function HomePage() {
         });
 
         if (!result.success) {
-          console.error("Failed to scaffold Anchor project:", result.error);
+          logger.error("Failed to scaffold Anchor project:", result.error);
           showError("Failed to scaffold Anchor project: " + result.error);
           setIsLoading(false);
           setShowPipeline(false);
           return;
         }
 
-        console.log("Anchor project scaffolded with app ID:", result.appId);
+        logger.debug("Anchor project scaffolded with app ID:", result.appId);
         appId = result.appId;
       } else {
         // Create standard app for Sui Move, Solidity, etc.
-        console.log("Creating app for:", finalName);
+        logger.debug("Creating app for:", finalName);
         const createResult = await IpcClient.getInstance().createApp({
           name: finalName,
           isContractProject: true,
@@ -939,10 +942,10 @@ export default function HomePage() {
           generationMetadata,
         });
         appId = createResult.app.id;
-        console.log("Created app with ID:", appId);
+        logger.debug("Created app with ID:", appId);
       }
     } catch (error) {
-      console.error("Error creating app:", error);
+      logger.error("Error creating app:", error);
       showError("Failed to create app: " + (error as Error).message);
       setIsLoading(false);
       setShowPipeline(false);
@@ -950,13 +953,13 @@ export default function HomePage() {
     }
 
     // PHASE 1: DOCUMENT - Gather MCP context for target ecosystem
-    console.log("📚 Starting document phase for generation:", targetLanguage);
+    logger.debug("📚 Starting document phase for generation:", targetLanguage);
     setCurrentPhase("document");
     setDocumentStatus("in_progress");
     setDocumentDetails("Gathering blockchain documentation...");
 
     const context = await documentPhase(targetLanguage, (msg) => {
-      console.log("📚 Document phase:", msg);
+      logger.debug("📚 Document phase:", msg);
       setDocumentDetails(msg);
     });
 
@@ -976,14 +979,14 @@ export default function HomePage() {
           "AI_RULES.md",
           aiRulesContent,
         );
-        console.log("✅ AI_RULES.md written successfully");
+        logger.debug("✅ AI_RULES.md written successfully");
       } catch (error) {
-        console.error("Failed to write AI_RULES.md:", error);
+        logger.error("Failed to write AI_RULES.md:", error);
       }
     }
 
     const summary = getContextSummary(context);
-    console.log(summary);
+    logger.debug(summary);
     setDocumentDetails(
       `${summary}\n\n✅ AI_RULES.md generated (${(aiRulesContent.length / 1024).toFixed(1)}KB)`,
     );
@@ -1002,7 +1005,7 @@ export default function HomePage() {
     });
 
     // Wait for user approval before proceeding to Phase 2
-    console.log("⏸️ Pausing for Phase 1 approval (generation)...");
+    logger.debug("⏸️ Pausing for Phase 1 approval (generation)...");
     setAwaitingApproval("document");
   };
 
@@ -1019,13 +1022,13 @@ export default function HomePage() {
       // Use custom name if provided, otherwise generate cute name
       const appName = options?.customName || generateCuteAppName();
 
-      console.log("handleSubmit - options:", options);
-      console.log("handleSubmit - appName:", appName);
-      console.log(
+      logger.debug("handleSubmit - options:", options);
+      logger.debug("handleSubmit - appName:", appName);
+      logger.debug(
         "handleSubmit - isContractProject:",
         options?.isContractProject,
       );
-      console.log("handleSubmit - existingAppId:", options?.existingAppId);
+      logger.debug("handleSubmit - existingAppId:", options?.existingAppId);
 
       let appId: number;
       let chatId: number;
@@ -1034,7 +1037,7 @@ export default function HomePage() {
       if (options?.existingAppId) {
         appId = options.existingAppId;
         chatId = await IpcClient.getInstance().createChat(appId);
-        console.log("Using existing app:", appId, "with new chat:", chatId);
+        logger.debug("Using existing app:", appId, "with new chat:", chatId);
       } else {
         // Create new app and chat
         const result = await IpcClient.getInstance().createApp({
@@ -1073,7 +1076,7 @@ export default function HomePage() {
       posthog.capture("home:chat-submit");
       navigate({ to: "/chat", search: { id: chatId } });
     } catch (error) {
-      console.error("Failed to create app/chat:", error);
+      logger.error("Failed to create app/chat:", error);
       showError("Failed to create app. " + (error as any).toString());
       setIsLoading(false); // Ensure loading state is reset on error
     }

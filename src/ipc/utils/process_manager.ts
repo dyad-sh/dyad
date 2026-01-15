@@ -1,5 +1,8 @@
 import { ChildProcess, spawn } from "node:child_process";
 import treeKill from "tree-kill";
+import log from "electron-log";
+
+const logger = log.scope("process_manager");
 
 // Define a type for the value stored in runningApps
 export interface RunningAppInfo {
@@ -37,7 +40,7 @@ export function killProcess(process: ChildProcess): Promise<void> {
   return new Promise<void>((resolve) => {
     // Add timeout to prevent hanging
     const timeout = setTimeout(() => {
-      console.warn(
+      logger.warn(
         `Timeout waiting for process (PID: ${process.pid}) to close. Force killing may be needed.`,
       );
       resolve();
@@ -45,7 +48,7 @@ export function killProcess(process: ChildProcess): Promise<void> {
 
     process.on("close", (code, signal) => {
       clearTimeout(timeout);
-      console.log(
+      logger.info(
         `Received 'close' event for process (PID: ${process.pid}) with code ${code}, signal ${signal}.`,
       );
       resolve();
@@ -54,7 +57,7 @@ export function killProcess(process: ChildProcess): Promise<void> {
     // Handle potential errors during kill/close sequence
     process.on("error", (err) => {
       clearTimeout(timeout);
-      console.error(
+      logger.error(
         `Error during stop sequence for process (PID: ${process.pid}): ${err.message}`,
       );
       resolve();
@@ -63,22 +66,22 @@ export function killProcess(process: ChildProcess): Promise<void> {
     // Ensure PID exists before attempting to kill
     if (process.pid) {
       // Use tree-kill to terminate the entire process tree
-      console.log(
+      logger.info(
         `Attempting to tree-kill process tree starting at PID ${process.pid}.`,
       );
       treeKill(process.pid, "SIGTERM", (err: Error | undefined) => {
         if (err) {
-          console.warn(
+          logger.warn(
             `tree-kill error for PID ${process.pid}: ${err.message}`,
           );
         } else {
-          console.log(
+          logger.info(
             `tree-kill signal sent successfully to PID ${process.pid}.`,
           );
         }
       });
     } else {
-      console.warn(`Cannot tree-kill process: PID is undefined.`);
+      logger.warn(`Cannot tree-kill process: PID is undefined.`);
     }
   });
 }
@@ -138,11 +141,11 @@ export function removeAppIfCurrentProcess(
   const currentAppInfo = runningApps.get(appId);
   if (currentAppInfo && currentAppInfo.process === process) {
     runningApps.delete(appId);
-    console.log(
+    logger.info(
       `Removed app ${appId} (processId ${currentAppInfo.processId}) from running map. Current size: ${runningApps.size}`,
     );
   } else {
-    console.log(
+    logger.info(
       `App ${appId} process was already removed or replaced in running map. Ignoring.`,
     );
   }

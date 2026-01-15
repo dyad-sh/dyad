@@ -60,9 +60,12 @@ function ConnectedVercelConnector({
 
   const handleGetDeployments = async () => {
     setIsRefreshing(true);
-    const minLoadingTime = new Promise((resolve) => setTimeout(resolve, 750));
-    await Promise.all([getDeployments(), minLoadingTime]);
-    setIsRefreshing(false);
+    try {
+      const minLoadingTime = new Promise((resolve) => setTimeout(resolve, 750));
+      await Promise.all([getDeployments(), minLoadingTime]);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   const isLoadingOrRefreshing = isLoadingDeployments || isRefreshing;

@@ -19,7 +19,7 @@ export function registerSolidityHandlers() {
     try {
       solcVersion = await runShellCommand(`solc --version`);
     } catch (err) {
-      console.error("Failed to get solidity CLI version:", err);
+      logger.error("Failed to get solidity CLI version:", err);
     }
     return {
       solcVersion,

@@ -19,7 +19,7 @@ export function registerVyperHandlers() {
     try {
       vyperVersion = await runShellCommand(`vyper --version`);
     } catch (err) {
-      console.error("Failed to get Vyper CLI version:", err);
+      logger.error("Failed to get Vyper CLI version:", err);
     }
     return {
       vyperVersion,

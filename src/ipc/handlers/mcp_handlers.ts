@@ -62,7 +62,7 @@ export function registerMcpHandlers() {
       try {
         mcpManager.dispose(params.id);
       } catch (e) {
-        console.error(e);
+        logger.error("Failed to dispose MCP client:", e);
       }
       return result[0];
     },
@@ -74,7 +74,7 @@ export function registerMcpHandlers() {
       try {
         mcpManager.dispose(id);
       } catch (e) {
-        console.error(e);
+        logger.error("Failed to dispose MCP client:", e);
       }
       await db.delete(mcpServers).where(eq(mcpServers.id, id));
       return { success: true };

@@ -210,7 +210,7 @@ export function registerSolanaHandlers() {
     try {
       anchorVersion = await runShellCommand(`anchor --version`);
     } catch (err) {
-      console.error("Failed to get Solana CLI version:", err);
+      logger.error("Failed to get Solana CLI version:", err);
     }
     return {
       anchorVersion,

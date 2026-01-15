@@ -19,7 +19,7 @@ export function registerCosmwasmHandlers() {
     try {
       cosmwasmVersion = await runShellCommand(`wasmd version`);
     } catch (err) {
-      console.error("Failed to get cosmwasm CLI version:", err);
+      logger.error("Failed to get cosmwasm CLI version:", err);
     }
     return {
       cosmwasmVersion,

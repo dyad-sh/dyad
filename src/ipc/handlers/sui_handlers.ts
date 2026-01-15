@@ -426,7 +426,7 @@ export function registerSuiHandlers() {
     try {
       suiVersion = await runShellCommand(`sui --version`);
     } catch (err) {
-      console.error("Failed to get SUI CLI version:", err);
+      logger.error("Failed to get SUI CLI version:", err);
     }
     return {
       suiVersion,

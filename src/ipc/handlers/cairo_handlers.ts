@@ -19,7 +19,7 @@ export function registerCairoHandlers() {
     try {
       cairoVersion = await runShellCommand(`scarb --version`);
     } catch (err) {
-      console.error("Failed to get Cairo CLI version:", err);
+      logger.error("Failed to get Cairo CLI version:", err);
     }
     return {
       cairoVersion,

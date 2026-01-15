@@ -19,7 +19,7 @@ export function registerAptosHandlers() {
     try {
       aptosMoveVersion = await runShellCommand(`aptos move --version`);
     } catch (err) {
-      console.error("Failed to get Aptos Move CLI version:", err);
+      logger.error("Failed to get Aptos Move CLI version:", err);
     }
     return {
       aptosMoveVersion,

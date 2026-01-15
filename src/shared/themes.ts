@@ -87,3 +87,21 @@ export function getThemePrompt(themeId: string | null): string {
   const theme = getThemeById(themeId);
   return theme?.prompt ?? "";
 }
+
+/**
+ * Check if a theme ID refers to a custom theme
+ * Custom theme IDs are prefixed with "custom:"
+ */
+export function isCustomThemeId(themeId: string | null): boolean {
+  return themeId?.startsWith("custom:") ?? false;
+}
+
+/**
+ * Extract the numeric ID from a custom theme ID
+ * e.g., "custom:123" -> 123
+ */
+export function getCustomThemeNumericId(themeId: string): number | null {
+  if (!isCustomThemeId(themeId)) return null;
+  const numericId = parseInt(themeId.replace("custom:", ""), 10);
+  return isNaN(numericId) ? null : numericId;
+}

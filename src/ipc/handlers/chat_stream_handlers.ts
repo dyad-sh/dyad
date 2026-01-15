@@ -20,7 +20,7 @@ import {
   constructSystemPrompt,
   readAiRules,
 } from "../../prompts/system_prompt";
-import { getThemePrompt } from "../../shared/themes";
+import { getThemePromptById } from "./themes_handlers";
 import {
   SUPABASE_AVAILABLE_SYSTEM_PROMPT,
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
@@ -611,7 +611,7 @@ ${componentSnippet}
         const aiRules = await readAiRules(getDyadAppPath(updatedChat.app.path));
 
         // Get theme prompt for the app (null themeId means "no theme")
-        const themePrompt = getThemePrompt(updatedChat.app.themeId);
+        const themePrompt = await getThemePromptById(updatedChat.app.themeId);
         logger.log(
           `Theme for app ${updatedChat.app.id}: ${updatedChat.app.themeId ?? "none"}, prompt length: ${themePrompt.length} chars`,
         );

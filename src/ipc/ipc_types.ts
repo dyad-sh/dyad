@@ -745,3 +745,45 @@ export interface SetAppThemeParams {
 export interface GetAppThemeParams {
   appId: number;
 }
+
+// --- Custom Theme Types ---
+export interface CustomTheme {
+  id: number;
+  appId: number | null; // null for global themes
+  name: string;
+  description: string | null;
+  prompt: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CreateCustomThemeParams {
+  appId?: number; // optional - null for global themes
+  name: string;
+  description?: string;
+  prompt: string;
+}
+
+export interface UpdateCustomThemeParams {
+  id: number;
+  name?: string;
+  description?: string;
+  prompt?: string;
+}
+
+export interface DeleteCustomThemeParams {
+  id: number;
+}
+
+export interface GetCustomThemesParams {
+  appId?: number; // if null/undefined, returns global themes
+}
+
+export interface GenerateThemePromptParams {
+  images: string[]; // Base64 encoded images
+  keywords: string;
+}
+
+export interface GenerateThemePromptResult {
+  prompt: string;
+}

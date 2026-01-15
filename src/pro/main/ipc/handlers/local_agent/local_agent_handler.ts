@@ -12,6 +12,7 @@ import {
   type ToolExecutionOptions,
 } from "ai";
 import log from "electron-log";
+
 import { db } from "@/db";
 import { chats, messages } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -103,7 +104,12 @@ export async function handleLocalAgentStream(
   {
     placeholderMessageId,
     systemPrompt,
-  }: { placeholderMessageId: number; systemPrompt: string },
+    dyadRequestId,
+  }: {
+    placeholderMessageId: number;
+    systemPrompt: string;
+    dyadRequestId: string;
+  },
 ): Promise<void> {
   const settings = readSettings();
 
@@ -133,8 +139,6 @@ export async function handleLocalAgentStream(
   }
 
   const appPath = getDyadAppPath(chat.app.path);
-
-  // Generate request ID
 
   // Send initial message update
   safeSend(event.sender, "chat:response:chunk", {
@@ -167,6 +171,7 @@ export async function handleLocalAgentStream(
       messageId: placeholderMessageId,
       isSharedModulesChanged: false,
       todos: [],
+      dyadRequestId,
       onXmlStream: (accumulatedXml: string) => {
         // Stream accumulated XML to UI without persisting
         streamingPreview = accumulatedXml;
@@ -225,6 +230,7 @@ export async function handleLocalAgentStream(
       }),
       providerOptions: getProviderOptions({
         dyadAppId: chat.app.id,
+        dyadRequestId,
         dyadDisableFiles: true, // Local agent uses tools, not file injection
         files: [],
         mentionedAppsCodebases: [],

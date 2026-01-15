@@ -6,12 +6,9 @@ import {
   escapeXmlAttr,
   escapeXmlContent,
 } from "./types";
-import { readSettings } from "@/main/settings";
+import { engineFetch } from "./engine_fetch";
 
 const logger = log.scope("web_search");
-
-const DYAD_ENGINE_URL =
-  process.env.DYAD_ENGINE_URL ?? "https://engine.dyad.sh/v1";
 
 const webSearchSchema = z.object({
   query: z.string().describe("The search query to look up on the web"),
@@ -102,20 +99,11 @@ async function callWebSearchSSE(
   query: string,
   ctx: AgentContext,
 ): Promise<string> {
-  const settings = readSettings();
-  const apiKey = settings.providerSettings?.auto?.apiKey?.value;
-
-  if (!apiKey) {
-    throw new Error("Dyad Pro API key is required for web_search tool");
-  }
-
   ctx.onXmlStream(`<dyad-web-search query="${escapeXmlAttr(query)}">`);
 
-  const response = await fetch(`${DYAD_ENGINE_URL}/tools/web-search`, {
+  const response = await engineFetch(ctx, "/tools/web-search", {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
       Accept: "text/event-stream",
     },
     body: JSON.stringify({ query }),

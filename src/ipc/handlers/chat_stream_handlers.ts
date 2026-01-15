@@ -1014,6 +1014,7 @@ This conversation includes one or more image attachments. When the user uploads 
           await handleLocalAgentStream(event, req, abortController, {
             placeholderMessageId: placeholderAssistantMessage.id,
             systemPrompt,
+            dyadRequestId: dyadRequestId ?? "[no-request-id]",
           });
           return;
         }

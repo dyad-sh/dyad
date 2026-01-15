@@ -14,6 +14,9 @@ import { ArrowRight, Loader2, Code2 } from "lucide-react";
 import { FileAttachmentDropdown } from "@/components/chat/FileAttachmentDropdown";
 import { useAttachments } from "@/hooks/useAttachments";
 import { AttachmentsList } from "@/components/chat/AttachmentsList";
+import log from "electron-log";
+
+const logger = log.scope("CodeTranslationCard");
 
 interface CodeTranslationCardProps {
   onTranslate: (code: string, attachments: any[], projectName: string) => void;
@@ -36,7 +39,7 @@ export function CodeTranslationCard({ onTranslate }: CodeTranslationCardProps) {
       setProjectName("");
       clearAttachments();
     } catch (error) {
-      console.error("Translation failed:", error);
+      logger.error("Translation failed:", error);
     } finally {
       setIsTranslating(false);
     }

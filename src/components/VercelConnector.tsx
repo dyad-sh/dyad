@@ -16,6 +16,9 @@ import {} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { App } from "@/ipc/ipc_types";
+import log from "electron-log";
+
+const logger = log.scope("VercelConnector");
 
 interface VercelConnectorProps {
   appId: number | null;
@@ -265,7 +268,7 @@ function UnconnectedVercelConnector({
       const projects = await IpcClient.getInstance().listVercelProjects();
       setAvailableProjects(projects);
     } catch (error) {
-      console.error("Failed to load Vercel projects:", error);
+      logger.error("Failed to load Vercel projects:", error);
     } finally {
       setIsLoadingProjects(false);
     }

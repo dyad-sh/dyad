@@ -41,6 +41,9 @@ import { ExternalLink, Plus, Trash2 } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import type { SupabaseProject } from "@/ipc/ipc_types";
 import { isSupabaseConnected } from "@/lib/schemas";
+import log from "electron-log";
+
+const logger = log.scope("SupabaseConnector");
 
 export function SupabaseConnector({ appId }: { appId: number }) {
   const { settings, refreshSettings } = useSettings();
@@ -149,7 +152,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
       toast.success("Project disconnected from app successfully");
       await refreshApp();
     } catch (error) {
-      console.error("Failed to disconnect project:", error);
+      logger.error("Failed to disconnect project:", error);
       toast.error("Failed to disconnect project from app");
     }
   };

@@ -5,6 +5,9 @@ import { useSettings } from "@/hooks/useSettings";
 import { showError, showSuccess } from "@/lib/toast";
 import { IpcClient } from "@/ipc/ipc_client";
 import { FolderOpen, RotateCcw, CheckCircle, AlertCircle } from "lucide-react";
+import log from "electron-log";
+
+const logger = log.scope("NodePathSelector");
 
 export function NodePathSelector() {
   const { settings, updateSettings } = useSettings();
@@ -29,7 +32,7 @@ export function NodePathSelector() {
       const debugInfo = await IpcClient.getInstance().getSystemDebugInfo();
       setSystemPath(debugInfo.nodePath || "System PATH (not available)");
     } catch (err) {
-      console.error("Failed to fetch system path:", err);
+      logger.error("Failed to fetch system path:", err);
       setSystemPath("System PATH (not available)");
     }
   };
@@ -49,7 +52,7 @@ export function NodePathSelector() {
         isValid: !!status.nodeVersion,
       });
     } catch (error) {
-      console.error("Failed to check Node.js status:", error);
+      logger.error("Failed to check Node.js status:", error);
       setNodeStatus({ version: null, isValid: false });
     } finally {
       setIsCheckingNode(false);

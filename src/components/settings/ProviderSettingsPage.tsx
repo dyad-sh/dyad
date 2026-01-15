@@ -20,6 +20,9 @@ import {
 import { ProviderSettingsHeader } from "./ProviderSettingsHeader";
 import { ApiKeyConfiguration } from "./ApiKeyConfiguration";
 import { ModelsSection } from "./ModelsSection";
+import log from "electron-log";
+
+const logger = log.scope("ProviderSettingsPage");
 
 interface ProviderSettingsPageProps {
   provider: string;
@@ -144,7 +147,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
       setApiKeyInput(""); // Clear input on success
       // Optionally show a success message
     } catch (error: any) {
-      console.error("Error saving API key:", error);
+      logger.error("Error saving API key:", error);
       setSaveError(error.message || "Failed to save API key.");
     } finally {
       setIsSaving(false);
@@ -167,7 +170,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
       });
       // Optionally show a success message
     } catch (error: any) {
-      console.error("Error deleting API key:", error);
+      logger.error("Error deleting API key:", error);
       setSaveError(error.message || "Failed to delete API key.");
     } finally {
       setIsSaving(false);

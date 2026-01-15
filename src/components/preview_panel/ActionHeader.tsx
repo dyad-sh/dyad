@@ -35,6 +35,9 @@ import { showError, showSuccess } from "@/lib/toast";
 import { useMutation } from "@tanstack/react-query";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
+import log from "electron-log";
+
+const logger = log.scope("ActionHeader");
 
 export type PreviewMode =
   | "preview"
@@ -79,7 +82,7 @@ export const ActionHeader = () => {
     if (app?.isContractProject && previewMode === "preview") {
       setPreviewMode("contract");
       setIsPreviewOpen(true);
-      console.log("Auto-switched to contract mode for contract project");
+      logger.info("Auto-switched to contract mode for contract project");
     }
   }, [app?.isContractProject, previewMode, setPreviewMode, setIsPreviewOpen]);
 

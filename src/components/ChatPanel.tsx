@@ -15,6 +15,9 @@ import { ChatError } from "./chat/ChatError";
 import { Button } from "@/components/ui/button";
 import { ArrowDown } from "lucide-react";
 import { useSettings } from "@/hooks/useSettings";
+import log from "electron-log";
+
+const logger = log.scope("ChatPanel");
 
 interface ChatPanelProps {
   chatId?: number;
@@ -114,7 +117,7 @@ export function ChatPanel({
 
   useEffect(() => {
     const streamCount = chatId ? (streamCountById.get(chatId) ?? 0) : 0;
-    console.log("streamCount - scrolling to bottom", streamCount);
+    logger.debug("streamCount - scrolling to bottom", streamCount);
     scrollToBottom();
   }, [chatId, chatId ? (streamCountById.get(chatId) ?? 0) : 0]);
 

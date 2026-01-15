@@ -4,13 +4,16 @@ import { LightbulbIcon } from "lucide-react";
 import { ErrorComponentProps } from "@tanstack/react-router";
 import { usePostHog } from "posthog-js/react";
 import { IpcClient } from "@/ipc/ipc_client";
+import log from "electron-log";
+
+const logger = log.scope("ErrorBoundary");
 
 export function ErrorBoundary({ error }: ErrorComponentProps) {
   const [isLoading, setIsLoading] = useState(false);
   const posthog = usePostHog();
 
   useEffect(() => {
-    console.error("An error occurred in the route:", error);
+    logger.error("An error occurred in the route:", error);
     posthog.captureException(error);
   }, [error]);
 
@@ -64,7 +67,7 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
       // Open the pre-filled GitHub issue page
       await IpcClient.getInstance().openExternalUrl(githubIssueUrl);
     } catch (err) {
-      console.error("Failed to prepare bug report:", err);
+      logger.error("Failed to prepare bug report:", err);
       // Fallback to opening the regular GitHub issue page
       IpcClient.getInstance().openExternalUrl(
         "https://github.com/dyad-sh/dyad/issues/new",

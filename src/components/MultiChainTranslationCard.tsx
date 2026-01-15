@@ -31,6 +31,9 @@ import {
   getSupportedTargets,
 } from "@/lib/blockchain_languages_registry";
 import { IpcClient } from "@/ipc/ipc_client";
+import log from "electron-log";
+
+const logger = log.scope("MultiChainTranslationCard");
 
 interface MultiChainTranslationCardProps {
   onTranslate: (
@@ -152,7 +155,7 @@ export function MultiChainTranslationCard({
       setNlDescription("");
       clearAttachments();
     } catch (error) {
-      console.error("Translation failed:", error);
+      logger.error("Translation failed:", error);
     } finally {
       setIsTranslating(false);
     }
@@ -173,7 +176,7 @@ export function MultiChainTranslationCard({
       setNlDescription("");
       setProjectName("");
     } catch (error) {
-      console.error("Generation failed:", error);
+      logger.error("Generation failed:", error);
     } finally {
       setIsTranslating(false);
     }
@@ -221,7 +224,7 @@ export function MultiChainTranslationCard({
           return false;
       }
     } catch (err) {
-      console.error(err);
+      logger.error(err);
       return false;
     }
   };

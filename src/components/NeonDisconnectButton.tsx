@@ -1,6 +1,9 @@
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useSettings } from "@/hooks/useSettings";
+import log from "electron-log";
+
+const logger = log.scope("NeonDisconnectButton");
 
 interface NeonDisconnectButtonProps {
   className?: string;
@@ -16,7 +19,7 @@ export function NeonDisconnectButton({ className }: NeonDisconnectButtonProps) {
       });
       toast.success("Disconnected from Neon successfully");
     } catch (error) {
-      console.error("Failed to disconnect from Neon:", error);
+      logger.error("Failed to disconnect from Neon:", error);
       toast.error("Failed to disconnect from Neon");
     }
   };

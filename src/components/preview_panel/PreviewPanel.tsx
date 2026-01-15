@@ -19,6 +19,9 @@ import { useRunApp } from "@/hooks/useRunApp";
 import { PublishPanel } from "./PublishPanel";
 import { SecurityPanel } from "./SecurityPanel";
 import { useSupabase } from "@/hooks/useSupabase";
+import log from "electron-log";
+
+const logger = log.scope("PreviewPanel");
 
 interface ConsoleHeaderProps {
   isOpen: boolean;
@@ -73,7 +76,7 @@ export function PreviewPanel() {
     if (selectedAppId !== previousAppId) {
       // Stop the previously running app, if any
       if (previousAppId !== null) {
-        console.debug("Stopping previous app", previousAppId);
+        logger.debug("Stopping previous app", previousAppId);
         stopApp(previousAppId);
         // We don't necessarily nullify the ref here immediately,
         // let the start of the next app update it or unmount handle it.
@@ -81,7 +84,7 @@ export function PreviewPanel() {
 
       // Start the new app if an ID is selected
       if (selectedAppId !== null) {
-        console.debug("Starting new app", selectedAppId);
+        logger.debug("Starting new app", selectedAppId);
         runApp(selectedAppId); // Consider adding error handling for the promise if needed
         runningAppIdRef.current = selectedAppId; // Update ref to the new running app ID
       } else {
@@ -98,7 +101,7 @@ export function PreviewPanel() {
       if (appToStopOnUnmount !== null) {
         const currentRunningApp = runningAppIdRef.current;
         if (currentRunningApp !== null) {
-          console.debug(
+          logger.debug(
             "Component unmounting or selectedAppId changing, stopping app",
             currentRunningApp,
           );
@@ -119,13 +122,13 @@ export function PreviewPanel() {
 
     // Load logs immediately
     loadEdgeLogs({ projectId, organizationSlug }).catch((error) => {
-      console.error("Failed to load edge logs:", error);
+      logger.error("Failed to load edge logs:", error);
     });
 
     // Poll for new logs every 5 seconds
     const intervalId = setInterval(() => {
       loadEdgeLogs({ projectId, organizationSlug }).catch((error) => {
-        console.error("Failed to load edge logs:", error);
+        logger.error("Failed to load edge logs:", error);
       });
     }, 5000);
 

@@ -13,6 +13,9 @@ import { Button } from "@/components/ui/button";
 import { UserSettings } from "@/lib/schemas";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { showError } from "@/lib/toast";
+import log from "electron-log";
+
+const logger = log.scope("ApiKeyConfiguration");
 
 // Helper function to mask ENV API keys (move or duplicate if needed elsewhere)
 const maskEnvApiKey = (key: string | undefined): string => {
@@ -157,7 +160,7 @@ export function ApiKeyConfiguration({
                         }
                       } catch (error) {
                         showError("Failed to paste from clipboard");
-                        console.error("Failed to paste from clipboard", error);
+                        logger.error("Failed to paste from clipboard", error);
                       }
                     }}
                     disabled={isSaving}

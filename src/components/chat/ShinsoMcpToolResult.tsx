@@ -1,6 +1,9 @@
 import React, { useMemo, useState } from "react";
 import { CheckCircle, ChevronsUpDown, ChevronsDownUp } from "lucide-react";
 import { CodeHighlight } from "./CodeHighlight";
+import log from "electron-log";
+
+const logger = log.scope("ShinsoMcpToolResult");
 
 interface ShinsoMcpToolResultProps {
   node?: any;
@@ -23,7 +26,7 @@ export const ShinsoMcpToolResult: React.FC<ShinsoMcpToolResultProps> = ({
       const parsed = JSON.parse(raw);
       return JSON.stringify(parsed, null, 2);
     } catch (e) {
-      console.error("Error parsing JSON for dyad-mcp-tool-result", e);
+      logger.error("Error parsing JSON for dyad-mcp-tool-result", e);
       return raw;
     }
   }, [expanded, raw]);

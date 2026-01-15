@@ -31,12 +31,16 @@ self.MonacoEnvironment = {
   },
 };
 
+import log from "electron-log";
+
+const logger = log.scope("monaco");
+
 loader.config({ monaco });
 
 // Initialize blockchain language support (Solidity, Move, etc.)
 import("@/utils/blockchain_languages").then(
   ({ initializeBlockchainLanguages }) => {
-    initializeBlockchainLanguages().catch(console.error);
+    initializeBlockchainLanguages().catch(logger.error);
   },
 );
 

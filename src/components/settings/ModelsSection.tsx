@@ -18,6 +18,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useQueryClient } from "@tanstack/react-query";
+import log from "electron-log";
+
+const logger = log.scope("ModelsSection");
 
 interface ModelsSectionProps {
   providerId: string;
@@ -56,7 +59,7 @@ export function ModelsSection({ providerId }: ModelsSectionProps) {
     },
     onError: (error: Error) => {
       // Optionally show an error toast here
-      console.error("Failed to delete model:", error);
+      logger.error("Failed to delete model:", error);
     },
   });
 

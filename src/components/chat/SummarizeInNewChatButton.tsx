@@ -5,6 +5,9 @@ import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { IpcClient } from "@/ipc/ipc_client";
 import { showError } from "@/lib/toast";
+import log from "electron-log";
+
+const logger = log.scope("SummarizeInNewChatButton");
 
 export function useSummarizeInNewChat() {
   const chatId = useAtomValue(selectedChatIdAtom);
@@ -14,11 +17,11 @@ export function useSummarizeInNewChat() {
 
   const handleSummarize = async () => {
     if (!appId) {
-      console.error("No app id found");
+      logger.error("No app id found");
       return;
     }
     if (!chatId) {
-      console.error("No chat id found");
+      logger.error("No chat id found");
       return;
     }
     try {

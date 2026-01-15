@@ -15,6 +15,9 @@ import { showError, showInfo, showSuccess } from "@/lib/toast";
 import { Edit2, Plus, Save, Trash2, X } from "lucide-react";
 import { useDeepLink } from "@/contexts/DeepLinkContext";
 import { AddMcpServerDeepLinkData } from "@/ipc/deep_link_data";
+import log from "electron-log";
+
+const logger = log.scope("ToolsMcpSettings");
 
 type KeyValue = { key: string; value: string };
 
@@ -302,9 +305,9 @@ export function ToolsMcpSettings() {
   const [url, setUrl] = useState("");
   const [enabled, setEnabled] = useState(true);
   const { lastDeepLink, clearLastDeepLink } = useDeepLink();
-  console.log("lastDeepLink!!!", lastDeepLink);
+  logger.debug("lastDeepLink!!!", lastDeepLink);
   useEffect(() => {
-    console.log("rerun effect");
+    logger.debug("rerun effect");
     const handleDeepLink = async () => {
       if (lastDeepLink?.type === "add-mcp-server") {
         const deepLink = lastDeepLink as AddMcpServerDeepLinkData;

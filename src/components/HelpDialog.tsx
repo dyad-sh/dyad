@@ -27,6 +27,9 @@ import { HelpBotDialog } from "./HelpBotDialog";
 import { useSettings } from "@/hooks/useSettings";
 import { BugScreenshotDialog } from "./BugScreenshotDialog";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
+import log from "electron-log";
+
+const logger = log.scope("HelpDialog");
 
 interface HelpDialogProps {
   isOpen: boolean;
@@ -126,7 +129,7 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
       // Open the pre-filled GitHub issue page
       IpcClient.getInstance().openExternalUrl(githubIssueUrl);
     } catch (error) {
-      console.error("Failed to prepare bug report:", error);
+      logger.error("Failed to prepare bug report:", error);
       // Fallback to opening the regular GitHub issue page
       IpcClient.getInstance().openExternalUrl(
         "https://github.com/dyad-sh/dyad/issues/new",
@@ -152,7 +155,7 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
       setChatLogsData(chatLogs);
       setReviewMode(true);
     } catch (error) {
-      console.error("Failed to upload chat session:", error);
+      logger.error("Failed to upload chat session:", error);
       alert(
         "Failed to upload chat session. Please try again or report manually.",
       );
@@ -207,7 +210,7 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
       setUploadComplete(true);
       setReviewMode(false);
     } catch (error) {
-      console.error("Failed to upload chat logs:", error);
+      logger.error("Failed to upload chat logs:", error);
       alert("Failed to upload chat logs. Please try again.");
     } finally {
       setIsUploading(false);
@@ -273,7 +276,7 @@ Pro User ID: ${userBudget?.redactedUserId || "n/a"}
                   try {
                     await navigator.clipboard.writeText(sessionId);
                   } catch (err) {
-                    console.error("Failed to copy session ID:", err);
+                    logger.error("Failed to copy session ID:", err);
                   }
                 }}
               />

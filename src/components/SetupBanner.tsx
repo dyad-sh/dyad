@@ -35,6 +35,9 @@ import { showError } from "@/lib/toast";
 import { useSettings } from "@/hooks/useSettings";
 import { homeModeAtom } from "@/atoms/appAtoms";
 import { useAtom } from "jotai";
+import log from "electron-log";
+
+const logger = log.scope("SetupBanner");
 
 type NodeInstallStep =
   | "install"
@@ -62,7 +65,7 @@ export function SetupBanner() {
       const status = await IpcClient.getInstance().getNodejsStatus();
       setNodeSystemInfo(status);
     } catch (error) {
-      console.error("Failed to check Node.js status:", error);
+      logger.error("Failed to check Node.js status:", error);
       setNodeSystemInfo(null);
       setNodeCheckError(true);
     }

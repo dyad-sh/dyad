@@ -31,6 +31,9 @@ import { useLoadApp } from "@/hooks/useLoadApp";
 import { IpcClient } from "@/ipc/ipc_client";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { useNavigate } from "@tanstack/react-router";
+import log from "electron-log";
+
+const logger = log.scope("ContractView");
 
 interface App {
   id?: number;
@@ -114,7 +117,7 @@ export const ContractView = ({ loading, app }: ContractViewProps) => {
         }
         setSuiAddress(result?.address || null);
       } catch (error) {
-        console.error("Failed to get wallet address:", error);
+        logger.error("Failed to get wallet address:", error);
       }
     };
     loadWalletAddress();
@@ -136,7 +139,7 @@ export const ContractView = ({ loading, app }: ContractViewProps) => {
     // If there are contract files and no file is currently selected, select the first one
     if (contractFiles.length > 0 && !selectedFile) {
       setSelectedFile({ path: contractFiles[0] });
-      console.log("Auto-selected contract file:", contractFiles[0]);
+      logger.info("Auto-selected contract file:", contractFiles[0]);
     }
   }, [app?.files, loading, selectedFile, setSelectedFile, blockchainType]);
 
@@ -286,7 +289,7 @@ Make only the code changes and give no further tips and actions, only a brief su
               deploymentData: result,
             });
           } catch (saveError) {
-            console.error("Failed to save deployment info:", saveError);
+            logger.error("Failed to save deployment info:", saveError);
           }
         }
       } else {

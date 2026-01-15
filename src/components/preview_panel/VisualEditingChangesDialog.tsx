@@ -6,6 +6,9 @@ import { Check, X } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { showError, showSuccess } from "@/lib/toast";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import log from "electron-log";
+
+const logger = log.scope("VisualEditingChangesDialog");
 
 interface VisualEditingChangesDialogProps {
   onReset?: () => void;
@@ -76,7 +79,7 @@ export function VisualEditingChangesDialog({
           showSuccess("Visual changes saved to source files");
           onReset?.();
         } catch (error) {
-          console.error("Failed to save visual editing changes:", error);
+          logger.error("Failed to save visual editing changes:", error);
           showError(`Failed to save changes: ${error}`);
         } finally {
           setIsSaving(false);
@@ -141,7 +144,7 @@ export function VisualEditingChangesDialog({
         onReset?.();
       }
     } catch (error) {
-      console.error("Failed to save visual editing changes:", error);
+      logger.error("Failed to save visual editing changes:", error);
       showError(`Failed to save changes: ${error}`);
       setIsSaving(false);
       isWaitingForResponses.current = false;

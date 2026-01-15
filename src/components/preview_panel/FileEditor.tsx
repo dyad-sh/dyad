@@ -16,6 +16,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useSettings } from "@/hooks/useSettings";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
 import { getLanguage } from "@/utils/get_language";
+import log from "electron-log";
+
+const logger = log.scope("FileEditor");
 
 interface FileEditorProps {
   appId: number | null;
@@ -133,7 +136,7 @@ export const FileEditor = ({ appId, filePath }: FileEditorProps) => {
 
     // Listen for model content change events
     editor.onDidBlurEditorText(() => {
-      console.log("Editor text blurred, checking if save needed");
+      logger.debug("Editor text blurred, checking if save needed");
       if (needsSaveRef.current) {
         saveFile();
       }

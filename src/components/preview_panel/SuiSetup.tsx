@@ -18,6 +18,9 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { IpcClient } from "@/ipc/ipc_client";
+import log from "electron-log";
+
+const logger = log.scope("SuiSetup");
 
 interface SuiSetupProps {
   suiAddress: string | null;
@@ -54,7 +57,7 @@ export const SuiSetup = ({
         : await IpcClient.getInstance().getSuiBalance();
       setBalance(result.formattedBalance);
     } catch (error) {
-      console.error("Failed to load balance:", error);
+      logger.error("Failed to load balance:", error);
       setBalance(null);
     } finally {
       setIsLoadingBalance(false);

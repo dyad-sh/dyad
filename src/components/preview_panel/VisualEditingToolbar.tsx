@@ -19,6 +19,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { rgbToHex, processNumericValue } from "@/utils/style-utils";
+import log from "electron-log";
+
+const logger = log.scope("VisualEditingToolbar");
 
 const FONT_WEIGHT_OPTIONS = [
   { value: "", label: "Default" },
@@ -189,7 +192,7 @@ export function VisualEditingToolbar({
         "*",
       );
     } catch (error) {
-      console.error("Failed to get element styles:", error);
+      logger.error("Failed to get element styles:", error);
     }
   };
 

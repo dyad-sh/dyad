@@ -1,5 +1,8 @@
 import { Copy, Check } from "lucide-react";
 import { useState } from "react";
+import log from "electron-log";
+
+const logger = log.scope("CopyErrorMessage");
 
 interface CopyErrorMessageProps {
   errorMessage: string;
@@ -19,7 +22,7 @@ export const CopyErrorMessage = ({
       setIsCopied(true);
       setTimeout(() => setIsCopied(false), 2000);
     } catch (err) {
-      console.error("Failed to copy error message:", err);
+      logger.error("Failed to copy error message:", err);
     }
   };
 

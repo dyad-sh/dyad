@@ -27,6 +27,9 @@ import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { MENTION_REGEX, parseAppMentions } from "@/shared/parse_mention_apps";
 import { useLoadApp } from "@/hooks/useLoadApp";
+import log from "electron-log";
+
+const logger = log.scope("LexicalChatInput");
 
 // Define the theme for mentions
 const beautifulMentionsTheme: BeautifulMentionsTheme = {
@@ -242,7 +245,7 @@ interface LexicalChatInputProps {
 }
 
 function onError(error: Error) {
-  console.error(error);
+  logger.error(error);
 }
 
 export function LexicalChatInput({

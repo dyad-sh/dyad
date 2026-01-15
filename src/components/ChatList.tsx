@@ -29,6 +29,9 @@ import { DeleteChatDialog } from "@/components/chat/DeleteChatDialog";
 
 import { ChatSearchDialog } from "./ChatSearchDialog";
 import { useSelectChat } from "@/hooks/useSelectChat";
+import log from "electron-log";
+
+const logger = log.scope("ChatList");
 
 export function ChatList({ show }: { show?: boolean }) {
   const navigate = useNavigate();
@@ -59,7 +62,7 @@ export function ChatList({ show }: { show?: boolean }) {
     if (isChatRoute) {
       const id = routerState.location.search.id;
       if (id) {
-        console.log("Setting selected chat id to", id);
+        logger.debug("Setting selected chat id to", id);
         setSelectedChatId(id);
       }
     }

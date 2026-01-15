@@ -15,6 +15,9 @@ import {
 } from "@/components/ui/tooltip";
 
 import { useRunApp } from "@/hooks/useRunApp";
+import log from "electron-log";
+
+const logger = log.scope("VersionPane");
 
 interface VersionPaneProps {
   isVisible: boolean;
@@ -90,7 +93,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
       try {
         await checkoutVersion({ appId, versionId: version.oid });
       } catch (error) {
-        console.error("Could not checkout version, unselecting version", error);
+        logger.error("Could not checkout version, unselecting version", error);
         setSelectedVersionId(null);
       }
       await refreshApp();

@@ -4,6 +4,9 @@ import { AnnotatorToolbar } from "@/components/preview_panel/AnnotatorToolbar";
 import { DraggableTextInput } from "@/components/preview_panel/DraggableTextInput";
 import { useSetAtom } from "jotai";
 import { chatInputValueAtom } from "@/atoms/chatAtoms";
+import log from "electron-log";
+
+const logger = log.scope("Annotator");
 
 // Types
 type Point = [number, number];
@@ -154,7 +157,7 @@ export const Annotator = ({
       setChatInput("Please update the UI based on these screenshots");
       handleAnnotatorClick();
     } catch (error) {
-      console.error("Failed to export annotated image:", error);
+      logger.error("Failed to export annotated image:", error);
     }
   };
 

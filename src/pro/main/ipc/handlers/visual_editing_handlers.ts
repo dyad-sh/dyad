@@ -21,6 +21,9 @@ import {
   transformContent,
   analyzeComponent,
 } from "../../utils/visual_editing_utils";
+import log from "electron-log";
+
+const logger = log.scope("visual_editing_handlers");
 
 export function registerVisualEditingHandlers() {
   ipcMain.handle(
@@ -117,7 +120,7 @@ export function registerVisualEditingHandlers() {
         const content = await fsPromises.readFile(fullPath, "utf-8");
         return analyzeComponent(content, line);
       } catch (error) {
-        console.error("Failed to analyze component:", error);
+        logger.error("Failed to analyze component:", error);
         return { isDynamic: false, hasStaticText: false };
       }
     },

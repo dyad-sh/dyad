@@ -107,7 +107,7 @@ function fastFuzzySearch(
     // Check time limit
     const elapsed = performance.now() - startTime;
     if (elapsed > MAX_FUZZY_SEARCH_TIME_MS) {
-      console.warn(
+      logger.warn(
         `Fast fuzzy search timed out during pre-filter after ${(elapsed / 1000).toFixed(1)}s`,
       );
       break;
@@ -139,7 +139,7 @@ function fastFuzzySearch(
     // Check time limit
     const elapsed = performance.now() - startTime;
     if (elapsed > MAX_FUZZY_SEARCH_TIME_MS) {
-      console.warn(
+      logger.warn(
         `Fast fuzzy search timed out during detailed pass after ${(elapsed / 1000).toFixed(1)}s. Best match: ${(bestScore * 100).toFixed(1)}%`,
       );
       break;

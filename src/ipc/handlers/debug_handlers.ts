@@ -15,6 +15,8 @@ import { getDyadAppPath } from "../../paths/paths";
 import { LargeLanguageModel } from "@/lib/schemas";
 import { validateChatContext } from "../utils/context_paths_utils";
 
+const logger = log.scope("debug_handlers");
+
 // Shared function to get system debug info
 async function getSystemDebugInfo({
   linesOfLogs,
@@ -23,7 +25,7 @@ async function getSystemDebugInfo({
   linesOfLogs: number;
   level: "warn" | "info";
 }): Promise<SystemDebugInfo> {
-  console.log("Getting system debug info");
+  logger.debug("Getting system debug info");
 
   // Get Node.js and pnpm versions
   let nodeVersion: string | null = null;
@@ -32,13 +34,13 @@ async function getSystemDebugInfo({
   try {
     nodeVersion = await runShellCommand("node --version");
   } catch (err) {
-    console.error("Failed to get Node.js version:", err);
+    logger.error("Failed to get Node.js version:", err);
   }
 
   try {
     pnpmVersion = await runShellCommand("pnpm --version");
   } catch (err) {
-    console.error("Failed to get pnpm version:", err);
+    logger.error("Failed to get pnpm version:", err);
   }
 
   try {
@@ -48,7 +50,7 @@ async function getSystemDebugInfo({
       nodePath = await runShellCommand("which node");
     }
   } catch (err) {
-    console.error("Failed to get node path:", err);
+    logger.error("Failed to get node path:", err);
   }
 
   // Get Dyad version from package.json
@@ -58,7 +60,7 @@ async function getSystemDebugInfo({
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
     dyadVersion = packageJson.version;
   } catch (err) {
-    console.error("Failed to read package.json:", err);
+    logger.error("Failed to read package.json:", err);
   }
 
   // Get telemetry info from settings
@@ -94,7 +96,7 @@ async function getSystemDebugInfo({
       logs = logLines.slice(-linesOfLogs).join("\n");
     }
   } catch (err) {
-    console.error("Failed to read log file:", err);
+    logger.error("Failed to read log file:", err);
     logs = `Error reading logs: ${err}`;
   }
 
@@ -118,7 +120,7 @@ export function registerDebugHandlers() {
   ipcMain.handle(
     "get-system-debug-info",
     async (): Promise<SystemDebugInfo> => {
-      console.log("IPC: get-system-debug-info called");
+      logger.info("IPC: get-system-debug-info called");
       return getSystemDebugInfo({
         linesOfLogs: 20,
         level: "warn",
@@ -129,7 +131,7 @@ export function registerDebugHandlers() {
   ipcMain.handle(
     "get-chat-logs",
     async (_, chatId: number): Promise<ChatLogsData> => {
-      console.log(`IPC: get-chat-logs called for chat ${chatId}`);
+      logger.info(`IPC: get-chat-logs called for chat ${chatId}`);
 
       try {
         // We can retrieve a lot more lines here because we're not limited by the
@@ -189,13 +191,13 @@ export function registerDebugHandlers() {
           codebase,
         };
       } catch (error) {
-        console.error(`Error in get-chat-logs:`, error);
+        logger.error(`Error in get-chat-logs:`, error);
         throw error;
       }
     },
   );
 
-  console.log("Registered debug IPC handlers");
+  logger.info("Registered debug IPC handlers");
 
   ipcMain.handle("take-screenshot", async () => {
     const win = BrowserWindow.getFocusedWindow();

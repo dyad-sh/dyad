@@ -217,7 +217,8 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
     mutationFn: async () => {
       const result = await IpcClient.getInstance().selectAppFolder();
       if (!result.path || !result.name) {
-        throw new Error("No folder selected");
+        // User cancelled the folder selection dialog
+        return null;
       }
       const aiRulesCheck = await IpcClient.getInstance().checkAiRules({
         path: result.path,

@@ -1,4 +1,5 @@
 import type { IpcRenderer } from "electron";
+import log from "electron-log";
 import {
   type ChatSummary,
   ChatSummariesSchema,
@@ -92,6 +93,8 @@ import type { Template } from "../shared/templates";
 import { showError } from "@/lib/toast";
 import { DeepLinkData } from "./deep_link_data";
 
+const logger = log.scope("ipc_client");
+
 export interface ChatStreamCallbacks {
   onUpdate: (messages: Message[]) => void;
   onEnd: (response: ChatResponseEnd) => void;
@@ -165,7 +168,7 @@ export class IpcClient {
         if (callbacks) {
           callbacks.onUpdate(messages);
         } else {
-          console.warn(
+          logger.warn(
             `[IPC] No callbacks found for chat ${chatId}`,
             this.chatStreams,
           );
@@ -198,10 +201,10 @@ export class IpcClient {
       const callbacks = this.chatStreams.get(chatId);
       if (callbacks) {
         callbacks.onEnd(payload as unknown as ChatResponseEnd);
-        console.debug("chat:response:end");
+        logger.debug("chat:response:end");
         this.chatStreams.delete(chatId);
       } else {
-        console.error(
+        logger.error(
           new Error(
             `[IPC] No callbacks found for chat ${chatId} on stream end`,
           ),
@@ -214,7 +217,7 @@ export class IpcClient {
     });
 
     this.ipcRenderer.on("chat:response:error", (payload) => {
-      console.debug("chat:response:error");
+      logger.debug("chat:response:error");
       if (
         payload &&
         typeof payload === "object" &&
@@ -227,7 +230,7 @@ export class IpcClient {
           callbacks.onError(error);
           this.chatStreams.delete(chatId);
         } else {
-          console.warn(
+          logger.warn(
             `[IPC] No callbacks found for chat ${chatId} on error`,
             this.chatStreams,
           );
@@ -237,7 +240,7 @@ export class IpcClient {
           handler(chatId);
         }
       } else {
-        console.error("[IPC] Invalid error data received:", payload);
+        logger.error("[IPC] Invalid error data received:", payload);
       }
     });
 
@@ -486,14 +489,14 @@ export class IpcClient {
               attachments: fileDataArray,
             })
             .catch((err) => {
-              console.error("Error streaming message:", err);
+              logger.error("Error streaming message:", err);
               showError(err);
               onError(String(err));
               this.chatStreams.delete(chatId);
             });
         })
         .catch((err) => {
-          console.error("Error streaming message:", err);
+          logger.error("Error streaming message:", err);
           showError(err);
           onError(String(err));
           this.chatStreams.delete(chatId);
@@ -508,7 +511,7 @@ export class IpcClient {
           selectedComponents,
         })
         .catch((err) => {
-          console.error("Error streaming message:", err);
+          logger.error("Error streaming message:", err);
           showError(err);
           onError(String(err));
           this.chatStreams.delete(chatId);
@@ -729,7 +732,7 @@ export class IpcClient {
     callback: (data: GitHubDeviceFlowUpdateData) => void,
   ): () => void {
     const listener = (data: any) => {
-      console.log("github:flow-update", data);
+      logger.debug("github:flow-update", data);
       callback(data as GitHubDeviceFlowUpdateData);
     };
     this.ipcRenderer.on("github:flow-update", listener);
@@ -743,7 +746,7 @@ export class IpcClient {
     callback: (data: GitHubDeviceFlowSuccessData) => void,
   ): () => void {
     const listener = (data: any) => {
-      console.log("github:flow-success", data);
+      logger.debug("github:flow-success", data);
       callback(data as GitHubDeviceFlowSuccessData);
     };
     this.ipcRenderer.on("github:flow-success", listener);
@@ -756,7 +759,7 @@ export class IpcClient {
     callback: (data: GitHubDeviceFlowErrorData) => void,
   ): () => void {
     const listener = (data: any) => {
-      console.log("github:flow-error", data);
+      logger.debug("github:flow-error", data);
       callback(data as GitHubDeviceFlowErrorData);
     };
     this.ipcRenderer.on("github:flow-error", listener);

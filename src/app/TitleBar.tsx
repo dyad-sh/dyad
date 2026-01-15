@@ -4,6 +4,9 @@ import { useLoadApps } from "@/hooks/useLoadApps";
 import { useRouter, useLocation } from "@tanstack/react-router";
 import { useSettings } from "@/hooks/useSettings";
 import { Button } from "@/components/ui/button";
+import log from "electron-log";
+
+const logger = log.scope("TitleBar");
 // @ts-ignore
 import logo from "../../assets/shinso-logo.png";
 import { providerSettingsRoute } from "@/routes/settings/providers/$provider";
@@ -38,7 +41,7 @@ export const TitleBar = () => {
         const platform = await IpcClient.getInstance().getSystemPlatform();
         setShowWindowControls(platform !== "darwin");
       } catch (error) {
-        console.error("Failed to get platform info:", error);
+        logger.error("Failed to get platform info:", error);
       }
     };
 

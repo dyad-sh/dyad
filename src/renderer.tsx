@@ -15,9 +15,12 @@ import { showError, showMcpConsentToast } from "./lib/toast";
 import { IpcClient } from "./ipc/ipc_client";
 import { useSetAtom } from "jotai";
 import { pendingAgentConsentsAtom } from "./atoms/chatAtoms";
+import log from "electron-log";
+
+const logger = log.scope("renderer");
 
 // @ts-ignore
-console.log("Running in mode:", import.meta.env.MODE);
+logger.info("Running in mode:", import.meta.env.MODE);
 
 interface MyMeta extends Record<string, unknown> {
   showErrorToast: boolean;
@@ -67,7 +70,7 @@ const posthogClient = posthog.init(
     capture_pageview: false,
     before_send: (event) => {
       if (!isTelemetryOptedIn()) {
-        console.debug("Telemetry not opted in, skipping event");
+        logger.debug("Telemetry not opted in, skipping event");
         return null;
       }
       const telemetryUserId = getTelemetryUserId();
@@ -79,7 +82,7 @@ const posthogClient = posthog.init(
         event.properties["$ip"] = null;
       }
 
-      console.debug(
+      logger.debug(
         "Telemetry opted in - UUID:",
         telemetryUserId,
         "sending event",

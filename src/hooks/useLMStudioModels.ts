@@ -6,6 +6,9 @@ import {
   lmStudioModelsErrorAtom,
 } from "@/atoms/localModelsAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
+import log from "electron-log";
+
+const logger = log.scope("useLMStudioModels");
 
 export function useLocalLMSModels() {
   const [models, setModels] = useAtom(lmStudioModelsAtom);
@@ -26,7 +29,7 @@ export function useLocalLMSModels() {
 
       return modelList;
     } catch (error) {
-      console.error("Error loading local LMStudio models:", error);
+      logger.error("Error loading local LMStudio models:", error);
       setError(error instanceof Error ? error : new Error(String(error)));
       return [];
     } finally {

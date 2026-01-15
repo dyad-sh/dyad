@@ -1,5 +1,8 @@
 import { useState, useEffect } from "react";
 import { IpcClient } from "@/ipc/ipc_client";
+import log from "electron-log";
+
+const logger = log.scope("useLoadAppFile");
 
 export function useLoadAppFile(appId: number | null, filePath: string | null) {
   const [content, setContent] = useState<string | null>(null);
@@ -22,7 +25,7 @@ export function useLoadAppFile(appId: number | null, filePath: string | null) {
         setContent(fileContent);
         setError(null);
       } catch (error) {
-        console.error(
+        logger.error(
           `Error loading file ${filePath} for app ${appId}:`,
           error,
         );
@@ -48,7 +51,7 @@ export function useLoadAppFile(appId: number | null, filePath: string | null) {
       setContent(fileContent);
       setError(null);
     } catch (error) {
-      console.error(
+      logger.error(
         `Error refreshing file ${filePath} for app ${appId}:`,
         error,
       );

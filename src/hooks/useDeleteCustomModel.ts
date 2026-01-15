@@ -1,5 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { IpcClient } from "@/ipc/ipc_client";
+import log from "electron-log";
+
+const logger = log.scope("useDeleteCustomModel");
 
 interface DeleteCustomModelParams {
   providerId: string;
@@ -38,7 +41,7 @@ export function useDeleteCustomModel({
       onSuccess?.();
     },
     onError: (error: Error) => {
-      console.error("Error deleting custom model:", error);
+      logger.error("Error deleting custom model:", error);
       onError?.(error);
     },
     meta: {

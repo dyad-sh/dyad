@@ -28,6 +28,9 @@ import { usePostHog } from "posthog-js/react";
 import { useCheckProblems } from "./useCheckProblems";
 import { useSettings } from "./useSettings";
 import { useQueryClient } from "@tanstack/react-query";
+import log from "electron-log";
+
+const logger = log.scope("useStreamChat");
 
 export function getRandomNumberId() {
   return Math.floor(Math.random() * 1_000_000_000_000_000);
@@ -159,7 +162,7 @@ export function useStreamChat({
             onSettled?.();
           },
           onError: (errorMessage: string) => {
-            console.error(`[CHAT] Stream error for ${chatId}:`, errorMessage);
+            logger.error(`[CHAT] Stream error for ${chatId}:`, errorMessage);
             setErrorById((prev) => {
               const next = new Map(prev);
               next.set(chatId, errorMessage);
@@ -180,7 +183,7 @@ export function useStreamChat({
           },
         });
       } catch (error) {
-        console.error("[CHAT] Exception during streaming setup:", error);
+        logger.error("[CHAT] Exception during streaming setup:", error);
         setIsStreamingById((prev) => {
           const next = new Map(prev);
           if (chatId) next.set(chatId, false);

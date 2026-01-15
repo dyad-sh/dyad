@@ -1,5 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { getLanguage } from "@/utils/get_language";
+import log from "electron-log";
+
+const logger = log.scope("useCopyToClipboard");
 
 const CUSTOM_TAG_NAMES = [
   "dyad-write",
@@ -45,7 +48,7 @@ export const useCopyToClipboard = () => {
       timeoutRef.current = setTimeout(() => setCopied(false), 2000);
       return true;
     } catch (error) {
-      console.error("Failed to copy content:", error);
+      logger.error("Failed to copy content:", error);
       return false;
     }
   };

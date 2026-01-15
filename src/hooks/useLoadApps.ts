@@ -2,6 +2,9 @@ import { useState, useEffect, useCallback } from "react";
 import { useAtom } from "jotai";
 import { appsListAtom } from "@/atoms/appAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
+import log from "electron-log";
+
+const logger = log.scope("useLoadApps");
 
 export function useLoadApps() {
   const [apps, setApps] = useAtom(appsListAtom);
@@ -16,7 +19,7 @@ export function useLoadApps() {
       setApps(appListResponse.apps);
       setError(null);
     } catch (error) {
-      console.error("Error refreshing apps:", error);
+      logger.error("Error refreshing apps:", error);
       setError(error instanceof Error ? error : new Error(String(error)));
     } finally {
       setLoading(false);

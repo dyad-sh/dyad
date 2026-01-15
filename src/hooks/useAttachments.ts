@@ -2,6 +2,9 @@ import React, { useRef, useState } from "react";
 import type { FileAttachment } from "@/ipc/ipc_types";
 import { useAtom } from "jotai";
 import { attachmentsAtom } from "@/atoms/chatAtoms";
+import log from "electron-log";
+
+const logger = log.scope("useAttachments");
 
 export function useAttachments() {
   const [attachments, setAttachments] = useAtom(attachmentsAtom);
@@ -117,7 +120,7 @@ export function useAttachments() {
       if (imageFiles.length > 0) {
         addAttachments(imageFiles, "chat-context");
         // Show a brief toast or indication that image was pasted
-        console.log(`Pasted ${imageFiles.length} image(s) from clipboard`);
+        logger.debug(`Pasted ${imageFiles.length} image(s) from clipboard`);
       }
     }
   };

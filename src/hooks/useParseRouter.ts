@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLoadAppFile } from "@/hooks/useLoadAppFile";
 import { useLoadApp } from "@/hooks/useLoadApp";
+import log from "electron-log";
+
+const logger = log.scope("useParseRouter");
 
 export interface ParsedRoute {
   path: string;
@@ -140,7 +143,7 @@ export function useParseRouter(appId: number | null) {
         }
         setRoutes(parsedRoutes);
       } catch (e) {
-        console.error("Error parsing router file:", e);
+        logger.error("Error parsing router file:", e);
         setRoutes([]);
       }
     };

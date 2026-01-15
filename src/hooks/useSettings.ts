@@ -5,6 +5,9 @@ import { IpcClient } from "@/ipc/ipc_client";
 import { type UserSettings } from "@/lib/schemas";
 import { usePostHog } from "posthog-js/react";
 import { useAppVersion } from "./useAppVersion";
+import log from "electron-log";
+
+const logger = log.scope("useSettings");
 
 const TELEMETRY_CONSENT_KEY = "dyadTelemetryConsent";
 const TELEMETRY_USER_ID_KEY = "dyadTelemetryUserId";
@@ -47,7 +50,7 @@ export function useSettings() {
       setEnvVarsAtom(fetchedEnvVars);
       setError(null);
     } catch (error) {
-      console.error("Error loading initial data:", error);
+      logger.error("Error loading initial data:", error);
       setError(error instanceof Error ? error : new Error(String(error)));
     } finally {
       setLoading(false);
@@ -70,7 +73,7 @@ export function useSettings() {
       setError(null);
       return updatedSettings;
     } catch (error) {
-      console.error("Error updating settings:", error);
+      logger.error("Error updating settings:", error);
       setError(error instanceof Error ? error : new Error(String(error)));
       throw error;
     } finally {

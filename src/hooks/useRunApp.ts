@@ -11,6 +11,9 @@ import {
 } from "@/atoms/appAtoms";
 import { AppOutput } from "@/ipc/ipc_types";
 import { showInputRequest } from "@/lib/toast";
+import log from "electron-log";
+
+const logger = log.scope("useRunApp");
 
 const useRunAppLoadingAtom = atom(false);
 
@@ -58,7 +61,7 @@ export function useRunApp() {
               response,
             });
           } catch (error) {
-            console.error("Failed to respond to app input:", error);
+            logger.error("Failed to respond to app input:", error);
           }
         });
         return; // Don't add to regular output
@@ -90,7 +93,7 @@ export function useRunApp() {
       setLoading(true);
       try {
         const ipcClient = IpcClient.getInstance();
-        console.debug("Running app", appId);
+        logger.debug("Running app", appId);
 
         // Get app details first to check if it's a contract project
         const app = await ipcClient.getApp(appId);
@@ -98,7 +101,7 @@ export function useRunApp() {
 
         // Skip running contract projects - they don't have a dev server
         if (app.isContractProject) {
-          console.debug("Skipping run for contract project", appId);
+          logger.debug("Skipping run for contract project", appId);
           setPreviewErrorMessage(undefined);
           setLoading(false);
           return;
@@ -126,7 +129,7 @@ export function useRunApp() {
         await ipcClient.runApp(appId, processAppOutput);
         setPreviewErrorMessage(undefined);
       } catch (error) {
-        console.error(`Error running app ${appId}:`, error);
+        logger.error(`Error running app ${appId}:`, error);
         setPreviewErrorMessage(
           error instanceof Error
             ? { message: error.message, source: "dyad-app" }
@@ -154,7 +157,7 @@ export function useRunApp() {
 
       setPreviewErrorMessage(undefined);
     } catch (error) {
-      console.error(`Error stopping app ${appId}:`, error);
+      logger.error(`Error stopping app ${appId}:`, error);
       setPreviewErrorMessage(
         error instanceof Error
           ? { message: error.message, source: "dyad-app" }
@@ -182,7 +185,7 @@ export function useRunApp() {
       setLoading(true);
       try {
         const ipcClient = IpcClient.getInstance();
-        console.debug(
+        logger.debug(
           "Restarting app",
           appId,
           removeNodeModules ? "with node_modules cleanup" : "",
@@ -193,7 +196,7 @@ export function useRunApp() {
 
         // Skip restarting contract projects - they don't have a dev server
         if (app.isContractProject) {
-          console.debug("Skipping restart for contract project", appId);
+          logger.debug("Skipping restart for contract project", appId);
           setLoading(false);
           return;
         }
@@ -227,7 +230,7 @@ export function useRunApp() {
           removeNodeModules,
         );
       } catch (error) {
-        console.error(`Error restarting app ${appId}:`, error);
+        logger.error(`Error restarting app ${appId}:`, error);
         setPreviewErrorMessage(
           error instanceof Error
             ? { message: error.message, source: "dyad-app" }

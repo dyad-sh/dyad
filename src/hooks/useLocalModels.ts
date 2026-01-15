@@ -6,6 +6,9 @@ import {
   localModelsErrorAtom,
 } from "@/atoms/localModelsAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
+import log from "electron-log";
+
+const logger = log.scope("useLocalModels");
 
 export function useLocalModels() {
   const [models, setModels] = useAtom(localModelsAtom);
@@ -26,7 +29,7 @@ export function useLocalModels() {
 
       return modelList;
     } catch (error) {
-      console.error("Error loading local Ollama models:", error);
+      logger.error("Error loading local Ollama models:", error);
       setError(error instanceof Error ? error : new Error(String(error)));
       return [];
     } finally {

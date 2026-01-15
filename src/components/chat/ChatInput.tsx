@@ -79,6 +79,9 @@ import { VisualEditingChangesDialog } from "@/components/preview_panel/VisualEdi
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { useQueryClient } from "@tanstack/react-query";
 import { TOKEN_COUNT_QUERY_KEY } from "@/hooks/useCountTokens";
+import log from "electron-log";
+
+const logger = log.scope("chat-input");
 
 const showTokenBarAtom = atom(false);
 
@@ -228,7 +231,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const handleApprove = async () => {
     if (!chatId || !messageId || isApproving || isRejecting || isStreaming)
       return;
-    console.log(
+    logger.info(
       `Approving proposal for chatId: ${chatId}, messageId: ${messageId}`,
     );
     setIsApproving(true);
@@ -246,7 +249,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         });
       }
     } catch (err) {
-      console.error("Error approving proposal:", err);
+      logger.error("Error approving proposal:", err);
       setError((err as Error)?.message || "An error occurred while approving");
     } finally {
       setIsApproving(false);
@@ -265,7 +268,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const handleReject = async () => {
     if (!chatId || !messageId || isApproving || isRejecting || isStreaming)
       return;
-    console.log(
+    logger.info(
       `Rejecting proposal for chatId: ${chatId}, messageId: ${messageId}`,
     );
     setIsRejecting(true);
@@ -276,7 +279,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         messageId,
       });
     } catch (err) {
-      console.error("Error rejecting proposal:", err);
+      logger.error("Error rejecting proposal:", err);
       setError((err as Error)?.message || "An error occurred while rejecting");
     } finally {
       setIsRejecting(false);
@@ -536,7 +539,7 @@ function RefactorFileButton({ path }: { path: string }) {
   const { streamMessage } = useStreamChat();
   const onClick = () => {
     if (!chatId) {
-      console.error("No chat id found");
+      logger.error("No chat id found");
       return;
     }
     streamMessage({
@@ -562,7 +565,7 @@ function WriteCodeProperlyButton() {
   const { streamMessage } = useStreamChat();
   const onClick = () => {
     if (!chatId) {
-      console.error("No chat id found");
+      logger.error("No chat id found");
       return;
     }
     streamMessage({
@@ -646,7 +649,7 @@ function KeepGoingButton() {
   const chatId = useAtomValue(selectedChatIdAtom);
   const onClick = () => {
     if (!chatId) {
-      console.error("No chat id found");
+      logger.error("No chat id found");
       return;
     }
     streamMessage({
@@ -678,7 +681,7 @@ export function mapActionToButton(action: SuggestedAction) {
     case "keep-going":
       return <KeepGoingButton />;
     default:
-      console.error(`Unsupported action: ${action.id}`);
+      logger.error(`Unsupported action: ${action.id}`);
       return (
         <Button variant="outline" size="sm" disabled key={action.id}>
           Unsupported: {action.id}

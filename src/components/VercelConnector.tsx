@@ -47,15 +47,25 @@ function ConnectedVercelConnector({
   app,
   refreshApp,
 }: ConnectedVercelConnectorProps) {
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const {
     deployments,
     isLoading: isLoadingDeployments,
     error: deploymentsError,
-    getDeployments: handleGetDeployments,
+    getDeployments,
     disconnectProject,
     isDisconnecting,
     disconnectError,
   } = useVercelDeployments(appId);
+
+  const handleGetDeployments = async () => {
+    setIsRefreshing(true);
+    const minLoadingTime = new Promise((resolve) => setTimeout(resolve, 750));
+    await Promise.all([getDeployments(), minLoadingTime]);
+    setIsRefreshing(false);
+  };
+
+  const isLoadingOrRefreshing = isLoadingDeployments || isRefreshing;
 
   const handleDisconnectProject = async () => {
     await disconnectProject();
@@ -106,8 +116,8 @@ function ConnectedVercelConnector({
         </div>
       )}
       <div className="mt-2 flex gap-2">
-        <Button onClick={handleGetDeployments} disabled={isLoadingDeployments}>
-          {isLoadingDeployments ? (
+        <Button onClick={handleGetDeployments} disabled={isLoadingOrRefreshing}>
+          {isLoadingOrRefreshing ? (
             <>
               <svg
                 className="animate-spin h-5 w-5 mr-2 inline"
@@ -130,7 +140,7 @@ function ConnectedVercelConnector({
                   d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                 ></path>
               </svg>
-              Getting Deployments...
+              Refreshing...
             </>
           ) : (
             "Refresh Deployments"

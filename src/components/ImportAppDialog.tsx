@@ -15,6 +15,7 @@ import { Folder, X, Loader2, Info } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@radix-ui/react-label";
 import { useNavigate } from "@tanstack/react-router";
 import { useStreamChat } from "@/hooks/useStreamChat";
@@ -52,6 +53,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
   const [isCheckingName, setIsCheckingName] = useState<boolean>(false);
   const [installCommand, setInstallCommand] = useState("");
   const [startCommand, setStartCommand] = useState("");
+  const [copyToDyadApps, setCopyToDyadApps] = useState(true);
   const navigate = useNavigate();
   const { streamMessage } = useStreamChat({ hasChatId: false });
   const { refreshApps } = useLoadApps();
@@ -243,6 +245,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
         appName: customAppName,
         installCommand: installCommand || undefined,
         startCommand: startCommand || undefined,
+        skipCopy: !copyToDyadApps,
       });
     },
     onSuccess: async (result) => {
@@ -283,6 +286,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
     setNameExists(false);
     setInstallCommand("");
     setStartCommand("");
+    setCopyToDyadApps(true);
   };
 
   const handleAppNameChange = async (
@@ -378,6 +382,27 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                           <span className="sr-only">Clear selection</span>
                         </Button>
                       </div>
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="copy-to-dyad-apps"
+                        checked={copyToDyadApps}
+                        onCheckedChange={(checked) =>
+                          setCopyToDyadApps(checked === true)
+                        }
+                        disabled={importAppMutation.isPending}
+                      />
+                      <label
+                        htmlFor="copy-to-dyad-apps"
+                        className="text-xs sm:text-sm cursor-pointer"
+                      >
+                        Copy to the{" "}
+                        <code className="bg-muted px-1 py-0.5 rounded text-xs">
+                          dyad-apps
+                        </code>{" "}
+                        folder
+                      </label>
                     </div>
 
                     <div className="space-y-2">

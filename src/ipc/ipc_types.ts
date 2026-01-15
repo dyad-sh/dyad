@@ -284,6 +284,7 @@ export interface ImportAppParams {
   appName: string;
   installCommand?: string;
   startCommand?: string;
+  skipCopy?: boolean;
 }
 
 export interface CopyAppParams {

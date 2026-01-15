@@ -2,6 +2,9 @@ import * as monaco from "monaco-editor";
 import { loadWASM } from "onigasm";
 import { Registry } from "monaco-textmate";
 import { wireTmGrammars } from "monaco-editor-textmate";
+import log from "electron-log";
+
+const logger = log.scope("blockchain_languages");
 
 /**
  * REAL SOLUTION for blockchain languages in Monaco Editor
@@ -15,35 +18,35 @@ let isInitialized = false;
 
 export async function initializeBlockchainLanguages() {
   if (isInitialized) {
-    console.log("⚠️ Blockchain languages already initialized, skipping...");
+    logger.info("⚠️ Blockchain languages already initialized, skipping...");
     return;
   }
   isInitialized = true;
   // === SOLIDITY ===
   // Already built into Monaco! Just use language: 'sol'
-  console.log('✅ Solidity support: Built-in (use language: "sol")');
+  logger.info('✅ Solidity support: Built-in (use language: "sol")');
 
   // === RUST ===
   // Already built into Monaco! Just use language: 'rust'
-  console.log('✅ Rust support: Built-in (use language: "rust")');
+  logger.info('✅ Rust support: Built-in (use language: "rust")');
 
   // === MOVE ===
   // We need to add Move using TextMate grammar
   try {
-    console.log("🔄 Loading Move language support...");
+    logger.info("🔄 Loading Move language support...");
 
     // Load WASM for regex engine
-    console.log("🔄 Loading onigasm WASM...");
+    logger.info("🔄 Loading onigasm WASM...");
     await loadWASM(`https://unpkg.com/onigasm@2.2.5/lib/onigasm.wasm`);
-    console.log("✅ Onigasm WASM loaded");
+    logger.info("✅ Onigasm WASM loaded");
 
     // Create registry for TextMate grammars
-    console.log("🔄 Creating TextMate registry...");
+    logger.info("🔄 Creating TextMate registry...");
     const registry = new Registry({
       getGrammarDefinition: async (scopeName) => {
         if (scopeName === "source.move") {
           // Fetch the Move TextMate grammar from damirka/move-syntax
-          console.log("🔄 Fetching Move grammar from GitHub...");
+          logger.info("🔄 Fetching Move grammar from GitHub...");
           const response = await fetch(
             "https://raw.githubusercontent.com/damirka/move-syntax/master/syntaxes/move.tmLanguage.json",
           );
@@ -53,7 +56,7 @@ export async function initializeBlockchainLanguages() {
             );
           }
           const content = await response.text();
-          console.log("✅ Move grammar fetched successfully");
+          logger.info("✅ Move grammar fetched successfully");
           return {
             format: "json",
             content,
@@ -64,36 +67,36 @@ export async function initializeBlockchainLanguages() {
     });
 
     // Register Move language
-    console.log("🔄 Registering Move language in Monaco...");
+    logger.info("🔄 Registering Move language in Monaco...");
     monaco.languages.register({
       id: "move",
       extensions: [".move"],
       aliases: ["Move", "move"],
     });
-    console.log("✅ Move language registered");
+    logger.info("✅ Move language registered");
 
     // Wire the TextMate grammar to Monaco
-    console.log("🔄 Wiring TextMate grammar to Monaco...");
+    logger.info("🔄 Wiring TextMate grammar to Monaco...");
     await wireTmGrammars(monaco, registry, new Map([["move", "source.move"]]));
 
-    console.log("✅ Move support: Loaded from TextMate grammar");
+    logger.info("✅ Move support: Loaded from TextMate grammar");
   } catch (error) {
-    console.error(
+    logger.error(
       "❌ Failed to initialize Move language with TextMate:",
       error,
     );
-    console.log("🔄 Falling back to Monarch tokenizer...");
+    logger.info("🔄 Falling back to Monarch tokenizer...");
     // Fallback to basic Monarch tokenizer if TextMate fails
     try {
       registerMoveMonarch();
     } catch (fallbackError) {
-      console.error("❌ Monarch fallback also failed:", fallbackError);
+      logger.error("❌ Monarch fallback also failed:", fallbackError);
     }
   }
 
   // === TOML ===
   // Add TOML support for Move.toml config files
-  console.log("🔄 Registering TOML language...");
+  logger.info("🔄 Registering TOML language...");
   registerTomlLanguage();
 }
 
@@ -102,7 +105,7 @@ export async function initializeBlockchainLanguages() {
  * (In case TextMate loading fails)
  */
 function registerMoveMonarch() {
-  console.log("🔄 Registering Move with Monarch tokenizer...");
+  logger.info("🔄 Registering Move with Monarch tokenizer...");
   monaco.languages.register({
     id: "move",
     extensions: [".move"],
@@ -301,7 +304,7 @@ function registerMoveMonarch() {
     },
   });
 
-  console.log("✅ Move support: Monarch tokenizer registered successfully");
+  logger.info("✅ Move support: Monarch tokenizer registered successfully");
 }
 
 /**
@@ -309,7 +312,7 @@ function registerMoveMonarch() {
  * Used for Move.toml, Cargo.toml, and other config files
  */
 function registerTomlLanguage() {
-  console.log("🔄 Registering TOML with Monarch tokenizer...");
+  logger.info("🔄 Registering TOML with Monarch tokenizer...");
 
   monaco.languages.register({
     id: "toml",
@@ -404,7 +407,7 @@ function registerTomlLanguage() {
     },
   });
 
-  console.log("✅ TOML support: Monarch tokenizer registered successfully");
+  logger.info("✅ TOML support: Monarch tokenizer registered successfully");
 }
 
 /**
@@ -431,7 +434,7 @@ export function getLanguageFromExtension(filename: string): string {
  */
 export function listAvailableLanguages() {
   const languages = monaco.languages.getLanguages();
-  console.log(
+  logger.info(
     "Available languages:",
     languages.map((l) => l.id),
   );

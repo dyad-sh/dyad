@@ -22,6 +22,9 @@ import { Loader2 } from "lucide-react";
 import { neonTemplateHook } from "@/client_logic/template_hook";
 import { showError } from "@/lib/toast";
 import { useStreamChat } from "@/hooks/useStreamChat";
+import log from "electron-log";
+
+const logger = log.scope("CreateAppDialog");
 
 interface CreateAppDialogProps {
   open: boolean;
@@ -84,7 +87,7 @@ export function CreateAppDialog({
       // Do this AFTER navigation so the user sees the chat page
       if (template?.isContractTranslation && template.contractSourceUrl) {
         try {
-          console.log("Fetching contract from:", template.contractSourceUrl);
+          logger.info("Fetching contract from:", template.contractSourceUrl);
           const response = await fetch(template.contractSourceUrl);
 
           if (!response.ok) {
@@ -94,7 +97,7 @@ export function CreateAppDialog({
           }
 
           const solidityCode = await response.text();
-          console.log("Fetched Solidity code, length:", solidityCode.length);
+          logger.info("Fetched Solidity code, length:", solidityCode.length);
 
           const translationPrompt = `Please translate this Solidity ${template.title} contract to Sui Move:
 
@@ -107,7 +110,7 @@ Please create a complete Move package with:
 2. The translated Move module in sources/ subdirectory
 3. Preserve all functionality while adapting to Sui's object model`;
 
-          console.log("Sending translation prompt to chat:", result.chatId);
+          logger.info("Sending translation prompt to chat:", result.chatId);
 
           // Send the translation message to the chat
           streamMessage({
@@ -116,9 +119,9 @@ Please create a complete Move package with:
             attachments: [],
           });
 
-          console.log("Translation stream started successfully");
+          logger.info("Translation stream started successfully");
         } catch (error) {
-          console.error("Failed to fetch or send Solidity contract:", error);
+          logger.error("Failed to fetch or send Solidity contract:", error);
           showError(
             `Failed to initiate contract translation: ${error instanceof Error ? error.message : String(error)}`,
           );
@@ -127,7 +130,7 @@ Please create a complete Move package with:
     } catch (error) {
       showError(error as any);
       // Error is already handled by createApp hook or shown above
-      console.error("Error creating app:", error);
+      logger.error("Error creating app:", error);
     } finally {
       setIsSubmitting(false);
     }

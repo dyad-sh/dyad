@@ -9,6 +9,7 @@ import {
   isServerFunction,
   isSharedServerModule,
 } from "../../../../../../supabase_admin/supabase_utils";
+import { resolveFileUploadContent } from "./file_upload_utils";
 
 const logger = log.scope("write_file");
 
@@ -47,12 +48,16 @@ export const writeFileTool: ToolDefinition<z.infer<typeof writeFileSchema>> = {
       ctx.isSharedModulesChanged = true;
     }
 
+    // Resolve file upload IDs to actual content
+    const resolved = await resolveFileUploadContent(args.content, ctx.chatId);
+    const contentToWrite = resolved.content;
+
     // Ensure directory exists
     const dirPath = path.dirname(fullFilePath);
     fs.mkdirSync(dirPath, { recursive: true });
 
     // Write file content
-    fs.writeFileSync(fullFilePath, args.content);
+    fs.writeFileSync(fullFilePath, contentToWrite);
     logger.log(`Successfully wrote file: ${fullFilePath}`);
 
     // Deploy Supabase function if applicable

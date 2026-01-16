@@ -226,6 +226,8 @@ export function registerChatStreamHandlers() {
     let attachmentPaths: string[] = [];
     try {
       const fileUploadsState = FileUploadsState.getInstance();
+      // Clear any stale state from previous requests for this chat
+      fileUploadsState.clear(req.chatId);
       let dyadRequestId: string | undefined;
       // Create an AbortController for this stream
       const abortController = new AbortController();
@@ -1455,8 +1457,6 @@ ${problemReport.problems
         error: `Sorry, there was an error processing your request: ${error}`,
       });
 
-      // Clean up file uploads state on error
-      FileUploadsState.getInstance().clear(req.chatId);
       return "error";
     } finally {
       // Clean up the abort controller
@@ -1503,11 +1503,6 @@ ${problemReport.problems
       chatId,
       updatedFiles: false,
     } satisfies ChatResponseEnd);
-
-    // Clean up uploads state for this chat
-    try {
-      FileUploadsState.getInstance().clear(chatId);
-    } catch {}
 
     return true;
   });

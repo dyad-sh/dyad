@@ -199,6 +199,8 @@ const validReceiveChannels = [
   "agent-tool:consent-request",
   // Agent todos update from main to renderer
   "agent-tool:todos-update",
+  // Agent problems update from main to renderer
+  "agent-tool:problems-update",
   // Telemetry events from main to renderer
   "telemetry:event",
 ] as const;

@@ -732,6 +732,11 @@ export interface AgentTodosUpdatePayload {
   todos: AgentTodo[];
 }
 
+export interface AgentProblemsUpdatePayload {
+  appId: number;
+  problems: ProblemReport;
+}
+
 export interface TelemetryEventPayload {
   eventName: string;
   properties?: Record<string, unknown>;

@@ -83,6 +83,7 @@ import type {
   AgentToolConsentRequestPayload,
   AgentToolConsentResponseParams,
   AgentTodosUpdatePayload,
+  AgentProblemsUpdatePayload,
   TelemetryEventPayload,
   GithubSyncOptions,
   ConsoleEntry,
@@ -145,6 +146,9 @@ export class IpcClient {
   private mcpConsentHandlers: Map<string, (payload: any) => void>;
   private agentConsentHandlers: Map<string, (payload: any) => void>;
   private agentTodosHandlers: Set<(payload: AgentTodosUpdatePayload) => void>;
+  private agentProblemsHandlers: Set<
+    (payload: AgentProblemsUpdatePayload) => void
+  >;
   private telemetryEventHandlers: Set<(payload: TelemetryEventPayload) => void>;
   // Global handlers called for any chat stream start (used for cleanup)
   private globalChatStreamStartHandlers: Set<(chatId: number) => void>;
@@ -158,6 +162,7 @@ export class IpcClient {
     this.mcpConsentHandlers = new Map();
     this.agentConsentHandlers = new Map();
     this.agentTodosHandlers = new Set();
+    this.agentProblemsHandlers = new Set();
     this.telemetryEventHandlers = new Set();
     this.globalChatStreamStartHandlers = new Set();
     this.globalChatStreamEndHandlers = new Set();
@@ -312,6 +317,13 @@ export class IpcClient {
     this.ipcRenderer.on("agent-tool:todos-update", (payload) => {
       for (const handler of this.agentTodosHandlers) {
         handler(payload as unknown as AgentTodosUpdatePayload);
+      }
+    });
+
+    // Agent problems update from main
+    this.ipcRenderer.on("agent-tool:problems-update", (payload) => {
+      for (const handler of this.agentProblemsHandlers) {
+        handler(payload as unknown as AgentProblemsUpdatePayload);
       }
     });
 
@@ -1148,6 +1160,19 @@ export class IpcClient {
     this.agentTodosHandlers.add(handler);
     return () => {
       this.agentTodosHandlers.delete(handler);
+    };
+  }
+
+  /**
+   * Subscribe to agent problems updates from the local agent.
+   * Called when the agent runs type checks and updates the problems report.
+   */
+  public onAgentProblemsUpdate(
+    handler: (payload: AgentProblemsUpdatePayload) => void,
+  ) {
+    this.agentProblemsHandlers.add(handler);
+    return () => {
+      this.agentProblemsHandlers.delete(handler);
     };
   }
 

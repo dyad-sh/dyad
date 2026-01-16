@@ -1546,6 +1546,7 @@ export class IpcClient {
 
   async checkAppName(params: {
     appName: string;
+    skipCopy?: boolean;
   }): Promise<{ exists: boolean }> {
     return this.ipcRenderer.invoke("check-app-name", params);
   }

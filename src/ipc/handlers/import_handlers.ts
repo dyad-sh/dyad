@@ -45,23 +45,31 @@ export function registerImportHandlers() {
   });
 
   // Handler for checking if an app name is already taken
-  handle("check-app-name", async (_, { appName }: { appName: string }) => {
-    // Check filesystem
-    const appPath = getDyadAppPath(appName);
-    try {
-      await fs.access(appPath);
-      return { exists: true };
-    } catch {
-      // Path doesn't exist, continue checking database
-    }
+  handle(
+    "check-app-name",
+    async (
+      _,
+      { appName, skipCopy }: { appName: string; skipCopy?: boolean },
+    ) => {
+      // Only check filesystem if we're copying to dyad-apps
+      if (!skipCopy) {
+        const appPath = getDyadAppPath(appName);
+        try {
+          await fs.access(appPath);
+          return { exists: true };
+        } catch {
+          // Path doesn't exist, continue checking database
+        }
+      }
 
-    // Check database
-    const existingApp = await db.query.apps.findFirst({
-      where: eq(apps.name, appName),
-    });
+      // Check database
+      const existingApp = await db.query.apps.findFirst({
+        where: eq(apps.name, appName),
+      });
 
-    return { exists: !!existingApp };
-  });
+      return { exists: !!existingApp };
+    },
+  );
 
   // Handler for importing an app
   handle(

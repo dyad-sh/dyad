@@ -80,6 +80,13 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
     }
   }, [isOpen, isAuthenticated]);
 
+  // Re-check app name when copyToDyadApps changes
+  useEffect(() => {
+    if (customAppName.trim() && selectedPath) {
+      checkAppName({ name: customAppName, skipCopy: !copyToDyadApps });
+    }
+  }, [copyToDyadApps]);
+
   const fetchRepos = async () => {
     setLoading(true);
     try {
@@ -202,11 +209,18 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
     }
   };
 
-  const checkAppName = async (name: string): Promise<void> => {
+  const checkAppName = async ({
+    name,
+    skipCopy,
+  }: {
+    name: string;
+    skipCopy?: boolean;
+  }): Promise<void> => {
     setIsCheckingName(true);
     try {
       const result = await IpcClient.getInstance().checkAppName({
         appName: name,
+        skipCopy,
       });
       setNameExists(result.exists);
     } catch (error: unknown) {
@@ -229,7 +243,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
       // Use the folder name from the IPC response
       setCustomAppName(result.name);
       // Check if the app name already exists
-      await checkAppName(result.name);
+      await checkAppName({ name: result.name, skipCopy: !copyToDyadApps });
       return result;
     },
     onError: (error: Error) => {
@@ -295,7 +309,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
     const newName = e.target.value;
     setCustomAppName(newName);
     if (newName.trim()) {
-      await checkAppName(newName);
+      await checkAppName({ name: newName, skipCopy: !copyToDyadApps });
     }
   };
 

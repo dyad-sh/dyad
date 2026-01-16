@@ -9,6 +9,7 @@ jobs:
     permissions:
       issues: write
       id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: anthropics/claude-code-action@v1

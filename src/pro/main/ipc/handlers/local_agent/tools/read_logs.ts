@@ -11,7 +11,7 @@ const readLogsSchema = z.object({
     .enum(["all", "client", "server", "edge-function", "network-requests"])
     .optional()
     .describe(
-      "Filter by log source type (default: all). Types: 'client' = browser console logs; 'server' = backend/SSR logs and build output; 'edge-function' = edge function logs; 'network-requests' = HTTP requests and responses (outgoing calls and their responses).",
+      "Filter by log source type (default: all). Types: 'client' = browser console logs; 'server' = backend (including development server) logs and build output; 'edge-function' = edge function logs; 'network-requests' = HTTP requests and responses (outgoing calls and their responses).",
     ),
 
   level: z

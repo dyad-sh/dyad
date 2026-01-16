@@ -8,11 +8,12 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       issues: write
-      id-token: write
       contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: anthropics/claude-code-base-action@beta
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           #   anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

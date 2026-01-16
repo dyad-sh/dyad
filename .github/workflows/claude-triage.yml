@@ -121,3 +121,33 @@ jobs:
             ### If No Duplicates Found
 
             Do not comment.
+
+            ## Task 3: Update Issue Title (if necessary)
+
+            Review the issue title and improve it **only if** it meets one of these conditions:
+
+            | Condition | Example (Before → After) |
+            |-----------|--------------------------|
+            | Template placeholder not filled in | `[session report] <add title>` → `[session report] App freezes when saving` |
+            | Too vague or generic | `not able to deploy to vercel` → `Vercel deployment fails with authentication error` |
+            | Unclear error description | `[bug] <npm and pnpm is not recogized >` → `[bug] npm/pnpm not recognized on Windows` |
+
+            ### How to Update
+
+            ```bash
+            gh issue edit [number] --title "New descriptive title"
+            ```
+
+            ### Guidelines
+
+            - Keep titles **short** (under 60 characters if possible)
+            - Start with the **what**: component, action, or error
+            - Preserve prefixes like `[bug]` or `[session report]` if present
+            - Be specific but not overly technical
+            - Don't change titles that are already clear and descriptive
+
+            ### When NOT to Update
+
+            - Title already describes the issue well (e.g., "Vercel Project Selection not always available")
+            - You'd only be making minor wording tweaks
+            - The issue body is too unclear to write a better title (use `issue/incomplete` label instead)

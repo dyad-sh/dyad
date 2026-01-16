@@ -66,12 +66,14 @@ export function useRunApp() {
       }
 
       // Add to console entries
+      // Use "server" type for stdout/stderr to match the backend log store
+      // (app_handlers.ts stores these as type: "server")
       const logEntry = {
         level:
           output.type === "stderr" || output.type === "client-error"
             ? ("error" as const)
             : ("info" as const),
-        type: "build-time" as const,
+        type: "server" as const,
         message: output.message,
         appId: output.appId,
         timestamp: output.timestamp,
@@ -108,7 +110,7 @@ export function useRunApp() {
 
         const logEntry = {
           level: "info" as const,
-          type: "build-time" as const,
+          type: "server" as const,
           message: "Trying to restart app...",
           appId,
           timestamp: Date.now(),
@@ -195,7 +197,7 @@ export function useRunApp() {
 
         const logEntry = {
           level: "info" as const,
-          type: "build-time" as const,
+          type: "server" as const,
           message: "Restarting app...",
           appId: appId!,
           timestamp: Date.now(),

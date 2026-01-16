@@ -9,12 +9,7 @@ import { useSetAtom } from "jotai";
 import { chatInputValueAtom } from "@/atoms/chatAtoms";
 
 interface ConsoleEntryProps {
-  type:
-    | "server"
-    | "client"
-    | "edge-function"
-    | "network-requests"
-    | "build-time";
+  type: "server" | "client" | "edge-function" | "network-requests";
   level: "info" | "warn" | "error";
   timestamp: number;
   message: string;

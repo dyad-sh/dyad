@@ -13,18 +13,11 @@ interface ConsoleFiltersProps {
     | "server"
     | "client"
     | "edge-function"
-    | "network-requests"
-    | "build-time";
+    | "network-requests";
   sourceFilter: string;
   onLevelFilterChange: (value: "all" | "info" | "warn" | "error") => void;
   onTypeFilterChange: (
-    value:
-      | "all"
-      | "server"
-      | "client"
-      | "edge-function"
-      | "network-requests"
-      | "build-time",
+    value: "all" | "server" | "client" | "edge-function" | "network-requests",
   ) => void;
   onSourceFilterChange: (value: string) => void;
   onClearFilters: () => void;
@@ -82,8 +75,7 @@ export const ConsoleFilters = ({
               | "server"
               | "client"
               | "edge-function"
-              | "network-requests"
-              | "build-time",
+              | "network-requests",
           )
         }
         className="text-xs px-2 py-1 border border-border rounded bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
@@ -93,7 +85,6 @@ export const ConsoleFilters = ({
         <option value="client">Client</option>
         <option value="edge-function">Edge Function</option>
         <option value="network-requests">Network Requests</option>
-        <option value="build-time">Build Time</option>
       </select>
 
       {/* Source filter */}

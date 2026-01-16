@@ -12,12 +12,7 @@ export interface AppOutput {
 
 export interface ConsoleEntry {
   level: "info" | "warn" | "error";
-  type:
-    | "server"
-    | "client"
-    | "edge-function"
-    | "network-requests"
-    | "build-time";
+  type: "server" | "client" | "edge-function" | "network-requests";
   message: string;
   timestamp: number;
   sourceName?: string;

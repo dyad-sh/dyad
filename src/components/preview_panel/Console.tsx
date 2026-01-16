@@ -83,12 +83,7 @@ export const Console = () => {
     "all" | "info" | "warn" | "error"
   >("all");
   const [typeFilter, setTypeFilter] = useState<
-    | "all"
-    | "server"
-    | "client"
-    | "edge-function"
-    | "network-requests"
-    | "build-time"
+    "all" | "server" | "client" | "edge-function" | "network-requests"
   >("all");
   const [sourceFilter, setSourceFilter] = useState<string>("");
 

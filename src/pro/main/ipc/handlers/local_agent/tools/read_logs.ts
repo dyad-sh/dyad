@@ -8,17 +8,10 @@ import type { ConsoleEntry } from "@/ipc/ipc_types";
 
 const readLogsSchema = z.object({
   type: z
-    .enum([
-      "all",
-      "client",
-      "server",
-      "edge-function",
-      "network-requests",
-      "build-time",
-    ])
+    .enum(["all", "client", "server", "edge-function", "network-requests"])
     .optional()
     .describe(
-      "Filter by log source type (default: all). Types: 'client' = browser console logs; 'server' = backend/SSR logs; 'edge-function' = edge function logs; 'network-requests' = HTTP requests and responses (outgoing calls and their responses); 'build-time' = build and bundler output.",
+      "Filter by log source type (default: all). Types: 'client' = browser console logs; 'server' = backend/SSR logs and build output; 'edge-function' = edge function logs; 'network-requests' = HTTP requests and responses (outgoing calls and their responses).",
     ),
 
   level: z

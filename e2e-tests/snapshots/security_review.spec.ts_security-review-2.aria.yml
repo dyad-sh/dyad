@@ -36,9 +36,11 @@
 - img
 - text: Approved
 - img
+- text: test-model
+- img
 - text: less than a minute ago
 - img
-- text: wrote 1 file(s)
+- text: wrote 1 file(s) + extra files edited outside of Dyad
 - button "Undo":
   - img
 - button "Retry":

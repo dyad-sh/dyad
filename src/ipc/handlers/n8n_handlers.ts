@@ -45,16 +45,10 @@ export interface N8nDatabaseConfig {
   postgresSsl?: boolean;
 }
 
-// Default to PostgreSQL for better compatibility (no native modules needed)
+// Default to SQLite for simplicity - no external database server needed
+// Users can switch to PostgreSQL in settings if they have it configured
 let n8nDbConfig: N8nDatabaseConfig = {
-  type: "postgresdb",
-  postgresHost: "localhost",
-  postgresPort: 5432,
-  postgresDatabase: "n8n",
-  postgresUser: "postgres",
-  postgresPassword: "postgres",
-  postgresSchema: "public",
-  postgresSsl: false,
+  type: "sqlite",
 };
 
 // ============================================================================

@@ -18,6 +18,8 @@ import { nftMarketplaceRoute } from "./routes/nft-marketplace";
 import { federationRoute } from "./routes/federation";
 import { dataSovereigntyRoute } from "./routes/data-sovereignty";
 import { decentralizedDeployRoute } from "./routes/decentralized-deploy";
+import { decentralizedChatRoute } from "./routes/decentralized-chat";
+import { computeNetworkRoute } from "./routes/compute-network";
 
 const routeTree = rootRoute.addChildren([
   homeRoute,
@@ -39,6 +41,8 @@ const routeTree = rootRoute.addChildren([
   federationRoute,
   dataSovereigntyRoute,
   decentralizedDeployRoute,
+  decentralizedChatRoute,
+  computeNetworkRoute,
 ]);
 
 // src/components/NotFoundRedirect.tsx

@@ -9,6 +9,7 @@ import {
   Loader2,
   Settings,
   Folder,
+  X,
 } from "lucide-react";
 import { providerSettingsRoute } from "@/routes/settings/providers/$provider";
 
@@ -40,10 +41,17 @@ type NodeInstallStep =
   | "continue-processing"
   | "finished-checking";
 
+const SETUP_DISMISSED_KEY = "joycreate-setup-dismissed";
+
 export function SetupBanner() {
   const posthog = usePostHog();
   const navigate = useNavigate();
-  const [isOnboardingVisible, setIsOnboardingVisible] = useState(true);
+  const [isOnboardingVisible, setIsOnboardingVisible] = useState(() => {
+    return localStorage.getItem("joycreate-onboarding-dismissed") !== "true";
+  });
+  const [isSetupDismissed, setIsSetupDismissed] = useState(() => {
+    return localStorage.getItem(SETUP_DISMISSED_KEY) === "true";
+  });
   const { isAnyProviderSetup, isLoading: loading } =
     useLanguageModelProviders();
   const [nodeSystemInfo, setNodeSystemInfo] = useState<NodeSystemInfo | null>(
@@ -142,12 +150,43 @@ export function SetupBanner() {
   // We only check for node version because pnpm is not required for the app to run.
   const isNodeSetupComplete = Boolean(nodeSystemInfo?.nodeVersion);
 
+  const handleDismissSetup = useCallback(() => {
+    setIsSetupDismissed(true);
+    localStorage.setItem(SETUP_DISMISSED_KEY, "true");
+    posthog.capture("setup-flow:dismissed");
+  }, [posthog]);
+
+  const handleShowSetup = useCallback(() => {
+    setIsSetupDismissed(false);
+    localStorage.removeItem(SETUP_DISMISSED_KEY);
+  }, []);
+
   const itemsNeedAction: string[] = [];
   if (!isNodeSetupComplete && nodeSystemInfo) {
     itemsNeedAction.push("node-setup");
   }
   if (!isAnyProviderSetup() && !loading) {
     itemsNeedAction.push("ai-setup");
+  }
+
+  // If setup is dismissed, show a minimal banner with option to show setup again
+  if (isSetupDismissed && itemsNeedAction.length > 0) {
+    return (
+      <div className="text-center mb-8">
+        <h1 className="text-5xl font-bold mb-3 bg-clip-text text-transparent bg-gradient-to-r from-violet-600 via-indigo-500 to-blue-500 dark:from-violet-400 dark:via-indigo-400 dark:to-blue-400 tracking-tight">
+          Create with Joy
+        </h1>
+        <p className="text-lg text-muted-foreground">
+          Build apps, agents, bots, algorithms & more with AI
+        </p>
+        <button
+          onClick={handleShowSetup}
+          className="mt-4 text-sm text-blue-600 dark:text-blue-400 hover:underline"
+        >
+          Show setup guide →
+        </button>
+      </div>
+    );
   }
 
   if (itemsNeedAction.length === 0) {
@@ -181,12 +220,26 @@ export function SetupBanner() {
 
   return (
     <>
-      <p className="text-xl font-medium text-zinc-700 dark:text-zinc-300 p-4">
-        Setup JoyCreate
-      </p>
+      <div className="flex items-center justify-between p-4">
+        <p className="text-xl font-medium text-zinc-700 dark:text-zinc-300">
+          Setup JoyCreate
+        </p>
+        <button
+          onClick={handleDismissSetup}
+          className="p-1.5 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+          title="Dismiss setup guide"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
       <OnboardingBanner
         isVisible={isOnboardingVisible}
-        setIsVisible={setIsOnboardingVisible}
+        setIsVisible={(visible) => {
+          setIsOnboardingVisible(visible);
+          if (!visible) {
+            localStorage.setItem("joycreate-onboarding-dismissed", "true");
+          }
+        }}
       />
       <div className={bannerClasses}>
         <Accordion

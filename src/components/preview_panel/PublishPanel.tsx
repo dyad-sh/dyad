@@ -1,4 +1,6 @@
 import { useAtomValue } from "jotai";
+import { Link } from "@tanstack/react-router";
+import { Layers, ExternalLink } from "lucide-react";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { GitHubConnector } from "@/components/GitHubConnector";
@@ -6,6 +8,7 @@ import { VercelConnector } from "@/components/VercelConnector";
 import { PortalMigrate } from "@/components/PortalMigrate";
 import { IpcClient } from "@/ipc/ipc_client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 
 export const PublishPanel = () => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
@@ -165,6 +168,48 @@ export const PublishPanel = () => {
             ) : (
               <VercelConnector appId={selectedAppId} folderName={app.name} />
             )}
+          </CardContent>
+        </Card>
+
+        {/* Web3 Decentralized Deploy Section */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2">
+              <Layers className="w-5 h-5 text-purple-500" />
+              Web3 Deploy
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Deploy to decentralized platforms like IPFS, Arweave, 4everland, and more.
+            </p>
+            <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <Layers className="w-5 h-5 text-purple-600 dark:text-purple-400 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <h3 className="text-sm font-medium text-purple-800 dark:text-purple-200">
+                    Permanent, Censorship-Resistant Hosting
+                  </h3>
+                  <p className="text-sm text-purple-700 dark:text-purple-300 mt-1">
+                    Deploy your app to decentralized storage networks. Your app will be available forever without any central point of failure.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span className="text-xs px-2 py-1 rounded-full bg-purple-100 dark:bg-purple-800/50 text-purple-700 dark:text-purple-300">4everland</span>
+                    <span className="text-xs px-2 py-1 rounded-full bg-purple-100 dark:bg-purple-800/50 text-purple-700 dark:text-purple-300">Fleek</span>
+                    <span className="text-xs px-2 py-1 rounded-full bg-purple-100 dark:bg-purple-800/50 text-purple-700 dark:text-purple-300">IPFS</span>
+                    <span className="text-xs px-2 py-1 rounded-full bg-purple-100 dark:bg-purple-800/50 text-purple-700 dark:text-purple-300">Arweave</span>
+                    <span className="text-xs px-2 py-1 rounded-full bg-purple-100 dark:bg-purple-800/50 text-purple-700 dark:text-purple-300">Spheron</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <Link to="/decentralized-deploy" className="block">
+              <Button className="w-full bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600">
+                <Layers className="w-4 h-4 mr-2" />
+                Open Web3 Deploy
+                <ExternalLink className="w-4 h-4 ml-2" />
+              </Button>
+            </Link>
           </CardContent>
         </Card>
       </div>

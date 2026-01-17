@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -83,6 +84,11 @@ import type {
   P2PTransaction,
   P2PConversation,
   FederationStats,
+  FederatedInferenceRoute,
+  IpldReceiptRef,
+  ModelChunkListing,
+  ModelChunkPurchase,
+  BootstrapPeerEntry,
 } from "@/types/federation_types";
 
 const ipcClient = IpcClient.getInstance();
@@ -96,12 +102,60 @@ export default function FederationPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [messageInput, setMessageInput] = useState("");
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
+  const [inferenceOutput, setInferenceOutput] = useState("");
+  const [inferenceRoute, setInferenceRoute] = useState<FederatedInferenceRoute | null>(null);
+  const [inferenceReceipt, setInferenceReceipt] = useState<IpldReceiptRef | null>(null);
+  const [inferenceError, setInferenceError] = useState<string | null>(null);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [dispatchLogs, setDispatchLogs] = useState<string[]>([]);
+  const [selectedChunkListing, setSelectedChunkListing] = useState<ModelChunkListing | null>(null);
+  const [showChunkPurchaseDialog, setShowChunkPurchaseDialog] = useState(false);
+  const [bootstrapForm, setBootstrapForm] = useState({
+    peerId: "",
+    displayName: "",
+    did: "",
+    address: "",
+    notes: "",
+  });
   
   // Identity form
   const [identityForm, setIdentityForm] = useState({
     displayName: "",
     password: "",
     confirmPassword: "",
+  });
+
+  const [inferenceForm, setInferenceForm] = useState({
+    provider: "ollama" as "ollama" | "lmstudio" | "llamacpp" | "vllm",
+    modelId: "",
+    prompt: "",
+    dataHash: "",
+    preferredPeerId: "",
+    payerDid: "",
+    paymentTxHash: "",
+    paymentAmount: "",
+    createReceipt: true,
+    requireRemote: false,
+    privateKey: "",
+  });
+
+  const [chunkListingForm, setChunkListingForm] = useState({
+    title: "",
+    modelId: "",
+    modelHash: "",
+    chunkCids: "",
+    chunkCount: 0,
+    bytesTotal: 0,
+    tags: "",
+    price: 0,
+    currency: "USDC",
+    licenseType: "training" as "training" | "inference" | "research" | "non-commercial" | "custom",
+    privateKey: "",
+  });
+
+  const [chunkPurchaseForm, setChunkPurchaseForm] = useState({
+    paymentTxHash: "",
+    receiptCid: "",
   });
 
   // Queries
@@ -119,6 +173,11 @@ export default function FederationPage() {
   const { data: peers = [] } = useQuery({
     queryKey: ["federation-peers"],
     queryFn: () => FederationClient.getPeers(),
+  });
+
+  const { data: bootstrapPeers = [] } = useQuery<BootstrapPeerEntry[]>({
+    queryKey: ["federation-bootstrap-peers"],
+    queryFn: () => FederationClient.listBootstrapPeers(),
   });
 
   const { data: connectedPeers = [] } = useQuery({
@@ -143,6 +202,16 @@ export default function FederationPage() {
     queryKey: ["federation-conversations"],
     queryFn: () => FederationClient.getConversations(),
     enabled: !!identity,
+  });
+
+  const { data: chunkListings = [] } = useQuery<ModelChunkListing[]>({
+    queryKey: ["federation-model-chunk-listings"],
+    queryFn: () => FederationClient.listModelChunkListings(),
+  });
+
+  const { data: chunkPurchases = [] } = useQuery<ModelChunkPurchase[]>({
+    queryKey: ["federation-model-chunk-purchases"],
+    queryFn: () => FederationClient.listModelChunkPurchases(),
   });
 
   // Mutations
@@ -189,12 +258,189 @@ export default function FederationPage() {
     },
   });
 
+  const addBootstrapPeerMutation = useMutation({
+    mutationFn: () => {
+      if (!bootstrapForm.peerId) {
+        throw new Error("Peer ID is required");
+      }
+      return FederationClient.addBootstrapPeer({
+        id: bootstrapForm.peerId,
+        did: bootstrapForm.did || undefined,
+        display_name: bootstrapForm.displayName || undefined,
+        address: bootstrapForm.address || undefined,
+        notes: bootstrapForm.notes || undefined,
+      });
+    },
+    onSuccess: () => {
+      toast.success("Bootstrap peer saved");
+      queryClient.invalidateQueries({ queryKey: ["federation-bootstrap-peers"] });
+      setBootstrapForm({ peerId: "", displayName: "", did: "", address: "", notes: "" });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to save bootstrap peer");
+    },
+  });
+
+  const removeBootstrapPeerMutation = useMutation({
+    mutationFn: (peerId: string) => FederationClient.removeBootstrapPeer(peerId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["federation-bootstrap-peers"] });
+    },
+  });
+
+  const importBootstrapPeerMutation = useMutation({
+    mutationFn: (peerId: string) => FederationClient.importBootstrapPeer(peerId),
+    onSuccess: () => {
+      toast.success("Peer imported");
+      queryClient.invalidateQueries({ queryKey: ["federation-peers"] });
+    },
+  });
+
+  const createChunkListingMutation = useMutation({
+    mutationFn: () => {
+      const chunkCids = chunkListingForm.chunkCids
+        .split(",")
+        .map((cid) => cid.trim())
+        .filter(Boolean);
+      if (!chunkListingForm.title || !chunkListingForm.modelId || chunkCids.length === 0) {
+        throw new Error("Title, model ID, and chunk CIDs are required");
+      }
+      if (!chunkListingForm.privateKey) {
+        throw new Error("Private key is required to sign the listing");
+      }
+
+      return FederationClient.createModelChunkListing({
+        modelId: chunkListingForm.modelId,
+        modelHash: chunkListingForm.modelHash || undefined,
+        title: chunkListingForm.title,
+        description: undefined,
+        tags: chunkListingForm.tags
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter(Boolean),
+        chunkCids,
+        chunkCount: chunkListingForm.chunkCount || chunkCids.length,
+        bytesTotal: chunkListingForm.bytesTotal || undefined,
+        pricing: {
+          type: "fixed",
+          base_price: chunkListingForm.price,
+          accepted_currencies: [
+            {
+              symbol: chunkListingForm.currency,
+              network: "polygon",
+            },
+          ],
+          preferred_currency: {
+            symbol: chunkListingForm.currency,
+            network: "polygon",
+          },
+          escrow_required: true,
+        },
+        license: {
+          type: chunkListingForm.licenseType,
+        },
+        privateKey: chunkListingForm.privateKey,
+      });
+    },
+    onSuccess: () => {
+      toast.success("Model chunk listing created");
+      queryClient.invalidateQueries({ queryKey: ["federation-model-chunk-listings"] });
+      setChunkListingForm({
+        title: "",
+        modelId: "",
+        modelHash: "",
+        chunkCids: "",
+        chunkCount: 0,
+        bytesTotal: 0,
+        tags: "",
+        price: 0,
+        currency: "USDC",
+        licenseType: "training",
+        privateKey: "",
+      });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to create listing");
+    },
+  });
+
+  const createChunkPurchaseMutation = useMutation({
+    mutationFn: () => {
+      if (!selectedChunkListing || !identity?.did) {
+        throw new Error("Listing and identity are required");
+      }
+      return FederationClient.createModelChunkPurchase({
+        listingId: selectedChunkListing.id,
+        buyerDid: identity.did,
+        paymentTxHash: chunkPurchaseForm.paymentTxHash || undefined,
+        receiptCid: chunkPurchaseForm.receiptCid || undefined,
+      });
+    },
+    onSuccess: (purchase) => {
+      toast.success("Purchase initiated");
+      queryClient.invalidateQueries({ queryKey: ["federation-model-chunk-purchases"] });
+      setShowChunkPurchaseDialog(false);
+      setSelectedChunkListing(null);
+      setChunkPurchaseForm({ paymentTxHash: "", receiptCid: "" });
+      if (purchase?.id) {
+        FederationClient.createModelChunkEscrow(purchase.id).catch(() => {});
+      }
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to initiate purchase");
+    },
+  });
+
+  const executeInferenceMutation = useMutation({
+    mutationFn: () => {
+      return FederationClient.executeInference({
+        provider: inferenceForm.provider,
+        model_id: inferenceForm.modelId,
+        prompt: inferenceForm.prompt,
+        data_hash: inferenceForm.dataHash || undefined,
+        preferred_peer_id: inferenceForm.preferredPeerId || undefined,
+        payer_did: inferenceForm.payerDid,
+        issuer_did: identity?.did,
+        payment_tx_hash: inferenceForm.paymentTxHash || undefined,
+        payment_amount: inferenceForm.paymentAmount || undefined,
+        create_receipt: inferenceForm.createReceipt,
+        require_remote: inferenceForm.requireRemote,
+        private_key: inferenceForm.privateKey || undefined,
+      });
+    },
+    onSuccess: (result) => {
+      setInferenceOutput(result.output || "");
+      setInferenceRoute(result.route);
+      setInferenceReceipt(result.receipt || null);
+      setInferenceError(null);
+      setDispatchLogs((prev) => [
+        `${new Date().toLocaleTimeString()} • ${result.status.toUpperCase()} • route ${result.route.route_id}`,
+        ...prev,
+      ]);
+      toast.success(result.status === "dispatched" ? "Inference dispatched" : "Inference complete");
+    },
+    onError: (error) => {
+      setInferenceError(error instanceof Error ? error.message : String(error));
+      setDispatchLogs((prev) => [
+        `${new Date().toLocaleTimeString()} • ERROR • ${error instanceof Error ? error.message : String(error)}`,
+        ...prev,
+      ]);
+      toast.error("Inference failed");
+    },
+  });
+
   // Show identity creation if no identity
   useEffect(() => {
     if (!identityLoading && !identity) {
       setShowIdentityDialog(true);
     }
   }, [identity, identityLoading]);
+
+  useEffect(() => {
+    if (identity?.did && !inferenceForm.payerDid) {
+      setInferenceForm((prev) => ({ ...prev, payerDid: identity.did }));
+    }
+  }, [identity, inferenceForm.payerDid]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -216,6 +462,95 @@ export default function FederationPage() {
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     toast.success("Copied to clipboard!");
+  };
+
+  const computePeers = connectedPeers.filter((peer) =>
+    peer.capabilities.includes("compute")
+  );
+
+  const validateInferenceForm = () => {
+    if (!inferenceForm.modelId || !inferenceForm.prompt) {
+      toast.error("Model ID and prompt are required");
+      return false;
+    }
+    if (!inferenceForm.payerDid) {
+      toast.error("Payer DID is required");
+      return false;
+    }
+    if (inferenceForm.createReceipt && !inferenceForm.dataHash) {
+      toast.error("Data hash is required to create a receipt");
+      return false;
+    }
+    if (inferenceForm.requireRemote && !inferenceForm.privateKey) {
+      toast.error("Private key is required for remote dispatch");
+      return false;
+    }
+    if (inferenceForm.requireRemote && computePeers.length === 0) {
+      toast.error("No compute peers are connected");
+      return false;
+    }
+    return true;
+  };
+
+  const handleStreamInference = async () => {
+    if (!validateInferenceForm()) return;
+    setInferenceOutput("");
+    setInferenceRoute(null);
+    setInferenceReceipt(null);
+    setInferenceError(null);
+    setDispatchLogs((prev) => [
+      `${new Date().toLocaleTimeString()} • STREAM • started`,
+      ...prev,
+    ]);
+    setIsStreaming(true);
+
+    try {
+      await FederationClient.streamInference(
+        {
+          provider: inferenceForm.provider,
+          model_id: inferenceForm.modelId,
+          prompt: inferenceForm.prompt,
+          data_hash: inferenceForm.dataHash || undefined,
+          preferred_peer_id: inferenceForm.preferredPeerId || undefined,
+          payer_did: inferenceForm.payerDid,
+          issuer_did: identity?.did,
+          payment_tx_hash: inferenceForm.paymentTxHash || undefined,
+          payment_amount: inferenceForm.paymentAmount || undefined,
+          create_receipt: inferenceForm.createReceipt,
+          require_remote: inferenceForm.requireRemote,
+          private_key: inferenceForm.privateKey || undefined,
+        },
+        {
+          onChunk: (content) => {
+            setInferenceOutput((prev) => prev + content);
+          },
+          onDone: (data) => {
+            setInferenceRoute(data.route);
+            setInferenceReceipt(data.receipt || null);
+            setDispatchLogs((prev) => [
+              `${new Date().toLocaleTimeString()} • ${data.status.toUpperCase()} • route ${data.route.route_id}`,
+              ...prev,
+            ]);
+            setIsStreaming(false);
+          },
+          onError: (error) => {
+            setInferenceError(error);
+            setDispatchLogs((prev) => [
+              `${new Date().toLocaleTimeString()} • ERROR • ${error}`,
+              ...prev,
+            ]);
+            setIsStreaming(false);
+          },
+        }
+      );
+    } catch (error) {
+      setInferenceError(error instanceof Error ? error.message : String(error));
+      setDispatchLogs((prev) => [
+        `${new Date().toLocaleTimeString()} • ERROR • ${error instanceof Error ? error.message : String(error)}`,
+        ...prev,
+      ]);
+      setIsStreaming(false);
+    }
   };
 
   return (
@@ -331,6 +666,10 @@ export default function FederationPage() {
                 <ShoppingCart className="w-4 h-4" />
                 Marketplace
               </TabsTrigger>
+              <TabsTrigger value="model-chunks" className="gap-2">
+                <HardDrive className="w-4 h-4" />
+                Model Chunks
+              </TabsTrigger>
               <TabsTrigger value="transactions" className="gap-2">
                 <ArrowRightLeft className="w-4 h-4" />
                 Transactions
@@ -347,6 +686,10 @@ export default function FederationPage() {
               <TabsTrigger value="wallet" className="gap-2">
                 <Wallet className="w-4 h-4" />
                 Wallet
+              </TabsTrigger>
+              <TabsTrigger value="inference" className="gap-2">
+                <Zap className="w-4 h-4" />
+                Inference
               </TabsTrigger>
             </TabsList>
           </div>
@@ -413,44 +756,176 @@ export default function FederationPage() {
                   </CardContent>
                 </Card>
 
-                {/* Known Peers */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Discover Peers</CardTitle>
-                    <CardDescription>
-                      Known peers in the network
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <ScrollArea className="h-[400px]">
-                      {peers.filter(p => !p.connected).map((peer) => (
-                        <div
-                          key={peer.id}
-                          className="flex items-center justify-between p-2 hover:bg-muted rounded"
-                        >
-                          <div className="flex items-center gap-2">
-                            <div className={`w-2 h-2 rounded-full ${getStatusColor(peer.status)}`} />
-                            <span className="text-sm truncate max-w-[120px]">
-                              {peer.did.display_name || peer.id.slice(0, 12)}
-                            </span>
-                          </div>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => connectPeerMutation.mutate(peer.id)}
+                <div className="space-y-4">
+                  {/* Known Peers */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Discover Peers</CardTitle>
+                      <CardDescription>
+                        Known peers in the network
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <ScrollArea className="h-[250px]">
+                        {peers.filter(p => !p.connected).map((peer) => (
+                          <div
+                            key={peer.id}
+                            className="flex items-center justify-between p-2 hover:bg-muted rounded"
                           >
-                            Connect
-                          </Button>
-                        </div>
-                      ))}
-                      {peers.length === 0 && (
-                        <p className="text-sm text-muted-foreground text-center py-4">
-                          No peers discovered yet
-                        </p>
-                      )}
-                    </ScrollArea>
-                  </CardContent>
-                </Card>
+                            <div className="flex items-center gap-2">
+                              <div className={`w-2 h-2 rounded-full ${getStatusColor(peer.status)}`} />
+                              <span className="text-sm truncate max-w-[120px]">
+                                {peer.did.display_name || peer.id.slice(0, 12)}
+                              </span>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => connectPeerMutation.mutate(peer.id)}
+                            >
+                              Connect
+                            </Button>
+                          </div>
+                        ))}
+                        {peers.length === 0 && (
+                          <p className="text-sm text-muted-foreground text-center py-4">
+                            No peers discovered yet
+                          </p>
+                        )}
+                      </ScrollArea>
+                    </CardContent>
+                  </Card>
+
+                  {/* Bootstrap List */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Bootstrap List</CardTitle>
+                      <CardDescription>
+                        User-managed seed peers for discovery
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="space-y-2">
+                        <Label>Peer ID</Label>
+                        <Input
+                          value={bootstrapForm.peerId}
+                          onChange={(e) =>
+                            setBootstrapForm((prev) => ({ ...prev, peerId: e.target.value }))
+                          }
+                          placeholder="peer-id"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Display Name</Label>
+                        <Input
+                          value={bootstrapForm.displayName}
+                          onChange={(e) =>
+                            setBootstrapForm((prev) => ({ ...prev, displayName: e.target.value }))
+                          }
+                          placeholder="Seed node"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>DID (optional)</Label>
+                        <Input
+                          value={bootstrapForm.did}
+                          onChange={(e) =>
+                            setBootstrapForm((prev) => ({ ...prev, did: e.target.value }))
+                          }
+                          placeholder="did:joy:..."
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Address (optional)</Label>
+                        <Input
+                          value={bootstrapForm.address}
+                          onChange={(e) =>
+                            setBootstrapForm((prev) => ({ ...prev, address: e.target.value }))
+                          }
+                          placeholder="multiaddr or url"
+                        />
+                      </div>
+                      <Button
+                        onClick={() => addBootstrapPeerMutation.mutate()}
+                        disabled={addBootstrapPeerMutation.isPending}
+                      >
+                        {addBootstrapPeerMutation.isPending ? "Saving..." : "Add Bootstrap Peer"}
+                      </Button>
+
+                      <Separator />
+                      <ScrollArea className="h-[160px]">
+                        {bootstrapPeers.length === 0 ? (
+                          <p className="text-sm text-muted-foreground text-center py-4">
+                            No bootstrap peers saved
+                          </p>
+                        ) : (
+                          bootstrapPeers.map((peer) => (
+                            <div
+                              key={peer.id}
+                              className="flex items-center justify-between gap-2 py-2"
+                            >
+                              <div className="min-w-0">
+                                <p className="text-sm truncate">
+                                  {peer.display_name || peer.id}
+                                </p>
+                                <p className="text-xs text-muted-foreground truncate">
+                                  {peer.address || peer.did || peer.id}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => importBootstrapPeerMutation.mutate(peer.id)}
+                                >
+                                  Import
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => removeBootstrapPeerMutation.mutate(peer.id)}
+                                >
+                                  Remove
+                                </Button>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </ScrollArea>
+                    </CardContent>
+                  </Card>
+
+                  {/* Reputation View */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Reputation</CardTitle>
+                      <CardDescription>
+                        Read-only reputation scores
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <ScrollArea className="h-[200px]">
+                        {[...peers, ...connectedPeers]
+                          .filter((peer, index, arr) => arr.findIndex((p) => p.id === peer.id) === index)
+                          .map((peer) => (
+                            <div key={peer.id} className="flex items-center justify-between py-2">
+                              <div className="min-w-0">
+                                <p className="text-sm truncate">
+                                  {peer.did.display_name || peer.id.slice(0, 12)}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {peer.reputation.total_transactions} tx • {peer.reputation.uptime_percentage}% uptime
+                                </p>
+                              </div>
+                              <span className={`text-sm font-medium ${getReputationColor(peer.reputation.score)}`}>
+                                {peer.reputation.score}
+                              </span>
+                            </div>
+                          ))}
+                      </ScrollArea>
+                    </CardContent>
+                  </Card>
+                </div>
               </div>
             </TabsContent>
 
@@ -790,6 +1265,565 @@ export default function FederationPage() {
                 </Card>
               </div>
             </TabsContent>
+
+            {/* Model Chunk Marketplace Tab */}
+            <TabsContent value="model-chunks" className="mt-0">
+              <div className="grid grid-cols-2 gap-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Create Model Chunk Listing</CardTitle>
+                    <CardDescription>
+                      Publish model chunk bundles for peer purchase with escrow protection.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Title</Label>
+                        <Input
+                          value={chunkListingForm.title}
+                          onChange={(e) =>
+                            setChunkListingForm((prev) => ({ ...prev, title: e.target.value }))
+                          }
+                          placeholder="Llama3 shards"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Model ID</Label>
+                        <Input
+                          value={chunkListingForm.modelId}
+                          onChange={(e) =>
+                            setChunkListingForm((prev) => ({ ...prev, modelId: e.target.value }))
+                          }
+                          placeholder="model-uuid"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Model Hash (optional)</Label>
+                        <Input
+                          value={chunkListingForm.modelHash}
+                          onChange={(e) =>
+                            setChunkListingForm((prev) => ({ ...prev, modelHash: e.target.value }))
+                          }
+                          placeholder="bafy..."
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Chunk CIDs (comma separated)</Label>
+                        <Input
+                          value={chunkListingForm.chunkCids}
+                          onChange={(e) =>
+                            setChunkListingForm((prev) => ({ ...prev, chunkCids: e.target.value }))
+                          }
+                          placeholder="bafy..., bafy..."
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Chunk Count</Label>
+                        <Input
+                          type="number"
+                          value={chunkListingForm.chunkCount}
+                          onChange={(e) =>
+                            setChunkListingForm((prev) => ({
+                              ...prev,
+                              chunkCount: Number(e.target.value || 0),
+                            }))
+                          }
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Bytes Total</Label>
+                        <Input
+                          type="number"
+                          value={chunkListingForm.bytesTotal}
+                          onChange={(e) =>
+                            setChunkListingForm((prev) => ({
+                              ...prev,
+                              bytesTotal: Number(e.target.value || 0),
+                            }))
+                          }
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Tags</Label>
+                        <Input
+                          value={chunkListingForm.tags}
+                          onChange={(e) =>
+                            setChunkListingForm((prev) => ({ ...prev, tags: e.target.value }))
+                          }
+                          placeholder="llama, 8b, shards"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>License Type</Label>
+                        <Select
+                          value={chunkListingForm.licenseType}
+                          onValueChange={(value) =>
+                            setChunkListingForm((prev) => ({
+                              ...prev,
+                              licenseType: value as typeof chunkListingForm.licenseType,
+                            }))
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="training">Training</SelectItem>
+                            <SelectItem value="inference">Inference</SelectItem>
+                            <SelectItem value="research">Research</SelectItem>
+                            <SelectItem value="non-commercial">Non-commercial</SelectItem>
+                            <SelectItem value="custom">Custom</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Price (USDC)</Label>
+                        <Input
+                          type="number"
+                          value={chunkListingForm.price}
+                          onChange={(e) =>
+                            setChunkListingForm((prev) => ({
+                              ...prev,
+                              price: Number(e.target.value || 0),
+                            }))
+                          }
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Signing Private Key</Label>
+                        <Input
+                          type="password"
+                          value={chunkListingForm.privateKey}
+                          onChange={(e) =>
+                            setChunkListingForm((prev) => ({
+                              ...prev,
+                              privateKey: e.target.value,
+                            }))
+                          }
+                          placeholder="Encrypted key or session key"
+                        />
+                      </div>
+                    </div>
+                  </CardContent>
+                  <CardFooter>
+                    <Button
+                      onClick={() => createChunkListingMutation.mutate()}
+                      disabled={createChunkListingMutation.isPending}
+                    >
+                      {createChunkListingMutation.isPending ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                          Publishing...
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="w-4 h-4 mr-2" />
+                          Publish Listing
+                        </>
+                      )}
+                    </Button>
+                  </CardFooter>
+                </Card>
+
+                <div className="space-y-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Available Listings</CardTitle>
+                      <CardDescription>Model chunk bundles on the network</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {chunkListings.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No chunk listings yet.</p>
+                      ) : (
+                        chunkListings.map((listing) => (
+                          <div key={listing.id} className="border rounded-lg p-3 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="font-medium">{listing.title}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {listing.model_id} • {listing.chunk_count} chunks
+                                </p>
+                              </div>
+                              <Badge className="bg-emerald-500 text-white">Active</Badge>
+                            </div>
+                            <div className="text-sm flex items-center justify-between">
+                              <span>Price</span>
+                              <span className="font-medium">
+                                {listing.pricing.base_price || 0} {listing.pricing.preferred_currency.symbol}
+                              </span>
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Seller: {listing.seller.display_name}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedChunkListing(listing);
+                                  setShowChunkPurchaseDialog(true);
+                                }}
+                              >
+                                Buy
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => copyToClipboard(listing.id)}
+                              >
+                                Copy ID
+                              </Button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Recent Purchases</CardTitle>
+                      <CardDescription>Local purchase history</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {chunkPurchases.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No purchases yet.</p>
+                      ) : (
+                        chunkPurchases.slice(0, 5).map((purchase) => (
+                          <div key={purchase.id} className="text-xs text-muted-foreground">
+                            {purchase.id} • {purchase.status} • {purchase.amount} {purchase.currency.symbol}
+                          </div>
+                        ))
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* Inference Tab */}
+            <TabsContent value="inference" className="mt-0">
+              <div className="grid grid-cols-2 gap-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Zap className="w-5 h-5 text-amber-500" />
+                      Federated Inference
+                    </CardTitle>
+                    <CardDescription>
+                      Run locally or dispatch to compute peers, with optional IPLD receipts.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Provider</Label>
+                        <Select
+                          value={inferenceForm.provider}
+                          onValueChange={(value) =>
+                            setInferenceForm((prev) => ({
+                              ...prev,
+                              provider: value as "ollama" | "lmstudio" | "llamacpp" | "vllm",
+                            }))
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="ollama">Ollama</SelectItem>
+                            <SelectItem value="lmstudio">LM Studio</SelectItem>
+                            <SelectItem value="llamacpp">llama.cpp</SelectItem>
+                            <SelectItem value="vllm">vLLM</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Model ID</Label>
+                        <Input
+                          value={inferenceForm.modelId}
+                          onChange={(e) =>
+                            setInferenceForm((prev) => ({ ...prev, modelId: e.target.value }))
+                          }
+                          placeholder="model-uuid or local name"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Compute Peer</Label>
+                        <Select
+                          value={inferenceForm.preferredPeerId || "auto"}
+                          onValueChange={(value) =>
+                            setInferenceForm((prev) => ({
+                              ...prev,
+                              preferredPeerId: value === "auto" ? "" : value,
+                            }))
+                          }
+                          disabled={computePeers.length === 0}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Auto-select" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="auto">Auto-select</SelectItem>
+                            {computePeers.map((peer) => (
+                              <SelectItem key={peer.id} value={peer.id}>
+                                {peer.did.display_name || peer.id.slice(0, 12)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Payer DID</Label>
+                        <Input
+                          value={inferenceForm.payerDid}
+                          onChange={(e) =>
+                            setInferenceForm((prev) => ({ ...prev, payerDid: e.target.value }))
+                          }
+                          placeholder="did:pkh:eip155:137:0x..."
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Data Hash</Label>
+                        <Input
+                          value={inferenceForm.dataHash}
+                          onChange={(e) =>
+                            setInferenceForm((prev) => ({ ...prev, dataHash: e.target.value }))
+                          }
+                          placeholder="bafy..."
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Payment Tx (optional)</Label>
+                        <Input
+                          value={inferenceForm.paymentTxHash}
+                          onChange={(e) =>
+                            setInferenceForm((prev) => ({ ...prev, paymentTxHash: e.target.value }))
+                          }
+                          placeholder="0x..."
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Payment Amount (USDC)</Label>
+                        <Input
+                          value={inferenceForm.paymentAmount}
+                          onChange={(e) =>
+                            setInferenceForm((prev) => ({ ...prev, paymentAmount: e.target.value }))
+                          }
+                          placeholder="10.00"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Dispatch Only</Label>
+                        <div className="flex items-center gap-3 pt-1">
+                          <Switch
+                            checked={inferenceForm.requireRemote}
+                            onCheckedChange={(checked) =>
+                              setInferenceForm((prev) => ({ ...prev, requireRemote: checked }))
+                            }
+                          />
+                          <span className="text-xs text-muted-foreground">
+                            Require remote compute peer
+                          </span>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Private Key (dispatch)</Label>
+                        <Input
+                          type="password"
+                          value={inferenceForm.privateKey}
+                          onChange={(e) =>
+                            setInferenceForm((prev) => ({ ...prev, privateKey: e.target.value }))
+                          }
+                          placeholder="Encrypted key or session key"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Create Receipt</Label>
+                        <Select
+                          value={inferenceForm.createReceipt ? "yes" : "no"}
+                          onValueChange={(value) =>
+                            setInferenceForm((prev) => ({
+                              ...prev,
+                              createReceipt: value === "yes",
+                            }))
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="yes">Yes</SelectItem>
+                            <SelectItem value="no">No</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Prompt</Label>
+                      <Textarea
+                        value={inferenceForm.prompt}
+                        onChange={(e) =>
+                          setInferenceForm((prev) => ({ ...prev, prompt: e.target.value }))
+                        }
+                        placeholder="Enter prompt..."
+                        rows={6}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        onClick={() => {
+                          if (!validateInferenceForm()) return;
+                          setInferenceOutput("");
+                          setInferenceRoute(null);
+                          setInferenceReceipt(null);
+                          setInferenceError(null);
+                          executeInferenceMutation.mutate();
+                        }}
+                        disabled={executeInferenceMutation.isPending}
+                      >
+                        {executeInferenceMutation.isPending ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                            Running...
+                          </>
+                        ) : (
+                          <>
+                            <Zap className="w-4 h-4 mr-2" />
+                            Run Inference
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={handleStreamInference}
+                        disabled={isStreaming}
+                      >
+                        {isStreaming ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                            Streaming...
+                          </>
+                        ) : (
+                          <>
+                            <Send className="w-4 h-4 mr-2" />
+                            Stream Output
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <div className="space-y-4">
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base">Route</CardTitle>
+                      <CardDescription>Selected compute target and required chunks.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {inferenceRoute ? (
+                        <>
+                          <div className="flex items-center justify-between">
+                            <div className="text-sm">
+                              Target: <span className="font-medium">{inferenceRoute.target.display_name || inferenceRoute.target.did}</span>
+                            </div>
+                            {inferenceForm.requireRemote && (
+                              <Badge className="bg-amber-500 text-white">Remote-only</Badge>
+                            )}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            Capability: {inferenceRoute.target.capability}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            Required Chunks: {inferenceRoute.required_chunks.length}
+                          </div>
+                        </>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          Run an inference to see routing details.
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base">Receipt</CardTitle>
+                      <CardDescription>IPLD receipt reference (if enabled).</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {inferenceReceipt ? (
+                        <>
+                          <div className="text-xs text-muted-foreground">CID</div>
+                          <div className="font-mono text-xs break-all">{inferenceReceipt.cid}</div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => copyToClipboard(inferenceReceipt.cid)}
+                          >
+                            <Copy className="w-3 h-3 mr-2" />
+                            Copy CID
+                          </Button>
+                        </>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          No receipt created yet.
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base">Output</CardTitle>
+                      <CardDescription>Streaming or completed response.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {inferenceError ? (
+                        <p className="text-sm text-red-500">{inferenceError}</p>
+                      ) : inferenceOutput ? (
+                        <pre className="text-xs whitespace-pre-wrap">{inferenceOutput}</pre>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          Output will appear here.
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-base">Dispatch Log</CardTitle>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setDispatchLogs([])}
+                          disabled={dispatchLogs.length === 0}
+                        >
+                          Clear
+                        </Button>
+                      </div>
+                      <CardDescription>Recent routing and dispatch events.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {dispatchLogs.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No dispatch events yet.</p>
+                      ) : (
+                        <div className="space-y-2 text-xs text-muted-foreground">
+                          {dispatchLogs.slice(0, 8).map((entry, index) => (
+                            <div key={`${entry}-${index}`} className="font-mono">
+                              {entry}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+            </TabsContent>
           </div>
         </Tabs>
       </div>
@@ -921,6 +1955,82 @@ export default function FederationPage() {
             </Button>
             <Button onClick={() => buyMutation.mutate()} disabled={buyMutation.isPending}>
               {buyMutation.isPending ? (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <ShoppingCart className="w-4 h-4 mr-2" />
+                  Confirm Purchase
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Model Chunk Purchase Dialog */}
+      <Dialog open={showChunkPurchaseDialog} onOpenChange={setShowChunkPurchaseDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Purchase Model Chunks</DialogTitle>
+            <DialogDescription>
+              Confirm the listing and provide payment proof.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedChunkListing && (
+            <div className="space-y-4 py-4">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Listing</span>
+                <span className="font-medium">{selectedChunkListing.title}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Price</span>
+                <span className="font-medium">
+                  {selectedChunkListing.pricing.base_price || 0} {selectedChunkListing.pricing.preferred_currency.symbol}
+                </span>
+              </div>
+              <Separator />
+              <div className="space-y-2">
+                <Label>Payment Tx Hash (optional)</Label>
+                <Input
+                  value={chunkPurchaseForm.paymentTxHash}
+                  onChange={(e) =>
+                    setChunkPurchaseForm((prev) => ({
+                      ...prev,
+                      paymentTxHash: e.target.value,
+                    }))
+                  }
+                  placeholder="0x..."
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Receipt CID (optional)</Label>
+                <Input
+                  value={chunkPurchaseForm.receiptCid}
+                  onChange={(e) =>
+                    setChunkPurchaseForm((prev) => ({
+                      ...prev,
+                      receiptCid: e.target.value,
+                    }))
+                  }
+                  placeholder="bafy..."
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowChunkPurchaseDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => createChunkPurchaseMutation.mutate()}
+              disabled={createChunkPurchaseMutation.isPending}
+            >
+              {createChunkPurchaseMutation.isPending ? (
                 <>
                   <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
                   Processing...

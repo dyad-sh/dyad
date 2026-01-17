@@ -44,6 +44,10 @@ import { registerScraperHandlers } from "./handlers/scraper_handlers";
 import { registerAssetStudioHandlers } from "./handlers/asset_studio_handlers";
 import { registerNFTHandlers } from "./handlers/nft_handlers";
 import { registerFederationHandlers } from "./handlers/federation_handlers";
+import { registerSovereignDataHandlers } from "./handlers/sovereign_data_handlers";
+import { registerIpldReceiptHandlers } from "./handlers/ipld_receipt_handlers";
+import { registerDecentralizedDeployHandlers } from "./handlers/decentralized_deploy_handlers";
+import { registerProjectHandlers } from "./handlers/project_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -93,4 +97,8 @@ export function registerIpcHandlers() {
   registerAssetStudioHandlers();
   registerNFTHandlers();
   registerFederationHandlers();
+  registerSovereignDataHandlers();
+  registerIpldReceiptHandlers();
+  registerDecentralizedDeployHandlers();
+  registerProjectHandlers();
 }

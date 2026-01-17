@@ -23,10 +23,32 @@ export const prompts = sqliteTable("prompts", {
     .default(sql`(unixepoch())`),
 });
 
+export const projects = sqliteTable("projects", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  description: text("description"),
+  path: text("path").notNull(),
+  color: text("color"),
+  icon: text("icon"),
+  tags: text("tags", { mode: "json" }).$type<string[]>(),
+  isFavorite: integer("is_favorite", { mode: "boolean" })
+    .notNull()
+    .default(sql`0`),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
 export const apps = sqliteTable("apps", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
   path: text("path").notNull(),
+  projectId: integer("project_id").references(() => projects.id, { 
+    onDelete: "set null" 
+  }),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),
@@ -123,9 +145,17 @@ export const versions = sqliteTable(
 );
 
 // Define relations
-export const appsRelations = relations(apps, ({ many }) => ({
+export const projectsRelations = relations(projects, ({ many }) => ({
+  apps: many(apps),
+}));
+
+export const appsRelations = relations(apps, ({ many, one }) => ({
   chats: many(chats),
   versions: many(versions),
+  project: one(projects, {
+    fields: [apps.projectId],
+    references: [projects.id],
+  }),
 }));
 
 export const chatsRelations = relations(chats, ({ many, one }) => ({

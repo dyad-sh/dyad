@@ -22,6 +22,8 @@ import {
   Zap,
   ChevronDown,
   ChevronUp,
+  Radio,
+  Cpu,
 } from "lucide-react";
 import { Link, useRouterState, useRouter } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -172,6 +174,24 @@ const menuCategories = [
         hoverBg: "hover:bg-cyan-500/10",
         activeBg: "bg-cyan-500/15",
         activeText: "text-cyan-600 dark:text-cyan-400",
+      },
+      {
+        title: "P2P Chat",
+        to: "/p2p-chat",
+        icon: Radio,
+        gradient: "from-green-500 to-emerald-500",
+        hoverBg: "hover:bg-green-500/10",
+        activeBg: "bg-green-500/15",
+        activeText: "text-green-600 dark:text-green-400",
+      },
+      {
+        title: "AI Compute",
+        to: "/compute",
+        icon: Cpu,
+        gradient: "from-amber-500 to-orange-500",
+        hoverBg: "hover:bg-amber-500/10",
+        activeBg: "bg-amber-500/15",
+        activeText: "text-amber-600 dark:text-amber-400",
       },
     ],
   },

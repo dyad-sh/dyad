@@ -49,6 +49,9 @@ import { registerSovereignDataHandlers } from "./handlers/sovereign_data_handler
 import { registerIpldReceiptHandlers } from "./handlers/ipld_receipt_handlers";
 import { registerDecentralizedDeployHandlers } from "./handlers/decentralized_deploy_handlers";
 import { registerProjectHandlers } from "./handlers/project_handlers";
+import { registerHybridBridgeHandlers } from "./handlers/hybrid_bridge_handlers";
+import { registerDecentralizedChatHandlers } from "./handlers/decentralized_chat_handlers";
+import { registerComputeNetworkHandlers } from "./handlers/compute_network_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -103,4 +106,7 @@ export function registerIpcHandlers() {
   registerIpldReceiptHandlers();
   registerDecentralizedDeployHandlers();
   registerProjectHandlers();
+  registerHybridBridgeHandlers();
+  registerDecentralizedChatHandlers();
+  registerComputeNetworkHandlers();
 }

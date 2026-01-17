@@ -142,6 +142,7 @@ export interface VerifyResponse {
 export class MarketplaceSyncService {
   private provider: ethers.JsonRpcProvider;
   private apiKey: string | null = null;
+  private jwtToken: string | null = null;
   private publisherId: string | null = null;
   private publisherProfile: PublisherProfile | null = null;
   private clientVersion: string = "1.0.0";
@@ -152,11 +153,12 @@ export class MarketplaceSyncService {
   }
 
   /**
-   * Initialize the service with API credentials
+   * Initialize the service with API key (jc_xxx format)
    */
   async initialize(apiKey: string): Promise<VerifyResponse> {
     this.apiKey = apiKey;
-    logger.info("MarketplaceSyncService initializing...");
+    this.jwtToken = null;
+    logger.info("MarketplaceSyncService initializing with API key...");
     
     // Verify API key and get publisher info
     const verifyResult = await this.verifyPublisher();
@@ -168,6 +170,38 @@ export class MarketplaceSyncService {
     }
     
     return verifyResult;
+  }
+
+  /**
+   * Initialize the service with Supabase JWT token
+   * Use this when user is logged into JoyMarketplace via Supabase Auth
+   */
+  async initializeWithJWT(jwtToken: string, userId?: string): Promise<VerifyResponse> {
+    this.jwtToken = jwtToken;
+    this.apiKey = null;
+    this.publisherId = userId || null;
+    logger.info("MarketplaceSyncService initializing with JWT...");
+    
+    return {
+      success: true,
+      publisherId: userId,
+    };
+  }
+
+  /**
+   * Check if the service is initialized
+   */
+  isInitialized(): boolean {
+    return !!(this.apiKey || this.jwtToken);
+  }
+
+  /**
+   * Get the current auth token (API key or JWT)
+   */
+  private getAuthToken(): string {
+    if (this.apiKey) return this.apiKey;
+    if (this.jwtToken) return this.jwtToken;
+    throw new Error("Not initialized. Call initialize() or initializeWithJWT() first.");
   }
 
   /**
@@ -203,16 +237,14 @@ export class MarketplaceSyncService {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    if (!this.apiKey) {
-      throw new Error("API key not set. Call initialize() first.");
-    }
+    const token = this.getAuthToken();
 
     const url = buildApiUrl(endpoint);
     const response = await fetch(url, {
       ...options,
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `${JOYMARKETPLACE_API.authScheme} ${this.apiKey}`,
+        "Authorization": `${JOYMARKETPLACE_API.authScheme} ${token}`,
         ...options.headers,
       },
     });

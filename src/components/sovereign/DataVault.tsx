@@ -96,6 +96,8 @@ import {
   useQueueShare,
   useProcessOutbox,
   useUpdateConsent,
+  usePolicyAudit,
+  usePurchases,
 } from "@/ipc/sovereign_data_client";
 import type {
   SovereignData,
@@ -207,6 +209,8 @@ export function DataVault({ className, onSelectData }: DataVaultProps) {
   const processOutboxMutation = useProcessOutbox();
   const { data: outboxJobs = [] } = useOutboxJobs();
   const updateConsentMutation = useUpdateConsent();
+  const { data: policyAudit = [] } = usePolicyAudit();
+  const { data: purchases = [] } = usePurchases();
 
   const updateConsent = async () => {
     if (!consentTarget) return;
@@ -813,6 +817,39 @@ export function DataVault({ className, onSelectData }: DataVaultProps) {
                 </div>
               </CardContent>
             </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Policy Audit Log</CardTitle>
+                <CardDescription>
+                  Records of blocked outbound actions for compliance review.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {policyAudit.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No policy events recorded.</p>
+                ) : (
+                  <ScrollArea className="h-[220px] pr-2">
+                    <div className="space-y-2">
+                      {policyAudit.slice(0, 25).map((event) => (
+                        <div key={event.id} className="border rounded-md p-2 text-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="font-mono">{event.id}</span>
+                            <Badge variant="outline">{event.policy}</Badge>
+                          </div>
+                          <div className="text-muted-foreground">
+                            {event.action} • {event.dataId}
+                          </div>
+                          <div className="text-muted-foreground">{event.message}</div>
+                          <div className="text-muted-foreground">
+                            {new Date(event.createdAt).toLocaleString()}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                )}
+              </CardContent>
+            </Card>
           </div>
         </TabsContent>
 
@@ -924,12 +961,63 @@ export function DataVault({ className, onSelectData }: DataVaultProps) {
         </TabsContent>
 
         <TabsContent value="marketplace">
-          <Card>
-            <CardContent className="py-8 text-center text-muted-foreground">
-              <Coins className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>Your marketplace listings will appear here</p>
-            </CardContent>
-          </Card>
+          <div className="grid grid-cols-2 gap-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Creator Earnings</CardTitle>
+                <CardDescription>Summary of paid purchases</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Total Earnings</span>
+                  <span className="text-xl font-bold">
+                    $
+                    {purchases
+                      .filter((p) => p.status === "paid" || p.status === "delivered")
+                      .reduce((sum, p) => sum + p.amount, 0)
+                      .toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Transactions</span>
+                  <span>{purchases.length}</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Recent Purchases</CardTitle>
+                <CardDescription>Payment proofs and access status</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {purchases.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No purchases yet.</p>
+                ) : (
+                  <ScrollArea className="h-[260px] pr-2">
+                    <div className="space-y-2">
+                      {purchases.slice(0, 15).map((purchase) => (
+                        <div key={purchase.id} className="border rounded-md p-2 text-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="font-mono">{purchase.id}</span>
+                            <Badge variant="outline">{purchase.status}</Badge>
+                          </div>
+                          <div className="text-muted-foreground">
+                            {purchase.amount} {purchase.currency}
+                          </div>
+                          {purchase.transactionHash && (
+                            <div className="text-muted-foreground break-all">
+                              Tx: {purchase.transactionHash}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
 

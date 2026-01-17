@@ -69,11 +69,32 @@ class IpldReceiptService {
   private buildReceipt(
     input: IpldInferenceReceiptInput,
   ): IpldInferenceReceipt {
+    const storeName = input.storeName?.trim();
+    const creatorId = input.creatorId?.trim();
+    const inferredTarget = storeName && creatorId
+      ? `${input.modelId}.${storeName}.${creatorId}`
+      : undefined;
+    const inferenceTarget = input.inferenceTarget || inferredTarget;
     const receipt: IpldInferenceReceipt = {
       v: 1,
       type: "inference-receipt",
       issuer: input.issuer,
       payer: input.payer,
+      ...(storeName && creatorId
+        ? {
+            store: {
+              name: storeName,
+              creatorId,
+            },
+          }
+        : {}),
+      ...(inferenceTarget
+        ? {
+            inference: {
+              target: inferenceTarget,
+            },
+          }
+        : {}),
       model: {
         id: input.modelId,
         ...(input.modelHash ? { hash: input.modelHash } : {}),
@@ -161,6 +182,18 @@ class IpldReceiptService {
   async getReceipt(cid: string): Promise<IpldReceiptRecord | null> {
     const index = await this.loadIndex();
     return index[cid] ?? null;
+  }
+
+  async verifyReceipt(cid: string): Promise<{ valid: boolean; computedCid: string }> {
+    await loadEsmModules();
+    const record = await this.getReceipt(cid);
+    if (!record) {
+      throw new Error("Receipt not found");
+    }
+    const cborBytes = dagCbor.encode(record.receipt);
+    const hash = await sha256.digest(cborBytes);
+    const computedCid = CID.createV1(dagCbor.code, hash).toString();
+    return { valid: computedCid === cid, computedCid };
   }
 }
 

@@ -14,6 +14,13 @@ export interface IpldInferenceReceipt {
   type: "inference-receipt";
   issuer: string;
   payer: string;
+  store?: {
+    name: string;
+    creatorId: string;
+  };
+  inference?: {
+    target: string;
+  };
   model: {
     id: string;
     hash?: string;
@@ -49,6 +56,9 @@ export interface IpldInferenceReceiptInput {
   payer: string;
   modelId: string;
   modelHash?: string;
+  storeName?: string;
+  creatorId?: string;
+  inferenceTarget?: string;
   dataHash: string;
   promptHash: string;
   outputHash?: string;

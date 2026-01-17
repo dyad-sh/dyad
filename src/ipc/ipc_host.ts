@@ -40,6 +40,7 @@ import { registerN8nHandlers } from "./handlers/n8n_handlers";
 import { registerTrustlessInferenceHandlers } from "./handlers/trustless_inference_handlers";
 import { registerLibreOfficeHandlers } from "./handlers/libreoffice_handlers";
 import { registerMarketplaceHandlers } from "./handlers/marketplace_handlers";
+import { registerMarketplaceSyncHandlers } from "./handlers/marketplace_sync_handlers";
 import { registerScraperHandlers } from "./handlers/scraper_handlers";
 import { registerAssetStudioHandlers } from "./handlers/asset_studio_handlers";
 import { registerNFTHandlers } from "./handlers/nft_handlers";
@@ -93,6 +94,7 @@ export function registerIpcHandlers() {
   registerTrustlessInferenceHandlers();
   registerLibreOfficeHandlers();
   registerMarketplaceHandlers();
+  registerMarketplaceSyncHandlers();
   registerScraperHandlers();
   registerAssetStudioHandlers();
   registerNFTHandlers();

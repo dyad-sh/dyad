@@ -21,6 +21,7 @@ import type {
   DataListing,
   DataPurchase,
   OutboxJob,
+  PolicyAuditEvent,
 } from "../../types/sovereign_data";
 
 // ============================================================================
@@ -33,6 +34,7 @@ const INDEX_FILE = path.join(SOVEREIGN_DATA_DIR, "index.json");
 const KEYS_DIR = path.join(SOVEREIGN_DATA_DIR, "keys");
 const CONTENT_DIR = path.join(SOVEREIGN_DATA_DIR, "content");
 const OUTBOX_FILE = path.join(SOVEREIGN_DATA_DIR, "outbox.json");
+const POLICY_AUDIT_FILE = path.join(SOVEREIGN_DATA_DIR, "policy_audit.json");
 
 // Encryption settings
 const ENCRYPTION_ALGORITHM = "aes-256-gcm";
@@ -197,7 +199,11 @@ function hasTrainingConsent(data: SovereignData): boolean {
   return false;
 }
 
-function requireTrainingConsent(data: SovereignData, vault: DataVault): void {
+async function requireTrainingConsent(
+  data: SovereignData,
+  vault: DataVault,
+  action: PolicyAuditEvent["action"]
+): Promise<void> {
   if (data.dataType !== "training-data") {
     return;
   }
@@ -205,6 +211,14 @@ function requireTrainingConsent(data: SovereignData, vault: DataVault): void {
     return;
   }
   if (!hasTrainingConsent(data)) {
+    await appendPolicyAudit({
+      id: crypto.randomBytes(8).toString("hex"),
+      dataId: data.id,
+      policy: "training-consent",
+      action,
+      message: "Training consent required for training data exports",
+      createdAt: new Date().toISOString(),
+    });
     throw new Error("Training consent required for training data exports");
   }
 }
@@ -217,11 +231,31 @@ function hasOutboundPayment(data: SovereignData): boolean {
   return !!data.metadata.consent?.outbound?.paymentTxHash;
 }
 
-function requireOutboundApproval(data: SovereignData, vault: DataVault): void {
+async function requireOutboundApproval(
+  data: SovereignData,
+  vault: DataVault,
+  action: PolicyAuditEvent["action"]
+): Promise<void> {
   if (vault.policies?.outbound?.requireConsent && !hasOutboundConsent(data)) {
+    await appendPolicyAudit({
+      id: crypto.randomBytes(8).toString("hex"),
+      dataId: data.id,
+      policy: "outbound-consent",
+      action,
+      message: "Outbound consent required before data can leave this device",
+      createdAt: new Date().toISOString(),
+    });
     throw new Error("Outbound consent required before data can leave this device");
   }
   if (vault.policies?.outbound?.requirePayment && !hasOutboundPayment(data)) {
+    await appendPolicyAudit({
+      id: crypto.randomBytes(8).toString("hex"),
+      dataId: data.id,
+      policy: "outbound-payment",
+      action,
+      message: "Outbound payment proof required before data can leave this device",
+      createdAt: new Date().toISOString(),
+    });
     throw new Error("Outbound payment proof required before data can leave this device");
   }
 }
@@ -274,13 +308,28 @@ async function saveOutbox(outbox: OutboxJob[]): Promise<void> {
   await fs.writeFile(OUTBOX_FILE, JSON.stringify(outbox, null, 2));
 }
 
+async function loadPolicyAudit(): Promise<PolicyAuditEvent[]> {
+  try {
+    const data = await fs.readFile(POLICY_AUDIT_FILE, "utf-8");
+    return JSON.parse(data);
+  } catch {
+    return [];
+  }
+}
+
+async function appendPolicyAudit(event: PolicyAuditEvent): Promise<void> {
+  const events = await loadPolicyAudit();
+  events.unshift(event);
+  await fs.writeFile(POLICY_AUDIT_FILE, JSON.stringify(events, null, 2));
+}
+
 async function enqueueSyncJob(dataId: string, network: StorageNetwork): Promise<OutboxJob> {
   const index = await loadIndex();
   const data = index.get(dataId);
   if (!data) throw new Error(`Data not found: ${dataId}`);
   const vault = await initializeVault();
-  requireTrainingConsent(data, vault);
-  requireOutboundApproval(data, vault);
+  await requireTrainingConsent(data, vault, "outbox");
+  await requireOutboundApproval(data, vault, "outbox");
 
   const job: OutboxJob = {
     id: crypto.randomBytes(8).toString("hex"),
@@ -306,8 +355,8 @@ async function enqueueShareJob(
   const data = index.get(dataId);
   if (!data) throw new Error(`Data not found: ${dataId}`);
   const vault = await initializeVault();
-  requireTrainingConsent(data, vault);
-  requireOutboundApproval(data, vault);
+  await requireTrainingConsent(data, vault, "outbox");
+  await requireOutboundApproval(data, vault, "outbox");
 
   const job: OutboxJob = {
     id: crypto.randomBytes(8).toString("hex"),
@@ -347,8 +396,8 @@ async function processOutbox(): Promise<OutboxJob[]> {
       if (!data) {
         throw new Error(`Data not found: ${job.dataId}`);
       }
-      requireTrainingConsent(data, vault);
-      requireOutboundApproval(data, vault);
+      await requireTrainingConsent(data, vault, "outbox");
+      await requireOutboundApproval(data, vault, "outbox");
 
       if (job.type === "sync") {
         if (!job.network) {
@@ -434,6 +483,10 @@ async function syncToNetwork(dataId: string, network: StorageNetwork): Promise<S
   if (!data) {
     throw new Error(`Data not found: ${dataId}`);
   }
+
+  const vault = await initializeVault();
+  await requireTrainingConsent(data, vault, "sync");
+  await requireOutboundApproval(data, vault, "sync");
   
   // Get local content
   const localHash = data.hashes.find((h) => h.network === "local");
@@ -936,8 +989,8 @@ export function registerSovereignDataHandlers(): void {
       }
 
       const vault = await initializeVault();
-      requireTrainingConsent(data, vault);
-      requireOutboundApproval(data, vault);
+      await requireTrainingConsent(data, vault, "share");
+      await requireOutboundApproval(data, vault, "share");
       
       if (!data.encryptionMetadata) {
         throw new Error("Data is not encrypted, cannot share securely");
@@ -1070,6 +1123,10 @@ export function registerSovereignDataHandlers(): void {
     return processOutbox();
   });
 
+  ipcMain.handle("sovereign:policy-audit", async () => {
+    return loadPolicyAudit();
+  });
+
   // -------------------------------------------------------------------------
   // Marketplace Operations
   // -------------------------------------------------------------------------
@@ -1085,8 +1142,8 @@ export function registerSovereignDataHandlers(): void {
       }
 
       const vault = await initializeVault();
-      requireTrainingConsent(data, vault);
-      requireOutboundApproval(data, vault);
+      await requireTrainingConsent(data, vault, "listing");
+      await requireOutboundApproval(data, vault, "listing");
       
       const listing: DataListing = {
         ...params,
@@ -1128,6 +1185,16 @@ export function registerSovereignDataHandlers(): void {
     const listingsPath = path.join(SOVEREIGN_DATA_DIR, "listings.json");
     try {
       const data = await fs.readFile(listingsPath, "utf-8");
+      return JSON.parse(data);
+    } catch {
+      return [];
+    }
+  });
+
+  ipcMain.handle("sovereign:get-purchases", async () => {
+    const purchasesPath = path.join(SOVEREIGN_DATA_DIR, "purchases.json");
+    try {
+      const data = await fs.readFile(purchasesPath, "utf-8");
       return JSON.parse(data);
     } catch {
       return [];
@@ -1180,7 +1247,8 @@ export function registerSovereignDataHandlers(): void {
       }
 
       const vault = await initializeVault();
-      requireOutboundApproval(data, vault);
+      await requireTrainingConsent(data, vault, "export");
+      await requireOutboundApproval(data, vault, "export");
       
       if (format === "json") {
         // Export metadata only (no sensitive data)

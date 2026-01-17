@@ -6,12 +6,12 @@
 export interface Project {
   id: number;
   name: string;
-  description?: string;
+  description?: string | null;
   path: string;
   createdAt: Date;
   updatedAt: Date;
-  color?: string; // For visual identification
-  icon?: string; // Emoji or icon name
+  color?: string | null; // For visual identification
+  icon?: string | null; // Emoji or icon name
   tags?: string[];
   isFavorite: boolean;
 }

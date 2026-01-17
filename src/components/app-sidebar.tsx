@@ -303,17 +303,17 @@ export function AppSidebar() {
       }}
       className="border-r-0"
     >
-      {/* Main sidebar with glass effect */}
-      <div className="flex h-full flex-col bg-gradient-to-b from-background/95 via-background/90 to-background/95 backdrop-blur-xl">
+      {/* Main sidebar with ghost glass effect */}
+      <div className="flex h-full flex-col lovable-sidebar">
         {/* Logo Header - Hidden (using title bar instead) */}
-        <div className="h-14 border-b border-border/40" />
+        <div className="h-14 border-b border-border/30" />
 
         <SidebarContent className="flex-1 overflow-hidden">
           <div className="flex h-full">
             {/* Left Column: Navigation Icons with Scroll */}
-            <div className="flex flex-col w-[56px] shrink-0 border-r border-border/30">
+            <div className="flex flex-col w-[56px] shrink-0 border-r border-border/20">
               {/* Quick Actions - New Button */}
-              <div className="p-1.5 border-b border-border/30">
+              <div className="p-1.5 border-b border-border/20">
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
@@ -322,9 +322,10 @@ export function AppSidebar() {
                       onClick={() => setIsCreateDialogOpen(true)}
                       className={cn(
                         "w-full h-9 rounded-lg",
-                        "bg-gradient-to-br from-violet-500/15 to-purple-500/15",
-                        "hover:from-violet-500/25 hover:to-purple-500/25",
-                        "border border-violet-500/30 hover:border-violet-500/50",
+                        "bg-gradient-to-br from-violet-500/10 to-purple-500/10",
+                        "hover:from-violet-500/20 hover:to-purple-500/20",
+                        "border border-violet-500/20 hover:border-violet-500/40",
+                        "shadow-sm hover:shadow-md hover:shadow-violet-500/10",
                         "transition-all duration-200 group"
                       )}
                     >
@@ -343,7 +344,7 @@ export function AppSidebar() {
                       {/* Category Label - only show when expanded */}
                       {!isCollapsed && (
                         <div className="px-1 mb-1">
-                          <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                          <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/50">
                             {category.label}
                           </span>
                         </div>

@@ -1,6 +1,9 @@
 /**
  * JoyMarketplace Sync Service
  * Handles syncing locally created assets to joymarketplace.io
+ * 
+ * Assets sync to user's store_profiles + digital_assets tables
+ * using the same flow as CreateAssetWizard on the web
  */
 
 import { ethers } from "ethers";
@@ -24,11 +27,24 @@ const logger = log.scope("marketplace_sync");
 // =============================================================================
 
 export interface SyncResult {
+  localAssetId: string;
   success: boolean;
-  assetId?: string;
-  listingId?: string;
-  transactionHash?: string;
+  marketplaceAssetId?: string;
+  storeAssetLinkId?: string;
+  tokenId?: number;
+  contractAddress?: string;
+  txHash?: string;
   error?: string;
+}
+
+export interface BatchSyncResponse {
+  success: boolean;
+  results: SyncResult[];
+  syncedCount: number;
+  failedCount: number;
+  storeId?: string;
+  storeName?: string;
+  collectionContract?: string;
 }
 
 export interface StoreInfo {
@@ -42,18 +58,44 @@ export interface StoreInfo {
 }
 
 export interface AssetListing {
-  localId: string;
+  // Local tracking
+  localAssetId: string;
+  
+  // Asset metadata
   name: string;
   description: string;
-  category: string;
-  price: number;
-  currency: "MATIC" | "USDC" | "JOY";
+  category: string; // 'ai_model', 'ai_agent', 'dataset', 'prompt', etc.
+  modelType?: string;
+  version?: string;
+  
+  // IPFS/Content
+  contentCid: string;
   thumbnailCid?: string;
   metadataCid?: string;
-  contentCid?: string;
+  imageCid?: string;
+  
+  // Chunking/Merkle data
+  merkleRoot?: string;
+  totalChunks?: number;
+  ipldManifestCid?: string;
+  
+  // Pricing
+  price: number;
+  currency: "MATIC" | "USDC";
+  royaltyPercent: number;
+  
+  // License
   licenseType: string;
-  royaltyBps: number;
-  store: StoreInfo;
+  licenseCid?: string;
+  
+  // Quality
+  qualityScore?: number;
+  
+  // Minting options
+  mintOnChain?: boolean;
+  
+  // Additional metadata
+  metadata?: Record<string, any>;
 }
 
 export interface PayoutRequest {
@@ -72,6 +114,27 @@ export interface PayoutVerification {
   error?: string;
 }
 
+export interface PublisherProfile {
+  id: string;
+  username: string;
+  displayName: string;
+  email?: string;
+  avatarUrl?: string;
+  bio?: string;
+  website?: string;
+  verified: boolean;
+  totalSales: number;
+  totalEarnings: number;
+  joinedAt: string;
+}
+
+export interface VerifyResponse {
+  success: boolean;
+  publisherId?: string;
+  profile?: PublisherProfile;
+  error?: string;
+}
+
 // =============================================================================
 // MARKETPLACE SYNC SERVICE
 // =============================================================================
@@ -80,6 +143,9 @@ export class MarketplaceSyncService {
   private provider: ethers.JsonRpcProvider;
   private apiKey: string | null = null;
   private publisherId: string | null = null;
+  private publisherProfile: PublisherProfile | null = null;
+  private clientVersion: string = "1.0.0";
+  private clientPlatform: string = process.platform;
 
   constructor() {
     this.provider = new ethers.JsonRpcProvider(POLYGON_MAINNET.rpcUrl);
@@ -88,10 +154,46 @@ export class MarketplaceSyncService {
   /**
    * Initialize the service with API credentials
    */
-  async initialize(apiKey: string, publisherId: string): Promise<void> {
+  async initialize(apiKey: string): Promise<VerifyResponse> {
     this.apiKey = apiKey;
-    this.publisherId = publisherId;
-    logger.info("MarketplaceSyncService initialized");
+    logger.info("MarketplaceSyncService initializing...");
+    
+    // Verify API key and get publisher info
+    const verifyResult = await this.verifyPublisher();
+    
+    if (verifyResult.success && verifyResult.publisherId) {
+      this.publisherId = verifyResult.publisherId;
+      this.publisherProfile = verifyResult.profile || null;
+      logger.info(`Initialized for publisher: ${this.publisherId}`);
+    }
+    
+    return verifyResult;
+  }
+
+  /**
+   * Verify publisher credentials
+   */
+  async verifyPublisher(): Promise<VerifyResponse> {
+    try {
+      const result = await this.apiRequest<VerifyResponse>(
+        JOYMARKETPLACE_API.endpoints.verifyPublisher,
+        { method: "POST" }
+      );
+      return result;
+    } catch (error) {
+      logger.error("Failed to verify publisher:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Verification failed",
+      };
+    }
+  }
+
+  /**
+   * Get current publisher profile
+   */
+  getPublisherProfile(): PublisherProfile | null {
+    return this.publisherProfile;
   }
 
   /**
@@ -111,7 +213,6 @@ export class MarketplaceSyncService {
       headers: {
         "Content-Type": "application/json",
         "Authorization": `${JOYMARKETPLACE_API.authScheme} ${this.apiKey}`,
-        "X-Publisher-ID": this.publisherId || "",
         ...options.headers,
       },
     });
@@ -187,60 +288,43 @@ export class MarketplaceSyncService {
   // ===========================================================================
 
   /**
-   * Sync a local listing to joymarketplace.io
+   * Sync a local listing to joymarketplace.io user's store
+   * This mirrors the CreateAssetWizard flow - asset goes to:
+   * 1. digital_assets table
+   * 2. store_ai_assets junction (links to user's store)
+   * 3. Optionally minted to user's collection contract
    */
   async syncListing(listing: AssetListing): Promise<SyncResult> {
     try {
       logger.info(`Syncing listing: ${listing.name}`);
 
-      // Map local fields to marketplace fields
-      const payload = {
-        // Asset identification
-        localId: listing.localId,
-        
-        // Mapped fields from FIELD_MAPPING.nft
-        assetName: listing.name,
-        assetDescription: listing.description,
-        category: listing.category,
-        thumbnailUrl: listing.thumbnailCid 
-          ? `https://gateway.pinata.cloud/ipfs/${listing.thumbnailCid}`
-          : undefined,
-        metadataUri: listing.metadataCid
-          ? `ipfs://${listing.metadataCid}`
-          : undefined,
-        contentCid: listing.contentCid,
-        
-        // Pricing
-        price: listing.price,
-        currency: listing.currency,
-        
-        // Licensing
-        licenseType: listing.licenseType,
-        royaltyBps: listing.royaltyBps,
-        
-        // Store mapping from FIELD_MAPPING.domain
-        storeName: listing.store.storeName,
-        creatorId: listing.store.creatorId,
-        creatorWallet: listing.store.creatorWallet,
-        payoutWallet: listing.store.payoutWallet,
-        storeLogo: listing.store.logo,
-        storeDescription: listing.store.bio,
-        storeBanner: listing.store.banner,
-      };
-
-      const result = await this.apiRequest<SyncResult>(
+      const result = await this.apiRequest<BatchSyncResponse>(
         JOYMARKETPLACE_API.endpoints.syncListing,
         {
           method: "POST",
-          body: JSON.stringify(payload),
+          body: JSON.stringify({
+            listings: [listing],
+            clientVersion: this.clientVersion,
+            clientPlatform: this.clientPlatform,
+          }),
         }
       );
 
-      logger.info(`Listing synced successfully: ${result.listingId}`);
-      return result;
+      if (result.results && result.results.length > 0) {
+        const syncResult = result.results[0];
+        logger.info(`Listing synced: ${syncResult.marketplaceAssetId} to store: ${result.storeName}`);
+        return syncResult;
+      }
+
+      return {
+        localAssetId: listing.localAssetId,
+        success: false,
+        error: "No result returned",
+      };
     } catch (error) {
       logger.error(`Failed to sync listing:`, error);
       return {
+        localAssetId: listing.localAssetId,
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",
       };
@@ -248,50 +332,43 @@ export class MarketplaceSyncService {
   }
 
   /**
-   * Batch sync multiple listings
+   * Batch sync multiple listings to user's store
    */
-  async batchSyncListings(listings: AssetListing[]): Promise<SyncResult[]> {
+  async batchSyncListings(listings: AssetListing[]): Promise<BatchSyncResponse> {
     try {
       logger.info(`Batch syncing ${listings.length} listings`);
 
-      const payload = listings.map(listing => ({
-        localId: listing.localId,
-        assetName: listing.name,
-        assetDescription: listing.description,
-        category: listing.category,
-        thumbnailUrl: listing.thumbnailCid 
-          ? `https://gateway.pinata.cloud/ipfs/${listing.thumbnailCid}`
-          : undefined,
-        metadataUri: listing.metadataCid
-          ? `ipfs://${listing.metadataCid}`
-          : undefined,
-        contentCid: listing.contentCid,
-        price: listing.price,
-        currency: listing.currency,
-        licenseType: listing.licenseType,
-        royaltyBps: listing.royaltyBps,
-        storeName: listing.store.storeName,
-        creatorId: listing.store.creatorId,
-        creatorWallet: listing.store.creatorWallet,
-        payoutWallet: listing.store.payoutWallet,
-      }));
-
-      const results = await this.apiRequest<SyncResult[]>(
-        JOYMARKETPLACE_API.endpoints.batchSyncListings,
+      const result = await this.apiRequest<BatchSyncResponse>(
+        JOYMARKETPLACE_API.endpoints.syncListing,
         {
           method: "POST",
-          body: JSON.stringify({ listings: payload }),
+          body: JSON.stringify({
+            listings,
+            clientVersion: this.clientVersion,
+            clientPlatform: this.clientPlatform,
+          }),
         }
       );
 
-      logger.info(`Batch sync completed: ${results.filter(r => r.success).length}/${results.length} successful`);
-      return results;
+      logger.info(`Batch sync completed: ${result.syncedCount}/${listings.length} to store: ${result.storeName}`);
+      
+      if (result.collectionContract) {
+        logger.info(`Collection contract: ${result.collectionContract}`);
+      }
+      
+      return result;
     } catch (error) {
       logger.error(`Failed to batch sync listings:`, error);
-      return listings.map(() => ({
+      return {
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      }));
+        results: listings.map(l => ({
+          localAssetId: l.localAssetId,
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+        })),
+        syncedCount: 0,
+        failedCount: listings.length,
+      };
     }
   }
 

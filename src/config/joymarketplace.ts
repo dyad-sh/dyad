@@ -64,37 +64,34 @@ export const CONTRACT_ADDRESSES = {
 
 export const JOYMARKETPLACE_API = {
   // Base URLs
-  baseUrl: process.env.JOYMARKETPLACE_API_URL || "https://api.joymarketplace.io",
+  baseUrl: process.env.JOYMARKETPLACE_API_URL || "https://jgsbmnzhvuwiujqbaieo.supabase.co/functions/v1",
   webUrl: process.env.JOYMARKETPLACE_WEB_URL || "https://joymarketplace.io",
   
   // Supabase backend (for direct database operations)
   supabaseUrl: "https://jgsbmnzhvuwiujqbaieo.supabase.co",
   supabaseAnonKey: process.env.JOYMARKETPLACE_SUPABASE_ANON_KEY || "",
   
-  // API Endpoints
+  // API Endpoints (Edge Functions)
   endpoints: {
     // Auth & Profile
-    verifyPublisher: "/v1/publisher/verify",
-    getProfile: "/v1/publisher/profile",
+    verifyPublisher: "/joycreate-publisher-verify",
+    getProfile: "/joycreate-publisher-verify",
     
-    // Assets
-    listAssets: "/v1/publisher/assets",
-    getAsset: "/v1/assets/:id",
-    publishAsset: "/v1/assets/publish",
-    updateAsset: "/v1/assets/:id",
-    archiveAsset: "/v1/assets/:id/archive",
+    // Listings Sync - syncs to user's store (digital_assets + store_ai_assets)
+    syncListing: "/joycreate-sync-listing",
     
-    // Listings Sync
-    syncListing: "/v1/listings/sync",
-    batchSyncListings: "/v1/listings/batch-sync",
+    // Receipts - ingest IPLD inference receipts
+    ingestReceipt: "/joycreate-receipt-ingest",
     
-    // Receipts
-    ingestReceipt: "/v1/receipts/ingest",
-    verifyReceipt: "/v1/receipts/verify/:cid",
-    
-    // Earnings
-    getEarnings: "/v1/publisher/earnings",
-    requestPayout: "/v1/publisher/payout",
+    // Legacy endpoints (kept for compatibility)
+    listAssets: "/marketplace-listing",
+    getAsset: "/marketplace-listing",
+    publishAsset: "/marketplace-listing",
+    updateAsset: "/marketplace-listing",
+    archiveAsset: "/marketplace-listing",
+    verifyReceipt: "/joycreate-receipt-ingest",
+    getEarnings: "/database-operations",
+    requestPayout: "/process-royalty",
   },
   
   // Auth scheme

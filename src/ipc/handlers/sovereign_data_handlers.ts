@@ -417,13 +417,17 @@ async function processOutbox(): Promise<OutboxJob[]> {
           permissions: job.permissions,
         });
 
-        data.encryptionMetadata = {
-          ...data.encryptionMetadata,
-          sharedWith: [
-            ...(data.encryptionMetadata?.sharedWith || []),
-            job.recipientPublicKey,
-          ],
-        };
+        // Update encryption metadata with shared recipients
+        if (data.encryptionMetadata) {
+          data.encryptionMetadata = {
+            algorithm: data.encryptionMetadata.algorithm,
+            keyId: data.encryptionMetadata.keyId,
+            sharedWith: [
+              ...(data.encryptionMetadata.sharedWith || []),
+              job.recipientPublicKey,
+            ],
+          };
+        }
         data.visibility = "shared";
         data.updatedAt = new Date().toISOString();
         index.set(job.dataId, data);

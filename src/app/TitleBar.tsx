@@ -64,17 +64,17 @@ export const TitleBar = () => {
 
   return (
     <>
-      <div className="@container z-11 w-full h-11 bg-(--sidebar) absolute top-0 left-0 app-region-drag flex items-center gap-3">
+      <div className="@container z-11 w-full h-11 bg-(--sidebar) backdrop-blur-xl border-b border-border/30 absolute top-0 left-0 app-region-drag flex items-center gap-3">
         <div className={`${showWindowControls ? "pl-2" : "pl-18"}`}></div>
 
         {/* Logo and Branding */}
         <div className="flex items-center gap-2 no-app-region-drag">
-          <img src={customLogo} alt="JoyCreate Logo" className="w-8 h-8 rounded-md shadow-sm" />
+          <img src={customLogo} alt="JoyCreate Logo" className="w-8 h-8 rounded-md shadow-sm ring-1 ring-border/20" />
           <div className="flex flex-col">
-            <span className="text-sm font-bold bg-gradient-to-r from-violet-600 via-purple-500 to-indigo-600 bg-clip-text text-transparent leading-tight">
+            <span className="text-sm font-bold bg-gradient-to-r from-violet-500 via-purple-500 to-indigo-500 bg-clip-text text-transparent leading-tight drop-shadow-sm">
               JoyCreate
             </span>
-            <span className="text-[9px] text-muted-foreground/60 -mt-0.5 tracking-wide">
+            <span className="text-[9px] text-muted-foreground/50 -mt-0.5 tracking-wide">
               Build • Create • Share
             </span>
           </div>
@@ -87,7 +87,7 @@ export const TitleBar = () => {
               variant="ghost"
               size="icon"
               onClick={toggleSidebar}
-              className="h-7 w-7 rounded-md hover:bg-muted/80 transition-all no-app-region-drag"
+              className="h-7 w-7 rounded-md hover:bg-primary/10 hover:text-primary transition-all no-app-region-drag border border-transparent hover:border-primary/20"
             >
               {isCollapsed ? (
                 <PanelLeft className="h-3.5 w-3.5 text-muted-foreground" />

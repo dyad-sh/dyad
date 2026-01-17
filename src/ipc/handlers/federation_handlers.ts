@@ -8,6 +8,9 @@ import * as fs from "fs-extra";
 import * as path from "path";
 import * as crypto from "crypto";
 import log from "electron-log";
+import { heliaVerificationService } from "@/lib/helia_verification_service";
+import { trustlessInferenceService } from "@/lib/trustless_inference_service";
+import { ipldReceiptService } from "@/lib/ipld_receipt_service";
 import type {
   DecentralizedIdentity,
   Peer,
@@ -23,6 +26,15 @@ import type {
   P2PConversation,
   AssetDiscoveryRecord,
   DHTRecord,
+  ModelChunkAnnouncement,
+  FederatedInferenceRequest,
+  FederatedInferenceRoute,
+  IpldReceiptRef,
+  FederatedInferenceExecutionRequest,
+  FederatedInferenceExecutionResult,
+  ModelChunkListing,
+  ModelChunkPurchase,
+  BootstrapPeerEntry,
   FederationStats,
   LocalNodeConfig,
   TransactionStatus,
@@ -58,6 +70,22 @@ function getDHTDir(): string {
   return path.join(getFederationDir(), "dht");
 }
 
+function getModelChunksIndexPath(): string {
+  return path.join(getDHTDir(), "model_chunks.json");
+}
+
+function getModelChunkListingsDir(): string {
+  return path.join(getFederationDir(), "model-chunk-listings");
+}
+
+function getModelChunkPurchasesDir(): string {
+  return path.join(getFederationDir(), "model-chunk-purchases");
+}
+
+function getBootstrapPeersPath(): string {
+  return path.join(getFederationDir(), "bootstrap_peers.json");
+}
+
 async function initFederationDirs() {
   await fs.ensureDir(getFederationDir());
   await fs.ensureDir(getPeersDir());
@@ -65,6 +93,8 @@ async function initFederationDirs() {
   await fs.ensureDir(getTransactionsDir());
   await fs.ensureDir(getMessagesDir());
   await fs.ensureDir(getDHTDir());
+  await fs.ensureDir(getModelChunkListingsDir());
+  await fs.ensureDir(getModelChunkPurchasesDir());
   await fs.ensureDir(path.join(getFederationDir(), "escrow"));
   await fs.ensureDir(path.join(getFederationDir(), "identity"));
 }
@@ -158,6 +188,10 @@ function verifySignature(data: string, signature: string, publicKey: string): bo
   }
 }
 
+function hashString(data: string): string {
+  return crypto.createHash("sha256").update(data).digest("hex");
+}
+
 // ============= Peer Management =============
 
 /**
@@ -200,6 +234,92 @@ async function getKnownPeers(): Promise<Peer[]> {
   }
   
   return peers;
+}
+
+// ============= Bootstrap Peers =============
+
+async function listBootstrapPeers(): Promise<BootstrapPeerEntry[]> {
+  const filePath = getBootstrapPeersPath();
+  if (!(await fs.pathExists(filePath))) {
+    return [];
+  }
+  try {
+    return await fs.readJson(filePath);
+  } catch {
+    return [];
+  }
+}
+
+async function saveBootstrapPeers(peers: BootstrapPeerEntry[]): Promise<void> {
+  const filePath = getBootstrapPeersPath();
+  await fs.writeJson(filePath, peers, { spaces: 2 });
+}
+
+async function addBootstrapPeer(entry: Omit<BootstrapPeerEntry, "added_at">): Promise<BootstrapPeerEntry> {
+  const peers = await listBootstrapPeers();
+  if (peers.some((peer) => peer.id === entry.id)) {
+    throw new Error("Bootstrap peer already exists");
+  }
+  const record: BootstrapPeerEntry = {
+    ...entry,
+    added_at: new Date().toISOString(),
+  };
+  peers.push(record);
+  await saveBootstrapPeers(peers);
+  return record;
+}
+
+async function removeBootstrapPeer(peerId: string): Promise<void> {
+  const peers = await listBootstrapPeers();
+  const next = peers.filter((peer) => peer.id !== peerId);
+  await saveBootstrapPeers(next);
+}
+
+async function importBootstrapPeer(peerId: string): Promise<Peer> {
+  const bootstrapPeers = await listBootstrapPeers();
+  const entry = bootstrapPeers.find((peer) => peer.id === peerId);
+  if (!entry) {
+    throw new Error("Bootstrap peer not found");
+  }
+
+  const peer: Peer = {
+    id: entry.id,
+    did: {
+      did: entry.did || `did:joy:${entry.id}`,
+      public_key: "",
+      display_name: entry.display_name || entry.id.slice(0, 12),
+      created_at: new Date().toISOString(),
+      capabilities: entry.capabilities || ["relay"],
+    },
+    addresses: entry.address
+      ? [
+          {
+            protocol: "libp2p",
+            address: entry.address,
+          },
+        ]
+      : [],
+    protocols: ["libp2p"],
+    agent_version: "unknown",
+    status: "offline",
+    last_seen: new Date().toISOString(),
+    capabilities: entry.capabilities || ["relay"],
+    reputation: {
+      score: 50,
+      total_transactions: 0,
+      successful_transactions: 0,
+      disputes: 0,
+      disputes_won: 0,
+      uptime_percentage: 0,
+      avg_response_time_ms: 0,
+      reviews: [],
+      badges: [],
+    },
+    connected: false,
+  };
+
+  await addPeer(peer);
+  return peer;
 }
 
 /**
@@ -279,6 +399,448 @@ async function dhtGet(key: string): Promise<DHTRecord | null> {
   // In production, would query peers
   
   return null;
+}
+
+// ============= Model Chunk DHT =============
+
+async function loadModelChunkIndex(): Promise<Record<string, ModelChunkAnnouncement[]>> {
+  const indexPath = getModelChunksIndexPath();
+  if (await fs.pathExists(indexPath)) {
+    try {
+      return await fs.readJson(indexPath);
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+async function saveModelChunkIndex(index: Record<string, ModelChunkAnnouncement[]>): Promise<void> {
+  await fs.writeJson(getModelChunksIndexPath(), index, { spaces: 2 });
+}
+
+async function announceModelChunk(params: {
+  modelId: string;
+  modelHash?: string;
+  chunkCid: string;
+  chunkIndex: number;
+  totalChunks?: number;
+  bytes?: number;
+  privateKey: string;
+}): Promise<ModelChunkAnnouncement> {
+  const identity = await getLocalIdentity();
+  if (!identity) {
+    throw new Error("No local identity");
+  }
+
+  const announcement: ModelChunkAnnouncement = {
+    model_id: params.modelId,
+    model_hash: params.modelHash,
+    chunk_cid: params.chunkCid,
+    chunk_index: params.chunkIndex,
+    total_chunks: params.totalChunks,
+    bytes: params.bytes,
+    peer_id: identity.did.replace("did:joy:", ""),
+    publisher_did: identity.did,
+    created_at: new Date().toISOString(),
+  };
+
+  const key = `model-chunk:${params.modelId}:${params.chunkCid}`;
+  await dhtPut(key, announcement, identity.did, params.privateKey);
+
+  const index = await loadModelChunkIndex();
+  const existing = index[params.modelId] || [];
+  const deduped = existing.filter((item) => item.chunk_cid !== params.chunkCid);
+  index[params.modelId] = [...deduped, announcement];
+  await saveModelChunkIndex(index);
+
+  return announcement;
+}
+
+async function findModelChunks(modelId: string): Promise<ModelChunkAnnouncement[]> {
+  const index = await loadModelChunkIndex();
+  return (index[modelId] || []).sort((a, b) => a.chunk_index - b.chunk_index);
+}
+
+// ============= Model Chunk Marketplace =============
+
+async function createModelChunkListing(params: {
+  modelId: string;
+  modelHash?: string;
+  title: string;
+  description?: string;
+  tags?: string[];
+  chunkCids: string[];
+  chunkCount: number;
+  bytesTotal?: number;
+  pricing: P2PPricing;
+  license: ModelChunkListing["license"];
+  privateKey: string;
+}): Promise<ModelChunkListing> {
+  const identity = await getLocalIdentity();
+  if (!identity) {
+    throw new Error("No local identity");
+  }
+
+  const listingId = `mchunk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const listing: ModelChunkListing = {
+    id: listingId,
+    model_id: params.modelId,
+    model_hash: params.modelHash,
+    chunk_cids: params.chunkCids,
+    chunk_count: params.chunkCount,
+    bytes_total: params.bytesTotal,
+    title: params.title,
+    description: params.description,
+    tags: params.tags || [],
+    pricing: params.pricing,
+    license: params.license,
+    seller: {
+      did: identity.did,
+      peer_id: identity.did.replace("did:joy:", ""),
+      display_name: identity.display_name,
+      reputation_score: 100,
+    },
+    status: "active",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  const listingPath = path.join(getModelChunkListingsDir(), `${listingId}.json`);
+  await fs.writeJson(listingPath, listing, { spaces: 2 });
+
+  await dhtPut(`model-chunk-listing:${listingId}`, listing, identity.did, params.privateKey);
+
+  return listing;
+}
+
+async function listModelChunkListings(): Promise<ModelChunkListing[]> {
+  const listingsDir = getModelChunkListingsDir();
+  await fs.ensureDir(listingsDir);
+  const files = await fs.readdir(listingsDir);
+  const listings: ModelChunkListing[] = [];
+
+  for (const file of files) {
+    if (file.endsWith(".json")) {
+      try {
+        listings.push(await fs.readJson(path.join(listingsDir, file)));
+      } catch (error) {
+        logger.warn(`Failed to load model chunk listing ${file}:`, error);
+      }
+    }
+  }
+
+  return listings.sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+}
+
+async function purchaseModelChunkListing(params: {
+  listingId: string;
+  buyerDid: string;
+  paymentTxHash?: string;
+  receiptCid?: string;
+}): Promise<ModelChunkPurchase> {
+  const listingPath = path.join(getModelChunkListingsDir(), `${params.listingId}.json`);
+  if (!(await fs.pathExists(listingPath))) {
+    throw new Error("Model chunk listing not found");
+  }
+
+  const listing: ModelChunkListing = await fs.readJson(listingPath);
+  const purchaseId = `mchunk-tx-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  const purchase: ModelChunkPurchase = {
+    id: purchaseId,
+    listing_id: listing.id,
+    buyer_did: params.buyerDid,
+    seller_did: listing.seller.did,
+    amount: listing.pricing.base_price || 0,
+    currency: listing.pricing.preferred_currency,
+    status: "initiated",
+    payment_tx_hash: params.paymentTxHash,
+    receipt_cid: params.receiptCid,
+    created_at: new Date().toISOString(),
+  };
+
+  const purchasePath = path.join(getModelChunkPurchasesDir(), `${purchaseId}.json`);
+  await fs.writeJson(purchasePath, purchase, { spaces: 2 });
+
+  return purchase;
+}
+
+async function listModelChunkPurchases(): Promise<ModelChunkPurchase[]> {
+  const purchasesDir = getModelChunkPurchasesDir();
+  await fs.ensureDir(purchasesDir);
+  const files = await fs.readdir(purchasesDir);
+  const purchases: ModelChunkPurchase[] = [];
+
+  for (const file of files) {
+    if (file.endsWith(".json")) {
+      try {
+        purchases.push(await fs.readJson(path.join(purchasesDir, file)));
+      } catch (error) {
+        logger.warn(`Failed to load model chunk purchase ${file}:`, error);
+      }
+    }
+  }
+
+  return purchases.sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+}
+
+async function createModelChunkEscrow(transactionId: string): Promise<P2PEscrow> {
+  const purchases = await listModelChunkPurchases();
+  const purchase = purchases.find((p) => p.id === transactionId);
+  if (!purchase) {
+    throw new Error("Purchase not found");
+  }
+
+  const escrowId = `mchunk-escrow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const escrow: P2PEscrow = {
+    id: escrowId,
+    transaction_id: purchase.id,
+    amount: purchase.amount,
+    currency: purchase.currency,
+    fee_amount: purchase.amount * 0.01,
+    required_signatures: 2,
+    signers: [
+      { role: "buyer", did: purchase.buyer_did, public_key: "", has_signed: false },
+      { role: "seller", did: purchase.seller_did, public_key: "", has_signed: false },
+    ],
+    status: "pending",
+    release_conditions: [{ type: "delivery-confirmed", satisfied: false }],
+    auto_release_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    created_at: new Date().toISOString(),
+  };
+
+  const escrowPath = path.join(getFederationDir(), "escrow", `${escrowId}.json`);
+  await fs.writeJson(escrowPath, escrow, { spaces: 2 });
+
+  purchase.escrow_id = escrowId;
+  purchase.status = "paid";
+  await fs.writeJson(
+    path.join(getModelChunkPurchasesDir(), `${purchase.id}.json`),
+    purchase,
+    { spaces: 2 }
+  );
+
+  return escrow;
+}
+
+async function routeInference(
+  request: FederatedInferenceRequest
+): Promise<FederatedInferenceRoute> {
+  const identity = await getLocalIdentity();
+  if (!identity) {
+    throw new Error("No local identity");
+  }
+
+  const computePeers = Array.from(connectedPeers.values()).filter((peer) =>
+    peer.capabilities.includes("compute")
+  );
+
+  const preferredPeer = request.preferred_peer_id
+    ? computePeers.find((peer) => peer.id === request.preferred_peer_id)
+    : undefined;
+  const targetPeer = preferredPeer || computePeers[0];
+  const requiredChunks = await findModelChunks(request.model_id);
+
+  let receiptRef: IpldReceiptRef | undefined;
+  if (request.create_receipt) {
+    const record = await ipldReceiptService.createReceipt({
+      issuer: request.issuer_did || identity.did,
+      payer: request.payer_did,
+      modelId: request.model_id,
+      modelHash: request.model_hash,
+      dataHash: request.data_hash,
+      promptHash: request.prompt_hash,
+      paymentTxHash: request.payment_tx_hash,
+      paymentAmount: request.payment_amount,
+    });
+    receiptRef = {
+      cid: record.cid,
+      created_at: new Date(record.createdAt).toISOString(),
+      json_path: record.jsonPath,
+      cbor_path: record.cborPath,
+    };
+  }
+
+  if (targetPeer) {
+    return {
+      route_id: `route-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      target: {
+        peer_id: targetPeer.id,
+        did: targetPeer.did.did,
+        display_name: targetPeer.did.display_name,
+        capability: "compute",
+      },
+      required_chunks: requiredChunks,
+      receipt: receiptRef,
+      created_at: new Date().toISOString(),
+    };
+  }
+
+  return {
+    route_id: `route-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    target: {
+      did: identity.did,
+      display_name: identity.display_name,
+      capability: "local",
+    },
+    required_chunks: requiredChunks,
+    receipt: receiptRef,
+    created_at: new Date().toISOString(),
+  };
+}
+
+async function createReceiptRef(params: {
+  issuerDid: string;
+  payerDid: string;
+  modelId: string;
+  modelHash?: string;
+  dataHash: string;
+  promptHash: string;
+  outputHash?: string;
+  paymentTxHash?: string;
+  paymentAmount?: string;
+}): Promise<IpldReceiptRef> {
+  const record = await ipldReceiptService.createReceipt({
+    issuer: params.issuerDid,
+    payer: params.payerDid,
+    modelId: params.modelId,
+    modelHash: params.modelHash,
+    dataHash: params.dataHash,
+    promptHash: params.promptHash,
+    outputHash: params.outputHash,
+    paymentTxHash: params.paymentTxHash,
+    paymentAmount: params.paymentAmount,
+  });
+
+  return {
+    cid: record.cid,
+    created_at: new Date(record.createdAt).toISOString(),
+    json_path: record.jsonPath,
+    cbor_path: record.cborPath,
+  };
+}
+
+async function executeFederatedInference(
+  request: FederatedInferenceExecutionRequest
+): Promise<FederatedInferenceExecutionResult> {
+  const identity = await getLocalIdentity();
+  if (!identity) {
+    throw new Error("No local identity");
+  }
+
+  const promptHash = hashString(request.prompt);
+  const dataHash = request.data_hash || "";
+
+  if (request.create_receipt && !dataHash) {
+    throw new Error("data_hash is required to create a receipt");
+  }
+
+  const route = await routeInference({
+    model_id: request.model_id,
+    model_hash: request.model_hash,
+    prompt_hash: promptHash,
+    data_hash: dataHash || promptHash,
+    preferred_peer_id: request.preferred_peer_id,
+    issuer_did: request.issuer_did,
+    payer_did: request.payer_did,
+    payment_tx_hash: request.payment_tx_hash,
+    payment_amount: request.payment_amount,
+    create_receipt: false,
+  });
+
+  if (route.target.capability === "compute") {
+    if (request.require_remote && !request.private_key) {
+      throw new Error("private_key is required to dispatch to remote compute");
+    }
+    let dispatchMessageId: string | undefined;
+    if (request.private_key) {
+      const payload = {
+        type: "federated-inference-request",
+        model_id: request.model_id,
+        model_hash: request.model_hash,
+        prompt: request.prompt,
+        system_prompt: request.system_prompt,
+        messages: request.messages,
+        config: request.config,
+        data_hash: dataHash,
+        payer_did: request.payer_did,
+        payment_tx_hash: request.payment_tx_hash,
+        payment_amount: request.payment_amount,
+      };
+      const msg = await sendMessage(
+        route.target.did,
+        JSON.stringify(payload),
+        identity,
+        request.private_key,
+        { type: "system" }
+      );
+      dispatchMessageId = msg.id;
+    }
+
+    const receiptRef = request.create_receipt
+      ? await createReceiptRef({
+          issuerDid: request.issuer_did || identity.did,
+          payerDid: request.payer_did,
+          modelId: request.model_id,
+          modelHash: request.model_hash,
+          dataHash: dataHash || promptHash,
+          promptHash,
+          paymentTxHash: request.payment_tx_hash,
+          paymentAmount: request.payment_amount,
+        })
+      : undefined;
+
+    return {
+      status: "dispatched",
+      route,
+      receipt: receiptRef,
+      dispatch_message_id: dispatchMessageId,
+    };
+  }
+
+  if (request.require_remote) {
+    throw new Error("No compute peers available for remote-only inference");
+  }
+
+  const result = await trustlessInferenceService.runVerifiedInference(
+    request.provider,
+    request.model_id,
+    request.prompt,
+    {
+      systemPrompt: request.system_prompt,
+      messages: request.messages,
+      config: request.config ? { options: request.config } : undefined,
+    }
+  );
+
+  const outputHash = hashString(result.response.output);
+  const receiptRef = request.create_receipt
+    ? await createReceiptRef({
+        issuerDid: request.issuer_did || identity.did,
+        payerDid: request.payer_did,
+        modelId: request.model_id,
+        modelHash: request.model_hash,
+        dataHash: dataHash || promptHash,
+        promptHash,
+        outputHash,
+        paymentTxHash: request.payment_tx_hash,
+        paymentAmount: request.payment_amount,
+      })
+    : undefined;
+
+  return {
+    status: "local",
+    route,
+    output: result.response.output,
+    record_id: result.record?.id,
+    proof_cid: result.record?.cid,
+    receipt: receiptRef,
+  };
 }
 
 // ============= P2P Listings =============
@@ -764,6 +1326,23 @@ export function registerFederationHandlers() {
     return addPeer(peer);
   });
 
+  // Bootstrap peers
+  ipcMain.handle("federation:bootstrap:list", async () => {
+    return listBootstrapPeers();
+  });
+
+  ipcMain.handle("federation:bootstrap:add", async (_, entry: Omit<BootstrapPeerEntry, "added_at">) => {
+    return addBootstrapPeer(entry);
+  });
+
+  ipcMain.handle("federation:bootstrap:remove", async (_, peerId: string) => {
+    return removeBootstrapPeer(peerId);
+  });
+
+  ipcMain.handle("federation:bootstrap:import", async (_, peerId: string) => {
+    return importBootstrapPeer(peerId);
+  });
+
   // DHT
   ipcMain.handle("federation:dht-put", async (_, key: string, value: any, publisherDid: string, privateKey: string, ttl?: number) => {
     return dhtPut(key, value, publisherDid, privateKey, ttl);
@@ -771,6 +1350,172 @@ export function registerFederationHandlers() {
 
   ipcMain.handle("federation:dht-get", async (_, key: string) => {
     return dhtGet(key);
+  });
+
+  // Model chunk transfer (Helia/IPFS)
+  ipcMain.handle("federation:model-chunk-serve", async (_, params: { filePath: string }) => {
+    await heliaVerificationService.start();
+    return heliaVerificationService.storeModelChunkFile(params.filePath);
+  });
+
+  ipcMain.handle("federation:model-chunk-request", async (_, params: { cid: string; outputPath: string }) => {
+    await heliaVerificationService.start();
+    return heliaVerificationService.exportModelChunkToFile(params.cid, params.outputPath);
+  });
+
+  // Model chunk announcements
+  ipcMain.handle("federation:model-chunk-announce", async (_, params: {
+    modelId: string;
+    modelHash?: string;
+    chunkCid: string;
+    chunkIndex: number;
+    totalChunks?: number;
+    bytes?: number;
+    privateKey: string;
+  }) => {
+    return announceModelChunk(params);
+  });
+
+  ipcMain.handle("federation:model-chunk-find", async (_, modelId: string) => {
+    return findModelChunks(modelId);
+  });
+
+  // Federated inference routing
+  ipcMain.handle("federation:route-inference", async (_, request: FederatedInferenceRequest) => {
+    return routeInference(request);
+  });
+
+  ipcMain.handle("federation:execute-inference", async (_, request: FederatedInferenceExecutionRequest) => {
+    return executeFederatedInference(request);
+  });
+
+  ipcMain.handle("federation:execute-inference-stream", async (event, request: FederatedInferenceExecutionRequest) => {
+    const streamId = `federated-stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const identity = await getLocalIdentity();
+
+    (async () => {
+      try {
+        if (!identity) {
+          throw new Error("No local identity");
+        }
+
+        const route = await routeInference({
+          model_id: request.model_id,
+          model_hash: request.model_hash,
+          prompt_hash: hashString(request.prompt),
+          data_hash: request.data_hash || hashString(request.prompt),
+          preferred_peer_id: request.preferred_peer_id,
+          issuer_did: request.issuer_did,
+          payer_did: request.payer_did,
+          payment_tx_hash: request.payment_tx_hash,
+          payment_amount: request.payment_amount,
+          create_receipt: false,
+        });
+
+        if (route.target.capability === "compute") {
+          event.sender.send("federation:inference:done", {
+            streamId,
+            status: "dispatched",
+            route,
+          });
+          return;
+        }
+
+        if (request.require_remote) {
+          throw new Error("No compute peers available for remote-only inference");
+        }
+
+        const stream = trustlessInferenceService.streamVerifiedInference(
+          request.provider,
+          request.model_id,
+          request.messages || [{ role: "user", content: request.prompt }],
+          {
+            systemPrompt: request.system_prompt,
+            config: request.config ? { options: request.config } : undefined,
+          }
+        );
+
+        let collectedOutput = "";
+        for await (const chunk of stream) {
+          if (chunk.type === "token") {
+            collectedOutput += chunk.content;
+            event.sender.send("federation:inference:chunk", {
+              streamId,
+              content: chunk.content,
+            });
+          } else if (chunk.type === "done") {
+            let receiptRef: IpldReceiptRef | undefined;
+            if (request.create_receipt && request.data_hash) {
+              receiptRef = await createReceiptRef({
+                issuerDid: request.issuer_did || identity.did,
+                payerDid: request.payer_did,
+                modelId: request.model_id,
+                modelHash: request.model_hash,
+                dataHash: request.data_hash,
+                promptHash: hashString(request.prompt),
+                outputHash: hashString(collectedOutput),
+                paymentTxHash: request.payment_tx_hash,
+                paymentAmount: request.payment_amount,
+              });
+            }
+
+            event.sender.send("federation:inference:done", {
+              streamId,
+              status: "local",
+              route,
+              recordId: chunk.record?.id,
+              cid: chunk.record?.cid,
+              receipt: receiptRef,
+            });
+          }
+        }
+      } catch (error) {
+        event.sender.send("federation:inference:error", {
+          streamId,
+          error: String(error),
+        });
+      }
+    })();
+
+    return { streamId };
+  });
+
+  // Model chunk marketplace
+  ipcMain.handle("federation:model-chunk-listing:create", async (_, params: {
+    modelId: string;
+    modelHash?: string;
+    title: string;
+    description?: string;
+    tags?: string[];
+    chunkCids: string[];
+    chunkCount: number;
+    bytesTotal?: number;
+    pricing: P2PPricing;
+    license: ModelChunkListing["license"];
+    privateKey: string;
+  }) => {
+    return createModelChunkListing(params);
+  });
+
+  ipcMain.handle("federation:model-chunk-listing:list", async () => {
+    return listModelChunkListings();
+  });
+
+  ipcMain.handle("federation:model-chunk-purchase:create", async (_, params: {
+    listingId: string;
+    buyerDid: string;
+    paymentTxHash?: string;
+    receiptCid?: string;
+  }) => {
+    return purchaseModelChunkListing(params);
+  });
+
+  ipcMain.handle("federation:model-chunk-purchase:list", async () => {
+    return listModelChunkPurchases();
+  });
+
+  ipcMain.handle("federation:model-chunk-escrow:create", async (_, transactionId: string) => {
+    return createModelChunkEscrow(transactionId);
   });
 
   // P2P Listings

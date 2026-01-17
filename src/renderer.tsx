@@ -171,11 +171,9 @@ function App() {
 }
 
 createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <PostHogProvider client={posthogClient}>
-        <App />
-      </PostHogProvider>
-    </QueryClientProvider>
-  </StrictMode>,
+  <QueryClientProvider client={queryClient}>
+    <PostHogProvider client={posthogClient}>
+      <App />
+    </PostHogProvider>
+  </QueryClientProvider>,
 );

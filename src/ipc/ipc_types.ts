@@ -103,6 +103,7 @@ export interface App {
   files: string[];
   createdAt: Date;
   updatedAt: Date;
+  projectId: number | null;
   githubOrg: string | null;
   githubRepo: string | null;
   githubBranch: string | null;

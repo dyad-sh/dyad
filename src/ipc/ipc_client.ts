@@ -89,6 +89,10 @@ import type {
   ChatSearchResult,
   ProposalResult,
 } from "@/lib/schemas";
+import type {
+  IpldInferenceReceiptInput,
+  IpldReceiptRecord,
+} from "@/types/ipld_receipt";
 import { showError } from "@/lib/toast";
 import { DeepLinkData } from "./deep_link_data";
 
@@ -1476,5 +1480,181 @@ export class IpcClient {
     params: AnalyseComponentParams,
   ): Promise<{ isDynamic: boolean; hasStaticText: boolean }> {
     return this.ipcRenderer.invoke("analyze-component", params);
+  }
+
+  // --- IPLD Receipts ---
+  public async createIpldReceipt(
+    input: IpldInferenceReceiptInput,
+  ): Promise<IpldReceiptRecord> {
+    return this.ipcRenderer.invoke("receipt:create", input);
+  }
+
+  public async listIpldReceipts(): Promise<IpldReceiptRecord[]> {
+    return this.ipcRenderer.invoke("receipt:list");
+  }
+
+  public async getIpldReceipt(cid: string): Promise<IpldReceiptRecord | null> {
+    return this.ipcRenderer.invoke("receipt:get", cid);
+  }
+
+  // --- Decentralized Deployment (4everland, Fleek, IPFS, Arweave) ---
+  public async saveDecentralizedCredentials(
+    platform: string,
+    credentials: {
+      platform: string;
+      apiKey?: string;
+      accessToken?: string;
+      projectId?: string;
+      bucketName?: string;
+      walletKey?: string;
+    },
+  ): Promise<{ success: boolean }> {
+    return this.ipcRenderer.invoke(
+      "decentralized:save-credentials",
+      platform,
+      credentials,
+    );
+  }
+
+  public async getDecentralizedCredentials(
+    platform: string,
+  ): Promise<{
+    platform: string;
+    projectId?: string;
+    bucketName?: string;
+    hasApiKey: boolean;
+    hasAccessToken: boolean;
+  } | null> {
+    return this.ipcRenderer.invoke("decentralized:get-credentials", platform);
+  }
+
+  public async removeDecentralizedCredentials(
+    platform: string,
+  ): Promise<{ success: boolean }> {
+    return this.ipcRenderer.invoke("decentralized:remove-credentials", platform);
+  }
+
+  public async deployToDecentralized(request: {
+    appId: number;
+    platform: string;
+    buildCommand?: string;
+    outputDir?: string;
+    envVars?: Record<string, string>;
+    ensName?: string;
+    customDomain?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<{
+    success: boolean;
+    platform: string;
+    deploymentId: string;
+    cid?: string;
+    txId?: string;
+    url: string;
+    gatewayUrls: string[];
+    timestamp: number;
+    error?: string;
+  }> {
+    return this.ipcRenderer.invoke("decentralized:deploy", request);
+  }
+
+  public async getDecentralizedDeployments(appId?: number): Promise<
+    Array<{
+      id: string;
+      appId: number;
+      platform: string;
+      status: string;
+      cid?: string;
+      txId?: string;
+      url: string;
+      gatewayUrls: string[];
+      ensName?: string;
+      customDomain?: string;
+      createdAt: number;
+      updatedAt: number;
+    }>
+  > {
+    return this.ipcRenderer.invoke("decentralized:get-deployments", appId);
+  }
+
+  public async getDecentralizedDeployment(deploymentId: string): Promise<{
+    id: string;
+    appId: number;
+    platform: string;
+    status: string;
+    cid?: string;
+    txId?: string;
+    url: string;
+    gatewayUrls: string[];
+    ensName?: string;
+    customDomain?: string;
+    createdAt: number;
+    updatedAt: number;
+  } | null> {
+    return this.ipcRenderer.invoke("decentralized:get-deployment", deploymentId);
+  }
+
+  public async checkDecentralizedPinStatus(
+    cid: string,
+    platform: string,
+  ): Promise<{ status: string; error?: string }> {
+    return this.ipcRenderer.invoke(
+      "decentralized:check-pin-status",
+      cid,
+      platform,
+    );
+  }
+
+  public async getDecentralizedPlatforms(): Promise<
+    Record<
+      string,
+      {
+        id: string;
+        name: string;
+        description: string;
+        icon: string;
+        website: string;
+        features: string[];
+        pricing: "free" | "freemium" | "paid";
+        permanence: "permanent" | "pinned" | "temporary";
+        supportsCustomDomains: boolean;
+        supportsENS: boolean;
+        supportsIPNS: boolean;
+        requiresApiKey: boolean;
+        chainSupport?: string[];
+      }
+    >
+  > {
+    return this.ipcRenderer.invoke("decentralized:get-platforms");
+  }
+
+  // Project Methods
+  public async createProject(
+    params: import("../types/project_types").CreateProjectParams
+  ): Promise<import("../types/project_types").CreateProjectResult> {
+    return this.ipcRenderer.invoke("project:create", params);
+  }
+
+  public async listProjects(): Promise<
+    import("../types/project_types").ListProjectsResult
+  > {
+    return this.ipcRenderer.invoke("project:list");
+  }
+
+  public async getProject(
+    projectId: number
+  ): Promise<import("../types/project_types").GetProjectResult> {
+    return this.ipcRenderer.invoke("project:get", projectId);
+  }
+
+  public async updateProject(
+    params: import("../types/project_types").UpdateProjectParams
+  ): Promise<import("../types/project_types").UpdateProjectResult> {
+    return this.ipcRenderer.invoke("project:update", params);
+  }
+
+  public async deleteProject(
+    params: import("../types/project_types").DeleteProjectParams
+  ): Promise<import("../types/project_types").DeleteProjectResult> {
+    return this.ipcRenderer.invoke("project:delete", params);
   }
 }

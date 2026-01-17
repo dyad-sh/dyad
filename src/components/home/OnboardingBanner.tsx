@@ -1,5 +1,5 @@
 import { IpcClient } from "@/ipc/ipc_client";
-import { Play } from "lucide-react";
+import { Play, X } from "lucide-react";
 
 export const OnboardingBanner = ({
   isVisible,
@@ -13,6 +13,16 @@ export const OnboardingBanner = ({
   return (
     // <div className="fixed top-0 left-0 right-0 z-50 flex justify-center mt-2">
     <div className="max-w-xl w-full mx-4 relative mb-4">
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsVisible(false);
+        }}
+        className="absolute -top-2 -right-2 z-10 p-1 rounded-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors text-gray-600 dark:text-gray-300"
+        title="Dismiss video"
+      >
+        <X className="w-4 h-4" />
+      </button>
       <a
         onClick={(e) => {
           e.preventDefault();
@@ -29,7 +39,7 @@ export const OnboardingBanner = ({
           <div className="relative p-2">
             <img
               src="https://img.youtube.com/vi/rgdNoHLaRN4/maxresdefault.jpg"
-              alt="Get started with Dyad in 3 minutes"
+              alt="Get started with JoyCreate in 3 minutes"
               className="w-28 h-16 object-cover rounded-md"
             />
             <div className="absolute inset-0 flex items-center justify-center">
@@ -41,7 +51,7 @@ export const OnboardingBanner = ({
           <div className="flex-1 px-4 py-3">
             <div className="text-foreground">
               <p className="font-semibold text-base">
-                Get started with Dyad in 3 minutes
+                Get started with JoyCreate in 3 minutes
               </p>
               <p className="text-sm text-muted-foreground">
                 Start building your app for free

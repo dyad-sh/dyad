@@ -36,5 +36,12 @@ export function registerIpldReceiptHandlers(): void {
     }
   );
 
+  ipcMain.handle(
+    "receipt:verify",
+    async (_, cid: string): Promise<{ valid: boolean; computedCid: string }> => {
+      return ipldReceiptService.verifyReceipt(cid);
+    }
+  );
+
   logger.info("IPLD receipt handlers registered");
 }

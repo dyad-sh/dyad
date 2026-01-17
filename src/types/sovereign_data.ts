@@ -529,6 +529,15 @@ export interface OutboxJob {
   updatedAt: string;
 }
 
+export interface PolicyAuditEvent {
+  id: string;
+  dataId: string;
+  policy: "training-consent" | "outbound-consent" | "outbound-payment";
+  action: "sync" | "share" | "listing" | "export" | "outbox";
+  message: string;
+  createdAt: string;
+}
+
 // ============================================================================
 // Personal Data Monetization
 // ============================================================================

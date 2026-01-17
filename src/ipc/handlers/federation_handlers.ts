@@ -117,7 +117,9 @@ function generateKeyPair(): { publicKey: string; privateKey: string } {
  */
 async function createIdentity(
   displayName: string,
-  password: string
+  password: string,
+  storeName?: string,
+  creatorId?: string
 ): Promise<{ identity: DecentralizedIdentity; privateKey: string }> {
   const { publicKey, privateKey } = generateKeyPair();
   
@@ -129,6 +131,8 @@ async function createIdentity(
     did,
     public_key: publicKey,
     display_name: displayName,
+    ...(storeName ? { store_name: storeName } : {}),
+    ...(creatorId ? { creator_id: creatorId } : {}),
     created_at: new Date().toISOString(),
     capabilities: ["asset-hosting"],
   };
@@ -653,6 +657,8 @@ async function routeInference(
       payer: request.payer_did,
       modelId: request.model_id,
       modelHash: request.model_hash,
+      storeName: identity.store_name,
+      creatorId: identity.creator_id,
       dataHash: request.data_hash,
       promptHash: request.prompt_hash,
       paymentTxHash: request.payment_tx_hash,
@@ -699,6 +705,8 @@ async function createReceiptRef(params: {
   payerDid: string;
   modelId: string;
   modelHash?: string;
+  storeName?: string;
+  creatorId?: string;
   dataHash: string;
   promptHash: string;
   outputHash?: string;
@@ -710,6 +718,8 @@ async function createReceiptRef(params: {
     payer: params.payerDid,
     modelId: params.modelId,
     modelHash: params.modelHash,
+    storeName: params.storeName,
+    creatorId: params.creatorId,
     dataHash: params.dataHash,
     promptHash: params.promptHash,
     outputHash: params.outputHash,
@@ -788,6 +798,8 @@ async function executeFederatedInference(
           payerDid: request.payer_did,
           modelId: request.model_id,
           modelHash: request.model_hash,
+          storeName: identity.store_name,
+          creatorId: identity.creator_id,
           dataHash: dataHash || promptHash,
           promptHash,
           paymentTxHash: request.payment_tx_hash,
@@ -825,6 +837,8 @@ async function executeFederatedInference(
         payerDid: request.payer_did,
         modelId: request.model_id,
         modelHash: request.model_hash,
+        storeName: identity.store_name,
+        creatorId: identity.creator_id,
         dataHash: dataHash || promptHash,
         promptHash,
         outputHash,
@@ -1297,8 +1311,18 @@ export function registerFederationHandlers() {
   initFederationDirs();
 
   // Identity
-  ipcMain.handle("federation:create-identity", async (_, displayName: string, password: string) => {
-    return createIdentity(displayName, password);
+  ipcMain.handle(
+    "federation:create-identity",
+    async (
+      _,
+      displayName: string,
+      password: string,
+      storeName?: string,
+      creatorId?: string
+    ) => {
+      return createIdentity(displayName, password, storeName, creatorId);
+    }
+  );
   });
 
   ipcMain.handle("federation:get-identity", async () => {
@@ -1451,6 +1475,8 @@ export function registerFederationHandlers() {
                 payerDid: request.payer_did,
                 modelId: request.model_id,
                 modelHash: request.model_hash,
+                storeName: identity.store_name,
+                creatorId: identity.creator_id,
                 dataHash: request.data_hash,
                 promptHash: hashString(request.prompt),
                 outputHash: hashString(collectedOutput),

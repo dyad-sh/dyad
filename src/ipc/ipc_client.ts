@@ -1497,6 +1497,12 @@ export class IpcClient {
     return this.ipcRenderer.invoke("receipt:get", cid);
   }
 
+  public async verifyIpldReceipt(
+    cid: string,
+  ): Promise<{ valid: boolean; computedCid: string }> {
+    return this.ipcRenderer.invoke("receipt:verify", cid);
+  }
+
   // --- Decentralized Deployment (4everland, Fleek, IPFS, Arweave) ---
   public async saveDecentralizedCredentials(
     platform: string,

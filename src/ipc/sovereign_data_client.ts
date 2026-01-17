@@ -17,6 +17,7 @@ import type {
   DataLicense,
   DataPricing,
   OutboxJob,
+  PolicyAuditEvent,
 } from "../types/sovereign_data";
 
 // ============================================================================
@@ -349,6 +350,10 @@ export class SovereignDataClient {
     return getIpcRenderer().invoke("sovereign:process-outbox");
   }
 
+  async listPolicyAudit(): Promise<PolicyAuditEvent[]> {
+    return getIpcRenderer().invoke("sovereign:policy-audit");
+  }
+
   // ===========================================================================
   // Marketplace Operations
   // ===========================================================================
@@ -380,6 +385,10 @@ export class SovereignDataClient {
    */
   async getListings(): Promise<DataListing[]> {
     return getIpcRenderer().invoke("sovereign:get-listings");
+  }
+
+  async getPurchases(): Promise<DataPurchase[]> {
+    return getIpcRenderer().invoke("sovereign:get-purchases");
   }
 
   /**
@@ -474,6 +483,8 @@ export const SOVEREIGN_QUERY_KEYS = {
   dataList: (filters?: Record<string, unknown>) => ["sovereign", "data-list", filters] as const,
   listings: ["sovereign", "listings"] as const,
   outbox: ["sovereign", "outbox"] as const,
+  policyAudit: ["sovereign", "policy-audit"] as const,
+  purchases: ["sovereign", "purchases"] as const,
 };
 
 /**
@@ -688,6 +699,13 @@ export function useProcessOutbox() {
   });
 }
 
+export function usePolicyAudit() {
+  return useQuery({
+    queryKey: SOVEREIGN_QUERY_KEYS.policyAudit,
+    queryFn: () => client.listPolicyAudit(),
+  });
+}
+
 /**
  * Hook to create a marketplace listing
  */
@@ -710,6 +728,13 @@ export function useListings() {
   return useQuery({
     queryKey: SOVEREIGN_QUERY_KEYS.listings,
     queryFn: () => client.getListings(),
+  });
+}
+
+export function usePurchases() {
+  return useQuery({
+    queryKey: SOVEREIGN_QUERY_KEYS.purchases,
+    queryFn: () => client.getPurchases(),
   });
 }
 

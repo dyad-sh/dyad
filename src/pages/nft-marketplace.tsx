@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { NFTClient } from "@/ipc/nft_client";
 import { AssetStudioClient } from "@/ipc/asset_studio_client";
+import { FederationClient } from "@/ipc/federation_client";
 import { IpcClient } from "@/ipc/ipc_client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -396,6 +397,8 @@ export default function JoyCreatorStudioPage() {
     payer: string;
     modelId: string;
     modelHash: string;
+    storeName: string;
+    creatorId: string;
     dataHash: string;
     promptHash: string;
     outputHash: string;
@@ -410,6 +413,8 @@ export default function JoyCreatorStudioPage() {
     payer: "",
     modelId: "",
     modelHash: "",
+    storeName: "",
+    creatorId: "",
     dataHash: "",
     promptHash: "",
     outputHash: "",
@@ -420,6 +425,15 @@ export default function JoyCreatorStudioPage() {
     signatureAlg: "eip191",
     signatureValue: "",
   });
+  const [verifyCidInput, setVerifyCidInput] = useState("");
+  const [verifyResult, setVerifyResult] = useState<{
+    cid: string;
+    valid: boolean;
+    computedCid: string;
+  } | null>(null);
+  const [receiptChecks, setReceiptChecks] = useState<
+    Record<string, { valid: boolean; computedCid: string }>
+  >({});
 
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState("");
@@ -455,6 +469,11 @@ export default function JoyCreatorStudioPage() {
   const { data: receiptRecords = [] } = useQuery<IpldReceiptRecord[]>({
     queryKey: ["ipld-receipts"],
     queryFn: () => ipcClient.listIpldReceipts(),
+  });
+  
+  const { data: federationIdentity } = useQuery({
+    queryKey: ["federation-identity"],
+    queryFn: () => FederationClient.getIdentity(),
   });
 
   // Filter and sort assets
@@ -756,6 +775,8 @@ export default function JoyCreatorStudioPage() {
         payer: receiptForm.payer,
         modelId: receiptForm.modelId,
         modelHash: receiptForm.modelHash || undefined,
+        storeName: receiptForm.storeName || undefined,
+        creatorId: receiptForm.creatorId || undefined,
         dataHash: receiptForm.dataHash,
         promptHash: receiptForm.promptHash,
         outputHash: receiptForm.outputHash || undefined,
@@ -780,6 +801,36 @@ export default function JoyCreatorStudioPage() {
   });
 
   const latestReceipt = createReceiptMutation.data ?? null;
+  const inferredTarget = receiptForm.modelId && receiptForm.storeName && receiptForm.creatorId
+    ? `${receiptForm.modelId}.${receiptForm.storeName}.${receiptForm.creatorId}`
+    : "";
+
+  const handleVerifyReceipt = useCallback(async (cid: string) => {
+    if (!cid) return;
+    try {
+      const result = await ipcClient.verifyIpldReceipt(cid);
+      setReceiptChecks((prev) => ({ ...prev, [cid]: result }));
+      setVerifyResult({ cid, ...result });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to verify receipt");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!federationIdentity) return;
+    setReceiptForm((prev) => {
+      const nextStore = prev.storeName || federationIdentity.store_name || "";
+      const nextCreator = prev.creatorId || federationIdentity.creator_id || "";
+      if (nextStore === prev.storeName && nextCreator === prev.creatorId) {
+        return prev;
+      }
+      return {
+        ...prev,
+        storeName: nextStore,
+        creatorId: nextCreator,
+      };
+    });
+  }, [federationIdentity]);
 
   const getStatusColor = (status: NFTListing["status"]) => {
     switch (status) {
@@ -2181,6 +2232,30 @@ export default function JoyCreatorStudioPage() {
                       />
                     </div>
                     <div className="space-y-2">
+                      <Label>Store Name (.joy)</Label>
+                      <Input
+                        value={receiptForm.storeName}
+                        onChange={(e) => setReceiptForm({ ...receiptForm, storeName: e.target.value })}
+                        placeholder="yourstore"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Creator ID</Label>
+                      <Input
+                        value={receiptForm.creatorId}
+                        onChange={(e) => setReceiptForm({ ...receiptForm, creatorId: e.target.value })}
+                        placeholder="creator-001"
+                      />
+                    </div>
+                    <div className="col-span-2 space-y-2">
+                      <Label>Inference Target (derived)</Label>
+                      <Input
+                        value={inferredTarget}
+                        readOnly
+                        placeholder="model.store.creator"
+                      />
+                    </div>
+                    <div className="space-y-2">
                       <Label>Data Hash</Label>
                       <Input
                         value={receiptForm.dataHash}
@@ -2285,6 +2360,40 @@ export default function JoyCreatorStudioPage() {
               <div className="space-y-4">
                 <Card>
                   <CardHeader className="pb-2">
+                    <CardTitle className="text-base">Verify Receipt</CardTitle>
+                    <CardDescription>Recompute CID from stored receipt data.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <Input
+                      value={verifyCidInput}
+                      onChange={(e) => setVerifyCidInput(e.target.value)}
+                      placeholder="bafy..."
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleVerifyReceipt(verifyCidInput)}
+                    >
+                      Verify
+                    </Button>
+                    {verifyResult && (
+                      <div className="text-xs">
+                        <div className="font-mono break-all">{verifyResult.cid}</div>
+                        <div className={verifyResult.valid ? "text-green-500" : "text-red-500"}>
+                          {verifyResult.valid ? "Valid CID" : "CID mismatch"}
+                        </div>
+                        {!verifyResult.valid && (
+                          <div className="text-muted-foreground break-all">
+                            Computed: {verifyResult.computedCid}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-2">
                     <CardTitle className="text-base">Latest Receipt</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-2">
@@ -2297,6 +2406,16 @@ export default function JoyCreatorStudioPage() {
                           <span>•</span>
                           <span>{latestReceipt.receipt.model.id}</span>
                         </div>
+                        {latestReceipt.receipt.inference?.target && (
+                          <div className="text-xs text-muted-foreground font-mono break-all">
+                            {latestReceipt.receipt.inference.target}
+                          </div>
+                        )}
+                        {latestReceipt.receipt.store && (
+                          <div className="text-xs text-muted-foreground">
+                            {latestReceipt.receipt.store.name}.joy - {latestReceipt.receipt.store.creatorId}
+                          </div>
+                        )}
                         <Button
                           variant="outline"
                           size="sm"
@@ -2325,6 +2444,36 @@ export default function JoyCreatorStudioPage() {
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
                           <span>{record.receipt.model.id}</span>
                           <span>{new Date(record.createdAt).toLocaleDateString()}</span>
+                        </div>
+                        {record.receipt.inference?.target && (
+                          <div className="text-xs text-muted-foreground font-mono break-all">
+                            {record.receipt.inference.target}
+                          </div>
+                        )}
+                        {record.receipt.store && (
+                          <div className="text-xs text-muted-foreground">
+                            {record.receipt.store.name}.joy - {record.receipt.store.creatorId}
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleVerifyReceipt(record.cid)}
+                          >
+                            Verify
+                          </Button>
+                          {receiptChecks[record.cid] && (
+                            <span
+                              className={
+                                receiptChecks[record.cid].valid
+                                  ? "text-xs text-green-500"
+                                  : "text-xs text-red-500"
+                              }
+                            >
+                              {receiptChecks[record.cid].valid ? "Valid" : "Mismatch"}
+                            </span>
+                          )}
                         </div>
                         <Separator className="mt-2" />
                       </div>

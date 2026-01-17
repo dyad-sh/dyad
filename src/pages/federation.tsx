@@ -121,6 +121,8 @@ export default function FederationPage() {
   // Identity form
   const [identityForm, setIdentityForm] = useState({
     displayName: "",
+    storeName: "",
+    creatorId: "",
     password: "",
     confirmPassword: "",
   });
@@ -220,13 +222,24 @@ export default function FederationPage() {
       if (identityForm.password !== identityForm.confirmPassword) {
         throw new Error("Passwords do not match");
       }
-      return FederationClient.createIdentity(identityForm.displayName, identityForm.password);
+      return FederationClient.createIdentity(
+        identityForm.displayName,
+        identityForm.password,
+        identityForm.storeName || undefined,
+        identityForm.creatorId || undefined
+      );
     },
     onSuccess: () => {
       toast.success("Identity created! Welcome to the federation.");
       queryClient.invalidateQueries({ queryKey: ["federation-identity"] });
       setShowIdentityDialog(false);
-      setIdentityForm({ displayName: "", password: "", confirmPassword: "" });
+      setIdentityForm({
+        displayName: "",
+        storeName: "",
+        creatorId: "",
+        password: "",
+        confirmPassword: "",
+      });
     },
     onError: (error) => {
       toast.error(`Failed to create identity: ${error.message}`);
@@ -580,6 +593,12 @@ export default function FederationPage() {
                   <p className="text-xs text-muted-foreground font-mono">
                     {identity.did.slice(0, 20)}...
                   </p>
+                  {(identity.store_name || identity.creator_id) && (
+                    <p className="text-xs text-muted-foreground">
+                      {identity.store_name ? `${identity.store_name}.joy` : "Store not set"}
+                      {identity.creator_id ? ` - ${identity.creator_id}` : ""}
+                    </p>
+                  )}
                 </div>
                 <Button
                   variant="ghost"
@@ -1849,6 +1868,22 @@ export default function FederationPage() {
                 placeholder="How others will see you"
                 value={identityForm.displayName}
                 onChange={(e) => setIdentityForm({ ...identityForm, displayName: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Store Name (.joy)</Label>
+              <Input
+                placeholder="yourstore"
+                value={identityForm.storeName}
+                onChange={(e) => setIdentityForm({ ...identityForm, storeName: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Creator ID</Label>
+              <Input
+                placeholder="creator-001"
+                value={identityForm.creatorId}
+                onChange={(e) => setIdentityForm({ ...identityForm, creatorId: e.target.value })}
               />
             </div>
             <div className="space-y-2">

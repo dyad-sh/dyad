@@ -13,6 +13,8 @@ export interface DecentralizedIdentity {
   did: string;                      // did:joy:xxxx or did:key:xxxx
   public_key: string;               // Ed25519 public key
   display_name: string;
+  store_name?: string;
+  creator_id?: string;
   avatar_cid?: string;              // IPFS CID for avatar
   bio?: string;
   created_at: string;

@@ -49,9 +49,17 @@ export const FederationClient = {
    */
   async createIdentity(
     displayName: string,
-    password: string
+    password: string,
+    storeName?: string,
+    creatorId?: string
   ): Promise<{ identity: DecentralizedIdentity; privateKey: string }> {
-    return getIpcRenderer().invoke("federation:create-identity", displayName, password);
+    return getIpcRenderer().invoke(
+      "federation:create-identity",
+      displayName,
+      password,
+      storeName,
+      creatorId
+    );
   },
 
   /**

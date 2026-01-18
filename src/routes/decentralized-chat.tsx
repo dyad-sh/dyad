@@ -4,6 +4,6 @@ import DecentralizedChatPage from "../pages/decentralized-chat";
 
 export const decentralizedChatRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/p2p-chat",
+  path: "/decentralized-chat",
   component: DecentralizedChatPage,
 });

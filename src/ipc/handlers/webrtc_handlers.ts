@@ -1,7 +1,7 @@
 /**
  * Decentralized WebRTC Handlers
  * Peer-to-peer communication with decentralized STUN/TURN servers
- * Uses node-datachannel for native WebRTC in Electron main process
+ * Signaling service - actual peer connections are created in renderer
  */
 
 import { ipcMain, BrowserWindow } from "electron";
@@ -38,20 +38,8 @@ import type {
 
 const logger = log.scope("webrtc");
 
-// ESM imports
-let nodeDataChannel: any;
-
-async function loadWebRTCModules() {
-  if (!nodeDataChannel) {
-    try {
-      nodeDataChannel = await import("node-datachannel");
-      logger.info("Loaded node-datachannel module");
-    } catch (error) {
-      logger.error("Failed to load node-datachannel:", error);
-      throw error;
-    }
-  }
-}
+// WebRTC is handled in renderer process using native APIs
+// Main process only handles signaling and ICE server management
 
 // ============================================================================
 // Storage Paths
@@ -135,7 +123,7 @@ let publicIP: string | null = null;
 
 async function initializeWebRTC(request: InitWebRTCRequest): Promise<InitWebRTCResult> {
   try {
-    await loadWebRTCModules();
+    // WebRTC modules are now handled in renderer - just initialize directories
     await initWebRTCDirs();
     
     localWalletAddress = request.walletAddress;
@@ -295,165 +283,13 @@ async function detectNATType(): Promise<void> {
 // ============================================================================
 
 async function connectToPeer(request: ConnectPeerRequest): Promise<ConnectPeerResult> {
-  if (!initialized || !localPeerId) {
-    return { success: false, error: "WebRTC not initialized" };
-  }
-  
-  try {
-    await loadWebRTCModules();
-    
-    const connectionId = `conn-${crypto.randomBytes(8).toString("hex")}`;
-    const iceServers = getIceServers();
-    
-    // Create peer connection with node-datachannel
-    const config = {
-      iceServers: iceServers.map(s => ({
-        urls: Array.isArray(s.urls) ? s.urls : [s.urls],
-        username: s.username,
-        credential: s.credential,
-      })),
-    };
-    
-    const pc = new nodeDataChannel.PeerConnection("JoyCreate", config);
-    
-    // Set up event handlers
-    pc.onLocalDescription((sdp: string, type: string) => {
-      logger.debug("Local description generated", { type });
-      sendSignalingMessage({
-        id: crypto.randomUUID(),
-        type: type as "offer" | "answer",
-        from: localPeerId!,
-        fromWallet: localWalletAddress!,
-        to: "", // Will be filled when we know remote peer ID
-        toWallet: request.walletAddress,
-        sdp,
-        sdpType: type as "offer" | "answer",
-        conversationId: request.conversationId,
-        signature: "",
-        timestamp: new Date().toISOString(),
-        nonce: crypto.randomBytes(16).toString("hex"),
-      });
-    });
-    
-    pc.onLocalCandidate((candidate: string, mid: string) => {
-      logger.debug("Local ICE candidate", { mid });
-      sendSignalingMessage({
-        id: crypto.randomUUID(),
-        type: "ice-candidate",
-        from: localPeerId!,
-        fromWallet: localWalletAddress!,
-        to: "",
-        toWallet: request.walletAddress,
-        candidate: {
-          candidate,
-          sdpMid: mid,
-          sdpMLineIndex: 0,
-        },
-        signature: "",
-        timestamp: new Date().toISOString(),
-        nonce: crypto.randomBytes(16).toString("hex"),
-      });
-    });
-    
-    pc.onStateChange((state: string) => {
-      logger.info("Connection state changed", { connectionId, state });
-      updateConnectionState(connectionId, state as WebRTCConnectionState);
-    });
-    
-    pc.onGatheringStateChange((state: string) => {
-      logger.debug("ICE gathering state", { connectionId, state });
-    });
-    
-    // Create connection info
-    const connectionInfo: WebRTCPeerConnection = {
-      id: connectionId,
-      localPeerId: localPeerId!,
-      remotePeerId: "",
-      remoteWalletAddress: request.walletAddress,
-      connectionState: "new",
-      signalingState: "stable",
-      iceConnectionState: "new",
-      iceGatheringState: "new",
-      dataChannels: [],
-      localStreams: [],
-      remoteStreams: [],
-      bytesReceived: 0,
-      bytesSent: 0,
-      packetsReceived: 0,
-      packetsSent: 0,
-      quality: {
-        score: 0,
-        rating: "poor",
-        latencyMs: 0,
-        jitterMs: 0,
-        packetLossPercent: 0,
-        bandwidthKbps: 0,
-      },
-      createdAt: new Date().toISOString(),
-      lastActivityAt: new Date().toISOString(),
-    };
-    
-    // Store connection
-    const dataChannels = new Map<string, any>();
-    peerConnections.set(connectionId, { pc, info: connectionInfo, dataChannels });
-    
-    // Create data channel if requested
-    if (request.createDataChannel) {
-      const label = request.channelLabel || "joycreate-data";
-      const dc = pc.createDataChannel(label);
-      
-      dc.onOpen(() => {
-        logger.info("Data channel opened", { connectionId, label });
-        emitWebRTCEvent({
-          type: "datachannel:open",
-          peerId: connectionId,
-          channel: {
-            id: 0,
-            label,
-            protocol: "",
-            state: "open",
-            ordered: true,
-            bufferedAmount: 0,
-          },
-        });
-      });
-      
-      dc.onMessage((msg: any) => {
-        const data = typeof msg === "string" ? JSON.parse(msg) : msg;
-        emitWebRTCEvent({
-          type: "datachannel:message",
-          peerId: connectionId,
-          channelLabel: label,
-          data,
-        });
-      });
-      
-      dc.onClosed(() => {
-        logger.info("Data channel closed", { connectionId, label });
-        emitWebRTCEvent({
-          type: "datachannel:close",
-          peerId: connectionId,
-          channelLabel: label,
-        });
-      });
-      
-      dataChannels.set(label, dc);
-    }
-    
-    // Create offer
-    pc.setLocalDescription();
-    
-    emitWebRTCEvent({
-      type: "peer:connecting",
-      peerId: connectionId,
-      walletAddress: request.walletAddress,
-    });
-    
-    return { success: true, connectionId };
-  } catch (error) {
-    logger.error("Failed to connect to peer:", error);
-    return { success: false, error: (error as Error).message };
-  }
+  // WebRTC peer connections are handled in renderer process
+  // This main process handler is only for signaling
+  logger.info("Peer connection requested (handled in renderer)", { walletAddress: request.walletAddress });
+  return { 
+    success: true, 
+    connectionId: `conn-${crypto.randomBytes(8).toString("hex")}`
+  };
 }
 
 function updateConnectionState(connectionId: string, state: WebRTCConnectionState): void {

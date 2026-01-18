@@ -177,7 +177,7 @@ const menuCategories = [
       },
       {
         title: "P2P Chat",
-        to: "/p2p-chat",
+        to: "/decentralized-chat",
         icon: Radio,
         gradient: "from-green-500 to-emerald-500",
         hoverBg: "hover:bg-green-500/10",

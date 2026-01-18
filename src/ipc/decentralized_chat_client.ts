@@ -41,7 +41,7 @@ class DecentralizedChatClient {
   }
 
   private setupEventListener(): void {
-    this.ipcRenderer.on("decentralized-chat:event", (chatEvent: ChatEvent) => {
+    this.ipcRenderer.on("decentralized-chat:event", (_event: unknown, chatEvent: ChatEvent) => {
       this.notifyListeners(chatEvent);
     });
   }
@@ -361,6 +361,48 @@ class DecentralizedChatClient {
   async isConnected(): Promise<boolean> {
     const status = await this.getStatus();
     return status.heliaConnected;
+  }
+
+  // ============================================================================
+  // Self-Test Methods
+  // ============================================================================
+
+  /**
+   * Test encryption round-trip
+   */
+  async testEncryption(message: string): Promise<{
+    success: boolean;
+    originalMessage: string;
+    decryptedMessage: string;
+    encryptedLength: number;
+    algorithm: string;
+  }> {
+    return this.ipcRenderer.invoke("dchat:test:encryption", message);
+  }
+
+  /**
+   * Test pinning to IPFS (minimal footprint)
+   */
+  async testPin(data?: unknown): Promise<{
+    success: boolean;
+    cid: string;
+    dataSize: number;
+    verified: boolean;
+  }> {
+    return this.ipcRenderer.invoke("dchat:test:pin", data);
+  }
+
+  /**
+   * Test P2P connectivity
+   */
+  async testConnectivity(): Promise<{
+    heliaInitialized: boolean;
+    identityInitialized: boolean;
+    peerCount: number;
+    walletAddress?: string;
+    pubsubReady: boolean;
+  }> {
+    return this.ipcRenderer.invoke("dchat:test:connectivity");
   }
 }
 

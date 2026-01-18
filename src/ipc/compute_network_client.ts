@@ -40,7 +40,7 @@ class ComputeNetworkClient {
     // Set up event listener from main process
     this.ipcRenderer.on(
       "compute-network:event",
-      (_event: any, networkEvent: ComputeNetworkEvent) => {
+      (networkEvent: ComputeNetworkEvent) => {
         this.dispatchEvent(networkEvent);
       }
     );

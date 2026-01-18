@@ -453,6 +453,21 @@ const validInvokeChannels = [
   "compute-network:get-system-metrics",
   "compute-network:get-network-metrics",
   "compute-network:subscribe",
+  // WebRTC (Decentralized P2P Communication)
+  "webrtc:init",
+  "webrtc:status",
+  "webrtc:ice:list",
+  "webrtc:ice:register",
+  "webrtc:peer:connect",
+  "webrtc:peer:disconnect",
+  "webrtc:peer:list",
+  "webrtc:data:send",
+  "webrtc:signaling:receive",
+  "webrtc:call:start",
+  "webrtc:call:answer",
+  "webrtc:call:end",
+  "webrtc:call:mute",
+  "webrtc:call:video",
   // Test-only channels
   // These should ALWAYS be guarded with IS_TEST_BUILD in the main process.
   // We can't detect with IS_TEST_BUILD in the preload script because
@@ -491,6 +506,8 @@ const validReceiveChannels = [
   "decentralized-chat:event",
   // Compute Network events
   "compute-network:event",
+  // WebRTC events
+  "webrtc:event",
 ] as const;
 
 type ValidInvokeChannel = (typeof validInvokeChannels)[number];

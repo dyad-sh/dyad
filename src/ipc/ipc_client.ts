@@ -7,6 +7,7 @@ import {
   ChatSearchResultsSchema,
   AppSearchResultsSchema,
 } from "../lib/schemas";
+import { typedInvoke } from "./ipc_client_helpers";
 import type {
   AppOutput,
   Chat,
@@ -344,8 +345,21 @@ export class IpcClient {
     return IpcClient.instance;
   }
 
+  /**
+   * NOTE: New type-safe pattern - These methods use the typedInvoke wrapper
+   * for compile-time type safety. The types are automatically inferred from
+   * the IPC registry (ipc_registry.ts).
+   *
+   * Benefits:
+   * - Compile-time type checking for params and returns
+   * - Auto-complete for channel names
+   * - Refactoring safety (rename channels, update types)
+   *
+   * Migrate other methods to this pattern gradually.
+   */
+
   public async restartDyad(): Promise<void> {
-    await this.ipcRenderer.invoke("restart-dyad");
+    await typedInvoke(this.ipcRenderer, "restart-dyad");
   }
 
   public async reloadEnvPath(): Promise<void> {
@@ -354,18 +368,18 @@ export class IpcClient {
 
   // Create a new app with an initial chat
   public async createApp(params: CreateAppParams): Promise<CreateAppResult> {
-    return this.ipcRenderer.invoke("create-app", params);
+    return typedInvoke(this.ipcRenderer, "create-app", params);
   }
 
   public async getApp(appId: number): Promise<App> {
-    return this.ipcRenderer.invoke("get-app", appId);
+    return typedInvoke(this.ipcRenderer, "get-app", appId);
   }
 
   public async addAppToFavorite(
     appId: number,
   ): Promise<{ isFavorite: boolean }> {
     try {
-      const result = await this.ipcRenderer.invoke("add-to-favorite", {
+      const result = await typedInvoke(this.ipcRenderer, "add-to-favorite", {
         appId,
       });
       return result;
@@ -387,7 +401,7 @@ export class IpcClient {
 
   public async getChat(chatId: number): Promise<Chat> {
     try {
-      const data = await this.ipcRenderer.invoke("get-chat", chatId);
+      const data = await typedInvoke(this.ipcRenderer, "get-chat", chatId);
       return data;
     } catch (error) {
       showError(error);
@@ -398,7 +412,7 @@ export class IpcClient {
   // Get all chats
   public async getChats(appId?: number): Promise<ChatSummary[]> {
     try {
-      const data = await this.ipcRenderer.invoke("get-chats", appId);
+      const data = await typedInvoke(this.ipcRenderer, "get-chats", appId);
       return ChatSummariesSchema.parse(data);
     } catch (error) {
       showError(error);
@@ -422,7 +436,7 @@ export class IpcClient {
 
   // Get all apps
   public async listApps(): Promise<ListAppsResponse> {
-    return this.ipcRenderer.invoke("list-apps");
+    return typedInvoke(this.ipcRenderer, "list-apps");
   }
 
   // Search apps by name
@@ -576,19 +590,19 @@ export class IpcClient {
 
   // Create a new chat for an app
   public async createChat(appId: number): Promise<number> {
-    return this.ipcRenderer.invoke("create-chat", appId);
+    return typedInvoke(this.ipcRenderer, "create-chat", appId);
   }
 
   public async updateChat(params: UpdateChatParams): Promise<void> {
-    return this.ipcRenderer.invoke("update-chat", params);
+    return typedInvoke(this.ipcRenderer, "update-chat", params);
   }
 
   public async deleteChat(chatId: number): Promise<void> {
-    await this.ipcRenderer.invoke("delete-chat", chatId);
+    await typedInvoke(this.ipcRenderer, "delete-chat", chatId);
   }
 
   public async deleteMessages(chatId: number): Promise<void> {
-    await this.ipcRenderer.invoke("delete-messages", chatId);
+    await typedInvoke(this.ipcRenderer, "delete-messages", chatId);
   }
 
   // Open an external URL using the default browser

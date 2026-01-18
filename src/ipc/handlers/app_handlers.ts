@@ -44,6 +44,7 @@ import {
   getSupabaseProjectName,
 } from "../../supabase_admin/supabase_management_client";
 import { createLoggedHandler } from "./safe_handle";
+import { createHandlerFactory } from "../ipc_handler";
 import { getLanguageModelProviders } from "../shared/language_model_helpers";
 import { startProxy } from "../utils/start_proxy_server";
 import { Worker } from "worker_threads";
@@ -75,7 +76,10 @@ import {
 } from "../utils/ripgrep_utils";
 
 const logger = log.scope("app_handlers");
+// Keep the old handle for handlers not yet migrated
 const handle = createLoggedHandler(logger);
+// New type-safe handle for refactored handlers
+const handleTyped = createHandlerFactory({ logger, logDetails: false });
 
 function sanitizeSnippetText(text: string) {
   return text.replace(/\s+/g, " ").trim();
@@ -764,7 +768,8 @@ async function searchAppFilesWithRipgrep({
 }
 
 export function registerAppHandlers() {
-  handle("restart-dyad", async () => {
+  // Restart Dyad application
+  handleTyped("restart-dyad", async () => {
     app.relaunch();
     app.quit();
   });
@@ -909,7 +914,8 @@ export function registerAppHandlers() {
     },
   );
 
-  handle("get-app", async (_, appId: number): Promise<App> => {
+  // Get app details by ID
+  handleTyped("get-app", async (_, appId) => {
     const app = await db.query.apps.findFirst({
       where: eq(apps.id, appId),
     });
@@ -961,7 +967,8 @@ export function registerAppHandlers() {
     };
   });
 
-  ipcMain.handle("list-apps", async () => {
+  // List all apps
+  handleTyped("list-apps", async () => {
     const allApps = await db.query.apps.findMany({
       orderBy: [desc(apps.createdAt)],
     });
@@ -1336,107 +1343,90 @@ export function registerAppHandlers() {
     },
   );
 
-  ipcMain.handle(
-    "delete-app",
-    async (_, { appId }: { appId: number }): Promise<void> => {
-      // Static server worker is NOT terminated here anymore
-
-      return withLock(appId, async () => {
-        // Check if app exists
-        const app = await db.query.apps.findFirst({
-          where: eq(apps.id, appId),
-        });
-
-        if (!app) {
-          throw new Error("App not found");
-        }
-
-        // Stop the app if it's running
-        if (runningApps.has(appId)) {
-          const appInfo = runningApps.get(appId)!;
-          try {
-            logger.log(`Stopping app ${appId} before deletion.`); // Adjusted log
-            await stopAppByInfo(appId, appInfo);
-          } catch (error: any) {
-            logger.error(`Error stopping app ${appId} before deletion:`, error); // Adjusted log
-            // Continue with deletion even if stopping fails
-          }
-        }
-
-        // Clear logs for this app to prevent memory leak
-        clearLogs(appId);
-
-        // Delete app from database
-        try {
-          await db.delete(apps).where(eq(apps.id, appId));
-          // Note: Associated chats will cascade delete
-        } catch (error: any) {
-          logger.error(`Error deleting app ${appId} from database:`, error);
-          throw new Error(
-            `Failed to delete app from database: ${error.message}`,
-          );
-        }
-
-        // Delete app files
-        const appPath = getDyadAppPath(app.path);
-        try {
-          await fsPromises.rm(appPath, { recursive: true, force: true });
-        } catch (error: any) {
-          logger.error(`Error deleting app files for app ${appId}:`, error);
-          throw new Error(
-            `App deleted from database, but failed to delete app files. Please delete app files from ${appPath} manually.\n\nError: ${error.message}`,
-          );
-        }
+  // Delete an app and all its files
+  handleTyped("delete-app", async (_, { appId }) => {
+    return withLock(appId, async () => {
+      // Check if app exists
+      const app = await db.query.apps.findFirst({
+        where: eq(apps.id, appId),
       });
-    },
-  );
 
-  ipcMain.handle(
-    "add-to-favorite",
-    async (
-      _,
-      { appId }: { appId: number },
-    ): Promise<{ isFavorite: boolean }> => {
-      return withLock(appId, async () => {
+      if (!app) {
+        throw new Error("App not found");
+      }
+
+      // Stop the app if it's running
+      if (runningApps.has(appId)) {
+        const appInfo = runningApps.get(appId)!;
         try {
-          // Fetch the current isFavorite value
-          const result = await db
-            .select({ isFavorite: apps.isFavorite })
-            .from(apps)
-            .where(eq(apps.id, appId))
-            .limit(1);
-
-          if (result.length === 0) {
-            throw new Error(`App with ID ${appId} not found.`);
-          }
-
-          const currentIsFavorite = result[0].isFavorite;
-
-          // Toggle the isFavorite value
-          const updated = await db
-            .update(apps)
-            .set({ isFavorite: !currentIsFavorite })
-            .where(eq(apps.id, appId))
-            .returning({ isFavorite: apps.isFavorite });
-
-          if (updated.length === 0) {
-            throw new Error(
-              `Failed to update favorite status for app ID ${appId}.`,
-            );
-          }
-
-          // Return the updated isFavorite value
-          return { isFavorite: updated[0].isFavorite };
+          logger.log(`Stopping app ${appId} before deletion.`);
+          await stopAppByInfo(appId, appInfo);
         } catch (error: any) {
-          logger.error(
-            `Error in add-to-favorite handler for app ID ${appId}:`,
-            error,
-          );
-          throw new Error(`Failed to toggle favorite status: ${error.message}`);
+          logger.error(`Error stopping app ${appId} before deletion:`, error);
+          // Continue with deletion even if stopping fails
         }
-      });
-    },
-  );
+      }
+
+      // Clear logs for this app to prevent memory leak
+      clearLogs(appId);
+
+      // Delete app from database
+      try {
+        await db.delete(apps).where(eq(apps.id, appId));
+        // Note: Associated chats will cascade delete
+      } catch (error: any) {
+        logger.error(`Error deleting app ${appId} from database:`, error);
+        throw new Error(
+          `Failed to delete app from database: ${error.message}`,
+        );
+      }
+
+      // Delete app files
+      const appPath = getDyadAppPath(app.path);
+      try {
+        await fsPromises.rm(appPath, { recursive: true, force: true });
+      } catch (error: any) {
+        logger.error(`Error deleting app files for app ${appId}:`, error);
+        throw new Error(
+          `App deleted from database, but failed to delete app files. Please delete app files from ${appPath} manually.\n\nError: ${error.message}`,
+        );
+      }
+    });
+  });
+
+  // Toggle app favorite status
+  handleTyped("add-to-favorite", async (_, { appId }) => {
+    return withLock(appId, async () => {
+      // Fetch the current isFavorite value
+      const result = await db
+        .select({ isFavorite: apps.isFavorite })
+        .from(apps)
+        .where(eq(apps.id, appId))
+        .limit(1);
+
+      if (result.length === 0) {
+        throw new Error(`App with ID ${appId} not found.`);
+      }
+
+      const currentIsFavorite = result[0].isFavorite;
+
+      // Toggle the isFavorite value
+      const updated = await db
+        .update(apps)
+        .set({ isFavorite: !currentIsFavorite })
+        .where(eq(apps.id, appId))
+        .returning({ isFavorite: apps.isFavorite });
+
+      if (updated.length === 0) {
+        throw new Error(
+          `Failed to update favorite status for app ID ${appId}.`,
+        );
+      }
+
+      // Return the updated isFavorite value
+      return { isFavorite: updated[0].isFavorite };
+    });
+  });
 
   ipcMain.handle(
     "rename-app",

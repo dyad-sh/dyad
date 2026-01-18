@@ -21,10 +21,10 @@ import { LocalAgentNewChatToast } from "./LocalAgentNewChatToast";
 import { useAtomValue } from "jotai";
 import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
 
-function ExperimentalBadge() {
+function NewBadge() {
   return (
-    <span className="inline-flex items-center rounded-full px-2 text-[11px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
-      Experimental
+    <span className="inline-flex items-center rounded-full px-2 text-[11px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
+      New
     </span>
   );
 }
@@ -115,6 +115,19 @@ export function ChatModeSelector() {
         </TooltipContent>
       </Tooltip>
       <SelectContent align="start" onCloseAutoFocus={(e) => e.preventDefault()}>
+        {isProEnabled && (
+          <SelectItem value="local-agent">
+            <div className="flex flex-col items-start">
+              <div className="flex items-center gap-1.5">
+                <span className="font-medium">Agent v2</span>
+                <NewBadge />
+              </div>
+              <span className="text-xs text-muted-foreground">
+                Better at bigger tasks and debugging
+              </span>
+            </div>
+          </SelectItem>
+        )}
         <SelectItem value="build">
           <div className="flex flex-col items-start">
             <span className="font-medium">Build</span>
@@ -141,19 +154,6 @@ export function ChatModeSelector() {
             </span>
           </div>
         </SelectItem>
-        {isProEnabled && (
-          <SelectItem value="local-agent">
-            <div className="flex flex-col items-start">
-              <div className="flex items-center gap-1.5">
-                <span className="font-medium">Agent v2</span>
-                <ExperimentalBadge />
-              </div>
-              <span className="text-xs text-muted-foreground">
-                Better at bigger tasks and debugging
-              </span>
-            </div>
-          </SelectItem>
-        )}
       </SelectContent>
     </Select>
   );

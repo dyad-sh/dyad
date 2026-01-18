@@ -41,7 +41,7 @@ class DecentralizedChatClient {
   }
 
   private setupEventListener(): void {
-    this.ipcRenderer.on("decentralized-chat:event", (_event: any, chatEvent: ChatEvent) => {
+    this.ipcRenderer.on("decentralized-chat:event", (chatEvent: ChatEvent) => {
       this.notifyListeners(chatEvent);
     });
   }

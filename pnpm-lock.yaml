@@ -65,6 +65,9 @@ importers:
       '@libp2p/crypto':
         specifier: ^5.1.13
         version: 5.1.13
+      '@libp2p/kad-dht':
+        specifier: ^16.1.3
+        version: 16.1.3
       '@modelcontextprotocol/sdk':
         specifier: ^1.17.5
         version: 1.25.1(@cfworker/json-schema@4.1.1)(hono@4.11.3)(zod@3.25.76)
@@ -3045,6 +3048,9 @@ packages:
   '@libp2p/interface-internal@2.3.19':
     resolution: {integrity: sha512-v335EB0i5CaNF+0SqT01CTBp0VyjJizpy46KprcshFFjX16UQ8+/QzoTZqmot9WiAmAzwR0b87oKmlAE9cpxzQ==}
 
+  '@libp2p/interface-internal@3.0.10':
+    resolution: {integrity: sha512-Gd/eQAoAlXqeCRJ6wOwcnTQ/SDe95bQow8osY8zq0nbfFBu26aChQHjAd+CjcCADJRh+Sd+7+dYG7BrhpxGt1A==}
+
   '@libp2p/interface-internal@3.0.9':
     resolution: {integrity: sha512-g6hqsrorej945uh/iwA4MY4n7vAFq5mtuMXOf1vo4CS2v8Zl3RMOl0mQZIhUpHLq8XV2aZ3C5rSe4+KsOmZM5A==}
 
@@ -3054,8 +3060,8 @@ packages:
   '@libp2p/interface@3.1.0':
     resolution: {integrity: sha512-RE7/XyvC47fQBe1cHxhMvepYKa5bFCUyFrrpj8PuM0E7JtzxU7F+Du5j4VXbg2yLDcToe0+j8mB7jvwE2AThYw==}
 
-  '@libp2p/kad-dht@16.1.2':
-    resolution: {integrity: sha512-s/S859NPnF2DaLcV7ynPhFHvW2wGhaHdKQbOI6yziICe/A6/eJtTM4hjjHHCoqo+hG7Duj8Tnk/GYsrfG6Qdrg==}
+  '@libp2p/kad-dht@16.1.3':
+    resolution: {integrity: sha512-yM9UumHkN8Dd+nFUllOio3/0uuzzpPgc/+PouDAABWs2ut36VfizhWVWAiqlLpzkpCquIzPUd0doRu0GKztdXA==}
 
   '@libp2p/keychain@6.0.9':
     resolution: {integrity: sha512-gO8krY3iPbXzc+LLA2haTEKbnINpx/p/FlXeHZsyXSD5Q31aV2zQsOrNlVaCyDhKqb1uiyon7NMMPn8UUqkJWQ==}
@@ -3078,6 +3084,9 @@ packages:
   '@libp2p/peer-collections@6.0.35':
     resolution: {integrity: sha512-QiloK3T7DXW7R2cpL38dBnALCHf5pMzs/TyFzlEK33WezA2YFVoj7CtOJKqbn29bmV9uspWOxMgfmLUXf8ALvA==}
 
+  '@libp2p/peer-collections@7.0.10':
+    resolution: {integrity: sha512-OvlSY5N3J6q8U+EbTrQGbW8zdyOa3y7nz9Y3IbuE55tIiMd7pwm1U3Lknfb6IPkOWkHNfQDfCGGfGVQcMRodvQ==}
+
   '@libp2p/peer-collections@7.0.9':
     resolution: {integrity: sha512-pAMRxmT5V31V0gy2MfwVE1TMAcTnbyBYFOv60OWnkKth4hD+HvQ9DLW1z+opYDqRNON5sIWjcnDsIQDm2VUS7A==}
 
@@ -3093,14 +3102,17 @@ packages:
   '@libp2p/peer-store@12.0.9':
     resolution: {integrity: sha512-+OOKqrllUUACE3IcfFEVcByJo1fMUy9kztxwfy5wmOxybcysxmJ5p3NmETDCqRhlY2sEk55NuRLh5vzDfJIcQQ==}
 
+  '@libp2p/ping@3.0.10':
+    resolution: {integrity: sha512-XkwQOOrmIa1/9t2xq0+Zm3rWkyO+Q0SavlM3t6WkDjxC4F3h0MaYep2CX5BBWD2mZWyy8YdeQTF3N9YhRr4irg==}
+
   '@libp2p/ping@3.0.9':
     resolution: {integrity: sha512-PeOH3jH+f4cjczxNMKsAf67x/ai3/YQIAc8rq+fkhRWzIuYKjSG8omgiIJJ9sGbaI0b7Ap8vFVbVflvb52qEDg==}
 
   '@libp2p/pubsub@10.1.18':
     resolution: {integrity: sha512-Bxa0cwkaQvadyJNlJlzH0m1eo7m03G2nCpuKbcv+i0qNbyyTOydBcuoslG/UWFYhRBB9Js9R6zNIsaIgpo+iGw==}
 
-  '@libp2p/record@4.0.8':
-    resolution: {integrity: sha512-ZsGKBA1zuzqiwNPO2q0PHFhZzAJi/p+YLDtYdkwLYW0FbIgeMb5FX7cmopDk5Aa8mM9UbINb+nK5xz4+Bz8ShQ==}
+  '@libp2p/record@4.0.9':
+    resolution: {integrity: sha512-ITxntqQ2GDK/yA1NhzEQc2dXpxgox96xZ1cqO507choY5z5Czhz2BxfyElVO/XYjOXvylu1XN66uh3VuGHrfkQ==}
 
   '@libp2p/tcp@11.0.9':
     resolution: {integrity: sha512-/Fjy2TQR5rMBp0DbKYiP43wRM+CYsWVLc+hOpFrPp5EOS3yu/38/0F7EISFdk2vsijqll7iD0BA4+/Zt4U1kwQ==}
@@ -3113,6 +3125,9 @@ packages:
 
   '@libp2p/utils@6.7.2':
     resolution: {integrity: sha512-yglVPcYErb4al3MMTdedVLLsdUvr5KaqrrxohxTl/FXMFBvBs0o3w8lo29nfnTUpnNSHFhWZ9at0ZGNnpT/C/w==}
+
+  '@libp2p/utils@7.0.10':
+    resolution: {integrity: sha512-+mzD+7yLMoZ8+34y/iS9d1CnwHjJJ/qEsao9FckHf9T9tnVXEyLLu9TpzBCcGRm4fUK/QCSHK2AcZH50kkAFkw==}
 
   '@libp2p/utils@7.0.9':
     resolution: {integrity: sha512-2wYhsgfbFXfh5ui0ME9MNHc7uUIuZwpeZ/yagKmDSjIP7B+L3/9mj+vVXO14AhmjfwnKx2xUDQvzGZeq5to4ow==}
@@ -15724,7 +15739,7 @@ snapshots:
 
   '@gar/promisify@1.1.3': {}
 
-  '@getzep/zep-cloud@1.0.6(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))(encoding@0.1.13)(langchain@1.1.1(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(zod-to-json-schema@3.23.3(zod@3.25.76)))':
+  '@getzep/zep-cloud@1.0.6(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))(encoding@0.1.13)(langchain@1.1.1(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(zod-to-json-schema@3.23.3(zod@3.25.67)))':
     dependencies:
       form-data: 4.0.0
       node-fetch: 2.7.0(encoding@0.1.13)
@@ -16430,7 +16445,7 @@ snapshots:
       - aws-crt
       - encoding
 
-  '@langchain/community@1.0.5(f8b740cf95c82e3d9531348c5543fbde)':
+  '@langchain/community@1.0.5(40594b630f33afbb19e4176b33122677)':
     dependencies:
       '@browserbasehq/stagehand': 1.14.0(@playwright/test@1.57.0)(deepmerge@4.3.1)(dotenv@16.6.1)(encoding@0.1.13)(openai@4.104.0(encoding@0.1.13)(ws@8.17.1)(zod@3.25.76))(zod@3.25.76)
       '@ibm-cloud/watsonx-ai': 1.7.5
@@ -16452,7 +16467,7 @@ snapshots:
       '@azure/search-documents': 12.1.0
       '@azure/storage-blob': 12.26.0
       '@browserbasehq/sdk': 2.6.0(encoding@0.1.13)
-      '@getzep/zep-cloud': 1.0.6(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))(encoding@0.1.13)(langchain@1.1.1(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(zod-to-json-schema@3.23.3(zod@3.25.76)))
+      '@getzep/zep-cloud': 1.0.6(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))(encoding@0.1.13)(langchain@1.1.1(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(zod-to-json-schema@3.23.3(zod@3.25.67)))
       '@getzep/zep-js': 0.9.0
       '@google-cloud/storage': 7.18.0(encoding@0.1.13)
       '@huggingface/inference': 4.0.5
@@ -16967,6 +16982,13 @@ snapshots:
       '@multiformats/multiaddr': 12.5.1
       progress-events: 1.0.1
 
+  '@libp2p/interface-internal@3.0.10':
+    dependencies:
+      '@libp2p/interface': 3.1.0
+      '@libp2p/peer-collections': 7.0.10
+      '@multiformats/multiaddr': 13.0.1
+      progress-events: 1.0.1
+
   '@libp2p/interface-internal@3.0.9':
     dependencies:
       '@libp2p/interface': 3.1.0
@@ -16994,16 +17016,16 @@ snapshots:
       progress-events: 1.0.1
       uint8arraylist: 2.4.8
 
-  '@libp2p/kad-dht@16.1.2':
+  '@libp2p/kad-dht@16.1.3':
     dependencies:
       '@libp2p/crypto': 5.1.13
       '@libp2p/interface': 3.1.0
-      '@libp2p/interface-internal': 3.0.9
-      '@libp2p/peer-collections': 7.0.9
+      '@libp2p/interface-internal': 3.0.10
+      '@libp2p/peer-collections': 7.0.10
       '@libp2p/peer-id': 6.0.4
-      '@libp2p/ping': 3.0.9
-      '@libp2p/record': 4.0.8
-      '@libp2p/utils': 7.0.9
+      '@libp2p/ping': 3.0.10
+      '@libp2p/record': 4.0.9
+      '@libp2p/utils': 7.0.10
       '@multiformats/multiaddr': 13.0.1
       '@multiformats/multiaddr-matcher': 3.0.1
       any-signal: 4.2.0
@@ -17091,6 +17113,13 @@ snapshots:
       '@libp2p/utils': 6.7.2
       multiformats: 13.4.2
 
+  '@libp2p/peer-collections@7.0.10':
+    dependencies:
+      '@libp2p/interface': 3.1.0
+      '@libp2p/peer-id': 6.0.4
+      '@libp2p/utils': 7.0.10
+      multiformats: 13.4.2
+
   '@libp2p/peer-collections@7.0.9':
     dependencies:
       '@libp2p/interface': 3.1.0
@@ -17141,6 +17170,17 @@ snapshots:
       uint8arraylist: 2.4.8
       uint8arrays: 5.1.0
 
+  '@libp2p/ping@3.0.10':
+    dependencies:
+      '@libp2p/crypto': 5.1.13
+      '@libp2p/interface': 3.1.0
+      '@libp2p/interface-internal': 3.0.10
+      '@multiformats/multiaddr': 13.0.1
+      p-event: 7.0.2
+      race-signal: 2.0.0
+      uint8arraylist: 2.4.8
+      uint8arrays: 5.1.0
+
   '@libp2p/ping@3.0.9':
     dependencies:
       '@libp2p/crypto': 5.1.13
@@ -17169,7 +17209,7 @@ snapshots:
       uint8arraylist: 2.4.8
       uint8arrays: 5.1.0
 
-  '@libp2p/record@4.0.8':
+  '@libp2p/record@4.0.9':
     dependencies:
       protons-runtime: 5.6.0
       uint8arraylist: 2.4.8
@@ -17239,6 +17279,32 @@ snapshots:
       p-defer: 4.0.1
       race-event: 1.6.1
       race-signal: 1.1.3
+      uint8arraylist: 2.4.8
+      uint8arrays: 5.1.0
+
+  '@libp2p/utils@7.0.10':
+    dependencies:
+      '@chainsafe/is-ip': 2.1.0
+      '@chainsafe/netmask': 2.0.0
+      '@libp2p/crypto': 5.1.13
+      '@libp2p/interface': 3.1.0
+      '@libp2p/logger': 6.2.2
+      '@multiformats/multiaddr': 13.0.1
+      '@sindresorhus/fnv1a': 3.1.0
+      any-signal: 4.2.0
+      cborg: 4.3.2
+      delay: 7.0.0
+      is-loopback-addr: 2.0.2
+      it-length-prefixed: 10.0.1
+      it-pipe: 3.0.1
+      it-pushable: 3.2.3
+      it-stream-types: 2.0.2
+      main-event: 1.0.1
+      netmask: 2.0.2
+      p-defer: 4.0.1
+      p-event: 7.0.2
+      race-signal: 2.0.0
+      uint8-varint: 2.0.4
       uint8arraylist: 2.4.8
       uint8arrays: 5.1.0
 
@@ -17605,7 +17671,7 @@ snapshots:
       '@aws-sdk/client-sso-oidc': 3.808.0
       '@azure/identity': 4.13.0
       '@azure/search-documents': 12.1.0
-      '@getzep/zep-cloud': 1.0.6(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))(encoding@0.1.13)(langchain@1.1.1(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(zod-to-json-schema@3.23.3(zod@3.25.76)))
+      '@getzep/zep-cloud': 1.0.6(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))(encoding@0.1.13)(langchain@1.1.1(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(zod-to-json-schema@3.23.3(zod@3.25.67)))
       '@getzep/zep-js': 0.9.0
       '@google-cloud/resource-manager': 5.3.0(encoding@0.1.13)
       '@google/genai': 1.19.0(@modelcontextprotocol/sdk@1.24.0(@cfworker/json-schema@4.1.1)(zod@3.25.67))(encoding@0.1.13)
@@ -17615,7 +17681,7 @@ snapshots:
       '@langchain/aws': 1.0.3(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))
       '@langchain/classic': 1.0.5(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(cheerio@1.0.0)(openai@6.15.0(ws@8.17.1)(zod@3.25.67))(ws@8.17.1)
       '@langchain/cohere': 1.0.1(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))(encoding@0.1.13)
-      '@langchain/community': 1.0.5(f8b740cf95c82e3d9531348c5543fbde)
+      '@langchain/community': 1.0.5(40594b630f33afbb19e4176b33122677)
       '@langchain/core': 1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@4.104.0(encoding@0.1.13)(ws@8.17.1)(zod@3.25.76))
       '@langchain/google-genai': 2.0.0(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))
       '@langchain/google-vertexai': 2.0.0(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))
@@ -23685,7 +23751,7 @@ snapshots:
       '@libp2p/http': 2.0.1
       '@libp2p/identify': 4.0.9
       '@libp2p/interface': 3.1.0
-      '@libp2p/kad-dht': 16.1.2
+      '@libp2p/kad-dht': 16.1.3
       '@libp2p/keychain': 6.0.9
       '@libp2p/mdns': 12.0.10
       '@libp2p/mplex': 12.0.10

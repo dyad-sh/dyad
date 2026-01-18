@@ -1572,7 +1572,7 @@ async function getChatServiceStatus(): Promise<ChatServiceStatus> {
     pubsubEnabled: activeSubscriptions.size > 0,
     activeTopics: Array.from(activeSubscriptions),
     dhtEnabled: true,
-    dhtRecords: 0,
+    dhtRecords: dhtCache.size,
     conversationCount: convs.length,
     messageCount,
     pinnedMessageCount: pins.size,
@@ -1583,6 +1583,77 @@ async function getChatServiceStatus(): Promise<ChatServiceStatus> {
   };
 }
 
+/**
+ * Subscribe to global presence topic for message discovery
+ */
+async function subscribeToGlobalPresence(): Promise<void> {
+  const presenceTopic = `/joycreate/chat/v1/presence`;
+  
+  if (activeSubscriptions.has(presenceTopic)) {
+    return;
+  }
+  
+  try {
+    await ensureChatHelia();
+    
+    if (chatHelia?.libp2p?.services?.pubsub) {
+      chatHelia.libp2p.services.pubsub.subscribe(presenceTopic);
+      
+      chatHelia.libp2p.services.pubsub.addEventListener("message", async (evt: any) => {
+        if (evt.detail.topic === presenceTopic) {
+          try {
+            const decoder = new TextDecoder();
+            const message = JSON.parse(decoder.decode(evt.detail.data));
+            
+            // Handle message availability notifications
+            if (message.type === "message:available" && message.cid) {
+              // Check if this is for one of our conversations
+              const convs = await listConversations();
+              const conv = convs.find(c => c.id === message.conversationId);
+              
+              if (conv && message.senderId !== localIdentity?.walletAddress) {
+                // Pull the message
+                logger.info("Received message notification, pulling from IPFS", { cid: message.cid });
+                const result = await pullPinnedMessages({ cids: [message.cid] });
+                
+                if (result.messages.length > 0) {
+                  emitChatEvent({
+                    type: "message:received",
+                    message: result.messages[0],
+                    conversationId: message.conversationId,
+                  });
+                }
+              }
+            }
+            
+            // Handle presence updates
+            if (message.type === "presence:update" && message.senderId) {
+              presenceCache.set(message.senderId, {
+                status: message.payload?.status || "online",
+                lastSeen: message.timestamp,
+              });
+              
+              emitChatEvent({
+                type: "presence:updated",
+                userId: message.senderId,
+                status: message.payload?.status || "online",
+              });
+            }
+          } catch (e) {
+            logger.warn("Failed to process presence message:", e);
+          }
+        }
+      });
+      
+      logger.info("Subscribed to global presence topic");
+    }
+    
+    activeSubscriptions.add(presenceTopic);
+  } catch (error) {
+    logger.error("Failed to subscribe to global presence:", error);
+  }
+}
+
 // ============================================================================
 // Register IPC Handlers
 // ============================================================================
@@ -1590,9 +1661,22 @@ async function getChatServiceStatus(): Promise<ChatServiceStatus> {
 export function registerDecentralizedChatHandlers(): void {
   initChatDirs();
   
+  // Load DHT cache and identity on startup
+  loadDHTCache().catch(err => logger.warn("Failed to load DHT cache:", err));
+  loadChatIdentity().then(identity => {
+    if (identity) {
+      logger.info("Loaded existing chat identity", { walletAddress: identity.walletAddress });
+      // Subscribe to global presence for message discovery
+      subscribeToGlobalPresence().catch(err => logger.warn("Failed to subscribe to presence:", err));
+    }
+  }).catch(err => logger.warn("Failed to load chat identity:", err));
+  
   // Identity
   ipcMain.handle("dchat:identity:create", async (_, walletAddress: string, displayName?: string, signature?: string) => {
-    return createChatIdentity(walletAddress, displayName, signature);
+    const result = await createChatIdentity(walletAddress, displayName, signature);
+    // Subscribe to presence after identity creation
+    subscribeToGlobalPresence().catch(err => logger.warn("Failed to subscribe to presence:", err));
+    return result;
   });
   
   ipcMain.handle("dchat:identity:get", async () => {

@@ -106,6 +106,7 @@
     "@ipld/dag-cbor": "^9.2.5",
     "@lexical/react": "^0.33.1",
     "@libp2p/crypto": "^5.1.13",
+    "@libp2p/kad-dht": "^16.1.3",
     "@modelcontextprotocol/sdk": "^1.17.5",
     "@monaco-editor/react": "^4.7.0-rc.0",
     "@neondatabase/api-client": "^2.1.0",

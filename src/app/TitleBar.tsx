@@ -1,20 +1,18 @@
 import { useAtom } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import { useLoadApps } from "@/hooks/useLoadApps";
 import { useRouter, useLocation } from "@tanstack/react-router";
 import { useSettings } from "@/hooks/useSettings";
-import { Button } from "@/components/ui/button";
 // @ts-ignore
-import logo from "../../assets/joycreate-logo.svg";
-import { providerSettingsRoute } from "@/routes/settings/providers/$provider";
+import customLogo from "../../assets/smileyone.png";
 import { cn } from "@/lib/utils";
 import { useDeepLink } from "@/contexts/DeepLinkContext";
 import { useEffect, useState } from "react";
 import { DyadProSuccessDialog } from "@/components/DyadProSuccessDialog";
 import { useTheme } from "@/contexts/ThemeContext";
 import { IpcClient } from "@/ipc/ipc_client";
-import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
-import { UserBudgetInfo } from "@/ipc/ipc_types";
+import { useSidebar } from "@/components/ui/sidebar";
+import { Button } from "@/components/ui/button";
+import { PanelLeft, PanelLeftClose } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -24,12 +22,12 @@ import { ActionHeader } from "@/components/preview_panel/ActionHeader";
 
 export const TitleBar = () => {
   const [selectedAppId] = useAtom(selectedAppIdAtom);
-  const { apps } = useLoadApps();
-  const { navigate } = useRouter();
   const location = useLocation();
   const { settings, refreshSettings } = useSettings();
   const [isSuccessDialogOpen, setIsSuccessDialogOpen] = useState(false);
   const [showWindowControls, setShowWindowControls] = useState(false);
+  const { state, toggleSidebar } = useSidebar();
+  const isCollapsed = state === "collapsed";
 
   useEffect(() => {
     // Check if we're running on Windows
@@ -61,38 +59,48 @@ export const TitleBar = () => {
     handleDeepLink();
   }, [lastDeepLink?.timestamp]);
 
-  // Get selected app name
-  const selectedApp = apps.find((app) => app.id === selectedAppId);
-  const displayText = selectedApp
-    ? `App: ${selectedApp.name}`
-    : "(no app selected)";
-
-  const handleAppClick = () => {
-    if (selectedApp) {
-      navigate({ to: "/app-details", search: { appId: selectedApp.id } });
-    }
-  };
-
   const isDyadPro = !!settings?.providerSettings?.auto?.apiKey?.value;
   const isDyadProEnabled = Boolean(settings?.enableDyadPro);
 
   return (
     <>
-      <div className="@container z-11 w-full h-11 bg-(--sidebar) absolute top-0 left-0 app-region-drag flex items-center">
+      <div className="@container z-11 w-full h-11 bg-(--sidebar) backdrop-blur-xl border-b border-border/30 absolute top-0 left-0 app-region-drag flex items-center gap-3">
         <div className={`${showWindowControls ? "pl-2" : "pl-18"}`}></div>
 
-        <img src={logo} alt="Dyad Logo" className="w-6 h-6 mr-0.5" />
-        <Button
-          data-testid="title-bar-app-name-button"
-          variant="outline"
-          size="sm"
-          className={`hidden @2xl:block no-app-region-drag text-xs max-w-38 truncate font-medium ${
-            selectedApp ? "cursor-pointer" : ""
-          }`}
-          onClick={handleAppClick}
-        >
-          {displayText}
-        </Button>
+        {/* Logo and Branding */}
+        <div className="flex items-center gap-2 no-app-region-drag">
+          <img src={customLogo} alt="JoyCreate Logo" className="w-8 h-8 rounded-md shadow-sm ring-1 ring-border/20" />
+          <div className="flex flex-col">
+            <span className="text-sm font-bold bg-gradient-to-r from-violet-500 via-purple-500 to-indigo-500 bg-clip-text text-transparent leading-tight drop-shadow-sm">
+              JoyCreate
+            </span>
+            <span className="text-[9px] text-muted-foreground/50 -mt-0.5 tracking-wide">
+              Build • Create • Share
+            </span>
+          </div>
+        </div>
+
+        {/* Sidebar Toggle Button */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleSidebar}
+              className="h-7 w-7 rounded-md hover:bg-primary/10 hover:text-primary transition-all no-app-region-drag border border-transparent hover:border-primary/20"
+            >
+              {isCollapsed ? (
+                <PanelLeft className="h-3.5 w-3.5 text-muted-foreground" />
+              ) : (
+                <PanelLeftClose className="h-3.5 w-3.5 text-muted-foreground" />
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            {isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          </TooltipContent>
+        </Tooltip>
+
         {isDyadPro && <DyadProButton isDyadProEnabled={isDyadProEnabled} />}
 
         {/* Preview Header */}

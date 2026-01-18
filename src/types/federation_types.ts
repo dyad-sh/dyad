@@ -13,6 +13,8 @@ export interface DecentralizedIdentity {
   did: string;                      // did:joy:xxxx or did:key:xxxx
   public_key: string;               // Ed25519 public key
   display_name: string;
+  store_name?: string;
+  creator_id?: string;
   avatar_cid?: string;              // IPFS CID for avatar
   bio?: string;
   created_at: string;
@@ -123,6 +125,102 @@ export interface DHTRecord {
   timestamp: string;
   ttl_seconds: number;
   replicas: string[];               // Peer IDs holding replicas
+}
+
+export interface BootstrapPeerEntry {
+  id: string; // peer id
+  did?: string;
+  display_name?: string;
+  address?: string;
+  capabilities?: PeerCapability[];
+  notes?: string;
+  added_at: string;
+}
+
+/**
+ * Model chunk availability record in DHT
+ */
+export interface ModelChunkAnnouncement {
+  model_id: string;
+  model_hash?: string;
+  chunk_cid: string;
+  chunk_index: number;
+  total_chunks?: number;
+  bytes?: number;
+  peer_id: string;
+  publisher_did: string;
+  created_at: string;
+}
+
+/**
+ * IPLD receipt reference for routing and verification
+ */
+export interface IpldReceiptRef {
+  cid: string;
+  created_at: string;
+  json_path?: string;
+  cbor_path?: string;
+}
+
+export interface FederatedInferenceRequest {
+  model_id: string;
+  model_hash?: string;
+  prompt_hash: string;
+  data_hash: string;
+  preferred_peer_id?: string;
+  issuer_did?: string;
+  payer_did: string;
+  payment_tx_hash?: string;
+  payment_amount?: string;
+  create_receipt?: boolean;
+}
+
+export interface FederatedInferenceRoute {
+  route_id: string;
+  target: {
+    peer_id?: string;
+    did: string;
+    display_name?: string;
+    capability: "compute" | "local";
+  };
+  required_chunks: ModelChunkAnnouncement[];
+  receipt?: IpldReceiptRef;
+  created_at: string;
+}
+
+export interface FederatedInferenceExecutionRequest {
+  provider: "ollama" | "lmstudio" | "llamacpp" | "vllm";
+  model_id: string;
+  model_hash?: string;
+  prompt: string;
+  system_prompt?: string;
+  messages?: Array<{ role: "system" | "user" | "assistant"; content: string }>;
+  config?: {
+    temperature?: number;
+    maxTokens?: number;
+    topP?: number;
+    topK?: number;
+    seed?: number;
+  };
+  data_hash?: string;
+  preferred_peer_id?: string;
+  payer_did: string;
+  issuer_did?: string;
+  payment_tx_hash?: string;
+  payment_amount?: string;
+  create_receipt?: boolean;
+  require_remote?: boolean;
+  private_key?: string;
+}
+
+export interface FederatedInferenceExecutionResult {
+  status: "local" | "dispatched";
+  route: FederatedInferenceRoute;
+  output?: string;
+  record_id?: string;
+  proof_cid?: string;
+  receipt?: IpldReceiptRef;
+  dispatch_message_id?: string;
 }
 
 /**
@@ -255,6 +353,56 @@ export interface P2PLicense {
   // Royalties
   royalty_percentage?: number;
   royalty_recipient?: string;       // DID of royalty recipient
+}
+
+// ============= Model Chunk Listings =============
+
+export type ModelChunkLicenseType =
+  | "training"
+  | "inference"
+  | "research"
+  | "non-commercial"
+  | "custom";
+
+export interface ModelChunkListing {
+  id: string;
+  model_id: string;
+  model_hash?: string;
+  chunk_cids: string[];
+  chunk_count: number;
+  bytes_total?: number;
+  title: string;
+  description?: string;
+  tags: string[];
+  pricing: P2PPricing;
+  license: {
+    type: ModelChunkLicenseType;
+    terms_cid?: string;
+  };
+  seller: {
+    did: string;
+    peer_id: string;
+    display_name: string;
+    reputation_score: number;
+  };
+  status: "active" | "paused" | "sold-out" | "expired";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ModelChunkPurchase {
+  id: string;
+  listing_id: string;
+  buyer_did: string;
+  seller_did: string;
+  amount: number;
+  currency: P2PCurrency;
+  status: "initiated" | "paid" | "delivered" | "completed";
+  escrow_id?: string;
+  payment_tx_hash?: string;
+  receipt_cid?: string;
+  created_at: string;
+  completed_at?: string;
 }
 
 // ============= Transactions =============

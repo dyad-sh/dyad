@@ -186,6 +186,19 @@ class HeliaVerificationService {
     return cid.toString();
   }
 
+  private async collectCatStream(cid: string): Promise<Buffer> {
+    await loadEsmModules();
+    if (!this.fsCodec) {
+      throw new Error("Helia UnixFS not available");
+    }
+    const parsed = CID.parse(cid);
+    const chunks: Buffer[] = [];
+    for await (const chunk of this.fsCodec.cat(parsed)) {
+      chunks.push(Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks);
+  }
+
   // ============================================================================
   // Inference Verification
   // ============================================================================
@@ -545,6 +558,29 @@ class HeliaVerificationService {
       totalTokens,
       averageGenerationTimeMs: records.length > 0 ? totalTime / records.length : 0,
     };
+  }
+
+  // ========================================================================
+  // Model Chunk Storage (UnixFS)
+  // ========================================================================
+
+  async storeModelChunkFile(filePath: string): Promise<{ cid: string; bytes: number }> {
+    if (!this.helia || !this.fsCodec) {
+      throw new Error("Helia node not running");
+    }
+    const data = await fs.readFile(filePath);
+    const cid = await this.fsCodec.addBytes(data);
+    return { cid: cid.toString(), bytes: data.length };
+  }
+
+  async exportModelChunkToFile(cid: string, outputPath: string): Promise<{ bytes: number }> {
+    if (!this.helia || !this.fsCodec) {
+      throw new Error("Helia node not running");
+    }
+    const data = await this.collectCatStream(cid);
+    await fs.ensureDir(path.dirname(outputPath));
+    await fs.writeFile(outputPath, data);
+    return { bytes: data.length };
   }
 }
 

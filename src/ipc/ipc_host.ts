@@ -40,10 +40,18 @@ import { registerN8nHandlers } from "./handlers/n8n_handlers";
 import { registerTrustlessInferenceHandlers } from "./handlers/trustless_inference_handlers";
 import { registerLibreOfficeHandlers } from "./handlers/libreoffice_handlers";
 import { registerMarketplaceHandlers } from "./handlers/marketplace_handlers";
+import { registerMarketplaceSyncHandlers } from "./handlers/marketplace_sync_handlers";
 import { registerScraperHandlers } from "./handlers/scraper_handlers";
 import { registerAssetStudioHandlers } from "./handlers/asset_studio_handlers";
 import { registerNFTHandlers } from "./handlers/nft_handlers";
 import { registerFederationHandlers } from "./handlers/federation_handlers";
+import { registerSovereignDataHandlers } from "./handlers/sovereign_data_handlers";
+import { registerIpldReceiptHandlers } from "./handlers/ipld_receipt_handlers";
+import { registerDecentralizedDeployHandlers } from "./handlers/decentralized_deploy_handlers";
+import { registerProjectHandlers } from "./handlers/project_handlers";
+import { registerHybridBridgeHandlers } from "./handlers/hybrid_bridge_handlers";
+import { registerDecentralizedChatHandlers } from "./handlers/decentralized_chat_handlers";
+import { registerComputeNetworkHandlers } from "./handlers/compute_network_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -89,8 +97,16 @@ export function registerIpcHandlers() {
   registerTrustlessInferenceHandlers();
   registerLibreOfficeHandlers();
   registerMarketplaceHandlers();
+  registerMarketplaceSyncHandlers();
   registerScraperHandlers();
   registerAssetStudioHandlers();
   registerNFTHandlers();
   registerFederationHandlers();
+  registerSovereignDataHandlers();
+  registerIpldReceiptHandlers();
+  registerDecentralizedDeployHandlers();
+  registerProjectHandlers();
+  registerHybridBridgeHandlers();
+  registerDecentralizedChatHandlers();
+  registerComputeNetworkHandlers();
 }

@@ -296,6 +296,12 @@ export const UserSettingsSchema = z.object({
     .optional(),
 
   ////////////////////////////////
+  // JOY BLOCKCHAIN IDENTITY
+  ////////////////////////////////
+  joyId: z.string().optional(),
+  collectionContract: z.string().optional(),
+
+  ////////////////////////////////
   // E2E TESTING ONLY.
   ////////////////////////////////
   isTestMode: z.boolean().optional(),

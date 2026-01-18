@@ -2,6 +2,10 @@
 <html>
   <head>
     <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://us-assets.i.posthog.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src-elem 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: https:; font-src 'self' data: https://cdn.jsdelivr.net; connect-src 'self' https://api.posthog.com https://us.i.posthog.com https://us-assets.i.posthog.com https://cdn.jsdelivr.net wss:; worker-src 'self' blob:;"
+    />
     <title>JoyCreate</title>
     <link href="/src/styles/globals.css" rel="stylesheet" />
   </head>

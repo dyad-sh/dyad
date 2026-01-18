@@ -41,7 +41,7 @@ class HybridBridgeClient {
 
   private setupEventListener(): void {
     // Listen for bridge events from main process
-    this.ipcRenderer.on("hybrid-bridge:event", (bridgeEvent: HybridBridgeEvent) => {
+    this.ipcRenderer.on("hybrid-bridge:event", (_event: unknown, bridgeEvent: HybridBridgeEvent) => {
       this.notifyListeners(bridgeEvent);
       
       // Update connection state

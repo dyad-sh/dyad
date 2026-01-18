@@ -424,6 +424,9 @@ const validInvokeChannels = [
   "dchat:presence:broadcast",
   "dchat:typing:send",
   "dchat:status",
+  "dchat:test:encryption",
+  "dchat:test:pin",
+  "dchat:test:connectivity",
   // Compute Network (Decentralized AI Inference)
   "compute-network:initialize",
   "compute-network:shutdown",

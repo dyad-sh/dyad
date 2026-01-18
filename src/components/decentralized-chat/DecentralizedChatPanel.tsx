@@ -59,6 +59,8 @@ import {
   Search,
   Settings,
   MoreVertical,
+  LogOut,
+  Power,
 } from "lucide-react";
 import type { ChatConversation, ChatMessage, ChatIdentity } from "@/types/decentralized_chat_types";
 
@@ -72,11 +74,23 @@ interface IdentitySetupDialogProps {
   onIdentityCreated?: (identity: ChatIdentity) => void;
 }
 
+// Storage key for remembering wallet address
+const WALLET_ADDRESS_KEY = "joycreate:chat:wallet-address";
+const DISPLAY_NAME_KEY = "joycreate:chat:display-name";
+
 export function IdentitySetupDialog({ open, onOpenChange, onIdentityCreated }: IdentitySetupDialogProps) {
   const { createIdentity, isCreating } = useChatIdentity();
   const [walletAddress, setWalletAddress] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  
+  // Load saved wallet address on mount
+  useEffect(() => {
+    const savedWallet = localStorage.getItem(WALLET_ADDRESS_KEY);
+    const savedName = localStorage.getItem(DISPLAY_NAME_KEY);
+    if (savedWallet) setWalletAddress(savedWallet);
+    if (savedName) setDisplayName(savedName);
+  }, []);
 
   const handleCreate = async () => {
     if (!walletAddress) {
@@ -85,6 +99,12 @@ export function IdentitySetupDialog({ open, onOpenChange, onIdentityCreated }: I
     }
 
     try {
+      // Save wallet address and display name for future sessions
+      localStorage.setItem(WALLET_ADDRESS_KEY, walletAddress);
+      if (displayName) {
+        localStorage.setItem(DISPLAY_NAME_KEY, displayName);
+      }
+      
       const result = await createIdentity({ walletAddress, displayName: displayName || undefined });
       onIdentityCreated?.(result.identity);
       onOpenChange(false);
@@ -564,18 +584,39 @@ export function DecentralizedChatPanel() {
     conversations,
     syncOnline,
     isSyncing,
+    goOffline,
+    goOnline,
+    isGoingOffline,
   } = useDecentralizedChat({ autoSync: true });
 
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [showIdentityDialog, setShowIdentityDialog] = useState(false);
   const [showNewConversationDialog, setShowNewConversationDialog] = useState(false);
+  const [hasCheckedIdentity, setHasCheckedIdentity] = useState(false);
 
-  // Show identity setup if not initialized
+  // Only show identity setup dialog if no identity exists and we haven't checked yet
   useEffect(() => {
-    if (!identity && !showIdentityDialog) {
-      setShowIdentityDialog(true);
+    if (!hasCheckedIdentity && identity === null) {
+      // Check if there's a saved wallet - if so, identity will load automatically
+      const savedWallet = localStorage.getItem(WALLET_ADDRESS_KEY);
+      if (!savedWallet) {
+        setShowIdentityDialog(true);
+      }
+      setHasCheckedIdentity(true);
+    } else if (identity) {
+      setHasCheckedIdentity(true);
     }
-  }, [identity]);
+  }, [identity, hasCheckedIdentity]);
+  
+  // Handle disconnect - go offline so others can't see messages
+  const handleDisconnect = async () => {
+    await goOffline();
+  };
+  
+  // Handle reconnect - go back online
+  const handleReconnect = async () => {
+    await goOnline();
+  };
 
   return (
     <div className="h-full flex flex-col">
@@ -657,15 +698,50 @@ export function DecentralizedChatPanel() {
                         {identity.walletAddress.slice(0, 8)}...{identity.walletAddress.slice(-6)}
                       </p>
                     </div>
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "text-xs",
-                        identity.status === "online" && "border-green-500 text-green-500"
-                      )}
-                    >
-                      {identity.status}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          "text-xs",
+                          identity.status === "online" && "border-green-500 text-green-500",
+                          identity.status === "offline" && "border-red-500 text-red-500"
+                        )}
+                      >
+                        {identity.status}
+                      </Badge>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            {identity.status === "offline" ? (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={handleReconnect}
+                                disabled={isGoingOffline}
+                              >
+                                <Power className="h-4 w-4 text-green-500" />
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={handleDisconnect}
+                                disabled={isGoingOffline}
+                              >
+                                <LogOut className="h-4 w-4 text-red-500" />
+                              </Button>
+                            )}
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {identity.status === "offline" 
+                              ? "Go online - receive messages" 
+                              : "Go offline - others won't see you"}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
                   </div>
                 </CardContent>
               </Card>

@@ -449,3 +449,64 @@ export interface RegisterIceServerResult {
   urls?: string[];
   error?: string;
 }
+
+// ============================================================================
+// WebRTC Signal Type (alias for SignalingMessage)
+// ============================================================================
+
+/**
+ * WebRTC signaling signal (alias)
+ */
+export type WebRTCSignal = SignalingMessage;
+
+// ============================================================================
+// WebRTC Stats
+// ============================================================================
+
+/**
+ * WebRTC connection statistics
+ */
+export interface WebRTCStats {
+  timestamp: number;
+  
+  // Connection stats
+  connectionState: WebRTCConnectionState;
+  roundTripTime: number;
+  jitter: number;
+  packetLoss: number;
+  
+  // Audio stats
+  audioBytesSent: number;
+  audioBytesReceived: number;
+  audioPacketsSent: number;
+  audioPacketsReceived: number;
+  audioLevel: number;
+  
+  // Video stats
+  videoBytesSent: number;
+  videoBytesReceived: number;
+  videoPacketsSent: number;
+  videoPacketsReceived: number;
+  frameWidth: number;
+  frameHeight: number;
+  framesPerSecond: number;
+  framesDropped: number;
+  
+  // Bandwidth
+  availableOutgoingBitrate: number;
+  availableIncomingBitrate: number;
+}
+
+// ============================================================================
+// Media Device Info
+// ============================================================================
+
+/**
+ * Media device information
+ */
+export interface MediaDeviceInfo {
+  deviceId: string;
+  kind: "audioinput" | "audiooutput" | "videoinput";
+  label: string;
+  groupId: string;
+}

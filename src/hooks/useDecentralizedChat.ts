@@ -453,6 +453,8 @@ export interface UseDecentralizedChatOptions {
 
 export function useDecentralizedChat(options: UseDecentralizedChatOptions = {}) {
   const { autoSync = true, onEvent } = options;
+  const queryClient = useQueryClient();
+  const [isGoingOffline, setIsGoingOffline] = useState(false);
 
   const status = useChatStatus();
   const identity = useChatIdentity();
@@ -460,6 +462,36 @@ export function useDecentralizedChat(options: UseDecentralizedChatOptions = {}) 
   const events = useChatEvents({ onEvent });
   const sync = useChatSync();
   const presence = useChatPresence();
+  
+  // Go offline - disconnect from network and hide presence
+  const goOffline = useCallback(async () => {
+    setIsGoingOffline(true);
+    try {
+      await identity.updateProfile({ status: "offline" });
+      await presence.setOffline();
+      // Invalidate identity to refresh UI
+      queryClient.invalidateQueries({ queryKey: chatQueryKeys.identity() });
+    } finally {
+      setIsGoingOffline(false);
+    }
+  }, [identity, presence, queryClient]);
+  
+  // Go online - reconnect and broadcast presence
+  const goOnline = useCallback(async () => {
+    setIsGoingOffline(true);
+    try {
+      await identity.updateProfile({ status: "online" });
+      await presence.setOnline();
+      // Sync messages after coming online
+      if (identity.identity) {
+        await sync.syncOnline();
+      }
+      // Invalidate identity to refresh UI
+      queryClient.invalidateQueries({ queryKey: chatQueryKeys.identity() });
+    } finally {
+      setIsGoingOffline(false);
+    }
+  }, [identity, presence, sync, queryClient]);
 
   // Auto-sync on mount if enabled
   useEffect(() => {
@@ -492,6 +524,11 @@ export function useDecentralizedChat(options: UseDecentralizedChatOptions = {}) 
     // Presence
     presence: presence.currentStatus,
     setPresence: presence.setPresence,
+    
+    // Online/Offline control
+    goOffline,
+    goOnline,
+    isGoingOffline,
 
     // Events
     lastEvent: events.lastEvent,

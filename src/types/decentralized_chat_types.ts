@@ -627,3 +627,529 @@ export interface ChatServiceStatus {
   pendingMessages: number;
   offlineQueueSize: number;
 }
+
+// ============================================================================
+// Meeting & Video Call Types
+// ============================================================================
+
+/**
+ * Meeting/Video call information
+ */
+export interface Meeting {
+  id: string;
+  conversationId: string;
+  
+  // Basic info
+  title: string;
+  description?: string;
+  type: MeetingType;
+  status: MeetingStatus;
+  
+  // Scheduling
+  scheduledStart?: string;           // ISO timestamp (for scheduled meetings)
+  scheduledEnd?: string;
+  actualStart?: string;
+  actualEnd?: string;
+  duration?: number;                 // In minutes
+  timezone?: string;
+  
+  // Participants
+  hostWallet: string;
+  participants: MeetingParticipant[];
+  maxParticipants: number;
+  waitingRoom: string[];             // Wallet addresses waiting to join
+  
+  // Access
+  isPublic: boolean;
+  requiresApproval: boolean;
+  password?: string;                 // Encrypted meeting password
+  inviteLink?: string;
+  
+  // Recording
+  isRecording: boolean;
+  recordingCid?: string;             // IPFS CID of recording
+  allowRecording: boolean;
+  autoRecord: boolean;
+  
+  // Settings
+  settings: MeetingSettings;
+  
+  // WebRTC
+  webrtcRoomId: string;
+  signalingTopic: string;            // PubSub topic for signaling
+  
+  // Timestamps
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type MeetingType = 
+  | "instant"                        // Start now
+  | "scheduled"                      // Future meeting
+  | "recurring"                      // Repeating meeting
+  | "webinar"                        // One-to-many
+  | "screen-share";                  // Screen sharing session
+
+export type MeetingStatus =
+  | "scheduled"                      // Not yet started
+  | "waiting"                        // Host has started, waiting for participants
+  | "live"                           // Meeting in progress
+  | "paused"                         // Temporarily paused
+  | "ended"                          // Meeting finished
+  | "cancelled";                     // Meeting was cancelled
+
+export interface MeetingParticipant {
+  walletAddress: string;
+  displayName?: string;
+  avatar?: string;
+  role: MeetingRole;
+  status: ParticipantStatus;
+  
+  // Media state
+  audioEnabled: boolean;
+  videoEnabled: boolean;
+  screenSharing: boolean;
+  handRaised: boolean;
+  
+  // Connection
+  peerId?: string;
+  connectionQuality?: "excellent" | "good" | "fair" | "poor";
+  
+  // Timestamps
+  joinedAt?: string;
+  leftAt?: string;
+}
+
+export type MeetingRole = 
+  | "host"
+  | "co-host"
+  | "presenter"
+  | "participant"
+  | "viewer";                        // Can only watch/listen
+
+export type ParticipantStatus =
+  | "invited"
+  | "waiting"
+  | "joining"
+  | "connecting"
+  | "connected"
+  | "reconnecting"
+  | "disconnected"
+  | "kicked"
+  | "left";
+
+export interface MeetingSettings {
+  // Audio/Video defaults
+  startWithAudioMuted: boolean;
+  startWithVideoOff: boolean;
+  allowParticipantVideo: boolean;
+  allowParticipantAudio: boolean;
+  allowScreenShare: boolean;
+  
+  // Moderation
+  muteOnEntry: boolean;
+  lockMeeting: boolean;
+  allowChat: boolean;
+  allowReactions: boolean;
+  allowHandRaise: boolean;
+  
+  // Recording & Privacy
+  allowRecording: boolean;
+  notifyOnRecording: boolean;
+  endToEndEncryption: boolean;
+  
+  // Waiting room
+  enableWaitingRoom: boolean;
+  autoAdmit: boolean;
+  
+  // Layout
+  defaultLayout: "gallery" | "speaker" | "sidebar" | "presentation";
+  maxVideoTiles: number;
+  
+  // Quality
+  preferredVideoQuality: "auto" | "720p" | "1080p" | "4k";
+  preferredAudioCodec: "opus" | "g722";
+}
+
+// ============================================================================
+// Appointment/Scheduling Types
+// ============================================================================
+
+/**
+ * Appointment for scheduling meetings
+ */
+export interface Appointment {
+  id: string;
+  conversationId?: string;
+  
+  // Basic info
+  title: string;
+  description?: string;
+  type: AppointmentType;
+  status: AppointmentStatus;
+  
+  // Scheduling
+  startTime: string;
+  endTime: string;
+  timezone: string;
+  
+  // Recurrence
+  recurrence?: RecurrenceRule;
+  
+  // Participants
+  organizerWallet: string;
+  attendees: AppointmentAttendee[];
+  
+  // Location
+  locationType: "virtual" | "in-person" | "phone" | "hybrid";
+  meetingLink?: string;              // For virtual meetings
+  physicalLocation?: string;
+  phoneNumber?: string;
+  
+  // Reminders
+  reminders: AppointmentReminder[];
+  
+  // Notes
+  notes?: string;
+  agenda?: string[];
+  attachments?: AppointmentAttachment[];
+  
+  // Timestamps
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type AppointmentType =
+  | "meeting"
+  | "call"
+  | "interview"
+  | "consultation"
+  | "demo"
+  | "workshop"
+  | "event"
+  | "reminder"
+  | "other";
+
+export type AppointmentStatus =
+  | "pending"                        // Awaiting confirmations
+  | "confirmed"                      // All confirmed
+  | "tentative"                      // Some tentative
+  | "cancelled"
+  | "completed"
+  | "no-show";
+
+export interface AppointmentAttendee {
+  walletAddress: string;
+  email?: string;
+  displayName?: string;
+  responseStatus: "pending" | "accepted" | "declined" | "tentative";
+  isOptional: boolean;
+  responseAt?: string;
+  comment?: string;
+}
+
+export interface RecurrenceRule {
+  frequency: "daily" | "weekly" | "monthly" | "yearly";
+  interval: number;                  // Every N days/weeks/months
+  daysOfWeek?: number[];             // 0-6 (Sunday-Saturday)
+  dayOfMonth?: number;
+  monthOfYear?: number;
+  endDate?: string;
+  occurrences?: number;              // End after N occurrences
+  exceptions?: string[];             // Dates to skip
+}
+
+export interface AppointmentReminder {
+  id: string;
+  type: "notification" | "email" | "sms";
+  minutesBefore: number;
+  sent: boolean;
+  sentAt?: string;
+}
+
+export interface AppointmentAttachment {
+  id: string;
+  name: string;
+  type: string;
+  cid: string;                       // IPFS CID
+  size: number;
+}
+
+// ============================================================================
+// Group Management Types
+// ============================================================================
+
+/**
+ * Group chat with advanced features
+ */
+export interface ChatGroup {
+  id: string;
+  conversationId: string;
+  
+  // Basic info
+  name: string;
+  description?: string;
+  avatar?: string;
+  coverImage?: string;
+  
+  // Visibility & Access
+  isPrivate: boolean;               // True = invite-only, false = public
+  inviteLink?: string;              // Shareable invite link
+  inviteCode?: string;              // Short code for joining
+  
+  // Ownership
+  ownerWallet: string;
+  admins: string[];                  // Wallet addresses
+  
+  // Members
+  members: GroupMember[];
+  pendingInvites: GroupInvite[];
+  pendingRequests: JoinRequest[];
+  bannedUsers: BannedUser[];
+  
+  // Settings
+  settings: GroupSettings;
+  
+  // Categories/Topics
+  topics?: GroupTopic[];
+  
+  // Stats
+  memberCount: number;
+  messageCount: number;
+  unreadCount?: number;             // Unread messages for current user
+  lastActivityAt: string;
+  
+  // Timestamps
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GroupMember {
+  walletAddress: string;
+  displayName?: string;
+  avatar?: string;
+  role: GroupRole;
+  permissions: GroupPermissions;
+  joinedAt: string;
+  invitedBy?: string;
+  lastSeenAt?: string;
+  mutedUntil?: string;
+  customTitle?: string;              // Custom role title
+}
+
+export type GroupRole = 
+  | "owner"
+  | "admin"
+  | "moderator"
+  | "member"
+  | "guest";
+
+export interface GroupPermissions {
+  canSendMessages: boolean;
+  canSendMedia: boolean;
+  canAddMembers: boolean;
+  canRemoveMembers: boolean;
+  canChangeSettings: boolean;
+  canPinMessages: boolean;
+  canDeleteMessages: boolean;
+  canStartMeetings: boolean;
+  canCreatePolls: boolean;
+  canManageTopics: boolean;
+}
+
+export interface GroupSettings {
+  // Membership
+  isPublic: boolean;
+  joinMethod: "open" | "invite" | "request" | "code";
+  inviteCode?: string;
+  requireApproval: boolean;
+  maxMembers: number;
+  
+  // Messaging
+  slowMode: boolean;
+  slowModeInterval?: number;         // Seconds between messages
+  allowLinks: boolean;
+  allowMedia: boolean;
+  allowPolls: boolean;
+  
+  // Moderation
+  autoMod: boolean;
+  autoModRules?: AutoModRule[];
+  
+  // Notifications
+  defaultMuted: boolean;
+  announcementsOnly: boolean;
+}
+
+export interface AutoModRule {
+  id: string;
+  type: "spam" | "profanity" | "links" | "mentions" | "caps" | "custom";
+  action: "warn" | "delete" | "mute" | "kick" | "ban";
+  pattern?: string;                  // Regex for custom rules
+  duration?: number;                 // Mute/ban duration in minutes
+}
+
+export interface GroupInvite {
+  id: string;
+  groupId: string;
+  inviterWallet: string;
+  inviteeWallet: string;
+  message?: string;
+  status: "pending" | "accepted" | "declined" | "expired";
+  expiresAt: string;
+  createdAt: string;
+}
+
+export interface JoinRequest {
+  id: string;
+  groupId: string;
+  requesterWallet: string;
+  message?: string;
+  status: "pending" | "approved" | "rejected";
+  reviewedBy?: string;
+  reviewedAt?: string;
+  createdAt: string;
+}
+
+export interface BannedUser {
+  walletAddress: string;
+  bannedBy: string;
+  reason?: string;
+  bannedAt: string;
+  expiresAt?: string;                // null = permanent
+}
+
+export interface GroupTopic {
+  id: string;
+  name: string;
+  description?: string;
+  icon?: string;
+  color?: string;
+  messageCount: number;
+  isDefault: boolean;
+  position: number;
+}
+
+// ============================================================================
+// Poll Types (for Groups)
+// ============================================================================
+
+export interface Poll {
+  id: string;
+  conversationId: string;
+  creatorWallet: string;
+  
+  // Content
+  question: string;
+  options: PollOption[];
+  
+  // Settings
+  type: "single" | "multiple";
+  anonymous: boolean;
+  showResults: "always" | "after-vote" | "after-end";
+  allowAddOptions: boolean;
+  
+  // Timing
+  endsAt?: string;
+  
+  // Results
+  totalVotes: number;
+  
+  // Status
+  status: "active" | "ended" | "cancelled";
+  
+  // Timestamps
+  createdAt: string;
+  endedAt?: string;
+}
+
+export interface PollOption {
+  id: string;
+  text: string;
+  votes: number;
+  voters?: string[];                 // Wallet addresses (if not anonymous)
+}
+
+// ============================================================================
+// Reactions & Emoji Types
+// ============================================================================
+
+export interface ReactionSet {
+  messageId: string;
+  reactions: {
+    [emoji: string]: string[];       // emoji -> wallet addresses
+  };
+}
+
+// ============================================================================
+// Meeting Request/Response Types
+// ============================================================================
+
+export interface CreateMeetingRequest {
+  conversationId?: string;
+  title: string;
+  description?: string;
+  type: MeetingType;
+  scheduledStart?: string;
+  scheduledEnd?: string;
+  invitees?: string[];               // Wallet addresses
+  settings?: Partial<MeetingSettings>;
+}
+
+export interface CreateMeetingResult {
+  success: boolean;
+  meeting?: Meeting;
+  inviteLink?: string;
+  error?: string;
+}
+
+export interface JoinMeetingRequest {
+  meetingId: string;
+  password?: string;
+  audioEnabled?: boolean;
+  videoEnabled?: boolean;
+}
+
+export interface JoinMeetingResult {
+  success: boolean;
+  meeting?: Meeting;
+  webrtcConfig?: {
+    iceServers: any[];
+    signalingTopic: string;
+  };
+  error?: string;
+}
+
+export interface CreateAppointmentRequest {
+  title: string;
+  description?: string;
+  type: AppointmentType;
+  startTime: string;
+  endTime: string;
+  timezone: string;
+  attendees: string[];               // Wallet addresses
+  locationType: "virtual" | "in-person" | "phone" | "hybrid";
+  recurrence?: RecurrenceRule;
+  reminders?: Array<{ type: "notification" | "email"; minutesBefore: number }>;
+}
+
+export interface CreateAppointmentResult {
+  success: boolean;
+  appointment?: Appointment;
+  error?: string;
+}
+
+export interface CreateGroupRequest {
+  name: string;
+  description?: string;
+  avatar?: string;
+  members?: string[];                // Initial member wallet addresses
+  settings?: Partial<GroupSettings>;
+}
+
+export interface CreateGroupResult {
+  success: boolean;
+  group?: ChatGroup;
+  conversation?: ChatConversation;
+  error?: string;
+}

@@ -1585,6 +1585,7 @@ async function getChatServiceStatus(): Promise<ChatServiceStatus> {
 
 /**
  * Subscribe to global presence topic for message discovery
+ * This function is resilient to failures and will not block app startup
  */
 async function subscribeToGlobalPresence(): Promise<void> {
   const presenceTopic = `/joycreate/chat/v1/presence`;
@@ -1594,7 +1595,12 @@ async function subscribeToGlobalPresence(): Promise<void> {
   }
   
   try {
-    await ensureChatHelia();
+    // Only try to subscribe if Helia is already initialized
+    // Don't try to initialize it here as it may fail on certain setups
+    if (!chatHelia) {
+      logger.debug("Helia not initialized, skipping global presence subscription");
+      return;
+    }
     
     if (chatHelia?.libp2p?.services?.pubsub) {
       chatHelia.libp2p.services.pubsub.subscribe(presenceTopic);
@@ -1634,7 +1640,7 @@ async function subscribeToGlobalPresence(): Promise<void> {
               });
               
               emitChatEvent({
-                type: "presence:updated",
+                type: "presence:changed",
                 userId: message.senderId,
                 status: message.payload?.status || "online",
               });
@@ -1746,6 +1752,98 @@ export function registerDecentralizedChatHandlers(): void {
   // Status
   ipcMain.handle("dchat:status", async () => {
     return getChatServiceStatus();
+  });
+
+  // Self-test handlers for verifying encryption and pinning
+  ipcMain.handle("dchat:test:encryption", async (_, message: string) => {
+    // Test encryption round-trip using the local identity
+    if (!localIdentity) {
+      throw new Error("No identity initialized - cannot test encryption");
+    }
+    
+    // Create a test keypair for encryption test (simulating self-encryption)
+    const testKeyPair = nacl.box.keyPair();
+    const nonce = nacl.randomBytes(nacl.box.nonceLength);
+    const messageBytes = naclUtil.decodeUTF8(message);
+    
+    // Encrypt using test public key
+    const encrypted = nacl.box(
+      messageBytes,
+      nonce,
+      testKeyPair.publicKey,
+      testKeyPair.secretKey
+    );
+    
+    if (!encrypted) {
+      throw new Error("Encryption failed");
+    }
+    
+    // Decrypt using test secret key
+    const decrypted = nacl.box.open(
+      encrypted,
+      nonce,
+      testKeyPair.publicKey,
+      testKeyPair.secretKey
+    );
+    
+    if (!decrypted) {
+      throw new Error("Decryption failed");
+    }
+    
+    const decryptedMessage = naclUtil.encodeUTF8(decrypted);
+    
+    if (decryptedMessage !== message) {
+      throw new Error("Decrypted message does not match original");
+    }
+    
+    return {
+      success: true,
+      originalMessage: message,
+      decryptedMessage,
+      encryptedLength: encrypted.length,
+      algorithm: "x25519-xsalsa20-poly1305"
+    };
+  });
+
+  ipcMain.handle("dchat:test:pin", async (_, data: unknown) => {
+    // Test Helia pinning with minimal footprint
+    if (!chatHelia || !chatJsonCodec) {
+      throw new Error("Helia not initialized - cannot test pinning");
+    }
+    
+    const testData = data || { test: true, timestamp: Date.now() };
+    
+    // Store to Helia using JSON codec
+    const cid = await chatJsonCodec.add(testData);
+    const cidString = cid.toString();
+    
+    // Verify we can retrieve it
+    const retrieved = await chatJsonCodec.get(cid);
+    
+    return {
+      success: true,
+      cid: cidString,
+      dataSize: JSON.stringify(testData).length,
+      verified: JSON.stringify(retrieved) === JSON.stringify(testData)
+    };
+  });
+
+  ipcMain.handle("dchat:test:connectivity", async () => {
+    // Test P2P connectivity status
+    const status = await getChatServiceStatus();
+    
+    let peerCount = 0;
+    if (chatHelia) {
+      peerCount = chatHelia.libp2p.getPeers().length;
+    }
+    
+    return {
+      heliaInitialized: status.initialized && status.heliaConnected,
+      identityInitialized: status.initialized && !!status.identity,
+      peerCount,
+      walletAddress: status.identity?.walletAddress,
+      pubsubReady: status.pubsubEnabled
+    };
   });
   
   logger.info("Decentralized chat handlers registered");

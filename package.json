@@ -220,6 +220,24 @@
       "electron-winstaller",
       "better-sqlite3",
       "esbuild"
+    ],
+    "ignoredBuiltDependencies": [
+      "@biomejs/biome",
+      "@parcel/watcher",
+      "@scarf/scarf",
+      "@sentry-internal/node-native-stacktrace",
+      "core-js",
+      "cpu-features",
+      "dugite",
+      "electron",
+      "electron-winstaller",
+      "msgpackr-extract",
+      "node-datachannel",
+      "oracledb",
+      "protobufjs",
+      "sharp",
+      "sqlite3",
+      "ssh2"
     ]
   }
 }

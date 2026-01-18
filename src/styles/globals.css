@@ -91,92 +91,93 @@ body[data-scroll-locked] .app-region-drag {
   --default-font-family: "Geist", sans-serif;
   --default-mono-font-family: "Geist Mono", monospace;
   
-  /* Ghost Theme - Light Mode */
-  --background-lightest: rgba(255, 255, 255, 0.95);
-  --background-lighter: rgba(250, 250, 252, 0.9);
-  --background: rgba(245, 246, 250, 0.85);
-  --background-darker: rgba(235, 237, 245, 0.9);
-  --background-darkest: rgba(225, 228, 240, 0.95);
+  /* Ghost Theme - Light Mode (Ollama/JoyMarketplace style) */
+  --background-lightest: rgba(255, 255, 255, 0.98);
+  --background-lighter: rgba(252, 252, 254, 0.95);
+  --background: rgba(250, 250, 252, 0.92);
+  --background-darker: rgba(245, 245, 250, 0.95);
+  --background-darkest: rgba(240, 240, 248, 0.98);
 
-  --foreground: oklch(0.2 0.02 270);
-  --card: rgba(255, 255, 255, 0.7);
+  --foreground: oklch(0.18 0.02 270);
+  --card: rgba(255, 255, 255, 0.65);
   --card-foreground: oklch(0.15 0 0);
-  --popover: rgba(255, 255, 255, 0.95);
+  --popover: rgba(255, 255, 255, 0.98);
   --popover-foreground: oklch(0.15 0 0);
   
-  /* JoyCreate Primary - Vibrant Purple/Violet */
-  --primary: oklch(0.55 0.18 280);
+  /* JoyCreate Primary - Soft Purple/Violet */
+  --primary: oklch(0.58 0.16 280);
   --primary-foreground: oklch(0.99 0 0);
   
-  --secondary: rgba(245, 245, 250, 0.8);
-  --secondary-foreground: oklch(0.2 0 0);
-  --muted: rgba(240, 241, 248, 0.7);
-  --muted-foreground: oklch(0.5 0 0);
-  --accent: rgba(238, 240, 255, 0.8);
-  --accent-foreground: oklch(0.2 0 0);
-  --destructive: oklch(0.6 0.22 25);
-  --destructive-foreground: oklch(0.6 0.22 25);
-  --border: rgba(200, 205, 220, 0.5);
-  --input: rgba(230, 232, 240, 0.6);
-  --ring: oklch(0.6 0.15 280);
+  --secondary: rgba(248, 248, 252, 0.75);
+  --secondary-foreground: oklch(0.25 0 0);
+  --muted: rgba(245, 246, 250, 0.65);
+  --muted-foreground: oklch(0.45 0.02 270);
+  --accent: rgba(245, 243, 255, 0.75);
+  --accent-foreground: oklch(0.25 0 0);
+  --destructive: oklch(0.55 0.2 25);
+  --destructive-foreground: oklch(0.55 0.2 25);
+  --border: rgba(220, 222, 235, 0.45);
+  --input: rgba(248, 248, 252, 0.55);
+  --ring: oklch(0.58 0.14 280);
   --chart-1: oklch(0.65 0.2 45);
   --chart-2: oklch(0.6 0.12 185);
   --chart-3: oklch(0.4 0.07 230);
   --chart-4: oklch(0.83 0.19 85);
   --chart-5: oklch(0.77 0.19 70);
-  --radius: 0.75rem;
+  --radius: 0.625rem;
   
-  /* Ghost Sidebar */
-  --sidebar: rgba(248, 249, 252, 0.75);
-  --sidebar-foreground: oklch(0.15 0 0);
-  --sidebar-primary: oklch(0.55 0.18 280);
+  /* Ghost Sidebar - Light */
+  --sidebar: rgba(252, 252, 255, 0.7);
+  --sidebar-foreground: oklch(0.2 0.02 270);
+  --sidebar-primary: oklch(0.58 0.16 280);
   --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: rgba(230, 235, 255, 0.6);
-  --sidebar-accent-foreground: oklch(0.2 0 0);
-  --sidebar-border: rgba(200, 205, 220, 0.3);
-  --sidebar-ring: oklch(0.6 0.15 280);
+  --sidebar-accent: rgba(245, 243, 255, 0.55);
+  --sidebar-accent-foreground: oklch(0.25 0 0);
+  --sidebar-border: rgba(220, 222, 235, 0.25);
+  --sidebar-ring: oklch(0.58 0.14 280);
   
-  /* Ghost Effects */
-  --ghost-blur: 12px;
-  --ghost-shadow: 0 4px 24px -4px rgba(0, 0, 0, 0.08);
-  --ghost-border: 1px solid rgba(255, 255, 255, 0.3);
-  --ghost-glow: 0 0 20px rgba(139, 92, 246, 0.15);
+  /* Ghost Effects - Light */
+  --ghost-blur: 16px;
+  --ghost-shadow: 0 2px 20px -4px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.03);
+  --ghost-border: 1px solid rgba(255, 255, 255, 0.6);
+  --ghost-glow: 0 0 24px rgba(139, 92, 246, 0.12);
+  --ghost-inner-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.8);
 }
 
 .prose {
   --tw-prose-pre-bg: var(--background);
 }
 .dark {
-  --docs-bg: #0a0a0f;
+  --docs-bg: #08080c;
 
-  /* Ghost Theme - Dark Mode */
-  --background-lightest: rgba(35, 35, 45, 0.95);
-  --background-lighter: rgba(25, 25, 32, 0.9);
-  --background: rgba(15, 15, 22, 0.95);
-  --background-darker: rgba(12, 12, 18, 0.95);
-  --background-darkest: rgba(8, 8, 14, 0.98);
+  /* Ghost Theme - Dark Mode (Ollama/JoyMarketplace style) */
+  --background-lightest: rgba(30, 30, 38, 0.98);
+  --background-lighter: rgba(22, 22, 28, 0.95);
+  --background: rgba(12, 12, 16, 0.98);
+  --background-darker: rgba(8, 8, 12, 0.98);
+  --background-darkest: rgba(4, 4, 8, 0.99);
   
-  --foreground: oklch(0.95 0 0);
-  --card: rgba(25, 25, 35, 0.7);
-  --card-foreground: oklch(0.95 0 0);
-  --popover: rgba(20, 20, 28, 0.95);
-  --popover-foreground: oklch(0.95 0 0);
+  --foreground: oklch(0.92 0.01 270);
+  --card: rgba(22, 22, 30, 0.65);
+  --card-foreground: oklch(0.92 0 0);
+  --popover: rgba(18, 18, 24, 0.98);
+  --popover-foreground: oklch(0.92 0 0);
   
-  /* JoyCreate Primary - Glowing Purple */
-  --primary: oklch(0.7 0.18 280);
-  --primary-foreground: oklch(0.1 0 0);
+  /* JoyCreate Primary - Soft Glowing Purple */
+  --primary: oklch(0.68 0.16 280);
+  --primary-foreground: oklch(0.08 0 0);
   
-  --secondary: rgba(35, 35, 48, 0.8);
-  --secondary-foreground: oklch(0.95 0 0);
-  --muted: rgba(40, 40, 55, 0.6);
-  --muted-foreground: oklch(0.65 0 0);
-  --accent: rgba(45, 40, 65, 0.7);
-  --accent-foreground: oklch(0.95 0 0);
-  --destructive: oklch(0.45 0.18 25);
-  --destructive-foreground: oklch(0.7 0.22 25);
-  --border: rgba(60, 60, 80, 0.4);
-  --input: rgba(40, 40, 55, 0.5);
-  --ring: oklch(0.6 0.2 280);
+  --secondary: rgba(30, 30, 40, 0.75);
+  --secondary-foreground: oklch(0.9 0 0);
+  --muted: rgba(35, 35, 48, 0.55);
+  --muted-foreground: oklch(0.58 0.02 270);
+  --accent: rgba(40, 35, 58, 0.65);
+  --accent-foreground: oklch(0.9 0 0);
+  --destructive: oklch(0.5 0.18 25);
+  --destructive-foreground: oklch(0.65 0.2 25);
+  --border: rgba(55, 55, 75, 0.35);
+  --input: rgba(35, 35, 48, 0.45);
+  --ring: oklch(0.62 0.18 280);
   --chart-1: oklch(0.5 0.24 265);
   --chart-2: oklch(0.7 0.17 160);
   --chart-3: oklch(0.77 0.19 70);
@@ -184,20 +185,21 @@ body[data-scroll-locked] .app-region-drag {
   --chart-5: oklch(0.65 0.25 16);
   
   /* Ghost Sidebar - Dark */
-  --sidebar: rgba(18, 18, 25, 0.85);
-  --sidebar-foreground: oklch(0.95 0 0);
-  --sidebar-primary: oklch(0.65 0.2 280);
-  --sidebar-primary-foreground: oklch(0.95 0 0);
-  --sidebar-accent: rgba(50, 45, 75, 0.5);
-  --sidebar-accent-foreground: oklch(0.95 0 0);
-  --sidebar-border: rgba(60, 60, 80, 0.3);
-  --sidebar-ring: oklch(0.6 0.2 280);
+  --sidebar: rgba(14, 14, 20, 0.8);
+  --sidebar-foreground: oklch(0.9 0.01 270);
+  --sidebar-primary: oklch(0.68 0.18 280);
+  --sidebar-primary-foreground: oklch(0.92 0 0);
+  --sidebar-accent: rgba(45, 40, 65, 0.45);
+  --sidebar-accent-foreground: oklch(0.9 0 0);
+  --sidebar-border: rgba(55, 55, 75, 0.25);
+  --sidebar-ring: oklch(0.62 0.18 280);
   
   /* Ghost Effects - Dark */
-  --ghost-blur: 16px;
-  --ghost-shadow: 0 8px 32px -8px rgba(0, 0, 0, 0.5);
-  --ghost-border: 1px solid rgba(255, 255, 255, 0.08);
-  --ghost-glow: 0 0 30px rgba(139, 92, 246, 0.25);
+  --ghost-blur: 20px;
+  --ghost-shadow: 0 4px 32px -8px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.3);
+  --ghost-border: 1px solid rgba(255, 255, 255, 0.06);
+  --ghost-glow: 0 0 32px rgba(139, 92, 246, 0.2);
+  --ghost-inner-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.04);
 }
 
 @theme inline {
@@ -342,79 +344,129 @@ body[data-scroll-locked] .app-region-drag {
   font-size: 0.82rem;
 }
 
-/* Ghost Theme Utility Classes */
+/* Ghost Theme Utility Classes - Ollama/JoyMarketplace Style */
 .ghost-panel {
   background: var(--card);
   backdrop-filter: blur(var(--ghost-blur));
   -webkit-backdrop-filter: blur(var(--ghost-blur));
   border: var(--ghost-border);
-  box-shadow: var(--ghost-shadow);
+  box-shadow: var(--ghost-shadow), var(--ghost-inner-shadow);
+  border-radius: var(--radius-lg);
 }
 
 .ghost-card {
   background: var(--card);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  box-shadow: 0 2px 16px -4px rgba(0, 0, 0, 0.1);
-  transition: all 0.2s ease;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(128, 128, 138, 0.12);
+  box-shadow: 0 1px 8px -2px rgba(0, 0, 0, 0.08), var(--ghost-inner-shadow);
+  border-radius: var(--radius);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .ghost-card:hover {
-  box-shadow: var(--ghost-glow), 0 4px 20px -4px rgba(0, 0, 0, 0.15);
+  border-color: rgba(139, 92, 246, 0.25);
+  box-shadow: 0 4px 24px -6px rgba(139, 92, 246, 0.15), 0 2px 12px -4px rgba(0, 0, 0, 0.1);
   transform: translateY(-1px);
 }
 
+.dark .ghost-card {
+  border-color: rgba(80, 80, 100, 0.2);
+  box-shadow: 0 2px 16px -4px rgba(0, 0, 0, 0.4), var(--ghost-inner-shadow);
+}
+
+.dark .ghost-card:hover {
+  border-color: rgba(139, 92, 246, 0.35);
+  box-shadow: 0 0 32px rgba(139, 92, 246, 0.12), 0 4px 24px -6px rgba(0, 0, 0, 0.5);
+}
+
 .ghost-button {
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  transition: all 0.15s ease;
+  background: rgba(128, 128, 140, 0.08);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border: 1px solid rgba(128, 128, 140, 0.12);
+  border-radius: var(--radius);
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .ghost-button:hover {
-  background: rgba(255, 255, 255, 0.15);
-  box-shadow: var(--ghost-glow);
+  background: rgba(139, 92, 246, 0.1);
+  border-color: rgba(139, 92, 246, 0.25);
+  box-shadow: 0 0 16px rgba(139, 92, 246, 0.15);
+}
+
+.dark .ghost-button {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.dark .ghost-button:hover {
+  background: rgba(139, 92, 246, 0.15);
+  border-color: rgba(139, 92, 246, 0.35);
+  box-shadow: 0 0 24px rgba(139, 92, 246, 0.2);
 }
 
 .ghost-input {
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  background: rgba(128, 128, 140, 0.05);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   border: 1px solid var(--border);
-  transition: all 0.15s ease;
+  border-radius: var(--radius);
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .ghost-input:focus {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: var(--ring);
-  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
+  background: rgba(139, 92, 246, 0.04);
+  border-color: rgba(139, 92, 246, 0.4);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1), 0 0 16px rgba(139, 92, 246, 0.1);
+  outline: none;
+}
+
+.dark .ghost-input {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.dark .ghost-input:focus {
+  background: rgba(139, 92, 246, 0.08);
+  border-color: rgba(139, 92, 246, 0.5);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15), 0 0 24px rgba(139, 92, 246, 0.15);
 }
 
 .ghost-glow {
   box-shadow: var(--ghost-glow);
 }
 
-/* Lovable-style Sidebar */
+.ghost-text {
+  color: var(--foreground);
+  text-shadow: 0 0 24px rgba(139, 92, 246, 0.3);
+}
+
+.ghost-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border), transparent);
+}
+
+/* Lovable-style Sidebar - Updated for Ghost Theme */
 .lovable-sidebar {
   background: linear-gradient(
     180deg,
-    rgba(255, 255, 255, 0.95) 0%,
-    rgba(250, 250, 255, 0.9) 50%,
-    rgba(255, 255, 255, 0.95) 100%
+    rgba(252, 252, 255, 0.96) 0%,
+    rgba(248, 248, 254, 0.92) 50%,
+    rgba(252, 252, 255, 0.96) 100%
   );
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-right: 1px solid rgba(128, 128, 150, 0.1);
 }
 
 .dark .lovable-sidebar {
   background: linear-gradient(
     180deg,
-    rgba(15, 15, 22, 0.95) 0%,
-    rgba(12, 12, 18, 0.9) 50%,
-    rgba(15, 15, 22, 0.95) 100%
+    rgba(14, 14, 20, 0.95) 0%,
+    rgba(10, 10, 16, 0.9) 50%,
+    rgba(14, 14, 20, 0.95) 100%
   );
+  border-right: 1px solid rgba(60, 60, 80, 0.2);
 }
 
 /* Nav item with gradient icon background */

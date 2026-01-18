@@ -27,6 +27,7 @@ import { RuntimeModeSelector } from "@/components/RuntimeModeSelector";
 import { NodePathSelector } from "@/components/NodePathSelector";
 import { ToolsMcpSettings } from "@/components/settings/ToolsMcpSettings";
 import { AgentToolsSettings } from "@/components/settings/AgentToolsSettings";
+import { JoyIdentitySettings } from "@/components/settings/JoyIdentitySettings";
 import { ZoomSelector } from "@/components/ZoomSelector";
 import { useSetAtom } from "jotai";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
@@ -140,6 +141,11 @@ export default function SettingsPage() {
               <SupabaseIntegration />
               <NeonIntegration />
             </div>
+          </div>
+
+          {/* Joy Blockchain Identity */}
+          <div id="joy-identity">
+            <JoyIdentitySettings />
           </div>
 
           {/* Agent v2 Permissions */}

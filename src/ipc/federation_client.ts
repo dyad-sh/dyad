@@ -7,6 +7,8 @@ import type { IpcRenderer } from "electron";
 import type {
   DecentralizedIdentity,
   Peer,
+  BootstrapPeerEntry,
+  P2PEscrow,
   P2PListing,
   P2PPricing,
   P2PLicense,
@@ -15,6 +17,13 @@ import type {
   P2PMessage,
   P2PConversation,
   DHTRecord,
+  ModelChunkAnnouncement,
+  ModelChunkListing,
+  ModelChunkPurchase,
+  FederatedInferenceRequest,
+  FederatedInferenceRoute,
+  FederatedInferenceExecutionRequest,
+  FederatedInferenceExecutionResult,
   FederationStats,
   TransactionStatus,
 } from "@/types/federation_types";
@@ -40,9 +49,17 @@ export const FederationClient = {
    */
   async createIdentity(
     displayName: string,
-    password: string
+    password: string,
+    storeName?: string,
+    creatorId?: string
   ): Promise<{ identity: DecentralizedIdentity; privateKey: string }> {
-    return getIpcRenderer().invoke("federation:create-identity", displayName, password);
+    return getIpcRenderer().invoke(
+      "federation:create-identity",
+      displayName,
+      password,
+      storeName,
+      creatorId
+    );
   },
 
   /**
@@ -89,6 +106,24 @@ export const FederationClient = {
     return getIpcRenderer().invoke("federation:add-peer", peer);
   },
 
+  // ============= Bootstrap Peers =============
+
+  async listBootstrapPeers(): Promise<BootstrapPeerEntry[]> {
+    return getIpcRenderer().invoke("federation:bootstrap:list");
+  },
+
+  async addBootstrapPeer(entry: Omit<BootstrapPeerEntry, "added_at">): Promise<BootstrapPeerEntry> {
+    return getIpcRenderer().invoke("federation:bootstrap:add", entry);
+  },
+
+  async removeBootstrapPeer(peerId: string): Promise<void> {
+    return getIpcRenderer().invoke("federation:bootstrap:remove", peerId);
+  },
+
+  async importBootstrapPeer(peerId: string): Promise<Peer> {
+    return getIpcRenderer().invoke("federation:bootstrap:import", peerId);
+  },
+
   // ============= DHT =============
 
   /**
@@ -109,6 +144,131 @@ export const FederationClient = {
    */
   async dhtGet(key: string): Promise<DHTRecord | null> {
     return getIpcRenderer().invoke("federation:dht-get", key);
+  },
+
+  // ============= Model Chunk DHT =============
+
+  async serveModelChunk(params: { filePath: string }): Promise<{ cid: string; bytes: number }> {
+    return getIpcRenderer().invoke("federation:model-chunk-serve", params);
+  },
+
+  async requestModelChunk(params: { cid: string; outputPath: string }): Promise<{ bytes: number }> {
+    return getIpcRenderer().invoke("federation:model-chunk-request", params);
+  },
+
+  async announceModelChunk(params: {
+    modelId: string;
+    modelHash?: string;
+    chunkCid: string;
+    chunkIndex: number;
+    totalChunks?: number;
+    bytes?: number;
+    privateKey: string;
+  }): Promise<ModelChunkAnnouncement> {
+    return getIpcRenderer().invoke("federation:model-chunk-announce", params);
+  },
+
+  async findModelChunks(modelId: string): Promise<ModelChunkAnnouncement[]> {
+    return getIpcRenderer().invoke("federation:model-chunk-find", modelId);
+  },
+
+  // ============= Federated Inference Routing =============
+
+  async routeInference(request: FederatedInferenceRequest): Promise<FederatedInferenceRoute> {
+    return getIpcRenderer().invoke("federation:route-inference", request);
+  },
+
+  async executeInference(
+    request: FederatedInferenceExecutionRequest
+  ): Promise<FederatedInferenceExecutionResult> {
+    return getIpcRenderer().invoke("federation:execute-inference", request);
+  },
+
+  async streamInference(
+    request: FederatedInferenceExecutionRequest,
+    callbacks: {
+      onChunk: (content: string) => void;
+      onDone?: (data: {
+        status: "local" | "dispatched";
+        route: FederatedInferenceRoute;
+        recordId?: string;
+        cid?: string;
+        receipt?: { cid: string; created_at: string; json_path?: string; cbor_path?: string };
+      }) => void;
+      onError?: (error: string) => void;
+    }
+  ): Promise<{ streamId: string }> {
+    const stream = await getIpcRenderer().invoke("federation:execute-inference-stream", request);
+    const streamId = stream.streamId as string;
+
+    const onChunk = (payload: any) => {
+      if (payload?.streamId === streamId && payload?.content) {
+        callbacks.onChunk(payload.content);
+      }
+    };
+    const onDone = (payload: any) => {
+      if (payload?.streamId === streamId) {
+        callbacks.onDone?.(payload);
+        cleanup();
+      }
+    };
+    const onError = (payload: any) => {
+      if (payload?.streamId === streamId) {
+        callbacks.onError?.(payload.error || "Stream error");
+        cleanup();
+      }
+    };
+
+    const cleanup = () => {
+      getIpcRenderer().removeListener("federation:inference:chunk", onChunk);
+      getIpcRenderer().removeListener("federation:inference:done", onDone);
+      getIpcRenderer().removeListener("federation:inference:error", onError);
+    };
+
+    getIpcRenderer().on("federation:inference:chunk", onChunk);
+    getIpcRenderer().on("federation:inference:done", onDone);
+    getIpcRenderer().on("federation:inference:error", onError);
+
+    return { streamId };
+  },
+
+  // ============= Model Chunk Marketplace =============
+
+  async createModelChunkListing(params: {
+    modelId: string;
+    modelHash?: string;
+    title: string;
+    description?: string;
+    tags?: string[];
+    chunkCids: string[];
+    chunkCount: number;
+    bytesTotal?: number;
+    pricing: P2PPricing;
+    license: ModelChunkListing["license"];
+    privateKey: string;
+  }): Promise<ModelChunkListing> {
+    return getIpcRenderer().invoke("federation:model-chunk-listing:create", params);
+  },
+
+  async listModelChunkListings(): Promise<ModelChunkListing[]> {
+    return getIpcRenderer().invoke("federation:model-chunk-listing:list");
+  },
+
+  async createModelChunkPurchase(params: {
+    listingId: string;
+    buyerDid: string;
+    paymentTxHash?: string;
+    receiptCid?: string;
+  }): Promise<ModelChunkPurchase> {
+    return getIpcRenderer().invoke("federation:model-chunk-purchase:create", params);
+  },
+
+  async listModelChunkPurchases(): Promise<ModelChunkPurchase[]> {
+    return getIpcRenderer().invoke("federation:model-chunk-purchase:list");
+  },
+
+  async createModelChunkEscrow(transactionId: string): Promise<P2PEscrow> {
+    return getIpcRenderer().invoke("federation:model-chunk-escrow:create", transactionId);
   },
 
   // ============= P2P Listings =============

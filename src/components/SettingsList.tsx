@@ -20,6 +20,7 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
   { id: "provider-settings", label: "Model Providers" },
   { id: "telemetry", label: "Telemetry" },
   { id: "integrations", label: "Integrations" },
+  { id: "joy-identity", label: "Joy Identity" },
   {
     id: "agent-permissions",
     label: "Agent Permissions",

@@ -53,6 +53,8 @@ let createHelia: any;
 let json: any;
 let FsBlockstore: any;
 let FsDatastore: any;
+let gossipsub: any;
+let kadDHT: any;
 
 async function loadCryptoModules() {
   if (!nacl) {
@@ -74,6 +76,22 @@ async function loadHeliaModules() {
     
     const datastoreModule = await import("datastore-fs");
     FsDatastore = datastoreModule.FsDatastore;
+    
+    // Load gossipsub for pubsub messaging
+    try {
+      const gossipsubModule = await import("@chainsafe/libp2p-gossipsub");
+      gossipsub = gossipsubModule.gossipsub;
+    } catch (e) {
+      logger.warn("Failed to load gossipsub:", e);
+    }
+    
+    // Load kadDHT for distributed hash table
+    try {
+      const kadDHTModule = await import("@libp2p/kad-dht");
+      kadDHT = kadDHTModule.kadDHT;
+    } catch (e) {
+      logger.warn("Failed to load kadDHT:", e);
+    }
   }
 }
 
@@ -1049,12 +1067,30 @@ async function subscribeToConversation(conversationId: string): Promise<void> {
   }
   
   try {
-    // Would use Helia's libp2p pubsub
-    // For now, track subscriptions
+    await ensureChatHelia();
+    
+    // Try to subscribe via libp2p pubsub if available
+    if (chatHelia?.libp2p?.services?.pubsub) {
+      chatHelia.libp2p.services.pubsub.subscribe(topic);
+      
+      // Set up message handler
+      chatHelia.libp2p.services.pubsub.addEventListener("message", (evt: any) => {
+        if (evt.detail.topic === topic) {
+          handlePubSubMessage(topic, evt.detail.data).catch(err => {
+            logger.error("Error handling pubsub message:", err);
+          });
+        }
+      });
+      
+      logger.info("Subscribed to conversation via PubSub", { conversationId, topic });
+    }
+    
     activeSubscriptions.add(topic);
     logger.info("Subscribed to conversation", { conversationId, topic });
   } catch (error) {
     logger.error("Failed to subscribe to conversation:", error);
+    // Still track subscription for local handling
+    activeSubscriptions.add(topic);
   }
 }
 
@@ -1078,8 +1114,35 @@ async function publishMessage(conversationId: string, message: ChatMessage): Pro
     signature: await signMessage(JSON.stringify(message)),
   };
   
-  // Would publish via libp2p
-  logger.debug("Publishing message to PubSub", { topic, messageId: message.id });
+  try {
+    await ensureChatHelia();
+    
+    // Try to publish via libp2p pubsub if available
+    if (chatHelia?.libp2p?.services?.pubsub) {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(JSON.stringify(pubsubMessage));
+      await chatHelia.libp2p.services.pubsub.publish(topic, data);
+      logger.info("Published message to PubSub", { topic, messageId: message.id });
+    } else {
+      logger.debug("PubSub not available, message pinned to IPFS only", { messageId: message.id });
+    }
+    
+    // Also publish to presence topic for discovery
+    const presenceTopic = `/joycreate/chat/v1/presence`;
+    if (chatHelia?.libp2p?.services?.pubsub) {
+      const presenceMsg = {
+        type: "message:available",
+        senderId: message.sender,
+        conversationId,
+        cid: message.cid,
+        timestamp: new Date().toISOString(),
+      };
+      const presenceData = new TextEncoder().encode(JSON.stringify(presenceMsg));
+      await chatHelia.libp2p.services.pubsub.publish(presenceTopic, presenceData);
+    }
+  } catch (error) {
+    logger.warn("Failed to publish to PubSub:", error);
+  }
 }
 
 /**
@@ -1222,27 +1285,125 @@ async function checkOfflineMessages(): Promise<ChatMessage[]> {
 }
 
 // ============================================================================
-// DHT Operations
+// DHT Operations (with local storage fallback)
 // ============================================================================
 
+// DHT cache stored locally for offline message discovery
+const dhtCache = new Map<string, { value: any; timestamp: string }>();
+const dhtCacheFile = () => path.join(getChatDir(), "dht-cache.json");
+
+async function loadDHTCache(): Promise<void> {
+  try {
+    const cachePath = dhtCacheFile();
+    if (await fs.pathExists(cachePath)) {
+      const data = await fs.readJson(cachePath);
+      for (const [key, entry] of Object.entries(data)) {
+        dhtCache.set(key, entry as { value: any; timestamp: string });
+      }
+      logger.debug("Loaded DHT cache", { entries: dhtCache.size });
+    }
+  } catch (error) {
+    logger.warn("Failed to load DHT cache:", error);
+  }
+}
+
+async function saveDHTCache(): Promise<void> {
+  try {
+    const data: Record<string, any> = {};
+    for (const [key, entry] of dhtCache) {
+      data[key] = entry;
+    }
+    await fs.writeJson(dhtCacheFile(), data, { spaces: 2 });
+  } catch (error) {
+    logger.warn("Failed to save DHT cache:", error);
+  }
+}
+
 /**
- * Publish to DHT
+ * Publish to DHT (with local fallback)
  */
 async function publishToDHT(key: string, value: any): Promise<void> {
   try {
-    // Would use Helia's DHT
-    logger.debug("Publishing to DHT", { key });
+    // Store locally first for fallback
+    dhtCache.set(key, { value, timestamp: new Date().toISOString() });
+    await saveDHTCache();
+    
+    // Try to publish to Helia's DHT if available
+    if (chatHelia?.libp2p?.services?.dht) {
+      const encoder = new TextEncoder();
+      const valueBytes = encoder.encode(JSON.stringify(value));
+      await chatHelia.libp2p.services.dht.put(
+        encoder.encode(key),
+        valueBytes
+      );
+      logger.debug("Published to DHT", { key });
+    }
+    
+    // Also store as pinned JSON for IPFS discovery
+    const cid = await storeChatJSON({ key, value, timestamp: new Date().toISOString() });
+    
+    // Store CID mapping locally for retrieval
+    const mappingPath = path.join(getChatDir(), "dht-mappings.json");
+    let mappings: Record<string, string> = {};
+    if (await fs.pathExists(mappingPath)) {
+      mappings = await fs.readJson(mappingPath);
+    }
+    mappings[key] = cid;
+    await fs.writeJson(mappingPath, mappings, { spaces: 2 });
+    
+    logger.info("Published to DHT with CID", { key, cid });
   } catch (error) {
     logger.warn("Failed to publish to DHT:", error);
   }
 }
 
 /**
- * Get from DHT
+ * Get from DHT (with local fallback)
  */
 async function getFromDHT(key: string): Promise<any | null> {
   try {
-    // Would use Helia's DHT
+    // Try to get from Helia's DHT first
+    if (chatHelia?.libp2p?.services?.dht) {
+      try {
+        const encoder = new TextEncoder();
+        const decoder = new TextDecoder();
+        const result = await chatHelia.libp2p.services.dht.get(encoder.encode(key));
+        if (result) {
+          const value = JSON.parse(decoder.decode(result));
+          // Update local cache
+          dhtCache.set(key, { value, timestamp: new Date().toISOString() });
+          await saveDHTCache();
+          return value;
+        }
+      } catch (e) {
+        // DHT lookup failed, try fallback
+      }
+    }
+    
+    // Try local cache
+    const cached = dhtCache.get(key);
+    if (cached) {
+      return cached.value;
+    }
+    
+    // Try to load from CID mapping
+    const mappingPath = path.join(getChatDir(), "dht-mappings.json");
+    if (await fs.pathExists(mappingPath)) {
+      const mappings = await fs.readJson(mappingPath);
+      if (mappings[key]) {
+        try {
+          const data = await getChatJSON(mappings[key]);
+          if (data?.value) {
+            dhtCache.set(key, { value: data.value, timestamp: data.timestamp });
+            await saveDHTCache();
+            return data.value;
+          }
+        } catch (e) {
+          // CID fetch failed
+        }
+      }
+    }
+    
     return null;
   } catch (error) {
     logger.warn("Failed to get from DHT:", error);

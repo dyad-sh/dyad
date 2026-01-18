@@ -1807,25 +1807,25 @@ export function registerDecentralizedChatHandlers(): void {
 
   ipcMain.handle("dchat:test:pin", async (_, data: unknown) => {
     // Test Helia pinning with minimal footprint
-    if (!chatHelia || !chatJsonCodec) {
-      throw new Error("Helia not initialized - cannot test pinning");
+    // Use the helper functions that ensure Helia is initialized
+    try {
+      const testData = data || { test: true, timestamp: Date.now() };
+      
+      // Store to Helia using the helper function (ensures Helia is ready)
+      const cidString = await storeChatJSON(testData);
+      
+      // Verify we can retrieve it
+      const retrieved = await getChatJSON(cidString);
+      
+      return {
+        success: true,
+        cid: cidString,
+        dataSize: JSON.stringify(testData).length,
+        verified: JSON.stringify(retrieved) === JSON.stringify(testData)
+      };
+    } catch (error) {
+      throw new Error(`Pin test failed: ${(error as Error).message}`);
     }
-    
-    const testData = data || { test: true, timestamp: Date.now() };
-    
-    // Store to Helia using JSON codec
-    const cid = await chatJsonCodec.add(testData);
-    const cidString = cid.toString();
-    
-    // Verify we can retrieve it
-    const retrieved = await chatJsonCodec.get(cid);
-    
-    return {
-      success: true,
-      cid: cidString,
-      dataSize: JSON.stringify(testData).length,
-      verified: JSON.stringify(retrieved) === JSON.stringify(testData)
-    };
   });
 
   ipcMain.handle("dchat:test:connectivity", async () => {

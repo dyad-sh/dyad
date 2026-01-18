@@ -10,6 +10,14 @@ jobs:
   claude-review:
     # Has Anthropic API key, etc.
     environment: ai-bots
+    # Only review code from regular contributors since claude code has non-trivial costs.
+    # It's also a safe-guard for preventing malicious PRs from doing bad things although we restrict
+    # the permissions and tools allowed in this job.
+    # https://github.com/anthropics/claude-code-action/blob/main/examples/pr-review-filtered-authors.yml
+    if: |
+      github.event.pull_request.user.login == 'wwwillchen' ||
+      github.event.pull_request.user.login == 'azizmejri1' ||
+      github.event.pull_request.user.login == 'princeaden1'
     runs-on: ubuntu-latest
     permissions:
       contents: read

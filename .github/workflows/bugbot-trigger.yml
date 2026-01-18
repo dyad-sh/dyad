@@ -7,8 +7,13 @@ on:
 jobs:
   trigger-bugbot:
     environment: ai-bots
+    # Only review code from regular contributors since bug bot has a capped # of PR reviews.
+    if: |
+      (github.event.pull_request.user.login == 'wwwillchen' ||
+      github.event.pull_request.user.login == 'azizmejri1' ||
+      github.event.pull_request.user.login == 'princeaden1') &&
+      !contains(github.event.pull_request.body, '#skip-bugbot')
     runs-on: ubuntu-latest
-    if: ${{ !contains(github.event.pull_request.body, '#skip-bugbot') }}
     permissions:
       pull-requests: write
     steps:

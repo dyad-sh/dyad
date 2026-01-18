@@ -22,7 +22,7 @@ import {
 } from "../../prompts/system_prompt";
 import { getThemePrompt } from "../../shared/themes";
 import {
-  SUPABASE_AVAILABLE_SYSTEM_PROMPT,
+  getSupabaseAvailableSystemPrompt,
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
 } from "../../prompts/supabase_prompt";
 import { getDyadAppPath } from "../../paths/paths";
@@ -663,9 +663,14 @@ ${componentSnippet}
           updatedChat.app?.supabaseProjectId &&
           isSupabaseConnected(settings)
         ) {
+          const supabaseClientCode = await getSupabaseClientCode({
+            projectId: updatedChat.app.supabaseProjectId,
+            organizationSlug:
+              updatedChat.app.supabaseOrganizationSlug ?? null,
+          });
           systemPrompt +=
             "\n\n" +
-            SUPABASE_AVAILABLE_SYSTEM_PROMPT +
+            getSupabaseAvailableSystemPrompt(supabaseClientCode) +
             "\n\n" +
             // For local agent, we will explicitly fetch the database context when needed.
             (settings.selectedChatMode === "local-agent"
@@ -962,20 +967,6 @@ This conversation includes one or more image attachments. When the user uploads 
         }: {
           fullResponse: string;
         }) => {
-          if (
-            fullResponse.includes("$$SUPABASE_CLIENT_CODE$$") &&
-            updatedChat.app?.supabaseProjectId
-          ) {
-            const supabaseClientCode = await getSupabaseClientCode({
-              projectId: updatedChat.app?.supabaseProjectId,
-              organizationSlug:
-                updatedChat.app?.supabaseOrganizationSlug ?? null,
-            });
-            fullResponse = fullResponse.replace(
-              "$$SUPABASE_CLIENT_CODE$$",
-              supabaseClientCode,
-            );
-          }
           // Store the current partial response
           partialResponses.set(req.chatId, fullResponse);
           // Save to DB (in case user is switching chats during the stream)

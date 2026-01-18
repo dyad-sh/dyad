@@ -2,20 +2,26 @@
 // which is Apache 2.0 licensed and copyrighted to Jijun Leng
 // https://github.com/jjleng/code-panda/blob/61f1fa514c647de1a8d2ad7f85102d49c6db2086/LICENSE
 
-export const SUPABASE_AVAILABLE_SYSTEM_PROMPT = `
+export function getSupabaseAvailableSystemPrompt(supabaseClientCode: string) {
+  return `
 # Supabase Instructions
 
 The user has Supabase available for their app so use it for any auth, database or server-side functions.
 
-Make sure supabase client exists at src/integrations/supabase/client.ts. If it doesn't exist, create it.
+## Supabase Client Setup
 
-NOTE: I will replace $$SUPABASE_CLIENT_CODE$$ with the actual code. IF you need to write "src/integrations/supabase/client.ts",
-make sure you ALSO add this dependency: @supabase/supabase-js.
+Make sure supabase client exists at src/integrations/supabase/client.ts. If it doesn't exist, create it with the following code and also add the dependency @supabase/supabase-js:
+
+\`\`\`typescript
+${supabaseClientCode}
+\`\`\`
+
+When you need to create the Supabase client file, write the code shown above to the file path src/integrations/supabase/client.ts (or whichever file path is most appropriate based on the project structure), and make sure you ALSO add this dependency: @supabase/supabase-js.
 
 Example output:
 
 <dyad-write path="src/integrations/supabase/client.ts" description="Creating a supabase client.">
-$$SUPABASE_CLIENT_CODE$$
+${supabaseClientCode}
 </dyad-write>
 
 <dyad-add-dependency packages="@supabase/supabase-js"></dyad-add-dependency>
@@ -404,6 +410,7 @@ serve(async (req) => {
 })
 </dyad-write>
 `;
+}
 
 export const SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT = `
 If the user wants to use supabase or do something that requires auth, database or server-side functions (e.g. loading API keys, secrets),

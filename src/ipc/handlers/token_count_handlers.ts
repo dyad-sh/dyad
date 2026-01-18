@@ -7,13 +7,16 @@ import {
 } from "../../prompts/system_prompt";
 import { getThemePrompt } from "../../shared/themes";
 import {
-  SUPABASE_AVAILABLE_SYSTEM_PROMPT,
+  getSupabaseAvailableSystemPrompt,
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
 } from "../../prompts/supabase_prompt";
 import { getDyadAppPath } from "../../paths/paths";
 import log from "electron-log";
 import { extractCodebase } from "../../utils/codebase";
-import { getSupabaseContext } from "../../supabase_admin/supabase_context";
+import {
+  getSupabaseContext,
+  getSupabaseClientCode,
+} from "../../supabase_admin/supabase_context";
 
 import { TokenCountParams } from "../ipc_types";
 import { TokenCountResult } from "../ipc_types";
@@ -76,7 +79,12 @@ export function registerTokenCountHandlers() {
       let supabaseContext = "";
 
       if (chat.app?.supabaseProjectId) {
-        systemPrompt += "\n\n" + SUPABASE_AVAILABLE_SYSTEM_PROMPT;
+        const supabaseClientCode = await getSupabaseClientCode({
+          projectId: chat.app.supabaseProjectId,
+          organizationSlug: chat.app.supabaseOrganizationSlug ?? null,
+        });
+        systemPrompt +=
+          "\n\n" + getSupabaseAvailableSystemPrompt(supabaseClientCode);
         supabaseContext = await getSupabaseContext({
           supabaseProjectId: chat.app.supabaseProjectId,
           organizationSlug: chat.app.supabaseOrganizationSlug ?? null,

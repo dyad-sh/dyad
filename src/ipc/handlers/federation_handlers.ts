@@ -1323,7 +1323,6 @@ export function registerFederationHandlers() {
       return createIdentity(displayName, password, storeName, creatorId);
     }
   );
-  });
 
   ipcMain.handle("federation:get-identity", async () => {
     return getLocalIdentity();

@@ -762,6 +762,7 @@ export class PageObject {
     type: "all-messages" | "last-message" | "request" = "all-messages",
     { name = "", dumpIndex = -1 }: { name?: string; dumpIndex?: number } = {},
   ) {
+    await this.waitForChatCompletion();
     // Get the text content of the messages list
     const messagesListText = await this.page
       .getByTestId("messages-list")

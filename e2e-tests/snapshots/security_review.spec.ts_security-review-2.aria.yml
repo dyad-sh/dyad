@@ -40,7 +40,7 @@
 - img
 - text: less than a minute ago
 - img
-- text: wrote 1 file(s) + extra files edited outside of Dyad
+- text: wrote 1 file(s)
 - button "Undo":
   - img
 - button "Retry":

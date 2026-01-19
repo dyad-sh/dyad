@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   Plus,
   Paperclip,
@@ -8,6 +8,7 @@ import {
   Ban,
   Brush,
   PlusCircle,
+  MoreHorizontal,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -19,6 +20,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Tooltip,
   TooltipContent,
@@ -58,6 +65,7 @@ export function AuxiliaryActionsMenu({
 }: AuxiliaryActionsMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [customThemeDialogOpen, setCustomThemeDialogOpen] = useState(false);
+  const [allThemesDialogOpen, setAllThemesDialogOpen] = useState(false);
   const { themes } = useThemes();
   const { customThemes } = useCustomThemes(appId);
   const { themeId: appThemeId } = useAppTheme(appId);
@@ -68,6 +76,32 @@ export function AuxiliaryActionsMenu({
   // Note: settings stores empty string for "no theme", convert to null
   const currentThemeId =
     appId != null ? appThemeId : settings?.selectedThemeId || null;
+
+  // Compute visible custom themes: selected custom theme + up to 3 others
+  const visibleCustomThemes = useMemo(() => {
+    const MAX_VISIBLE = 4; // selected + 3 others
+
+    // Check if current theme is a custom theme
+    const selectedCustomTheme = customThemes.find(
+      (t) => `custom:${t.id}` === currentThemeId,
+    );
+    const otherCustomThemes = customThemes.filter(
+      (t) => `custom:${t.id}` !== currentThemeId,
+    );
+
+    const result = [];
+    if (selectedCustomTheme) {
+      result.push(selectedCustomTheme);
+    }
+
+    // Add up to (MAX_VISIBLE - result.length) other custom themes
+    const remaining = MAX_VISIBLE - result.length;
+    result.push(...otherCustomThemes.slice(0, remaining));
+
+    return result;
+  }, [customThemes, currentThemeId]);
+
+  const hasMoreCustomThemes = customThemes.length > visibleCustomThemes.length;
 
   const handleThemeSelect = async (themeId: string | null) => {
     if (appId) {
@@ -188,12 +222,11 @@ export function AuxiliaryActionsMenu({
                 );
               })}
 
-              {/* Custom Themes Section */}
-              {customThemes.length > 0 && (
+              {/* Custom Themes Section (limited) */}
+              {visibleCustomThemes.length > 0 && (
                 <>
                   <DropdownMenuSeparator />
-                  {customThemes.map((theme) => {
-                    // Custom theme IDs are prefixed with "custom:" to avoid conflicts
+                  {visibleCustomThemes.map((theme) => {
                     const themeId = `custom:${theme.id}`;
                     const isSelected = currentThemeId === themeId;
                     return (
@@ -228,6 +261,26 @@ export function AuxiliaryActionsMenu({
                 </>
               )}
 
+              {/* All Custom Themes option */}
+              {hasMoreCustomThemes && (
+                <DropdownMenuItem
+                  onClick={() => {
+                    setIsOpen(false);
+                    setAllThemesDialogOpen(true);
+                  }}
+                  className="py-2 px-3"
+                  data-testid="all-custom-themes-option"
+                >
+                  <div className="flex items-center w-full">
+                    <MoreHorizontal
+                      size={16}
+                      className="mr-2 text-muted-foreground"
+                    />
+                    <span className="flex-1">More themes</span>
+                  </div>
+                </DropdownMenuItem>
+              )}
+
               {/* Create Custom Theme option (always available) */}
               <>
                 <DropdownMenuSeparator />
@@ -241,7 +294,7 @@ export function AuxiliaryActionsMenu({
                       size={16}
                       className="mr-2 text-muted-foreground"
                     />
-                    <span className="flex-1">Create Custom Theme</span>
+                    <span className="flex-1">New Theme</span>
                   </div>
                 </DropdownMenuItem>
               </>
@@ -278,7 +331,50 @@ export function AuxiliaryActionsMenu({
         open={customThemeDialogOpen}
         onOpenChange={handleCustomThemeDialogClose}
         appId={appId}
+        onThemeCreated={(themeId) => {
+          // Auto-select the newly created theme
+          handleThemeSelect(`custom:${themeId}`);
+        }}
       />
+
+      {/* All Custom Themes Dialog */}
+      <Dialog open={allThemesDialogOpen} onOpenChange={setAllThemesDialogOpen}>
+        <DialogContent className="max-w-md max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>All Custom Themes</DialogTitle>
+          </DialogHeader>
+          <div className="overflow-y-auto flex-1 -mx-6 px-6">
+            {/* All custom themes list */}
+            {customThemes.map((theme) => {
+              const themeId = `custom:${theme.id}`;
+              const isSelected = currentThemeId === themeId;
+              return (
+                <div
+                  key={themeId}
+                  onClick={() => {
+                    handleThemeSelect(themeId);
+                    setAllThemesDialogOpen(false);
+                  }}
+                  className={`flex items-center p-3 rounded-lg cursor-pointer hover:bg-muted transition-colors ${
+                    isSelected ? "bg-primary/10" : ""
+                  }`}
+                >
+                  <Brush size={18} className="mr-3 text-muted-foreground" />
+                  <div className="flex-1">
+                    <div className="font-medium">{theme.name}</div>
+                    {theme.description && (
+                      <div className="text-sm text-muted-foreground">
+                        {theme.description}
+                      </div>
+                    )}
+                  </div>
+                  {isSelected && <Check size={18} className="text-primary" />}
+                </div>
+              );
+            })}
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

@@ -23,6 +23,57 @@ const logger = log.scope("themes_handlers");
 const handle = createLoggedHandler(logger);
 
 const THEME_GENERATION_META_PROMPT = `PURPOSE
+- Generate a strict SYSTEM PROMPT that extracts a reusable UI DESIGN SYSTEM from provided images.
+- This is a visual ruleset, not a website blueprint.
+- Extract constraints, scales, and principles — never layouts or compositions.
+- You are NOT recreating, cloning, or reverse-engineering a specific website.
+- The resulting system must be applicable to unrelated products without visual resemblance.
+
+SCOPE & LIMITATIONS (MANDATORY)
+- Do NOT reproduce:
+  - Page layouts
+  - Component hierarchies
+  - Spatial arrangements
+  - Relative positioning between elements
+  - Information architecture
+- Do NOT describe the original interface.
+- Do NOT reference screen structure, sections, or flows.
+- The output must remain abstract, systemic, and transferable.
+
+INPUTS
+- One or more UI images
+- Optional reference name (popular product or known design system)
+- Visual input defines stylistic constraints only (tokens, shapes, motion, density)
+
+FIXED TECH STACK
+- Assume React + Tailwind CSS + shadcn/ui.
+- Hard Rules:
+  - Never ship default shadcn styles
+  - No inline styles
+  - No arbitrary values outside defined scales
+  - All styling must be token-driven
+
+OUTPUT RULES
+- Wrap the entire output in <theme></theme> tags.
+- Output exactly ONE SYSTEM PROMPT that:
+  - Names the inspiration strictly as a stylistic reference, not a target
+  - Defines enforceable rules, never descriptions
+  - Uses imperative language only ("must", "never", "always")
+  - Never mentions images, screenshots, or visual analysis
+  - Produces a system that cannot recreate the original UI even if followed precisely
+
+REQUIRED STRUCTURE
+- Visual Objective (abstract, non-descriptive)
+- Layout & Spacing Rules (scales only, no patterns)
+- Typography System (roles, hierarchy, constraints)
+- Color & Surfaces (tokens, elevation logic)
+- Components & Shape Language (geometry, affordances — no layouts)
+- Motion & Interaction (timing, intent, limits)
+- Forbidden Patterns (explicit anti-cloning rules)
+- Self-Check (verifies abstraction & non-replication)
+`;
+
+const HIGH_FIDELITY_META_PROMPT = `PURPOSE
 - Generate a strict SYSTEM PROMPT that allows an AI to recreate a UI visual system from a provided image.
 - This is a visual subsystem. Do not define roles or personas.
 - Extract rules, not descriptions.
@@ -56,7 +107,8 @@ REQUIRED STRUCTURE
 - Components & Shape Language
 - Motion & Interaction
 - Forbidden Patterns
-- Self-Check`;
+- Self-Check
+`;
 
 export function registerThemesHandlers() {
   // Get built-in themes
@@ -213,8 +265,14 @@ export function registerThemesHandlers() {
         settings,
       );
 
+      // Select system prompt based on generation mode
+      const systemPrompt =
+        params.generationMode === "high-fidelity"
+          ? HIGH_FIDELITY_META_PROMPT
+          : THEME_GENERATION_META_PROMPT;
+
       logger.log(
-        `Generating theme prompt with model: ${settings.selectedModel.name}, images: ${params.images.length}`,
+        `Generating theme prompt with model: ${settings.selectedModel.name}, images: ${params.images.length}, mode: ${params.generationMode}`,
       );
 
       // Build the user input prompt
@@ -246,7 +304,7 @@ images: ${imagesPart}`;
 
           const stream = streamText({
             model: modelClient.model,
-            system: THEME_GENERATION_META_PROMPT,
+            system: systemPrompt,
             maxRetries: 1,
             messages: [{ role: "user", content: contentParts }],
           });
@@ -271,7 +329,7 @@ images: ${imagesPart}`;
       try {
         const stream = streamText({
           model: modelClient.model,
-          system: THEME_GENERATION_META_PROMPT,
+          system: systemPrompt,
           maxRetries: 2,
           messages: [{ role: "user", content: userInput }],
         });

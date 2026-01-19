@@ -17,17 +17,20 @@ import {
   useGenerateThemePrompt,
 } from "@/hooks/useCustomThemes";
 import { toast } from "sonner";
+import type { ThemeGenerationMode } from "@/ipc/ipc_types";
 
 interface CustomThemeDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   appId?: number; // optional - undefined for global themes
+  onThemeCreated?: (themeId: number) => void; // callback when theme is created
 }
 
 export function CustomThemeDialog({
   open,
   onOpenChange,
   appId,
+  onThemeCreated,
 }: CustomThemeDialogProps) {
   const [activeTab, setActiveTab] = useState<"manual" | "ai">("manual");
 
@@ -41,6 +44,8 @@ export function CustomThemeDialog({
   const [aiDescription, setAiDescription] = useState("");
   const [aiImages, setAiImages] = useState<string[]>([]);
   const [aiKeywords, setAiKeywords] = useState("");
+  const [aiGenerationMode, setAiGenerationMode] =
+    useState<ThemeGenerationMode>("inspired");
   const [aiGeneratedPrompt, setAiGeneratedPrompt] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -55,6 +60,7 @@ export function CustomThemeDialog({
     setAiDescription("");
     setAiImages([]);
     setAiKeywords("");
+    setAiGenerationMode("inspired");
     setAiGeneratedPrompt("");
     setActiveTab("manual");
   }, []);
@@ -107,6 +113,7 @@ export function CustomThemeDialog({
       const result = await generatePromptMutation.mutateAsync({
         images: aiImages,
         keywords: aiKeywords,
+        generationMode: aiGenerationMode,
       });
       setAiGeneratedPrompt(result.prompt);
       toast.success("Theme prompt generated successfully");
@@ -128,13 +135,14 @@ export function CustomThemeDialog({
     }
 
     try {
-      await createThemeMutation.mutateAsync({
+      const createdTheme = await createThemeMutation.mutateAsync({
         appId,
         name: manualName.trim(),
         description: manualDescription.trim() || undefined,
         prompt: manualPrompt.trim(),
       });
       toast.success("Custom theme created successfully");
+      onThemeCreated?.(createdTheme.id);
       handleClose();
     } catch (error) {
       toast.error(
@@ -147,6 +155,7 @@ export function CustomThemeDialog({
     manualDescription,
     manualPrompt,
     createThemeMutation,
+    onThemeCreated,
     handleClose,
   ]);
 
@@ -161,13 +170,14 @@ export function CustomThemeDialog({
     }
 
     try {
-      await createThemeMutation.mutateAsync({
+      const createdTheme = await createThemeMutation.mutateAsync({
         appId,
         name: aiName.trim(),
         description: aiDescription.trim() || undefined,
         prompt: aiGeneratedPrompt.trim(),
       });
       toast.success("Custom theme created successfully");
+      onThemeCreated?.(createdTheme.id);
       handleClose();
     } catch (error) {
       toast.error(
@@ -180,6 +190,7 @@ export function CustomThemeDialog({
     aiDescription,
     aiGeneratedPrompt,
     createThemeMutation,
+    onThemeCreated,
     handleClose,
   ]);
 
@@ -320,7 +331,7 @@ export function CustomThemeDialog({
                       />
                       <button
                         onClick={() => handleRemoveImage(index)}
-                        className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute -top-2 -right-2 bg-destructive text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
                       >
                         <X className="h-3 w-3" />
                       </button>
@@ -342,6 +353,43 @@ export function CustomThemeDialog({
               <p className="text-xs text-muted-foreground">
                 Add keywords or reference designs to guide the generation
               </p>
+            </div>
+
+            {/* Generation Mode Selection */}
+            <div className="space-y-3">
+              <Label>Generation Mode</Label>
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  onClick={() => setAiGenerationMode("inspired")}
+                  className={`flex flex-col items-start rounded-lg border p-3 text-left transition-colors ${
+                    aiGenerationMode === "inspired"
+                      ? "border-primary bg-primary/5"
+                      : "hover:bg-muted/50"
+                  }`}
+                >
+                  <span className="font-medium">Inspired</span>
+                  <span className="text-xs text-muted-foreground mt-1">
+                    Extracts an abstract, reusable design system. Does not
+                    replicate the original UI.
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAiGenerationMode("high-fidelity")}
+                  className={`flex flex-col items-start rounded-lg border p-3 text-left transition-colors ${
+                    aiGenerationMode === "high-fidelity"
+                      ? "border-primary bg-primary/5"
+                      : "hover:bg-muted/50"
+                  }`}
+                >
+                  <span className="font-medium">High Fidelity</span>
+                  <span className="text-xs text-muted-foreground mt-1">
+                    Recreates the visual system from the image as closely as
+                    possible.
+                  </span>
+                </button>
+              </div>
             </div>
 
             {/* Generate Button */}

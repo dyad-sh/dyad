@@ -779,9 +779,12 @@ export interface GetCustomThemesParams {
   appId?: number; // if null/undefined, returns global themes
 }
 
+export type ThemeGenerationMode = "inspired" | "high-fidelity";
+
 export interface GenerateThemePromptParams {
   images: string[]; // Base64 encoded images
   keywords: string;
+  generationMode: ThemeGenerationMode; // 'inspired' (abstract design system) or 'high-fidelity' (visual recreation)
 }
 
 export interface GenerateThemePromptResult {

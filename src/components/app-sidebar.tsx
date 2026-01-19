@@ -5,6 +5,7 @@ import {
   HelpCircle,
   Store,
   BookOpen,
+  Palette,
 } from "lucide-react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar"; // import useSidebar hook
@@ -50,6 +51,11 @@ const items = [
     title: "Library",
     to: "/library",
     icon: BookOpen,
+  },
+  {
+    title: "Themes",
+    to: "/themes",
+    icon: Palette,
   },
   {
     title: "Hub",

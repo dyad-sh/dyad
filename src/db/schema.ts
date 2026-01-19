@@ -670,12 +670,59 @@ export const documentExportsRelations = relations(documentExports, ({ one }) => 
 // ============================================================================
 
 /**
+ * Studio Datasets - Dataset Studio's own dataset management table
+ * Supports multimodal datasets with provenance, licensing, and publishing
+ */
+export const studioDatasets = sqliteTable("studio_datasets", {
+  id: text("id").primaryKey(), // UUID v4
+  name: text("name").notNull(),
+  description: text("description"),
+  
+  // Type and modality info
+  datasetType: text("dataset_type", {
+    enum: ["custom", "training", "evaluation", "fine_tuning", "rag", "mixed"]
+  }).notNull().default("custom"),
+  supportedModalities: text("supported_modalities", { mode: "json" }).$type<string[]>(),
+  
+  // Statistics (cached for quick display)
+  itemCount: integer("item_count").notNull().default(0),
+  totalBytes: integer("total_bytes").notNull().default(0),
+  
+  // Licensing
+  license: text("license").notNull().default("cc-by-4.0"),
+  licenseUrl: text("license_url"),
+  
+  // Creator info
+  creatorName: text("creator_name"),
+  creatorId: text("creator_id"),
+  
+  // Publishing status
+  publishStatus: text("publish_status", {
+    enum: ["draft", "local", "p2p_shared", "marketplace_pending", "marketplace_published"]
+  }).notNull().default("draft"),
+  
+  // Tags for organization
+  tags: text("tags", { mode: "json" }).$type<string[]>(),
+  
+  // Schema definition (for structured datasets)
+  schemaJson: text("schema_json", { mode: "json" }).$type<DatasetSchemaV2 | null>(),
+  
+  // Timestamps
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+/**
  * Dataset Items - Individual data items with provenance tracking
  * Supports multimodal: text, image, audio, video, context packs
  */
 export const datasetItems = sqliteTable("dataset_items", {
   id: text("id").primaryKey(), // UUID v4
-  datasetId: text("dataset_id").notNull(), // Links to parent dataset
+  datasetId: text("dataset_id").notNull(), // Links to studio_datasets
   
   // Core identification
   modality: text("modality", { 
@@ -1031,8 +1078,32 @@ export interface GenerationJobConfig {
 }
 
 // Dataset Studio Relations
-export const datasetItemsRelations = relations(datasetItems, ({ many }) => ({
+export const studioDatasetsRelations = relations(studioDatasets, ({ many }) => ({
+  items: many(datasetItems),
+  manifests: many(datasetManifests),
+  generationJobs: many(datasetGenerationJobs),
+}));
+
+export const datasetItemsRelations = relations(datasetItems, ({ one, many }) => ({
+  dataset: one(studioDatasets, {
+    fields: [datasetItems.datasetId],
+    references: [studioDatasets.id],
+  }),
   provenanceRecords: many(provenanceRecords),
+}));
+
+export const datasetManifestsRelations = relations(datasetManifests, ({ one }) => ({
+  dataset: one(studioDatasets, {
+    fields: [datasetManifests.datasetId],
+    references: [studioDatasets.id],
+  }),
+}));
+
+export const datasetGenerationJobsRelations = relations(datasetGenerationJobs, ({ one }) => ({
+  dataset: one(studioDatasets, {
+    fields: [datasetGenerationJobs.datasetId],
+    references: [studioDatasets.id],
+  }),
 }));
 
 export const provenanceRecordsRelations = relations(provenanceRecords, ({ one }) => ({

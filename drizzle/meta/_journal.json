@@ -176,6 +176,13 @@
       "when": 1768853632052,
       "tag": "0024_deep_valkyrie",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1768860884738,
+      "tag": "0025_free_slayback",
+      "breakpoints": true
     }
   ]
 }

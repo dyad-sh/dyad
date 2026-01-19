@@ -1,11 +1,13 @@
 /**
- * Datasets & Web Scraper Page
- * Local-first data collection and dataset management
+ * Dataset Studio Page
+ * Comprehensive local-first dataset creation, management, and publishing
+ * Includes: Web scraping, multimodal items, AI generation, provenance tracking, P2P sync
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { scraperClient } from "@/ipc/scraper_client";
+import { getDatasetStudioClient } from "@/ipc/dataset_studio_client";
 import type {
   ScrapingConfig,
   ScrapingJob,
@@ -14,6 +16,24 @@ import type {
   ScrapingField,
   ScrapingTemplate,
 } from "@/types/scraper_types";
+import type { DatasetItem, DatasetManifest, GenerationJob, StudioDataset } from "@/ipc/dataset_studio_client";
+import {
+  useStudioDatasets,
+  useCreateDataset,
+  useDeleteDataset,
+  useDatasetItems,
+  useDatasetManifest,
+  useGenerationJobs,
+  useBuildManifest,
+  useCreateSplits,
+  useSignManifest,
+  useCreateGenerationJob,
+  useP2pSyncStatus,
+  useExportDataset,
+  useAddItemFromFile,
+  useDeleteDatasetItem,
+  useUpdateItemLabels,
+} from "@/hooks/useDatasetStudio";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -54,6 +74,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import {
   Database,
@@ -80,15 +102,59 @@ import {
   Upload,
   Zap,
   Target,
+  Image,
+  FileText,
+  Music,
+  Video,
+  Code,
+  Hash,
+  Shield,
+  Users,
+  GitBranch,
+  Share2,
+  Lock,
+  Fingerprint,
+  Split,
+  Package,
+  Wand2,
+  Brain,
+  Tag,
+  Filter,
+  Search,
+  FolderOpen,
+  FileUp,
+  Signature,
 } from "lucide-react";
 
 export default function DatasetPage() {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState("datasets");
+  const [activeTab, setActiveTab] = useState("studio");
   const [isNewConfigOpen, setIsNewConfigOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [selectedDataset, setSelectedDataset] = useState<Dataset | null>(null);
   const [previewData, setPreviewData] = useState<DatasetPreview | null>(null);
+
+  // Dataset Studio state
+  const [selectedStudioDataset, setSelectedStudioDataset] = useState<string | null>(null);
+  const [isCreateDatasetOpen, setIsCreateDatasetOpen] = useState(false);
+  const [isAddItemOpen, setIsAddItemOpen] = useState(false);
+  const [isGenerateOpen, setIsGenerateOpen] = useState(false);
+  const [isBuildManifestOpen, setIsBuildManifestOpen] = useState(false);
+  const [isExportOpen, setIsExportOpen] = useState(false);
+  const [itemFilter, setItemFilter] = useState({ modality: "", split: "" });
+  const [selectedItem, setSelectedItem] = useState<DatasetItem | null>(null);
+  
+  // Split creation state
+  const [splitRatios, setSplitRatios] = useState({ train: 0.8, val: 0.1, test: 0.1 });
+  
+  // Generation form state
+  const [generationForm, setGenerationForm] = useState({
+    jobType: "text_generation" as const,
+    modelId: "",
+    prompt: "",
+    targetCount: 100,
+    temperature: 0.7,
+  });
 
   // Config form state
   const [configForm, setConfigForm] = useState<Partial<ScrapingConfig>>({
@@ -104,6 +170,39 @@ export default function DatasetPage() {
     selectorType: "css",
   });
 
+  // Create dataset form state
+  const [createDatasetForm, setCreateDatasetForm] = useState({
+    name: "",
+    description: "",
+    license: "cc-by-4.0",
+    datasetType: "custom" as const,
+  });
+
+  // Dataset Studio hooks - Fetch Studio datasets (the new table)
+  const { data: studioDatasets = [], isLoading: studioLoading } = useStudioDatasets();
+  const createDatasetMutation = useCreateDataset();
+  const deleteDatasetMutation = useDeleteDataset();
+  
+  const { data: studioItems, isLoading: itemsLoading } = useDatasetItems(
+    selectedStudioDataset || "",
+    {
+      modality: itemFilter.modality || undefined,
+      split: itemFilter.split || undefined,
+      enabled: !!selectedStudioDataset,
+    }
+  );
+  const { data: manifest } = useDatasetManifest(selectedStudioDataset || "", !!selectedStudioDataset);
+  const { data: generationJobs } = useGenerationJobs(selectedStudioDataset || "", !!selectedStudioDataset);
+  const { data: p2pStatus } = useP2pSyncStatus(selectedStudioDataset || "", !!selectedStudioDataset);
+  
+  const addItemMutation = useAddItemFromFile();
+  const deleteItemMutation = useDeleteDatasetItem();
+  const buildManifestMutation = useBuildManifest();
+  const createSplitsMutation = useCreateSplits();
+  const signManifestMutation = useSignManifest();
+  const createJobMutation = useCreateGenerationJob();
+  const exportMutation = useExportDataset();
+
   // Fetch scraper status
   const { data: status } = useQuery({
     queryKey: ["scraper-status"],
@@ -117,9 +216,9 @@ export default function DatasetPage() {
     queryFn: () => scraperClient.listConfigs(),
   });
 
-  // Fetch datasets
-  const { data: datasets = [], isLoading: datasetsLoading } = useQuery({
-    queryKey: ["datasets"],
+  // Fetch scraped datasets (file-based from scraper)
+  const { data: scrapedDatasets = [], isLoading: datasetsLoading } = useQuery({
+    queryKey: ["scraped-datasets"],
     queryFn: () => scraperClient.listDatasets(),
   });
 
@@ -171,12 +270,12 @@ export default function DatasetPage() {
     },
   });
 
-  // Delete dataset mutation
-  const deleteDatasetMutation = useMutation({
+  // Delete scraped dataset mutation
+  const deleteScrapedDatasetMutation = useMutation({
     mutationFn: (datasetId: string) => scraperClient.deleteDataset(datasetId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["datasets"] });
-      toast.success("Dataset deleted");
+      queryClient.invalidateQueries({ queryKey: ["scraped-datasets"] });
+      toast.success("Scraped dataset deleted");
     },
   });
 
@@ -477,9 +576,13 @@ export default function DatasetPage() {
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="px-6">
           <TabsList className="bg-muted/50">
+            <TabsTrigger value="studio" className="data-[state=active]:bg-background">
+              <Sparkles className="w-4 h-4 mr-2" />
+              Studio ({studioDatasets.length})
+            </TabsTrigger>
             <TabsTrigger value="datasets" className="data-[state=active]:bg-background">
               <Database className="w-4 h-4 mr-2" />
-              Datasets ({datasets.length})
+              Scraped ({scrapedDatasets.length})
             </TabsTrigger>
             <TabsTrigger value="scrapers" className="data-[state=active]:bg-background">
               <Globe className="w-4 h-4 mr-2" />
@@ -502,17 +605,659 @@ export default function DatasetPage() {
         <ScrollArea className="h-full">
           <div className="p-6">
             <Tabs value={activeTab} onValueChange={setActiveTab}>
+              {/* Dataset Studio Tab */}
+              <TabsContent value="studio" className="mt-0 space-y-6">
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                  {/* Left Panel - Dataset List & Actions */}
+                  <div className="lg:col-span-1 space-y-4">
+                    {/* Create New Dataset */}
+                    <Card className="border-emerald-500/30 bg-gradient-to-br from-emerald-500/5 to-teal-500/5">
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-base flex items-center gap-2">
+                          <Plus className="w-4 h-4" />
+                          Create Dataset
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <Dialog open={isCreateDatasetOpen} onOpenChange={setIsCreateDatasetOpen}>
+                          <DialogTrigger asChild>
+                            <Button className="w-full bg-gradient-to-r from-emerald-500 to-teal-600">
+                              <Plus className="w-4 h-4 mr-2" />
+                              New Dataset
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>Create New Dataset</DialogTitle>
+                              <DialogDescription>
+                                Create a dataset to store multimodal data with full provenance tracking
+                              </DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-4 py-4">
+                              <div className="space-y-2">
+                                <Label>Dataset Name</Label>
+                                <Input 
+                                  placeholder="My Dataset" 
+                                  value={createDatasetForm.name}
+                                  onChange={(e) => setCreateDatasetForm({...createDatasetForm, name: e.target.value})}
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <Label>Description</Label>
+                                <Textarea 
+                                  placeholder="Describe your dataset..." 
+                                  value={createDatasetForm.description}
+                                  onChange={(e) => setCreateDatasetForm({...createDatasetForm, description: e.target.value})}
+                                />
+                              </div>
+                              <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                  <Label>Dataset Type</Label>
+                                  <Select 
+                                    value={createDatasetForm.datasetType}
+                                    onValueChange={(v) => setCreateDatasetForm({...createDatasetForm, datasetType: v as any})}
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="custom">Custom</SelectItem>
+                                      <SelectItem value="training">Training</SelectItem>
+                                      <SelectItem value="evaluation">Evaluation</SelectItem>
+                                      <SelectItem value="fine_tuning">Fine-tuning</SelectItem>
+                                      <SelectItem value="rag">RAG Knowledge Base</SelectItem>
+                                      <SelectItem value="mixed">Mixed</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-2">
+                                  <Label>License</Label>
+                                  <Select 
+                                    value={createDatasetForm.license}
+                                    onValueChange={(v) => setCreateDatasetForm({...createDatasetForm, license: v})}
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="cc-by-4.0">CC BY 4.0</SelectItem>
+                                      <SelectItem value="cc-by-sa-4.0">CC BY-SA 4.0</SelectItem>
+                                      <SelectItem value="cc0">CC0 (Public Domain)</SelectItem>
+                                      <SelectItem value="mit">MIT</SelectItem>
+                                      <SelectItem value="apache-2.0">Apache 2.0</SelectItem>
+                                      <SelectItem value="proprietary">Proprietary</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+                            </div>
+                            <DialogFooter>
+                              <Button variant="outline" onClick={() => setIsCreateDatasetOpen(false)}>Cancel</Button>
+                              <Button 
+                                className="bg-gradient-to-r from-emerald-500 to-teal-600"
+                                disabled={!createDatasetForm.name || createDatasetMutation.isPending}
+                                onClick={() => {
+                                  createDatasetMutation.mutate({
+                                    name: createDatasetForm.name,
+                                    description: createDatasetForm.description || undefined,
+                                    datasetType: createDatasetForm.datasetType,
+                                    license: createDatasetForm.license,
+                                  }, {
+                                    onSuccess: (result) => {
+                                      setIsCreateDatasetOpen(false);
+                                      setCreateDatasetForm({ name: "", description: "", license: "cc-by-4.0", datasetType: "custom" });
+                                      setSelectedStudioDataset(result.datasetId);
+                                    }
+                                  });
+                                }}
+                              >
+                                {createDatasetMutation.isPending ? (
+                                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                ) : (
+                                  <Plus className="w-4 h-4 mr-2" />
+                                )}
+                                Create
+                              </Button>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
+                      </CardContent>
+                    </Card>
+
+                    {/* Dataset List */}
+                    <Card>
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-base flex items-center justify-between">
+                          <span className="flex items-center gap-2">
+                            <Database className="w-4 h-4" />
+                            Datasets
+                          </span>
+                          <Badge variant="outline">{studioDatasets.length}</Badge>
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="p-0">
+                        <ScrollArea className="h-[300px]">
+                          {studioDatasets.length === 0 ? (
+                            <div className="p-4 text-center text-muted-foreground text-sm">
+                              No datasets yet. Create one to get started!
+                            </div>
+                          ) : (
+                            <div className="divide-y">
+                              {studioDatasets.map((ds) => (
+                                <button
+                                  key={ds.id}
+                                  className={`w-full p-3 text-left hover:bg-muted/50 transition-colors ${
+                                    selectedStudioDataset === ds.id ? "bg-emerald-500/10 border-l-2 border-l-emerald-500" : ""
+                                  }`}
+                                  onClick={() => setSelectedStudioDataset(ds.id)}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <Database className="w-4 h-4 text-emerald-500" />
+                                    <span className="font-medium text-sm truncate">{ds.name}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                                    <span>{ds.itemCount || 0} items</span>
+                                    <span>•</span>
+                                    <span>{formatSize(ds.totalBytes || 0)}</span>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </ScrollArea>
+                      </CardContent>
+                    </Card>
+
+                    {/* Quick Stats */}
+                    {selectedStudioDataset && manifest && (
+                      <Card>
+                        <CardHeader className="pb-3">
+                          <CardTitle className="text-base flex items-center gap-2">
+                            <Hash className="w-4 h-4" />
+                            Provenance
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Version</span>
+                            <Badge variant="outline">{manifest.version}</Badge>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Status</span>
+                            <Badge className={
+                              manifest.publishStatus === "marketplace_published" 
+                                ? "bg-emerald-500/20 text-emerald-400"
+                                : "bg-yellow-500/20 text-yellow-400"
+                            }>
+                              {manifest.publishStatus}
+                            </Badge>
+                          </div>
+                          {manifest.manifestHash && (
+                            <div className="flex justify-between items-center">
+                              <span className="text-muted-foreground">Hash</span>
+                              <code className="text-xs bg-muted px-1 rounded truncate max-w-[120px]">
+                                {manifest.manifestHash.slice(0, 12)}...
+                              </code>
+                            </div>
+                          )}
+                          {manifest.creatorSignature && (
+                            <div className="flex items-center gap-1 text-emerald-500">
+                              <Signature className="w-3 h-3" />
+                              <span className="text-xs">Signed</span>
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    )}
+                  </div>
+
+                  {/* Right Panel - Items & Actions */}
+                  <div className="lg:col-span-3 space-y-4">
+                    {!selectedStudioDataset ? (
+                      <Card className="border-dashed">
+                        <CardContent className="py-16 text-center">
+                          <Database className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
+                          <h3 className="text-xl font-medium mb-2">Select a Dataset</h3>
+                          <p className="text-sm text-muted-foreground mb-4">
+                            Choose a dataset from the list or create a new one to get started
+                          </p>
+                        </CardContent>
+                      </Card>
+                    ) : (
+                      <>
+                        {/* Action Bar */}
+                        <div className="flex items-center justify-between gap-4 flex-wrap">
+                          <div className="flex items-center gap-2">
+                            {/* Add Items */}
+                            <Dialog open={isAddItemOpen} onOpenChange={setIsAddItemOpen}>
+                              <DialogTrigger asChild>
+                                <Button size="sm" variant="outline">
+                                  <FileUp className="w-4 h-4 mr-2" />
+                                  Add Items
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent>
+                                <DialogHeader>
+                                  <DialogTitle>Add Items to Dataset</DialogTitle>
+                                  <DialogDescription>
+                                    Upload files or import from various sources
+                                  </DialogDescription>
+                                </DialogHeader>
+                                <div className="grid grid-cols-2 gap-4 py-4">
+                                  <Button variant="outline" className="h-24 flex-col gap-2">
+                                    <Upload className="w-6 h-6" />
+                                    <span>Upload Files</span>
+                                  </Button>
+                                  <Button variant="outline" className="h-24 flex-col gap-2">
+                                    <FolderOpen className="w-6 h-6" />
+                                    <span>Import Folder</span>
+                                  </Button>
+                                  <Button variant="outline" className="h-24 flex-col gap-2">
+                                    <Globe className="w-6 h-6" />
+                                    <span>From URL</span>
+                                  </Button>
+                                  <Button variant="outline" className="h-24 flex-col gap-2">
+                                    <Database className="w-6 h-6" />
+                                    <span>From Scraper</span>
+                                  </Button>
+                                </div>
+                              </DialogContent>
+                            </Dialog>
+
+                            {/* Generate with AI */}
+                            <Dialog open={isGenerateOpen} onOpenChange={setIsGenerateOpen}>
+                              <DialogTrigger asChild>
+                                <Button size="sm" variant="outline" className="border-violet-500/30 text-violet-400 hover:bg-violet-500/10">
+                                  <Wand2 className="w-4 h-4 mr-2" />
+                                  Generate
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="max-w-lg">
+                                <DialogHeader>
+                                  <DialogTitle>Generate Data with Local AI</DialogTitle>
+                                  <DialogDescription>
+                                    Use local AI models to generate synthetic data
+                                  </DialogDescription>
+                                </DialogHeader>
+                                <div className="space-y-4 py-4">
+                                  <div className="space-y-2">
+                                    <Label>Generation Type</Label>
+                                    <Select 
+                                      value={generationForm.jobType}
+                                      onValueChange={(v) => setGenerationForm({...generationForm, jobType: v as any})}
+                                    >
+                                      <SelectTrigger>
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="text_generation">
+                                          <div className="flex items-center gap-2">
+                                            <FileText className="w-4 h-4" />
+                                            Text Generation
+                                          </div>
+                                        </SelectItem>
+                                        <SelectItem value="image_generation">
+                                          <div className="flex items-center gap-2">
+                                            <Image className="w-4 h-4" />
+                                            Image Generation
+                                          </div>
+                                        </SelectItem>
+                                        <SelectItem value="augmentation">
+                                          <div className="flex items-center gap-2">
+                                            <Sparkles className="w-4 h-4" />
+                                            Data Augmentation
+                                          </div>
+                                        </SelectItem>
+                                        <SelectItem value="labeling">
+                                          <div className="flex items-center gap-2">
+                                            <Tag className="w-4 h-4" />
+                                            Auto-Labeling
+                                          </div>
+                                        </SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label>Prompt Template</Label>
+                                    <Textarea 
+                                      placeholder="Generate {count} examples of..."
+                                      value={generationForm.prompt}
+                                      onChange={(e) => setGenerationForm({...generationForm, prompt: e.target.value})}
+                                    />
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                      <Label>Target Count</Label>
+                                      <Input 
+                                        type="number" 
+                                        value={generationForm.targetCount}
+                                        onChange={(e) => setGenerationForm({...generationForm, targetCount: parseInt(e.target.value)})}
+                                      />
+                                    </div>
+                                    <div className="space-y-2">
+                                      <Label>Temperature: {generationForm.temperature}</Label>
+                                      <Slider 
+                                        value={[generationForm.temperature]} 
+                                        min={0} 
+                                        max={1} 
+                                        step={0.1}
+                                        onValueChange={([v]) => setGenerationForm({...generationForm, temperature: v})}
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                                <DialogFooter>
+                                  <Button variant="outline" onClick={() => setIsGenerateOpen(false)}>Cancel</Button>
+                                  <Button 
+                                    className="bg-gradient-to-r from-violet-500 to-purple-600"
+                                    onClick={() => {
+                                      createJobMutation.mutate({
+                                        datasetId: selectedStudioDataset,
+                                        jobType: generationForm.jobType,
+                                        config: {
+                                          prompt: generationForm.prompt,
+                                          targetCount: generationForm.targetCount,
+                                          temperature: generationForm.temperature,
+                                        },
+                                        providerType: "local",
+                                        providerId: "ollama",
+                                        modelId: generationForm.modelId || "llama3.2",
+                                      });
+                                      setIsGenerateOpen(false);
+                                    }}
+                                  >
+                                    <Brain className="w-4 h-4 mr-2" />
+                                    Start Generation
+                                  </Button>
+                                </DialogFooter>
+                              </DialogContent>
+                            </Dialog>
+
+                            {/* Create Splits */}
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button size="sm" variant="outline">
+                                  <Split className="w-4 h-4 mr-2" />
+                                  Splits
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent className="w-64 p-4">
+                                <div className="space-y-3">
+                                  <h4 className="font-medium text-sm">Create Train/Val/Test Splits</h4>
+                                  <div className="space-y-2 text-sm">
+                                    <div className="flex justify-between">
+                                      <span>Train: {Math.round(splitRatios.train * 100)}%</span>
+                                      <span>Val: {Math.round(splitRatios.val * 100)}%</span>
+                                      <span>Test: {Math.round(splitRatios.test * 100)}%</span>
+                                    </div>
+                                  </div>
+                                  <Button 
+                                    size="sm" 
+                                    className="w-full"
+                                    onClick={() => {
+                                      createSplitsMutation.mutate({
+                                        datasetId: selectedStudioDataset,
+                                        ratios: splitRatios,
+                                      });
+                                    }}
+                                  >
+                                    Apply Splits
+                                  </Button>
+                                </div>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {/* Build Manifest */}
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={() => buildManifestMutation.mutate({
+                                datasetId: selectedStudioDataset,
+                                version: "1.0.0",
+                                license: "cc-by-4.0",
+                              })}
+                            >
+                              <Package className="w-4 h-4 mr-2" />
+                              Build Manifest
+                            </Button>
+
+                            {/* Sign */}
+                            {manifest && !manifest.creatorSignature && (
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                className="border-emerald-500/30 text-emerald-400"
+                                onClick={() => signManifestMutation.mutate(manifest.id)}
+                              >
+                                <Fingerprint className="w-4 h-4 mr-2" />
+                                Sign
+                              </Button>
+                            )}
+
+                            {/* Export */}
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button size="sm" variant="outline">
+                                  <Download className="w-4 h-4 mr-2" />
+                                  Export
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent>
+                                <DropdownMenuItem>
+                                  <FileJson className="w-4 h-4 mr-2" />
+                                  JSONL Format
+                                </DropdownMenuItem>
+                                <DropdownMenuItem>
+                                  <Package className="w-4 h-4 mr-2" />
+                                  HuggingFace Format
+                                </DropdownMenuItem>
+                                <DropdownMenuItem>
+                                  <FileSpreadsheet className="w-4 h-4 mr-2" />
+                                  Parquet Format
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+
+                            {/* P2P Share */}
+                            <Button size="sm" variant="outline" className="border-blue-500/30 text-blue-400">
+                              <Share2 className="w-4 h-4 mr-2" />
+                              P2P Share
+                            </Button>
+                          </div>
+                        </div>
+
+                        {/* Filters */}
+                        <div className="flex items-center gap-4">
+                          <div className="flex items-center gap-2">
+                            <Filter className="w-4 h-4 text-muted-foreground" />
+                            <Select 
+                              value={itemFilter.modality || "all"}
+                              onValueChange={(v) => setItemFilter({...itemFilter, modality: v === "all" ? "" : v})}
+                            >
+                              <SelectTrigger className="w-[140px] h-8">
+                                <SelectValue placeholder="All Types" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="all">All Types</SelectItem>
+                                <SelectItem value="text">
+                                  <div className="flex items-center gap-2">
+                                    <FileText className="w-3 h-3" /> Text
+                                  </div>
+                                </SelectItem>
+                                <SelectItem value="image">
+                                  <div className="flex items-center gap-2">
+                                    <Image className="w-3 h-3" /> Image
+                                  </div>
+                                </SelectItem>
+                                <SelectItem value="audio">
+                                  <div className="flex items-center gap-2">
+                                    <Music className="w-3 h-3" /> Audio
+                                  </div>
+                                </SelectItem>
+                                <SelectItem value="video">
+                                  <div className="flex items-center gap-2">
+                                    <Video className="w-3 h-3" /> Video
+                                  </div>
+                                </SelectItem>
+                                <SelectItem value="context">
+                                  <div className="flex items-center gap-2">
+                                    <Code className="w-3 h-3" /> Context
+                                  </div>
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <Select 
+                              value={itemFilter.split || "all"}
+                              onValueChange={(v) => setItemFilter({...itemFilter, split: v === "all" ? "" : v})}
+                            >
+                              <SelectTrigger className="w-[120px] h-8">
+                                <SelectValue placeholder="All Splits" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="all">All Splits</SelectItem>
+                                <SelectItem value="train">Train</SelectItem>
+                                <SelectItem value="val">Validation</SelectItem>
+                                <SelectItem value="test">Test</SelectItem>
+                                <SelectItem value="unassigned">Unassigned</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="flex-1">
+                            <div className="relative">
+                              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                              <Input placeholder="Search items..." className="pl-8 h-8" />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Items Grid/List */}
+                        {itemsLoading ? (
+                          <div className="flex items-center justify-center py-12">
+                            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+                          </div>
+                        ) : !studioItems?.items?.length ? (
+                          <Card className="border-dashed">
+                            <CardContent className="py-12 text-center">
+                              <FileUp className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                              <h3 className="text-lg font-medium">No items yet</h3>
+                              <p className="text-sm text-muted-foreground mb-4">
+                                Add items to your dataset to get started
+                              </p>
+                              <Button onClick={() => setIsAddItemOpen(true)}>
+                                <Plus className="w-4 h-4 mr-2" />
+                                Add Items
+                              </Button>
+                            </CardContent>
+                          </Card>
+                        ) : (
+                          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                            {studioItems.items.map((item: DatasetItem) => (
+                              <Card 
+                                key={item.id} 
+                                className="group cursor-pointer hover:border-emerald-500/50 transition-all"
+                                onClick={() => setSelectedItem(item)}
+                              >
+                                <CardContent className="p-3">
+                                  {/* Preview */}
+                                  <div className="aspect-square rounded-lg bg-muted/50 mb-2 flex items-center justify-center overflow-hidden">
+                                    {item.modality === "image" && item.thumbnailPath ? (
+                                      <img 
+                                        src={`file://${item.thumbnailPath}`} 
+                                        alt="" 
+                                        className="w-full h-full object-cover"
+                                      />
+                                    ) : (
+                                      <div className="text-muted-foreground">
+                                        {item.modality === "text" && <FileText className="w-8 h-8" />}
+                                        {item.modality === "image" && <Image className="w-8 h-8" />}
+                                        {item.modality === "audio" && <Music className="w-8 h-8" />}
+                                        {item.modality === "video" && <Video className="w-8 h-8" />}
+                                        {item.modality === "context" && <Code className="w-8 h-8" />}
+                                      </div>
+                                    )}
+                                  </div>
+                                  {/* Info */}
+                                  <div className="space-y-1">
+                                    <div className="flex items-center justify-between">
+                                      <Badge variant="outline" className="text-xs">
+                                        {item.modality}
+                                      </Badge>
+                                      <Badge 
+                                        variant="outline" 
+                                        className={`text-xs ${
+                                          item.split === "train" ? "border-blue-500/50 text-blue-400" :
+                                          item.split === "val" ? "border-yellow-500/50 text-yellow-400" :
+                                          item.split === "test" ? "border-emerald-500/50 text-emerald-400" :
+                                          ""
+                                        }`}
+                                      >
+                                        {item.split}
+                                      </Badge>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground truncate">
+                                      {formatSize(item.byteSize)}
+                                    </p>
+                                    {item.sourceType === "generated" && (
+                                      <div className="flex items-center gap-1 text-xs text-violet-400">
+                                        <Wand2 className="w-3 h-3" />
+                                        AI Generated
+                                      </div>
+                                    )}
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Generation Jobs */}
+                        {generationJobs && generationJobs.length > 0 && (
+                          <Card>
+                            <CardHeader className="pb-3">
+                              <CardTitle className="text-base flex items-center gap-2">
+                                <Brain className="w-4 h-4" />
+                                Generation Jobs
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                              <div className="space-y-3">
+                                {generationJobs.map((job: GenerationJob) => (
+                                  <div key={job.id} className="flex items-center gap-4 p-3 rounded-lg bg-muted/50">
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <span className="font-medium text-sm">{job.jobType}</span>
+                                        {getJobStatusBadge(job.status)}
+                                      </div>
+                                      <Progress value={job.progress} className="h-1" />
+                                      <p className="text-xs text-muted-foreground mt-1">
+                                        {job.completedItems} / {job.totalItems} items
+                                      </p>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </CardContent>
+                          </Card>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              </TabsContent>
+
               {/* Datasets Tab */}
               <TabsContent value="datasets" className="mt-0 space-y-4">
                 {datasetsLoading ? (
                   <div className="flex items-center justify-center py-12">
                     <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
                   </div>
-                ) : datasets.length === 0 ? (
+                ) : scrapedDatasets.length === 0 ? (
                   <Card className="border-dashed">
                     <CardContent className="py-12 text-center">
                       <Database className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                      <h3 className="text-lg font-medium">No datasets yet</h3>
+                      <h3 className="text-lg font-medium">No scraped datasets yet</h3>
                       <p className="text-sm text-muted-foreground mb-4">
                         Create a scraper to collect data or import an existing dataset
                       </p>
@@ -530,7 +1275,7 @@ export default function DatasetPage() {
                   </Card>
                 ) : (
                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {datasets.map((dataset) => (
+                    {scrapedDatasets.map((dataset) => (
                       <Card
                         key={dataset.id}
                         className="group hover:border-emerald-500/50 transition-all duration-200"
@@ -586,7 +1331,7 @@ export default function DatasetPage() {
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
                                   className="text-red-500"
-                                  onClick={() => deleteDatasetMutation.mutate(dataset.id)}
+                                  onClick={() => deleteScrapedDatasetMutation.mutate(dataset.id)}
                                 >
                                   <Trash2 className="w-4 h-4 mr-2" />
                                   Delete

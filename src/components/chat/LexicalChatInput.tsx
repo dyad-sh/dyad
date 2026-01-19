@@ -250,7 +250,7 @@ export function LexicalChatInput({
   onSubmit,
   onPaste,
   excludeCurrentApp,
-  placeholder = "Ask Dyad to build...",
+  placeholder = "Ask Joy to build...",
   disabled = false,
   disableSendButton,
 }: LexicalChatInputProps) {

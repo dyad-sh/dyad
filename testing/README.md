@@ -35,7 +35,7 @@ export SECRET_TOKEN=example
 testing/run-fake-stdio-mcp-server.sh
 ```
 
-### Integrating with Dyad (stdio MCP)
+### Integrating with JoyCreate (stdio MCP)
 
 When adding a stdio MCP server in the app, use:
 

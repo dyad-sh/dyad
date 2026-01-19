@@ -33,6 +33,11 @@ export interface DatasetAsset extends BaseAsset {
   sizeBytes: number;
   filePath: string;
   source?: "scraping" | "upload" | "generated" | "api" | "manual";
+  
+  // Enhanced provenance (Dataset Studio integration)
+  provenance?: DatasetProvenance;
+  manifest?: DatasetManifestInfo;
+  p2pStatus?: DatasetP2pStatus;
 }
 
 export interface DatasetSchema {
@@ -41,6 +46,47 @@ export interface DatasetSchema {
     type: "string" | "number" | "boolean" | "date" | "array" | "object";
     nullable: boolean;
     description?: string;
+  }>;
+}
+
+// Dataset Studio Provenance Types
+export interface DatasetProvenance {
+  manifestHash: string;
+  merkleRoot?: string;
+  creatorSignature?: string;
+  signedAt?: string;
+  lineage?: DatasetLineageEntry[];
+}
+
+export interface DatasetLineageEntry {
+  action: "created" | "imported" | "generated" | "transformed" | "labeled" | "merged" | "split";
+  actorType: "human" | "local_model" | "remote_api" | "pipeline";
+  actorId?: string;
+  timestamp: string;
+  inputHashes?: string[];
+  outputHash: string;
+  parameters?: Record<string, unknown>;
+}
+
+export interface DatasetManifestInfo {
+  version: string;
+  totalItems: number;
+  totalBytes: number;
+  splits?: {
+    train: number;
+    val: number;
+    test: number;
+  };
+  modalityDistribution: Record<string, number>;
+}
+
+export interface DatasetP2pStatus {
+  isShared: boolean;
+  peers: Array<{
+    peerId: string;
+    peerName?: string;
+    lastSynced?: string;
+    status: "synced" | "syncing" | "pending" | "error";
   }>;
 }
 

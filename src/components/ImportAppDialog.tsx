@@ -248,7 +248,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
     onSuccess: async (result) => {
       showSuccess(
         !hasAiRules
-          ? "App imported successfully. Dyad will automatically generate an AI_RULES.md now."
+          ? "App imported successfully. Joy will automatically generate an AI_RULES.md now."
           : "App imported successfully",
       );
       onClose();
@@ -456,14 +456,14 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                             </TooltipTrigger>
                             <TooltipContent>
                               <p className="text-xs">
-                                AI_RULES.md lets Dyad know which tech stack to
+                                AI_RULES.md lets Joy know which tech stack to
                                 use for editing the app
                               </p>
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
                         <AlertDescription className="text-xs sm:text-sm">
-                          No AI_RULES.md found. Dyad will automatically generate
+                          No AI_RULES.md found. Joy will automatically generate
                           one after importing.
                         </AlertDescription>
                       </Alert>

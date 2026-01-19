@@ -62,12 +62,12 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const router = useRouter();
 
-  // Use fetched data (or defaults for Dyad)
+  // Use fetched data (or defaults for Joy)
   const providerDisplayName = isDyad
-    ? "Dyad"
+    ? "Joy"
     : (providerData?.name ?? "Unknown Provider");
   const providerWebsiteUrl = isDyad
-    ? "https://academy.dyad.sh/settings"
+    ? "https://joycreate.app/settings"
     : providerData?.websiteUrl;
   const hasFreeTier = isDyad ? false : providerData?.hasFreeTier;
   const envVarName = isDyad ? undefined : providerData?.envVarName;

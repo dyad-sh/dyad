@@ -665,8 +665,7 @@ ${componentSnippet}
         ) {
           const supabaseClientCode = await getSupabaseClientCode({
             projectId: updatedChat.app.supabaseProjectId,
-            organizationSlug:
-              updatedChat.app.supabaseOrganizationSlug ?? null,
+            organizationSlug: updatedChat.app.supabaseOrganizationSlug ?? null,
           });
           systemPrompt +=
             "\n\n" +

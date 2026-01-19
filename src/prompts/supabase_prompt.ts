@@ -10,22 +10,16 @@ The user has Supabase available for their app so use it for any auth, database o
 
 ## Supabase Client Setup
 
-Make sure supabase client exists at src/integrations/supabase/client.ts. If it doesn't exist, create it with the following code and also add the dependency @supabase/supabase-js:
+Check if a Supabase client exists at \`src/integrations/supabase/client.ts\`.
 
+**If it doesn't exist**, do both of the following:
+
+1. **Create the client file** at \`src/integrations/supabase/client.ts\` (or the most appropriate path for the project structure) with this code:
 \`\`\`typescript
 ${supabaseClientCode}
 \`\`\`
 
-When you need to create the Supabase client file, write the code shown above to the file path src/integrations/supabase/client.ts (or whichever file path is most appropriate based on the project structure), and make sure you ALSO add this dependency: @supabase/supabase-js.
-
-Example output:
-
-<dyad-write path="src/integrations/supabase/client.ts" description="Creating a supabase client.">
-${supabaseClientCode}
-</dyad-write>
-
-<dyad-add-dependency packages="@supabase/supabase-js"></dyad-add-dependency>
-
+2. **Add the dependency** \`@supabase/supabase-js\` to the project.
 ## Auth
 
 When asked to add authentication or login feature to the app, always follow these steps:

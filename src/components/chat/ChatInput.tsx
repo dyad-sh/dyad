@@ -154,12 +154,13 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
   const lastMessage = (chatId ? (messagesById.get(chatId) ?? []) : []).at(-1);
   const disableSendButton =
-    settings?.selectedChatMode !== "local-agent" &&
-    lastMessage?.role === "assistant" &&
-    !lastMessage.approvalState &&
-    !!proposal &&
-    proposal.type === "code-proposal" &&
-    messageId === lastMessage.id;
+    isStreaming ||
+    (settings?.selectedChatMode !== "local-agent" &&
+      lastMessage?.role === "assistant" &&
+      !lastMessage.approvalState &&
+      !!proposal &&
+      proposal.type === "code-proposal" &&
+      messageId === lastMessage.id);
 
   const { userBudget } = useUserBudgetInfo();
 

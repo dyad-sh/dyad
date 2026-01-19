@@ -225,6 +225,17 @@ export function registerChatStreamHandlers() {
   ipcMain.handle("chat:stream", async (event, req: ChatStreamParams) => {
     let attachmentPaths: string[] = [];
     try {
+      // Check if there's already an active stream for this chat
+      const existingStream = activeStreams.get(req.chatId);
+      if (existingStream && !existingStream.signal.aborted) {
+        logger.warn(
+          `Rejecting duplicate stream request for chat ${req.chatId} - stream already in progress`,
+        );
+        throw new Error(
+          "A chat stream is already in progress. Please wait for it to complete or cancel it first.",
+        );
+      }
+
       const fileUploadsState = FileUploadsState.getInstance();
       // Clear any stale state from previous requests for this chat
       fileUploadsState.clear(req.chatId);

@@ -49,22 +49,17 @@ export function useCreateCustomTheme() {
       const ipcClient = IpcClient.getInstance();
       return ipcClient.createCustomTheme(params);
     },
-    onSuccess: (_, variables) => {
-      // Invalidate both the specific app query and global query
+    onSuccess: () => {
+      // Invalidate all custom theme queries using prefix matching
+      // This invalidates both global and all app-specific theme queries
       queryClient.invalidateQueries({
-        queryKey: CUSTOM_THEMES_QUERY_KEY(variables.appId),
+        queryKey: ["custom-themes"],
       });
-      // Also invalidate global themes query if creating a global theme
-      if (!variables.appId) {
-        queryClient.invalidateQueries({
-          queryKey: CUSTOM_THEMES_QUERY_KEY(undefined),
-        });
-      }
     },
   });
 }
 
-export function useUpdateCustomTheme(appId?: number) {
+export function useUpdateCustomTheme() {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -75,14 +70,15 @@ export function useUpdateCustomTheme(appId?: number) {
       return ipcClient.updateCustomTheme(params);
     },
     onSuccess: () => {
+      // Invalidate all custom theme queries using prefix matching
       queryClient.invalidateQueries({
-        queryKey: CUSTOM_THEMES_QUERY_KEY(appId),
+        queryKey: ["custom-themes"],
       });
     },
   });
 }
 
-export function useDeleteCustomTheme(appId?: number) {
+export function useDeleteCustomTheme() {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -91,8 +87,9 @@ export function useDeleteCustomTheme(appId?: number) {
       await ipcClient.deleteCustomTheme({ id });
     },
     onSuccess: () => {
+      // Invalidate all custom theme queries using prefix matching
       queryClient.invalidateQueries({
-        queryKey: CUSTOM_THEMES_QUERY_KEY(appId),
+        queryKey: ["custom-themes"],
       });
     },
   });

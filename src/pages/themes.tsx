@@ -52,8 +52,9 @@ export default function ThemesPage() {
 }
 
 function ThemeCard({ theme }: { theme: CustomTheme }) {
-  const updateThemeMutation = useUpdateCustomTheme(theme.appId ?? undefined);
-  const deleteThemeMutation = useDeleteCustomTheme(theme.appId ?? undefined);
+  const updateThemeMutation = useUpdateCustomTheme();
+  const deleteThemeMutation = useDeleteCustomTheme();
+  const isDeleting = deleteThemeMutation.isPending;
 
   const handleUpdate = async (params: {
     id: number;
@@ -97,6 +98,7 @@ function ThemeCard({ theme }: { theme: CustomTheme }) {
               itemName={theme.name}
               itemType="Theme"
               onDelete={handleDelete}
+              isDeleting={isDeleting}
             />
           </div>
         </div>

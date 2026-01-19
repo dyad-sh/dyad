@@ -176,13 +176,54 @@ export function registerThemesHandlers() {
   handle(
     "create-custom-theme",
     async (_, params: CreateCustomThemeParams): Promise<CustomTheme> => {
+      // Validate and sanitize inputs
+      const trimmedName = params.name.trim();
+      const trimmedDescription = params.description?.trim();
+      const trimmedPrompt = params.prompt.trim();
+
+      // Validate name
+      if (!trimmedName) {
+        throw new Error("Theme name is required");
+      }
+      if (trimmedName.length > 100) {
+        throw new Error("Theme name must be less than 100 characters");
+      }
+
+      // Validate description
+      if (trimmedDescription && trimmedDescription.length > 500) {
+        throw new Error("Theme description must be less than 500 characters");
+      }
+
+      // Validate prompt
+      if (!trimmedPrompt) {
+        throw new Error("Theme prompt is required");
+      }
+      if (trimmedPrompt.length > 50000) {
+        throw new Error("Theme prompt must be less than 50,000 characters");
+      }
+
+      // Check for duplicate theme name (case-insensitive)
+      // For app-specific themes, check within that app. For global themes, check global scope.
+      const existingTheme = await db.query.customThemes.findFirst({
+        where:
+          params.appId != null
+            ? sql`LOWER(${customThemes.name}) = LOWER(${trimmedName}) AND ${customThemes.appId} = ${params.appId}`
+            : sql`LOWER(${customThemes.name}) = LOWER(${trimmedName}) AND ${customThemes.appId} IS NULL`,
+      });
+
+      if (existingTheme) {
+        throw new Error(
+          `A theme named "${trimmedName}" already exists. Please choose a different name.`,
+        );
+      }
+
       const result = await db
         .insert(customThemes)
         .values({
           appId: params.appId ?? null, // null for global themes
-          name: params.name,
-          description: params.description ?? null,
-          prompt: params.prompt,
+          name: trimmedName,
+          description: trimmedDescription || null,
+          prompt: trimmedPrompt,
         })
         .returning();
 
@@ -212,10 +253,62 @@ export function registerThemesHandlers() {
         updatedAt: new Date(),
       };
 
-      if (params.name !== undefined) updateData.name = params.name;
-      if (params.description !== undefined)
-        updateData.description = params.description;
-      if (params.prompt !== undefined) updateData.prompt = params.prompt;
+      // Get the current theme to check appId for duplicate validation
+      const currentTheme = await db.query.customThemes.findFirst({
+        where: eq(customThemes.id, params.id),
+      });
+
+      if (!currentTheme) {
+        throw new Error("Theme not found");
+      }
+
+      // Validate and sanitize name if provided
+      if (params.name !== undefined) {
+        const trimmedName = params.name.trim();
+        if (!trimmedName) {
+          throw new Error("Theme name is required");
+        }
+        if (trimmedName.length > 100) {
+          throw new Error("Theme name must be less than 100 characters");
+        }
+
+        // Check for duplicate theme name (case-insensitive), excluding current theme
+        const existingTheme = await db.query.customThemes.findFirst({
+          where:
+            currentTheme.appId != null
+              ? sql`LOWER(${customThemes.name}) = LOWER(${trimmedName}) AND ${customThemes.appId} = ${currentTheme.appId} AND ${customThemes.id} != ${params.id}`
+              : sql`LOWER(${customThemes.name}) = LOWER(${trimmedName}) AND ${customThemes.appId} IS NULL AND ${customThemes.id} != ${params.id}`,
+        });
+
+        if (existingTheme) {
+          throw new Error(
+            `A theme named "${trimmedName}" already exists. Please choose a different name.`,
+          );
+        }
+
+        updateData.name = trimmedName;
+      }
+
+      // Validate and sanitize description if provided
+      if (params.description !== undefined) {
+        const trimmedDescription = params.description.trim();
+        if (trimmedDescription.length > 500) {
+          throw new Error("Theme description must be less than 500 characters");
+        }
+        updateData.description = trimmedDescription || null;
+      }
+
+      // Validate and sanitize prompt if provided
+      if (params.prompt !== undefined) {
+        const trimmedPrompt = params.prompt.trim();
+        if (!trimmedPrompt) {
+          throw new Error("Theme prompt is required");
+        }
+        if (trimmedPrompt.length > 50000) {
+          throw new Error("Theme prompt must be less than 50,000 characters");
+        }
+        updateData.prompt = trimmedPrompt;
+      }
 
       const result = await db
         .update(customThemes)
@@ -224,6 +317,10 @@ export function registerThemesHandlers() {
         .returning();
 
       const theme = result[0];
+      if (!theme) {
+        throw new Error("Theme not found");
+      }
+
       return {
         id: theme.id,
         appId: theme.appId,
@@ -259,6 +356,35 @@ export function registerThemesHandlers() {
         );
       }
 
+      // Validate inputs
+      if (params.images.length === 0 && !params.keywords.trim()) {
+        throw new Error(
+          "Please provide at least one image or keywords for theme generation",
+        );
+      }
+
+      if (params.images.length > 5) {
+        throw new Error("Maximum 5 images allowed");
+      }
+
+      // Validate each image size
+      for (const imageData of params.images) {
+        const sizeInBytes = (imageData.length * 3) / 4; // Approximate base64 to bytes
+        if (sizeInBytes > 10 * 1024 * 1024) {
+          throw new Error("Individual image size exceeds 10MB limit");
+        }
+      }
+
+      // Validate keywords length
+      if (params.keywords.length > 500) {
+        throw new Error("Keywords must be less than 500 characters");
+      }
+
+      // Validate generation mode
+      if (!["inspired", "high-fidelity"].includes(params.generationMode)) {
+        throw new Error("Invalid generation mode");
+      }
+
       // Use user's selected model via Dyad Pro gateway
       const { modelClient } = await getModelClient(
         settings.selectedModel,
@@ -284,7 +410,7 @@ export function registerThemesHandlers() {
       const userInput = `inspired by: ${keywordsPart}
 images: ${imagesPart}`;
 
-      // Try with images first if available
+      // Generate theme with images
       if (params.images.length > 0) {
         try {
           const contentParts: (TextPart | ImagePart)[] = [];
@@ -317,15 +443,14 @@ images: ${imagesPart}`;
 
           return { prompt: result };
         } catch (imageError) {
-          logger.warn(
-            "Image-based generation failed, falling back to text-only:",
-            imageError,
+          logger.error("Image-based theme generation failed:", imageError);
+          throw new Error(
+            "Failed to process images for theme generation. Please try with fewer or smaller images, or use manual mode.",
           );
-          // Fall through to text-only generation
         }
       }
 
-      // Text-only generation (fallback or when no images)
+      // Text-only generation (when no images provided)
       try {
         const stream = streamText({
           model: modelClient.model,
@@ -343,7 +468,9 @@ images: ${imagesPart}`;
         return { prompt: result };
       } catch (error) {
         logger.error("Theme generation error:", error);
-        throw error;
+        throw new Error(
+          `Failed to generate theme: ${error instanceof Error ? error.message : "AI service error"}`,
+        );
       }
     },
   );

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -18,6 +18,10 @@ import {
 } from "@/hooks/useCustomThemes";
 import { toast } from "sonner";
 import type { ThemeGenerationMode } from "@/ipc/ipc_types";
+
+// Image upload constants
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB per image (raw file size)
+const MAX_IMAGES = 5;
 
 interface CustomThemeDialogProps {
   open: boolean;
@@ -65,6 +69,13 @@ export function CustomThemeDialog({
     setActiveTab("manual");
   }, []);
 
+  // Reset form when dialog closes
+  useEffect(() => {
+    if (!open) {
+      resetForm();
+    }
+  }, [open, resetForm]);
+
   const handleClose = useCallback(() => {
     resetForm();
     onOpenChange(false);
@@ -76,18 +87,53 @@ export function CustomThemeDialog({
       if (!files) return;
 
       Array.from(files).forEach((file) => {
+        // Check image count limit first
+        if (aiImages.length >= MAX_IMAGES) {
+          toast.error(`Maximum ${MAX_IMAGES} images allowed`);
+          return;
+        }
+
+        // Validate file type
         if (!file.type.startsWith("image/")) {
-          toast.error("Please upload only image files");
+          toast.error(
+            `Please upload only image files. "${file.name}" is not a valid image.`,
+          );
+          return;
+        }
+
+        // Validate file size (raw file size)
+        if (file.size > MAX_FILE_SIZE) {
+          const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+          toast.error(`File "${file.name}" exceeds 10MB limit (${sizeMB}MB)`);
           return;
         }
 
         const reader = new FileReader();
-        reader.onload = () => {
-          const base64 = reader.result as string;
-          // Remove the data URL prefix for storage
-          const base64Data = base64.split(",")[1];
-          setAiImages((prev) => [...prev, base64Data]);
+
+        reader.onerror = () => {
+          toast.error(`Failed to read file "${file.name}". Please try again.`);
         };
+
+        reader.onload = () => {
+          try {
+            const base64 = reader.result as string;
+            if (!base64 || typeof base64 !== "string") {
+              throw new Error("Invalid file data");
+            }
+
+            const base64Data = base64.split(",")[1];
+            if (!base64Data) {
+              throw new Error("Failed to extract image data");
+            }
+
+            setAiImages((prev) => [...prev, base64Data]);
+          } catch (err) {
+            toast.error(
+              `Error processing "${file.name}": ${err instanceof Error ? err.message : "Unknown error"}`,
+            );
+          }
+        };
+
         reader.readAsDataURL(file);
       });
 
@@ -96,7 +142,7 @@ export function CustomThemeDialog({
         fileInputRef.current.value = "";
       }
     },
-    [],
+    [aiImages.length],
   );
 
   const handleRemoveImage = useCallback((index: number) => {
@@ -122,7 +168,7 @@ export function CustomThemeDialog({
         `Failed to generate theme: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
     }
-  }, [aiImages, aiKeywords, generatePromptMutation]);
+  }, [aiImages, aiKeywords, aiGenerationMode, generatePromptMutation]);
 
   const handleSaveManual = useCallback(async () => {
     if (!manualName.trim()) {
@@ -318,6 +364,16 @@ export function CustomThemeDialog({
                   Upload UI screenshots to inspire your theme
                 </p>
               </div>
+
+              {/* Image counter */}
+              <p className="text-xs text-muted-foreground mt-2 text-center">
+                {aiImages.length} / {MAX_IMAGES} images
+                {aiImages.length >= MAX_IMAGES && (
+                  <span className="text-destructive ml-2">
+                    • Maximum reached
+                  </span>
+                )}
+              </p>
 
               {/* Image Preview */}
               {aiImages.length > 0 && (

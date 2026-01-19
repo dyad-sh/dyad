@@ -17,7 +17,10 @@ import {
   useGenerateThemePrompt,
 } from "@/hooks/useCustomThemes";
 import { toast } from "sonner";
-import type { ThemeGenerationMode } from "@/ipc/ipc_types";
+import type {
+  ThemeGenerationMode,
+  ThemeGenerationModel,
+} from "@/ipc/ipc_types";
 
 // Image upload constants
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB per image (raw file size)
@@ -50,6 +53,8 @@ export function CustomThemeDialog({
   const [aiKeywords, setAiKeywords] = useState("");
   const [aiGenerationMode, setAiGenerationMode] =
     useState<ThemeGenerationMode>("inspired");
+  const [aiSelectedModel, setAiSelectedModel] =
+    useState<ThemeGenerationModel>("gemini-3-flash");
   const [aiGeneratedPrompt, setAiGeneratedPrompt] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -65,6 +70,7 @@ export function CustomThemeDialog({
     setAiImages([]);
     setAiKeywords("");
     setAiGenerationMode("inspired");
+    setAiSelectedModel("gemini-3-flash");
     setAiGeneratedPrompt("");
     setActiveTab("manual");
   }, []);
@@ -160,6 +166,7 @@ export function CustomThemeDialog({
         images: aiImages,
         keywords: aiKeywords,
         generationMode: aiGenerationMode,
+        model: aiSelectedModel,
       });
       setAiGeneratedPrompt(result.prompt);
       toast.success("Theme prompt generated successfully");
@@ -168,7 +175,13 @@ export function CustomThemeDialog({
         `Failed to generate theme: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
     }
-  }, [aiImages, aiKeywords, aiGenerationMode, generatePromptMutation]);
+  }, [
+    aiImages,
+    aiKeywords,
+    aiGenerationMode,
+    aiSelectedModel,
+    generatePromptMutation,
+  ]);
 
   const handleSaveManual = useCallback(async () => {
     if (!manualName.trim()) {
@@ -443,6 +456,55 @@ export function CustomThemeDialog({
                   <span className="text-xs text-muted-foreground mt-1">
                     Recreates the visual system from the image as closely as
                     possible.
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* Model Selection */}
+            <div className="space-y-3">
+              <Label>Model Selection</Label>
+              <div className="grid grid-cols-3 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setAiSelectedModel("gemini-3-pro")}
+                  className={`flex flex-col items-center rounded-lg border p-3 text-center transition-colors ${
+                    aiSelectedModel === "gemini-3-pro"
+                      ? "border-primary bg-primary/5"
+                      : "hover:bg-muted/50"
+                  }`}
+                >
+                  <span className="font-medium text-sm">Gemini 3 Pro</span>
+                  <span className="text-xs text-muted-foreground mt-1">
+                    Most capable
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAiSelectedModel("gemini-3-flash")}
+                  className={`flex flex-col items-center rounded-lg border p-3 text-center transition-colors ${
+                    aiSelectedModel === "gemini-3-flash"
+                      ? "border-primary bg-primary/5"
+                      : "hover:bg-muted/50"
+                  }`}
+                >
+                  <span className="font-medium text-sm">Gemini 3 Flash</span>
+                  <span className="text-xs text-muted-foreground mt-1">
+                    Fast & efficient
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAiSelectedModel("gpt-5.2")}
+                  className={`flex flex-col items-center rounded-lg border p-3 text-center transition-colors ${
+                    aiSelectedModel === "gpt-5.2"
+                      ? "border-primary bg-primary/5"
+                      : "hover:bg-muted/50"
+                  }`}
+                >
+                  <span className="font-medium text-sm">GPT 5.2</span>
+                  <span className="text-xs text-muted-foreground mt-1">
+                    Latest OpenAI
                   </span>
                 </button>
               </div>

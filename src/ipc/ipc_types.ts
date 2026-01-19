@@ -781,10 +781,16 @@ export interface GetCustomThemesParams {
 
 export type ThemeGenerationMode = "inspired" | "high-fidelity";
 
+export type ThemeGenerationModel =
+  | "gemini-3-pro"
+  | "gemini-3-flash"
+  | "gpt-5.2";
+
 export interface GenerateThemePromptParams {
   images: string[]; // Base64 encoded images
   keywords: string;
   generationMode: ThemeGenerationMode; // 'inspired' (abstract design system) or 'high-fidelity' (visual recreation)
+  model: ThemeGenerationModel; // Model to use for generation
 }
 
 export interface GenerateThemePromptResult {

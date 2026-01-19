@@ -385,11 +385,23 @@ export function registerThemesHandlers() {
         throw new Error("Invalid generation mode");
       }
 
-      // Use user's selected model via Dyad Pro gateway
-      const { modelClient } = await getModelClient(
-        settings.selectedModel,
-        settings,
-      );
+      // Validate and map model selection
+      const modelMap: Record<string, { provider: string; name: string }> = {
+        "gemini-3-pro": { provider: "google", name: "gemini-3-pro-preview" },
+        "gemini-3-flash": {
+          provider: "google",
+          name: "gemini-3-flash-preview",
+        },
+        "gpt-5.2": { provider: "openai", name: "gpt-5.2" },
+      };
+
+      const selectedModel = modelMap[params.model];
+      if (!selectedModel) {
+        throw new Error("Invalid model selection");
+      }
+
+      // Use the selected model for theme generation
+      const { modelClient } = await getModelClient(selectedModel, settings);
 
       // Select system prompt based on generation mode
       const systemPrompt =
@@ -398,7 +410,7 @@ export function registerThemesHandlers() {
           : THEME_GENERATION_META_PROMPT;
 
       logger.log(
-        `Generating theme prompt with model: ${settings.selectedModel.name}, images: ${params.images.length}, mode: ${params.generationMode}`,
+        `Generating theme prompt with model: ${params.model} (${selectedModel.name}), images: ${params.images.length}, mode: ${params.generationMode}`,
       );
 
       // Build the user input prompt

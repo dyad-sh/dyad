@@ -405,11 +405,11 @@ Pro User ID: ${userBudget?.redactedUserId || "n/a"}
                 }}
                 className="w-full py-6 border-primary/50 shadow-sm shadow-primary/10 transition-all hover:shadow-md hover:shadow-primary/15"
               >
-                <SparklesIcon className="mr-2 h-5 w-5" /> Chat with Dyad help
+                <SparklesIcon className="mr-2 h-5 w-5" /> Chat with Joy help
                 bot (Pro)
               </Button>
               <p className="text-sm text-muted-foreground px-2">
-                Opens an in-app help chat assistant that searches through Dyad's
+                Opens an in-app help chat assistant that searches through Joy's
                 docs.
               </p>
             </div>

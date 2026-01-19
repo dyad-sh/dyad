@@ -442,7 +442,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               onChange={setInputValue}
               onSubmit={handleSubmit}
               onPaste={handlePaste}
-              placeholder="Ask Dyad to build..."
+              placeholder="Ask Joy to build..."
               excludeCurrentApp={true}
               disableSendButton={disableSendButton}
             />

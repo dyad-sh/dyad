@@ -664,3 +664,380 @@ export const documentExportsRelations = relations(documentExports, ({ one }) => 
     references: [documents.id],
   }),
 }));
+
+// ============================================================================
+// Dataset Studio Tables (Offline-First Dataset Creation)
+// ============================================================================
+
+/**
+ * Dataset Items - Individual data items with provenance tracking
+ * Supports multimodal: text, image, audio, video, context packs
+ */
+export const datasetItems = sqliteTable("dataset_items", {
+  id: text("id").primaryKey(), // UUID v4
+  datasetId: text("dataset_id").notNull(), // Links to parent dataset
+  
+  // Core identification
+  modality: text("modality", { 
+    enum: ["text", "image", "audio", "video", "context"] 
+  }).notNull(),
+  contentHash: text("content_hash").notNull(), // SHA-256 of content
+  byteSize: integer("byte_size").notNull(),
+  
+  // Source tracking
+  sourceType: text("source_type", {
+    enum: ["captured", "imported", "generated", "api", "scraped"]
+  }).notNull(),
+  sourcePath: text("source_path"), // Original file path or URL
+  
+  // Generation lineage (for AI-generated content)
+  generator: text("generator", {
+    enum: ["local_model", "provider_api", "human", "hybrid"]
+  }),
+  lineageJson: text("lineage_json", { mode: "json" }).$type<ItemLineage | null>(),
+  
+  // Content pointers
+  contentUri: text("content_uri").notNull(), // Content-addressed URI
+  localPath: text("local_path"), // Optional convenience path
+  thumbnailPath: text("thumbnail_path"), // For media items
+  
+  // Labels and annotations
+  labelsJson: text("labels_json", { mode: "json" }).$type<ItemLabels | null>(),
+  annotationsJson: text("annotations_json", { mode: "json" }).$type<ItemAnnotation[] | null>(),
+  
+  // Quality signals
+  qualitySignalsJson: text("quality_signals_json", { mode: "json" }).$type<QualitySignals | null>(),
+  
+  // Rights and licensing
+  license: text("license").notNull().default("unknown"),
+  consentFlags: text("consent_flags", { mode: "json" }).$type<string[] | null>(),
+  restrictions: text("restrictions", { mode: "json" }).$type<string[] | null>(),
+  
+  // Signatures
+  creatorSignature: text("creator_signature"),
+  signedAt: integer("signed_at", { mode: "timestamp" }),
+  
+  // Split assignment
+  split: text("split", { enum: ["train", "val", "test", "unassigned"] })
+    .notNull()
+    .default("unassigned"),
+  
+  // Timestamps
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+/**
+ * Dataset Manifests - Versioned dataset packages
+ */
+export const datasetManifests = sqliteTable("dataset_manifests", {
+  id: text("id").primaryKey(), // UUID v4
+  datasetId: text("dataset_id").notNull(),
+  version: text("version").notNull(), // Semver
+  
+  // Manifest content hash (for integrity)
+  manifestHash: text("manifest_hash").notNull(),
+  merkleRoot: text("merkle_root"), // Merkle tree root of all items
+  
+  // Schema definition
+  schemaJson: text("schema_json", { mode: "json" }).$type<DatasetSchemaV2 | null>(),
+  
+  // Statistics
+  statsJson: text("stats_json", { mode: "json" }).$type<DatasetStatsV2 | null>(),
+  totalItems: integer("total_items").notNull().default(0),
+  totalBytes: integer("total_bytes").notNull().default(0),
+  
+  // Splits info
+  splitsJson: text("splits_json", { mode: "json" }).$type<SplitsInfo | null>(),
+  
+  // Licensing
+  license: text("license").notNull(),
+  licenseUrl: text("license_url"),
+  
+  // Publishing status
+  publishStatus: text("publish_status", {
+    enum: ["draft", "local", "p2p_shared", "marketplace_pending", "marketplace_published"]
+  }).notNull().default("draft"),
+  publishedAt: integer("published_at", { mode: "timestamp" }),
+  marketplaceId: text("marketplace_id"),
+  
+  // Signatures
+  creatorSignature: text("creator_signature"),
+  
+  // Timestamps
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+}, (table) => [
+  unique("dataset_version_unique").on(table.datasetId, table.version),
+]);
+
+/**
+ * Provenance Records - Track complete lineage of dataset items
+ */
+export const provenanceRecords = sqliteTable("provenance_records", {
+  id: text("id").primaryKey(),
+  itemId: text("item_id")
+    .notNull()
+    .references(() => datasetItems.id, { onDelete: "cascade" }),
+  
+  // Action tracking
+  action: text("action", {
+    enum: ["created", "imported", "generated", "transformed", "labeled", "merged", "split"]
+  }).notNull(),
+  
+  // Actor
+  actorType: text("actor_type", {
+    enum: ["human", "local_model", "remote_api", "pipeline"]
+  }).notNull(),
+  actorId: text("actor_id"), // Model ID, user ID, or pipeline ID
+  
+  // Input/Output hashes for reproducibility
+  inputHashesJson: text("input_hashes_json", { mode: "json" }).$type<string[] | null>(),
+  outputHash: text("output_hash").notNull(),
+  
+  // Parameters used
+  parametersJson: text("parameters_json", { mode: "json" }).$type<Record<string, unknown> | null>(),
+  
+  // Timestamps
+  timestamp: integer("timestamp", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+/**
+ * P2P Sync State - Track sync status with peers
+ */
+export const datasetP2pSync = sqliteTable("dataset_p2p_sync", {
+  id: text("id").primaryKey(),
+  datasetId: text("dataset_id").notNull(),
+  peerId: text("peer_id").notNull(),
+  peerName: text("peer_name"),
+  
+  // Sync state
+  syncDirection: text("sync_direction", { enum: ["push", "pull", "bidirectional"] }).notNull(),
+  lastSyncedVersion: text("last_synced_version"),
+  lastSyncedAt: integer("last_synced_at", { mode: "timestamp" }),
+  
+  // Conflict tracking
+  conflictState: text("conflict_state", {
+    enum: ["none", "detected", "resolved", "manual_required"]
+  }).notNull().default("none"),
+  conflictDetailsJson: text("conflict_details_json", { mode: "json" }),
+  
+  // Status
+  syncStatus: text("sync_status", {
+    enum: ["idle", "syncing", "queued", "error"]
+  }).notNull().default("idle"),
+  errorMessage: text("error_message"),
+  
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+}, (table) => [
+  unique("dataset_peer_unique").on(table.datasetId, table.peerId),
+]);
+
+/**
+ * Content-Addressed Blob Registry - Track all stored blobs
+ */
+export const contentBlobs = sqliteTable("content_blobs", {
+  hash: text("hash").primaryKey(), // SHA-256
+  mimeType: text("mime_type").notNull(),
+  byteSize: integer("byte_size").notNull(),
+  storagePath: text("storage_path").notNull(), // Path in content-addressed store
+  
+  // Chunking info (for large files)
+  isChunked: integer("is_chunked", { mode: "boolean" }).notNull().default(sql`0`),
+  chunkCount: integer("chunk_count"),
+  chunkHashes: text("chunk_hashes", { mode: "json" }).$type<string[] | null>(),
+  
+  // Reference counting
+  refCount: integer("ref_count").notNull().default(1),
+  
+  // Pin status (prevent garbage collection)
+  isPinned: integer("is_pinned", { mode: "boolean" }).notNull().default(sql`0`),
+  
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+/**
+ * Dataset Generation Jobs - Track AI generation tasks
+ */
+export const datasetGenerationJobs = sqliteTable("dataset_generation_jobs", {
+  id: text("id").primaryKey(),
+  datasetId: text("dataset_id").notNull(),
+  
+  // Job config
+  jobType: text("job_type", {
+    enum: ["text_generation", "image_generation", "audio_transcription", "labeling", "augmentation", "embedding"]
+  }).notNull(),
+  configJson: text("config_json", { mode: "json" }).$type<GenerationJobConfig | null>(),
+  
+  // Provider info
+  providerType: text("provider_type", { enum: ["local", "remote"] }).notNull(),
+  providerId: text("provider_id").notNull(),
+  modelId: text("model_id").notNull(),
+  
+  // Progress tracking
+  status: text("status", {
+    enum: ["pending", "running", "paused", "completed", "failed", "cancelled"]
+  }).notNull().default("pending"),
+  progress: integer("progress").notNull().default(0), // 0-100
+  totalItems: integer("total_items").notNull().default(0),
+  completedItems: integer("completed_items").notNull().default(0),
+  failedItems: integer("failed_items").notNull().default(0),
+  
+  // Checkpointing for resumability
+  checkpointJson: text("checkpoint_json", { mode: "json" }),
+  
+  // Cost tracking (for remote APIs)
+  estimatedCost: text("estimated_cost"),
+  actualCost: text("actual_cost"),
+  
+  // Error handling
+  errorMessage: text("error_message"),
+  retryCount: integer("retry_count").notNull().default(0),
+  
+  // Timestamps
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  startedAt: integer("started_at", { mode: "timestamp" }),
+  completedAt: integer("completed_at", { mode: "timestamp" }),
+});
+
+// Dataset Studio Type Definitions
+export interface ItemLineage {
+  model?: string;
+  modelVersion?: string;
+  prompt?: string;
+  systemPrompt?: string;
+  seed?: number;
+  temperature?: number;
+  parameters?: Record<string, unknown>;
+  parentItemIds?: string[];
+  transformations?: string[];
+}
+
+export interface ItemLabels {
+  tags?: string[];
+  categories?: string[];
+  boundingBoxes?: BoundingBox[];
+  segmentationMask?: string;
+  keypoints?: Keypoint[];
+  caption?: string;
+  transcript?: string;
+  embedding?: number[];
+  customLabels?: Record<string, unknown>;
+}
+
+export interface BoundingBox {
+  label: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  confidence?: number;
+}
+
+export interface Keypoint {
+  label: string;
+  x: number;
+  y: number;
+  confidence?: number;
+}
+
+export interface ItemAnnotation {
+  id: string;
+  type: "note" | "correction" | "flag" | "review";
+  content: string;
+  author: string;
+  createdAt: string;
+}
+
+export interface QualitySignals {
+  // Image quality
+  blurScore?: number;
+  aestheticScore?: number;
+  resolution?: { width: number; height: number };
+  
+  // Content safety
+  nsfwScore?: number;
+  toxicityScore?: number;
+  
+  // Text quality
+  languageConfidence?: number;
+  readabilityScore?: number;
+  
+  // Audio quality
+  signalToNoiseRatio?: number;
+  
+  // General
+  duplicateScore?: number;
+  overallQuality?: number;
+  customSignals?: Record<string, number>;
+}
+
+export interface DatasetSchemaV2 {
+  version: string;
+  modalities: string[];
+  fields: SchemaField[];
+  labelSchema?: Record<string, unknown>;
+}
+
+export interface SchemaField {
+  name: string;
+  type: "string" | "number" | "boolean" | "array" | "object" | "binary";
+  required: boolean;
+  description?: string;
+  constraints?: Record<string, unknown>;
+}
+
+export interface DatasetStatsV2 {
+  itemCount: number;
+  totalBytes: number;
+  modalityDistribution: Record<string, number>;
+  labelDistribution?: Record<string, number>;
+  qualityDistribution?: Record<string, { min: number; max: number; mean: number }>;
+  splitDistribution: Record<string, number>;
+}
+
+export interface SplitsInfo {
+  seed: number;
+  ratios: { train: number; val: number; test: number };
+  counts: { train: number; val: number; test: number };
+}
+
+export interface GenerationJobConfig {
+  targetCount?: number;
+  promptTemplate?: string;
+  inputDatasetId?: string;
+  augmentationConfig?: Record<string, unknown>;
+  qualityThresholds?: Record<string, number>;
+  outputModality?: string;
+}
+
+// Dataset Studio Relations
+export const datasetItemsRelations = relations(datasetItems, ({ many }) => ({
+  provenanceRecords: many(provenanceRecords),
+}));
+
+export const provenanceRecordsRelations = relations(provenanceRecords, ({ one }) => ({
+  item: one(datasetItems, {
+    fields: [provenanceRecords.itemId],
+    references: [datasetItems.id],
+  }),
+}));

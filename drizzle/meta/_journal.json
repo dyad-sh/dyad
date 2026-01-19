@@ -169,6 +169,13 @@
       "when": 1768623523495,
       "tag": "0023_yellow_sir_ram",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1768853632052,
+      "tag": "0024_deep_valkyrie",
+      "breakpoints": true
     }
   ]
 }

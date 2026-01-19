@@ -53,6 +53,7 @@ import { registerHybridBridgeHandlers } from "./handlers/hybrid_bridge_handlers"
 import { registerDecentralizedChatHandlers } from "./handlers/decentralized_chat_handlers";
 import { registerComputeNetworkHandlers } from "./handlers/compute_network_handlers";
 import { registerWebRTCHandlers } from "./handlers/webrtc_handlers";
+import { registerDatasetStudioHandlers } from "./handlers/dataset_studio_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -111,4 +112,5 @@ export function registerIpcHandlers() {
   registerDecentralizedChatHandlers();
   registerComputeNetworkHandlers();
   registerWebRTCHandlers();
+  registerDatasetStudioHandlers();
 }

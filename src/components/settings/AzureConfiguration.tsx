@@ -259,7 +259,7 @@ export function AzureConfiguration({
             <div className="text-sm text-muted-foreground space-y-2">
               <p>
                 You can continue to configure Azure via environment variables.
-                If both variables are present and no settings are saved, Dyad
+                If both variables are present and no settings are saved, Joy
                 will use them automatically.
               </p>
               <p>

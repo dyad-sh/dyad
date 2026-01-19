@@ -609,7 +609,7 @@ export function registerAppHandlers() {
       // Create initial commit
       const commitHash = await gitCommit({
         path: fullAppPath,
-        message: "Init Dyad app",
+        message: "Init Joy app",
       });
 
       // Update chat with initial commit hash
@@ -673,7 +673,7 @@ export function registerAppHandlers() {
         // Create initial commit
         await gitCommit({
           path: newAppPath,
-          message: "Init Dyad app",
+          message: "Init Joy app",
         });
       }
 

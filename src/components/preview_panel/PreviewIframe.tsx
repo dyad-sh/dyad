@@ -143,7 +143,7 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
             {isDockerError
               ? "Make sure Docker Desktop is running and try restarting the app."
               : error.source === "dyad-app"
-                ? "Try restarting the Dyad app or restarting your computer to see if that fixes the error."
+                ? "Try restarting the JoyCreate app or restarting your computer to see if that fixes the error."
                 : "Check if restarting the app fixes the error."}
           </span>
         </div>

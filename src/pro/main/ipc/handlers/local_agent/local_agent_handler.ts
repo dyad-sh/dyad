@@ -8,6 +8,7 @@ import {
   streamText,
   ToolSet,
   stepCountIs,
+  hasToolCall,
   ModelMessage,
   type ToolExecutionOptions,
 } from "ai";
@@ -244,7 +245,7 @@ export async function handleLocalAgentStream(
       system: systemPrompt,
       messages: messageHistory,
       tools: allTools,
-      stopWhen: stepCountIs(25), // Allow multiple tool call rounds
+      stopWhen: [stepCountIs(25), hasToolCall("add_integration")], // Allow multiple tool call rounds, stop on add_integration
       abortSignal: abortController.signal,
       // Inject pending user messages (e.g., images from web_crawl) between steps
       // We must re-inject all accumulated messages each step because the AI SDK

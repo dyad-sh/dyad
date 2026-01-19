@@ -20,6 +20,7 @@ ${supabaseClientCode}
 \`\`\`
 
 2. **Add the dependency** \`@supabase/supabase-js\` to the project.
+
 ## Auth
 
 When asked to add authentication or login feature to the app, always follow these steps:

@@ -88,7 +88,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
         <Button
           onClick={handleKeepGoingClick}
           className="self-start mt-2"
-          variant="outline"
+          variant="default"
           disabled={isStreaming}
         >
           Continue

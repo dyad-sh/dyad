@@ -300,6 +300,12 @@ const validInvokeChannels = [
   "assets:create:training-data",
   "assets:get-directory",
   // Dataset Studio (Multimodal Dataset Creation with Provenance)
+  "dataset-studio:create-dataset",
+  "dataset-studio:list-datasets",
+  "dataset-studio:get-dataset",
+  "dataset-studio:update-dataset",
+  "dataset-studio:delete-dataset",
+  "dataset-studio:refresh-stats",
   "dataset-studio:add-item-from-file",
   "dataset-studio:add-generated-item",
   "dataset-studio:update-item-labels",

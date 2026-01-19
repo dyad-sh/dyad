@@ -100,11 +100,69 @@ export interface P2pSyncState {
   errorMessage?: string;
 }
 
+// Dataset type for listing
+export interface StudioDataset {
+  id: string;
+  name: string;
+  description?: string;
+  datasetType: "custom" | "training" | "evaluation" | "fine_tuning" | "rag" | "mixed";
+  license: string;
+  tags?: string[];
+  supportedModalities?: string[];
+  itemCount: number;
+  totalBytes: number;
+  publishStatus: "draft" | "local" | "p2p_shared" | "marketplace_pending" | "marketplace_published";
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 class DatasetStudioClient {
   private ipcRenderer: Electron.IpcRenderer;
 
   constructor() {
     this.ipcRenderer = window.electron.ipcRenderer;
+  }
+
+  // ========== Dataset CRUD Operations ==========
+
+  async createDataset(args: {
+    name: string;
+    description?: string;
+    datasetType?: "custom" | "training" | "evaluation" | "fine_tuning" | "rag" | "mixed";
+    license?: string;
+    tags?: string[];
+    supportedModalities?: string[];
+  }): Promise<{ success: boolean; datasetId: string }> {
+    return this.ipcRenderer.invoke("dataset-studio:create-dataset", args);
+  }
+
+  async listDatasets(args?: {
+    datasetType?: string;
+    publishStatus?: string;
+  }): Promise<StudioDataset[]> {
+    return this.ipcRenderer.invoke("dataset-studio:list-datasets", args);
+  }
+
+  async getDataset(datasetId: string): Promise<StudioDataset> {
+    return this.ipcRenderer.invoke("dataset-studio:get-dataset", datasetId);
+  }
+
+  async updateDataset(args: {
+    datasetId: string;
+    name?: string;
+    description?: string;
+    license?: string;
+    tags?: string[];
+  }): Promise<{ success: boolean }> {
+    return this.ipcRenderer.invoke("dataset-studio:update-dataset", args);
+  }
+
+  async deleteDataset(datasetId: string): Promise<{ success: boolean }> {
+    return this.ipcRenderer.invoke("dataset-studio:delete-dataset", datasetId);
+  }
+
+  async refreshStats(datasetId: string): Promise<{ success: boolean; itemCount: number; totalBytes: number }> {
+    return this.ipcRenderer.invoke("dataset-studio:refresh-stats", datasetId);
   }
 
   // ========== Item Operations ==========

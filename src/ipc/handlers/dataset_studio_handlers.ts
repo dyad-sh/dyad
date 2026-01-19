@@ -17,8 +17,9 @@ import * as crypto from "crypto";
 import log from "electron-log";
 import { v4 as uuidv4 } from "uuid";
 import { db } from "@/db";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, count } from "drizzle-orm";
 import {
+  studioDatasets,
   datasetItems,
   datasetManifests,
   provenanceRecords,
@@ -206,6 +207,204 @@ async function signData(_data: Buffer): Promise<string> {
 
 export function registerDatasetStudioHandlers() {
   logger.info("Registering Dataset Studio handlers");
+
+  // ========== Dataset CRUD Operations ==========
+
+  /**
+   * Create a new dataset
+   */
+  ipcMain.handle("dataset-studio:create-dataset", async (_event, args: {
+    name: string;
+    description?: string;
+    datasetType?: "custom" | "training" | "evaluation" | "fine_tuning" | "rag" | "mixed";
+    license?: string;
+    tags?: string[];
+    supportedModalities?: string[];
+  }) => {
+    try {
+      const { 
+        name, 
+        description, 
+        datasetType = "custom", 
+        license = "cc-by-4.0",
+        tags = [],
+        supportedModalities = ["text", "image", "audio", "video", "context"]
+      } = args;
+
+      const id = uuidv4();
+      
+      await db.insert(studioDatasets).values({
+        id,
+        name,
+        description: description || null,
+        datasetType,
+        license,
+        tags,
+        supportedModalities,
+        itemCount: 0,
+        totalBytes: 0,
+        publishStatus: "draft",
+      });
+      
+      logger.info(`Created dataset ${id}: ${name}`);
+      return { success: true, datasetId: id };
+    } catch (error) {
+      logger.error("Failed to create dataset:", error);
+      throw error;
+    }
+  });
+
+  /**
+   * List all datasets
+   */
+  ipcMain.handle("dataset-studio:list-datasets", async (_event, args?: {
+    datasetType?: string;
+    publishStatus?: string;
+  }) => {
+    try {
+      let query = db.select().from(studioDatasets);
+      
+      // Apply filters if provided
+      const conditions = [];
+      if (args?.datasetType) {
+        conditions.push(eq(studioDatasets.datasetType, args.datasetType as any));
+      }
+      if (args?.publishStatus) {
+        conditions.push(eq(studioDatasets.publishStatus, args.publishStatus as any));
+      }
+      
+      if (conditions.length > 0) {
+        query = query.where(and(...conditions)) as any;
+      }
+      
+      const datasets = await query.orderBy(desc(studioDatasets.updatedAt));
+      
+      return datasets.map(ds => ({
+        id: ds.id,
+        name: ds.name,
+        description: ds.description,
+        datasetType: ds.datasetType,
+        license: ds.license,
+        tags: ds.tags,
+        supportedModalities: ds.supportedModalities,
+        itemCount: ds.itemCount,
+        totalBytes: ds.totalBytes,
+        publishStatus: ds.publishStatus,
+        createdAt: ds.createdAt,
+        updatedAt: ds.updatedAt,
+      }));
+    } catch (error) {
+      logger.error("Failed to list datasets:", error);
+      throw error;
+    }
+  });
+
+  /**
+   * Get a single dataset by ID
+   */
+  ipcMain.handle("dataset-studio:get-dataset", async (_event, datasetId: string) => {
+    try {
+      const [dataset] = await db.select()
+        .from(studioDatasets)
+        .where(eq(studioDatasets.id, datasetId))
+        .limit(1);
+      
+      if (!dataset) {
+        throw new Error(`Dataset not found: ${datasetId}`);
+      }
+      
+      return dataset;
+    } catch (error) {
+      logger.error("Failed to get dataset:", error);
+      throw error;
+    }
+  });
+
+  /**
+   * Update a dataset
+   */
+  ipcMain.handle("dataset-studio:update-dataset", async (_event, args: {
+    datasetId: string;
+    name?: string;
+    description?: string;
+    license?: string;
+    tags?: string[];
+  }) => {
+    try {
+      const { datasetId, ...updates } = args;
+      
+      const updateData: any = {
+        updatedAt: new Date(),
+      };
+      
+      if (updates.name !== undefined) updateData.name = updates.name;
+      if (updates.description !== undefined) updateData.description = updates.description;
+      if (updates.license !== undefined) updateData.license = updates.license;
+      if (updates.tags !== undefined) updateData.tags = updates.tags;
+      
+      await db.update(studioDatasets)
+        .set(updateData)
+        .where(eq(studioDatasets.id, datasetId));
+      
+      return { success: true };
+    } catch (error) {
+      logger.error("Failed to update dataset:", error);
+      throw error;
+    }
+  });
+
+  /**
+   * Delete a dataset and all its items
+   */
+  ipcMain.handle("dataset-studio:delete-dataset", async (_event, datasetId: string) => {
+    try {
+      // Delete all items first (cascade will handle provenance)
+      await db.delete(datasetItems).where(eq(datasetItems.datasetId, datasetId));
+      
+      // Delete manifests
+      await db.delete(datasetManifests).where(eq(datasetManifests.datasetId, datasetId));
+      
+      // Delete generation jobs
+      await db.delete(datasetGenerationJobs).where(eq(datasetGenerationJobs.datasetId, datasetId));
+      
+      // Delete the dataset
+      await db.delete(studioDatasets).where(eq(studioDatasets.id, datasetId));
+      
+      logger.info(`Deleted dataset ${datasetId} and all related records`);
+      return { success: true };
+    } catch (error) {
+      logger.error("Failed to delete dataset:", error);
+      throw error;
+    }
+  });
+
+  /**
+   * Update dataset statistics (call after adding/removing items)
+   */
+  ipcMain.handle("dataset-studio:refresh-stats", async (_event, datasetId: string) => {
+    try {
+      // Get item count and total bytes
+      const [stats] = await db.select({
+        itemCount: count(datasetItems.id),
+        totalBytes: sql<number>`COALESCE(SUM(${datasetItems.byteSize}), 0)`,
+      })
+        .from(datasetItems)
+        .where(eq(datasetItems.datasetId, datasetId));
+      
+      await db.update(studioDatasets)
+        .set({
+          itemCount: stats.itemCount,
+          totalBytes: stats.totalBytes,
+          updatedAt: new Date(),
+        })
+        .where(eq(studioDatasets.id, datasetId));
+      
+      return { success: true, itemCount: stats.itemCount, totalBytes: stats.totalBytes };
+    } catch (error) {
+      logger.error("Failed to refresh dataset stats:", error);
+      throw error;
+    }
+  });
 
   // ========== Dataset Item Operations ==========
 

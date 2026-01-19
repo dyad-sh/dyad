@@ -12,6 +12,7 @@ import type {
   ProvenanceRecord,
   GenerationJob,
   P2pSyncState,
+  StudioDataset,
 } from "@/ipc/dataset_studio_client";
 import { toast } from "sonner";
 
@@ -21,6 +22,8 @@ const client = () => getDatasetStudioClient();
 // Query Keys
 export const datasetStudioKeys = {
   all: ["dataset-studio"] as const,
+  datasets: () => [...datasetStudioKeys.all, "datasets"] as const,
+  dataset: (id: string) => [...datasetStudioKeys.all, "dataset", id] as const,
   items: (datasetId: string) => [...datasetStudioKeys.all, "items", datasetId] as const,
   item: (itemId: string) => [...datasetStudioKeys.all, "item", itemId] as const,
   manifest: (datasetId: string) => [...datasetStudioKeys.all, "manifest", datasetId] as const,
@@ -29,6 +32,133 @@ export const datasetStudioKeys = {
   p2pStatus: (datasetId: string) => [...datasetStudioKeys.all, "p2p-status", datasetId] as const,
   content: (contentHash: string) => [...datasetStudioKeys.all, "content", contentHash] as const,
 };
+
+// ==================== DATASET QUERIES ====================
+
+/**
+ * Hook to list all Studio datasets
+ */
+export function useStudioDatasets(options?: {
+  datasetType?: string;
+  publishStatus?: string;
+  enabled?: boolean;
+}) {
+  return useQuery({
+    queryKey: datasetStudioKeys.datasets(),
+    queryFn: () => client().listDatasets({
+      datasetType: options?.datasetType,
+      publishStatus: options?.publishStatus,
+    }),
+    enabled: options?.enabled ?? true,
+  });
+}
+
+/**
+ * Hook to get a single dataset by ID
+ */
+export function useStudioDataset(datasetId: string, enabled = true) {
+  return useQuery({
+    queryKey: datasetStudioKeys.dataset(datasetId),
+    queryFn: () => client().getDataset(datasetId),
+    enabled,
+  });
+}
+
+// ==================== DATASET MUTATIONS ====================
+
+/**
+ * Hook to create a new dataset
+ */
+export function useCreateDataset() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (params: {
+      name: string;
+      description?: string;
+      datasetType?: "custom" | "training" | "evaluation" | "fine_tuning" | "rag" | "mixed";
+      license?: string;
+      tags?: string[];
+      supportedModalities?: string[];
+    }) => {
+      return client().createDataset(params);
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: datasetStudioKeys.datasets() });
+      toast.success(`Dataset "${variables.name}" created`);
+    },
+    onError: (error) => {
+      toast.error(`Failed to create dataset: ${error.message}`);
+    },
+  });
+}
+
+/**
+ * Hook to update a dataset
+ */
+export function useUpdateDataset() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (params: {
+      datasetId: string;
+      name?: string;
+      description?: string;
+      license?: string;
+      tags?: string[];
+    }) => {
+      return client().updateDataset(params);
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: datasetStudioKeys.datasets() });
+      queryClient.invalidateQueries({ queryKey: datasetStudioKeys.dataset(variables.datasetId) });
+      toast.success("Dataset updated");
+    },
+    onError: (error) => {
+      toast.error(`Failed to update dataset: ${error.message}`);
+    },
+  });
+}
+
+/**
+ * Hook to delete a dataset
+ */
+export function useDeleteDataset() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (datasetId: string) => {
+      return client().deleteDataset(datasetId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: datasetStudioKeys.datasets() });
+      toast.success("Dataset deleted");
+    },
+    onError: (error) => {
+      toast.error(`Failed to delete dataset: ${error.message}`);
+    },
+  });
+}
+
+/**
+ * Hook to refresh dataset statistics
+ */
+export function useRefreshDatasetStats() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (datasetId: string) => {
+      return client().refreshStats(datasetId);
+    },
+    onSuccess: (_, datasetId) => {
+      queryClient.invalidateQueries({ queryKey: datasetStudioKeys.datasets() });
+      queryClient.invalidateQueries({ queryKey: datasetStudioKeys.dataset(datasetId) });
+    },
+    onError: (error) => {
+      toast.error(`Failed to refresh stats: ${error.message}`);
+    },
+  });
+}
 
 // ==================== ITEM QUERIES ====================
 

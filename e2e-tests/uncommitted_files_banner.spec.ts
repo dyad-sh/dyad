@@ -1,11 +1,19 @@
 import { expect } from "@playwright/test";
-import { test, Timeout } from "./helpers/test_helper";
+import {
+  PageObject,
+  test,
+  testSkipIfWindows,
+  Timeout,
+} from "./helpers/test_helper";
 import * as fs from "fs";
 import * as path from "path";
 import { execSync } from "child_process";
 
-test("uncommitted files banner - full commit workflow", async ({ po }) => {
-  await po.setUp();
+const runUncommittedFilesBannerTest = async (
+  po: PageObject,
+  nativeGit: boolean,
+) => {
+  await po.setUp({ disableNativeGit: !nativeGit });
   await po.sendPrompt("tc=basic");
 
   const appPath = await po.getCurrentAppPath();
@@ -101,4 +109,15 @@ test("uncommitted files banner - full commit workflow", async ({ po }) => {
     },
   ).trim();
   expect(lastCommitFiles).toContain("new-file.txt");
+};
+
+test("uncommitted files banner", async ({ po }) => {
+  await runUncommittedFilesBannerTest(po, false);
 });
+
+testSkipIfWindows(
+  "uncommitted files banner with native git",
+  async ({ po }) => {
+    await runUncommittedFilesBannerTest(po, true);
+  },
+);

@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/tooltip";
 import { useSettings } from "@/hooks/useSettings";
 import type { ChatMode } from "@/lib/schemas";
-import { isDyadProEnabled } from "@/lib/schemas";
 import { cn } from "@/lib/utils";
 import { detectIsMac } from "@/hooks/useChatModeToggle";
 import { useRouterState } from "@tanstack/react-router";
@@ -20,14 +19,6 @@ import { toast } from "sonner";
 import { LocalAgentNewChatToast } from "./LocalAgentNewChatToast";
 import { useAtomValue } from "jotai";
 import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
-
-function NewBadge() {
-  return (
-    <span className="inline-flex items-center rounded-full px-2 text-[11px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
-      New
-    </span>
-  );
-}
 
 export function ChatModeSelector() {
   const { settings, updateSettings } = useSettings();
@@ -38,7 +29,6 @@ export function ChatModeSelector() {
   const currentChatMessages = chatId ? (messagesById.get(chatId) ?? []) : [];
 
   const selectedMode = settings?.selectedChatMode || "build";
-  const isProEnabled = settings ? isDyadProEnabled(settings) : false;
 
   const handleModeChange = (value: string) => {
     const newMode = value as ChatMode;
@@ -115,19 +105,16 @@ export function ChatModeSelector() {
         </TooltipContent>
       </Tooltip>
       <SelectContent align="start" onCloseAutoFocus={(e) => e.preventDefault()}>
-        {isProEnabled && (
-          <SelectItem value="local-agent">
-            <div className="flex flex-col items-start">
-              <div className="flex items-center gap-1.5">
-                <span className="font-medium">Agent v2</span>
-                <NewBadge />
-              </div>
-              <span className="text-xs text-muted-foreground">
-                Better at bigger tasks and debugging
-              </span>
+        <SelectItem value="local-agent">
+          <div className="flex flex-col items-start">
+            <div className="flex items-center gap-1.5">
+              <span className="font-medium">Agent</span>
             </div>
-          </SelectItem>
-        )}
+            <span className="text-xs text-muted-foreground">
+              Better at bigger tasks and debugging
+            </span>
+          </div>
+        </SelectItem>
         <SelectItem value="build">
           <div className="flex flex-col items-start">
             <span className="font-medium">Build</span>

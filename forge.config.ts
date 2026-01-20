@@ -96,8 +96,8 @@ const config: ForgeConfig = {
   packagerConfig: {
     protocols: [
       {
-        name: "Dyad",
-        schemes: ["dyad"],
+        name: "ABBA AI",
+        schemes: ["abba-ai"],
       },
     ],
     icon: "./assets/icon/logo",
@@ -151,7 +151,7 @@ const config: ForgeConfig = {
     new MakerRpm({}),
     new MakerDeb({
       options: {
-        mimeType: ["x-scheme-handler/dyad"],
+        mimeType: ["x-scheme-handler/abba-ai"],
       },
     }),
     new MakerAppImage({
@@ -163,7 +163,7 @@ const config: ForgeConfig = {
       name: "@electron-forge/publisher-github",
       config: {
         repository: {
-          owner: "dyad-sh",
+          owner: "yosiwizman",
           name: "dyad",
         },
         draft: true,

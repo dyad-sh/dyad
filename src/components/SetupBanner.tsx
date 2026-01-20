@@ -115,9 +115,9 @@ export function SetupBanner() {
     });
   };
   const handleDyadProSetupClick = () => {
-    posthog.capture("setup-flow:ai-provider-setup:dyad:click");
+    posthog.capture("setup-flow:ai-provider-setup:abba-ai:click");
     IpcClient.getInstance().openExternalUrl(
-      "https://www.dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=setup-banner",
+      "https://www.abba.ai/pro?utm_source=abba-ai-app&utm_medium=app&utm_campaign=setup-banner",
     );
   };
 
@@ -178,7 +178,7 @@ export function SetupBanner() {
   return (
     <>
       <p className="text-xl font-medium text-zinc-700 dark:text-zinc-300 p-4">
-        Setup Dyad
+        Setup ABBA AI
       </p>
       <OnboardingBanner
         isVisible={isOnboardingVisible}

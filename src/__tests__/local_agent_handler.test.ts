@@ -210,6 +210,7 @@ let mockStreamResult: ReturnType<typeof createFakeStream> | null = null;
 vi.mock("ai", () => ({
   streamText: vi.fn(() => mockStreamResult),
   stepCountIs: vi.fn((n: number) => ({ steps: n })),
+  hasToolCall: vi.fn((toolName: string) => ({ toolName })),
 }));
 
 vi.mock("@/ipc/utils/get_model_client", () => ({

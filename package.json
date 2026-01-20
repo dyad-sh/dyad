@@ -50,7 +50,8 @@
     "cap:build:android": "npm run build:web && npx cap sync android",
     "cap:build:ios": "npm run build:web && npx cap sync ios",
     "mobile:android": "npm run build:web && npx cap sync android && npx cap open android",
-    "mobile:ios": "npm run build:web && npx cap sync ios && npx cap open ios"
+    "mobile:ios": "npm run build:web && npx cap sync ios && npx cap open ios",
+    "postinstall": "node scripts/ensure-capacitor-cli.mjs"
   },
   "keywords": [],
   "author": {

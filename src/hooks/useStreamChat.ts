@@ -95,6 +95,8 @@ export function useStreamChat({
         console.warn(
           `[CHAT] Ignoring duplicate stream request for chat ${chatId} - stream already in progress`,
         );
+        // Call onSettled to allow callers to clean up their local loading state
+        onSettled?.();
         return;
       }
 

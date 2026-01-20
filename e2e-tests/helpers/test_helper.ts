@@ -328,6 +328,9 @@ export class PageObject {
     }
     await this.setUpDyadProvider();
     await this.goToAppsTab();
+    if (!localAgent) {
+      await this.selectChatMode("build");
+    }
     // Select a non-openAI model for local agent mode,
     // since openAI models go to the responses API.
     if (localAgent && !localAgentUseAutoModel) {
@@ -411,13 +414,13 @@ export class PageObject {
 
   async selectChatMode(mode: "build" | "ask" | "agent" | "local-agent") {
     await this.page.getByTestId("chat-mode-selector").click();
-    // local-agent appears as "Agent v2" in the UI
-    const optionName =
-      mode === "local-agent"
-        ? "Agent v2"
-        : mode === "agent"
-          ? "Build with MCP"
-          : mode;
+    const mapping = {
+      build: "Build Generate and edit code",
+      ask: "Ask",
+      agent: "Build with MCP",
+      "local-agent": "Agent v2",
+    };
+    const optionName = mapping[mode];
     await this.page
       .getByRole("option", {
         name: optionName,

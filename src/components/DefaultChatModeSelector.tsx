@@ -7,10 +7,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { ChatMode } from "@/lib/schemas";
-import {
-  isDyadProEnabled,
-  getEffectiveDefaultChatMode,
-} from "@/lib/schemas";
+import { isDyadProEnabled, getEffectiveDefaultChatMode } from "@/lib/schemas";
 
 export function DefaultChatModeSelector() {
   const { settings, updateSettings } = useSettings();
@@ -30,14 +27,13 @@ export function DefaultChatModeSelector() {
     switch (mode) {
       case "build":
         return "Build";
-      case "ask":
-        return "Ask";
       case "agent":
         return "Build (MCP)";
       case "local-agent":
         return "Agent";
+      case "ask":
       default:
-        return "Build";
+        throw new Error(`Unknown chat mode: ${mode}`);
     }
   };
 
@@ -73,14 +69,6 @@ export function DefaultChatModeSelector() {
                 <span className="font-medium">Build</span>
                 <span className="text-xs text-muted-foreground">
                   Generate and edit code
-                </span>
-              </div>
-            </SelectItem>
-            <SelectItem value="ask">
-              <div className="flex flex-col items-start">
-                <span className="font-medium">Ask</span>
-                <span className="text-xs text-muted-foreground">
-                  Ask questions about the app
                 </span>
               </div>
             </SelectItem>

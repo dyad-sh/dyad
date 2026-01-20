@@ -4,5 +4,8 @@
     "capacitor": {}
   },
   "type": "custom",
-  "id": "com.joycreate.app"
+  "id": "com.joycreate.app",
+  "hooks": {
+    "build:before": "npm ci && npm run build"
+  }
 }

@@ -1,0 +1,28 @@
+# Ionic Appflow build configuration
+# https://ionic.io/docs/appflow/package/intro
+
+# Define environment-specific configurations
+environments:
+  - name: production
+    vars:
+      - name: NODE_ENV
+        value: production
+
+# Build settings
+build:
+  # Use npm for package management
+  npm_client: npm
+  
+  # Build commands run before native build
+  before_build:
+    - npm ci
+    - npm run build
+    
+  # iOS specific settings
+  ios:
+    - scheme: App
+    - configuration: Release
+    
+  # Android specific settings  
+  android:
+    - build_type: release

@@ -3,14 +3,14 @@ import os from "node:os";
 import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
 
 /**
- * Gets the base dyad-apps directory path (without a specific app subdirectory)
+ * Gets the base abba-ai-apps directory path (without a specific app subdirectory)
  */
 export function getDyadAppsBaseDirectory(): string {
   if (IS_TEST_BUILD) {
     const electron = getElectron();
-    return path.join(electron!.app.getPath("userData"), "dyad-apps");
+    return path.join(electron!.app.getPath("userData"), "abba-ai-apps");
   }
-  return path.join(os.homedir(), "dyad-apps");
+  return path.join(os.homedir(), "abba-ai-apps");
 }
 
 export function getDyadAppPath(appPath: string): string {

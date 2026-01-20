@@ -17,12 +17,13 @@ build:
   before_build:
     - npm ci
     - npm run build
+    - npm run cap:sync
     
   # iOS specific settings
   ios:
-    - scheme: App
-    - configuration: Release
+    scheme: App
+    configuration: Release
     
   # Android specific settings  
   android:
-    - build_type: release
+    build_type: release

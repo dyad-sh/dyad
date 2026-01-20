@@ -6,7 +6,6 @@
   "type": "custom",
   "id": "com.joycreate.app",
   "hooks": {
-    "build:before": "npm ci && npm run build && npm run cap:sync",
-    "capacitor:sync:before": "npm run build"
+    "build:before": "npm ci && npm install -g @capacitor/cli && npm run build"
   }
 }

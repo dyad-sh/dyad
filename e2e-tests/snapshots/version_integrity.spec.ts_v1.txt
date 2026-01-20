@@ -57,8 +57,8 @@ dir/c.txt
   },
   "devDependencies": {
     "@types/node": "^22.5.5",
-    "@types/react": "^19.2.8",
-    "@types/react-dom": "^19.2.3",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react-swc": "^3.9.0",
     "typescript": "^5.5.3",
     "vite": "^6.3.4"

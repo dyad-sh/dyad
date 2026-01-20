@@ -374,9 +374,7 @@ function ConnectedGitHubConnector({
       </div>
       {syncError && (
         <div className="mt-2 space-y-2">
-          <p className="text-red-600">
-            {syncError}
-          </p>
+          <p className="text-red-600">{syncError}</p>
           {showRebaseRecoveryOptions && (
             <div className="space-y-2 rounded-md border border-orange-200 p-3 dark:border-orange-800 dark:bg-orange-900/20">
               <p className="text-sm text-orange-800 dark:text-orange-100">

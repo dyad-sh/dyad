@@ -56,6 +56,7 @@ import {
 import { TOOL_DEFINITIONS } from "./tool_definitions";
 import { parseAiMessagesJson } from "@/ipc/utils/ai_messages_utils";
 import { parseMcpToolKey, sanitizeMcpName } from "@/ipc/utils/mcp_tool_utils";
+import { addIntegrationTool } from "./tools/add_integration";
 
 const logger = log.scope("local_agent_handler");
 

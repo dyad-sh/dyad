@@ -334,11 +334,9 @@ export function registerThemesHandlers() {
         );
       }
 
-      // Validate inputs
-      if (params.images.length === 0 && !params.keywords.trim()) {
-        throw new Error(
-          "Please provide at least one image or keywords for theme generation",
-        );
+      // Validate inputs - images are required
+      if (params.images.length === 0) {
+        throw new Error("Please upload at least one image to generate a theme");
       }
 
       if (params.images.length > 5) {
@@ -401,54 +399,33 @@ export function registerThemesHandlers() {
 images: ${imagesPart}`;
 
       // Generate theme with images
-      if (params.images.length > 0) {
-        try {
-          const contentParts: (TextPart | ImagePart)[] = [];
-
-          // Add user input text first
-          contentParts.push({ type: "text", text: userInput });
-
-          // Add images - let AI SDK auto-detect media type from base64 data
-          for (const imageData of params.images) {
-            contentParts.push({
-              type: "image",
-              image: imageData,
-            } as ImagePart);
-          }
-
-          const stream = streamText({
-            model: modelClient.model,
-            system: systemPrompt,
-            maxRetries: 1,
-            messages: [{ role: "user", content: contentParts }],
-          });
-
-          const result = await stream.text;
-
-          return { prompt: result };
-        } catch {
-          throw new Error(
-            "Failed to process images for theme generation. Please try with fewer or smaller images, or use manual mode.",
-          );
-        }
-      }
-
-      // Text-only generation (when no images provided)
       try {
+        const contentParts: (TextPart | ImagePart)[] = [];
+
+        // Add user input text first
+        contentParts.push({ type: "text", text: userInput });
+
+        // Add images - let AI SDK auto-detect media type from base64 data
+        for (const imageData of params.images) {
+          contentParts.push({
+            type: "image",
+            image: imageData,
+          } as ImagePart);
+        }
+
         const stream = streamText({
           model: modelClient.model,
           system: systemPrompt,
-          maxRetries: 2,
-          messages: [{ role: "user", content: userInput }],
+          maxRetries: 1,
+          messages: [{ role: "user", content: contentParts }],
         });
 
         const result = await stream.text;
 
         return { prompt: result };
-      } catch (error) {
-        logger.error("Theme generation error:", error);
+      } catch {
         throw new Error(
-          `Failed to generate theme: ${error instanceof Error ? error.message : "AI service error"}`,
+          "Failed to process images for theme generation. Please try with fewer or smaller images, or use manual mode.",
         );
       }
     },

@@ -68,7 +68,7 @@ export function CustomThemeDialog({
     setAiImages([]);
     setAiKeywords("");
     setAiGenerationMode("inspired");
-    setAiSelectedModel("gemini-3-flash");
+    setAiSelectedModel("gemini-3-pro");
     setAiGeneratedPrompt("");
     setActiveTab("manual");
   }, []);
@@ -366,7 +366,7 @@ export function CustomThemeDialog({
                 />
                 <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
                 <p className="text-sm text-muted-foreground">
-                  Click to upload images or drag and drop
+                  Click to upload images
                 </p>
                 <p className="text-xs text-muted-foreground/70 mt-1">
                   Upload UI screenshots to inspire your theme

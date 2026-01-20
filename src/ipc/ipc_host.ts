@@ -54,6 +54,25 @@ import { registerDecentralizedChatHandlers } from "./handlers/decentralized_chat
 import { registerComputeNetworkHandlers } from "./handlers/compute_network_handlers";
 import { registerWebRTCHandlers } from "./handlers/webrtc_handlers";
 import { registerDatasetStudioHandlers } from "./handlers/dataset_studio_handlers";
+import { registerDataStudioCoreHandlers } from "./handlers/data_studio_core_handlers";
+import { registerDataVaultHandlers } from "./handlers/data_vault_handlers";
+import { registerMediaPipelineHandlers } from "./handlers/media_pipeline_handlers";
+import { registerQualityAnalysisHandlers } from "./handlers/quality_analysis_handlers";
+import { registerPolicyEngineHandlers } from "./handlers/policy_engine_handlers";
+import { registerFullTextSearchHandlers } from "./handlers/fulltext_search_handlers";
+import { registerDataGenerationHandlers } from "./handlers/data_generation_handlers";
+import { registerDataScrapingHandlers } from "./handlers/data_scraping_handlers";
+import { registerDataTransformationHandlers } from "./handlers/data_transformation_handlers";
+import { registerAnnotationSystemHandlers } from "./handlers/annotation_system_handlers";
+import { registerVersionControlHandlers } from "./handlers/version_control_handlers";
+import { registerDataLineageHandlers } from "./handlers/data_lineage_handlers";
+import { registerPipelineAutomationHandlers } from "./handlers/pipeline_automation_handlers";
+import { registerAnalyticsReportingHandlers } from "./handlers/analytics_reporting_handlers";
+import { registerSchemaValidationHandlers } from "./handlers/schema_validation_handlers";
+import { registerOrchestratorCoreHandlers } from "./handlers/orchestrator_core_handlers";
+import { registerAgentBuilderSystemHandlers } from "./handlers/agent_builder_system_handlers";
+import { registerTaskExecutionHandlers } from "./handlers/task_execution_handlers";
+import { registerN8nIntegrationHandlers } from "./handlers/n8n_integration_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -113,4 +132,29 @@ export function registerIpcHandlers() {
   registerComputeNetworkHandlers();
   registerWebRTCHandlers();
   registerDatasetStudioHandlers();
+  
+  // Extended Data Studio handlers
+  registerDataStudioCoreHandlers();
+  registerDataVaultHandlers();
+  registerMediaPipelineHandlers();
+  registerQualityAnalysisHandlers();
+  registerPolicyEngineHandlers();
+  registerFullTextSearchHandlers();
+  registerDataGenerationHandlers();
+  registerDataScrapingHandlers();
+  registerDataTransformationHandlers();
+  
+  // Advanced Data Studio handlers (Phase 3-4)
+  registerAnnotationSystemHandlers();
+  registerVersionControlHandlers();
+  registerDataLineageHandlers();
+  registerPipelineAutomationHandlers();
+  registerAnalyticsReportingHandlers();
+  registerSchemaValidationHandlers();
+  
+  // Orchestrator & Agent System handlers
+  registerOrchestratorCoreHandlers();
+  registerAgentBuilderSystemHandlers();
+  registerTaskExecutionHandlers();
+  registerN8nIntegrationHandlers();
 }

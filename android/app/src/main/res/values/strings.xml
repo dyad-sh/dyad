@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">JoyCreate</string>
+    <string name="title_activity_main">JoyCreate</string>
+    <string name="package_name">com.joycreate.app</string>
+    <string name="custom_url_scheme">com.joycreate.app</string>
+</resources>

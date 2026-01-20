@@ -94,6 +94,9 @@ import type {
   DeleteCustomThemeParams,
   GenerateThemePromptParams,
   GenerateThemePromptResult,
+  SaveThemeImageParams,
+  SaveThemeImageResult,
+  CleanupThemeImagesParams,
 } from "./ipc_types";
 import type { Template } from "../shared/templates";
 import type { Theme } from "../shared/themes";
@@ -1662,6 +1665,18 @@ export class IpcClient {
     params: GenerateThemePromptParams,
   ): Promise<GenerateThemePromptResult> {
     return this.ipcRenderer.invoke("generate-theme-prompt", params);
+  }
+
+  public async saveThemeImage(
+    params: SaveThemeImageParams,
+  ): Promise<SaveThemeImageResult> {
+    return this.ipcRenderer.invoke("save-theme-image", params);
+  }
+
+  public async cleanupThemeImages(
+    params: CleanupThemeImagesParams,
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("cleanup-theme-images", params);
   }
 
   // --- Prompts Library ---

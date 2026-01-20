@@ -16,6 +16,7 @@ import {
   useCreateCustomTheme,
   useGenerateThemePrompt,
 } from "@/hooks/useCustomThemes";
+import { IpcClient } from "@/ipc/ipc_client";
 import { toast } from "sonner";
 import type {
   ThemeGenerationMode,
@@ -25,6 +26,12 @@ import type {
 // Image upload constants
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB per image (raw file size)
 const MAX_IMAGES = 5;
+
+// Image stored with file path (for IPC) and blob URL (for preview)
+interface ThemeImage {
+  path: string; // File path in temp directory
+  preview: string; // Blob URL for displaying thumbnail
+}
 
 interface CustomThemeDialogProps {
   open: boolean;
@@ -47,19 +54,50 @@ export function CustomThemeDialog({
   // AI tab state
   const [aiName, setAiName] = useState("");
   const [aiDescription, setAiDescription] = useState("");
-  const [aiImages, setAiImages] = useState<string[]>([]);
+  const [aiImages, setAiImages] = useState<ThemeImage[]>([]);
   const [aiKeywords, setAiKeywords] = useState("");
   const [aiGenerationMode, setAiGenerationMode] =
     useState<ThemeGenerationMode>("inspired");
   const [aiSelectedModel, setAiSelectedModel] =
-    useState<ThemeGenerationModel>("gemini-3-flash");
+    useState<ThemeGenerationModel>("gemini-3-pro");
   const [aiGeneratedPrompt, setAiGeneratedPrompt] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const createThemeMutation = useCreateCustomTheme();
   const generatePromptMutation = useGenerateThemePrompt();
 
-  const resetForm = useCallback(() => {
+  // Cleanup function to revoke blob URLs and delete temp files
+  const cleanupImages = useCallback(
+    async (images: ThemeImage[], showErrors = false) => {
+      // Revoke blob URLs to free memory
+      images.forEach((img) => {
+        URL.revokeObjectURL(img.preview);
+      });
+
+      // Delete temp files via IPC
+      const paths = images.map((img) => img.path);
+      if (paths.length > 0) {
+        try {
+          await IpcClient.getInstance().cleanupThemeImages({ paths });
+        } catch {
+          // Cleanup failures are non-critical (OS will clean temp files eventually)
+          // but we should notify the user if they explicitly triggered the action
+          if (showErrors) {
+            toast.error("Failed to cleanup temporary image files");
+          }
+        }
+      }
+    },
+    [],
+  );
+
+  const resetForm = useCallback(async () => {
+    // Cleanup any existing images before resetting
+    if (aiImages.length > 0) {
+      await cleanupImages(aiImages);
+    }
+
     setManualName("");
     setManualDescription("");
     setManualPrompt("");
@@ -68,111 +106,131 @@ export function CustomThemeDialog({
     setAiImages([]);
     setAiKeywords("");
     setAiGenerationMode("inspired");
-    setAiSelectedModel("gemini-3-pro");
+    setAiSelectedModel("gemini-3-flash");
     setAiGeneratedPrompt("");
     setActiveTab("manual");
-  }, []);
+  }, [aiImages, cleanupImages]);
 
-  // Reset form when dialog closes
+  // Cleanup images when dialog closes
   useEffect(() => {
-    if (!open) {
-      resetForm();
+    if (!open && aiImages.length > 0) {
+      cleanupImages(aiImages);
+      setAiImages([]);
     }
-  }, [open, resetForm]);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleClose = useCallback(() => {
-    resetForm();
+  const handleClose = useCallback(async () => {
+    await resetForm();
     onOpenChange(false);
   }, [onOpenChange, resetForm]);
 
   const handleImageUpload = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files;
       if (!files) return;
 
-      setAiImages((prevImages) => {
-        const availableSlots = MAX_IMAGES - prevImages.length;
-        if (availableSlots <= 0) {
-          toast.error(`Maximum ${MAX_IMAGES} images allowed`);
-          return prevImages;
-        }
+      const availableSlots = MAX_IMAGES - aiImages.length;
+      if (availableSlots <= 0) {
+        toast.error(`Maximum ${MAX_IMAGES} images allowed`);
+        return;
+      }
 
-        const filesToProcess = Array.from(files).slice(0, availableSlots);
-        const skippedCount = files.length - filesToProcess.length;
+      const filesToProcess = Array.from(files).slice(0, availableSlots);
+      const skippedCount = files.length - filesToProcess.length;
 
-        if (skippedCount > 0) {
-          toast.error(
-            `Only ${availableSlots} image${availableSlots === 1 ? "" : "s"} can be added. ${skippedCount} file${skippedCount === 1 ? " was" : "s were"} skipped.`,
-          );
-        }
+      if (skippedCount > 0) {
+        toast.error(
+          `Only ${availableSlots} image${availableSlots === 1 ? "" : "s"} can be added. ${skippedCount} file${skippedCount === 1 ? " was" : "s were"} skipped.`,
+        );
+      }
 
-        filesToProcess.forEach((file) => {
+      setIsUploading(true);
+
+      try {
+        const newImages: ThemeImage[] = [];
+
+        for (const file of filesToProcess) {
           // Validate file type
           if (!file.type.startsWith("image/")) {
             toast.error(
               `Please upload only image files. "${file.name}" is not a valid image.`,
             );
-            return;
+            continue;
           }
 
           // Validate file size (raw file size)
           if (file.size > MAX_FILE_SIZE) {
             const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
             toast.error(`File "${file.name}" exceeds 10MB limit (${sizeMB}MB)`);
-            return;
+            continue;
           }
 
-          const reader = new FileReader();
-
-          reader.onerror = () => {
-            toast.error(
-              `Failed to read file "${file.name}". Please try again.`,
-            );
-          };
-
-          reader.onload = () => {
-            try {
-              const base64 = reader.result as string;
-              if (!base64 || typeof base64 !== "string") {
-                throw new Error("Invalid file data");
-              }
-
-              const base64Data = base64.split(",")[1];
-              if (!base64Data) {
-                throw new Error("Failed to extract image data");
-              }
-
-              setAiImages((prev) => {
-                // Double-check limit in case of race conditions
-                if (prev.length >= MAX_IMAGES) {
-                  return prev;
+          try {
+            // Read file as base64 for upload
+            const base64Data = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onerror = () => reject(new Error("Failed to read file"));
+              reader.onload = () => {
+                const base64 = reader.result as string;
+                const data = base64.split(",")[1];
+                if (!data) {
+                  reject(new Error("Failed to extract image data"));
+                  return;
                 }
-                return [...prev, base64Data];
-              });
-            } catch (err) {
-              toast.error(
-                `Error processing "${file.name}": ${err instanceof Error ? err.message : "Unknown error"}`,
-              );
-            }
-          };
+                resolve(data);
+              };
+              reader.readAsDataURL(file);
+            });
 
-          reader.readAsDataURL(file);
-        });
+            // Save to temp file via IPC
+            const result = await IpcClient.getInstance().saveThemeImage({
+              data: base64Data,
+              filename: file.name,
+            });
 
-        return prevImages;
-      });
+            // Create blob URL for preview (much more memory efficient than base64 in DOM)
+            const preview = URL.createObjectURL(file);
 
-      // Reset input
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
+            newImages.push({
+              path: result.path,
+              preview,
+            });
+          } catch (err) {
+            toast.error(
+              `Error processing "${file.name}": ${err instanceof Error ? err.message : "Unknown error"}`,
+            );
+          }
+        }
+
+        if (newImages.length > 0) {
+          setAiImages((prev) => {
+            // Double-check limit in case of race conditions
+            const remaining = MAX_IMAGES - prev.length;
+            return [...prev, ...newImages.slice(0, remaining)];
+          });
+        }
+      } finally {
+        setIsUploading(false);
+        // Reset input
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
       }
     },
-    [],
+    [aiImages.length],
   );
 
-  const handleRemoveImage = useCallback((index: number) => {
-    setAiImages((prev) => prev.filter((_, i) => i !== index));
-  }, []);
+  const handleRemoveImage = useCallback(
+    async (index: number) => {
+      const imageToRemove = aiImages[index];
+      if (imageToRemove) {
+        // Cleanup the removed image - show errors since this is a user action
+        await cleanupImages([imageToRemove], true);
+      }
+      setAiImages((prev) => prev.filter((_, i) => i !== index));
+    },
+    [aiImages, cleanupImages],
+  );
 
   const handleGenerate = useCallback(async () => {
     if (aiImages.length === 0) {
@@ -182,7 +240,7 @@ export function CustomThemeDialog({
 
     try {
       const result = await generatePromptMutation.mutateAsync({
-        images: aiImages,
+        imagePaths: aiImages.map((img) => img.path),
         keywords: aiKeywords,
         generationMode: aiGenerationMode,
         model: aiSelectedModel,
@@ -229,7 +287,7 @@ export function CustomThemeDialog({
       });
       toast.success("Custom theme created successfully");
       onThemeCreated?.(createdTheme.id);
-      handleClose();
+      await handleClose();
     } catch (error) {
       toast.error(
         `Failed to create theme: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -353,7 +411,7 @@ export function CustomThemeDialog({
             <div className="space-y-2">
               <Label>Reference Images</Label>
               <div
-                className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-4 text-center cursor-pointer hover:border-muted-foreground/50 transition-colors"
+                className={`border-2 border-dashed border-muted-foreground/25 rounded-lg p-4 text-center cursor-pointer hover:border-muted-foreground/50 transition-colors ${isUploading ? "opacity-50 pointer-events-none" : ""}`}
                 onClick={() => fileInputRef.current?.click()}
               >
                 <input
@@ -363,10 +421,15 @@ export function CustomThemeDialog({
                   multiple
                   className="hidden"
                   onChange={handleImageUpload}
+                  disabled={isUploading}
                 />
-                <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                {isUploading ? (
+                  <Loader2 className="h-8 w-8 mx-auto text-muted-foreground mb-2 animate-spin" />
+                ) : (
+                  <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                )}
                 <p className="text-sm text-muted-foreground">
-                  Click to upload images
+                  {isUploading ? "Uploading..." : "Click to upload images"}
                 </p>
                 <p className="text-xs text-muted-foreground/70 mt-1">
                   Upload UI screenshots to inspire your theme
@@ -387,9 +450,9 @@ export function CustomThemeDialog({
               {aiImages.length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-2">
                   {aiImages.map((img, index) => (
-                    <div key={index} className="relative group">
+                    <div key={img.path} className="relative group">
                       <img
-                        src={`data:image/png;base64,${img}`}
+                        src={img.preview}
                         alt={`Upload ${index + 1}`}
                         className="h-16 w-16 object-cover rounded-md border"
                       />

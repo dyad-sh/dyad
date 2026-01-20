@@ -781,7 +781,7 @@ export type ThemeGenerationModel =
   | "gpt-5.2";
 
 export interface GenerateThemePromptParams {
-  images: string[]; // Base64 encoded images
+  imagePaths: string[]; // File paths to images (stored in temp directory)
   keywords: string;
   generationMode: ThemeGenerationMode; // 'inspired' (abstract design system) or 'high-fidelity' (visual recreation)
   model: ThemeGenerationModel; // Model to use for generation
@@ -789,4 +789,18 @@ export interface GenerateThemePromptParams {
 
 export interface GenerateThemePromptResult {
   prompt: string;
+}
+
+// --- Theme Image File Handling ---
+export interface SaveThemeImageParams {
+  data: string; // Base64 encoded image data
+  filename: string; // Original filename for extension detection
+}
+
+export interface SaveThemeImageResult {
+  path: string; // Path to the saved temp file
+}
+
+export interface CleanupThemeImagesParams {
+  paths: string[]; // Paths to delete
 }

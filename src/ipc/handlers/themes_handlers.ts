@@ -1,5 +1,9 @@
 import { createLoggedHandler } from "./safe_handle";
 import log from "electron-log";
+import path from "path";
+import os from "os";
+import fs from "fs";
+import { readFile, writeFile, unlink, mkdir } from "fs/promises";
 import { themesData, type Theme } from "../../shared/themes";
 import { db } from "../../db";
 import { apps, customThemes } from "../../db/schema";
@@ -16,10 +20,38 @@ import type {
   DeleteCustomThemeParams,
   GenerateThemePromptParams,
   GenerateThemePromptResult,
+  SaveThemeImageParams,
+  SaveThemeImageResult,
+  CleanupThemeImagesParams,
 } from "../ipc_types";
 
 const logger = log.scope("themes_handlers");
 const handle = createLoggedHandler(logger);
+
+// Directory for storing temporary theme images
+const THEME_IMAGES_TEMP_DIR = path.join(os.tmpdir(), "dyad-theme-images");
+
+// Ensure temp directory exists
+if (!fs.existsSync(THEME_IMAGES_TEMP_DIR)) {
+  fs.mkdirSync(THEME_IMAGES_TEMP_DIR, { recursive: true });
+}
+
+// Get mime type from extension
+function getMimeTypeFromExtension(
+  ext: string,
+): "image/jpeg" | "image/png" | "image/gif" | "image/webp" {
+  const mimeMap: Record<
+    string,
+    "image/jpeg" | "image/png" | "image/gif" | "image/webp"
+  > = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+  };
+  return mimeMap[ext.toLowerCase()] || "image/png";
+}
 
 const THEME_GENERATION_META_PROMPT = `PURPOSE
 - Generate a strict SYSTEM PROMPT that extracts a reusable UI DESIGN SYSTEM from provided images.
@@ -319,6 +351,75 @@ export function registerThemesHandlers() {
     },
   );
 
+  // Save theme image to temp directory
+  handle(
+    "save-theme-image",
+    async (_, params: SaveThemeImageParams): Promise<SaveThemeImageResult> => {
+      const { data, filename } = params;
+
+      // Validate base64 data
+      if (!data || typeof data !== "string") {
+        throw new Error("Invalid image data");
+      }
+
+      // Validate and extract extension
+      const ext = path.extname(filename).toLowerCase();
+      const validExtensions = [".jpg", ".jpeg", ".png", ".gif", ".webp"];
+      if (!validExtensions.includes(ext)) {
+        throw new Error(
+          `Invalid image extension: ${ext}. Supported: ${validExtensions.join(", ")}`,
+        );
+      }
+
+      // Generate unique filename
+      const uniqueFilename = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}${ext}`;
+      const filePath = path.join(THEME_IMAGES_TEMP_DIR, uniqueFilename);
+
+      // Validate size (base64 to bytes approximation)
+      const sizeInBytes = (data.length * 3) / 4;
+      if (sizeInBytes > 10 * 1024 * 1024) {
+        throw new Error("Image size exceeds 10MB limit");
+      }
+
+      // Ensure temp directory exists
+      await mkdir(THEME_IMAGES_TEMP_DIR, { recursive: true });
+
+      // Write file
+      const buffer = Buffer.from(data, "base64");
+      await writeFile(filePath, buffer);
+
+      return { path: filePath };
+    },
+  );
+
+  // Cleanup theme images from temp directory
+  handle(
+    "cleanup-theme-images",
+    async (_, params: CleanupThemeImagesParams): Promise<void> => {
+      const { paths } = params;
+
+      for (const filePath of paths) {
+        // Security: only delete files in our temp directory
+        if (!filePath.startsWith(THEME_IMAGES_TEMP_DIR)) {
+          throw new Error(
+            "Invalid path: cannot delete files outside temp directory",
+          );
+        }
+
+        try {
+          await unlink(filePath);
+          logger.log(`Cleaned up theme image: ${filePath}`);
+        } catch (error) {
+          // File might already be deleted (ENOENT), that's okay
+          // But other errors (permissions, etc.) should be reported
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+            throw new Error("Failed to cleanup temporary image file");
+          }
+        }
+      }
+    },
+  );
+
   // Generate theme prompt using AI (Dyad Pro)
   handle(
     "generate-theme-prompt",
@@ -334,21 +435,13 @@ export function registerThemesHandlers() {
         );
       }
 
-      // Validate inputs - images are required
-      if (params.images.length === 0) {
+      // Validate inputs - image paths are required
+      if (params.imagePaths.length === 0) {
         throw new Error("Please upload at least one image to generate a theme");
       }
 
-      if (params.images.length > 5) {
+      if (params.imagePaths.length > 5) {
         throw new Error("Maximum 5 images allowed");
-      }
-
-      // Validate each image size
-      for (const imageData of params.images) {
-        const sizeInBytes = (imageData.length * 3) / 4; // Approximate base64 to bytes
-        if (sizeInBytes > 10 * 1024 * 1024) {
-          throw new Error("Individual image size exceeds 10MB limit");
-        }
       }
 
       // Validate keywords length
@@ -385,32 +478,47 @@ export function registerThemesHandlers() {
           ? HIGH_FIDELITY_META_PROMPT
           : THEME_GENERATION_META_PROMPT;
 
-      logger.log(
-        `Generating theme prompt with model: ${params.model} (${selectedModel.name}), images: ${params.images.length}, mode: ${params.generationMode}`,
-      );
-
       // Build the user input prompt
       const keywordsPart = params.keywords.trim() || "N/A";
       const imagesPart =
-        params.images.length > 0
-          ? `${params.images.length} image(s) attached`
+        params.imagePaths.length > 0
+          ? `${params.imagePaths.length} image(s) attached`
           : "N/A";
       const userInput = `inspired by: ${keywordsPart}
 images: ${imagesPart}`;
 
-      // Generate theme with images
+      // Generate theme with images - read from file paths
       try {
         const contentParts: (TextPart | ImagePart)[] = [];
 
         // Add user input text first
         contentParts.push({ type: "text", text: userInput });
 
-        // Add images - let AI SDK auto-detect media type from base64 data
-        for (const imageData of params.images) {
-          contentParts.push({
-            type: "image",
-            image: imageData,
-          } as ImagePart);
+        // Read images from file paths and add to content
+        for (const imagePath of params.imagePaths) {
+          // Security: validate path is in our temp directory
+          if (!imagePath.startsWith(THEME_IMAGES_TEMP_DIR)) {
+            throw new Error(
+              "Invalid image path: images must be uploaded through the theme dialog",
+            );
+          }
+
+          try {
+            const imageBuffer = await readFile(imagePath);
+            const base64Data = imageBuffer.toString("base64");
+            const ext = path.extname(imagePath).toLowerCase();
+            const mimeType = getMimeTypeFromExtension(ext);
+
+            contentParts.push({
+              type: "image",
+              image: base64Data,
+              mimeType,
+            } as ImagePart);
+          } catch {
+            throw new Error(
+              `Failed to read image file: ${path.basename(imagePath)}`,
+            );
+          }
         }
 
         const stream = streamText({
@@ -423,9 +531,11 @@ images: ${imagesPart}`;
         const result = await stream.text;
 
         return { prompt: result };
-      } catch {
+      } catch (error) {
         throw new Error(
-          "Failed to process images for theme generation. Please try with fewer or smaller images, or use manual mode.",
+          error instanceof Error
+            ? error.message
+            : "Failed to process images for theme generation. Please try with fewer or smaller images, or use manual mode.",
         );
       }
     },

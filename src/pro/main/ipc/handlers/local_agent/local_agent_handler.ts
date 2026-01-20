@@ -107,10 +107,16 @@ export async function handleLocalAgentStream(
     placeholderMessageId,
     systemPrompt,
     dyadRequestId,
+    readOnly = false,
   }: {
     placeholderMessageId: number;
     systemPrompt: string;
     dyadRequestId: string;
+    /**
+     * If true, the agent operates in read-only mode (e.g., ask mode).
+     * State-modifying tools are disabled, and no commits/deploys are made.
+     */
+    readOnly?: boolean;
   },
 ): Promise<void> {
   const settings = readSettings();
@@ -216,8 +222,10 @@ export async function handleLocalAgentStream(
     };
 
     // Build tool set (agent tools + MCP tools)
-    const agentTools = buildAgentToolSet(ctx);
-    const mcpTools = await getMcpTools(event, ctx);
+    // In read-only mode, only include read-only tools and skip MCP tools
+    // (since we can't determine if MCP tools modify state)
+    const agentTools = buildAgentToolSet(ctx, { readOnly });
+    const mcpTools = readOnly ? {} : await getMcpTools(event, ctx);
     const allTools: ToolSet = { ...agentTools, ...mcpTools };
 
     // Prepare message history with graceful fallback
@@ -413,17 +421,20 @@ export async function handleLocalAgentStream(
       logger.warn("Failed to save AI messages JSON:", err);
     }
 
-    // Deploy all Supabase functions if shared modules changed
-    await deployAllFunctionsIfNeeded(ctx);
+    // In read-only mode, skip deploys and commits
+    if (!readOnly) {
+      // Deploy all Supabase functions if shared modules changed
+      await deployAllFunctionsIfNeeded(ctx);
 
-    // Commit all changes
-    const commitResult = await commitAllChanges(ctx, ctx.chatSummary);
+      // Commit all changes
+      const commitResult = await commitAllChanges(ctx, ctx.chatSummary);
 
-    if (commitResult.commitHash) {
-      await db
-        .update(messages)
-        .set({ commitHash: commitResult.commitHash })
-        .where(eq(messages.id, placeholderMessageId));
+      if (commitResult.commitHash) {
+        await db
+          .update(messages)
+          .set({ commitHash: commitResult.commitHash })
+          .where(eq(messages.id, placeholderMessageId));
+      }
     }
 
     // Mark as approved (auto-approve for local-agent)
@@ -435,7 +446,7 @@ export async function handleLocalAgentStream(
     // Send completion
     safeSend(event.sender, "chat:response:end", {
       chatId: req.chatId,
-      updatedFiles: true,
+      updatedFiles: !readOnly,
     } satisfies ChatResponseEnd);
 
     return;

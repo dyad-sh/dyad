@@ -134,6 +134,7 @@ export const editFileTool: ToolDefinition<z.infer<typeof editFileSchema>> = {
   description: DESCRIPTION,
   inputSchema: editFileSchema,
   defaultConsent: "always",
+  modifiesState: true,
 
   getConsentPreview: (args) => `Edit ${args.path}`,
 

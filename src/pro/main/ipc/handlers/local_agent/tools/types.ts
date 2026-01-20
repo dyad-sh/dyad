@@ -123,6 +123,11 @@ export interface ToolDefinition<T = any> {
   readonly description: string;
   readonly inputSchema: z.ZodType<T>;
   readonly defaultConsent: AgentToolConsent;
+  /**
+   * If true, this tool modifies state (files, database, etc.).
+   * Used to filter out state-modifying tools in read-only mode (e.g., ask mode).
+   */
+  readonly modifiesState?: boolean;
   execute: (args: T, ctx: AgentContext) => Promise<ToolResult>;
 
   /**

@@ -27,6 +27,7 @@ export const writeFileTool: ToolDefinition<z.infer<typeof writeFileSchema>> = {
   description: "Create or completely overwrite a file in the codebase",
   inputSchema: writeFileSchema,
   defaultConsent: "always",
+  modifiesState: true,
 
   getConsentPreview: (args) => `Write to ${args.path}`,
 

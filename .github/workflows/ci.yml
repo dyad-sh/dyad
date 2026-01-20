@@ -30,6 +30,8 @@ jobs:
             { name: "windows", image: "windows-latest" },
             { name: "macos", image: "macos-latest" },
           ]
+        # If you update this, you need to update
+        # scripts/generate-playwright-summary.js
         shard: [1, 2, 3, 4]
         shardTotal: [4]
     runs-on: ${{ matrix.os.image }}

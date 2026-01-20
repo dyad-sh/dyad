@@ -16,13 +16,8 @@
         ]
       },
       {
-        "role": "assistant",
-        "content": [
-          {
-            "type": "output_text",
-            "text": "\n  <dyad-write path=\"file1.txt\">\n  A file (2)\n  </dyad-write>\n  More\n  EOM"
-          }
-        ]
+        "type": "item_reference",
+        "id": "[[ITEM_REF_0]]"
       },
       {
         "role": "user",

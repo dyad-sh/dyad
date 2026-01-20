@@ -38,14 +38,16 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
       - name: Initialize environment
         uses: actions/setup-node@v4
         with:
           node-version-file: package.json
-          cache: npm
-          cache-dependency-path: package-lock.json
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
       - name: Install node modules
-        run: npm ci --no-audit --no-fund --progress=false
+        run: pnpm install --frozen-lockfile
         env:
           # Required for @vscode/ripgrep to download binaries without hitting GitHub API rate limits
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -53,21 +55,17 @@ jobs:
         # do not run this on Windows (it fails and not necessary)
         # Only run on shard 1 to avoid redundant execution
         if: contains(matrix.os.name, 'macos') && matrix.shard == 1
-        run: npm run presubmit
+        run: pnpm run presubmit
       - name: Type-checking
         # do not run this on windows (it's redunant)
         # Only run on shard 1 to avoid redundant execution
         if: contains(matrix.os.name, 'macos') && matrix.shard == 1
-        run: npm run ts
+        run: pnpm run ts
       - name: Unit tests
         # do not run this on windows (it's redunant)
         # Only run on shard 1 to avoid redundant execution
         if: contains(matrix.os.name, 'macos') && matrix.shard == 1
-        run: npm run test
-      - name: Setup pnpm
-        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
-        with:
-          version: latest
+        run: pnpm run test
       - name: Clone nextjs-template
         run: git clone --depth 1 https://github.com/dyad-sh/nextjs-template.git nextjs-template
       - name: Get pnpm store directory
@@ -92,9 +90,9 @@ jobs:
       - name: Build
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
-        run: npm run pre:e2e
+        run: pnpm run pre:e2e
       - name: Prep test server
-        run: cd testing/fake-llm-server && npm install && npm run build && cd -
+        run: cd testing/fake-llm-server && pnpm install && pnpm run build && cd -
       - name: E2E tests (Shard ${{ matrix.shard }}/4)
         # You can add debug logging to make it easier to see what's failing
         # by adding "DEBUG=pw:browser" in front.
@@ -120,11 +118,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: lts/*
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
       - name: Install dependencies
-        run: npm ci --no-audit --no-fund --progress=false
+        run: pnpm install --frozen-lockfile
         env:
           # Required for @vscode/ripgrep to download binaries without hitting GitHub API rate limits
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

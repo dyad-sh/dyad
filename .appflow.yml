@@ -18,6 +18,7 @@ build:
     - npm ci
     - npm install -g @capacitor/cli@8.0.1
     - npm run build
+    - cd ios/App && pod install --repo-update
     
   # iOS specific settings
   ios:

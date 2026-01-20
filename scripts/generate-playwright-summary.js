@@ -3,11 +3,8 @@
 
 const fs = require("fs");
 
-// Expected shards for each OS
-const EXPECTED_SHARDS = {
-  macos: [1, 2, 3, 4],
-  windows: [1, 2, 3, 4],
-};
+// Expected number of shards per OS
+const EXPECTED_SHARDS_PER_OS = 4;
 
 // Strip ANSI escape codes from terminal output
 function stripAnsi(str) {
@@ -30,43 +27,31 @@ function ensureOsBucket(resultsByOs, os) {
   }
 }
 
-// Check which shards are present/missing based on blob report files
+// Check if any shards are missing based on blob report file counts.
+// Blob files are named report-${platform}-${timestamp}.zip (e.g., report-darwin-2024-01-01T12-00-00-000Z.zip)
+// We can't identify WHICH shards are missing, only that some are missing by counting files per OS.
 function detectMissingShards(blobFiles) {
-  const presentShards = {
-    macos: new Set(),
-    windows: new Set(),
-  };
+  let macosCount = 0;
+  let windowsCount = 0;
 
   for (const file of blobFiles) {
-    // Files are named like: blob-report-macos-shard-1, blob-report-windows-shard-2, etc.
-    // Or the actual blob files inside might be named with darwin/win32
-    const match = file.match(
-      /(?:macos|darwin).*shard[_-]?(\d+)|shard[_-]?(\d+).*(?:macos|darwin)/i,
-    );
-    const winMatch = file.match(
-      /(?:windows|win32).*shard[_-]?(\d+)|shard[_-]?(\d+).*(?:windows|win32)/i,
-    );
-
-    if (match) {
-      const shardNum = parseInt(match[1] || match[2], 10);
-      presentShards.macos.add(shardNum);
-    }
-    if (winMatch) {
-      const shardNum = parseInt(winMatch[1] || winMatch[2], 10);
-      presentShards.windows.add(shardNum);
+    // Blob files are named: report-darwin-*.zip or report-win32-*.zip
+    if (file.includes("darwin")) {
+      macosCount++;
+    } else if (file.includes("win32")) {
+      windowsCount++;
     }
   }
 
-  const missing = {
-    macos: EXPECTED_SHARDS.macos.filter((s) => !presentShards.macos.has(s)),
-    windows: EXPECTED_SHARDS.windows.filter(
-      (s) => !presentShards.windows.has(s),
-    ),
-  };
+  const macosMissing = Math.max(0, EXPECTED_SHARDS_PER_OS - macosCount);
+  const windowsMissing = Math.max(0, EXPECTED_SHARDS_PER_OS - windowsCount);
 
   return {
-    missing,
-    hasMissing: missing.macos.length > 0 || missing.windows.length > 0,
+    counts: {
+      macos: { found: macosCount, missing: macosMissing },
+      windows: { found: windowsCount, missing: windowsMissing },
+    },
+    hasMissing: macosMissing > 0 || windowsMissing > 0,
   };
 }
 
@@ -164,7 +149,7 @@ async function run({ github, context, core }) {
   const hasWindows = blobFiles.some((f) => f.includes("win32"));
 
   // Check for missing shards
-  const { missing: missingShards, hasMissing } = detectMissingShards(blobFiles);
+  const { counts: shardCounts, hasMissing } = detectMissingShards(blobFiles);
 
   // Initialize per-OS results
   const resultsByOs = {};
@@ -306,11 +291,11 @@ async function run({ github, context, core }) {
     comment += "### ⚠️ WARNING: Missing Test Shards!\n\n";
     comment +=
       "Some test shards did not report results. This may indicate CI failures or timeouts.\n\n";
-    if (missingShards.macos.length > 0) {
-      comment += `- 🍎 **macOS** missing shards: ${missingShards.macos.join(", ")}\n`;
+    if (shardCounts.macos.missing > 0) {
+      comment += `- 🍎 **macOS**: found ${shardCounts.macos.found}/${EXPECTED_SHARDS_PER_OS} shards (${shardCounts.macos.missing} missing)\n`;
     }
-    if (missingShards.windows.length > 0) {
-      comment += `- 🪟 **Windows** missing shards: ${missingShards.windows.join(", ")}\n`;
+    if (shardCounts.windows.missing > 0) {
+      comment += `- 🪟 **Windows**: found ${shardCounts.windows.found}/${EXPECTED_SHARDS_PER_OS} shards (${shardCounts.windows.missing} missing)\n`;
     }
     comment += "\n";
   }

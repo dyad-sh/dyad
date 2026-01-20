@@ -3,5 +3,6 @@
   "integrations": {
     "capacitor": {}
   },
-  "type": "custom"
+  "type": "custom",
+  "id": "com.joycreate.app"
 }

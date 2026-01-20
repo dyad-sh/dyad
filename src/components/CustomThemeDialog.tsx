@@ -27,6 +27,9 @@ import type {
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB per image (raw file size)
 const MAX_IMAGES = 5;
 
+// Default model for AI theme generation
+const DEFAULT_THEME_GENERATION_MODEL: ThemeGenerationModel = "gemini-3-pro";
+
 // Image stored with file path (for IPC) and blob URL (for preview)
 interface ThemeImage {
   path: string; // File path in temp directory
@@ -58,8 +61,9 @@ export function CustomThemeDialog({
   const [aiKeywords, setAiKeywords] = useState("");
   const [aiGenerationMode, setAiGenerationMode] =
     useState<ThemeGenerationMode>("inspired");
-  const [aiSelectedModel, setAiSelectedModel] =
-    useState<ThemeGenerationModel>("gemini-3-pro");
+  const [aiSelectedModel, setAiSelectedModel] = useState<ThemeGenerationModel>(
+    DEFAULT_THEME_GENERATION_MODEL,
+  );
   const [aiGeneratedPrompt, setAiGeneratedPrompt] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -106,7 +110,7 @@ export function CustomThemeDialog({
     setAiImages([]);
     setAiKeywords("");
     setAiGenerationMode("inspired");
-    setAiSelectedModel("gemini-3-flash");
+    setAiSelectedModel(DEFAULT_THEME_GENERATION_MODEL);
     setAiGeneratedPrompt("");
     setActiveTab("manual");
   }, [aiImages, cleanupImages]);

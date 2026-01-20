@@ -1,5 +1,11 @@
-import { useState, useEffect } from "react";
-import { FileWarning, Plus, Pencil, Trash2, ArrowRightLeft } from "lucide-react";
+import { useState } from "react";
+import {
+  FileWarning,
+  Plus,
+  Pencil,
+  Trash2,
+  ArrowRightLeft,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -10,7 +16,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { useUncommittedFiles, type UncommittedFile } from "@/hooks/useUncommittedFiles";
+import {
+  useUncommittedFiles,
+  type UncommittedFile,
+} from "@/hooks/useUncommittedFiles";
 import { useCommitChanges } from "@/hooks/useCommitChanges";
 import { cn } from "@/lib/utils";
 
@@ -58,9 +67,12 @@ function generateDefaultCommitMessage(files: UncommittedFile[]): string {
 
   const parts: string[] = [];
   if (added > 0) parts.push(`add ${added} file${added > 1 ? "s" : ""}`);
-  if (modified > 0) parts.push(`update ${modified} file${modified > 1 ? "s" : ""}`);
-  if (deleted > 0) parts.push(`remove ${deleted} file${deleted > 1 ? "s" : ""}`);
-  if (renamed > 0) parts.push(`rename ${renamed} file${renamed > 1 ? "s" : ""}`);
+  if (modified > 0)
+    parts.push(`update ${modified} file${modified > 1 ? "s" : ""}`);
+  if (deleted > 0)
+    parts.push(`remove ${deleted} file${deleted > 1 ? "s" : ""}`);
+  if (renamed > 0)
+    parts.push(`rename ${renamed} file${renamed > 1 ? "s" : ""}`);
 
   if (parts.length === 0) return "Update files";
 
@@ -70,21 +82,22 @@ function generateDefaultCommitMessage(files: UncommittedFile[]): string {
 }
 
 export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
-  const { uncommittedFiles, hasUncommittedFiles, isLoading } = useUncommittedFiles(appId);
+  const { uncommittedFiles, hasUncommittedFiles, isLoading } =
+    useUncommittedFiles(appId);
   const { commitChanges, isCommitting } = useCommitChanges();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [commitMessage, setCommitMessage] = useState("");
 
-  // Update commit message when files change or dialog opens
-  useEffect(() => {
-    if (isDialogOpen && uncommittedFiles.length > 0) {
-      setCommitMessage(generateDefaultCommitMessage(uncommittedFiles));
-    }
-  }, [isDialogOpen, uncommittedFiles]);
-
   if (!appId || isLoading || !hasUncommittedFiles) {
     return null;
   }
+
+  const handleOpenDialog = () => {
+    // Set default commit message only when opening the dialog
+    // This prevents overwriting user's custom message during polling
+    setCommitMessage(generateDefaultCommitMessage(uncommittedFiles));
+    setIsDialogOpen(true);
+  };
 
   const handleCommit = async () => {
     if (!appId || !commitMessage.trim()) return;
@@ -110,7 +123,7 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => setIsDialogOpen(true)}
+          onClick={handleOpenDialog}
           data-testid="review-commit-button"
         >
           Review & commit
@@ -160,7 +173,7 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
                     <span
                       className={cn(
                         "flex-1 truncate font-mono text-xs",
-                        file.status === "deleted" && "line-through opacity-60"
+                        file.status === "deleted" && "line-through opacity-60",
                       )}
                     >
                       {file.path}
@@ -175,7 +188,7 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
                         file.status === "deleted" &&
                           "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
                         file.status === "renamed" &&
-                          "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
+                          "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
                       )}
                     >
                       {getStatusLabel(file.status)}

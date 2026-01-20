@@ -312,6 +312,10 @@ export class PageObject {
     await this.selectTestModel();
   }
 
+  /**
+   * Sets up the test environment for features that previously required Pro.
+   * Now uses standard test provider since Pro has been disabled.
+   */
   async setUpDyadPro({
     autoApprove = false,
     localAgent = false,
@@ -321,13 +325,8 @@ export class PageObject {
     localAgent?: boolean;
     localAgentUseAutoModel?: boolean;
   } = {}) {
-    await this.baseSetup();
-    await this.goToSettingsTab();
-    if (autoApprove) {
-      await this.toggleAutoApprove();
-    }
-    await this.setUpDyadProvider();
-    await this.goToAppsTab();
+    // Pro has been disabled - use standard test provider setup
+    await this.setUp({ autoApprove });
     // Select a non-openAI model for local agent mode,
     // since openAI models go to the responses API.
     if (localAgent && !localAgentUseAutoModel) {
@@ -387,17 +386,15 @@ export class PageObject {
     );
   }
 
+  /**
+   * @deprecated Pro provider setup is no longer available. Use setUpTestProvider instead.
+   */
   async setUpDyadProvider() {
-    await this.page
-      .locator("div")
-      .filter({ hasText: /^DyadNeeds Setup$/ })
-      .nth(1)
-      .click();
-    await this.page.getByRole("textbox", { name: "Set Dyad API Key" }).click();
-    await this.page
-      .getByRole("textbox", { name: "Set Dyad API Key" })
-      .fill("testdyadkey");
-    await this.page.getByRole("button", { name: "Save Key" }).click();
+    // Pro has been disabled - this method is now a no-op
+    // Tests should use setUpTestProvider instead
+    console.warn(
+      "setUpDyadProvider is deprecated - Pro has been disabled. Using test provider.",
+    );
   }
 
   async importApp(appDir: string) {
@@ -881,7 +878,7 @@ export class PageObject {
 
   getChatInput() {
     return this.page.locator(
-      '[data-lexical-editor="true"][aria-placeholder^="Ask Dyad to build"]',
+      '[data-lexical-editor="true"][aria-placeholder^="Ask ABBA AI to build"]',
     );
   }
 

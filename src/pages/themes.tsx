@@ -86,11 +86,6 @@ function ThemeCard({ theme }: { theme: CustomTheme }) {
                 {theme.description}
               </p>
             )}
-            {theme.appId && (
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary mt-2">
-                App-specific
-              </span>
-            )}
           </div>
           <div className="flex gap-1 shrink-0 ml-2">
             <EditThemeDialog theme={theme} onUpdateTheme={handleUpdate} />

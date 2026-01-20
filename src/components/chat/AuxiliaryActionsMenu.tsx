@@ -37,10 +37,7 @@ import { FileAttachmentDropdown } from "./FileAttachmentDropdown";
 import { CustomThemeDialog } from "@/components/CustomThemeDialog";
 import { useThemes } from "@/hooks/useThemes";
 import { useAppTheme, APP_THEME_QUERY_KEY } from "@/hooks/useAppTheme";
-import {
-  useCustomThemes,
-  CUSTOM_THEMES_QUERY_KEY,
-} from "@/hooks/useCustomThemes";
+import { useCustomThemes } from "@/hooks/useCustomThemes";
 import { useSettings } from "@/hooks/useSettings";
 import { IpcClient } from "@/ipc/ipc_client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -67,7 +64,7 @@ export function AuxiliaryActionsMenu({
   const [customThemeDialogOpen, setCustomThemeDialogOpen] = useState(false);
   const [allThemesDialogOpen, setAllThemesDialogOpen] = useState(false);
   const { themes } = useThemes();
-  const { customThemes } = useCustomThemes(appId);
+  const { customThemes } = useCustomThemes();
   const { themeId: appThemeId } = useAppTheme(appId);
   const { settings, updateSettings } = useSettings();
   const queryClient = useQueryClient();
@@ -129,7 +126,7 @@ export function AuxiliaryActionsMenu({
     if (!open) {
       // Refresh custom themes when dialog closes
       queryClient.invalidateQueries({
-        queryKey: CUSTOM_THEMES_QUERY_KEY(appId),
+        queryKey: ["custom-themes"],
       });
     }
   };
@@ -175,7 +172,6 @@ export function AuxiliaryActionsMenu({
               Themes
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent>
-              {/* No Theme option (special frontend-only option) */}
               <DropdownMenuItem
                 onClick={() => handleThemeSelect(null)}
                 className={`py-2 px-3 ${currentThemeId === null ? "bg-primary/10" : ""}`}
@@ -330,7 +326,6 @@ export function AuxiliaryActionsMenu({
       <CustomThemeDialog
         open={customThemeDialogOpen}
         onOpenChange={handleCustomThemeDialogClose}
-        appId={appId}
         onThemeCreated={(themeId) => {
           // Auto-select the newly created theme
           handleThemeSelect(`custom:${themeId}`);

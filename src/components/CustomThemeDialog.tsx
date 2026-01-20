@@ -29,14 +29,12 @@ const MAX_IMAGES = 5;
 interface CustomThemeDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  appId?: number; // optional - undefined for global themes
   onThemeCreated?: (themeId: number) => void; // callback when theme is created
 }
 
 export function CustomThemeDialog({
   open,
   onOpenChange,
-  appId,
   onThemeCreated,
 }: CustomThemeDialogProps) {
   const [activeTab, setActiveTab] = useState<"manual" | "ai">("manual");
@@ -92,55 +90,76 @@ export function CustomThemeDialog({
       const files = e.target.files;
       if (!files) return;
 
-      Array.from(files).forEach((file) => {
-        // Check image count limit first
-        if (aiImages.length >= MAX_IMAGES) {
+      setAiImages((prevImages) => {
+        const availableSlots = MAX_IMAGES - prevImages.length;
+        if (availableSlots <= 0) {
           toast.error(`Maximum ${MAX_IMAGES} images allowed`);
-          return;
+          return prevImages;
         }
 
-        // Validate file type
-        if (!file.type.startsWith("image/")) {
+        const filesToProcess = Array.from(files).slice(0, availableSlots);
+        const skippedCount = files.length - filesToProcess.length;
+
+        if (skippedCount > 0) {
           toast.error(
-            `Please upload only image files. "${file.name}" is not a valid image.`,
+            `Only ${availableSlots} image${availableSlots === 1 ? "" : "s"} can be added. ${skippedCount} file${skippedCount === 1 ? " was" : "s were"} skipped.`,
           );
-          return;
         }
 
-        // Validate file size (raw file size)
-        if (file.size > MAX_FILE_SIZE) {
-          const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
-          toast.error(`File "${file.name}" exceeds 10MB limit (${sizeMB}MB)`);
-          return;
-        }
-
-        const reader = new FileReader();
-
-        reader.onerror = () => {
-          toast.error(`Failed to read file "${file.name}". Please try again.`);
-        };
-
-        reader.onload = () => {
-          try {
-            const base64 = reader.result as string;
-            if (!base64 || typeof base64 !== "string") {
-              throw new Error("Invalid file data");
-            }
-
-            const base64Data = base64.split(",")[1];
-            if (!base64Data) {
-              throw new Error("Failed to extract image data");
-            }
-
-            setAiImages((prev) => [...prev, base64Data]);
-          } catch (err) {
+        filesToProcess.forEach((file) => {
+          // Validate file type
+          if (!file.type.startsWith("image/")) {
             toast.error(
-              `Error processing "${file.name}": ${err instanceof Error ? err.message : "Unknown error"}`,
+              `Please upload only image files. "${file.name}" is not a valid image.`,
             );
+            return;
           }
-        };
 
-        reader.readAsDataURL(file);
+          // Validate file size (raw file size)
+          if (file.size > MAX_FILE_SIZE) {
+            const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+            toast.error(`File "${file.name}" exceeds 10MB limit (${sizeMB}MB)`);
+            return;
+          }
+
+          const reader = new FileReader();
+
+          reader.onerror = () => {
+            toast.error(
+              `Failed to read file "${file.name}". Please try again.`,
+            );
+          };
+
+          reader.onload = () => {
+            try {
+              const base64 = reader.result as string;
+              if (!base64 || typeof base64 !== "string") {
+                throw new Error("Invalid file data");
+              }
+
+              const base64Data = base64.split(",")[1];
+              if (!base64Data) {
+                throw new Error("Failed to extract image data");
+              }
+
+              setAiImages((prev) => {
+                // Double-check limit in case of race conditions
+                if (prev.length >= MAX_IMAGES) {
+                  return prev;
+                }
+                return [...prev, base64Data];
+              });
+            } catch (err) {
+              toast.error(
+                `Error processing "${file.name}": ${err instanceof Error ? err.message : "Unknown error"}`,
+              );
+            }
+          };
+
+          reader.readAsDataURL(file);
+        });
+
+        return prevImages;
       });
 
       // Reset input
@@ -148,7 +167,7 @@ export function CustomThemeDialog({
         fileInputRef.current.value = "";
       }
     },
-    [aiImages.length],
+    [],
   );
 
   const handleRemoveImage = useCallback((index: number) => {
@@ -183,22 +202,30 @@ export function CustomThemeDialog({
     generatePromptMutation,
   ]);
 
-  const handleSaveManual = useCallback(async () => {
-    if (!manualName.trim()) {
+  const handleSave = useCallback(async () => {
+    const isManual = activeTab === "manual";
+    const name = isManual ? manualName : aiName;
+    const description = isManual ? manualDescription : aiDescription;
+    const prompt = isManual ? manualPrompt : aiGeneratedPrompt;
+
+    if (!name.trim()) {
       toast.error("Please enter a theme name");
       return;
     }
-    if (!manualPrompt.trim()) {
-      toast.error("Please enter a theme prompt");
+    if (!prompt.trim()) {
+      toast.error(
+        isManual
+          ? "Please enter a theme prompt"
+          : "Please generate a prompt first",
+      );
       return;
     }
 
     try {
       const createdTheme = await createThemeMutation.mutateAsync({
-        appId,
-        name: manualName.trim(),
-        description: manualDescription.trim() || undefined,
-        prompt: manualPrompt.trim(),
+        name: name.trim(),
+        description: description.trim() || undefined,
+        prompt: prompt.trim(),
       });
       toast.success("Custom theme created successfully");
       onThemeCreated?.(createdTheme.id);
@@ -209,42 +236,10 @@ export function CustomThemeDialog({
       );
     }
   }, [
-    appId,
+    activeTab,
     manualName,
     manualDescription,
     manualPrompt,
-    createThemeMutation,
-    onThemeCreated,
-    handleClose,
-  ]);
-
-  const handleSaveAI = useCallback(async () => {
-    if (!aiName.trim()) {
-      toast.error("Please enter a theme name");
-      return;
-    }
-    if (!aiGeneratedPrompt.trim()) {
-      toast.error("Please generate a prompt first");
-      return;
-    }
-
-    try {
-      const createdTheme = await createThemeMutation.mutateAsync({
-        appId,
-        name: aiName.trim(),
-        description: aiDescription.trim() || undefined,
-        prompt: aiGeneratedPrompt.trim(),
-      });
-      toast.success("Custom theme created successfully");
-      onThemeCreated?.(createdTheme.id);
-      handleClose();
-    } catch (error) {
-      toast.error(
-        `Failed to create theme: ${error instanceof Error ? error.message : "Unknown error"}`,
-      );
-    }
-  }, [
-    appId,
     aiName,
     aiDescription,
     aiGeneratedPrompt,
@@ -317,7 +312,7 @@ export function CustomThemeDialog({
             </div>
 
             <Button
-              onClick={handleSaveManual}
+              onClick={handleSave}
               disabled={isSaving || !manualName.trim() || !manualPrompt.trim()}
               className="w-full"
             >
@@ -552,7 +547,7 @@ export function CustomThemeDialog({
             {/* Save Button - only show when prompt is generated */}
             {aiGeneratedPrompt && (
               <Button
-                onClick={handleSaveAI}
+                onClick={handleSave}
                 disabled={isSaving || !aiName.trim()}
                 className="w-full"
               >

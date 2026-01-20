@@ -3,7 +3,7 @@ import log from "electron-log";
 import { themesData, type Theme } from "../../shared/themes";
 import { db } from "../../db";
 import { apps, customThemes } from "../../db/schema";
-import { eq, sql, or, isNull } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { streamText, TextPart, ImagePart } from "ai";
 import { readSettings } from "../../main/settings";
 import { getModelClient } from "../utils/get_model_client";
@@ -14,7 +14,6 @@ import type {
   CreateCustomThemeParams,
   UpdateCustomThemeParams,
   DeleteCustomThemeParams,
-  GetCustomThemesParams,
   GenerateThemePromptParams,
   GenerateThemePromptResult,
 } from "../ipc_types";
@@ -145,32 +144,21 @@ export function registerThemesHandlers() {
     },
   );
 
-  // Get custom themes (global + app-specific if appId provided)
-  handle(
-    "get-custom-themes",
-    async (_, params: GetCustomThemesParams): Promise<CustomTheme[]> => {
-      const { appId } = params;
+  // Get all custom themes
+  handle("get-custom-themes", async (): Promise<CustomTheme[]> => {
+    const themes = await db.query.customThemes.findMany({
+      orderBy: (themes, { desc }) => [desc(themes.createdAt)],
+    });
 
-      // Get global themes (appId is null) and optionally app-specific themes
-      const themes = await db.query.customThemes.findMany({
-        where:
-          appId != null
-            ? or(isNull(customThemes.appId), eq(customThemes.appId, appId))
-            : isNull(customThemes.appId),
-        orderBy: (themes, { desc }) => [desc(themes.createdAt)],
-      });
-
-      return themes.map((t) => ({
-        id: t.id,
-        appId: t.appId,
-        name: t.name,
-        description: t.description,
-        prompt: t.prompt,
-        createdAt: t.createdAt,
-        updatedAt: t.updatedAt,
-      }));
-    },
-  );
+    return themes.map((t) => ({
+      id: t.id,
+      name: t.name,
+      description: t.description,
+      prompt: t.prompt,
+      createdAt: t.createdAt,
+      updatedAt: t.updatedAt,
+    }));
+  });
 
   // Create custom theme
   handle(
@@ -203,12 +191,8 @@ export function registerThemesHandlers() {
       }
 
       // Check for duplicate theme name (case-insensitive)
-      // For app-specific themes, check within that app. For global themes, check global scope.
       const existingTheme = await db.query.customThemes.findFirst({
-        where:
-          params.appId != null
-            ? sql`LOWER(${customThemes.name}) = LOWER(${trimmedName}) AND ${customThemes.appId} = ${params.appId}`
-            : sql`LOWER(${customThemes.name}) = LOWER(${trimmedName}) AND ${customThemes.appId} IS NULL`,
+        where: sql`LOWER(${customThemes.name}) = LOWER(${trimmedName})`,
       });
 
       if (existingTheme) {
@@ -220,7 +204,6 @@ export function registerThemesHandlers() {
       const result = await db
         .insert(customThemes)
         .values({
-          appId: params.appId ?? null, // null for global themes
           name: trimmedName,
           description: trimmedDescription || null,
           prompt: trimmedPrompt,
@@ -230,7 +213,6 @@ export function registerThemesHandlers() {
       const theme = result[0];
       return {
         id: theme.id,
-        appId: theme.appId,
         name: theme.name,
         description: theme.description,
         prompt: theme.prompt,
@@ -253,7 +235,7 @@ export function registerThemesHandlers() {
         updatedAt: new Date(),
       };
 
-      // Get the current theme to check appId for duplicate validation
+      // Get the current theme to verify it exists
       const currentTheme = await db.query.customThemes.findFirst({
         where: eq(customThemes.id, params.id),
       });
@@ -274,10 +256,7 @@ export function registerThemesHandlers() {
 
         // Check for duplicate theme name (case-insensitive), excluding current theme
         const existingTheme = await db.query.customThemes.findFirst({
-          where:
-            currentTheme.appId != null
-              ? sql`LOWER(${customThemes.name}) = LOWER(${trimmedName}) AND ${customThemes.appId} = ${currentTheme.appId} AND ${customThemes.id} != ${params.id}`
-              : sql`LOWER(${customThemes.name}) = LOWER(${trimmedName}) AND ${customThemes.appId} IS NULL AND ${customThemes.id} != ${params.id}`,
+          where: sql`LOWER(${customThemes.name}) = LOWER(${trimmedName}) AND ${customThemes.id} != ${params.id}`,
         });
 
         if (existingTheme) {
@@ -323,7 +302,6 @@ export function registerThemesHandlers() {
 
       return {
         id: theme.id,
-        appId: theme.appId,
         name: theme.name,
         description: theme.description,
         prompt: theme.prompt,
@@ -430,14 +408,12 @@ images: ${imagesPart}`;
           // Add user input text first
           contentParts.push({ type: "text", text: userInput });
 
-          // Add images
+          // Add images - let AI SDK auto-detect media type from base64 data
           for (const imageData of params.images) {
             contentParts.push({
               type: "image",
               image: imageData,
-              mediaType: "image/png",
             } as ImagePart);
-            logger.log(`Added image, base64 length: ${imageData.length}`);
           }
 
           const stream = streamText({
@@ -449,13 +425,8 @@ images: ${imagesPart}`;
 
           const result = await stream.text;
 
-          logger.log(
-            `Theme generation with images succeeded, result length: ${result.length}`,
-          );
-
           return { prompt: result };
-        } catch (imageError) {
-          logger.error("Image-based theme generation failed:", imageError);
+        } catch {
           throw new Error(
             "Failed to process images for theme generation. Please try with fewer or smaller images, or use manual mode.",
           );
@@ -473,10 +444,6 @@ images: ${imagesPart}`;
 
         const result = await stream.text;
 
-        logger.log(
-          `Theme generation (text-only) succeeded, result length: ${result.length}`,
-        );
-
         return { prompt: result };
       } catch (error) {
         logger.error("Theme generation error:", error);
@@ -486,40 +453,4 @@ images: ${imagesPart}`;
       }
     },
   );
-}
-
-/**
- * Async function to resolve theme prompt by ID.
- * Handles both built-in themes (by ID) and custom themes (prefixed with "custom:")
- */
-export async function getThemePromptById(
-  themeId: string | null,
-): Promise<string> {
-  if (!themeId) {
-    return "";
-  }
-
-  // Check if it's a custom theme
-  if (themeId.startsWith("custom:")) {
-    const numericId = parseInt(themeId.replace("custom:", ""), 10);
-    if (isNaN(numericId)) {
-      logger.warn(`Invalid custom theme ID: ${themeId}`);
-      return "";
-    }
-
-    const customTheme = await db.query.customThemes.findFirst({
-      where: eq(customThemes.id, numericId),
-    });
-
-    if (!customTheme) {
-      logger.warn(`Custom theme not found: ${themeId}`);
-      return "";
-    }
-
-    return customTheme.prompt;
-  }
-
-  // It's a built-in theme
-  const builtinTheme = themesData.find((t) => t.id === themeId);
-  return builtinTheme?.prompt ?? "";
 }

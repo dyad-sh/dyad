@@ -70,38 +70,3 @@ export const themesData: Theme[] = [
     prompt: DEFAULT_THEME_PROMPT,
   },
 ];
-
-export function getThemeById(themeId: string | null): Theme | null {
-  // null means "no theme" - return null
-  if (!themeId) {
-    return null;
-  }
-  return themesData.find((t) => t.id === themeId) ?? null;
-}
-
-export function getThemePrompt(themeId: string | null): string {
-  // null means "no theme" - return empty string (no prompt)
-  if (!themeId) {
-    return "";
-  }
-  const theme = getThemeById(themeId);
-  return theme?.prompt ?? "";
-}
-
-/**
- * Check if a theme ID refers to a custom theme
- * Custom theme IDs are prefixed with "custom:"
- */
-export function isCustomThemeId(themeId: string | null): boolean {
-  return themeId?.startsWith("custom:") ?? false;
-}
-
-/**
- * Extract the numeric ID from a custom theme ID
- * e.g., "custom:123" -> 123
- */
-export function getCustomThemeNumericId(themeId: string): number | null {
-  if (!isCustomThemeId(themeId)) return null;
-  const numericId = parseInt(themeId.replace("custom:", ""), 10);
-  return isNaN(numericId) ? null : numericId;
-}

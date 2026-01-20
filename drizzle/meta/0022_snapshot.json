@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "44db09ea-0d81-4ad9-807d-699a22436d02",
+  "id": "ce28ff48-ebcb-4c8e-90aa-623ebe456839",
   "prevId": "fe227e2c-ae93-4d47-bdd6-61caf215311e",
   "tables": {
     "apps": {
@@ -248,13 +248,6 @@
           "notNull": true,
           "autoincrement": true
         },
-        "app_id": {
-          "name": "app_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "name": {
           "name": "name",
           "type": "text",
@@ -294,21 +287,7 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {
-        "custom_themes_app_id_apps_id_fk": {
-          "name": "custom_themes_app_id_apps_id_fk",
-          "tableFrom": "custom_themes",
-          "tableTo": "apps",
-          "columnsFrom": [
-            "app_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}

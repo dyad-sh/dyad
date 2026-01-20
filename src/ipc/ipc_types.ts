@@ -749,7 +749,6 @@ export interface GetAppThemeParams {
 // --- Custom Theme Types ---
 export interface CustomTheme {
   id: number;
-  appId: number | null; // null for global themes
   name: string;
   description: string | null;
   prompt: string;
@@ -758,7 +757,6 @@ export interface CustomTheme {
 }
 
 export interface CreateCustomThemeParams {
-  appId?: number; // optional - null for global themes
   name: string;
   description?: string;
   prompt: string;
@@ -773,10 +771,6 @@ export interface UpdateCustomThemeParams {
 
 export interface DeleteCustomThemeParams {
   id: number;
-}
-
-export interface GetCustomThemesParams {
-  appId?: number; // if null/undefined, returns global themes
 }
 
 export type ThemeGenerationMode = "inspired" | "high-fidelity";

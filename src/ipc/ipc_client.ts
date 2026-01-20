@@ -92,7 +92,6 @@ import type {
   CreateCustomThemeParams,
   UpdateCustomThemeParams,
   DeleteCustomThemeParams,
-  GetCustomThemesParams,
   GenerateThemePromptParams,
   GenerateThemePromptResult,
 } from "./ipc_types";
@@ -1637,10 +1636,8 @@ export class IpcClient {
     return this.ipcRenderer.invoke("get-app-theme", params);
   }
 
-  public async getCustomThemes(
-    params: GetCustomThemesParams,
-  ): Promise<CustomTheme[]> {
-    return this.ipcRenderer.invoke("get-custom-themes", params);
+  public async getCustomThemes(): Promise<CustomTheme[]> {
+    return this.ipcRenderer.invoke("get-custom-themes");
   }
 
   public async createCustomTheme(

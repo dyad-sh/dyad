@@ -8,23 +8,18 @@ import type {
   GenerateThemePromptResult,
 } from "@/ipc/ipc_types";
 
-// Query key that handles both app-specific and global themes
-export const CUSTOM_THEMES_QUERY_KEY = (appId?: number) => [
-  "custom-themes",
-  appId ?? "global",
-];
+// Query key for custom themes
+export const CUSTOM_THEMES_QUERY_KEY = ["custom-themes"];
 
 /**
- * Hook to fetch custom themes.
- * - If appId is provided: returns global themes + app-specific themes
- * - If appId is undefined: returns only global themes
+ * Hook to fetch all custom themes.
  */
-export function useCustomThemes(appId?: number) {
+export function useCustomThemes() {
   const query = useQuery({
-    queryKey: CUSTOM_THEMES_QUERY_KEY(appId),
+    queryKey: CUSTOM_THEMES_QUERY_KEY,
     queryFn: async (): Promise<CustomTheme[]> => {
       const ipcClient = IpcClient.getInstance();
-      return ipcClient.getCustomThemes({ appId });
+      return ipcClient.getCustomThemes();
     },
     meta: {
       showErrorToast: true,

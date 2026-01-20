@@ -128,7 +128,6 @@ export const versions = sqliteTable(
 export const appsRelations = relations(apps, ({ many }) => ({
   chats: many(chats),
   versions: many(versions),
-  customThemes: many(customThemes),
 }));
 
 export const chatsRelations = relations(chats, ({ many, one }) => ({
@@ -248,10 +247,8 @@ export const mcpToolConsents = sqliteTable(
 );
 
 // --- Custom Themes table ---
-// appId is nullable to allow global custom themes (not tied to a specific app)
 export const customThemes = sqliteTable("custom_themes", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  appId: integer("app_id").references(() => apps.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   description: text("description"),
   prompt: text("prompt").notNull(),
@@ -262,10 +259,3 @@ export const customThemes = sqliteTable("custom_themes", {
     .notNull()
     .default(sql`(unixepoch())`),
 });
-
-export const customThemesRelations = relations(customThemes, ({ one }) => ({
-  app: one(apps, {
-    fields: [customThemes.appId],
-    references: [apps.id],
-  }),
-}));

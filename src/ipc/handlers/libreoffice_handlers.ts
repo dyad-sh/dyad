@@ -3,7 +3,7 @@
  * Handles document creation, editing, and export via LibreOffice
  */
 
-import { ipcMain, app } from "electron";
+import { ipcMain, app, shell } from "electron";
 import { spawn, exec } from "child_process";
 import * as fs from "fs/promises";
 import * as path from "path";
@@ -11,6 +11,9 @@ import { promisify } from "util";
 import { getDb } from "@/db";
 import { documents, documentTemplates } from "@/db/schema";
 import { eq, desc, like, and, or } from "drizzle-orm";
+import { generateText } from "ai";
+import { getModelClient } from "@/ipc/utils/get_model_client";
+import { readSettings } from "../../main/settings";
 import type {
   DocumentType,
   DocumentFormat,
@@ -182,15 +185,31 @@ class LibreOfficeManager {
       const fileName = `${request.name.replace(/[^a-zA-Z0-9-_]/g, "_")}_${Date.now()}.${format}`;
       const filePath = path.join(this.documentsDir, fileName);
 
+      // Generate content with AI if requested
+      let documentContent = request.content;
+      let aiPromptUsed: string | undefined;
+      let aiModelUsed: string | undefined;
+      
+      if (request.aiGenerate?.prompt) {
+        const aiResult = await this.generateDocumentWithAI(
+          request.type,
+          request.name,
+          request.aiGenerate
+        );
+        documentContent = aiResult.content;
+        aiPromptUsed = request.aiGenerate.prompt;
+        aiModelUsed = aiResult.model;
+      }
+
       // Create the document based on type
       let content: string;
       
       if (request.type === "document") {
-        content = this.generateDocumentXML(request.content);
+        content = this.generateDocumentXML(documentContent);
       } else if (request.type === "spreadsheet") {
-        content = this.generateSpreadsheetXML(request.content as SpreadsheetContent);
+        content = this.generateSpreadsheetXML(documentContent as SpreadsheetContent);
       } else {
-        content = this.generatePresentationXML(request.content as PresentationContent);
+        content = this.generatePresentationXML(documentContent as PresentationContent);
       }
 
       // Write the initial content
@@ -205,7 +224,9 @@ class LibreOfficeManager {
           format: format,
           status: "ready",
           filePath: filePath,
-          description: request.content?.metadata?.description || null,
+          description: documentContent?.metadata?.description || request.aiGenerate?.prompt || null,
+          aiPrompt: aiPromptUsed,
+          aiModel: aiModelUsed,
         })
         .returning();
 
@@ -231,6 +252,149 @@ class LibreOfficeManager {
         error: error instanceof Error ? error.message : "Failed to create document",
       };
     }
+  }
+
+  /**
+   * Generate document content using AI
+   */
+  private async generateDocumentWithAI(
+    type: DocumentType,
+    name: string,
+    options: AIGenerationOptions
+  ): Promise<{ content: DocumentContent; model: string }> {
+    const settings = readSettings();
+    const selectedModel = settings.selectedModel;
+    
+    const systemPrompt = this.getDocumentGenerationSystemPrompt(type, options);
+    const userPrompt = `Create a ${type} titled "${name}" based on this description:\n\n${options.prompt}`;
+
+    try {
+      const { modelClient } = await getModelClient(selectedModel, settings);
+
+      const result = await generateText({
+        model: modelClient.model,
+        system: systemPrompt,
+        prompt: userPrompt,
+      });
+
+      // Parse AI response into document content structure
+      const content = this.parseAIResponseToContent(type, result.text, options);
+      
+      return {
+        content,
+        model: `${selectedModel.provider}/${selectedModel.name}`,
+      };
+    } catch (error) {
+      console.error("AI document generation failed:", error);
+      // Return basic content structure if AI fails
+      return {
+        content: {
+          title: name,
+          sections: [
+            { type: "heading", level: 1, content: name },
+            { type: "paragraph", content: options.prompt || "Document content goes here." },
+          ],
+        },
+        model: "fallback",
+      };
+    }
+  }
+
+  private getDocumentGenerationSystemPrompt(type: DocumentType, options: AIGenerationOptions): string {
+    const tone = options.tone || "professional";
+    const length = options.length || "medium";
+    
+    const basePrompt = `You are an expert document creator. Generate content in a structured format.
+Tone: ${tone}
+Length: ${length}
+
+IMPORTANT: Output your response in a specific format that can be parsed:
+- Start each heading with "## HEADING:" followed by the heading text
+- Start each paragraph with "PARAGRAPH:" followed by the paragraph text
+- Start each bullet list item with "- LIST:" followed by the item text
+- For numbered lists use "1. LIST:" format
+
+Example format:
+## HEADING: Introduction
+PARAGRAPH: This is the introduction paragraph with detailed content.
+
+## HEADING: Key Points
+- LIST: First important point
+- LIST: Second important point
+1. LIST: Numbered item one
+2. LIST: Numbered item two
+
+PARAGRAPH: Conclusion text here.`;
+
+    if (type === "document") {
+      return `${basePrompt}\n\nYou are creating a text document. Include headings, paragraphs, and lists as appropriate.`;
+    } else if (type === "spreadsheet") {
+      return `${basePrompt}\n\nYou are creating a spreadsheet. Structure data in rows and columns. Use "| COL_A | COL_B | COL_C |" format for table data.`;
+    } else {
+      return `${basePrompt}\n\nYou are creating a presentation. Each "## SLIDE:" marks a new slide. Include a title and bullet points for each slide.`;
+    }
+  }
+
+  private parseAIResponseToContent(type: DocumentType, text: string, options: AIGenerationOptions): DocumentContent {
+    const sections: DocumentContent["sections"] = [];
+    const lines = text.split("\n").filter(l => l.trim());
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      
+      if (trimmed.startsWith("## HEADING:") || trimmed.startsWith("## SLIDE:")) {
+        sections.push({
+          type: "heading",
+          level: 1,
+          content: trimmed.replace(/^## (HEADING|SLIDE):\s*/, ""),
+        });
+      } else if (trimmed.startsWith("### ")) {
+        sections.push({
+          type: "heading",
+          level: 2,
+          content: trimmed.replace(/^### /, ""),
+        });
+      } else if (trimmed.startsWith("PARAGRAPH:")) {
+        sections.push({
+          type: "paragraph",
+          content: trimmed.replace(/^PARAGRAPH:\s*/, ""),
+        });
+      } else if (trimmed.match(/^[-*]\s*LIST:/)) {
+        // Collect consecutive list items
+        sections.push({
+          type: "paragraph",
+          content: "• " + trimmed.replace(/^[-*]\s*LIST:\s*/, ""),
+        });
+      } else if (trimmed.match(/^\d+\.\s*LIST:/)) {
+        sections.push({
+          type: "paragraph",
+          content: trimmed.replace(/LIST:\s*/, ""),
+        });
+      } else if (trimmed && !trimmed.startsWith("#") && trimmed.length > 10) {
+        // Regular text paragraph
+        sections.push({
+          type: "paragraph",
+          content: trimmed,
+        });
+      }
+    }
+
+    // Ensure we have at least some content
+    if (sections.length === 0) {
+      sections.push({
+        type: "paragraph",
+        content: text.slice(0, 500) || "Document content generated by AI.",
+      });
+    }
+
+    return {
+      title: sections[0]?.type === "heading" ? (sections[0].content as string) : options.prompt?.slice(0, 50),
+      sections,
+      metadata: {
+        description: options.prompt,
+        generatedBy: "AI",
+      },
+    };
   }
 
   private generateDocumentXML(content?: DocumentContent): string {
@@ -661,6 +825,92 @@ class LibreOfficeManager {
     }
   }
 
+  async downloadDocument(id: number): Promise<DocumentOperationResult> {
+    const db = getDb();
+
+    try {
+      const [doc] = await db
+        .select()
+        .from(documents)
+        .where(eq(documents.id, id))
+        .limit(1);
+
+      if (!doc) {
+        return { success: false, error: "Document not found" };
+      }
+
+      // Check if source file exists
+      try {
+        await fs.access(doc.filePath);
+      } catch {
+        return { success: false, error: "Document file not found on disk" };
+      }
+
+      // Copy to Downloads folder
+      const downloadsPath = app.getPath("downloads");
+      const fileName = path.basename(doc.filePath);
+      const destPath = path.join(downloadsPath, fileName);
+
+      // If file exists, add timestamp to avoid overwriting
+      let finalDestPath = destPath;
+      try {
+        await fs.access(destPath);
+        const ext = path.extname(fileName);
+        const base = path.basename(fileName, ext);
+        finalDestPath = path.join(downloadsPath, `${base}_${Date.now()}${ext}`);
+      } catch {
+        // File doesn't exist, use original path
+      }
+
+      await fs.copyFile(doc.filePath, finalDestPath);
+
+      // Show in file explorer
+      shell.showItemInFolder(finalDestPath);
+
+      return {
+        success: true,
+        filePath: finalDestPath,
+      };
+    } catch (error) {
+      console.error("Failed to download document:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to download document",
+      };
+    }
+  }
+
+  async showDocumentInFolder(id: number): Promise<{ success: boolean; error?: string }> {
+    const db = getDb();
+
+    try {
+      const [doc] = await db
+        .select()
+        .from(documents)
+        .where(eq(documents.id, id))
+        .limit(1);
+
+      if (!doc) {
+        return { success: false, error: "Document not found" };
+      }
+
+      // Check if file exists
+      try {
+        await fs.access(doc.filePath);
+      } catch {
+        return { success: false, error: "Document file not found on disk" };
+      }
+
+      shell.showItemInFolder(doc.filePath);
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to show document",
+      };
+    }
+  }
+
   getDocumentsDirectory(): string {
     return this.documentsDir;
   }
@@ -703,6 +953,16 @@ export function registerLibreOfficeHandlers() {
   // Open document in LibreOffice
   ipcMain.handle("libreoffice:open", async (_, id: number) => {
     return manager.openDocument(id);
+  });
+
+  // Download document (copy to Downloads folder and show in explorer)
+  ipcMain.handle("libreoffice:download", async (_, id: number) => {
+    return manager.downloadDocument(id);
+  });
+
+  // Show document in file explorer
+  ipcMain.handle("libreoffice:show-in-folder", async (_, id: number) => {
+    return manager.showDocumentInFolder(id);
   });
 
   // Get documents directory

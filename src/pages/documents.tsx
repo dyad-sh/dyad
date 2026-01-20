@@ -183,6 +183,28 @@ export default function DocumentsPage() {
     },
   });
 
+  // Download document mutation
+  const downloadDocMutation = useMutation({
+    mutationFn: (id: number) => libreOfficeClient.downloadDocument(id),
+    onSuccess: (result) => {
+      if (result.success) {
+        showSuccess(`Document saved to Downloads folder`);
+      } else {
+        showError(result.error || "Failed to download document");
+      }
+    },
+  });
+
+  // Show in folder mutation
+  const showInFolderMutation = useMutation({
+    mutationFn: (id: number) => libreOfficeClient.showDocumentInFolder(id),
+    onSuccess: (result) => {
+      if (!result.success) {
+        showError(result.error || "Failed to show document in folder");
+      }
+    },
+  });
+
   const resetCreateForm = () => {
     setNewDocName("");
     setNewDocType("document");
@@ -261,6 +283,14 @@ export default function DocumentsPage() {
               <DropdownMenuItem onClick={() => openDocMutation.mutate(doc.id)}>
                 <ExternalLink className="h-4 w-4 mr-2" />
                 Open in LibreOffice
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => downloadDocMutation.mutate(doc.id)}>
+                <Download className="h-4 w-4 mr-2" />
+                Download
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => showInFolderMutation.mutate(doc.id)}>
+                <FolderOpen className="h-4 w-4 mr-2" />
+                Show in Folder
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               {EXPORT_FORMATS[doc.type].map((format) => (

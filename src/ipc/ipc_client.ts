@@ -988,6 +988,22 @@ export class IpcClient {
     return this.ipcRenderer.invoke("github:get-git-state", { appId });
   }
 
+  public async getUncommittedFiles(appId: number): Promise<
+    Array<{
+      path: string;
+      status: "added" | "modified" | "deleted" | "renamed";
+    }>
+  > {
+    return this.ipcRenderer.invoke("git:get-uncommitted-files", { appId });
+  }
+
+  public async commitChanges(
+    appId: number,
+    message: string,
+  ): Promise<string> {
+    return this.ipcRenderer.invoke("git:commit-changes", { appId, message });
+  }
+
   public async listCollaborators(
     appId: number,
   ): Promise<{ login: string; avatar_url: string; permissions: any }[]> {

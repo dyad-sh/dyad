@@ -80,6 +80,8 @@ const validInvokeChannels = [
   "github:delete-branch",
   "github:get-git-state",
   "github:disconnect",
+  "git:get-uncommitted-files",
+  "git:commit-changes",
   "neon:create-project",
   "neon:get-project",
   "neon:delete-branch",

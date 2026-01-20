@@ -15,6 +15,10 @@ import {
   GIT_ERROR_CODES,
   isGitMergeInProgress,
   isGitRebaseInProgress,
+  getGitUncommittedFilesWithStatus,
+  gitAddAll,
+  gitCommit,
+  type UncommittedFile,
 } from "../utils/git_utils";
 import { getDyadAppPath } from "../../paths/paths";
 import { db } from "../../db";
@@ -295,6 +299,49 @@ async function handleListRemoteBranches(
   return branches;
 }
 
+async function handleGetUncommittedFiles(
+  event: IpcMainInvokeEvent,
+  { appId }: { appId: number },
+): Promise<UncommittedFile[]> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
+
+  return getGitUncommittedFilesWithStatus({ path: appPath });
+}
+
+async function handleCommitChanges(
+  event: IpcMainInvokeEvent,
+  { appId, message }: { appId: number; message: string },
+): Promise<string> {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const appPath = getDyadAppPath(app.path);
+
+  // Check for merge or rebase in progress
+  if (isGitMergeInProgress({ path: appPath })) {
+    throw GitStateError(
+      "Cannot commit: merge in progress. Please complete or abort the merge first.",
+      GIT_ERROR_CODES.MERGE_IN_PROGRESS,
+    );
+  }
+
+  if (isGitRebaseInProgress({ path: appPath })) {
+    throw GitStateError(
+      "Cannot commit: rebase in progress. Please complete or abort the rebase first.",
+      GIT_ERROR_CODES.REBASE_IN_PROGRESS,
+    );
+  }
+
+  // Stage all changes
+  await gitAddAll({ path: appPath });
+
+  // Commit with the provided message
+  const commitHash = await gitCommit({ path: appPath, message });
+
+  return commitHash;
+}
+
 // --- Registration ---
 export function registerGithubBranchHandlers() {
   ipcMain.handle("github:merge-abort", handleAbortMerge);
@@ -306,4 +353,6 @@ export function registerGithubBranchHandlers() {
   ipcMain.handle("github:merge-branch", handleMergeBranch);
   ipcMain.handle("github:list-local-branches", handleListLocalBranches);
   ipcMain.handle("github:list-remote-branches", handleListRemoteBranches);
+  ipcMain.handle("git:get-uncommitted-files", handleGetUncommittedFiles);
+  ipcMain.handle("git:commit-changes", handleCommitChanges);
 }

@@ -416,6 +416,90 @@ export async function getGitUncommittedFiles({
   }
 }
 
+export type UncommittedFileStatus = "added" | "modified" | "deleted" | "renamed";
+
+export interface UncommittedFile {
+  path: string;
+  status: UncommittedFileStatus;
+}
+
+/**
+ * Get uncommitted files with their status (added, modified, deleted, renamed).
+ * This parses git status --porcelain output to determine the file status.
+ */
+export async function getGitUncommittedFilesWithStatus({
+  path,
+}: GitBaseParams): Promise<UncommittedFile[]> {
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    const result = await exec(["status", "--porcelain"], path);
+    if (result.exitCode !== 0) {
+      throw new Error(
+        `Failed to get uncommitted files: ${result.stderr.trim() || result.stdout.trim()}`,
+      );
+    }
+    return result.stdout
+      .toString()
+      .split("\n")
+      .filter((line) => line.trim() !== "")
+      .map((line) => {
+        // Git status --porcelain format: XY filename
+        // X = staged status, Y = unstaged status
+        // Common codes: M=modified, A=added, D=deleted, R=renamed, ??=untracked
+        const statusCode = line.substring(0, 2);
+        let filePath = line.slice(3).trim();
+
+        // Handle renamed files: R  old -> new
+        if (statusCode.startsWith("R")) {
+          const arrowIndex = filePath.indexOf(" -> ");
+          if (arrowIndex !== -1) {
+            filePath = filePath.substring(arrowIndex + 4);
+          }
+          return { path: filePath, status: "renamed" as UncommittedFileStatus };
+        }
+
+        // Determine status based on status codes
+        let status: UncommittedFileStatus;
+        if (statusCode === "??" || statusCode.includes("A")) {
+          status = "added";
+        } else if (statusCode.includes("D")) {
+          status = "deleted";
+        } else {
+          status = "modified";
+        }
+
+        return { path: filePath, status };
+      });
+  } else {
+    // For isomorphic-git, we use the status matrix
+    // [filepath, HEAD, WORKDIR, STAGE]
+    // HEAD: 0=absent, 1=present
+    // WORKDIR: 0=absent, 1=identical to HEAD, 2=modified
+    // STAGE: 0=absent, 1=identical to HEAD, 2=added, 3=modified
+    const statusMatrix = await git.statusMatrix({ fs, dir: path });
+    return statusMatrix
+      .filter((row) => row[1] !== 1 || row[2] !== 1 || row[3] !== 1)
+      .map((row) => {
+        const filePath = row[0];
+        const head = row[1];
+        const workdir = row[2];
+
+        let status: UncommittedFileStatus;
+        if (head === 0) {
+          // File not in HEAD = new file
+          status = "added";
+        } else if (workdir === 0) {
+          // File deleted from workdir
+          status = "deleted";
+        } else {
+          status = "modified";
+        }
+
+        return { path: filePath, status };
+      });
+  }
+}
+
 export async function getFileAtCommit({
   path,
   filePath,

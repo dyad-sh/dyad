@@ -1,0 +1,7 @@
+{
+  "name": "JoyCreate",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "custom"
+}

@@ -1,0 +1,9 @@
+{
+  "apps": {
+    "com.joycreate.app": {
+      "root": ".",
+      "webDir": "dist",
+      "buildCommand": "npm run build"
+    }
+  }
+}

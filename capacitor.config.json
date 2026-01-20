@@ -22,9 +22,7 @@
     "allowsLinkPreview": true,
     "scrollEnabled": true,
     "backgroundColor": "#000000",
-    "preferredContentMode": "mobile",
-    "limitsNavigationsToAppBoundDomains": false,
-    "usesFraeworks": true
+    "preferredContentMode": "mobile"
   },
   "plugins": {
     "SplashScreen": {

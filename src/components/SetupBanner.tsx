@@ -367,18 +367,18 @@ function NodeJsHelpCallout() {
   return (
     <div className="mt-3 p-3 bg-(--background-lighter) border rounded-lg text-sm">
       <p>
-        If you run into issues, read our{" "}
+        If you run into issues installing Node.js, try downloading directly from{" "}
         <a
           onClick={() => {
             IpcClient.getInstance().openExternalUrl(
-              "https://www.dyad.sh/docs/help/nodejs",
+              "https://nodejs.org/",
             );
           }}
-          className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
+          className="text-blue-600 dark:text-blue-400 hover:underline font-medium cursor-pointer"
         >
-          Node.js troubleshooting guide
+          nodejs.org
         </a>
-        .{" "}
+        .
       </p>
       <p className="mt-2">
         Still stuck? Click the <b>Help</b> button in the bottom-left corner and

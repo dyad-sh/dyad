@@ -375,20 +375,7 @@ function ConnectedGitHubConnector({
       {syncError && (
         <div className="mt-2 space-y-2">
           <p className="text-red-600">
-            {syncError}{" "}
-            <a
-              onClick={(e) => {
-                e.preventDefault();
-                IpcClient.getInstance().openExternalUrl(
-                  "https://www.dyad.sh/docs/integrations/github#troubleshooting",
-                );
-              }}
-              className="cursor-pointer text-blue-600 hover:underline dark:text-blue-400"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              See troubleshooting guide
-            </a>
+            {syncError}
           </p>
           {showRebaseRecoveryOptions && (
             <div className="space-y-2 rounded-md border border-orange-200 p-3 dark:border-orange-800 dark:bg-orange-900/20">

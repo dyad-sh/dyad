@@ -1,16 +1,11 @@
 import { Lock, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { IpcClient } from "@/ipc/ipc_client";
 
 interface AnnotatorOnlyForProProps {
   onGoBack: () => void;
 }
 
 export const AnnotatorOnlyForPro = ({ onGoBack }: AnnotatorOnlyForProProps) => {
-  const handleGetPro = () => {
-    IpcClient.getInstance().openExternalUrl("https://dyad.sh/pro");
-  };
-
   return (
     <div className="w-full h-full bg-background relative">
       {/* Go Back Button */}
@@ -32,20 +27,18 @@ export const AnnotatorOnlyForPro = ({ onGoBack }: AnnotatorOnlyForProProps) => {
 
         {/* Message */}
         <h2 className="text-3xl font-semibold text-foreground mb-4 text-center">
-          Annotator is a Pro Feature
+          Annotator Feature
         </h2>
         <p className="text-muted-foreground mb-10 text-center max-w-md text-base leading-relaxed">
-          Unlock the ability to annotate screenshots and enhance your workflow
-          with Dyad Pro.
+          The annotator feature allows you to annotate screenshots.
         </p>
 
-        {/* Get Pro Button */}
         <Button
-          onClick={handleGetPro}
+          onClick={onGoBack}
           size="lg"
           className="px-8 shadow-md hover:shadow-lg transition-all"
         >
-          Get Dyad Pro
+          Go Back
         </Button>
       </div>
     </div>

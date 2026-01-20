@@ -15,7 +15,6 @@ import {
   ChevronsUpDown,
   ChevronsDownUp,
   SendHorizontalIcon,
-  Lock,
 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useState } from "react";
@@ -302,7 +301,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         <ChatErrorBox
           onDismiss={dismissError}
           error={error}
-          isDyadProEnabled={settings.enableDyadPro ?? false}
         />
       )}
       {/* Display loading or error state for proposal */}
@@ -381,7 +379,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               />
             )}
 
-          {userBudget ? (
+          {userBudget && (
             <VisualEditingChangesDialog
               iframeRef={
                 previewIframeRef
@@ -405,32 +403,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                 }
               }}
             />
-          ) : (
-            selectedComponents.length > 0 && (
-              <div className="border-b border-border p-3 bg-muted/30">
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        onClick={() => {
-                          IpcClient.getInstance().openExternalUrl(
-                            "https://dyad.sh/pro",
-                          );
-                        }}
-                        className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors cursor-pointer"
-                      >
-                        <Lock size={16} />
-                        <span className="font-medium">Visual editor (Pro)</span>
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      Visual editing lets you make UI changes without AI and is
-                      a Pro-only feature
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-            )
           )}
 
           <SelectedComponentsDisplay />
@@ -450,7 +422,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               onChange={setInputValue}
               onSubmit={handleSubmit}
               onPaste={handlePaste}
-              placeholder="Ask Dyad to build..."
+              placeholder="Ask ABBA AI to build..."
               excludeCurrentApp={true}
               disableSendButton={disableSendButton}
             />

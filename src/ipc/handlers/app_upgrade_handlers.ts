@@ -29,6 +29,13 @@ const availableUpgrades: Omit<AppUpgrade, "isNeeded">[] = [
       "Adds Capacitor to your app lets it run on iOS and Android in addition to the web.",
     manualUpgradeUrl: "https://dyad.sh/docs/guides/mobile-app#upgrade-your-app",
   },
+  {
+    id: "react-upgrade",
+    title: "Upgrade React.js",
+    description:
+      "Upgrades your React app to the latest version using react2shell.",
+    manualUpgradeUrl: "https://dyad.sh/docs/upgrades/react-upgrade",
+  },
 ];
 
 async function getApp(appId: number) {
@@ -91,6 +98,39 @@ function isCapacitorUpgradeNeeded(appPath: string): boolean {
   }
 
   return true;
+}
+
+function isReactUpgradeNeeded(appPath: string): boolean {
+  // Check if it's a Vite app first
+  if (!isViteApp(appPath)) {
+    return false;
+  }
+
+  const packageJsonPath = path.join(appPath, "package.json");
+  if (!fs.existsSync(packageJsonPath)) {
+    return false;
+  }
+
+  try {
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
+    const reactVersion =
+      packageJson.dependencies?.react || packageJson.devDependencies?.react;
+
+    if (!reactVersion) {
+      return false;
+    }
+
+    // Check if React version is below 19
+    // Remove any leading ^ or ~ from version string
+    const cleanVersion = reactVersion.replace(/^[\^~]/, "");
+    const majorVersion = parseInt(cleanVersion.split(".")[0], 10);
+
+    // Upgrade is needed if React version is below 19
+    return !isNaN(majorVersion) && majorVersion < 19;
+  } catch (e) {
+    logger.error("Error reading package.json for React version check", e);
+    return false;
+  }
 }
 
 async function applyComponentTagger(appPath: string) {
@@ -248,6 +288,32 @@ async function applyCapacitor({
   }
 }
 
+async function applyReactUpgrade(appPath: string) {
+  // Run react2shell to upgrade React
+  await simpleSpawn({
+    command: "npx react2shell",
+    cwd: appPath,
+    successMessage: "React upgrade completed successfully",
+    errorPrefix: "Failed to upgrade React",
+  });
+
+  // Commit changes
+  try {
+    logger.info("Staging and committing React upgrade changes");
+    await gitAddAll({ path: appPath });
+    await gitCommit({
+      path: appPath,
+      message: "[dyad] upgrade React.js",
+    });
+    logger.info("Successfully committed React upgrade changes");
+  } catch (err) {
+    logger.warn(
+      `Failed to commit changes. This may happen if the project is not in a git repository, or if there are no changes to commit.`,
+      err,
+    );
+  }
+}
+
 export function registerAppUpgradeHandlers() {
   handle(
     "get-app-upgrades",
@@ -261,6 +327,8 @@ export function registerAppUpgradeHandlers() {
           isNeeded = isComponentTaggerUpgradeNeeded(appPath);
         } else if (upgrade.id === "capacitor") {
           isNeeded = isCapacitorUpgradeNeeded(appPath);
+        } else if (upgrade.id === "react-upgrade") {
+          isNeeded = isReactUpgradeNeeded(appPath);
         }
         return { ...upgrade, isNeeded };
       });
@@ -283,6 +351,8 @@ export function registerAppUpgradeHandlers() {
         await applyComponentTagger(appPath);
       } else if (upgradeId === "capacitor") {
         await applyCapacitor({ appName: app.name, appPath });
+      } else if (upgradeId === "react-upgrade") {
+        await applyReactUpgrade(appPath);
       } else {
         throw new Error(`Unknown upgrade id: ${upgradeId}`);
       }

@@ -699,4 +699,4 @@ export function useBatchAddItems() {
 }
 
 // Re-export types for convenience
-export type { DatasetItem, DatasetManifest, ProvenanceRecord, GenerationJob, P2pSyncState };
+export type { DatasetItem, DatasetManifest, ProvenanceRecord, GenerationJob, P2pSyncState, StudioDataset };

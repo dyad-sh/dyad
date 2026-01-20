@@ -111,6 +111,14 @@ class LibreOfficeClient {
     return this.ipcRenderer.invoke("libreoffice:open", id);
   }
 
+  async downloadDocument(id: number): Promise<DocumentOperationResult> {
+    return this.ipcRenderer.invoke("libreoffice:download", id);
+  }
+
+  async showDocumentInFolder(id: number): Promise<{ success: boolean; error?: string }> {
+    return this.ipcRenderer.invoke("libreoffice:show-in-folder", id);
+  }
+
   async getDocumentsDirectory(): Promise<string> {
     return this.ipcRenderer.invoke("libreoffice:get-directory");
   }

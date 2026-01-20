@@ -225,6 +225,8 @@ const validInvokeChannels = [
   "libreoffice:delete",
   "libreoffice:export",
   "libreoffice:open",
+  "libreoffice:download",
+  "libreoffice:show-in-folder",
   "libreoffice:get-directory",
   // Marketplace Integration
   "marketplace:status",

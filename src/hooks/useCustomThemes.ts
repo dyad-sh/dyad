@@ -46,7 +46,6 @@ export function useCreateCustomTheme() {
     },
     onSuccess: () => {
       // Invalidate all custom theme queries using prefix matching
-      // This invalidates both global and all app-specific theme queries
       queryClient.invalidateQueries({
         queryKey: ["custom-themes"],
       });

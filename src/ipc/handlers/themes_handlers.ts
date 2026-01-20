@@ -400,7 +400,10 @@ export function registerThemesHandlers() {
 
       for (const filePath of paths) {
         // Security: only delete files in our temp directory
-        if (!filePath.startsWith(THEME_IMAGES_TEMP_DIR)) {
+        // Use path.resolve() to normalize and prevent path traversal attacks
+        const normalizedPath = path.resolve(filePath);
+        const normalizedTempDir = path.resolve(THEME_IMAGES_TEMP_DIR);
+        if (!normalizedPath.startsWith(normalizedTempDir + path.sep)) {
           throw new Error(
             "Invalid path: cannot delete files outside temp directory",
           );
@@ -420,7 +423,6 @@ export function registerThemesHandlers() {
     },
   );
 
-  // Generate theme prompt using AI (Dyad Pro)
   handle(
     "generate-theme-prompt",
     async (
@@ -497,7 +499,10 @@ images: ${imagesPart}`;
         // Read images from file paths and add to content
         for (const imagePath of params.imagePaths) {
           // Security: validate path is in our temp directory
-          if (!imagePath.startsWith(THEME_IMAGES_TEMP_DIR)) {
+          // Use path.resolve() to normalize and prevent path traversal attacks
+          const normalizedImagePath = path.resolve(imagePath);
+          const normalizedTempDir = path.resolve(THEME_IMAGES_TEMP_DIR);
+          if (!normalizedImagePath.startsWith(normalizedTempDir + path.sep)) {
             throw new Error(
               "Invalid image path: images must be uploaded through the theme dialog",
             );

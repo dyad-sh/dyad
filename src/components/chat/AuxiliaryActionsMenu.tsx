@@ -101,7 +101,7 @@ export function AuxiliaryActionsMenu({
   const hasMoreCustomThemes = customThemes.length > visibleCustomThemes.length;
 
   const handleThemeSelect = async (themeId: string | null) => {
-    if (appId) {
+    if (appId != null) {
       // Update app-specific theme
       await IpcClient.getInstance().setAppTheme({
         appId,

@@ -67,6 +67,8 @@ export function CustomThemeDialog({
   const [aiGeneratedPrompt, setAiGeneratedPrompt] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Track if dialog is open to prevent orphaned uploads from adding images after close
+  const isDialogOpenRef = useRef(open);
 
   const createThemeMutation = useCreateCustomTheme();
   const generatePromptMutation = useGenerateThemePrompt();
@@ -85,8 +87,6 @@ export function CustomThemeDialog({
         try {
           await IpcClient.getInstance().cleanupThemeImages({ paths });
         } catch {
-          // Cleanup failures are non-critical (OS will clean temp files eventually)
-          // but we should notify the user if they explicitly triggered the action
           if (showErrors) {
             toast.error("Failed to cleanup temporary image files");
           }
@@ -115,13 +115,18 @@ export function CustomThemeDialog({
     setActiveTab("manual");
   }, [aiImages, cleanupImages]);
 
+  // Keep ref in sync with open prop
+  useEffect(() => {
+    isDialogOpenRef.current = open;
+  }, [open]);
+
   // Cleanup images when dialog closes
   useEffect(() => {
     if (!open && aiImages.length > 0) {
       cleanupImages(aiImages);
       setAiImages([]);
     }
-  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const handleClose = useCallback(async () => {
     await resetForm();
@@ -207,6 +212,13 @@ export function CustomThemeDialog({
         }
 
         if (newImages.length > 0) {
+          // Check if dialog was closed while upload was in progress
+          if (!isDialogOpenRef.current) {
+            // Dialog closed - cleanup orphaned images immediately
+            await cleanupImages(newImages);
+            return;
+          }
+
           setAiImages((prev) => {
             // Double-check limit in case of race conditions
             const remaining = MAX_IMAGES - prev.length;

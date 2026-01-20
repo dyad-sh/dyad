@@ -32,9 +32,10 @@ const execAsync = promisify(exec);
 // LibreOffice paths for different platforms
 const LIBREOFFICE_PATHS = {
   win32: [
-    "C:\\Program Files\\LibreOffice\\program\\soffice.exe",
-    "C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe",
     "C:\\Program Files\\LibreOffice\\program\\soffice.com",
+    "C:\\Program Files\\LibreOffice\\program\\soffice.exe",
+    "C:\\Program Files (x86)\\LibreOffice\\program\\soffice.com",
+    "C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe",
   ],
   darwin: [
     "/Applications/LibreOffice.app/Contents/MacOS/soffice",

@@ -1235,7 +1235,7 @@ ${formattedSearchReplaceIssues}`,
 ${problemReport.problems
   .map(
     (problem) =>
-      `<problem file="${escapeXmlAttr(problem.file)}" line="${problem.line}" column="${problem.column}" code="${problem.code}">${escapeXmlAttr(problem.message)}</problem>`,
+      `<problem file="${escapeXmlAttr(problem.file)}" line="${problem.line}" column="${problem.column}" code="${problem.code}">${escapeXmlContent(problem.message)}</problem>`,
   )
   .join("\n")}
 </dyad-problem-report>`;

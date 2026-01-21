@@ -100,13 +100,26 @@ export function stopDockerContainer(containerName: string): Promise<void> {
  */
 export function removeDockerVolumesForApp(appId: number): Promise<void> {
   return new Promise<void>((resolve) => {
-    const pnpmVolume = `dyad-pnpm-${appId}`;
+    const pnpmVolume = `abba-ai-pnpm-${appId}`;
+    const legacyPnpmVolume = `dyad-pnpm-${appId}`;
 
-    const rm = spawn("docker", ["volume", "rm", "-f", pnpmVolume], {
-      stdio: "pipe",
-    });
-    rm.on("close", () => resolve());
-    rm.on("error", () => resolve());
+    const volumesToRemove = new Set([pnpmVolume, legacyPnpmVolume]);
+
+    let remaining = volumesToRemove.size;
+    const done = () => {
+      remaining -= 1;
+      if (remaining <= 0) {
+        resolve();
+      }
+    };
+
+    for (const volumeName of volumesToRemove) {
+      const rm = spawn("docker", ["volume", "rm", "-f", volumeName], {
+        stdio: "pipe",
+      });
+      rm.once("close", () => done());
+      rm.once("error", () => done());
+    }
   });
 }
 
@@ -118,8 +131,18 @@ export async function stopAppByInfo(
   appInfo: RunningAppInfo,
 ): Promise<void> {
   if (appInfo.isDocker) {
-    const containerName = appInfo.containerName || `dyad-app-${appId}`;
-    await stopDockerContainer(containerName);
+    const defaultContainerName = `abba-ai-app-${appId}`;
+    const legacyContainerName = `dyad-app-${appId}`;
+
+    const containerNames = new Set([
+      appInfo.containerName ?? defaultContainerName,
+      defaultContainerName,
+      legacyContainerName,
+    ]);
+
+    for (const containerName of containerNames) {
+      await stopDockerContainer(containerName);
+    }
   } else {
     await killProcess(appInfo.process);
   }

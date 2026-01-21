@@ -80,9 +80,9 @@ export async function getModelClient(
     throw new Error(`Configuration not found for provider: ${model.provider}`);
   }
 
-  // Handle Dyad Pro override
+  // Handle ABBA AI Pro override
   if (dyadApiKey && settings.enableDyadPro) {
-    // Check if the selected provider supports Dyad Pro (has a gateway prefix) OR
+    // Check if the selected provider supports ABBA AI Pro (has a gateway prefix) OR
     // we're using local engine.
     // IMPORTANT: some providers like OpenAI have an empty string gateway prefix,
     // so we do a nullish and not a truthy check here.
@@ -90,7 +90,7 @@ export async function getModelClient(
       const enableSmartFilesContext = settings.enableProSmartFilesContextMode;
       const provider = createDyadEngine({
         apiKey: dyadApiKey,
-        baseURL: dyadEngineUrl ?? "https://engine.dyad.sh/v1",
+        baseURL: dyadEngineUrl ?? "https://engine.abba.ai/v1",
         dyadOptions: {
           enableLazyEdits:
             settings.selectedChatMode === "ask"
@@ -104,11 +104,11 @@ export async function getModelClient(
       });
 
       logger.info(
-        `\x1b[1;97;44m Using Dyad Pro API key for model: ${model.name} \x1b[0m`,
+        `\x1b[1;97;44m Using ABBA AI Pro API key for model: ${model.name} \x1b[0m`,
       );
 
       logger.info(
-        `\x1b[1;30;42m Using Dyad Pro engine: ${dyadEngineUrl ?? "<prod>"} \x1b[0m`,
+        `\x1b[1;30;42m Using ABBA AI Pro engine: ${dyadEngineUrl ?? "<prod>"} \x1b[0m`,
       );
 
       // Do not use free variant (for openrouter).
@@ -127,7 +127,7 @@ export async function getModelClient(
       };
     } else {
       logger.warn(
-        `Dyad Pro enabled, but provider ${model.provider} does not have a gateway prefix defined. Falling back to direct provider connection.`,
+        `ABBA AI Pro enabled, but provider ${model.provider} does not have a gateway prefix defined. Falling back to direct provider connection.`,
       );
       // Fall through to regular provider logic if gateway prefix is missing
     }

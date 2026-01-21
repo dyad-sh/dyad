@@ -353,7 +353,7 @@ function listenToProcess({
           onStarted: (proxyUrl) => {
             safeSend(event.sender, "app:output", {
               type: "stdout",
-              message: `[dyad-proxy-server]started=[${proxyUrl}] original=[${urlMatch[1]}]`,
+              message: `[abba-ai-proxy-server]started=[${proxyUrl}] original=[${urlMatch[1]}]`,
               appId,
             });
           },
@@ -418,7 +418,8 @@ async function executeAppInDocker({
   installCommand?: string | null;
   startCommand?: string | null;
 }): Promise<void> {
-  const containerName = `dyad-app-${appId}`;
+  const containerName = `abba-ai-app-${appId}`;
+  const legacyContainerName = `dyad-app-${appId}`;
 
   // First, check if Docker is available
   try {
@@ -442,6 +443,7 @@ async function executeAppInDocker({
   }
 
   // Stop and remove any existing container with the same name
+  // (also clean up legacy container names from older versions)
   try {
     await new Promise<void>((resolve) => {
       const stopContainer = spawn("docker", ["stop", containerName], {
@@ -462,17 +464,47 @@ async function executeAppInDocker({
     );
   }
 
+  try {
+    await new Promise<void>((resolve) => {
+      const stopContainer = spawn("docker", ["stop", legacyContainerName], {
+        stdio: "pipe",
+      });
+      stopContainer.on("close", () => {
+        const removeContainer = spawn("docker", ["rm", legacyContainerName], {
+          stdio: "pipe",
+        });
+        removeContainer.on("close", () => resolve());
+        removeContainer.on("error", () => resolve()); // Container might not exist
+      });
+      stopContainer.on("error", () => resolve()); // Container might not exist
+    });
+  } catch (error) {
+    logger.info(
+      `Docker container ${legacyContainerName} not found. Ignoring error: ${error}`,
+    );
+  }
+
   // Create a Dockerfile in the app directory if it doesn't exist
-  const dockerfilePath = path.join(appPath, "Dockerfile.dyad");
+  const dockerfilePath = path.join(appPath, "Dockerfile.abba-ai");
+  const legacyDockerfilePath = path.join(appPath, "Dockerfile.dyad");
   if (!fs.existsSync(dockerfilePath)) {
-    const dockerfileContent = `FROM node:22-alpine
+    try {
+      if (fs.existsSync(legacyDockerfilePath)) {
+        // Migrate legacy filename (best-effort)
+        try {
+          await fsPromises.rename(legacyDockerfilePath, dockerfilePath);
+        } catch {
+          // Fallback for cross-device rename / permission issues
+          await fsPromises.copyFile(legacyDockerfilePath, dockerfilePath);
+        }
+      } else {
+        const dockerfileContent = `FROM node:22-alpine
 
 # Install pnpm
 RUN npm install -g pnpm
 `;
-
-    try {
-      await fsPromises.writeFile(dockerfilePath, dockerfileContent, "utf-8");
+        await fsPromises.writeFile(dockerfilePath, dockerfileContent, "utf-8");
+      }
     } catch (error) {
       logger.error(`Failed to create Dockerfile for app ${appId}:`, error);
       throw new Error(`Failed to create Dockerfile: ${error}`);
@@ -482,7 +514,7 @@ RUN npm install -g pnpm
   // Build the Docker image
   const buildProcess = spawn(
     "docker",
-    ["build", "-f", "Dockerfile.dyad", "-t", `dyad-app-${appId}`, "."],
+    ["build", "-f", "Dockerfile.abba-ai", "-t", `abba-ai-app-${appId}`, "."],
     {
       cwd: appPath,
       stdio: "pipe",
@@ -521,12 +553,12 @@ RUN npm install -g pnpm
       "-v",
       `${appPath}:/app`,
       "-v",
-      `dyad-pnpm-${appId}:/app/.pnpm-store`,
+      `abba-ai-pnpm-${appId}:/app/.pnpm-store`,
       "-e",
       "PNPM_STORE_PATH=/app/.pnpm-store",
       "-w",
       "/app",
-      `dyad-app-${appId}`,
+      `abba-ai-app-${appId}`,
       "sh",
       "-c",
       getCommand({ appId, installCommand, startCommand }),
@@ -812,7 +844,7 @@ export function registerAppHandlers() {
       // Create initial commit
       const commitHash = await gitCommit({
         path: fullAppPath,
-        message: "Init Dyad app",
+        message: "Init app",
       });
 
       // Update chat with initial commit hash
@@ -884,7 +916,7 @@ export function registerAppHandlers() {
         // Create initial commit
         await gitCommit({
           path: newAppPath,
-          message: "Init Dyad app",
+          message: "Init app",
         });
       }
 
@@ -1181,12 +1213,12 @@ export function registerAppHandlers() {
             // If running in Docker mode, also remove container volumes so deps reinstall freshly
             if (runtimeMode === "docker") {
               logger.log(
-                `Docker mode detected for app ${appId}. Removing Docker volumes dyad-pnpm-${appId}...`,
+                `Docker mode detected for app ${appId}. Removing Docker volumes abba-ai-pnpm-${appId}...`,
               );
               try {
                 await removeDockerVolumesForApp(appId);
                 logger.log(
-                  `Removed Docker volumes for app ${appId} (dyad-pnpm-${appId}).`,
+                  `Removed Docker volumes for app ${appId} (abba-ai-pnpm-${appId}).`,
                 );
               } catch (e) {
                 // Best-effort cleanup; log and continue

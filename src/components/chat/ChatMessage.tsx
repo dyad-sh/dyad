@@ -231,7 +231,7 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
                       <span className="max-w-50 truncate font-medium">
                         {
                           messageVersion.message
-                            .replace(/^\[dyad\]\s*/i, "")
+                            .replace(/^\[(dyad|abba-ai)\]\s*/i, "")
                             .split("\n")[0]
                         }
                       </span>

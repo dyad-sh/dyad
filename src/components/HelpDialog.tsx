@@ -12,6 +12,8 @@ import { useState } from "react";
 import { HelpBotDialog } from "./HelpBotDialog";
 import { BugScreenshotDialog } from "./BugScreenshotDialog";
 
+const GITHUB_ISSUES_URL = "https://github.com/yosiwizman/dyad/issues";
+
 interface HelpDialogProps {
   isOpen: boolean;
   onClose: () => void;
@@ -62,16 +64,14 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
       const encodedBody = encodeURIComponent(issueBody);
       const encodedTitle = encodeURIComponent("[bug] <WRITE TITLE HERE>");
       const labels = ["bug"];
-      const githubIssueUrl = `https://github.com/yosiwizman/dyad/issues/new?title=${encodedTitle}&labels=${labels}&body=${encodedBody}`;
+      const githubIssueUrl = `${GITHUB_ISSUES_URL}/new?title=${encodedTitle}&labels=${labels}&body=${encodedBody}`;
 
       // Open the pre-filled GitHub issue page
       IpcClient.getInstance().openExternalUrl(githubIssueUrl);
     } catch (error) {
       console.error("Failed to prepare bug report:", error);
       // Fallback to opening the regular GitHub issue page
-      IpcClient.getInstance().openExternalUrl(
-        "https://github.com/yosiwizman/dyad/issues/new",
-      );
+      IpcClient.getInstance().openExternalUrl(GITHUB_ISSUES_URL);
     } finally {
       setIsLoading(false);
     }

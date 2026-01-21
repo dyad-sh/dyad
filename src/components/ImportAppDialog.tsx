@@ -266,7 +266,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
     onSuccess: async (result) => {
       showSuccess(
         !hasAiRules
-          ? "App imported successfully. Dyad will automatically generate an AI_RULES.md now."
+          ? "App imported successfully. ABBA AI will automatically generate an AI_RULES.md now."
           : "App imported successfully",
       );
       onClose();
@@ -414,7 +414,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                       >
                         Copy to the{" "}
                         <code className="bg-muted px-1 py-0.5 rounded text-xs">
-                          dyad-apps
+                          abba-ai-apps
                         </code>{" "}
                         folder
                       </label>
@@ -496,15 +496,15 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                             </TooltipTrigger>
                             <TooltipContent>
                               <p className="text-xs">
-                                AI_RULES.md lets Dyad know which tech stack to
-                                use for editing the app
+                                AI_RULES.md lets ABBA AI know which tech stack
+                                to use for editing the app
                               </p>
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
                         <AlertDescription className="text-xs sm:text-sm">
-                          No AI_RULES.md found. Dyad will automatically generate
-                          one after importing.
+                          No AI_RULES.md found. ABBA AI will automatically
+                          generate one after importing.
                         </AlertDescription>
                       </Alert>
                     )}

@@ -5,6 +5,8 @@ import { ErrorComponentProps } from "@tanstack/react-router";
 import { usePostHog } from "posthog-js/react";
 import { IpcClient } from "@/ipc/ipc_client";
 
+const GITHUB_ISSUES_URL = "https://github.com/yosiwizman/dyad/issues";
+
 export function ErrorBoundary({ error }: ErrorComponentProps) {
   const [isLoading, setIsLoading] = useState(false);
   const posthog = usePostHog();
@@ -40,7 +42,7 @@ export function ErrorBoundary({ error }: ErrorComponentProps) {
 ${error?.stack ? `\n\`\`\`\n${error.stack.slice(0, 1000)}\n\`\`\`` : ""}
 
 ## System Information
-- Dyad Version: ${debugInfo.dyadVersion}
+- ABBA AI Version: ${debugInfo.dyadVersion}
 - Platform: ${debugInfo.platform}
 - Architecture: ${debugInfo.architecture}
 - Node Version: ${debugInfo.nodeVersion || "Not available"}
@@ -59,16 +61,14 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
       const encodedTitle = encodeURIComponent(
         "[bug] Error in ABBA AI application",
       );
-      const githubIssueUrl = `https://github.com/yosiwizman/dyad/issues/new?title=${encodedTitle}&labels=bug,filed-from-app,client-error&body=${encodedBody}`;
+      const githubIssueUrl = `${GITHUB_ISSUES_URL}/new?title=${encodedTitle}&labels=bug,filed-from-app,client-error&body=${encodedBody}`;
 
       // Open the pre-filled GitHub issue page
       await IpcClient.getInstance().openExternalUrl(githubIssueUrl);
     } catch (err) {
       console.error("Failed to prepare bug report:", err);
       // Fallback to opening the regular GitHub issue page
-      IpcClient.getInstance().openExternalUrl(
-        "https://github.com/yosiwizman/dyad/issues/new",
-      );
+      IpcClient.getInstance().openExternalUrl(GITHUB_ISSUES_URL);
     } finally {
       setIsLoading(false);
     }

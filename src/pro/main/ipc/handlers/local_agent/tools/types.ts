@@ -43,7 +43,7 @@ export interface AgentContext {
   chatSummary?: string;
   /** Turn-scoped todo list for agent task tracking */
   todos: Todo[];
-  /** Request ID for tracking requests to the Dyad engine */
+  /** Request ID for tracking requests to the engine */
   dyadRequestId: string;
   /**
    * Streams accumulated XML to UI without persisting to DB (for live preview).

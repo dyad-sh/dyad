@@ -228,7 +228,7 @@ export function registerNeonHandlers() {
     // Simulate the deep link event
     event.sender.send("deep-link-received", {
       type: "neon-oauth-return",
-      url: "https://oauth.dyad.sh/api/integrations/neon/login",
+      url: "https://oauth.abba.ai/api/integrations/neon/login",
     });
     logger.info("Sent fake neon deep-link-received event during testing.");
   });

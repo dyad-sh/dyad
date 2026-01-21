@@ -1,13 +1,17 @@
 {
   "name": "abba-ai",
   "productName": "ABBA AI",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Free, local, open-source AI app builder",
   "main": ".vite/build/main.js",
   "repository": {
     "type": "git",
     "url": "https://github.com/yosiwizman/dyad.git"
   },
+  "bugs": {
+    "url": "https://github.com/yosiwizman/dyad/issues"
+  },
+  "homepage": "https://github.com/yosiwizman/dyad",
   "engines": {
     "node": ">=20"
   },

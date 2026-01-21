@@ -71,7 +71,7 @@ import { Annotator } from "@/pro/ui/components/Annotator/Annotator";
 import { VisualEditingToolbar } from "./VisualEditingToolbar";
 
 interface ErrorBannerProps {
-  error: { message: string; source: "preview-app" | "dyad-app" } | undefined;
+  error: { message: string; source: "preview-app" | "abba-ai-app" } | undefined;
   onDismiss: () => void;
   onAIFix: () => void;
 }
@@ -104,10 +104,10 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
         <X size={14} className="text-red-500 dark:text-red-400" />
       </button>
 
-      {/* Add a little chip that says "Internal error" if source is "dyad-app" */}
-      {error.source === "dyad-app" && (
+      {/* Add a little chip that says "Internal error" if source is "abba-ai-app" */}
+      {error.source === "abba-ai-app" && (
         <div className="absolute top-1 right-1 p-1 bg-red-100 dark:bg-red-900 rounded-md text-xs font-medium text-red-700 dark:text-red-300">
-          Internal Dyad error
+          Internal ABBA AI error
         </div>
       )}
 
@@ -115,7 +115,7 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
       <div
         className={cn(
           "px-6 py-1 text-sm",
-          error.source === "dyad-app" && "pt-6",
+          error.source === "abba-ai-app" && "pt-6",
         )}
       >
         <div
@@ -143,8 +143,8 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
             <span className="font-medium">Tip: </span>
             {isDockerError
               ? "Make sure Docker Desktop is running and try restarting the app."
-              : error.source === "dyad-app"
-                ? "Try restarting the Dyad app or restarting your computer to see if that fixes the error."
+              : error.source === "abba-ai-app"
+                ? "Try restarting ABBA AI or restarting your computer to see if that fixes the error."
                 : "Check if restarting the app fixes the error."}
           </span>
         </div>

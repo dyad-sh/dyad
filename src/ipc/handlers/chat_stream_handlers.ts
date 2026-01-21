@@ -810,7 +810,14 @@ This conversation includes one or more image attachments. When the user uploads 
                 attachmentPaths,
               );
             }
-            if (settings.selectedChatMode === "local-agent") {
+            // Save aiMessagesJson for modes that use handleLocalAgentStream
+            // (which reads from DB and needs structured image content)
+            const willUseLocalAgentStream =
+              settings.selectedChatMode === "local-agent" ||
+              (settings.selectedChatMode === "ask" &&
+                isDyadProEnabled(settings) &&
+                !mentionedAppsCodebases.length);
+            if (willUseLocalAgentStream) {
               // Insert into DB (with size guard)
               const userAiMessagesJson = getAiMessagesJsonIfWithinLimit([
                 chatMessages[lastUserIndex],

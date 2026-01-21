@@ -84,7 +84,8 @@ export const CONTEXT_TIP: MessageConfig = {
   spans: [
     {
       type: "text",
-      content: "Tip: Add files to context using @ mentions for better AI responses.",
+      content:
+        "Tip: Add files to context using @ mentions for better AI responses.",
     },
   ],
 };

@@ -122,28 +122,50 @@ export class ContextFilesPickerDialog {
 class ProModesDialog {
   constructor(
     public page: Page,
+    public userDataDir: string,
     public close: () => Promise<void>,
   ) {}
 
+  private readSettings(): any {
+    const settingsPath = path.join(this.userDataDir, "user-settings.json");
+    if (!fs.existsSync(settingsPath)) {
+      return {};
+    }
+    const settingsContent = fs.readFileSync(settingsPath, "utf-8");
+    return JSON.parse(settingsContent);
+  }
+
+  private writeSettings(settings: any): void {
+    const settingsPath = path.join(this.userDataDir, "user-settings.json");
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+  }
+
   async setSmartContextMode(mode: "balanced" | "off" | "deep") {
-    await this.page
-      .getByTestId("smart-context-selector")
-      .getByRole("button", {
-        name: mode.charAt(0).toUpperCase() + mode.slice(1),
-      })
-      .click();
+    const settings = this.readSettings();
+
+    if (mode === "off") {
+      settings.enableProSmartFilesContextMode = false;
+      delete settings.proSmartContextOption;
+    } else {
+      settings.enableProSmartFilesContextMode = true;
+      settings.proSmartContextOption = mode;
+    }
+
+    this.writeSettings(settings);
   }
 
   async setTurboEditsMode(mode: "off" | "classic" | "search-replace") {
-    await this.page
-      .getByTestId("turbo-edits-selector")
-      .getByRole("button", {
-        name:
-          mode === "search-replace"
-            ? "Search & replace"
-            : mode.charAt(0).toUpperCase() + mode.slice(1),
-      })
-      .click();
+    const settings = this.readSettings();
+
+    if (mode === "off") {
+      settings.enableProLazyEditsMode = false;
+      settings.proLazyEditsMode = "off";
+    } else {
+      settings.enableProLazyEditsMode = true;
+      settings.proLazyEditsMode = mode === "classic" ? "v1" : "v2";
+    }
+
+    this.writeSettings(settings);
   }
 }
 
@@ -312,6 +334,10 @@ export class PageObject {
     await this.selectTestModel();
   }
 
+  /**
+   * Sets up the test environment for features that previously required Pro.
+   * Now uses standard test provider since Pro has been disabled.
+   */
   async setUpDyadPro({
     autoApprove = false,
     localAgent = false,
@@ -321,13 +347,8 @@ export class PageObject {
     localAgent?: boolean;
     localAgentUseAutoModel?: boolean;
   } = {}) {
-    await this.baseSetup();
-    await this.goToSettingsTab();
-    if (autoApprove) {
-      await this.toggleAutoApprove();
-    }
-    await this.setUpDyadProvider();
-    await this.goToAppsTab();
+    // Pro has been disabled - use standard test provider setup
+    await this.setUp({ autoApprove });
     // Select a non-openAI model for local agent mode,
     // since openAI models go to the responses API.
     if (localAgent && !localAgentUseAutoModel) {
@@ -387,17 +408,15 @@ export class PageObject {
     );
   }
 
+  /**
+   * @deprecated Pro provider setup is no longer available. Use setUpTestProvider instead.
+   */
   async setUpDyadProvider() {
-    await this.page
-      .locator("div")
-      .filter({ hasText: /^DyadNeeds Setup$/ })
-      .nth(1)
-      .click();
-    await this.page.getByRole("textbox", { name: "Set Dyad API Key" }).click();
-    await this.page
-      .getByRole("textbox", { name: "Set Dyad API Key" })
-      .fill("testdyadkey");
-    await this.page.getByRole("button", { name: "Save Key" }).click();
+    // Pro has been disabled - this method is now a no-op
+    // Tests should use setUpTestProvider instead
+    console.warn(
+      "setUpDyadProvider is deprecated - Pro has been disabled. Using test provider.",
+    );
   }
 
   async importApp(appDir: string) {
@@ -459,14 +478,10 @@ export class PageObject {
   }: {
     location?: "chat-input-container" | "home-chat-input-container";
   } = {}): Promise<ProModesDialog> {
-    const proButton = this.page
-      // Assumes you're on the chat page.
-      .getByTestId(location)
-      .getByRole("button", { name: "Pro", exact: true });
-    await proButton.click();
-    return new ProModesDialog(this.page, async () => {
-      await proButton.click();
-    });
+    // Pro UI has been removed from this fork; tests still toggle the underlying
+    // settings via user-settings.json for deterministic coverage.
+    void location;
+    return new ProModesDialog(this.page, this.userDataDir, async () => {});
   }
 
   async snapshotDialog() {
@@ -880,9 +895,8 @@ export class PageObject {
   }
 
   getChatInput() {
-    return this.page.locator(
-      '[data-lexical-editor="true"][aria-placeholder^="Ask Dyad to build"]',
-    );
+    // Avoid relying on placeholder text (can vary between home vs chat views).
+    return this.page.locator('[data-lexical-editor="true"]:visible').first();
   }
 
   clickNewChat({ index = 0 }: { index?: number } = {}) {
@@ -1060,8 +1074,21 @@ export class PageObject {
     return this.getAppPath({ appName: currentAppName });
   }
 
+  private getAppsBaseDir(): string {
+    // App storage directory name differs between Dyad and ABBA AI.
+    // Prefer the ABBA AI directory, but fall back for backwards compatibility.
+    const candidates = ["abba-ai-apps", "dyad-apps"];
+    for (const dirName of candidates) {
+      const baseDir = path.join(this.userDataDir, dirName);
+      if (fs.existsSync(baseDir)) {
+        return baseDir;
+      }
+    }
+    return path.join(this.userDataDir, "abba-ai-apps");
+  }
+
   getAppPath({ appName }: { appName: string }) {
-    return path.join(this.userDataDir, "dyad-apps", appName);
+    return path.join(this.getAppsBaseDir(), appName);
   }
 
   async clickAppListItem({ appName }: { appName: string }) {
@@ -1396,6 +1423,9 @@ export const test = base.extend<{
       if (!electronConfig.showSetupScreen) {
         // This is just a hack to avoid the AI setup screen.
         process.env.OPENAI_API_KEY = "sk-test";
+      } else {
+        // Ensure setup screen tests are deterministic even if a prior test set this.
+        delete process.env.OPENAI_API_KEY;
       }
       const baseTmpDir = os.tmpdir();
       const userDataDir = path.join(baseTmpDir, `dyad-e2e-tests-${Date.now()}`);

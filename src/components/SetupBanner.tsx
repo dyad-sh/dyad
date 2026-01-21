@@ -370,9 +370,7 @@ function NodeJsHelpCallout() {
         If you run into issues installing Node.js, try downloading directly from{" "}
         <a
           onClick={() => {
-            IpcClient.getInstance().openExternalUrl(
-              "https://nodejs.org/",
-            );
+            IpcClient.getInstance().openExternalUrl("https://nodejs.org/");
           }}
           className="text-blue-600 dark:text-blue-400 hover:underline font-medium cursor-pointer"
         >

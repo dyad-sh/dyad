@@ -2,6 +2,16 @@
 
 ABBA AI is a local, open-source AI app builder forked from [Dyad](https://github.com/dyad-sh/dyad). It's fast, private, and fully under your control — like Lovable, v0, or Bolt, but running right on your machine.
 
+## 📥 Downloads
+
+Download the latest release for your platform:
+
+- **Windows**: `ABBA AI-<version>.Setup.exe`
+- **macOS (Apple Silicon)**: `ABBA AI-darwin-arm64-<version>.zip`
+- **macOS (Intel)**: `ABBA AI-darwin-x64-<version>.zip`
+
+👉 [**Download from GitHub Releases**](https://github.com/yosiwizman/dyad/releases)
+
 ## 🚀 Features
 
 - ⚡️ **Local**: Fast, private and no lock-in.

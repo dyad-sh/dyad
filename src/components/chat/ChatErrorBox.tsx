@@ -42,11 +42,7 @@ export function ChatErrorBox({
   if (error.includes(fallbackPrefix)) {
     error = error.split(fallbackPrefix)[0];
   }
-  return (
-    <ChatErrorContainer onDismiss={onDismiss}>
-      {error}
-    </ChatErrorContainer>
-  );
+  return <ChatErrorContainer onDismiss={onDismiss}>{error}</ChatErrorContainer>;
 }
 
 function ChatErrorContainer({
@@ -96,4 +92,3 @@ function ChatErrorContainer({
     </div>
   );
 }
-

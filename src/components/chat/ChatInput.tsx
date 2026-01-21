@@ -298,10 +298,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   return (
     <>
       {error && showError && (
-        <ChatErrorBox
-          onDismiss={dismissError}
-          error={error}
-        />
+        <ChatErrorBox onDismiss={dismissError} error={error} />
       )}
       {/* Display loading or error state for proposal */}
       {isProposalLoading && (

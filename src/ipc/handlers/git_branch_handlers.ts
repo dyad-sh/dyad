@@ -315,33 +315,37 @@ async function handleGetUncommittedFiles(
 
 async function handleCommitChanges(
   event: IpcMainInvokeEvent,
-  { appId, message }: CommitChangesParams,
+  { appId, message }: { appId: number; message: string },
 ): Promise<string> {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app) throw new Error("App not found");
   const appPath = getDyadAppPath(app.path);
 
-  // Check for merge or rebase in progress
-  if (isGitMergeInProgress({ path: appPath })) {
-    throw GitStateError(
-      "Cannot commit: merge in progress. Please complete or abort the merge first.",
-      GIT_ERROR_CODES.MERGE_IN_PROGRESS,
-    );
-  }
+  return withLock(appId, async () => {
+    // Check for merge or rebase in progress
+    if (isGitMergeInProgress({ path: appPath })) {
+      throw GitStateError(
+        "Cannot commit: merge in progress. Please complete or abort the merge first.",
+        GIT_ERROR_CODES.MERGE_IN_PROGRESS,
+      );
+    }
 
-  if (isGitRebaseInProgress({ path: appPath })) {
-    throw GitStateError(
-      "Cannot commit: rebase in progress. Please complete or abort the rebase first.",
-      GIT_ERROR_CODES.REBASE_IN_PROGRESS,
-    );
-  }
+    if (isGitRebaseInProgress({ path: appPath })) {
+      throw GitStateError(
+        "Cannot commit: rebase in progress. Please complete or abort the rebase first.",
+        GIT_ERROR_CODES.REBASE_IN_PROGRESS,
+      );
+    }
 
-  // Stage all changes
-  await gitAddAll({ path: appPath });
+    // Stage all changes
+    await gitAddAll({ path: appPath });
 
-  // Commit with the provided message
-  const commitHash = await gitCommit({ path: appPath, message });
+    // Commit with the provided message
+    const commitHash = await gitCommit({ path: appPath, message });
 
+    return commitHash;
+  });
+}
   return commitHash;
 }
 

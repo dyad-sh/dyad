@@ -125,7 +125,12 @@ const config: ForgeConfig = {
           },
     asar: true,
     ignore,
-    extraResource: ["node_modules/dugite/git", "node_modules/@vscode"],
+    extraResource: [
+      "node_modules/dugite/git",
+      "node_modules/@vscode",
+      // Windows tray/taskbar icon - must be available at runtime for BrowserWindow.icon
+      "assets/icon/tray.ico",
+    ],
     // ignore: [/node_modules\/(?!(better-sqlite3|bindings|file-uri-to-path)\/)/],
   },
   rebuildConfig: {

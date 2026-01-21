@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, Menu } from "electron";
+import { app, BrowserWindow, dialog, Menu, nativeImage } from "electron";
 import * as path from "node:path";
 import { registerIpcHandlers } from "./ipc/ipc_host";
 import dotenv from "dotenv";
@@ -33,6 +33,19 @@ import fs from "fs";
 import { gitAddSafeDirectory } from "./ipc/utils/git_utils";
 import { getDyadAppsBaseDirectory } from "./paths/paths";
 import { WINDOWS_AUMID } from "./shared/windowsIdentity";
+
+/**
+ * Resolves the path to the Windows tray/taskbar icon.
+ * Uses tray.ico which contains multiple sizes optimized for Windows notification area.
+ */
+function resolveWindowsIcon(): string {
+  if (!app.isPackaged) {
+    // Dev: use asset from project root
+    return path.join(app.getAppPath(), "assets", "icon", "tray.ico");
+  }
+  // Packaged: tray.ico is copied to resources via extraResource
+  return path.join(process.resourcesPath, "tray.ico");
+}
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -199,6 +212,13 @@ let pendingForceCloseData: any = null;
 
 const createWindow = () => {
   // Create the browser window.
+  // On Windows, explicitly set the icon to ensure taskbar/notification area shows ABBA icon.
+  // Without this, Windows may cache an old icon or use an incorrect default.
+  const windowIcon =
+    process.platform === "win32"
+      ? nativeImage.createFromPath(resolveWindowsIcon())
+      : undefined;
+
   mainWindow = new BrowserWindow({
     width: process.env.NODE_ENV === "development" ? 1280 : 960,
     minWidth: 800,
@@ -210,6 +230,7 @@ const createWindow = () => {
       x: 10,
       y: 8,
     },
+    icon: windowIcon,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

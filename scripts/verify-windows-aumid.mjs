@@ -124,9 +124,7 @@ if (!fs.existsSync(forgeConfigPath)) {
     // Look for name field that matches snake_case pattern (MakerSquirrel name, not protocol name)
     // MakerSquirrel name should be like "abba_ai" (snake_case)
     if (forgeConfig.includes(`name: "${expectedName}"`)) {
-      success(
-        `MakerSquirrel name "${expectedName}" found in forge.config.ts`,
-      );
+      success(`MakerSquirrel name "${expectedName}" found in forge.config.ts`);
     } else {
       error(
         `MakerSquirrel name "${expectedName}" NOT found in forge.config.ts`,

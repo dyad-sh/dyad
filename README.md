@@ -38,21 +38,33 @@ Notes:
 
 ### Windows Icon Troubleshooting
 
-**Fresh install (v0.1.7+)**: New installs automatically show the correct ABBA "A" icon everywhere:
+**Fresh install (v0.1.8+)**: New installs automatically show the correct ABBA "A" icon everywhere:
 
 - Setup.exe installer file icon
 - Installed app EXE icon
 - Desktop shortcut
 - Taskbar (when running)
+- System tray / notification area (taskbar corner overflow near clock)
 
-**Upgrading from older versions**: If your taskbar or shortcut still shows the old Dyad "D" icon:
+**Upgrading from older versions**: If your taskbar, shortcut, or system tray still shows the old Dyad "D" icon:
 
 1. **Unpin** ABBA AI from the taskbar (if pinned)
 2. **Delete** any old desktop shortcuts
-3. **Restart** your computer (clears Windows icon cache)
-4. **Re-pin** ABBA AI from the Start Menu or re-create shortcuts
+3. **Reset Windows icon cache** (see below)
+4. **Restart** your computer
+5. **Re-pin** ABBA AI from the Start Menu or re-create shortcuts
 
-This is a one-time step due to Windows icon caching behavior. The correct icon is embedded in v0.1.5+ builds.
+**Resetting Windows icon cache** (if restart alone doesn't work):
+
+```powershell
+# Run as Administrator in PowerShell:
+taskkill /f /im explorer.exe
+Remove-Item -Path "$env:LOCALAPPDATA\IconCache.db" -Force -ErrorAction SilentlyContinue
+Remove-Item -Path "$env:LOCALAPPDATA\Microsoft\Windows\Explorer\iconcache*" -Force -ErrorAction SilentlyContinue
+Start-Process explorer.exe
+```
+
+This is a one-time step due to Windows icon caching behavior. The correct icon is embedded in v0.1.5+ builds (shortcuts/installer) and v0.1.8+ builds (taskbar/tray).
 
 #### 2-Minute Icon Verification (for developers/testers)
 
@@ -96,6 +108,8 @@ If you're interested in contributing, please read our [contributing](./CONTRIBUT
 - Unit tests (`npm test`)
 - Build smoke test (Windows + macOS)
 - Branding verification (`npm run verify-branding`)
+- Windows AUMID consistency (`npm run verify-windows-aumid`)
+- Tray icon configuration (`npm run verify-tray-icon`)
 - Windows EXE icon verification (`npm run verify-windows-icon`, Windows CI only)
 
 **E2E tests** (informational, non-blocking):

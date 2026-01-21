@@ -41,6 +41,8 @@ jobs:
         run: node scripts/verify-branding.mjs
       - name: Verify Windows AUMID (fast guardrail)
         run: node scripts/verify-windows-aumid.mjs
+      - name: Verify tray icon configuration (fast guardrail)
+        run: node scripts/verify-tray-icon-config.mjs
       - name: Presubmit (prettier:check + lint)
         run: npm run presubmit
       - name: Type-checking

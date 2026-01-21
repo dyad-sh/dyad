@@ -1,7 +1,7 @@
 {
   "name": "abba-ai",
   "productName": "ABBA AI",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Free, local, open-source AI app builder",
   "main": ".vite/build/main.js",
   "repository": {
@@ -38,6 +38,7 @@
     "verify-branding": "node scripts/verify-branding.mjs",
     "verify-windows-icon": "node scripts/verify-windows-exe-icon.mjs",
     "verify-windows-aumid": "node scripts/verify-windows-aumid.mjs",
+    "verify-tray-icon": "node scripts/verify-tray-icon-config.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",

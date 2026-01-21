@@ -31,7 +31,9 @@ export default function dyadTagger(): Plugin {
 
         const ms = new MagicString(code);
         // Normalize path to use forward slashes (fixes Windows backslash issues)
-        const fileRelative = path.relative(process.cwd(), id).replace(/\\/g, "/");
+        const fileRelative = path
+          .relative(process.cwd(), id)
+          .replace(/\\/g, "/");
 
         walk(ast as any, {
           enter(node: any) {

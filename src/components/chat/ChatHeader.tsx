@@ -179,8 +179,8 @@ export function ChatHeader({
         </div>
       )}
 
-      {/* Show uncommitted files banner when on main branch and there are uncommitted changes */}
-      {!isVersionPaneOpen && branchInfo?.branch === "main" && (
+      {/* Show uncommitted files banner when on a branch and there are uncommitted changes */}
+      {!isVersionPaneOpen && branchInfo?.branch && (
         <UncommittedFilesBanner appId={appId} />
       )}
 

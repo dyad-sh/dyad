@@ -18,8 +18,8 @@ import {
   getGitUncommittedFilesWithStatus,
   gitAddAll,
   gitCommit,
-  type UncommittedFile,
 } from "../utils/git_utils";
+import type { UncommittedFile } from "../ipc_types";
 import { getDyadAppPath } from "../../paths/paths";
 import { db } from "../../db";
 import { apps } from "../../db/schema";

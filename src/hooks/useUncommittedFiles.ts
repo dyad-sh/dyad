@@ -1,10 +1,8 @@
 import { IpcClient } from "@/ipc/ipc_client";
 import { useQuery } from "@tanstack/react-query";
+import type { UncommittedFile } from "@/ipc/ipc_types";
 
-export type UncommittedFile = {
-  path: string;
-  status: "added" | "modified" | "deleted" | "renamed";
-};
+export type { UncommittedFile };
 
 export function useUncommittedFiles(appId: number | null) {
   const {

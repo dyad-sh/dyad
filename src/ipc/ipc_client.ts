@@ -95,6 +95,7 @@ import type {
   ConsoleEntry,
   SetAppThemeParams,
   GetAppThemeParams,
+  UncommittedFile,
 } from "./ipc_types";
 import type { Template } from "../shared/templates";
 import type { Theme } from "../shared/themes";
@@ -1007,12 +1008,7 @@ export class IpcClient {
     return this.ipcRenderer.invoke("github:get-git-state", { appId });
   }
 
-  public async getUncommittedFiles(appId: number): Promise<
-    Array<{
-      path: string;
-      status: "added" | "modified" | "deleted" | "renamed";
-    }>
-  > {
+  public async getUncommittedFiles(appId: number): Promise<UncommittedFile[]> {
     return this.ipcRenderer.invoke("git:get-uncommitted-files", {
       appId,
     } satisfies GitBranchAppIdParams);

@@ -23,14 +23,6 @@ const runUncommittedFilesBannerTest = async (
 
   // Ensure clean state - commit any existing changes first
   const banner = po.page.getByTestId("uncommitted-files-banner");
-  const isInitiallyVisible = await banner.isVisible().catch(() => false);
-
-  if (isInitiallyVisible) {
-    await po.page.getByTestId("review-commit-button").click();
-    await po.page.getByTestId("commit-button").click();
-    await po.waitForToast("success");
-    await expect(banner).not.toBeVisible({ timeout: Timeout.MEDIUM });
-  }
 
   // Verify banner is NOT visible when there are no uncommitted changes
   await expect(banner).not.toBeVisible();

@@ -778,3 +778,15 @@ export interface SetAppThemeParams {
 export interface GetAppThemeParams {
   appId: number;
 }
+
+// --- Uncommitted Files Types ---
+export type UncommittedFileStatus =
+  | "added"
+  | "modified"
+  | "deleted"
+  | "renamed";
+
+export interface UncommittedFile {
+  path: string;
+  status: UncommittedFileStatus;
+}

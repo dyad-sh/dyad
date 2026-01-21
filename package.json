@@ -1,7 +1,7 @@
 {
   "name": "abba-ai",
   "productName": "ABBA AI",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Free, local, open-source AI app builder",
   "main": ".vite/build/main.js",
   "repository": {
@@ -35,6 +35,7 @@
     "prettier:check": "npx prettier --check .",
     "prettier": "npx prettier --write .",
     "presubmit": "npm run prettier:check && npm run lint",
+    "verify-branding": "node scripts/verify-branding.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",

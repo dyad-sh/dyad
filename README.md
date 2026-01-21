@@ -35,7 +35,25 @@ Download the latest release for your platform:
 Notes:
 
 - `RELEASES` and `abba_ai-<version>-full.nupkg` are used for auto-updates; most users only need the installer/zip.
-- **Windows pinned icon refresh (v0.1.3+)**: If your pinned taskbar icon still shows the old Dyad "D" icon after updating, unpin ABBA AI from taskbar, delete any old desktop shortcuts, then re-pin/re-create shortcuts after installing v0.1.3 or later. This is a one-time manual step due to Windows icon caching. New installs automatically use the correct ABBA "A" icon.
+
+### Windows Icon Troubleshooting
+
+**Fresh install (v0.1.5+)**: New installs automatically show the correct ABBA "A" icon everywhere:
+- Setup.exe installer file icon
+- Installed app EXE icon
+- Desktop shortcut
+- Taskbar (when running)
+
+**Upgrading from older versions**: If your taskbar or shortcut still shows the old Dyad "D" icon:
+
+1. **Unpin** ABBA AI from the taskbar (if pinned)
+2. **Delete** any old desktop shortcuts
+3. **Restart** your computer (clears Windows icon cache)
+4. **Re-pin** ABBA AI from the Start Menu or re-create shortcuts
+
+This is a one-time step due to Windows icon caching behavior. The correct icon is embedded in v0.1.5+ builds.
+
+**Technical details**: Windows caches app icons based on the AppUserModelId. ABBA AI uses `ai.abba.desktop` to ensure consistent icon grouping on the taskbar.
 
 ## 🚀 Features
 

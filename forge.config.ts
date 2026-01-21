@@ -157,10 +157,12 @@ const config: ForgeConfig = {
   makers: [
     new MakerSquirrel({
       // Squirrel.Windows options: ensure installer + shortcuts use ABBA icon
-      setupIcon: "./assets/icon/logo.ico",
-      iconUrl:
-        "https://raw.githubusercontent.com/yosiwizman/dyad/main/assets/icon/logo.ico",
-      name: "abba_ai",
+    setupIcon: "./assets/icon/logo.ico",
+    iconUrl:
+      "https://raw.githubusercontent.com/yosiwizman/abba-ai/main/assets/icon/logo.ico",
+    name: "abba_ai",
+    // Ensure Windows uses consistent app identity for taskbar icon grouping
+    appUserModelId: "ai.abba.desktop",
       authors: "ABBA AI",
       description: "Free, local, open-source AI app builder",
     }),

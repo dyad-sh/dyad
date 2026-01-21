@@ -37,6 +37,8 @@ jobs:
         env:
           # Required for @vscode/ripgrep to download binaries without hitting GitHub API rate limits
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify branding (fast guardrail)
+        run: node scripts/verify-branding.mjs
       - name: Presubmit (prettier:check + lint)
         run: npm run presubmit
       - name: Type-checking

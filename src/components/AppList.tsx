@@ -55,10 +55,7 @@ export function AppList({ show }: { show?: boolean }) {
     setSelectedAppId(id);
     setSelectedChatId(null);
     setIsSearchDialogOpen(false);
-    navigate({
-      to: "/",
-      search: { appId: id },
-    });
+    // Navigation removed - AppsPanel will show ChatList automatically
   };
 
   const handleNewApp = () => {

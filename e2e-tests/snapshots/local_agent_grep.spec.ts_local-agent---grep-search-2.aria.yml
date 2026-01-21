@@ -5,4 +5,4 @@
 - button "Copy":
   - img
 - text: log
-- code: "src/main.tsx:1: import { createRoot } from \"react-dom/client\"; src/main.tsx:4: createRoot(document.getElementById(\"root\")!).render(&lt;App /&gt;);"
+- code: "src/main.tsx:1: import { createRoot } from \"react-dom/client\"; src/main.tsx:4: createRoot(document.getElementById(\"root\")!).render(<App />);"

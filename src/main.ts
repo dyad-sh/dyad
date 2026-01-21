@@ -50,9 +50,12 @@ if (started) {
   app.quit();
 }
 
-// Set a consistent AppUserModelID for Windows taskbar/pinned icon stability
+// Set AppUserModelID to match Squirrel.Windows shortcut AUMID pattern.
+// Squirrel creates shortcuts with AUMID: com.squirrel.<name>.<name>
+// where <name> is MakerSquirrel's "name" config (abba_ai).
+// This MUST match for Windows to correctly associate icons with shortcuts/taskbar.
 if (process.platform === "win32") {
-  app.setAppUserModelId("ai.abba.desktop");
+  app.setAppUserModelId("com.squirrel.abba_ai.abba_ai");
 }
 
 // Decide the git directory depending on environment

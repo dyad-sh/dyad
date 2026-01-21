@@ -64,13 +64,15 @@ if (!fs.existsSync(forgeConfigPath)) {
     );
   }
 
-  // Check appUserModelId in MakerSquirrel config
-  if (!forgeConfig.includes('appUserModelId: "ai.abba.desktop"')) {
+  // Check MakerSquirrel name (determines Squirrel AUMID pattern: com.squirrel.<name>.<name>)
+  if (!forgeConfig.includes('name: "abba_ai"')) {
     error(
-      'MakerSquirrel should have appUserModelId: "ai.abba.desktop" for Windows taskbar identity',
+      'MakerSquirrel name should be "abba_ai" (determines Squirrel AUMID pattern)',
     );
   } else {
-    success('MakerSquirrel appUserModelId correctly set to "ai.abba.desktop"');
+    success(
+      'MakerSquirrel name correctly set to "abba_ai" (AUMID: com.squirrel.abba_ai.abba_ai)',
+    );
   }
 
   // Check for any remaining Dyad icon references (case-insensitive)
@@ -103,19 +105,23 @@ if (!fs.existsSync(forgeConfigPath)) {
 }
 
 // 2. Check main.ts for appUserModelId
+// IMPORTANT: The AUMID MUST match Squirrel's shortcut pattern: com.squirrel.<name>.<name>
+// where <name> is MakerSquirrel's "name" config. Mismatch = wrong taskbar icon!
 const mainTsPath = path.join(rootDir, "src", "main.ts");
+const EXPECTED_AUMID = "com.squirrel.abba_ai.abba_ai";
+
 if (!fs.existsSync(mainTsPath)) {
   error("src/main.ts not found!");
 } else {
   const mainTs = fs.readFileSync(mainTsPath, "utf-8");
 
-  // Check for setAppUserModelId call
-  if (!mainTs.includes('app.setAppUserModelId("ai.abba.desktop")')) {
+  // Check for setAppUserModelId call with correct Squirrel AUMID
+  if (!mainTs.includes(`app.setAppUserModelId("${EXPECTED_AUMID}")`)) {
     error(
-      'main.ts should call app.setAppUserModelId("ai.abba.desktop") for Windows',
+      `main.ts should call app.setAppUserModelId("${EXPECTED_AUMID}") to match Squirrel shortcut AUMID`,
     );
   } else {
-    success('main.ts correctly sets AppUserModelId to "ai.abba.desktop"');
+    success(`main.ts correctly sets AppUserModelId to "${EXPECTED_AUMID}"`);
   }
 
   // Check the actual AppUserModelId string doesn't contain dyad

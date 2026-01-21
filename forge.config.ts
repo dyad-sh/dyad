@@ -160,9 +160,9 @@ const config: ForgeConfig = {
       setupIcon: "./assets/icon/logo.ico",
       iconUrl:
         "https://raw.githubusercontent.com/yosiwizman/abba-ai/main/assets/icon/logo.ico",
+      // IMPORTANT: "name" determines the Squirrel AUMID pattern: com.squirrel.<name>.<name>
+      // The app's setAppUserModelId() in main.ts MUST match this pattern exactly.
       name: "abba_ai",
-      // Ensure Windows uses consistent app identity for taskbar icon grouping
-      appUserModelId: "ai.abba.desktop",
       authors: "ABBA AI",
       description: "Free, local, open-source AI app builder",
     }),

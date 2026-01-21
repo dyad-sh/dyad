@@ -38,7 +38,7 @@ Notes:
 
 ### Windows Icon Troubleshooting
 
-**Fresh install (v0.1.6+)**: New installs automatically show the correct ABBA "A" icon everywhere:
+**Fresh install (v0.1.7+)**: New installs automatically show the correct ABBA "A" icon everywhere:
 
 - Setup.exe installer file icon
 - Installed app EXE icon
@@ -73,7 +73,7 @@ To verify the Windows build has correct branding on a clean system:
 
 **If icons are wrong**: Open an issue with screenshot evidence.
 
-**Technical details**: Windows caches app icons based on the AppUserModelId. ABBA AI uses `ai.abba.desktop` to ensure consistent icon grouping on the taskbar. CI verifies the packaged EXE contains the correct icon resource (`npm run verify-windows-icon`).
+**Technical details**: Windows uses AppUserModelId (AUMID) for taskbar icon grouping. Squirrel.Windows creates shortcuts with AUMID pattern `com.squirrel.<name>.<name>`. The app's `setAppUserModelId()` MUST match this pattern — mismatch causes wrong icons. ABBA AI uses `com.squirrel.abba_ai.abba_ai`. CI verifies both installer and app EXE icons (`npm run verify-branding`, `npm run verify-windows-icon`).
 
 ## 🚀 Features
 

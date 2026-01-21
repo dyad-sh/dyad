@@ -12,7 +12,8 @@ jobs:
       (github.event.pull_request.user.login == 'wwwillchen' ||
       github.event.pull_request.user.login == 'azizmejri1' ||
       github.event.pull_request.user.login == 'princeaden1') &&
-      !contains(github.event.pull_request.body, '#skip-bugbot')
+      !contains(github.event.pull_request.body, '#skip-bugbot') &&
+      !contains(github.event.pull_request.body, '#skip-bb')
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write

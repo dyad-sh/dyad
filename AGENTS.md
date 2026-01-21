@@ -79,5 +79,5 @@ Do NOT write lots of e2e test cases for one feature. Each e2e test case adds a s
 
 When pushing changes and creating PRs:
 
-1. First, try pushing to the upstream repo (`dyad-sh/dyad`).
-2. If you cannot push due to permissions, push to the fork (`wwwillchen/dyad`) instead, then create a PR from the fork to the upstream repo.
+1. If the branch already has an associated PR, push to whichever remote the branch is tracking.
+2. If the branch hasn't been pushed before, default to pushing to `origin` (the fork `wwwillchen/dyad`), then create a PR from the fork to the upstream repo (`dyad-sh/dyad`).

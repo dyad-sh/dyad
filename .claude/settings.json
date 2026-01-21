@@ -10,7 +10,6 @@
       "Bash(gh issue:*)",
       "Bash(gh repo view:*)",
 
-      // Directory/file listing
       "Bash(ls:*)",
       "Bash(find:*)",
       "Bash(tree:*)",
@@ -24,7 +23,6 @@
       "Bash(file:*)",
       "Bash(stat:*)",
 
-      // Text searching/processing
       "Bash(grep:*)",
       "Bash(rg:*)",
       "Bash(ag:*)",

@@ -73,3 +73,6 @@ jobs:
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
         run: npm run pre:e2e
+      - name: Verify Windows EXE icon (Windows only)
+        if: matrix.os.name == 'windows'
+        run: node scripts/verify-windows-exe-icon.mjs

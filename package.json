@@ -1,7 +1,7 @@
 {
   "name": "abba-ai",
   "productName": "ABBA AI",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Free, local, open-source AI app builder",
   "main": ".vite/build/main.js",
   "repository": {
@@ -36,6 +36,7 @@
     "prettier": "npx prettier --write .",
     "presubmit": "npm run prettier:check && npm run lint",
     "verify-branding": "node scripts/verify-branding.mjs",
+    "verify-windows-icon": "node scripts/verify-windows-exe-icon.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
@@ -88,7 +89,8 @@
     "rimraf": "^6.0.1",
     "typescript": "^5.8.3",
     "vite": "^5.4.17",
-    "vitest": "^3.1.1"
+    "vitest": "^3.1.1",
+    "resedit": "^2.0.2"
   },
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "^4.0.9",

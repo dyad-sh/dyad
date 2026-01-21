@@ -38,7 +38,7 @@ Notes:
 
 ### Windows Icon Troubleshooting
 
-**Fresh install (v0.1.5+)**: New installs automatically show the correct ABBA "A" icon everywhere:
+**Fresh install (v0.1.6+)**: New installs automatically show the correct ABBA "A" icon everywhere:
 - Setup.exe installer file icon
 - Installed app EXE icon
 - Desktop shortcut
@@ -53,7 +53,24 @@ Notes:
 
 This is a one-time step due to Windows icon caching behavior. The correct icon is embedded in v0.1.5+ builds.
 
-**Technical details**: Windows caches app icons based on the AppUserModelId. ABBA AI uses `ai.abba.desktop` to ensure consistent icon grouping on the taskbar.
+#### 2-Minute Icon Verification (for developers/testers)
+
+To verify the Windows build has correct branding on a clean system:
+
+**Option A: Windows Sandbox** (recommended, ~2 min)
+1. Enable Windows Sandbox (Settings → Apps → Optional Features → Windows Sandbox)
+2. Open Windows Sandbox (clean isolated environment)
+3. Download latest `ABBA.AI-<version>.Setup.exe` from [Releases](https://github.com/yosiwizman/dyad/releases)
+4. Run installer in sandbox — verify ABBA "A" icon on installer, shortcut, and taskbar
+
+**Option B: New local Windows user** (~2 min)
+1. Create a new local user account
+2. Log in as new user (fresh icon cache)
+3. Install ABBA AI and verify icons
+
+**If icons are wrong**: Open an issue with screenshot evidence.
+
+**Technical details**: Windows caches app icons based on the AppUserModelId. ABBA AI uses `ai.abba.desktop` to ensure consistent icon grouping on the taskbar. CI verifies the packaged EXE contains the correct icon resource (`npm run verify-windows-icon`).
 
 ## 🚀 Features
 
@@ -75,6 +92,8 @@ If you're interested in contributing, please read our [contributing](./CONTRIBUT
 - TypeScript type-checking (`npm run ts`)
 - Unit tests (`npm test`)
 - Build smoke test (Windows + macOS)
+- Branding verification (`npm run verify-branding`)
+- Windows EXE icon verification (`npm run verify-windows-icon`, Windows CI only)
 
 **E2E tests** (informational, non-blocking):
 

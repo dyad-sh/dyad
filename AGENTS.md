@@ -75,6 +75,12 @@ If you would need to mock a lot of things to unit test a feature, prefer to writ
 
 Do NOT write lots of e2e test cases for one feature. Each e2e test case adds a significant amount of overhead, so instead prefer just one or two E2E test cases that each have broad coverage of the feature in question.
 
+To get additional debug logs when a test is failing, use:
+
+```sh
+DEBUG=pw:browser npm run e2e
+```
+
 ## Git workflow
 
 When pushing changes and creating PRs:

@@ -10,10 +10,29 @@ Make sure you run this once after doing `npm install` because it will make sure 
 npm run init-precommit
 ```
 
+## Pre-commit checks
+
+RUN THE FOLLOWING CHECKS before you do a commit.
+
+**Formatting**
+```sh
+npm run prettier
+```
+
+**Linting**
+```sh
+npm run lint
+```
+
 If you get any lint errors, you can usually fix it by doing:
 
 ```sh
 npm run lint:fix
+```
+
+***Type-checks**
+```sh
+npm run ts
 ```
 
 Note: if you do this, then you will need to re-add the changes and commit again.

@@ -28,6 +28,7 @@ import { NodePathSelector } from "@/components/NodePathSelector";
 import { ToolsMcpSettings } from "@/components/settings/ToolsMcpSettings";
 import { AgentToolsSettings } from "@/components/settings/AgentToolsSettings";
 import { ZoomSelector } from "@/components/ZoomSelector";
+import { DefaultChatModeSelector } from "@/components/DefaultChatModeSelector";
 import { useSetAtom } from "jotai";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
 
@@ -312,7 +313,11 @@ export function WorkflowSettings() {
         Workflow Settings
       </h2>
 
-      <div className="space-y-1">
+      <div className="mt-4">
+        <DefaultChatModeSelector />
+      </div>
+
+      <div className="space-y-1 mt-4">
         <AutoApproveSwitch showToast={false} />
         <div className="text-sm text-gray-500 dark:text-gray-400">
           This will automatically approve code changes and run them.

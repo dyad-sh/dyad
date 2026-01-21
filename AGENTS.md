@@ -2,6 +2,22 @@
 
 Please read `CONTRIBUTING.md` which includes information for human code contributors. Much of the information is applicable to you as well.
 
+## Project setup and lints
+
+Make sure you run this once after doing `npm install` because it will make sure whenever you commit something, it will run pre-commit hooks like linting and formatting.
+
+```sh
+npm run init-precommit
+```
+
+If you get any lint errors, you can usually fix it by doing:
+
+```sh
+npm run lint:fix
+```
+
+Note: if you do this, then you will need to re-add the changes and commit again.
+
 ## Project context
 
 - This is an Electron application with a secure IPC boundary.
@@ -45,7 +61,7 @@ Use these guidelines whenever you work within this repository.
 
 ## Testing
 
-Our project relies on a combination of unit testing and E2E testing.
+Our project relies on a combination of unit testing and E2E testing. Unless your change is trivial, you MUST add a test, preferably an e2e test case.
 
 ### Unit testing
 
@@ -56,3 +72,28 @@ Use unit testing for pure business logic and util functions.
 Use E2E testing when you need to test a complete user flow for a feature.
 
 If you would need to mock a lot of things to unit test a feature, prefer to write an E2E test instead.
+
+Do NOT write lots of e2e test cases for one feature. Each e2e test case adds a significant amount of overhead, so instead prefer just one or two E2E test cases that each have broad coverage of the feature in question.
+
+To get additional debug logs when a test is failing, use:
+
+```sh
+DEBUG=pw:browser npm run e2e
+```
+
+## Git workflow
+
+When pushing changes and creating PRs:
+
+1. If the branch already has an associated PR, push to whichever remote the branch is tracking.
+2. If the branch hasn't been pushed before, default to pushing to `origin` (the fork `wwwillchen/dyad`), then create a PR from the fork to the upstream repo (`dyad-sh/dyad`).
+3. If you cannot push to the fork due to permissions, push directly to `upstream` (`dyad-sh/dyad`) as a last resort.
+
+### Skipping automated review
+
+Add `#skip-bugbot` to the PR description for trivial PRs that won't affect end-users, such as:
+
+- Claude settings, commands, or agent configuration
+- Linting or test setup changes
+- Documentation-only changes
+- CI/build configuration updates

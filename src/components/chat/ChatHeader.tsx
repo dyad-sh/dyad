@@ -28,6 +28,7 @@ import { useCheckoutVersion } from "@/hooks/useCheckoutVersion";
 import { useRenameBranch } from "@/hooks/useRenameBranch";
 import { isAnyCheckoutVersionInProgressAtom } from "@/store/appAtoms";
 import { LoadingBar } from "../ui/LoadingBar";
+import { UncommittedFilesBanner } from "./UncommittedFilesBanner";
 
 interface ChatHeaderProps {
   isVersionPaneOpen: boolean;
@@ -176,6 +177,11 @@ export function ChatHeader({
             </Button>
           )}
         </div>
+      )}
+
+      {/* Show uncommitted files banner when on a branch and there are uncommitted changes */}
+      {!isVersionPaneOpen && branchInfo?.branch && (
+        <UncommittedFilesBanner appId={appId} />
       )}
 
       {/* Why is this pt-0.5? Because the loading bar is h-1 (it always takes space) and we want the vertical spacing to be consistent.*/}

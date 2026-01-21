@@ -12,12 +12,7 @@ export interface AppOutput {
 
 export interface ConsoleEntry {
   level: "info" | "warn" | "error";
-  type:
-    | "server"
-    | "client"
-    | "edge-function"
-    | "network-requests"
-    | "build-time";
+  type: "server" | "client" | "edge-function" | "network-requests";
   message: string;
   timestamp: number;
   sourceName?: string;
@@ -284,6 +279,7 @@ export interface ImportAppParams {
   appName: string;
   installCommand?: string;
   startCommand?: string;
+  skipCopy?: boolean;
 }
 
 export interface CopyAppParams {
@@ -301,6 +297,38 @@ export interface RenameBranchParams {
   appId: number;
   oldBranchName: string;
   newBranchName: string;
+}
+
+// --- Git Branch Handler Types ---
+export interface GitBranchAppIdParams {
+  appId: number;
+}
+
+export interface CreateGitBranchParams {
+  appId: number;
+  branch: string;
+  from?: string;
+}
+
+export interface GitBranchParams {
+  appId: number;
+  branch: string;
+}
+
+export interface RenameGitBranchParams {
+  appId: number;
+  oldBranch: string;
+  newBranch: string;
+}
+
+export interface ListRemoteGitBranchesParams {
+  appId: number;
+  remote?: string;
+}
+
+export interface CommitChangesParams {
+  appId: number;
+  message: string;
 }
 
 export interface ChangeAppLocationParams {
@@ -731,6 +759,11 @@ export interface AgentTodosUpdatePayload {
   todos: AgentTodo[];
 }
 
+export interface AgentProblemsUpdatePayload {
+  appId: number;
+  problems: ProblemReport;
+}
+
 export interface TelemetryEventPayload {
   eventName: string;
   properties?: Record<string, unknown>;
@@ -803,4 +836,14 @@ export interface SaveThemeImageResult {
 
 export interface CleanupThemeImagesParams {
   paths: string[]; // Paths to delete
+// --- Uncommitted Files Types ---
+export type UncommittedFileStatus =
+  | "added"
+  | "modified"
+  | "deleted"
+  | "renamed";
+
+export interface UncommittedFile {
+  path: string;
+  status: UncommittedFileStatus;
 }

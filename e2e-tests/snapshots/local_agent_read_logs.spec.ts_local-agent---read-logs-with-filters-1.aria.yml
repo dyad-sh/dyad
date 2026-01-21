@@ -17,7 +17,7 @@
 - paragraph: tc=local-agent/read-logs
 - paragraph: Let me check the recent console logs to see what's happening in the application.
 - img
-- text: LOGSReading 1 logs
+- text: /LOGSReading \d+ logs/
 - img
 - paragraph: Now let me filter for only error logs to identify any issues.
 - img

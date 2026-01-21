@@ -30,6 +30,8 @@ jobs:
             { name: "windows", image: "windows-latest" },
             { name: "macos", image: "macos-latest" },
           ]
+        # If you update this, you need to update
+        # scripts/generate-playwright-summary.js
         shard: [1, 2, 3, 4]
         shardTotal: [4]
     runs-on: ${{ matrix.os.image }}
@@ -157,3 +159,12 @@ jobs:
           name: html-report--attempt-${{ github.run_attempt }}
           path: playwright-report
           retention-days: 3
+
+      - name: Generate Playwright summary
+        uses: actions/github-script@v7
+        env:
+          PLAYWRIGHT_RUN_ID: ${{ github.run_id }}
+        with:
+          script: |
+            const { run } = require('./scripts/generate-playwright-summary.js');
+            await run({ github, context, core });

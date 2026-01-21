@@ -7,6 +7,7 @@ import {
 } from "./types";
 import { generateProblemReport } from "@/ipc/processors/tsc";
 import type { Problem } from "@/ipc/ipc_types";
+import { safeSend } from "@/ipc/utils/safe_sender";
 
 import { normalizePath } from "../../../../../../../shared/normalizePath";
 
@@ -96,6 +97,12 @@ export const runTypeChecksTool: ToolDefinition<
     const problemReport = await generateProblemReport({
       fullResponse: "",
       appPath: ctx.appPath,
+    });
+
+    // Send the full problem report to update the Problems panel in the UI
+    safeSend(ctx.event.sender, "agent-tool:problems-update", {
+      appId: ctx.appId,
+      problems: problemReport,
     });
 
     let problems = problemReport.problems;

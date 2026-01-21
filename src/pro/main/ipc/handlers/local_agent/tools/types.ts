@@ -12,17 +12,12 @@ import { AgentTodo } from "@/ipc/ipc_types";
 // XML Escape Helpers
 // ============================================================================
 
-export function escapeXmlAttr(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-export function escapeXmlContent(str: string): string {
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
+export {
+  escapeXmlAttr,
+  unescapeXmlAttr,
+  escapeXmlContent,
+  unescapeXmlContent,
+} from "../../../../../../../shared/xmlEscape";
 
 // ============================================================================
 // Todo Types
@@ -33,6 +28,7 @@ export type Todo = AgentTodo;
 
 export interface AgentContext {
   event: IpcMainInvokeEvent;
+  appId: number;
   appPath: string;
   chatId: number;
   supabaseProjectId: string | null;
@@ -42,6 +38,8 @@ export interface AgentContext {
   chatSummary?: string;
   /** Turn-scoped todo list for agent task tracking */
   todos: Todo[];
+  /** Request ID for tracking requests to the Dyad engine */
+  dyadRequestId: string;
   /**
    * Streams accumulated XML to UI without persisting to DB (for live preview).
    * Call this repeatedly with the full accumulated XML so far.
@@ -120,6 +118,11 @@ export interface ToolDefinition<T = any> {
   readonly description: string;
   readonly inputSchema: z.ZodType<T>;
   readonly defaultConsent: AgentToolConsent;
+  /**
+   * If true, this tool modifies state (files, database, etc.).
+   * Used to filter out state-modifying tools in read-only mode (e.g., ask mode).
+   */
+  readonly modifiesState?: boolean;
   execute: (args: T, ctx: AgentContext) => Promise<ToolResult>;
 
   /**

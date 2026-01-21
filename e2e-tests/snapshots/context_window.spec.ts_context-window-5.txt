@@ -1084,4 +1084,44 @@ message: OK, got it. I'm ready to help
 
 ===
 role: user
+message: tc=1
+
+===
+role: assistant
+message: 1
+
+===
+role: user
+message: tc=2
+
+===
+role: assistant
+message: 2
+
+===
+role: user
+message: [dump] tc=3
+
+===
+role: assistant
+message: [[dyad-dump-path=*]]
+
+===
+role: user
+message: [dump] tc=4
+
+===
+role: assistant
+message: [[dyad-dump-path=*]]
+
+===
+role: user
+message: [dump] tc=5
+
+===
+role: assistant
+message: [[dyad-dump-path=*]]
+
+===
+role: user
 message: [dump] tc=6

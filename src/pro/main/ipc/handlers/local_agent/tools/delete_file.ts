@@ -27,6 +27,7 @@ export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
     description: "Delete a file from the codebase",
     inputSchema: deleteFileSchema,
     defaultConsent: "always",
+    modifiesState: true,
 
     getConsentPreview: (args) => `Delete ${args.path}`,
 

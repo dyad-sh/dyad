@@ -3,6 +3,9 @@
 
 const fs = require("fs");
 
+// Expected number of shards per OS
+const EXPECTED_SHARDS_PER_OS = 4;
+
 // Strip ANSI escape codes from terminal output
 function stripAnsi(str) {
   if (!str) return str;
@@ -22,6 +25,57 @@ function ensureOsBucket(resultsByOs, os) {
       flakyTests: [],
     };
   }
+}
+
+// Check if any shards are missing based on blob report file counts.
+// Blob files are named report-${platform}-${timestamp}.zip (e.g., report-darwin-2024-01-01T12-00-00-000Z.zip)
+// We can't identify WHICH shards are missing, only that some are missing by counting files per OS.
+function detectMissingShards(blobFiles) {
+  let macosCount = 0;
+  let windowsCount = 0;
+
+  for (const file of blobFiles) {
+    // Blob files are named: report-darwin-*.zip or report-win32-*.zip
+    if (file.includes("darwin")) {
+      macosCount++;
+    } else if (file.includes("win32")) {
+      windowsCount++;
+    }
+  }
+
+  const macosMissing = Math.max(0, EXPECTED_SHARDS_PER_OS - macosCount);
+  const windowsMissing = Math.max(0, EXPECTED_SHARDS_PER_OS - windowsCount);
+
+  return {
+    counts: {
+      macos: { found: macosCount, missing: macosMissing },
+      windows: { found: windowsCount, missing: windowsMissing },
+    },
+    hasMissing: macosMissing > 0 || windowsMissing > 0,
+  };
+}
+
+// Extract spec file and test name from a full test title
+// Title format: "spec_name.spec.ts > Test Suite > Test Name"
+function parseTestTitle(fullTitle) {
+  const parts = fullTitle.split(" > ");
+  let specFile = parts[0] || "";
+  const testName = parts.slice(1).join(" > ");
+
+  // Ensure the spec file ends with .spec.ts
+  if (!specFile.endsWith(".spec.ts")) {
+    specFile = specFile + ".spec.ts";
+  }
+
+  return { specFile, testName };
+}
+
+// Generate copy-paste command for updating snapshots
+function generateUpdateCommand(fullTitle) {
+  const { specFile, testName } = parseTestTitle(fullTitle);
+  // Escape special characters in testName for the grep pattern
+  const escapedTestName = testName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return `npm run e2e e2e-tests/${specFile} -- --g="${escapedTestName}" --update-snapshots`;
 }
 
 function detectOperatingSystemsFromReport(report) {
@@ -70,10 +124,11 @@ function determineIssueNumber({ context }) {
     const prFromPayload =
       context.payload?.workflow_run?.pull_requests?.[0]?.number;
     if (prFromPayload) return prFromPayload;
-  } else {
-    throw new Error("This script should only be run in a workflow_run");
+  } else if (context.eventName === "pull_request") {
+    // Direct PR trigger (e.g., from merge-reports job in CI)
+    return context.payload?.pull_request?.number || null;
   }
-
+  // For push events (e.g., main branch), there's no PR number
   return null;
 }
 
@@ -92,6 +147,9 @@ async function run({ github, context, core }) {
   const blobFiles = fs.existsSync(blobDir) ? fs.readdirSync(blobDir) : [];
   const hasMacOS = blobFiles.some((f) => f.includes("darwin"));
   const hasWindows = blobFiles.some((f) => f.includes("win32"));
+
+  // Check for missing shards
+  const { counts: shardCounts, hasMissing } = detectMissingShards(blobFiles);
 
   // Initialize per-OS results
   const resultsByOs = {};
@@ -227,6 +285,21 @@ async function run({ github, context, core }) {
 
   // Build the comment
   let comment = "## 🎭 Playwright Test Results\n\n";
+
+  // Show warning for missing shards
+  if (hasMissing) {
+    comment += "### ⚠️ WARNING: Missing Test Shards!\n\n";
+    comment +=
+      "Some test shards did not report results. This may indicate CI failures or timeouts.\n\n";
+    if (shardCounts.macos.missing > 0) {
+      comment += `- 🍎 **macOS**: found ${shardCounts.macos.found}/${EXPECTED_SHARDS_PER_OS} shards (${shardCounts.macos.missing} missing)\n`;
+    }
+    if (shardCounts.windows.missing > 0) {
+      comment += `- 🪟 **Windows**: found ${shardCounts.windows.found}/${EXPECTED_SHARDS_PER_OS} shards (${shardCounts.windows.missing} missing)\n`;
+    }
+    comment += "\n";
+  }
+
   const allPassed = totalFailed === 0;
 
   if (allPassed) {
@@ -275,13 +348,43 @@ async function run({ github, context, core }) {
       if (data.failures.length === 0) continue;
       const emoji = os === "macOS" ? "🍎" : "🪟";
       comment += `#### ${emoji} ${os}\n\n`;
-      for (const f of data.failures.slice(0, 10)) {
+
+      // If more than 10 failures, use collapsible accordion
+      if (data.failures.length > 10) {
+        comment += `<details>\n<summary>Show all ${data.failures.length} failures</summary>\n\n`;
+      }
+
+      for (const f of data.failures) {
         const errorPreview =
           f.error.length > 150 ? f.error.substring(0, 150) + "..." : f.error;
         comment += `- \`${f.title}\`\n  - ${errorPreview}\n`;
       }
+
       if (data.failures.length > 10) {
-        comment += `- ... and ${data.failures.length - 10} more\n`;
+        comment += "\n</details>\n";
+      }
+      comment += "\n";
+    }
+
+    // Add macOS copy-paste commands section
+    const macOsFailures = resultsByOs["macOS"]?.failures || [];
+    if (macOsFailures.length > 0) {
+      comment += "### 📋 Update Snapshot Commands (macOS)\n\n";
+      comment +=
+        "Copy and paste these commands to update snapshots for failed tests:\n\n";
+
+      if (macOsFailures.length > 5) {
+        comment += `<details>\n<summary>Show all ${macOsFailures.length} commands</summary>\n\n`;
+      }
+
+      comment += "```bash\n";
+      for (const f of macOsFailures) {
+        comment += generateUpdateCommand(f.title) + "\n";
+      }
+      comment += "```\n";
+
+      if (macOsFailures.length > 5) {
+        comment += "\n</details>\n";
       }
       comment += "\n";
     }

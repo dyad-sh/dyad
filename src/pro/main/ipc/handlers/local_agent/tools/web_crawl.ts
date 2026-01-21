@@ -1,12 +1,9 @@
 import { z } from "zod";
 import log from "electron-log";
-import { ToolDefinition, escapeXmlContent } from "./types";
-import { readSettings } from "@/main/settings";
+import { ToolDefinition, escapeXmlContent, AgentContext } from "./types";
+import { engineFetch } from "./engine_fetch";
 
 const logger = log.scope("web_crawl");
-
-const DYAD_ENGINE_URL =
-  process.env.DYAD_ENGINE_URL ?? "https://engine.dyad.sh/v1";
 
 const webCrawlSchema = z.object({
   url: z.string().describe("URL to crawl"),
@@ -59,20 +56,10 @@ Always include the placeholder.svg file in your output file tree.
 
 async function callWebCrawl(
   url: string,
+  ctx: Pick<AgentContext, "dyadRequestId">,
 ): Promise<z.infer<typeof webCrawlResponseSchema>> {
-  const settings = readSettings();
-  const apiKey = settings.providerSettings?.auto?.apiKey?.value;
-
-  if (!apiKey) {
-    throw new Error("Dyad Pro API key is required for web_crawl tool");
-  }
-
-  const response = await fetch(`${DYAD_ENGINE_URL}/tools/web-crawl`, {
+  const response = await engineFetch(ctx, "/tools/web-crawl", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
     body: JSON.stringify({ url }),
   });
 
@@ -108,7 +95,7 @@ export const webCrawlTool: ToolDefinition<z.infer<typeof webCrawlSchema>> = {
   execute: async (args, ctx) => {
     logger.log(`Executing web crawl: ${args.url}`);
 
-    const result = await callWebCrawl(args.url);
+    const result = await callWebCrawl(args.url, ctx);
 
     if (!result) {
       throw new Error("Web crawl returned no results");

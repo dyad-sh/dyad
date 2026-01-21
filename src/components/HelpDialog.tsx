@@ -77,24 +77,12 @@ export function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
 
       // Create a formatted issue body with the debug info
       const issueBody = `
-<!-- 
-⚠️ IMPORTANT: All sections marked as required must be completed in English.
-Issues that do not meet these requirements will be closed and may need to be resubmitted.
--->
+<!-- Please fill in all fields in English -->
 
 ## Bug Description (required)
-<!-- Please describe the issue you're experiencing -->
+<!-- Please describe the issue you're experiencing and how to reproduce it -->
 
-## Steps to Reproduce (required)
-<!-- Please list the steps to reproduce the issue -->
-
-## Expected Behavior (required)
-<!-- What did you expect to happen? -->
-
-## Actual Behavior (required)
-<!-- What actually happened? -->
-
-## Screenshot (Optional)
+## Screenshot (recommended)
 <!-- Screenshot of the bug -->
 
 ## System Information
@@ -222,10 +210,7 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
   const handleOpenGitHubIssue = () => {
     // Create a GitHub issue with the session ID
     const issueBody = `
-<!-- 
-⚠️ IMPORTANT: All sections marked as required must be completed in English.
-Issues that do not meet these requirements will be closed and may need to be resubmitted.
--->
+<!-- Please fill in all fields in English -->
 
 Session ID: ${sessionId}
 Pro User ID: ${userBudget?.redactedUserId || "n/a"}

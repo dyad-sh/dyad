@@ -198,6 +198,15 @@ function App() {
     return () => unsubscribe();
   }, []);
 
+  // Agent problems updates - update the TanStack Query cache when the agent runs type checks
+  useEffect(() => {
+    const ipc = IpcClient.getInstance();
+    const unsubscribe = ipc.onAgentProblemsUpdate((payload) => {
+      queryClient.setQueryData(["problems", payload.appId], payload.problems);
+    });
+    return () => unsubscribe();
+  }, []);
+
   return <RouterProvider router={router} />;
 }
 

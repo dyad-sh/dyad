@@ -7,12 +7,9 @@ import {
   escapeXmlContent,
 } from "./types";
 import { extractCodebase } from "../../../../../../utils/codebase";
-import { readSettings } from "@/main/settings";
+import { engineFetch } from "./engine_fetch";
 
 const logger = log.scope("code_search");
-
-const DYAD_ENGINE_URL =
-  process.env.DYAD_ENGINE_URL ?? "https://engine.dyad.sh/v1";
 
 const codeSearchSchema = z.object({
   query: z.string().describe("Search query to find relevant files"),
@@ -34,22 +31,11 @@ async function callCodeSearch(
   },
   ctx: AgentContext,
 ): Promise<string[]> {
-  const settings = readSettings();
-  const apiKey = settings.providerSettings?.auto?.apiKey?.value;
-
-  if (!apiKey) {
-    throw new Error("Dyad Pro API key is required for code_search tool");
-  }
-
   // Stream initial state to UI
   ctx.onXmlStream(`<dyad-code-search query="${escapeXmlAttr(params.query)}">`);
 
-  const response = await fetch(`${DYAD_ENGINE_URL}/tools/code-search`, {
+  const response = await engineFetch(ctx, "/tools/code-search", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
     body: JSON.stringify({
       query: params.query,
       filesContext: params.filesContext,

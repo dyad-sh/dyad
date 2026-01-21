@@ -8,11 +8,7 @@
  */
 
 import type { ToolCallPart } from "ai";
-
-// Escape XML content (less strict than attributes)
-function escapeXmlContent(str: string): string {
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
+import { escapeXmlContent } from "../../../../../../shared/xmlEscape";
 
 /**
  * Wrap thinking text in think tags

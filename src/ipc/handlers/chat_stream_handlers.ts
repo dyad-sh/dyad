@@ -22,7 +22,7 @@ import {
 } from "../../prompts/system_prompt";
 import { getThemePromptById } from "../utils/theme_utils";
 import {
-  SUPABASE_AVAILABLE_SYSTEM_PROMPT,
+  getSupabaseAvailableSystemPrompt,
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
 } from "../../prompts/supabase_prompt";
 import { getDyadAppPath } from "../../paths/paths";
@@ -67,6 +67,7 @@ import { cleanFullResponse } from "../utils/cleanFullResponse";
 import { generateProblemReport } from "../processors/tsc";
 import { createProblemFixPrompt } from "@/shared/problem_prompt";
 import { AsyncVirtualFileSystem } from "../../../shared/VirtualFilesystem";
+import { escapeXmlAttr, escapeXmlContent } from "../../../shared/xmlEscape";
 import {
   getDyadAddDependencyTags,
   getDyadWriteTags,
@@ -82,7 +83,11 @@ import { inArray } from "drizzle-orm";
 import { replacePromptReference } from "../utils/replacePromptReference";
 import { mcpManager } from "../utils/mcp_manager";
 import z from "zod";
-import { isSupabaseConnected, isTurboEditsV2Enabled } from "@/lib/schemas";
+import {
+  isDyadProEnabled,
+  isSupabaseConnected,
+  isTurboEditsV2Enabled,
+} from "@/lib/schemas";
 import { AI_STREAMING_ERROR_MESSAGE_PREFIX } from "@/shared/texts";
 import { getCurrentCommitHash } from "../utils/git_utils";
 import {
@@ -121,13 +126,7 @@ async function isTextFile(filePath: string): Promise<boolean> {
   return TEXT_FILE_EXTENSIONS.includes(ext);
 }
 
-function escapeXml(unsafe: string): string {
-  return unsafe
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
+// Use escapeXmlAttr from shared/xmlEscape for XML escaping
 
 // Safely parse an MCP tool key that combines server and tool names.
 // We split on the LAST occurrence of "__" to avoid ambiguity if either
@@ -226,6 +225,8 @@ export function registerChatStreamHandlers() {
     let attachmentPaths: string[] = [];
     try {
       const fileUploadsState = FileUploadsState.getInstance();
+      // Clear any stale state from previous requests for this chat
+      fileUploadsState.clear(req.chatId);
       let dyadRequestId: string | undefined;
       // Create an AbortController for this stream
       const abortController = new AbortController();
@@ -661,9 +662,13 @@ ${componentSnippet}
           updatedChat.app?.supabaseProjectId &&
           isSupabaseConnected(settings)
         ) {
+          const supabaseClientCode = await getSupabaseClientCode({
+            projectId: updatedChat.app.supabaseProjectId,
+            organizationSlug: updatedChat.app.supabaseOrganizationSlug ?? null,
+          });
           systemPrompt +=
             "\n\n" +
-            SUPABASE_AVAILABLE_SYSTEM_PROMPT +
+            getSupabaseAvailableSystemPrompt(supabaseClientCode) +
             "\n\n" +
             // For local agent, we will explicitly fetch the database context when needed.
             (settings.selectedChatMode === "local-agent"
@@ -800,7 +805,14 @@ This conversation includes one or more image attachments. When the user uploads 
                 attachmentPaths,
               );
             }
-            if (settings.selectedChatMode === "local-agent") {
+            // Save aiMessagesJson for modes that use handleLocalAgentStream
+            // (which reads from DB and needs structured image content)
+            const willUseLocalAgentStream =
+              settings.selectedChatMode === "local-agent" ||
+              (settings.selectedChatMode === "ask" &&
+                isDyadProEnabled(settings) &&
+                !mentionedAppsCodebases.length);
+            if (willUseLocalAgentStream) {
               // Insert into DB (with size guard)
               const userAiMessagesJson = getAiMessagesJsonIfWithinLimit([
                 chatMessages[lastUserIndex],
@@ -960,20 +972,6 @@ This conversation includes one or more image attachments. When the user uploads 
         }: {
           fullResponse: string;
         }) => {
-          if (
-            fullResponse.includes("$$SUPABASE_CLIENT_CODE$$") &&
-            updatedChat.app?.supabaseProjectId
-          ) {
-            const supabaseClientCode = await getSupabaseClientCode({
-              projectId: updatedChat.app?.supabaseProjectId,
-              organizationSlug:
-                updatedChat.app?.supabaseOrganizationSlug ?? null,
-            });
-            fullResponse = fullResponse.replace(
-              "$$SUPABASE_CLIENT_CODE$$",
-              supabaseClientCode,
-            );
-          }
           // Store the current partial response
           partialResponses.set(req.chatId, fullResponse);
           // Save to DB (in case user is switching chats during the stream)
@@ -1004,6 +1002,31 @@ This conversation includes one or more image attachments. When the user uploads 
           return fullResponse;
         };
 
+        // Handle pro ask mode: use local-agent in read-only mode
+        // This gives pro users access to code reading tools while in ask mode
+        if (
+          settings.selectedChatMode === "ask" &&
+          isDyadProEnabled(settings) &&
+          !mentionedAppsCodebases.length
+        ) {
+          // Reconstruct system prompt for local-agent read-only mode
+          const readOnlySystemPrompt = constructSystemPrompt({
+            aiRules,
+            chatMode: "local-agent",
+            enableTurboEditsV2: false,
+            themePrompt,
+            readOnly: true,
+          });
+
+          await handleLocalAgentStream(event, req, abortController, {
+            placeholderMessageId: placeholderAssistantMessage.id,
+            systemPrompt: readOnlySystemPrompt,
+            dyadRequestId: dyadRequestId ?? "[no-request-id]",
+            readOnly: true,
+          });
+          return;
+        }
+
         // Handle local-agent mode (Agent v2)
         // Mentioned apps can't be handled by the local agent (defer to balanced smart context
         // in build mode)
@@ -1014,6 +1037,7 @@ This conversation includes one or more image attachments. When the user uploads 
           await handleLocalAgentStream(event, req, abortController, {
             placeholderMessageId: placeholderAssistantMessage.id,
             systemPrompt,
+            dyadRequestId: dyadRequestId ?? "[no-request-id]",
           });
           return;
         }
@@ -1247,7 +1271,7 @@ ${formattedSearchReplaceIssues}`,
 ${problemReport.problems
   .map(
     (problem) =>
-      `<problem file="${escapeXml(problem.file)}" line="${problem.line}" column="${problem.column}" code="${problem.code}">${escapeXml(problem.message)}</problem>`,
+      `<problem file="${escapeXmlAttr(problem.file)}" line="${problem.line}" column="${problem.column}" code="${problem.code}">${escapeXmlContent(problem.message)}</problem>`,
   )
   .join("\n")}
 </dyad-problem-report>`;
@@ -1454,8 +1478,6 @@ ${problemReport.problems
         error: `Sorry, there was an error processing your request: ${error}`,
       });
 
-      // Clean up file uploads state on error
-      FileUploadsState.getInstance().clear(req.chatId);
       return "error";
     } finally {
       // Clean up the abort controller
@@ -1502,11 +1524,6 @@ ${problemReport.problems
       chatId,
       updatedFiles: false,
     } satisfies ChatResponseEnd);
-
-    // Clean up uploads state for this chat
-    try {
-      FileUploadsState.getInstance().clear(chatId);
-    } catch {}
 
     return true;
   });

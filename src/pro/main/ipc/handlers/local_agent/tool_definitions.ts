@@ -255,15 +255,31 @@ function convertToolResultForAiSdk(
   throw new Error(`Unsupported tool result type: ${typeof result}`);
 }
 
+export interface BuildAgentToolSetOptions {
+  /**
+   * If true, exclude tools that modify state (files, database, etc.).
+   * Used for read-only modes like "ask" mode.
+   */
+  readOnly?: boolean;
+}
+
 /**
  * Build ToolSet for AI SDK from tool definitions
  */
-export function buildAgentToolSet(ctx: AgentContext) {
+export function buildAgentToolSet(
+  ctx: AgentContext,
+  options: BuildAgentToolSetOptions = {},
+) {
   const toolSet: Record<string, any> = {};
 
   for (const tool of TOOL_DEFINITIONS) {
     const consent = getAgentToolConsent(tool.name);
     if (consent === "never") {
+      continue;
+    }
+
+    // In read-only mode, skip tools that modify state
+    if (options.readOnly && tool.modifiesState) {
       continue;
     }
 

@@ -33,6 +33,9 @@ jobs:
         with:
           node-version: 20
       - run: npm ci
+        env:
+          # Required for @vscode/ripgrep to download binaries without hitting GitHub API rate limits
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: add macos cert
         if: contains(matrix.os.name, 'macos')
         env:

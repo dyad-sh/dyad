@@ -130,7 +130,14 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
         </Button>
       </div>
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog
+        open={isDialogOpen}
+        onOpenChange={(open) => {
+          // Prevent closing while committing
+          if (!open && isCommitting) return;
+          setIsDialogOpen(open);
+        }}
+      >
         <DialogContent className="sm:max-w-lg" data-testid="commit-dialog">
           <DialogHeader>
             <DialogTitle>Review & Commit Changes</DialogTitle>

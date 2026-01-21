@@ -32,11 +32,16 @@ function PopoverContent({
   align = "center",
   side,
   sideOffset = 4,
+  onOpenAutoFocus: _onOpenAutoFocus,
+  onInteractOutside: _onInteractOutside,
   ...props
 }: React.ComponentProps<typeof PopoverPrimitive.Popup> & {
   align?: "start" | "center" | "end";
   side?: "top" | "right" | "bottom" | "left";
   sideOffset?: number;
+  // These props are accepted for Radix compatibility but not implemented in Base UI
+  onOpenAutoFocus?: (event: Event) => void;
+  onInteractOutside?: (event: Event) => void;
 }) {
   return (
     <PopoverPrimitive.Portal>

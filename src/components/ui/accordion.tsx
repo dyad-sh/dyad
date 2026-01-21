@@ -6,16 +6,65 @@ import { cn } from "@/lib/utils";
 
 // Wrapper to provide backward compatibility with Radix UI props
 function Accordion({
-  type: _type,
+  type = "single",
   collapsible: _collapsible,
+  defaultValue,
+  value,
+  onValueChange,
   ...props
-}: React.ComponentProps<typeof AccordionPrimitive.Root> & {
+}: Omit<
+  React.ComponentProps<typeof AccordionPrimitive.Root>,
+  "defaultValue" | "value" | "onValueChange"
+> & {
   type?: "single" | "multiple";
   collapsible?: boolean;
+  // Radix uses string for single, string[] for multiple
+  defaultValue?: string | string[];
+  value?: string | string[];
+  onValueChange?: (value: string | string[]) => void;
 }) {
-  // Base UI uses `value` as an array - for "single" type we just let it handle one at a time
-  // The `collapsible` and `type` props are ignored as Base UI handles these differently
-  return <AccordionPrimitive.Root data-slot="accordion" {...props} />;
+  // Convert Radix-style value (string for single, string[] for multiple) to Base UI style (always array)
+  const baseUiDefaultValue = React.useMemo(() => {
+    if (defaultValue === undefined) return undefined;
+    if (typeof defaultValue === "string") {
+      return [defaultValue];
+    }
+    return defaultValue;
+  }, [defaultValue]);
+
+  const baseUiValue = React.useMemo(() => {
+    if (value === undefined) return undefined;
+    if (typeof value === "string") {
+      return [value];
+    }
+    return value;
+  }, [value]);
+
+  // Convert Base UI callback to Radix-style callback
+  const handleValueChange = React.useCallback(
+    (newValue: (string | null)[]) => {
+      if (!onValueChange) return;
+      const filteredValue = newValue.filter((v): v is string => v !== null);
+      if (type === "single") {
+        onValueChange(filteredValue[0] || "");
+      } else {
+        onValueChange(filteredValue);
+      }
+    },
+    [onValueChange, type],
+  );
+
+  // Base UI is collapsible by default, so we don't need to handle that prop
+  return (
+    <AccordionPrimitive.Root
+      data-slot="accordion"
+      multiple={type === "multiple"}
+      defaultValue={baseUiDefaultValue}
+      value={baseUiValue}
+      onValueChange={onValueChange ? handleValueChange : undefined}
+      {...props}
+    />
+  );
 }
 
 function AccordionItem({
@@ -61,7 +110,7 @@ function AccordionContent({
   return (
     <AccordionPrimitive.Panel
       data-slot="accordion-content"
-      className="data-[ending-style]:animate-accordion-up data-[starting-style]:animate-accordion-up overflow-hidden text-sm"
+      className="data-[ending-style]:animate-accordion-up data-[starting-style]:animate-accordion-down overflow-hidden text-sm"
       {...props}
     >
       <div className={cn("pt-0 pb-4", className)}>{children}</div>

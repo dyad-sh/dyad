@@ -11,11 +11,18 @@ function Slot({
   [key: string]: unknown;
 }) {
   if (React.isValidElement(children)) {
+    const childProps = (children as React.ReactElement<Record<string, unknown>>)
+      .props;
+    // Destructure children from childProps to avoid overriding
+    const { children: childChildren, ...restChildProps } = childProps as {
+      children?: React.ReactNode;
+      [key: string]: unknown;
+    };
     return React.cloneElement(
       children as React.ReactElement<Record<string, unknown>>,
       {
         ...props,
-        ...(children as React.ReactElement<Record<string, unknown>>).props,
+        ...restChildProps,
         className: [
           props.className,
           (children as React.ReactElement<{ className?: string }>).props
@@ -24,6 +31,7 @@ function Slot({
           .filter(Boolean)
           .join(" "),
       },
+      childChildren,
     );
   }
 

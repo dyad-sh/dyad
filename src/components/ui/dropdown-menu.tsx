@@ -202,8 +202,8 @@ function DropdownMenuShortcut({
 
 function DropdownMenuSub({
   ...props
-}: React.ComponentProps<typeof MenuPrimitive.Root>) {
-  return <MenuPrimitive.Root data-slot="dropdown-menu-sub" {...props} />;
+}: React.ComponentProps<typeof MenuPrimitive.SubmenuRoot>) {
+  return <MenuPrimitive.SubmenuRoot data-slot="dropdown-menu-sub" {...props} />;
 }
 
 function DropdownMenuSubTrigger({

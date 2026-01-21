@@ -3,6 +3,7 @@ import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog
 
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
+import { getRenderProps } from "@/lib/slot";
 
 function AlertDialog({
   ...props
@@ -11,10 +12,19 @@ function AlertDialog({
 }
 
 function AlertDialogTrigger({
+  asChild,
+  children,
   ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Trigger>) {
+}: React.ComponentProps<typeof AlertDialogPrimitive.Trigger> & {
+  asChild?: boolean;
+}) {
+  const renderProps = getRenderProps(asChild, children);
   return (
-    <AlertDialogPrimitive.Trigger data-slot="alert-dialog-trigger" {...props} />
+    <AlertDialogPrimitive.Trigger
+      data-slot="alert-dialog-trigger"
+      {...props}
+      {...renderProps}
+    />
   );
 }
 
@@ -105,23 +115,44 @@ function AlertDialogTitle({
 
 function AlertDialogDescription({
   className,
+  asChild,
+  children,
   ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Description>) {
+}: React.ComponentProps<typeof AlertDialogPrimitive.Description> & {
+  asChild?: boolean;
+}) {
+  // Base UI doesn't support asChild on Description, so we handle it manually
+  if (asChild && React.isValidElement(children)) {
+    return React.cloneElement(
+      children as React.ReactElement<{ className?: string }>,
+      {
+        className: cn(
+          "text-muted-foreground text-sm",
+          className,
+          (children as React.ReactElement<{ className?: string }>).props
+            .className,
+        ),
+        ...props,
+      },
+    );
+  }
   return (
     <AlertDialogPrimitive.Description
       data-slot="alert-dialog-description"
       className={cn("text-muted-foreground text-sm", className)}
       {...props}
-    />
+    >
+      {children}
+    </AlertDialogPrimitive.Description>
   );
 }
 
 function AlertDialogAction({
   className,
   ...props
-}: React.ComponentProps<"button">) {
+}: React.ComponentProps<typeof AlertDialogPrimitive.Close>) {
   return (
-    <button
+    <AlertDialogPrimitive.Close
       data-slot="alert-dialog-action"
       className={cn(buttonVariants(), className)}
       {...props}

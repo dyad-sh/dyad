@@ -6,35 +6,55 @@ import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 import { cn } from "@/lib/utils";
 import { getRenderProps } from "@/lib/slot";
 
+const TooltipDelayContext = React.createContext<number>(0);
+
 function TooltipProvider({
-  delayDuration: _delayDuration = 0,
+  delayDuration = 0,
   children,
 }: {
   delayDuration?: number;
   children: React.ReactNode;
 }) {
-  // Base UI handles delay at the Root level, so TooltipProvider just passes through children
-  // The delay is handled in Tooltip component below
-  return <>{children}</>;
+  return (
+    <TooltipDelayContext.Provider value={delayDuration}>
+      {children}
+    </TooltipDelayContext.Provider>
+  );
 }
 
 function Tooltip({
+  delay: _delay,
+  children,
   ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Root>) {
-  return <TooltipPrimitive.Root data-slot="tooltip" delay={0} {...props} />;
+}: Omit<React.ComponentProps<typeof TooltipPrimitive.Root>, "children"> & {
+  delay?: number;
+  children?: React.ReactNode;
+}) {
+  // Delay is passed to trigger via context, not to Root in Base UI
+  return (
+    <TooltipPrimitive.Root data-slot="tooltip" {...props}>
+      {children}
+    </TooltipPrimitive.Root>
+  );
 }
 
 function TooltipTrigger({
   asChild,
   children,
+  delay,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Trigger> & {
   asChild?: boolean;
+  delay?: number;
 }) {
+  const contextDelay = React.useContext(TooltipDelayContext);
+  // Use explicit delay prop if provided, otherwise use context delay
+  const effectiveDelay = delay ?? contextDelay;
   const renderProps = getRenderProps(asChild, children);
   return (
     <TooltipPrimitive.Trigger
       data-slot="tooltip-trigger"
+      delay={effectiveDelay}
       {...props}
       {...renderProps}
     />

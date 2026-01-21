@@ -49,6 +49,29 @@ Notes:
 
 If you're interested in contributing, please read our [contributing](./CONTRIBUTING.md) doc or open an issue at [github.com/yosiwizman/dyad](https://github.com/yosiwizman/dyad/issues).
 
+### CI & Release Process
+
+**Required checks** (must pass before merge):
+
+- Lint + prettier (`npm run presubmit`)
+- TypeScript type-checking (`npm run ts`)
+- Unit tests (`npm test`)
+- Build smoke test (Windows + macOS)
+
+**E2E tests** (informational, non-blocking):
+
+- Run **nightly** at 2 AM UTC automatically
+- Run **manually** via [Actions → E2E workflow → Run workflow](https://github.com/yosiwizman/dyad/actions/workflows/e2e.yml)
+- Optionally run on PRs with the `run-e2e` label
+- E2E tests are flaky due to Electron + Playwright environment constraints and do NOT block releases or merges
+
+**Release workflow**:
+
+1. Tag a version (e.g. `v0.1.4`) and push to GitHub
+2. [Release workflow](https://github.com/yosiwizman/dyad/actions/workflows/release.yml) builds Windows + macOS installers
+3. Assets are verified, then published to [GitHub Releases](https://github.com/yosiwizman/dyad/releases)
+4. E2E results (if any) are reviewed separately and do not block the release
+
 ## License
 
 This project is a fork of Dyad. We preserve upstream license notices.

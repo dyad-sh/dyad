@@ -1,10 +1,13 @@
-name: E2E (post-merge validation)
+name: E2E (informational - nightly/manual)
 
 on:
-  push:
+  schedule:
+    - cron: "0 2 * * *" # Nightly at 2 AM UTC
+  workflow_dispatch:
+  pull_request:
+    types: [labeled]
     branches:
       - main
-  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -16,6 +19,8 @@ defaults:
 
 jobs:
   e2e:
+    # Only run if workflow_dispatch, schedule, or PR has 'run-e2e' label
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-e2e'))
     # Why Mac and Windows?
     # I can't run electron playwright on ubuntu-latest and
     # Linux support for Dyad is experimental so not as important

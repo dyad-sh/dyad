@@ -6,11 +6,35 @@ ABBA AI is a local, open-source AI app builder forked from [Dyad](https://github
 
 Download the latest release for your platform:
 
-- **Windows**: `ABBA AI-<version>.Setup.exe`
-- **macOS (Apple Silicon)**: `ABBA AI-darwin-arm64-<version>.zip`
-- **macOS (Intel)**: `ABBA AI-darwin-x64-<version>.zip`
+- **Windows**: `ABBA.AI-<version>.Setup.exe`
+- **macOS (Apple Silicon)**: `ABBA.AI-darwin-arm64-<version>.zip`
+- **macOS (Intel)**: `ABBA.AI-darwin-x64-<version>.zip`
 
 👉 [**Download from GitHub Releases**](https://github.com/yosiwizman/dyad/releases)
+
+### Install
+
+#### Windows
+
+1. Download `ABBA.AI-<version>.Setup.exe`.
+2. Run the installer and follow the prompts.
+3. If Windows SmartScreen warns you, click **More info** → **Run anyway**.
+
+#### macOS (Apple Silicon)
+
+1. Download `ABBA.AI-darwin-arm64-<version>.zip`.
+2. Unzip it and drag **ABBA AI.app** to **Applications**.
+3. First launch (Gatekeeper): right‑click **ABBA AI.app** → **Open** (or go to **System Settings → Privacy & Security → Open Anyway**).
+
+#### macOS (Intel)
+
+1. Download `ABBA.AI-darwin-x64-<version>.zip`.
+2. Unzip it and drag **ABBA AI.app** to **Applications**.
+3. First launch (Gatekeeper): right‑click **ABBA AI.app** → **Open** (or go to **System Settings → Privacy & Security → Open Anyway**).
+
+Notes:
+
+- `RELEASES` and `abba_ai-<version>-full.nupkg` are used for auto-updates; most users only need the installer/zip.
 
 ## 🚀 Features
 

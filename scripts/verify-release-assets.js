@@ -68,12 +68,16 @@ async function verifyReleaseAssets() {
       return version.replace("-beta.", "-beta");
     };
 
+    const windowsSetupBaseName = packageJson.productName.replace(/ /g, ".");
+    const nupkgBaseName = packageJson.name.replace(/-/g, "_");
+
     // Define expected assets for Windows + macOS (Linux deferred)
+    // NOTE: Some maker toolchains normalize names (e.g. spaces -> '.' on macOS/Windows).
     const expectedAssets = [
-      `ABBA AI-${normalizeVersionForNupkg(version)}-full.nupkg`,
-      `ABBA AI-${version}.Setup.exe`,
-      `ABBA AI-darwin-arm64-${version}.zip`,
-      `ABBA AI-darwin-x64-${version}.zip`,
+      `${nupkgBaseName}-${normalizeVersionForNupkg(version)}-full.nupkg`,
+      `${windowsSetupBaseName}-${version}.Setup.exe`,
+      `${windowsSetupBaseName}-darwin-arm64-${version}.zip`,
+      `${windowsSetupBaseName}-darwin-x64-${version}.zip`,
       "RELEASES",
     ];
 

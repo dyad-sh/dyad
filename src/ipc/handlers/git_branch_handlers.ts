@@ -32,7 +32,6 @@ import type {
   CreateGitBranchParams,
   GitBranchParams,
   RenameGitBranchParams,
-  CommitChangesParams,
 } from "../ipc_types";
 
 const logger = log.scope("git_branch_handlers");
@@ -345,8 +344,6 @@ async function handleCommitChanges(
 
     return commitHash;
   });
-}
-  return commitHash;
 }
 
 // --- Registration ---

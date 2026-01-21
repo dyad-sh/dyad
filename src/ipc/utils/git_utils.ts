@@ -463,11 +463,13 @@ export async function getGitUncommittedFilesWithStatus({
         }
 
         // Determine status based on status codes
+        // Check deleted first: for status code "AD" (added to index, then deleted
+        // from working directory), the file no longer exists so report as deleted
         let status: UncommittedFileStatus;
-        if (statusCode === "??" || statusCode.includes("A")) {
-          status = "added";
-        } else if (statusCode.includes("D")) {
+        if (statusCode.includes("D")) {
           status = "deleted";
+        } else if (statusCode === "??" || statusCode.includes("A")) {
+          status = "added";
         } else {
           status = "modified";
         }
@@ -488,13 +490,15 @@ export async function getGitUncommittedFilesWithStatus({
         const head = row[1];
         const workdir = row[2];
 
+        // Check workdir === 0 first: for a file added to index then deleted from
+        // working directory, the file no longer exists so report as deleted
         let status: UncommittedFileStatus;
-        if (head === 0) {
-          // File not in HEAD = new file
-          status = "added";
-        } else if (workdir === 0) {
+        if (workdir === 0) {
           // File deleted from workdir
           status = "deleted";
+        } else if (head === 0) {
+          // File not in HEAD = new file
+          status = "added";
         } else {
           status = "modified";
         }

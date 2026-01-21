@@ -598,50 +598,50 @@ export function UnconnectedGitHubConnector({
 
     // Listener for updates (user code, verification uri, status messages)
     const removeUpdateListener = ipc.events.github.onFlowUpdate((data) => {
-        console.log("Received github:flow-update", data);
-        if (data.userCode) {
-          setGithubUserCode(data.userCode);
-        }
-        if (data.verificationUri) {
-          setGithubVerificationUri(data.verificationUri);
-        }
-        if (data.message) {
-          setGithubStatusMessage(data.message);
-        }
+      console.log("Received github:flow-update", data);
+      if (data.userCode) {
+        setGithubUserCode(data.userCode);
+      }
+      if (data.verificationUri) {
+        setGithubVerificationUri(data.verificationUri);
+      }
+      if (data.message) {
+        setGithubStatusMessage(data.message);
+      }
 
-        setGithubError(null); // Clear previous errors on new update
-        if (!data.userCode && !data.verificationUri && data.message) {
-          // Likely just a status message, keep connecting state
-          setIsConnectingToGithub(true);
-        }
-        if (data.userCode && data.verificationUri) {
-          setIsConnectingToGithub(true); // Still connecting until success/error
-        }
-      });
+      setGithubError(null); // Clear previous errors on new update
+      if (!data.userCode && !data.verificationUri && data.message) {
+        // Likely just a status message, keep connecting state
+        setIsConnectingToGithub(true);
+      }
+      if (data.userCode && data.verificationUri) {
+        setIsConnectingToGithub(true); // Still connecting until success/error
+      }
+    });
     cleanupFunctions.push(removeUpdateListener);
 
     // Listener for success
     const removeSuccessListener = ipc.events.github.onFlowSuccess((data) => {
-        console.log("Received github:flow-success", data);
-        setGithubStatusMessage("Successfully connected to GitHub!");
-        setGithubUserCode(null); // Clear user-facing info
-        setGithubVerificationUri(null);
-        setGithubError(null);
-        setIsConnectingToGithub(false);
-        refreshSettings();
-        setIsExpanded(true);
-      });
+      console.log("Received github:flow-success", data);
+      setGithubStatusMessage("Successfully connected to GitHub!");
+      setGithubUserCode(null); // Clear user-facing info
+      setGithubVerificationUri(null);
+      setGithubError(null);
+      setIsConnectingToGithub(false);
+      refreshSettings();
+      setIsExpanded(true);
+    });
     cleanupFunctions.push(removeSuccessListener);
 
     // Listener for errors
     const removeErrorListener = ipc.events.github.onFlowError((data) => {
-        console.log("Received github:flow-error", data);
-        setGithubError(data.error || "An unknown error occurred.");
-        setGithubStatusMessage(null);
-        setGithubUserCode(null);
-        setGithubVerificationUri(null);
-        setIsConnectingToGithub(false);
-      });
+      console.log("Received github:flow-error", data);
+      setGithubError(data.error || "An unknown error occurred.");
+      setGithubStatusMessage(null);
+      setGithubUserCode(null);
+      setGithubVerificationUri(null);
+      setIsConnectingToGithub(false);
+    });
     cleanupFunctions.push(removeErrorListener);
 
     // Cleanup function to remove all listeners when component unmounts or appId changes

@@ -40,7 +40,9 @@ export const SelectNodeFolderResultSchema = z.object({
   selectedPath: z.string().nullable(),
 });
 
-export type SelectNodeFolderResult = z.infer<typeof SelectNodeFolderResultSchema>;
+export type SelectNodeFolderResult = z.infer<
+  typeof SelectNodeFolderResultSchema
+>;
 
 export const SelectAppFolderResultSchema = z.object({
   path: z.string().nullable(),

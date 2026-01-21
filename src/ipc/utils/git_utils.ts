@@ -418,7 +418,6 @@ export async function getGitUncommittedFiles({
   }
 }
 
-
 /**
  * Get uncommitted files with their status (added, modified, deleted, renamed).
  * This parses git status --porcelain output to determine the file status.

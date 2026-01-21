@@ -1,5 +1,9 @@
 import { useCallback } from "react";
-import type { ComponentSelection, FileAttachment, ChatAttachment } from "@/ipc/types";
+import type {
+  ComponentSelection,
+  FileAttachment,
+  ChatAttachment,
+} from "@/ipc/types";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
   chatErrorByIdAtom,

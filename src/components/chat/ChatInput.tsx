@@ -413,9 +413,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                     <TooltipTrigger asChild>
                       <button
                         onClick={() => {
-                          ipc.system.openExternalUrl(
-                            "https://dyad.sh/pro",
-                          );
+                          ipc.system.openExternalUrl("https://dyad.sh/pro");
                         }}
                         className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors cursor-pointer"
                       >

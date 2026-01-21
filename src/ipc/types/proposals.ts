@@ -33,7 +33,9 @@ export const CodeProposalSchema = z.object({
   sqlQueries: z.array(SqlQuerySchema),
 });
 
-export const RestartAppActionSchema = z.object({ id: z.literal("restart-app") });
+export const RestartAppActionSchema = z.object({
+  id: z.literal("restart-app"),
+});
 export const SummarizeInNewChatActionSchema = z.object({
   id: z.literal("summarize-in-new-chat"),
 });

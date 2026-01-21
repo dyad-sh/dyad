@@ -357,11 +357,17 @@ export function registerGithubBranchHandlers() {
   createTypedHandler(githubContracts.switchBranch, handleSwitchBranch);
   createTypedHandler(githubContracts.renameBranch, handleRenameBranch);
   createTypedHandler(githubContracts.mergeBranch, handleMergeBranch);
-  createTypedHandler(githubContracts.listLocalBranches, handleListLocalBranches);
+  createTypedHandler(
+    githubContracts.listLocalBranches,
+    handleListLocalBranches,
+  );
   createTypedHandler(
     githubContracts.listRemoteBranches,
     handleListRemoteBranches,
   );
-  createTypedHandler(gitContracts.getUncommittedFiles, handleGetUncommittedFiles);
+  createTypedHandler(
+    gitContracts.getUncommittedFiles,
+    handleGetUncommittedFiles,
+  );
   createTypedHandler(gitContracts.commitChanges, handleCommitChanges);
 }

@@ -33,7 +33,6 @@ export function CreateCustomModelDialog({
   const [maxOutputTokens, setMaxOutputTokens] = useState<string>("");
   const [contextWindow, setContextWindow] = useState<string>("");
 
-
   const mutation = useMutation({
     mutationFn: async () => {
       const params = {

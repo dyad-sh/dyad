@@ -32,8 +32,14 @@ export const CreateMcpServerSchema = z.object({
   name: z.string(),
   transport: McpTransportEnum.default("stdio"),
   command: z.string().nullable().optional(),
-  args: z.union([z.array(z.string()), z.string()]).nullable().optional(),
-  envJson: z.union([z.record(z.string()), z.string()]).nullable().optional(),
+  args: z
+    .union([z.array(z.string()), z.string()])
+    .nullable()
+    .optional(),
+  envJson: z
+    .union([z.record(z.string()), z.string()])
+    .nullable()
+    .optional(),
   url: z.string().nullable().optional(),
   enabled: z.boolean().optional(),
 });

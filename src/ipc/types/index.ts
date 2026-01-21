@@ -230,7 +230,12 @@ export type {
 } from "./prompts";
 
 // Template types
-export type { Template, Theme, SetAppThemeParams, GetAppThemeParams } from "./templates";
+export type {
+  Template,
+  Theme,
+  SetAppThemeParams,
+  GetAppThemeParams,
+} from "./templates";
 
 // Proposal types
 export type { ProposalResult, ApproveProposalResult } from "./proposals";

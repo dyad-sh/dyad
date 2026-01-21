@@ -6,48 +6,51 @@ import { securityContracts } from "../types/security";
 import type { SecurityFinding } from "../types/security";
 
 export function registerSecurityHandlers() {
-  createTypedHandler(securityContracts.getLatestSecurityReview, async (_, appId) => {
-    if (!appId) {
-      throw new Error("App ID is required");
-    }
+  createTypedHandler(
+    securityContracts.getLatestSecurityReview,
+    async (_, appId) => {
+      if (!appId) {
+        throw new Error("App ID is required");
+      }
 
-    // Query for the most recent message with security findings
-    // Use database filtering instead of loading all data into memory
-    const result = await db
-      .select({
-        content: messages.content,
-        createdAt: messages.createdAt,
-        chatId: messages.chatId,
-      })
-      .from(messages)
-      .innerJoin(chats, eq(messages.chatId, chats.id))
-      .where(
-        and(
-          eq(chats.appId, appId),
-          eq(messages.role, "assistant"),
-          like(messages.content, "%<dyad-security-finding%"),
-        ),
-      )
-      .orderBy(desc(messages.createdAt))
-      .limit(1);
+      // Query for the most recent message with security findings
+      // Use database filtering instead of loading all data into memory
+      const result = await db
+        .select({
+          content: messages.content,
+          createdAt: messages.createdAt,
+          chatId: messages.chatId,
+        })
+        .from(messages)
+        .innerJoin(chats, eq(messages.chatId, chats.id))
+        .where(
+          and(
+            eq(chats.appId, appId),
+            eq(messages.role, "assistant"),
+            like(messages.content, "%<dyad-security-finding%"),
+          ),
+        )
+        .orderBy(desc(messages.createdAt))
+        .limit(1);
 
-    if (result.length === 0) {
-      throw new Error("No security review found for this app");
-    }
+      if (result.length === 0) {
+        throw new Error("No security review found for this app");
+      }
 
-    const message = result[0];
-    const findings = parseSecurityFindings(message.content);
+      const message = result[0];
+      const findings = parseSecurityFindings(message.content);
 
-    if (findings.length === 0) {
-      throw new Error("No security review found for this app");
-    }
+      if (findings.length === 0) {
+        throw new Error("No security review found for this app");
+      }
 
-    return {
-      findings,
-      timestamp: message.createdAt.toISOString(),
-      chatId: message.chatId,
-    };
-  });
+      return {
+        findings,
+        timestamp: message.createdAt.toISOString(),
+        chatId: message.chatId,
+      };
+    },
+  );
 }
 
 function parseSecurityFindings(content: string): SecurityFinding[] {

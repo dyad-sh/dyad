@@ -224,7 +224,11 @@ export function DyadProButton({
   );
 }
 
-export function AICreditStatus({ userBudget }: { userBudget: UserBudgetInfo }) {
+export function AICreditStatus({
+  userBudget,
+}: {
+  userBudget: NonNullable<UserBudgetInfo>;
+}) {
   const remaining = Math.round(
     userBudget.totalCredits - userBudget.usedCredits,
   );

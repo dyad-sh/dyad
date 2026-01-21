@@ -116,9 +116,7 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
     } catch (error) {
       console.error("Failed to prepare bug report:", error);
       // Fallback to opening the regular GitHub issue page
-      ipc.system.openExternalUrl(
-        "https://github.com/dyad-sh/dyad/issues/new",
-      );
+      ipc.system.openExternalUrl("https://github.com/dyad-sh/dyad/issues/new");
     } finally {
       setIsLoading(false);
     }
@@ -133,8 +131,7 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
     setIsUploading(true);
     try {
       // Get chat logs (includes debug info, chat data, and codebase)
-      const chatLogs =
-        await ipc.misc.getChatLogs(selectedChatId);
+      const chatLogs = await ipc.misc.getChatLogs(selectedChatId);
 
       // Store data for review and switch to review mode
       setChatLogsData(chatLogs);
@@ -403,9 +400,7 @@ Pro User ID: ${userBudget?.redactedUserId || "n/a"}
               <Button
                 variant="outline"
                 onClick={() => {
-                  ipc.system.openExternalUrl(
-                    "https://www.dyad.sh/docs",
-                  );
+                  ipc.system.openExternalUrl("https://www.dyad.sh/docs");
                 }}
                 className="w-full py-6 bg-(--background-lightest)"
               >

@@ -105,9 +105,7 @@ function ConnectedVercelConnector({
               onClick={(e) => {
                 e.preventDefault();
                 if (app.vercelDeploymentUrl) {
-                  ipc.system.openExternalUrl(
-                    app.vercelDeploymentUrl,
-                  );
+                  ipc.system.openExternalUrl(app.vercelDeploymentUrl);
                 }
               }}
               className="cursor-pointer text-blue-600 hover:underline dark:text-blue-400 font-mono"
@@ -192,9 +190,7 @@ function ConnectedVercelConnector({
                   <a
                     onClick={(e) => {
                       e.preventDefault();
-                      ipc.system.openExternalUrl(
-                        `https://${deployment.url}`,
-                      );
+                      ipc.system.openExternalUrl(`https://${deployment.url}`);
                     }}
                     className="cursor-pointer text-blue-600 hover:underline dark:text-blue-400 text-sm"
                     target="_blank"
@@ -397,9 +393,7 @@ function UnconnectedVercelConnector({
               <div className="flex gap-2 mt-3">
                 <Button
                   onClick={() => {
-                    ipc.system.openExternalUrl(
-                      "https://vercel.com/signup",
-                    );
+                    ipc.system.openExternalUrl("https://vercel.com/signup");
                   }}
                   variant="outline"
                   className="flex-1"

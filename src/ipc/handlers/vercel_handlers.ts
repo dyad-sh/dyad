@@ -542,17 +542,23 @@ export function registerVercelHandlers() {
     return handleListVercelProjects();
   });
 
-  createTypedHandler(vercelContracts.isProjectAvailable, async (event, params) => {
-    return handleIsProjectAvailable(event, params);
-  });
+  createTypedHandler(
+    vercelContracts.isProjectAvailable,
+    async (event, params) => {
+      return handleIsProjectAvailable(event, params);
+    },
+  );
 
   createTypedHandler(vercelContracts.createProject, async (event, params) => {
     await handleCreateProject(event, params);
   });
 
-  createTypedHandler(vercelContracts.connectExistingProject, async (event, params) => {
-    await handleConnectToExistingProject(event, params);
-  });
+  createTypedHandler(
+    vercelContracts.connectExistingProject,
+    async (event, params) => {
+      await handleConnectToExistingProject(event, params);
+    },
+  );
 
   createTypedHandler(vercelContracts.getDeployments, async (event, params) => {
     return handleGetVercelDeployments(event, params);

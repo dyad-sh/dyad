@@ -66,9 +66,7 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
     } catch (err) {
       console.error("Failed to prepare bug report:", err);
       // Fallback to opening the regular GitHub issue page
-      ipc.system.openExternalUrl(
-        "https://github.com/dyad-sh/dyad/issues/new",
-      );
+      ipc.system.openExternalUrl("https://github.com/dyad-sh/dyad/issues/new");
     } finally {
       setIsLoading(false);
     }

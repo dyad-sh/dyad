@@ -125,7 +125,10 @@ function App() {
         toolDescription: payload.toolDescription,
         inputPreview: payload.inputPreview,
         onDecision: (d) =>
-          ipc.mcp.respondToConsent({ requestId: payload.requestId, decision: d }),
+          ipc.mcp.respondToConsent({
+            requestId: payload.requestId,
+            decision: d,
+          }),
       });
     });
     return () => unsubscribe();
@@ -188,9 +191,11 @@ function App() {
 
   // Forward telemetry events from main process to PostHog
   useEffect(() => {
-    const unsubscribe = ipc.events.system.onTelemetryEvent(({ eventName, properties }) => {
-      posthog.capture(eventName, properties);
-    });
+    const unsubscribe = ipc.events.system.onTelemetryEvent(
+      ({ eventName, properties }) => {
+        posthog.capture(eventName, properties);
+      },
+    );
     return () => unsubscribe();
   }, []);
 

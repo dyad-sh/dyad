@@ -47,7 +47,6 @@ export function EditCustomModelDialog({
   const [contextWindow, setContextWindow] = useState<string>("");
   const { settings, updateSettings } = useSettings();
 
-
   useEffect(() => {
     if (model) {
       setApiName(model.apiName);

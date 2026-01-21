@@ -139,9 +139,7 @@ export function TokenBar({ chatId }: TokenBarProps) {
                 ? ipc.system.openExternalUrl(
                     "https://www.dyad.sh/docs/guides/ai-models/pro-modes#smart-context",
                   )
-                : ipc.system.openExternalUrl(
-                    "https://dyad.sh/pro#ai",
-                  )
+                : ipc.system.openExternalUrl("https://dyad.sh/pro#ai")
             }
             className="text-blue-500 dark:text-blue-400 cursor-pointer hover:underline"
           >

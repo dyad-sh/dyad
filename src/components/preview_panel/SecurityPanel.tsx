@@ -28,7 +28,10 @@ import { useStreamChat } from "@/hooks/useStreamChat";
 import { showError } from "@/lib/toast";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import type { SecurityFinding, SecurityReviewResult } from "@/ipc/types/security";
+import type {
+  SecurityFinding,
+  SecurityReviewResult,
+} from "@/ipc/types/security";
 import { useState, useEffect } from "react";
 import { VanillaMarkdownParser } from "@/components/chat/DyadMarkdownParser";
 import { showSuccess, showWarning } from "@/lib/toast";

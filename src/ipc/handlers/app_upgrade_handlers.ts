@@ -100,7 +100,46 @@ function isCapacitorUpgradeNeeded(appPath: string): boolean {
   return true;
 }
 
-function isReactUpgradeNeeded(appPath: string): boolean {
+async function getLatestReactVersion(majorVersion: number): Promise<string | null> {
+  try {
+    const response = await fetch("https://registry.npmjs.org/react");
+    if (!response.ok) {
+      logger.error(`Failed to fetch React versions from NPM: ${response.status}`);
+      return null;
+    }
+    const data = await response.json();
+    const versions = Object.keys(data.versions);
+
+    // Find the latest version for the given major version
+    const matchingVersions = versions.filter((v) => {
+      const major = parseInt(v.split(".")[0], 10);
+      return major === majorVersion && !v.includes("-"); // Exclude pre-release versions
+    });
+
+    if (matchingVersions.length === 0) {
+      return null;
+    }
+
+    // Sort versions and get the latest
+    matchingVersions.sort((a, b) => {
+      const partsA = a.split(".").map(Number);
+      const partsB = b.split(".").map(Number);
+      for (let i = 0; i < 3; i++) {
+        if (partsA[i] !== partsB[i]) {
+          return partsA[i] - partsB[i];
+        }
+      }
+      return 0;
+    });
+
+    return matchingVersions[matchingVersions.length - 1];
+  } catch (e) {
+    logger.error("Error fetching React versions from NPM", e);
+    return null;
+  }
+}
+
+async function isReactUpgradeNeeded(appPath: string): Promise<boolean> {
   // Check if it's a Vite app first
   if (!isViteApp(appPath)) {
     return false;
@@ -120,15 +159,31 @@ function isReactUpgradeNeeded(appPath: string): boolean {
       return false;
     }
 
-    // Check if React version is below 19
     // Remove any leading ^ or ~ from version string
     const cleanVersion = reactVersion.replace(/^[\^~]/, "");
-    const majorVersion = parseInt(cleanVersion.split(".")[0], 10);
+    const versionParts = cleanVersion.split(".");
+    const majorVersion = parseInt(versionParts[0], 10);
 
-    // Upgrade is needed if React version is below 19
-    return !isNaN(majorVersion) && majorVersion < 19;
+    if (isNaN(majorVersion)) {
+      return false;
+    }
+
+    // Only check for React 18 and 19
+    if (majorVersion !== 18 && majorVersion !== 19) {
+      return false;
+    }
+
+    // Fetch the latest version for this major version from NPM
+    const latestVersion = await getLatestReactVersion(majorVersion);
+    if (!latestVersion) {
+      // If we can't fetch from NPM, don't show the upgrade
+      return false;
+    }
+
+    // Compare versions - upgrade needed if not on the latest
+    return cleanVersion !== latestVersion;
   } catch (e) {
-    logger.error("Error reading package.json for React version check", e);
+    logger.error("Error checking React version", e);
     return false;
   }
 }
@@ -321,17 +376,19 @@ export function registerAppUpgradeHandlers() {
       const app = await getApp(appId);
       const appPath = getDyadAppPath(app.path);
 
-      const upgradesWithStatus = availableUpgrades.map((upgrade) => {
-        let isNeeded = false;
-        if (upgrade.id === "component-tagger") {
-          isNeeded = isComponentTaggerUpgradeNeeded(appPath);
-        } else if (upgrade.id === "capacitor") {
-          isNeeded = isCapacitorUpgradeNeeded(appPath);
-        } else if (upgrade.id === "react-upgrade") {
-          isNeeded = isReactUpgradeNeeded(appPath);
-        }
-        return { ...upgrade, isNeeded };
-      });
+      const upgradesWithStatus = await Promise.all(
+        availableUpgrades.map(async (upgrade) => {
+          let isNeeded = false;
+          if (upgrade.id === "component-tagger") {
+            isNeeded = isComponentTaggerUpgradeNeeded(appPath);
+          } else if (upgrade.id === "capacitor") {
+            isNeeded = isCapacitorUpgradeNeeded(appPath);
+          } else if (upgrade.id === "react-upgrade") {
+            isNeeded = await isReactUpgradeNeeded(appPath);
+          }
+          return { ...upgrade, isNeeded };
+        })
+      );
 
       return upgradesWithStatus;
     },

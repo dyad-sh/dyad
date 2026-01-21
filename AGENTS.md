@@ -2,6 +2,22 @@
 
 Please read `CONTRIBUTING.md` which includes information for human code contributors. Much of the information is applicable to you as well.
 
+## Project setup and lints
+
+Make sure you run this once after doing `npm install` because it will make sure whenever you commit something, it will run pre-commit hooks like linting and formatting.
+
+```sh
+npm run init-precommit
+```
+
+If you get any lint errors, you can usually fix it by doing:
+
+```sh
+npm run lint:fix
+```
+
+Note: if you do this, then you will need to re-add the changes and commit again.
+
 ## Project context
 
 - This is an Electron application with a secure IPC boundary.
@@ -45,7 +61,7 @@ Use these guidelines whenever you work within this repository.
 
 ## Testing
 
-Our project relies on a combination of unit testing and E2E testing.
+Our project relies on a combination of unit testing and E2E testing. Unless your change is trivial, you MUST add a test, preferably an e2e test case.
 
 ### Unit testing
 
@@ -56,3 +72,5 @@ Use unit testing for pure business logic and util functions.
 Use E2E testing when you need to test a complete user flow for a feature.
 
 If you would need to mock a lot of things to unit test a feature, prefer to write an E2E test instead.
+
+Do NOT write lots of e2e test cases for one feature. Each e2e test case adds a significant amount of overhead, so instead prefer just one or two E2E test cases that each have broad coverage of the feature in question.

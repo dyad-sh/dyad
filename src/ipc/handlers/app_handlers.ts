@@ -2,18 +2,11 @@ import { ipcMain, app, dialog } from "electron";
 import { db, getDatabasePath } from "../../db";
 import { apps, chats, messages } from "../../db/schema";
 import { desc, eq, like } from "drizzle-orm";
-import type {
-  App,
-  CreateAppParams,
-  RenameBranchParams,
-  CopyAppParams,
-  EditAppFileReturnType,
-  RespondToAppInputParams,
-  ConsoleEntry,
-  ChangeAppLocationParams,
-  ChangeAppLocationResult,
-  AppFileSearchResult,
-} from "../ipc_types";
+import { createTypedHandler } from "./base";
+import { appContracts } from "../types/app";
+import type { AppFileSearchResult } from "../types/app";
+import { miscContracts } from "../types/misc";
+import { systemContracts } from "../types/system";
 import fs from "node:fs";
 import path from "node:path";
 import { getDyadAppPath, getUserDataPath } from "../../paths/paths";
@@ -764,17 +757,12 @@ async function searchAppFilesWithRipgrep({
 }
 
 export function registerAppHandlers() {
-  handle("restart-dyad", async () => {
+  createTypedHandler(appContracts.restartDyad, async () => {
     app.relaunch();
     app.quit();
   });
 
-  handle(
-    "create-app",
-    async (
-      _,
-      params: CreateAppParams,
-    ): Promise<{ app: any; chatId: number }> => {
+  createTypedHandler(appContracts.createApp, async (_, params) => {
       const appPath = params.name;
       const fullAppPath = getDyadAppPath(appPath);
       if (fs.existsSync(fullAppPath)) {
@@ -827,12 +815,9 @@ export function registerAppHandlers() {
         app: { ...app, resolvedPath: fullAppPath },
         chatId: chat.id,
       };
-    },
-  );
+    });
 
-  handle(
-    "copy-app",
-    async (_, params: CopyAppParams): Promise<{ app: any }> => {
+  createTypedHandler(appContracts.copyApp, async (_, params) => {
       const { appId, newAppName, withHistory } = params;
 
       // 1. Check if an app with the new name already exists
@@ -906,10 +891,9 @@ export function registerAppHandlers() {
         .returning();
 
       return { app: newDbApp };
-    },
-  );
+    });
 
-  handle("get-app", async (_, appId: number): Promise<App> => {
+  createTypedHandler(appContracts.getApp, async (_, appId) => {
     const app = await db.query.apps.findFirst({
       where: eq(apps.id, appId),
     });
@@ -961,7 +945,7 @@ export function registerAppHandlers() {
     };
   });
 
-  ipcMain.handle("list-apps", async () => {
+  createTypedHandler(appContracts.listApps, async () => {
     const allApps = await db.query.apps.findMany({
       orderBy: [desc(apps.createdAt)],
     });
@@ -974,9 +958,8 @@ export function registerAppHandlers() {
     };
   });
 
-  ipcMain.handle(
-    "read-app-file",
-    async (_, { appId, filePath }: { appId: number; filePath: string }) => {
+  createTypedHandler(appContracts.readAppFile, async (_, params) => {
+      const { appId, filePath } = params;
       const app = await db.query.apps.findFirst({
         where: eq(apps.id, appId),
       });
@@ -1004,10 +987,9 @@ export function registerAppHandlers() {
         logger.error(`Error reading file ${filePath} for app ${appId}:`, error);
         throw new Error("Failed to read file");
       }
-    },
-  );
+    });
 
-  // Do NOT use handle for this, it contains sensitive information.
+  // Do NOT use typed handler for this, it contains sensitive information.
   ipcMain.handle("get-env-vars", async () => {
     const envVars: Record<string, string | undefined> = {};
     const providers = await getLanguageModelProviders();
@@ -1019,12 +1001,8 @@ export function registerAppHandlers() {
     return envVars;
   });
 
-  ipcMain.handle(
-    "run-app",
-    async (
-      event: Electron.IpcMainInvokeEvent,
-      { appId }: { appId: number },
-    ): Promise<void> => {
+  createTypedHandler(appContracts.runApp, async (event, params) => {
+      const { appId } = params;
       return withLock(appId, async () => {
         // Check if app is already running
         if (runningApps.has(appId)) {
@@ -1068,12 +1046,10 @@ export function registerAppHandlers() {
           throw new Error(`Failed to run app ${appId}: ${error.message}`);
         }
       });
-    },
-  );
+    });
 
-  ipcMain.handle(
-    "stop-app",
-    async (_, { appId }: { appId: number }): Promise<void> => {
+  createTypedHandler(appContracts.stopApp, async (_, params) => {
+      const { appId } = params;
       logger.log(
         `Attempting to stop app ${appId}. Current running apps: ${runningApps.size}`,
       );
@@ -1118,18 +1094,10 @@ export function registerAppHandlers() {
           throw new Error(`Failed to stop app ${appId}: ${error.message}`);
         }
       });
-    },
-  );
+    });
 
-  ipcMain.handle(
-    "restart-app",
-    async (
-      event: Electron.IpcMainInvokeEvent,
-      {
-        appId,
-        removeNodeModules,
-      }: { appId: number; removeNodeModules?: boolean },
-    ): Promise<void> => {
+  createTypedHandler(appContracts.restartApp, async (event, params) => {
+      const { appId, removeNodeModules } = params;
       logger.log(`Restarting app ${appId}`);
       return withLock(appId, async () => {
         try {
@@ -1216,19 +1184,10 @@ export function registerAppHandlers() {
           throw error;
         }
       });
-    },
-  );
+    });
 
-  ipcMain.handle(
-    "edit-app-file",
-    async (
-      _,
-      {
-        appId,
-        filePath,
-        content,
-      }: { appId: number; filePath: string; content: string },
-    ): Promise<EditAppFileReturnType> => {
+  createTypedHandler(appContracts.editAppFile, async (_, params) => {
+      let { appId, filePath, content } = params;
       // It should already be normalized, but just in case.
       filePath = normalizePath(filePath);
       const app = await db.query.apps.findFirst({
@@ -1333,12 +1292,10 @@ export function registerAppHandlers() {
         }
       }
       return {};
-    },
-  );
+    });
 
-  ipcMain.handle(
-    "delete-app",
-    async (_, { appId }: { appId: number }): Promise<void> => {
+  createTypedHandler(appContracts.deleteApp, async (_, params) => {
+      const { appId } = params;
       // Static server worker is NOT terminated here anymore
 
       return withLock(appId, async () => {
@@ -1388,15 +1345,10 @@ export function registerAppHandlers() {
           );
         }
       });
-    },
-  );
+    });
 
-  ipcMain.handle(
-    "add-to-favorite",
-    async (
-      _,
-      { appId }: { appId: number },
-    ): Promise<{ isFavorite: boolean }> => {
+  createTypedHandler(appContracts.addToFavorite, async (_, params) => {
+      const { appId } = params;
       return withLock(appId, async () => {
         try {
           // Fetch the current isFavorite value
@@ -1435,20 +1387,12 @@ export function registerAppHandlers() {
           throw new Error(`Failed to toggle favorite status: ${error.message}`);
         }
       });
-    },
-  );
+    });
 
-  ipcMain.handle(
-    "rename-app",
-    async (
-      _,
-      {
-        appId,
-        appName,
-        appPath,
-      }: { appId: number; appName: string; appPath: string },
-    ): Promise<void> => {
+  createTypedHandler(appContracts.renameApp, async (_, params) => {
+      const { appId, appName, appPath: newPath } = params;
       return withLock(appId, async () => {
+        let appPath = newPath;
         // Check if app exists
         const app = await db.query.apps.findFirst({
           where: eq(apps.id, appId),
@@ -1623,10 +1567,9 @@ export function registerAppHandlers() {
           throw new Error(`Failed to update app in database: ${error.message}`);
         }
       });
-    },
-  );
+    });
 
-  ipcMain.handle("reset-all", async (): Promise<void> => {
+  createTypedHandler(systemContracts.resetAll, async () => {
     logger.log("start: resetting all apps and settings.");
     // Stop all running apps first
     logger.log("stopping all running apps...");
@@ -1677,14 +1620,14 @@ export function registerAppHandlers() {
     logger.log("reset all complete.");
   });
 
-  ipcMain.handle("get-app-version", async (): Promise<{ version: string }> => {
+  createTypedHandler(systemContracts.getAppVersion, async () => {
     // Read version from package.json at project root
     const packageJsonPath = path.resolve(__dirname, "..", "..", "package.json");
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
     return { version: packageJson.version };
   });
 
-  handle("rename-branch", async (_, params: RenameBranchParams) => {
+  createTypedHandler(appContracts.renameBranch, async (_, params) => {
     const { appId, oldBranchName, newBranchName } = params;
     const app = await db.query.apps.findFirst({
       where: eq(apps.id, appId),
@@ -1734,9 +1677,8 @@ export function registerAppHandlers() {
     });
   });
 
-  handle(
-    "respond-to-app-input",
-    async (_, { appId, response }: RespondToAppInputParams) => {
+  createTypedHandler(appContracts.respondToAppInput, async (_, params) => {
+      const { appId, response } = params;
       if (response !== "y" && response !== "n") {
         throw new Error(`Invalid response: ${response}`);
       }
@@ -1760,15 +1702,10 @@ export function registerAppHandlers() {
         logger.error(`Error sending response to app ${appId}:`, error);
         throw new Error(`Failed to send response to app: ${error.message}`);
       }
-    },
-  );
+    });
 
-  handle(
-    "search-app-files",
-    async (
-      _,
-      { appId, query }: { appId: number; query: string },
-    ): Promise<AppFileSearchResult[]> => {
+  createTypedHandler(appContracts.searchAppFiles, async (_, params) => {
+      const { appId, query } = params;
       const trimmedQuery = query.trim();
       if (!trimmedQuery) {
         return [];
@@ -1791,9 +1728,9 @@ export function registerAppHandlers() {
       });
 
       return contentMatches;
-    },
-  );
+    });
 
+  // search-app is not in app contracts - keep using handle
   handle(
     "search-app",
     async (_, searchQuery: string): Promise<AppSearchResult[]> => {
@@ -1880,14 +1817,16 @@ export function registerAppHandlers() {
   );
 
   // Handler for adding logs to central store from renderer
-  ipcMain.handle("add-log", async (_, entry: ConsoleEntry) => {
+  createTypedHandler(miscContracts.addLog, async (_, entry) => {
     addLog(entry);
   });
 
   // Handler for clearing logs for a specific app
-  ipcMain.handle("clear-logs", async (_, { appId }: { appId: number }) => {
+  createTypedHandler(miscContracts.clearLogs, async (_, { appId }) => {
     clearLogs(appId);
   });
+
+  // select-app-location is not in app contracts - keep using handle
   handle(
     "select-app-location",
     async (
@@ -1908,12 +1847,7 @@ export function registerAppHandlers() {
     },
   );
 
-  handle(
-    "change-app-location",
-    async (
-      _,
-      params: ChangeAppLocationParams,
-    ): Promise<ChangeAppLocationResult> => {
+  createTypedHandler(appContracts.changeAppLocation, async (_, params) => {
       const { appId, parentDirectory } = params;
 
       if (!parentDirectory) {
@@ -2052,8 +1986,7 @@ export function registerAppHandlers() {
           throw new Error(`Failed to move app files: ${error.message}`);
         }
       });
-    },
-  );
+    });
 }
 
 function getCommand({

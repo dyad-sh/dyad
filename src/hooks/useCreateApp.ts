@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
+import type { CreateAppParams, CreateAppResult } from "@/ipc/types";
 import { showError } from "@/lib/toast";
-import type { CreateAppParams, CreateAppResult } from "@/ipc/ipc_types";
 import { queryKeys } from "@/lib/queryKeys";
 
 export function useCreateApp() {
@@ -13,8 +13,7 @@ export function useCreateApp() {
         throw new Error("App name is required");
       }
 
-      const ipcClient = IpcClient.getInstance();
-      return ipcClient.createApp(params);
+      return ipc.app.createApp(params);
     },
     onSuccess: () => {
       // Invalidate apps list to trigger refetch

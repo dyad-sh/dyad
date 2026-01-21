@@ -22,7 +22,7 @@ import {
   SONNET_4_5,
 } from "../shared/language_model_constants";
 import { getLanguageModelProviders } from "../shared/language_model_helpers";
-import { LanguageModelProvider } from "../ipc_types";
+import { LanguageModelProvider } from "@/ipc/types";
 import {
   createDyadEngine,
   type DyadEngineProvider,

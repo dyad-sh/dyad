@@ -11,7 +11,7 @@ import {
 import { selectedFileAtom } from "@/atoms/viewAtoms";
 import { useSetAtom } from "jotai";
 import { Input } from "@/components/ui/input";
-import type { AppFileSearchResult } from "@/ipc/ipc_types";
+import type { AppFileSearchResult } from "@/ipc/types";
 import { useSearchAppFiles } from "@/hooks/useSearchAppFiles";
 
 interface FileTreeProps {

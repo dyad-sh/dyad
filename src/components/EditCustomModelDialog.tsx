@@ -10,7 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import { useSettings } from "@/hooks/useSettings";
 import { useMutation } from "@tanstack/react-query";
 import { showError, showSuccess } from "@/lib/toast";
@@ -47,7 +47,6 @@ export function EditCustomModelDialog({
   const [contextWindow, setContextWindow] = useState<string>("");
   const { settings, updateSettings } = useSettings();
 
-  const ipcClient = IpcClient.getInstance();
 
   useEffect(() => {
     if (model) {
@@ -83,13 +82,20 @@ export function EditCustomModelDialog({
         throw new Error("Context Window must be a valid number");
 
       // First delete the old model
-      await ipcClient.deleteCustomModel({
+      await ipc.languageModel.deleteModel({
         providerId,
         modelApiName: model.apiName,
       });
 
       // Then create the new model
-      await ipcClient.createCustomLanguageModel(newParams);
+      await ipc.languageModel.createCustomModel({
+        providerId: newParams.providerId,
+        displayName: newParams.displayName,
+        apiName: newParams.apiName,
+        description: newParams.description,
+        maxOutputTokens: newParams.maxOutputTokens,
+        contextWindow: newParams.contextWindow,
+      });
     },
     onSuccess: async () => {
       if (

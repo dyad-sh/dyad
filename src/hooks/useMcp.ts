@@ -1,13 +1,13 @@
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import type {
   McpServer,
   McpServerUpdate,
   McpTool,
   McpToolConsent,
   CreateMcpServer,
-} from "@/ipc/ipc_types";
+} from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 
 export type Transport = "stdio" | "http";
@@ -18,8 +18,7 @@ export function useMcp() {
   const serversQuery = useQuery<McpServer[], Error>({
     queryKey: queryKeys.mcp.servers,
     queryFn: async () => {
-      const ipc = IpcClient.getInstance();
-      const list = await ipc.listMcpServers();
+      const list = await ipc.mcp.listServers();
       return (list || []) as McpServer[];
     },
     meta: { showErrorToast: true },
@@ -34,9 +33,8 @@ export function useMcp() {
     queryKey: queryKeys.mcp.toolsByServer.list({ serverIds }),
     enabled: serverIds.length > 0,
     queryFn: async () => {
-      const ipc = IpcClient.getInstance();
       const entries = await Promise.all(
-        serverIds.map(async (id) => [id, await ipc.listMcpTools(id)] as const),
+        serverIds.map(async (id) => [id, await ipc.mcp.listTools(id)] as const),
       );
       return Object.fromEntries(entries) as Record<number, McpTool[]>;
     },
@@ -46,8 +44,7 @@ export function useMcp() {
   const consentsQuery = useQuery<McpToolConsent[], Error>({
     queryKey: queryKeys.mcp.consents,
     queryFn: async () => {
-      const ipc = IpcClient.getInstance();
-      const list = await ipc.getMcpToolConsents();
+      const list = await ipc.mcp.getToolConsents();
       return (list || []) as McpToolConsent[];
     },
     meta: { showErrorToast: true },
@@ -63,8 +60,7 @@ export function useMcp() {
 
   const createServerMutation = useMutation({
     mutationFn: async (params: CreateMcpServer) => {
-      const ipc = IpcClient.getInstance();
-      return ipc.createMcpServer(params);
+      return ipc.mcp.createServer(params);
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.mcp.servers });
@@ -77,8 +73,7 @@ export function useMcp() {
 
   const updateServerMutation = useMutation({
     mutationFn: async (params: McpServerUpdate) => {
-      const ipc = IpcClient.getInstance();
-      return ipc.updateMcpServer(params);
+      return ipc.mcp.updateServer(params);
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.mcp.servers });
@@ -91,8 +86,7 @@ export function useMcp() {
 
   const deleteServerMutation = useMutation({
     mutationFn: async (id: number) => {
-      const ipc = IpcClient.getInstance();
-      return ipc.deleteMcpServer(id);
+      return ipc.mcp.deleteServer(id);
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.mcp.servers });
@@ -109,8 +103,7 @@ export function useMcp() {
       toolName: string;
       consent: McpToolConsent["consent"];
     }) => {
-      const ipc = IpcClient.getInstance();
-      return ipc.setMcpToolConsent(params);
+      return ipc.mcp.setToolConsent(params);
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.mcp.consents });

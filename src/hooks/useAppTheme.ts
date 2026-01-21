@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 
 export function useAppTheme(appId: number | undefined) {
@@ -8,7 +8,7 @@ export function useAppTheme(appId: number | undefined) {
   const query = useQuery({
     queryKey: queryKeys.appTheme.byApp({ appId }),
     queryFn: async (): Promise<string | null> => {
-      return IpcClient.getInstance().getAppTheme({ appId: appId! });
+      return ipc.template.getAppTheme({ appId: appId! });
     },
     enabled: !!appId,
   });

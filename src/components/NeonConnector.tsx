@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import { toast } from "sonner";
 import { useSettings } from "@/hooks/useSettings";
 
@@ -34,7 +34,7 @@ export function NeonConnector() {
             <Button
               variant="outline"
               onClick={() => {
-                IpcClient.getInstance().openExternalUrl(
+                ipc.system.openExternalUrl(
                   "https://console.neon.tech/",
                 );
               }}
@@ -67,9 +67,9 @@ export function NeonConnector() {
         <div
           onClick={async () => {
             if (settings?.isTestMode) {
-              await IpcClient.getInstance().fakeHandleNeonConnect();
+              await ipc.neon.fakeConnect();
             } else {
-              await IpcClient.getInstance().openExternalUrl(
+              await ipc.system.openExternalUrl(
                 "https://oauth.dyad.sh/api/integrations/neon/login",
               );
             }

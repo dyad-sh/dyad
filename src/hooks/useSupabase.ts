@@ -2,14 +2,14 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { lastLogTimestampAtom } from "@/atoms/supabaseAtoms";
 import { appConsoleEntriesAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
-import { IpcClient } from "@/ipc/ipc_client";
 import {
+  ipc,
   SetSupabaseAppProjectParams,
   DeleteSupabaseOrganizationParams,
   SupabaseOrganizationInfo,
   SupabaseProject,
   SupabaseBranch,
-} from "@/ipc/ipc_types";
+} from "@/ipc/types";
 import { useSettings } from "./useSettings";
 import { isSupabaseConnected } from "@/lib/schemas";
 import { queryKeys } from "@/lib/queryKeys";
@@ -34,8 +34,7 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
   const organizationsQuery = useQuery<SupabaseOrganizationInfo[], Error>({
     queryKey: queryKeys.supabase.organizations,
     queryFn: async () => {
-      const ipcClient = IpcClient.getInstance();
-      return ipcClient.listSupabaseOrganizations();
+      return ipc.supabase.listOrganizations();
     },
     enabled: isConnected,
     meta: { showErrorToast: true },
@@ -46,8 +45,7 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
   const projectsQuery = useQuery<SupabaseProject[], Error>({
     queryKey: queryKeys.supabase.projects,
     queryFn: async () => {
-      const ipcClient = IpcClient.getInstance();
-      return ipcClient.listAllSupabaseProjects();
+      return ipc.supabase.listAllProjects();
     },
     enabled: (organizationsQuery.data?.length ?? 0) > 0,
     meta: { showErrorToast: true },
@@ -60,8 +58,7 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
     DeleteSupabaseOrganizationParams
   >({
     mutationFn: async (params) => {
-      const ipcClient = IpcClient.getInstance();
-      await ipcClient.deleteSupabaseOrganization(params);
+      await ipc.supabase.deleteOrganization(params);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
@@ -79,8 +76,7 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
     SetSupabaseAppProjectParams
   >({
     mutationFn: async (params) => {
-      const ipcClient = IpcClient.getInstance();
-      await ipcClient.setSupabaseAppProject(params);
+      await ipc.supabase.setAppProject(params);
     },
     meta: { showErrorToast: true },
   });
@@ -88,8 +84,7 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
   // Mutation: Remove a Supabase project association from an app
   const unsetAppProjectMutation = useMutation<void, Error, number>({
     mutationFn: async (appId) => {
-      const ipcClient = IpcClient.getInstance();
-      await ipcClient.unsetSupabaseAppProject(appId);
+      await ipc.supabase.unsetAppProject({ app: appId });
     },
     meta: { showErrorToast: true },
   });
@@ -101,8 +96,7 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
       organizationSlug: branchesOrganizationSlug ?? null,
     }),
     queryFn: async () => {
-      const ipcClient = IpcClient.getInstance();
-      const list = await ipcClient.listSupabaseBranches({
+      const list = await ipc.supabase.listBranches({
         projectId: branchesProjectId!,
         organizationSlug: branchesOrganizationSlug ?? null,
       });
@@ -122,13 +116,11 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
     mutationFn: async ({ projectId, organizationSlug }) => {
       if (!selectedAppId) return;
 
-      const ipcClient = IpcClient.getInstance();
-
       // Use last timestamp if available, otherwise fetch logs from the past 10 minutes
       const lastTimestamp = lastLogTimestamp[projectId];
       const timestampStart = lastTimestamp ?? Date.now() - 10 * 60 * 1000;
 
-      const logs = await ipcClient.getSupabaseEdgeLogs({
+      const logs = await ipc.supabase.getEdgeLogs({
         projectId,
         timestampStart,
         appId: selectedAppId,
@@ -147,7 +139,7 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
       }
 
       logs.forEach((log) => {
-        IpcClient.getInstance().addLog(log);
+        ipc.misc.addLog(log);
       });
       setConsoleEntries((prev) => [...prev, ...logs]);
 

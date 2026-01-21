@@ -1,7 +1,10 @@
-import { BrowserWindow, clipboard, ipcMain } from "electron";
+import { BrowserWindow, clipboard } from "electron";
 import { platform, arch } from "os";
-import { SystemDebugInfo, ChatLogsData } from "../ipc_types";
 import { readSettings } from "../../main/settings";
+import { createTypedHandler } from "./base";
+import { systemContracts } from "../types/system";
+import { miscContracts } from "../types/misc";
+import type { SystemDebugInfo } from "../types/system";
 
 import log from "electron-log";
 import path from "path";
@@ -115,21 +118,16 @@ async function getSystemDebugInfo({
 }
 
 export function registerDebugHandlers() {
-  ipcMain.handle(
-    "get-system-debug-info",
-    async (): Promise<SystemDebugInfo> => {
-      console.log("IPC: get-system-debug-info called");
-      return getSystemDebugInfo({
-        linesOfLogs: 20,
-        level: "warn",
-      });
-    },
-  );
+  createTypedHandler(systemContracts.getSystemDebugInfo, async () => {
+    console.log("IPC: get-system-debug-info called");
+    return getSystemDebugInfo({
+      linesOfLogs: 20,
+      level: "warn",
+    });
+  });
 
-  ipcMain.handle(
-    "get-chat-logs",
-    async (_, chatId: number): Promise<ChatLogsData> => {
-      console.log(`IPC: get-chat-logs called for chat ${chatId}`);
+  createTypedHandler(miscContracts.getChatLogs, async (_, chatId) => {
+    console.log(`IPC: get-chat-logs called for chat ${chatId}`);
 
       try {
         // We can retrieve a lot more lines here because we're not limited by the
@@ -192,12 +190,11 @@ export function registerDebugHandlers() {
         console.error(`Error in get-chat-logs:`, error);
         throw error;
       }
-    },
-  );
+  });
 
   console.log("Registered debug IPC handlers");
 
-  ipcMain.handle("take-screenshot", async () => {
+  createTypedHandler(systemContracts.takeScreenshot, async () => {
     const win = BrowserWindow.getFocusedWindow();
     if (!win) throw new Error("No focused window to capture");
 

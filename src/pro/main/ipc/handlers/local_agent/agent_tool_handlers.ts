@@ -16,7 +16,7 @@ import type {
   AgentTool,
   SetAgentToolConsentParams,
   AgentToolConsentResponseParams,
-} from "@/ipc/ipc_types";
+} from "@/ipc/types";
 
 const logger = log.scope("agent_tool_handlers");
 const handle = createLoggedHandler(logger);

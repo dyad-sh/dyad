@@ -39,7 +39,7 @@ import { useThemes } from "@/hooks/useThemes";
 import { useAppTheme } from "@/hooks/useAppTheme";
 import { useCustomThemes } from "@/hooks/useCustomThemes";
 import { useSettings } from "@/hooks/useSettings";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 
@@ -104,7 +104,7 @@ export function AuxiliaryActionsMenu({
   const handleThemeSelect = async (themeId: string | null) => {
     if (appId != null) {
       // Update app-specific theme
-      await IpcClient.getInstance().setAppTheme({
+      await ipc.template.setAppTheme({
         appId,
         themeId,
       });

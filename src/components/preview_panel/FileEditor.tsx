@@ -4,7 +4,7 @@ import { useLoadAppFile } from "@/hooks/useLoadAppFile";
 import { useTheme } from "@/contexts/ThemeContext";
 import { ChevronRight, Circle, Save } from "lucide-react";
 import "@/components/chat/monaco";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import { showError, showSuccess, showWarning } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import {
@@ -190,12 +190,11 @@ export const FileEditor = ({
       isSavingRef.current = true;
       setIsSaving(true);
 
-      const ipcClient = IpcClient.getInstance();
-      const { warning } = await ipcClient.editAppFile(
+      const { warning } = await ipc.app.editAppFile({
         appId,
         filePath,
-        currentValueRef.current,
-      );
+        content: currentValueRef.current,
+      });
       await queryClient.invalidateQueries({
         queryKey: queryKeys.versions.list({ appId }),
       });

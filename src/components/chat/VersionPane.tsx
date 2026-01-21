@@ -3,7 +3,7 @@ import { selectedAppIdAtom, selectedVersionIdAtom } from "@/atoms/appAtoms";
 import { useVersions } from "@/hooks/useVersions";
 import { formatDistanceToNow } from "date-fns";
 import { RotateCcw, X, Database, Loader2 } from "lucide-react";
-import type { Version } from "@/ipc/ipc_types";
+import type { Version } from "@/ipc/types";
 import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
 import { useCheckoutVersion } from "@/hooks/useCheckoutVersion";

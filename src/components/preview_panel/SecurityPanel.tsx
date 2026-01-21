@@ -2,7 +2,7 @@ import { useAtomValue, useSetAtom } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useSecurityReview } from "@/hooks/useSecurityReview";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,7 @@ import { useStreamChat } from "@/hooks/useStreamChat";
 import { showError } from "@/lib/toast";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import type { SecurityFinding, SecurityReviewResult } from "@/ipc/ipc_types";
+import type { SecurityFinding, SecurityReviewResult } from "@/ipc/types/security";
 import { useState, useEffect } from "react";
 import { VanillaMarkdownParser } from "@/components/chat/DyadMarkdownParser";
 import { showSuccess, showWarning } from "@/lib/toast";
@@ -251,7 +251,7 @@ function SecurityHeader({
               <a
                 className="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
                 onClick={() =>
-                  IpcClient.getInstance().openExternalUrl(
+                  ipc.system.openExternalUrl(
                     "https://www.dyad.sh/docs/guides/security-review",
                   )
                 }
@@ -742,12 +742,11 @@ export const SecurityPanel = () => {
 
     try {
       setIsSaving(true);
-      const ipcClient = IpcClient.getInstance();
-      const { warning } = await ipcClient.editAppFile(
-        selectedAppId,
-        "SECURITY_RULES.md",
-        rulesContent,
-      );
+      const { warning } = await ipc.app.editAppFile({
+        appId: selectedAppId,
+        filePath: "SECURITY_RULES.md",
+        content: rulesContent,
+      });
       await queryClient.invalidateQueries({
         queryKey: queryKeys.versions.list({ appId: selectedAppId }),
       });
@@ -780,7 +779,7 @@ export const SecurityPanel = () => {
       setIsRunningReview(true);
 
       // Create a new chat
-      const chatId = await IpcClient.getInstance().createChat(selectedAppId);
+      const chatId = await ipc.chat.createChat(selectedAppId);
 
       // Navigate to the new chat
       setSelectedChatId(chatId);
@@ -811,7 +810,7 @@ export const SecurityPanel = () => {
       const key = createFindingKey(finding);
       setFixingFindingKey(key);
 
-      const chatId = await IpcClient.getInstance().createChat(selectedAppId);
+      const chatId = await ipc.chat.createChat(selectedAppId);
 
       // Navigate to the new chat
       setSelectedChatId(chatId);
@@ -880,7 +879,7 @@ ${finding.description}`;
       );
 
       // Create a new chat
-      const chatId = await IpcClient.getInstance().createChat(selectedAppId);
+      const chatId = await ipc.chat.createChat(selectedAppId);
 
       // Navigate to the new chat
       setSelectedChatId(chatId);

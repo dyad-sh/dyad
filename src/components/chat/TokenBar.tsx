@@ -16,7 +16,7 @@ import {
 import { chatInputValueAtom } from "@/atoms/chatAtoms";
 import { useAtom } from "jotai";
 import { useSettings } from "@/hooks/useSettings";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 
 interface TokenBarProps {
   chatId?: number;
@@ -136,10 +136,10 @@ export function TokenBar({ chatId }: TokenBarProps) {
           <a
             onClick={() =>
               settings?.enableDyadPro
-                ? IpcClient.getInstance().openExternalUrl(
+                ? ipc.system.openExternalUrl(
                     "https://www.dyad.sh/docs/guides/ai-models/pro-modes#smart-context",
                   )
-                : IpcClient.getInstance().openExternalUrl(
+                : ipc.system.openExternalUrl(
                     "https://dyad.sh/pro#ai",
                   )
             }

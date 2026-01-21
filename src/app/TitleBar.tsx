@@ -12,9 +12,9 @@ import { useDeepLink } from "@/contexts/DeepLinkContext";
 import { useEffect, useState } from "react";
 import { DyadProSuccessDialog } from "@/components/DyadProSuccessDialog";
 import { useTheme } from "@/contexts/ThemeContext";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
-import { UserBudgetInfo } from "@/ipc/ipc_types";
+import type { UserBudgetInfo } from "@/ipc/types";
 import {
   Tooltip,
   TooltipContent,
@@ -35,7 +35,7 @@ export const TitleBar = () => {
     // Check if we're running on Windows
     const checkPlatform = async () => {
       try {
-        const platform = await IpcClient.getInstance().getSystemPlatform();
+        const platform = await ipc.system.getSystemPlatform();
         setShowWindowControls(platform !== "darwin");
       } catch (error) {
         console.error("Failed to get platform info:", error);
@@ -115,18 +115,17 @@ export const TitleBar = () => {
 
 function WindowsControls() {
   const { isDarkMode } = useTheme();
-  const ipcClient = IpcClient.getInstance();
 
   const minimizeWindow = () => {
-    ipcClient.minimizeWindow();
+    ipc.system.minimizeWindow();
   };
 
   const maximizeWindow = () => {
-    ipcClient.maximizeWindow();
+    ipc.system.maximizeWindow();
   };
 
   const closeWindow = () => {
-    ipcClient.closeWindow();
+    ipc.system.closeWindow();
   };
 
   return (

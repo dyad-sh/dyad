@@ -3,7 +3,7 @@
  * This is the single source of truth for all logs (client, server, edge, network, build)
  */
 
-import type { ConsoleEntry } from "../ipc/ipc_types";
+import type { ConsoleEntry } from "@/ipc/types";
 
 // In-memory log store (per app)
 const logStore = new Map<number, ConsoleEntry[]>();

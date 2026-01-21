@@ -21,7 +21,7 @@ import type React from "react";
 import { useCallback, useEffect, useState } from "react";
 
 import { useSettings } from "@/hooks/useSettings";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import {
   chatInputValueAtom,
   chatMessagesByIdAtom,
@@ -173,7 +173,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     if (!chatId) {
       return;
     }
-    const chat = await IpcClient.getInstance().getChat(chatId);
+    const chat = await ipc.chat.getChat(chatId);
     setMessagesById((prev) => {
       const next = new Map(prev);
       next.set(chatId, chat.messages);
@@ -222,7 +222,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
   const handleCancel = () => {
     if (chatId) {
-      IpcClient.getInstance().cancelChatStream(chatId);
+      ipc.chat.cancelStream(chatId);
     }
     setIsStreaming(false);
   };
@@ -240,7 +240,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     setIsApproving(true);
     posthog.capture("chat:approve");
     try {
-      const result = await IpcClient.getInstance().approveProposal({
+      const result = await ipc.proposal.approveProposal({
         chatId,
         messageId,
       });
@@ -277,7 +277,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     setIsRejecting(true);
     posthog.capture("chat:reject");
     try {
-      await IpcClient.getInstance().rejectProposal({
+      await ipc.proposal.rejectProposal({
         chatId,
         messageId,
       });
@@ -333,7 +333,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               consent={pendingAgentConsent}
               queueTotal={consentsForThisChat.length}
               onDecision={(decision) => {
-                IpcClient.getInstance().respondToAgentConsentRequest({
+                ipc.agent.respondToConsent({
                   requestId: pendingAgentConsent.requestId,
                   decision,
                 });
@@ -345,7 +345,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                 );
               }}
               onClose={() => {
-                IpcClient.getInstance().respondToAgentConsentRequest({
+                ipc.agent.respondToConsent({
                   requestId: pendingAgentConsent.requestId,
                   decision: "decline",
                 });
@@ -413,7 +413,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                     <TooltipTrigger asChild>
                       <button
                         onClick={() => {
-                          IpcClient.getInstance().openExternalUrl(
+                          ipc.system.openExternalUrl(
                             "https://dyad.sh/pro",
                           );
                         }}
@@ -873,7 +873,7 @@ function ChatInputActions({
                       key={index}
                       className="flex items-center space-x-2"
                       onClick={() => {
-                        IpcClient.getInstance().openExternalUrl(
+                        ipc.system.openExternalUrl(
                           `https://www.npmjs.com/package/${pkg}`,
                         );
                       }}

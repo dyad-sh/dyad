@@ -1,19 +1,14 @@
 import { db } from "../../db";
 import { apps, messages, versions } from "../../db/schema";
 import { desc, eq, and, gt, gte } from "drizzle-orm";
-import type {
-  Version,
-  BranchResult,
-  RevertVersionParams,
-  RevertVersionResponse,
-} from "../ipc_types";
 import type { GitCommit } from "../git_types";
 import fs from "node:fs";
 import path from "node:path";
 import { getDyadAppPath } from "../../paths/paths";
 import { withLock } from "../utils/lock_utils";
 import log from "electron-log";
-import { createLoggedHandler } from "./safe_handle";
+import { createTypedHandler } from "./base";
+import { versionContracts } from "../types/version";
 
 import { deployAllSupabaseFunctions } from "../../supabase_admin/supabase_utils";
 import {
@@ -38,8 +33,6 @@ import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils"
 import { retryOnLocked } from "../utils/retryOnLocked";
 
 const logger = log.scope("version_handlers");
-
-const handle = createLoggedHandler(logger);
 
 async function restoreBranchForPreview({
   appId,
@@ -72,7 +65,8 @@ async function restoreBranchForPreview({
 }
 
 export function registerVersionHandlers() {
-  handle("list-versions", async (_, { appId }: { appId: number }) => {
+  createTypedHandler(versionContracts.listVersions, async (_, params) => {
+    const { appId } = params;
     const app = await db.query.apps.findFirst({
       where: eq(apps.id, appId),
     });
@@ -119,47 +113,41 @@ export function registerVersionHandlers() {
         timestamp: commit.commit.author.timestamp,
         dbTimestamp: snapshotInfo?.neonDbTimestamp,
       };
-    }) satisfies Version[];
+    });
   });
 
-  handle(
-    "get-current-branch",
-    async (_, { appId }: { appId: number }): Promise<BranchResult> => {
-      const app = await db.query.apps.findFirst({
-        where: eq(apps.id, appId),
-      });
+  createTypedHandler(versionContracts.getCurrentBranch, async (_, params) => {
+    const { appId } = params;
+    const app = await db.query.apps.findFirst({
+      where: eq(apps.id, appId),
+    });
 
-      if (!app) {
-        throw new Error("App not found");
-      }
+    if (!app) {
+      throw new Error("App not found");
+    }
 
-      const appPath = getDyadAppPath(app.path);
+    const appPath = getDyadAppPath(app.path);
 
-      // Return appropriate result if the app is not a git repo
-      if (!fs.existsSync(path.join(appPath, ".git"))) {
-        throw new Error("Not a git repository");
-      }
+    // Return appropriate result if the app is not a git repo
+    if (!fs.existsSync(path.join(appPath, ".git"))) {
+      throw new Error("Not a git repository");
+    }
 
-      try {
-        const currentBranch = await gitCurrentBranch({ path: appPath });
+    try {
+      const currentBranch = await gitCurrentBranch({ path: appPath });
 
-        return {
-          branch: currentBranch || "<no-branch>",
-        };
-      } catch (error: any) {
-        logger.error(`Error getting current branch for app ${appId}:`, error);
-        throw new Error(`Failed to get current branch: ${error.message}`);
-      }
-    },
-  );
+      return {
+        branch: currentBranch || "<no-branch>",
+      };
+    } catch (error: any) {
+      logger.error(`Error getting current branch for app ${appId}:`, error);
+      throw new Error(`Failed to get current branch: ${error.message}`);
+    }
+  });
 
-  handle(
-    "revert-version",
-    async (
-      _,
-      { appId, previousVersionId, currentChatMessageId }: RevertVersionParams,
-    ): Promise<RevertVersionResponse> => {
-      return withLock(appId, async () => {
+  createTypedHandler(versionContracts.revertVersion, async (_, params) => {
+    const { appId, previousVersionId, currentChatMessageId } = params;
+    return withLock(appId, async () => {
         let successMessage = "Restored version";
         let warningMessage = "";
         const app = await db.query.apps.findFirst({
@@ -378,13 +366,9 @@ export function registerVersionHandlers() {
     },
   );
 
-  handle(
-    "checkout-version",
-    async (
-      _,
-      { appId, versionId: gitRef }: { appId: number; versionId: string },
-    ): Promise<void> => {
-      return withLock(appId, async () => {
+  createTypedHandler(versionContracts.checkoutVersion, async (_, params) => {
+    const { appId, versionId: gitRef } = params;
+    return withLock(appId, async () => {
         const app = await db.query.apps.findFirst({
           where: eq(apps.id, appId),
         });

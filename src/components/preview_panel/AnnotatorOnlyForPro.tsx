@@ -1,6 +1,6 @@
 import { Lock, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 
 interface AnnotatorOnlyForProProps {
   onGoBack: () => void;
@@ -8,7 +8,7 @@ interface AnnotatorOnlyForProProps {
 
 export const AnnotatorOnlyForPro = ({ onGoBack }: AnnotatorOnlyForProProps) => {
   const handleGetPro = () => {
-    IpcClient.getInstance().openExternalUrl("https://dyad.sh/pro");
+    ipc.system.openExternalUrl("https://dyad.sh/pro");
   };
 
   return (

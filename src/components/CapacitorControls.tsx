@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import { showSuccess } from "@/lib/toast";
 import {
   Smartphone,
@@ -44,7 +44,7 @@ export function CapacitorControls({ appId }: CapacitorControlsProps) {
   // Check if Capacitor is installed
   const { data: isCapacitor, isLoading } = useQuery({
     queryKey: queryKeys.appUpgrades.isCapacitor({ appId }),
-    queryFn: () => IpcClient.getInstance().isCapacitor({ appId }),
+    queryFn: () => ipc.capacitor.isCapacitor({ appId }),
     enabled: appId !== undefined && appId !== null,
   });
 
@@ -59,10 +59,10 @@ export function CapacitorControls({ appId }: CapacitorControlsProps) {
     mutationFn: async () => {
       setIosStatus("syncing");
       // First sync
-      await IpcClient.getInstance().syncCapacitor({ appId });
+      await ipc.capacitor.syncCapacitor({ appId });
       setIosStatus("opening");
       // Then open iOS
-      await IpcClient.getInstance().openIos({ appId });
+      await ipc.capacitor.openIos({ appId });
     },
     onSuccess: () => {
       setIosStatus("idle");
@@ -79,10 +79,10 @@ export function CapacitorControls({ appId }: CapacitorControlsProps) {
     mutationFn: async () => {
       setAndroidStatus("syncing");
       // First sync
-      await IpcClient.getInstance().syncCapacitor({ appId });
+      await ipc.capacitor.syncCapacitor({ appId });
       setAndroidStatus("opening");
       // Then open Android
-      await IpcClient.getInstance().openAndroid({ appId });
+      await ipc.capacitor.openAndroid({ appId });
     },
     onSuccess: () => {
       setAndroidStatus("idle");
@@ -136,7 +136,7 @@ export function CapacitorControls({ appId }: CapacitorControlsProps) {
               size="sm"
               onClick={() => {
                 // TODO: Add actual help link
-                IpcClient.getInstance().openExternalUrl(
+                ipc.system.openExternalUrl(
                   "https://dyad.sh/docs/guides/mobile-app#troubleshooting",
                 );
               }}

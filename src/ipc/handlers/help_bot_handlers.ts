@@ -1,4 +1,3 @@
-import { ipcMain } from "electron";
 import { streamText, Tool } from "ai";
 import { readSettings } from "../../main/settings";
 
@@ -9,7 +8,8 @@ import {
   openai,
   OpenAIResponsesProviderOptions,
 } from "@ai-sdk/openai";
-import { StartHelpChatParams } from "../ipc_types";
+import { createTypedHandler } from "./base";
+import { helpContracts } from "../types/help";
 
 const logger = log.scope("help-bot");
 
@@ -19,10 +19,8 @@ const helpSessions = new Map<string, HelpMessage[]>();
 const activeHelpStreams = new Map<string, AbortController>();
 
 export function registerHelpBotHandlers() {
-  ipcMain.handle(
-    "help:chat:start",
-    async (event, params: StartHelpChatParams) => {
-      const { sessionId, message } = params;
+  createTypedHandler(helpContracts.start, async (event, params) => {
+    const { sessionId, message } = params;
       try {
         if (!sessionId || !message?.trim()) {
           throw new Error("Missing sessionId or message");
@@ -120,10 +118,9 @@ export function registerHelpBotHandlers() {
         logger.error("help:chat:start error", err);
         throw err instanceof Error ? err : new Error(String(err));
       }
-    },
-  );
+  });
 
-  ipcMain.handle("help:chat:cancel", async (_event, sessionId: string) => {
+  createTypedHandler(helpContracts.cancel, async (_, sessionId) => {
     const controller = activeHelpStreams.get(sessionId);
     if (controller) {
       controller.abort();

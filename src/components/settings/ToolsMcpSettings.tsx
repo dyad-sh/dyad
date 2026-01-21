@@ -307,7 +307,7 @@ export function ToolsMcpSettings() {
     console.log("rerun effect");
     const handleDeepLink = async () => {
       if (lastDeepLink?.type === "add-mcp-server") {
-        const deepLink = lastDeepLink as AddMcpServerDeepLinkData;
+        const deepLink = lastDeepLink as unknown as AddMcpServerDeepLinkData;
         const payload = deepLink.payload;
         showInfo(`Prefilled ${payload.name} MCP server`);
         setName(payload.name);

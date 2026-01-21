@@ -1,5 +1,5 @@
-import { IpcClient } from "../ipc/ipc_client";
-import type { CreateAppParams, CreateAppResult } from "../ipc/ipc_types";
+import { ipc } from "../ipc/types";
+import type { CreateAppParams, CreateAppResult } from "../ipc/types";
 
 /**
  * Create a new app with an initial chat and prompt
@@ -10,7 +10,7 @@ export async function createApp(
   params: CreateAppParams,
 ): Promise<CreateAppResult> {
   try {
-    return await IpcClient.getInstance().createApp(params);
+    return await ipc.app.createApp(params);
   } catch (error) {
     console.error("[CHAT] Error creating app:", error);
     throw error;

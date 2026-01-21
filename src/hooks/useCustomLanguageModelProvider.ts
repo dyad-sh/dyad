@@ -1,15 +1,14 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { IpcClient } from "@/ipc/ipc_client";
-import type {
-  CreateCustomLanguageModelProviderParams,
-  LanguageModelProvider,
-} from "@/ipc/ipc_types";
+import {
+  ipc,
+  type CreateCustomLanguageModelProviderParams,
+  type LanguageModelProvider,
+} from "@/ipc/types";
 import { showError } from "@/lib/toast";
 import { queryKeys } from "@/lib/queryKeys";
 
 export function useCustomLanguageModelProvider() {
   const queryClient = useQueryClient();
-  const ipcClient = IpcClient.getInstance();
 
   const createProviderMutation = useMutation({
     mutationFn: async (
@@ -25,7 +24,7 @@ export function useCustomLanguageModelProvider() {
         throw new Error("API base URL is required");
       }
 
-      return ipcClient.createCustomLanguageModelProvider({
+      return ipc.languageModel.createCustomProvider({
         id: params.id.trim(),
         name: params.name.trim(),
         apiBaseUrl: params.apiBaseUrl.trim(),
@@ -57,7 +56,7 @@ export function useCustomLanguageModelProvider() {
         throw new Error("API base URL is required");
       }
 
-      return ipcClient.editCustomLanguageModelProvider({
+      return ipc.languageModel.editCustomProvider({
         id: params.id.trim(),
         name: params.name.trim(),
         apiBaseUrl: params.apiBaseUrl.trim(),
@@ -81,7 +80,7 @@ export function useCustomLanguageModelProvider() {
         throw new Error("Provider ID is required");
       }
 
-      return ipcClient.deleteCustomLanguageModelProvider(providerId);
+      return ipc.languageModel.deleteCustomProvider({ providerId });
     },
     onSuccess: () => {
       // Invalidate and refetch

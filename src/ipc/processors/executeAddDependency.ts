@@ -1,7 +1,7 @@
 import { db } from "../../db";
 import { messages } from "../../db/schema";
 import { eq } from "drizzle-orm";
-import { Message } from "../ipc_types";
+import { Message } from "@/ipc/types";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 

@@ -4,7 +4,7 @@
  */
 
 import { getDyadAppPath } from "@/paths/paths";
-import { EnvVar } from "../ipc_types";
+import { EnvVar } from "@/ipc/types";
 import path from "path";
 import fs from "fs";
 import log from "electron-log";

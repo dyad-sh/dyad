@@ -5,7 +5,7 @@ import {
   AlertTriangle,
   FileText,
 } from "lucide-react";
-import type { Problem } from "@/ipc/ipc_types";
+import type { Problem } from "@/ipc/types";
 
 type ProblemWithoutSnippet = Omit<Problem, "snippet">;
 

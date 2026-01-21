@@ -9,7 +9,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { SimpleAvatar } from "@/components/ui/SimpleAvatar";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import {
   Trash2,
   UserPlus,
@@ -32,7 +32,7 @@ import {
 interface Collaborator {
   login: string;
   avatar_url: string;
-  permissions: {
+  permissions?: {
     admin: boolean;
     push: boolean;
     pull: boolean;
@@ -56,7 +56,7 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
   const loadCollaborators = useCallback(async () => {
     setIsLoading(true);
     try {
-      const collabs = await IpcClient.getInstance().listCollaborators(appId);
+      const collabs = await ipc.github.listCollaborators({ appId });
       setCollaborators(collabs);
     } catch (error: any) {
       console.error("Failed to load collaborators:", error);
@@ -78,7 +78,7 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
 
     setIsInviting(true);
     try {
-      await IpcClient.getInstance().inviteCollaborator(appId, trimmedUsername);
+      await ipc.github.inviteCollaborator({ appId, username: trimmedUsername });
       showSuccess(`Invited ${trimmedUsername} to the project.`);
       setInviteUsername("");
       // Reload list (though they might be pending)
@@ -94,10 +94,10 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
     if (!collaboratorToDelete) return;
 
     try {
-      await IpcClient.getInstance().removeCollaborator(
+      await ipc.github.removeCollaborator({
         appId,
-        collaboratorToDelete,
-      );
+        username: collaboratorToDelete,
+      });
       showSuccess(`Removed ${collaboratorToDelete} from the project.`);
       loadCollaborators();
     } catch (error: any) {
@@ -193,9 +193,9 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
                       <div>
                         <p className="text-sm font-medium">{collab.login}</p>
                         <p className="text-xs text-gray-500">
-                          {collab.permissions.admin
+                          {collab.permissions?.admin
                             ? "Admin"
-                            : collab.permissions.push
+                            : collab.permissions?.push
                               ? "Editor"
                               : "Viewer"}
                         </p>

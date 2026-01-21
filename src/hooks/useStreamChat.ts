@@ -1,9 +1,5 @@
 import { useCallback } from "react";
-import type {
-  ComponentSelection,
-  Message,
-  FileAttachment,
-} from "@/ipc/ipc_types";
+import type { ComponentSelection, FileAttachment, ChatAttachment } from "@/ipc/types";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
   chatErrorByIdAtom,
@@ -12,9 +8,9 @@ import {
   isStreamingByIdAtom,
   recentStreamChatIdsAtom,
 } from "@/atoms/chatAtoms";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
-import type { ChatResponseEnd } from "@/ipc/ipc_types";
+import type { ChatResponseEnd } from "@/ipc/types";
 import { useChats } from "./useChats";
 import { useLoadApp } from "./useLoadApp";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
@@ -121,90 +117,120 @@ export function useStreamChat({
         return next;
       });
 
+      // Convert FileAttachment[] (with File objects) to ChatAttachment[] (base64 encoded)
+      let convertedAttachments: ChatAttachment[] | undefined;
+      if (attachments && attachments.length > 0) {
+        convertedAttachments = await Promise.all(
+          attachments.map(
+            (attachment) =>
+              new Promise<ChatAttachment>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                  resolve({
+                    name: attachment.file.name,
+                    type: attachment.file.type,
+                    data: reader.result as string,
+                    attachmentType: attachment.type,
+                  });
+                };
+                reader.onerror = () => reject(reader.error);
+                reader.readAsDataURL(attachment.file);
+              }),
+          ),
+        );
+      }
+
       let hasIncrementedStreamCount = false;
       try {
-        IpcClient.getInstance().streamMessage(prompt, {
-          selectedComponents: selectedComponents ?? [],
-          chatId,
-          redo,
-          attachments,
-          onUpdate: (updatedMessages: Message[]) => {
-            if (!hasIncrementedStreamCount) {
-              setStreamCountById((prev) => {
+        ipc.chatStream.start(
+          {
+            chatId,
+            prompt,
+            redo,
+            attachments: convertedAttachments,
+            selectedComponents: selectedComponents ?? [],
+          },
+          {
+            onChunk: ({ messages: updatedMessages }) => {
+              if (!hasIncrementedStreamCount) {
+                setStreamCountById((prev) => {
+                  const next = new Map(prev);
+                  next.set(chatId, (prev.get(chatId) ?? 0) + 1);
+                  return next;
+                });
+                hasIncrementedStreamCount = true;
+              }
+
+              setMessagesById((prev) => {
                 const next = new Map(prev);
-                next.set(chatId, (prev.get(chatId) ?? 0) + 1);
+                next.set(chatId, updatedMessages);
                 return next;
               });
-              hasIncrementedStreamCount = true;
-            }
+            },
+            onEnd: (response: ChatResponseEnd) => {
+              // Remove from pending set now that stream is complete
+              pendingStreamChatIds.delete(chatId);
 
-            setMessagesById((prev) => {
-              const next = new Map(prev);
-              next.set(chatId, updatedMessages);
-              return next;
-            });
-          },
-          onEnd: (response: ChatResponseEnd) => {
-            // Remove from pending set now that stream is complete
-            pendingStreamChatIds.delete(chatId);
-
-            if (response.updatedFiles) {
-              setIsPreviewOpen(true);
-              refreshAppIframe();
-              if (settings?.enableAutoFixProblems) {
-                checkProblems();
+              if (response.updatedFiles) {
+                setIsPreviewOpen(true);
+                refreshAppIframe();
+                if (settings?.enableAutoFixProblems) {
+                  checkProblems();
+                }
               }
-            }
-            if (response.extraFiles) {
-              showExtraFilesToast({
-                files: response.extraFiles,
-                error: response.extraFilesError,
-                posthog,
+              if (response.extraFiles) {
+                showExtraFilesToast({
+                  files: response.extraFiles,
+                  error: response.extraFilesError,
+                  posthog,
+                });
+              }
+              // Use queryClient directly with the chatId parameter to avoid stale closure issues
+              queryClient.invalidateQueries({ queryKey: ["proposal", chatId] });
+
+              refetchUserBudget();
+
+              // Keep the same as below
+              setIsStreamingById((prev) => {
+                const next = new Map(prev);
+                next.set(chatId, false);
+                return next;
               });
-            }
-            // Use queryClient directly with the chatId parameter to avoid stale closure issues
-            queryClient.invalidateQueries({
-              queryKey: queryKeys.proposals.detail({ chatId }),
-            });
+              // Use queryClient directly with the chatId parameter to avoid stale closure issues
+              queryClient.invalidateQueries({
+                queryKey: queryKeys.proposals.detail({ chatId }),
+              });
+              invalidateChats();
+              refreshApp();
+              refreshVersions();
+              invalidateTokenCount();
+              onSettled?.();
+            },
+            onError: ({ error: errorMessage }) => {
+              // Remove from pending set now that stream ended with error
+              pendingStreamChatIds.delete(chatId);
 
-            refetchUserBudget();
+              console.error(`[CHAT] Stream error for ${chatId}:`, errorMessage);
+              setErrorById((prev) => {
+                const next = new Map(prev);
+                next.set(chatId, errorMessage);
+                return next;
+              });
 
-            // Keep the same as below
-            setIsStreamingById((prev) => {
-              const next = new Map(prev);
-              next.set(chatId, false);
-              return next;
-            });
-            invalidateChats();
-            refreshApp();
-            refreshVersions();
-            invalidateTokenCount();
-            onSettled?.();
+              // Keep the same as above
+              setIsStreamingById((prev) => {
+                const next = new Map(prev);
+                next.set(chatId, false);
+                return next;
+              });
+              invalidateChats();
+              refreshApp();
+              refreshVersions();
+              invalidateTokenCount();
+              onSettled?.();
+            },
           },
-          onError: (errorMessage: string) => {
-            // Remove from pending set now that stream ended with error
-            pendingStreamChatIds.delete(chatId);
-
-            console.error(`[CHAT] Stream error for ${chatId}:`, errorMessage);
-            setErrorById((prev) => {
-              const next = new Map(prev);
-              next.set(chatId, errorMessage);
-              return next;
-            });
-
-            // Keep the same as above
-            setIsStreamingById((prev) => {
-              const next = new Map(prev);
-              next.set(chatId, false);
-              return next;
-            });
-            invalidateChats();
-            refreshApp();
-            refreshVersions();
-            invalidateTokenCount();
-            onSettled?.();
-          },
-        });
+        );
       } catch (error) {
         // Remove from pending set on exception
         pendingStreamChatIds.delete(chatId);

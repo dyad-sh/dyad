@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import { showError, showSuccess } from "@/lib/toast";
 import {
   Dialog,
@@ -46,7 +46,7 @@ export function RenameChatDialog({
     }
 
     try {
-      await IpcClient.getInstance().updateChat({
+      await ipc.chat.updateChat({
         chatId,
         title: newTitle.trim(),
       });

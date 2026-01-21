@@ -1,21 +1,18 @@
-import { ipcMain } from "electron";
-import type { UserSettings } from "../../lib/schemas";
-import { writeSettings } from "../../main/settings";
-import { readSettings } from "../../main/settings";
+import { createTypedHandler } from "./base";
+import { settingsContracts } from "../types/settings";
+import { writeSettings, readSettings } from "../../main/settings";
 
 export function registerSettingsHandlers() {
-  // Intentionally do NOT use handle because it could log sensitive data from the return value.
-  ipcMain.handle("get-user-settings", async () => {
+  // Note: Settings handlers intentionally use createTypedHandler without logging
+  // to avoid logging sensitive data (API keys, tokens, etc.) from args/return values.
+
+  createTypedHandler(settingsContracts.getUserSettings, async () => {
     const settings = readSettings();
     return settings;
   });
 
-  // Intentionally do NOT use handle because it could log sensitive data from the args.
-  ipcMain.handle(
-    "set-user-settings",
-    async (_, settings: Partial<UserSettings>) => {
-      writeSettings(settings);
-      return readSettings();
-    },
-  );
+  createTypedHandler(settingsContracts.setUserSettings, async (_, settings) => {
+    writeSettings(settings);
+    return readSettings();
+  });
 }

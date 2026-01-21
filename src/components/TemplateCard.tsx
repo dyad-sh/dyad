@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { ArrowLeft } from "lucide-react";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import { useSettings } from "@/hooks/useSettings";
 import { CommunityCodeConsentDialog } from "./CommunityCodeConsentDialog";
 import type { Template } from "@/shared/templates";
@@ -59,7 +59,7 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
   const handleGithubClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (template.githubUrl) {
-      IpcClient.getInstance().openExternalUrl(template.githubUrl);
+      ipc.system.openExternalUrl(template.githubUrl);
     }
   };
 

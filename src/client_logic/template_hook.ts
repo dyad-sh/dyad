@@ -1,4 +1,4 @@
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import { getAppPort } from "../../shared/ports";
 
 import { v4 as uuidv4 } from "uuid";
@@ -11,13 +11,13 @@ export async function neonTemplateHook({
   appName: string;
 }) {
   console.log("Creating Neon project");
-  const neonProject = await IpcClient.getInstance().createNeonProject({
+  const neonProject = await ipc.neon.createProject({
     name: appName,
     appId: appId,
   });
 
   console.log("Neon project created", neonProject);
-  await IpcClient.getInstance().setAppEnvVars({
+  await ipc.misc.setAppEnvVars({
     appId: appId,
     envVars: [
       {

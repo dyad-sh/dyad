@@ -1,11 +1,12 @@
-import { ipcMain } from "electron";
 import { db } from "../../db";
 import { chats, messages } from "../../db/schema";
 import { eq, and, like, desc } from "drizzle-orm";
-import type { SecurityReviewResult, SecurityFinding } from "../ipc_types";
+import { createTypedHandler } from "./base";
+import { securityContracts } from "../types/security";
+import type { SecurityFinding } from "../types/security";
 
 export function registerSecurityHandlers() {
-  ipcMain.handle("get-latest-security-review", async (event, appId: number) => {
+  createTypedHandler(securityContracts.getLatestSecurityReview, async (_, appId) => {
     if (!appId) {
       throw new Error("App ID is required");
     }
@@ -45,7 +46,7 @@ export function registerSecurityHandlers() {
       findings,
       timestamp: message.createdAt.toISOString(),
       chatId: message.chatId,
-    } satisfies SecurityReviewResult;
+    };
   });
 }
 

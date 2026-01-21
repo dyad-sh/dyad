@@ -3,8 +3,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { IpcClient } from "@/ipc/ipc_client";
-import type { TokenCountResult } from "@/ipc/ipc_types";
+import { ipc, type TokenCountResult } from "@/ipc/types";
 import { useCallback, useEffect, useState } from "react";
 import { queryKeys } from "@/lib/queryKeys";
 
@@ -37,7 +36,7 @@ export function useCountTokens(chatId: number | null, input: string = "") {
     queryKey: queryKeys.tokenCount.forChat({ chatId, input: debouncedInput }),
     queryFn: async () => {
       if (chatId === null) return null;
-      return IpcClient.getInstance().countTokens({
+      return ipc.chat.countTokens({
         chatId,
         input: debouncedInput,
       });

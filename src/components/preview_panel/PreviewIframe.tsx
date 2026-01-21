@@ -27,7 +27,7 @@ import {
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { CopyErrorMessage } from "@/components/CopyErrorMessage";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 
 import { useParseRouter } from "@/hooks/useParseRouter";
 import {
@@ -46,7 +46,7 @@ import {
   screenshotDataUrlAtom,
   pendingVisualChangesAtom,
 } from "@/atoms/previewAtoms";
-import { ComponentSelection } from "@/ipc/ipc_types";
+import { ComponentSelection } from "@/ipc/types";
 import {
   Tooltip,
   TooltipContent,
@@ -229,7 +229,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     if (!componentId || !selectedAppId) return;
 
     try {
-      const result = await IpcClient.getInstance().analyzeComponent({
+      const result = await ipc.visualEditing.analyzeComponent({
         appId: selectedAppId,
         componentId,
       });
@@ -360,7 +360,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         };
 
         // Send to central log store
-        IpcClient.getInstance().addLog(logEntry);
+        ipc.misc.addLog(logEntry);
 
         // Also update UI state
         setConsoleEntries((prev) => [...prev, logEntry]);
@@ -380,7 +380,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         };
 
         // Send to central log store
-        IpcClient.getInstance().addLog(logEntry);
+        ipc.misc.addLog(logEntry);
 
         // Also update UI state
         setConsoleEntries((prev) => [...prev, logEntry]);
@@ -402,7 +402,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         };
 
         // Send to central log store
-        IpcClient.getInstance().addLog(logEntry);
+        ipc.misc.addLog(logEntry);
 
         // Also update UI state
         setConsoleEntries((prev) => [...prev, logEntry]);
@@ -423,7 +423,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         };
 
         // Send to central log store
-        IpcClient.getInstance().addLog(logEntry);
+        ipc.misc.addLog(logEntry);
 
         // Also update UI state
         setConsoleEntries((prev) => [...prev, logEntry]);
@@ -571,7 +571,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         };
 
         // Send to central log store
-        IpcClient.getInstance().addLog(logEntry);
+        ipc.misc.addLog(logEntry);
 
         // Also update UI state
         setConsoleEntries((prev) => [...prev, logEntry]);
@@ -588,7 +588,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         };
 
         // Send to central log store
-        IpcClient.getInstance().addLog(logEntry);
+        ipc.misc.addLog(logEntry);
 
         // Also update UI state
         setConsoleEntries((prev) => [...prev, logEntry]);
@@ -948,7 +948,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               data-testid="preview-open-browser-button"
               onClick={() => {
                 if (originalUrl) {
-                  IpcClient.getInstance().openExternalUrl(originalUrl);
+                  ipc.system.openExternalUrl(originalUrl);
                 }
               }}
               className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"

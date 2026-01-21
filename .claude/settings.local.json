@@ -1,5 +1,12 @@
 {
   "permissions": {
-    "allow": ["Bash(gh pr:*)", "Bash(npm test)", "Bash(npm test:*)"]
+    "allow": [
+      "Edit",
+      "Write",
+      "Bash(npm run:*)",
+      "Bash(npm install:*)",
+      "Bash(git:*)",
+      "Bash(gh:*)"
+    ]
   }
 }

@@ -1,7 +1,7 @@
 {
   "name": "abba-ai",
   "productName": "ABBA AI",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Free, local, open-source AI app builder",
   "main": ".vite/build/main.js",
   "repository": {
@@ -39,6 +39,8 @@
     "verify-windows-icon": "node scripts/verify-windows-exe-icon.mjs",
     "verify-windows-aumid": "node scripts/verify-windows-aumid.mjs",
     "verify-tray-icon": "node scripts/verify-tray-icon-config.mjs",
+    "verify-icon-hashes": "node scripts/verify-icon-hashes.mjs",
+    "regenerate-icons": "node scripts/regenerate-icons.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
@@ -74,9 +76,9 @@
     "@types/node": "^22.14.0",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
-    "@typescript/native-preview": "^7.0.0-dev.20260107.1",
     "@typescript-eslint/eslint-plugin": "^5.62.0",
     "@typescript-eslint/parser": "^5.62.0",
+    "@typescript/native-preview": "^7.0.0-dev.20260107.1",
     "@vitest/ui": "^3.1.1",
     "cross-env": "^7.0.3",
     "drizzle-kit": "^0.30.6",
@@ -85,14 +87,17 @@
     "eslint-plugin-import": "^2.31.0",
     "happy-dom": "^17.4.4",
     "husky": "^9.1.7",
+    "icns-lib": "^1.0.1",
+    "icon-gen": "^5.0.0",
     "lint-staged": "^15.5.2",
     "oxlint": "^1.8.0",
+    "png-to-ico": "^3.0.1",
     "prettier": "3.5.3",
+    "resedit": "^2.0.2",
     "rimraf": "^6.0.1",
     "typescript": "^5.8.3",
     "vite": "^5.4.17",
-    "vitest": "^3.1.1",
-    "resedit": "^2.0.2"
+    "vitest": "^3.1.1"
   },
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "^4.0.9",

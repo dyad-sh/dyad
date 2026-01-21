@@ -38,7 +38,7 @@ Notes:
 
 ### Windows Icon Troubleshooting
 
-**Fresh install (v0.1.8+)**: New installs automatically show the correct ABBA "A" icon everywhere:
+**Fresh install (v0.1.9+)**: New installs automatically show the correct ABBA "A" icon everywhere:
 
 - Setup.exe installer file icon
 - Installed app EXE icon
@@ -64,7 +64,7 @@ Remove-Item -Path "$env:LOCALAPPDATA\Microsoft\Windows\Explorer\iconcache*" -For
 Start-Process explorer.exe
 ```
 
-This is a one-time step due to Windows icon caching behavior. The correct icon is embedded in v0.1.5+ builds (shortcuts/installer) and v0.1.8+ builds (taskbar/tray).
+This is a one-time step due to Windows icon caching behavior. The correct ABBA icon is embedded in v0.1.9+ builds. Earlier versions (v0.1.5-v0.1.8) had configuration issues where the Dyad artwork was still being used.
 
 #### 2-Minute Icon Verification (for developers/testers)
 
@@ -85,7 +85,27 @@ To verify the Windows build has correct branding on a clean system:
 
 **If icons are wrong**: Open an issue with screenshot evidence.
 
-**Technical details**: Windows uses AppUserModelId (AUMID) for taskbar icon grouping. Squirrel.Windows creates shortcuts with AUMID pattern `com.squirrel.<name>.<name>`. The app's `setAppUserModelId()` MUST match this pattern — mismatch causes wrong icons. ABBA AI uses `com.squirrel.abba_ai.abba_ai`. CI verifies both installer and app EXE icons (`npm run verify-branding`, `npm run verify-windows-icon`).
+**Technical details**: Windows uses AppUserModelId (AUMID) for taskbar icon grouping. Squirrel.Windows creates shortcuts with AUMID pattern `com.squirrel.<name>.<name>`. The app's `setAppUserModelId()` MUST match this pattern — mismatch causes wrong icons. ABBA AI uses `com.squirrel.abba_ai.abba_ai`. CI verifies icons by SHA256 hash (`npm run verify-icon-hashes`).
+
+### Icon Pipeline (for developers)
+
+All icon files are generated from a single canonical source: `assets/logo.svg` (the ABBA "A" artwork).
+
+**Regenerating icons** (if artwork changes):
+
+```bash
+npm run regenerate-icons
+```
+
+This generates:
+
+- `assets/brand/abba-logo-1024.png` - Canonical master PNG
+- `assets/icon/logo.ico` - Windows app icon (16/32/48/64/128/256)
+- `assets/icon/logo.icns` - macOS app icon
+- `assets/icon/logo.png` - Linux / general (1024px)
+- `assets/icon/tray.ico` - Windows tray icon (16/24/32/48/64)
+
+**CI verification**: Icons are verified by SHA256 hash, not just existence. This prevents shipping incorrect artwork.
 
 ## 🚀 Features
 
@@ -110,6 +130,7 @@ If you're interested in contributing, please read our [contributing](./CONTRIBUT
 - Branding verification (`npm run verify-branding`)
 - Windows AUMID consistency (`npm run verify-windows-aumid`)
 - Tray icon configuration (`npm run verify-tray-icon`)
+- **Icon hash verification** (`npm run verify-icon-hashes`) - ensures ABBA artwork
 - Windows EXE icon verification (`npm run verify-windows-icon`, Windows CI only)
 
 **E2E tests** (informational, non-blocking):

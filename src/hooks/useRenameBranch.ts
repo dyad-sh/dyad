@@ -3,6 +3,7 @@ import { IpcClient } from "@/ipc/ipc_client";
 import { showError } from "@/lib/toast";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useAtomValue } from "jotai";
+import { queryKeys } from "@/lib/queryKeys";
 
 interface RenameBranchParams {
   appId: number;
@@ -30,10 +31,10 @@ export function useRenameBranch() {
     onSuccess: (_, variables) => {
       // Invalidate queries that depend on branch information
       queryClient.invalidateQueries({
-        queryKey: ["currentBranch", variables.appId],
+        queryKey: queryKeys.branches.current(variables.appId),
       });
       queryClient.invalidateQueries({
-        queryKey: ["versions", variables.appId],
+        queryKey: queryKeys.versions.list(variables.appId),
       });
       // Potentially show a success message or trigger other actions
     },

@@ -8,6 +8,7 @@ import type {
   McpToolConsent,
   CreateMcpServer,
 } from "@/ipc/ipc_types";
+import { queryKeys } from "@/lib/queryKeys";
 
 export type Transport = "stdio" | "http";
 
@@ -15,7 +16,7 @@ export function useMcp() {
   const queryClient = useQueryClient();
 
   const serversQuery = useQuery<McpServer[], Error>({
-    queryKey: ["mcp", "servers"],
+    queryKey: queryKeys.mcp.servers,
     queryFn: async () => {
       const ipc = IpcClient.getInstance();
       const list = await ipc.listMcpServers();
@@ -30,7 +31,7 @@ export function useMcp() {
   );
 
   const toolsByServerQuery = useQuery<Record<number, McpTool[]>, Error>({
-    queryKey: ["mcp", "tools-by-server", serverIds],
+    queryKey: queryKeys.mcp.toolsByServer.list(serverIds.map(String)),
     enabled: serverIds.length > 0,
     queryFn: async () => {
       const ipc = IpcClient.getInstance();
@@ -43,7 +44,7 @@ export function useMcp() {
   });
 
   const consentsQuery = useQuery<McpToolConsent[], Error>({
-    queryKey: ["mcp", "consents"],
+    queryKey: queryKeys.mcp.consents,
     queryFn: async () => {
       const ipc = IpcClient.getInstance();
       const list = await ipc.getMcpToolConsents();
@@ -66,9 +67,9 @@ export function useMcp() {
       return ipc.createMcpServer(params);
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["mcp", "servers"] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.mcp.servers });
       await queryClient.invalidateQueries({
-        queryKey: ["mcp", "tools-by-server"],
+        queryKey: queryKeys.mcp.toolsByServer.all,
       });
     },
     meta: { showErrorToast: true },
@@ -80,9 +81,9 @@ export function useMcp() {
       return ipc.updateMcpServer(params);
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["mcp", "servers"] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.mcp.servers });
       await queryClient.invalidateQueries({
-        queryKey: ["mcp", "tools-by-server"],
+        queryKey: queryKeys.mcp.toolsByServer.all,
       });
     },
     meta: { showErrorToast: true },
@@ -94,9 +95,9 @@ export function useMcp() {
       return ipc.deleteMcpServer(id);
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["mcp", "servers"] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.mcp.servers });
       await queryClient.invalidateQueries({
-        queryKey: ["mcp", "tools-by-server"],
+        queryKey: queryKeys.mcp.toolsByServer.all,
       });
     },
     meta: { showErrorToast: true },
@@ -112,7 +113,7 @@ export function useMcp() {
       return ipc.setMcpToolConsent(params);
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["mcp", "consents"] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.mcp.consents });
     },
     meta: { showErrorToast: true },
   });
@@ -137,9 +138,11 @@ export function useMcp() {
 
   const refetchAll = async () => {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["mcp", "servers"] }),
-      queryClient.invalidateQueries({ queryKey: ["mcp", "tools-by-server"] }),
-      queryClient.invalidateQueries({ queryKey: ["mcp", "consents"] }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.mcp.servers }),
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.mcp.toolsByServer.all,
+      }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.mcp.consents }),
     ]);
   };
 

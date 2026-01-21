@@ -6,6 +6,7 @@ import { IpcClient } from "@/ipc/ipc_client";
 import { chatMessagesByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { RevertVersionResponse, Version } from "@/ipc/ipc_types";
+import { queryKeys } from "@/lib/queryKeys";
 import { toast } from "sonner";
 
 export function useVersions(appId: number | null) {
@@ -20,7 +21,7 @@ export function useVersions(appId: number | null) {
     error,
     refetch: refreshVersions,
   } = useQuery<Version[], Error>({
-    queryKey: ["versions", appId],
+    queryKey: queryKeys.versions.list(appId),
     queryFn: async (): Promise<Version[]> => {
       if (appId === null) {
         return [];
@@ -71,9 +72,11 @@ export function useVersions(appId: number | null) {
       } else if ("warningMessage" in result) {
         toast.warning(result.warningMessage);
       }
-      await queryClient.invalidateQueries({ queryKey: ["versions", appId] });
       await queryClient.invalidateQueries({
-        queryKey: ["currentBranch", appId],
+        queryKey: queryKeys.versions.list(appId),
+      });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.branches.current(appId),
       });
       if (selectedChatId) {
         const chat = await IpcClient.getInstance().getChat(selectedChatId);
@@ -84,7 +87,7 @@ export function useVersions(appId: number | null) {
         });
       }
       await queryClient.invalidateQueries({
-        queryKey: ["problems", appId],
+        queryKey: queryKeys.problems.byApp(appId),
       });
     },
     meta: { showErrorToast: true },

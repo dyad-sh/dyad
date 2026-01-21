@@ -12,12 +12,7 @@ import {
 } from "@/ipc/ipc_types";
 import { useSettings } from "./useSettings";
 import { isSupabaseConnected } from "@/lib/schemas";
-
-const SUPABASE_QUERY_KEYS = {
-  organizations: ["supabase", "organizations"] as const,
-  projects: ["supabase", "projects"] as const,
-  branches: (projectId: string) => ["supabase", "branches", projectId] as const,
-};
+import { queryKeys } from "@/lib/queryKeys";
 
 export interface UseSupabaseOptions {
   branchesProjectId?: string | null;
@@ -37,7 +32,7 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
   // Query: Load all connected Supabase organizations
   // Only runs when Supabase is connected to avoid unnecessary API calls
   const organizationsQuery = useQuery<SupabaseOrganizationInfo[], Error>({
-    queryKey: SUPABASE_QUERY_KEYS.organizations,
+    queryKey: queryKeys.supabase.organizations,
     queryFn: async () => {
       const ipcClient = IpcClient.getInstance();
       return ipcClient.listSupabaseOrganizations();
@@ -49,7 +44,7 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
   // Query: Load Supabase projects from all connected organizations
   // Only runs when there are connected organizations to avoid unauthorized errors
   const projectsQuery = useQuery<SupabaseProject[], Error>({
-    queryKey: SUPABASE_QUERY_KEYS.projects,
+    queryKey: queryKeys.supabase.projects,
     queryFn: async () => {
       const ipcClient = IpcClient.getInstance();
       return ipcClient.listAllSupabaseProjects();
@@ -70,9 +65,9 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: SUPABASE_QUERY_KEYS.organizations,
+        queryKey: queryKeys.supabase.organizations,
       });
-      queryClient.invalidateQueries({ queryKey: SUPABASE_QUERY_KEYS.projects });
+      queryClient.invalidateQueries({ queryKey: queryKeys.supabase.projects });
     },
     meta: { showErrorToast: true },
   });
@@ -101,10 +96,10 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
 
   // Query: Load branches for a Supabase project
   const branchesQuery = useQuery<SupabaseBranch[], Error>({
-    queryKey: [
-      ...SUPABASE_QUERY_KEYS.branches(branchesProjectId ?? ""),
+    queryKey: queryKeys.supabase.branches(
+      branchesProjectId ?? "",
       branchesOrganizationSlug ?? null,
-    ],
+    ),
     queryFn: async () => {
       const ipcClient = IpcClient.getInstance();
       const list = await ipcClient.listSupabaseBranches({

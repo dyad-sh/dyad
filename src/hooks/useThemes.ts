@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { IpcClient } from "@/ipc/ipc_client";
 import { themesData, type Theme } from "@/shared/themes";
+import { queryKeys } from "@/lib/queryKeys";
 
 export function useThemes() {
   const query = useQuery({
-    queryKey: ["themes"],
+    queryKey: queryKeys.themes.all,
     queryFn: async (): Promise<Theme[]> => {
       const ipcClient = IpcClient.getInstance();
       return ipcClient.getThemes();

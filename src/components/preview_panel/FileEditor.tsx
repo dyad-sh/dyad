@@ -16,6 +16,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useSettings } from "@/hooks/useSettings";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
 import { getLanguage } from "@/utils/get_language";
+import { queryKeys } from "@/lib/queryKeys";
 
 interface FileEditorProps {
   appId: number | null;
@@ -195,7 +196,9 @@ export const FileEditor = ({
         filePath,
         currentValueRef.current,
       );
-      await queryClient.invalidateQueries({ queryKey: ["versions", appId] });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.versions.list(appId),
+      });
       if (settings?.enableAutoFixProblems) {
         checkProblems();
       }

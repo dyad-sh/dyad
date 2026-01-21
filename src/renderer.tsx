@@ -18,6 +18,7 @@ import {
   pendingAgentConsentsAtom,
   agentTodosByChatIdAtom,
 } from "./atoms/chatAtoms";
+import { queryKeys } from "./lib/queryKeys";
 
 // @ts-ignore
 console.log("Running in mode:", import.meta.env.MODE);
@@ -202,7 +203,10 @@ function App() {
   useEffect(() => {
     const ipc = IpcClient.getInstance();
     const unsubscribe = ipc.onAgentProblemsUpdate((payload) => {
-      queryClient.setQueryData(["problems", payload.appId], payload.problems);
+      queryClient.setQueryData(
+        queryKeys.problems.byApp(payload.appId),
+        payload.problems,
+      );
     });
     return () => unsubscribe();
   }, []);

@@ -111,6 +111,10 @@ To get additional debug logs when a test is failing, use:
 DEBUG=pw:browser npm run e2e
 ```
 
+## Before Committing
+
+Always run `/lint` before committing code. This runs TypeScript checks, Prettier formatting, and ESLint to ensure code quality. Fix all errors before creating a commit.
+
 ## Git workflow
 
 When pushing changes and creating PRs:

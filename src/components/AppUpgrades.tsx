@@ -5,6 +5,7 @@ import { Terminal } from "lucide-react";
 import { IpcClient } from "@/ipc/ipc_client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppUpgrade } from "@/ipc/ipc_types";
+import { queryKeys } from "@/lib/queryKeys";
 
 export function AppUpgrades({ appId }: { appId: number | null }) {
   const queryClient = useQueryClient();
@@ -14,7 +15,7 @@ export function AppUpgrades({ appId }: { appId: number | null }) {
     isLoading,
     error: queryError,
   } = useQuery({
-    queryKey: ["app-upgrades", appId],
+    queryKey: queryKeys.appUpgrades.byApp(appId!),
     queryFn: () => {
       if (!appId) {
         return Promise.resolve([]);
@@ -40,13 +41,19 @@ export function AppUpgrades({ appId }: { appId: number | null }) {
       });
     },
     onSuccess: (_, upgradeId) => {
-      queryClient.invalidateQueries({ queryKey: ["app-upgrades", appId] });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.appUpgrades.byApp(appId!),
+      });
       if (upgradeId === "capacitor") {
         // Capacitor upgrade is done, so we need to invalidate the Capacitor
         // query to show the new status.
-        queryClient.invalidateQueries({ queryKey: ["is-capacitor", appId] });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.appUpgrades.isCapacitor(appId!),
+        });
       }
-      queryClient.invalidateQueries({ queryKey: ["versions", appId] });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.versions.list(appId),
+      });
     },
   });
 

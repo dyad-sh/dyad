@@ -92,6 +92,11 @@ const ignore = (file: string) => {
 
 const isEndToEndTestBuild = process.env.E2E_TEST_BUILD === "true";
 
+const hasAppleNotarizationEnv =
+  !!process.env.APPLE_TEAM_ID &&
+  !!process.env.APPLE_ID &&
+  !!process.env.APPLE_PASSWORD;
+
 const config: ForgeConfig = {
   packagerConfig: {
     protocols: [
@@ -102,18 +107,22 @@ const config: ForgeConfig = {
     ],
     icon: "./assets/icon/logo",
 
-    osxSign: isEndToEndTestBuild
-      ? undefined
-      : {
-          identity: process.env.APPLE_TEAM_ID,
-        },
-    osxNotarize: isEndToEndTestBuild
-      ? undefined
-      : {
-          appleId: process.env.APPLE_ID!,
-          appleIdPassword: process.env.APPLE_PASSWORD!,
-          teamId: process.env.APPLE_TEAM_ID!,
-        },
+    // Allow unsigned builds in CI/forks where macOS signing/notarization secrets
+    // are not configured.
+    osxSign:
+      isEndToEndTestBuild || !hasAppleNotarizationEnv
+        ? undefined
+        : {
+            identity: process.env.APPLE_TEAM_ID,
+          },
+    osxNotarize:
+      isEndToEndTestBuild || !hasAppleNotarizationEnv
+        ? undefined
+        : {
+            appleId: process.env.APPLE_ID,
+            appleIdPassword: process.env.APPLE_PASSWORD,
+            teamId: process.env.APPLE_TEAM_ID,
+          },
     asar: true,
     ignore,
     extraResource: ["node_modules/dugite/git", "node_modules/@vscode"],

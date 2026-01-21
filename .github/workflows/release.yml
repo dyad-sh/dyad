@@ -36,19 +36,19 @@ jobs:
           # Required for @vscode/ripgrep to download binaries without hitting GitHub API rate limits
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: add macos cert
-        if: contains(matrix.os.name, 'macos')
+        if: contains(matrix.os.name, 'macos') && secrets.MACOS_CERT_P12 != '' && secrets.MACOS_CERT_PASSWORD != ''
         env:
           MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
           MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
         run: chmod +x tools/add-macos-cert.sh && . ./tools/add-macos-cert.sh
       # Windows only
       - name: Set up certificate
-        if: contains(matrix.os.name, 'windows')
+        if: contains(matrix.os.name, 'windows') && secrets.SM_CLIENT_CERT_FILE_B64 != '' && secrets.SM_HOST != '' && secrets.SM_API_KEY != '' && secrets.SM_CLIENT_CERT_PASSWORD != '' && secrets.DIGICERT_KEYPAIR_ALIAS != '' && secrets.SM_CODE_SIGNING_CERT_SHA1_HASH != ''
         run: |
           echo "${{ secrets.SM_CLIENT_CERT_FILE_B64 }}" | base64 --decode > /d/Certificate_pkcs12.p12
         shell: bash
       - name: Set variables
-        if: contains(matrix.os.name, 'windows')
+        if: contains(matrix.os.name, 'windows') && secrets.SM_CLIENT_CERT_FILE_B64 != '' && secrets.SM_HOST != '' && secrets.SM_API_KEY != '' && secrets.SM_CLIENT_CERT_PASSWORD != '' && secrets.DIGICERT_KEYPAIR_ALIAS != '' && secrets.SM_CODE_SIGNING_CERT_SHA1_HASH != ''
         id: variables
         run: |
           echo "SM_HOST=${{ secrets.SM_HOST }}" >> "$GITHUB_ENV" 
@@ -57,10 +57,10 @@ jobs:
           echo "SM_CLIENT_CERT_PASSWORD=${{ secrets.SM_CLIENT_CERT_PASSWORD }}" >> "$GITHUB_ENV"
         shell: bash
       - name: Code signing with Software Trust Manager
-        if: contains(matrix.os.name, 'windows')
+        if: contains(matrix.os.name, 'windows') && secrets.SM_CLIENT_CERT_FILE_B64 != '' && secrets.SM_HOST != '' && secrets.SM_API_KEY != '' && secrets.SM_CLIENT_CERT_PASSWORD != '' && secrets.DIGICERT_KEYPAIR_ALIAS != '' && secrets.SM_CODE_SIGNING_CERT_SHA1_HASH != ''
         uses: digicert/ssm-code-signing@v1.1.0
       - name: Sync certificate (Windows)
-        if: contains(matrix.os.name, 'windows')
+        if: contains(matrix.os.name, 'windows') && secrets.SM_CLIENT_CERT_FILE_B64 != '' && secrets.SM_HOST != '' && secrets.SM_API_KEY != '' && secrets.SM_CLIENT_CERT_PASSWORD != '' && secrets.DIGICERT_KEYPAIR_ALIAS != '' && secrets.SM_CODE_SIGNING_CERT_SHA1_HASH != ''
         run: |
           smctl windows certsync --keypair-alias=${{ secrets.DIGICERT_KEYPAIR_ALIAS }}
         shell: bash

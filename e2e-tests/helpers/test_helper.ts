@@ -1423,6 +1423,9 @@ export const test = base.extend<{
       if (!electronConfig.showSetupScreen) {
         // This is just a hack to avoid the AI setup screen.
         process.env.OPENAI_API_KEY = "sk-test";
+      } else {
+        // Ensure setup screen tests are deterministic even if a prior test set this.
+        delete process.env.OPENAI_API_KEY;
       }
       const baseTmpDir = os.tmpdir();
       const userDataDir = path.join(baseTmpDir, `dyad-e2e-tests-${Date.now()}`);

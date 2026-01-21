@@ -105,30 +105,30 @@ if (!fs.existsSync(forgeConfigPath)) {
 }
 
 // 2. Check main.ts for appUserModelId
-// IMPORTANT: The AUMID MUST match Squirrel's shortcut pattern: com.squirrel.<name>.<name>
-// where <name> is MakerSquirrel's "name" config. Mismatch = wrong taskbar icon!
+// IMPORTANT: main.ts should use WINDOWS_AUMID constant from shared/windowsIdentity.ts
+// This ensures the AUMID matches Squirrel's shortcut pattern.
 const mainTsPath = path.join(rootDir, "src", "main.ts");
-const EXPECTED_AUMID = "com.squirrel.abba_ai.abba_ai";
 
 if (!fs.existsSync(mainTsPath)) {
   error("src/main.ts not found!");
 } else {
   const mainTs = fs.readFileSync(mainTsPath, "utf-8");
 
-  // Check for setAppUserModelId call with correct Squirrel AUMID
-  if (!mainTs.includes(`app.setAppUserModelId("${EXPECTED_AUMID}")`)) {
+  // Check that main.ts imports and uses WINDOWS_AUMID constant (not hardcoded)
+  if (mainTs.includes("app.setAppUserModelId(WINDOWS_AUMID)")) {
+    success("main.ts uses WINDOWS_AUMID constant from shared module");
+  } else if (mainTs.includes("app.setAppUserModelId(")) {
+    // Hardcoded string detected - this is fragile
     error(
-      `main.ts should call app.setAppUserModelId("${EXPECTED_AUMID}") to match Squirrel shortcut AUMID`,
+      "main.ts should use WINDOWS_AUMID constant from ./shared/windowsIdentity (not hardcoded string)",
     );
   } else {
-    success(`main.ts correctly sets AppUserModelId to "${EXPECTED_AUMID}"`);
+    error("main.ts does not call app.setAppUserModelId()");
   }
 
-  // Check the actual AppUserModelId string doesn't contain dyad
-  // (allow "dyad" elsewhere in main.ts for backward-compat deep links)
-  const appIdMatch = mainTs.match(/setAppUserModelId\(["']([^"']+)["']\)/);
-  if (appIdMatch && appIdMatch[1].toLowerCase().includes("dyad")) {
-    error(`main.ts AppUserModelId "${appIdMatch[1]}" contains Dyad reference`);
+  // Check for import of WINDOWS_AUMID
+  if (!mainTs.includes('from "./shared/windowsIdentity"')) {
+    error("main.ts should import WINDOWS_AUMID from ./shared/windowsIdentity");
   }
 }
 

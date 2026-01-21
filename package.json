@@ -37,6 +37,7 @@
     "presubmit": "npm run prettier:check && npm run lint",
     "verify-branding": "node scripts/verify-branding.mjs",
     "verify-windows-icon": "node scripts/verify-windows-exe-icon.mjs",
+    "verify-windows-aumid": "node scripts/verify-windows-aumid.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",

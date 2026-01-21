@@ -32,6 +32,7 @@ import { cleanupOldAiMessagesJson } from "./pro/main/ipc/handlers/local_agent/ai
 import fs from "fs";
 import { gitAddSafeDirectory } from "./ipc/utils/git_utils";
 import { getDyadAppsBaseDirectory } from "./paths/paths";
+import { WINDOWS_AUMID } from "./shared/windowsIdentity";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -51,11 +52,10 @@ if (started) {
 }
 
 // Set AppUserModelID to match Squirrel.Windows shortcut AUMID pattern.
-// Squirrel creates shortcuts with AUMID: com.squirrel.<name>.<name>
-// where <name> is MakerSquirrel's "name" config (abba_ai).
-// This MUST match for Windows to correctly associate icons with shortcuts/taskbar.
+// Uses shared constant from windowsIdentity.ts to ensure consistency.
+// This MUST be set early, before any windows are created.
 if (process.platform === "win32") {
-  app.setAppUserModelId("com.squirrel.abba_ai.abba_ai");
+  app.setAppUserModelId(WINDOWS_AUMID);
 }
 
 // Decide the git directory depending on environment

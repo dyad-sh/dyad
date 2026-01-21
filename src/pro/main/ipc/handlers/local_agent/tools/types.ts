@@ -12,17 +12,12 @@ import { AgentTodo } from "@/ipc/ipc_types";
 // XML Escape Helpers
 // ============================================================================
 
-export function escapeXmlAttr(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-export function escapeXmlContent(str: string): string {
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
+export {
+  escapeXmlAttr,
+  unescapeXmlAttr,
+  escapeXmlContent,
+  unescapeXmlContent,
+} from "../../../../../../../shared/xmlEscape";
 
 // ============================================================================
 // Todo Types

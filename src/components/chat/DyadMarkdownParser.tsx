@@ -36,6 +36,7 @@ import { DyadStatus } from "./DyadStatus";
 import { mapActionToButton } from "./ChatInput";
 import { SuggestedAction } from "@/lib/schemas";
 import { FixAllErrorsButton } from "./FixAllErrorsButton";
+import { unescapeXmlAttr, unescapeXmlContent } from "../../../shared/xmlEscape";
 
 const DYAD_CUSTOM_TAGS = [
   "dyad-write",
@@ -274,25 +275,25 @@ function parseCustomTags(content: string): ContentPiece[] {
       });
     }
 
-    // Parse attributes
+    // Parse attributes and unescape values
     const attributes: Record<string, string> = {};
     const attrPattern = /([\w-]+)="([^"]*)"/g;
     let attrMatch;
     while ((attrMatch = attrPattern.exec(attributesStr)) !== null) {
-      attributes[attrMatch[1]] = attrMatch[2];
+      attributes[attrMatch[1]] = unescapeXmlAttr(attrMatch[2]);
     }
 
     // Check if this tag was marked as in progress
     const tagInProgressSet = inProgressTags.get(tag);
     const isInProgress = tagInProgressSet?.has(startIndex);
 
-    // Add the tag info
+    // Add the tag info with unescaped content
     contentPieces.push({
       type: "custom-tag",
       tagInfo: {
         tag,
         attributes,
-        content: tagContent,
+        content: unescapeXmlContent(tagContent),
         fullMatch,
         inProgress: isInProgress || false,
       },

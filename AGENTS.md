@@ -74,3 +74,10 @@ Use E2E testing when you need to test a complete user flow for a feature.
 If you would need to mock a lot of things to unit test a feature, prefer to write an E2E test instead.
 
 Do NOT write lots of e2e test cases for one feature. Each e2e test case adds a significant amount of overhead, so instead prefer just one or two E2E test cases that each have broad coverage of the feature in question.
+
+## Git workflow
+
+When pushing changes and creating PRs:
+
+1. First, try pushing to the upstream repo (`dyad-sh/dyad`).
+2. If you cannot push due to permissions, push to the fork (`wwwillchen/dyad`) instead, then create a PR from the fork to the upstream repo.

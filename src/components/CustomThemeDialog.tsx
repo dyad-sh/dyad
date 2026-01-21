@@ -28,7 +28,7 @@ export function CustomThemeDialog({
   onOpenChange,
   onThemeCreated,
 }: CustomThemeDialogProps) {
-  const [activeTab, setActiveTab] = useState<"manual" | "ai">("manual");
+  const [activeTab, setActiveTab] = useState<"manual" | "ai">("ai");
 
   // Manual tab state
   const [manualName, setManualName] = useState("");
@@ -49,7 +49,7 @@ export function CustomThemeDialog({
     setAiName("");
     setAiDescription("");
     setAiGeneratedPrompt("");
-    setActiveTab("manual");
+    setActiveTab("ai");
   }, []);
 
   const handleClose = useCallback(async () => {
@@ -122,15 +122,30 @@ export function CustomThemeDialog({
           className="mt-4"
         >
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="manual" className="flex items-center gap-2">
-              <PenLine className="h-4 w-4" />
-              Manual Configuration
-            </TabsTrigger>
             <TabsTrigger value="ai" className="flex items-center gap-2">
               <Sparkles className="h-4 w-4" />
               AI-Powered Generator
             </TabsTrigger>
+            <TabsTrigger value="manual" className="flex items-center gap-2">
+              <PenLine className="h-4 w-4" />
+              Manual Configuration
+            </TabsTrigger>
           </TabsList>
+
+          {/* AI-Powered Generator Tab */}
+          <TabsContent value="ai">
+            <AIGeneratorTab
+              aiName={aiName}
+              setAiName={setAiName}
+              aiDescription={aiDescription}
+              setAiDescription={setAiDescription}
+              aiGeneratedPrompt={aiGeneratedPrompt}
+              setAiGeneratedPrompt={setAiGeneratedPrompt}
+              onSave={handleSave}
+              isSaving={isSaving}
+              isDialogOpen={open}
+            />
+          </TabsContent>
 
           {/* Manual Configuration Tab */}
           <TabsContent value="manual" className="space-y-4 mt-4">
@@ -179,21 +194,6 @@ export function CustomThemeDialog({
                 "Save Theme"
               )}
             </Button>
-          </TabsContent>
-
-          {/* AI-Powered Generator Tab */}
-          <TabsContent value="ai">
-            <AIGeneratorTab
-              aiName={aiName}
-              setAiName={setAiName}
-              aiDescription={aiDescription}
-              setAiDescription={setAiDescription}
-              aiGeneratedPrompt={aiGeneratedPrompt}
-              setAiGeneratedPrompt={setAiGeneratedPrompt}
-              onSave={handleSave}
-              isSaving={isSaving}
-              isDialogOpen={open}
-            />
           </TabsContent>
         </Tabs>
       </DialogContent>

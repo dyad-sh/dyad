@@ -423,16 +423,16 @@ export function AIGeneratorTab({
           </button>
           <button
             type="button"
-            onClick={() => setAiSelectedModel("gemini-3-flash")}
+            onClick={() => setAiSelectedModel("claude-opus-4.5")}
             className={`flex flex-col items-center rounded-lg border p-3 text-center transition-colors ${
-              aiSelectedModel === "gemini-3-flash"
+              aiSelectedModel === "claude-opus-4.5"
                 ? "border-primary bg-primary/5"
                 : "hover:bg-muted/50"
             }`}
           >
-            <span className="font-medium text-sm">Gemini 3 Flash</span>
+            <span className="font-medium text-sm">Claude Opus 4.5</span>
             <span className="text-xs text-muted-foreground mt-1">
-              Fast & efficient
+              Creative & detailed
             </span>
           </button>
           <button

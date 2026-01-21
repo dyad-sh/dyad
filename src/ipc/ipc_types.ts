@@ -777,7 +777,7 @@ export type ThemeGenerationMode = "inspired" | "high-fidelity";
 
 export type ThemeGenerationModel =
   | "gemini-3-pro"
-  | "gemini-3-flash"
+  | "claude-opus-4.5"
   | "gpt-5.2";
 
 export interface GenerateThemePromptParams {

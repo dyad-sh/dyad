@@ -10,6 +10,7 @@ import { apps, customThemes } from "../../db/schema";
 import { eq, sql } from "drizzle-orm";
 import { streamText, TextPart, ImagePart } from "ai";
 import { readSettings } from "../../main/settings";
+import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 import { getModelClient } from "../utils/get_model_client";
 import type {
   SetAppThemeParams,
@@ -431,6 +432,19 @@ export function registerThemesHandlers() {
     ): Promise<GenerateThemePromptResult> => {
       const settings = readSettings();
 
+      // Return mock response in test mode
+      if (IS_TEST_BUILD) {
+        return {
+          prompt: `<theme>
+# Test Mode Theme
+
+## Visual Objective
+Modern dark theme with purple accents for testing.
+
+</theme>`,
+        };
+      }
+
       if (!settings.enableDyadPro) {
         throw new Error(
           "Dyad Pro is required for AI theme generation. Please enable Dyad Pro in Settings.",
@@ -459,9 +473,9 @@ export function registerThemesHandlers() {
       // Validate and map model selection
       const modelMap: Record<string, { provider: string; name: string }> = {
         "gemini-3-pro": { provider: "google", name: "gemini-3-pro-preview" },
-        "gemini-3-flash": {
-          provider: "google",
-          name: "gemini-3-flash-preview",
+        "claude-opus-4.5": {
+          provider: "anthropic",
+          name: "claude-opus-4-5",
         },
         "gpt-5.2": { provider: "openai", name: "gpt-5.2" },
       };

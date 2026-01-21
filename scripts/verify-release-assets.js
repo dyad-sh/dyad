@@ -17,7 +17,7 @@ async function verifyReleaseAssets() {
     console.log(`🔍 Verifying release assets for version ${version}...`);
 
     // GitHub API configuration
-    const owner = "dyad-sh";
+    const owner = "yosiwizman";
     const repo = "dyad";
     const token = process.env.GITHUB_TOKEN;
 
@@ -35,7 +35,7 @@ async function verifyReleaseAssets() {
       headers: {
         Authorization: `token ${token}`,
         Accept: "application/vnd.github.v3+json",
-        "User-Agent": "dyad-release-verifier",
+        "User-Agent": "abba-ai-release-verifier",
       },
     });
 
@@ -59,35 +59,21 @@ async function verifyReleaseAssets() {
     console.log(`📦 Found ${assets.length} assets in release ${tagName}`);
     console.log(`📄 Release status: ${release.draft ? "DRAFT" : "PUBLISHED"}`);
 
-    // Handle different beta naming conventions across platforms
-    const normalizeVersionForPlatform = (version, platform) => {
+    // Handle beta naming conventions (NuGet removes the dot)
+    const normalizeVersionForNupkg = (version) => {
       if (!version.includes("beta")) {
         return version;
       }
-
-      switch (platform) {
-        case "rpm":
-        case "deb":
-          // RPM and DEB use dots: 0.14.0-beta.1 -> 0.14.0.beta.1
-          return version.replace("-beta.", ".beta.");
-        case "nupkg":
-          // NuGet removes the dot: 0.14.0-beta.1 -> 0.14.0-beta1
-          return version.replace("-beta.", "-beta");
-        default:
-          // Windows installer and macOS zips keep original format
-          return version;
-      }
+      // NuGet removes the dot: 0.14.0-beta.1 -> 0.14.0-beta1
+      return version.replace("-beta.", "-beta");
     };
 
-    // Define expected assets with platform-specific version handling
+    // Define expected assets for Windows + macOS (Linux deferred)
     const expectedAssets = [
-      `dyad-${normalizeVersionForPlatform(version, "rpm")}-1.x86_64.rpm`,
-      `dyad-${normalizeVersionForPlatform(version, "nupkg")}-full.nupkg`,
-      `dyad-${version}.Setup.exe`,
-      `dyad-darwin-arm64-${version}.zip`,
-      `dyad-darwin-x64-${version}.zip`,
-      `dyad_${normalizeVersionForPlatform(version, "deb")}_amd64.deb`,
-      `dyad_${version}_x86_64.AppImage`,
+      `ABBA AI-${normalizeVersionForNupkg(version)}-full.nupkg`,
+      `ABBA AI-${version}.Setup.exe`,
+      `ABBA AI-darwin-arm64-${version}.zip`,
+      `ABBA AI-darwin-x64-${version}.zip`,
       "RELEASES",
     ];
 

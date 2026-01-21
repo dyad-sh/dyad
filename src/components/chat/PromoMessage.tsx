@@ -52,46 +52,12 @@ export function Message({ spans }: MessageConfig) {
   );
 }
 
-// Predefined message configurations
-export const TURBO_EDITS_PROMO_MESSAGE: MessageConfig = {
-  spans: [
-    { type: "text", content: "Tired of waiting on AI?" },
-    { type: "link", content: " Get Dyad Pro", url: "https://dyad.sh/pro#ai" },
-    { type: "text", content: " for faster edits with Turbo Edits." },
-  ],
-};
-
-export const SMART_CONTEXT_PROMO_MESSAGE: MessageConfig = {
-  spans: [
-    { type: "text", content: "Save up to 3x on AI costs with " },
-    {
-      type: "link",
-      content: "Dyad Pro's Smart Context",
-      url: "https://dyad.sh/pro#ai",
-    },
-  ],
-};
-
-// Example of other message types you could easily add
+// Predefined message configurations - only generic tips without external Dyad links
 export const DIFFERENT_MODEL_TIP: MessageConfig = {
   spans: [
     {
       type: "text",
       content: "Getting stuck in a debugging loop? Try a different model.",
-    },
-  ],
-};
-
-export const REDDIT_TIP: MessageConfig = {
-  spans: [
-    {
-      type: "text",
-      content: "Join 600+ builders in the ",
-    },
-    {
-      type: "link",
-      content: "Dyad subreddit",
-      url: "https://www.reddit.com/r/dyadbuilders/",
     },
   ],
 };
@@ -105,59 +71,6 @@ export const REPORT_A_BUG_TIP: MessageConfig = {
   ],
 };
 
-export const UPLOAD_CHAT_TIP: MessageConfig = {
-  spans: [
-    {
-      type: "text",
-      content:
-        "Want to report a bad AI response? Upload the chat by clicking Help",
-    },
-  ],
-};
-// https://www.youtube.com/watch?v=a7OoruOkkeg&list=PL1xR2pfIiRlW7mgr9AS95OkFQBtvrSlO5
-export const BUILD_A_BIBLE_APP_TIP: MessageConfig = {
-  spans: [
-    {
-      type: "link",
-      content: "Watch",
-      url: "https://www.youtube.com/watch?v=a7OoruOkkeg&list=PL1xR2pfIiRlW7mgr9AS95OkFQBtvrSlO5",
-    },
-    {
-      type: "text",
-      content: " the creator of Dyad build a Bible app step-by-step",
-    },
-  ],
-};
-
-export const DEBUGGING_TIPS_TIP: MessageConfig = {
-  spans: [
-    {
-      type: "text",
-      content: "Getting stuck? Read our ",
-    },
-    {
-      type: "link",
-      content: "debugging tips",
-      url: "https://www.dyad.sh/docs/guides/debugging",
-    },
-  ],
-};
-
-// Advanced tip: Customize your AI rules https://www.dyad.sh/docs/guides/ai-rules
-export const AI_RULES_TIP: MessageConfig = {
-  spans: [
-    {
-      type: "text",
-      content: "Advanced tip: Customize your ",
-    },
-    {
-      type: "link",
-      content: "AI rules",
-      url: "https://www.dyad.sh/docs/guides/ai-rules",
-    },
-  ],
-};
-
 export const NEW_CHAT_TIP: MessageConfig = {
   spans: [
     {
@@ -167,49 +80,32 @@ export const NEW_CHAT_TIP: MessageConfig = {
   ],
 };
 
-// Want to know what's next? Checkout our roadmap https://www.dyad.sh/docs/roadmap
-export const ROADMAP_TIP: MessageConfig = {
+export const CONTEXT_TIP: MessageConfig = {
   spans: [
     {
       type: "text",
-      content: "Want to know what's next? Check out our ",
-    },
-    {
-      type: "link",
-      content: "roadmap",
-      url: "https://www.dyad.sh/docs/roadmap",
+      content:
+        "Tip: Add files to context using @ mentions for better AI responses.",
     },
   ],
 };
 
-// Like Dyad? Star it on GitHub https://github.com/dyad-sh/dyad/
-export const GITHUB_TIP: MessageConfig = {
+export const AGENT_MODE_TIP: MessageConfig = {
   spans: [
     {
       type: "text",
-      content: "Like Dyad? Star it on ",
-    },
-    {
-      type: "link",
-      content: "GitHub",
-      url: "https://github.com/dyad-sh/dyad",
+      content: "Try Agent mode for complex tasks that require multiple steps.",
     },
   ],
 };
+
 // Array of all available messages for rotation
 const ALL_MESSAGES = [
-  TURBO_EDITS_PROMO_MESSAGE,
-  SMART_CONTEXT_PROMO_MESSAGE,
   DIFFERENT_MODEL_TIP,
-  REDDIT_TIP,
   REPORT_A_BUG_TIP,
-  UPLOAD_CHAT_TIP,
-  BUILD_A_BIBLE_APP_TIP,
-  DEBUGGING_TIPS_TIP,
-  AI_RULES_TIP,
   NEW_CHAT_TIP,
-  ROADMAP_TIP,
-  GITHUB_TIP,
+  CONTEXT_TIP,
+  AGENT_MODE_TIP,
 ];
 
 // Main PromoMessage component using the modular system

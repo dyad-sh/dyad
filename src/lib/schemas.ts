@@ -322,12 +322,14 @@ export const UserSettingsSchema = z
  */
 export type UserSettings = z.infer<typeof UserSettingsSchema>;
 
-export function isDyadProEnabled(settings: UserSettings): boolean {
-  return settings.enableDyadPro === true && hasDyadProKey(settings);
+// Pro features disabled - BYOK/local only
+export function isDyadProEnabled(_settings: UserSettings): boolean {
+  return false;
 }
 
-export function hasDyadProKey(settings: UserSettings): boolean {
-  return !!settings.providerSettings?.auto?.apiKey?.value;
+// Pro features disabled - BYOK/local only
+export function hasDyadProKey(_settings: UserSettings): boolean {
+  return false;
 }
 
 export function isSupabaseConnected(settings: UserSettings | null): boolean {

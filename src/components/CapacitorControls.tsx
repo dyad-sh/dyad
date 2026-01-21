@@ -3,13 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { IpcClient } from "@/ipc/ipc_client";
 import { showSuccess } from "@/lib/toast";
-import {
-  Smartphone,
-  TabletSmartphone,
-  Loader2,
-  ExternalLink,
-  Copy,
-} from "lucide-react";
+import { Smartphone, TabletSmartphone, Loader2, Copy } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -130,20 +124,6 @@ export function CapacitorControls({ appId }: CapacitorControlsProps) {
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             Mobile Development
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                // TODO: Add actual help link
-                IpcClient.getInstance().openExternalUrl(
-                  "https://dyad.sh/docs/guides/mobile-app#troubleshooting",
-                );
-              }}
-              className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 flex items-center gap-1"
-            >
-              Need help?
-              <ExternalLink className="h-3 w-3" />
-            </Button>
           </CardTitle>
           <CardDescription>
             Sync and open your Capacitor mobile projects

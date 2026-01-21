@@ -1,29 +1,28 @@
 # .github/workflows/release.yml
+#
+# Builds and publishes Windows + macOS installers to GitHub Releases.
+# Triggers on version tags (v*.*.*) or manual workflow dispatch.
 
-# Need to write to repo contents to upload the app to GitHub Release
-# See: https://www.electronforge.io/config/publishers/github#authentication
 permissions:
   contents: write
 
 name: Release app
 on:
+  push:
+    tags:
+      - "v*.*.*"
   workflow_dispatch:
+
 jobs:
   build:
     environment: release
     strategy:
-      # Uncomment max-parallel to prevent race condition (where multiple releases are
-      # created concurrently). Typically though, we'll create a release manually ahead of time
-      # which prevents the race.
-      # max-parallel: 1
+      # max-parallel: 1 # Uncomment to prevent race condition when creating releases
       matrix:
-        os: [
-            { name: "windows", image: "windows-latest" },
-            # See https://github.com/dyad-sh/dyad/issues/96
-            { name: "linux", image: "ubuntu-22.04" },
-            { name: "macos-intel", image: "macos-15-intel" },
-            { name: "macos", image: "macos-latest" },
-          ]
+        os:
+          - { name: "windows", image: "windows-latest" }
+          - { name: "macos-intel", image: "macos-13" }
+          - { name: "macos", image: "macos-latest" }
     runs-on: ${{ matrix.os.image }}
     steps:
       - name: Github checkout

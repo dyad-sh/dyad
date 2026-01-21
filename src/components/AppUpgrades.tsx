@@ -95,7 +95,7 @@ export function AppUpgrades({ appId }: { appId: number | null }) {
           data-testid="no-app-upgrades-needed"
           className="p-4 bg-green-50 border border-green-200 dark:bg-green-900/20 dark:border-green-800/50 rounded-lg text-sm text-green-800 dark:text-green-300"
         >
-          App is up-to-date and has all Dyad capabilities enabled
+          App is up-to-date and has all ABBA AI capabilities enabled
         </div>
       ) : (
         <div className="space-y-4">
@@ -121,18 +121,7 @@ export function AppUpgrades({ appId }: { appId: number | null }) {
                       Upgrade Failed
                     </AlertTitle>
                     <AlertDescription className="text-xs text-red-400 dark:text-red-300">
-                      {(mutationError as Error).message}{" "}
-                      <a
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          IpcClient.getInstance().openExternalUrl(
-                            upgrade.manualUpgradeUrl ?? "https://dyad.sh/docs",
-                          );
-                        }}
-                        className="underline font-medium hover:dark:text-red-200"
-                      >
-                        Manual Upgrade Instructions
-                      </a>
+                      {(mutationError as Error).message}
                     </AlertDescription>
                   </Alert>
                 )}

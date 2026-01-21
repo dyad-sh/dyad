@@ -3,7 +3,7 @@ import { useMutation } from "@tanstack/react-query";
 import { IpcClient } from "@/ipc/ipc_client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ExternalLink, Database, Loader2 } from "lucide-react";
+import { Database, Loader2 } from "lucide-react";
 import { showSuccess, showError } from "@/lib/toast";
 import { useVersions } from "@/hooks/useVersions";
 
@@ -40,13 +40,6 @@ export const PortalMigrate = ({ appId }: PortalMigrateProps) => {
     migrateMutation.mutate();
   };
 
-  const openDocs = () => {
-    const ipcClient = IpcClient.getInstance();
-    ipcClient.openExternalUrl(
-      "https://www.dyad.sh/docs/templates/portal#create-a-database-migration",
-    );
-  };
-
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -64,7 +57,6 @@ export const PortalMigrate = ({ appId }: PortalMigrateProps) => {
           <Button
             onClick={handleCreateMigration}
             disabled={migrateMutation.isPending}
-            // className="bg-primary hover:bg-purple-700 text-white"
           >
             {migrateMutation.isPending ? (
               <>
@@ -77,16 +69,6 @@ export const PortalMigrate = ({ appId }: PortalMigrateProps) => {
                 Generate database migration
               </>
             )}
-          </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={openDocs}
-            className="text-sm"
-          >
-            <ExternalLink className="w-3 h-3 mr-1" />
-            Docs
           </Button>
         </div>
 

@@ -28,8 +28,6 @@ import { NodeSystemInfo } from "@/ipc/ipc_types";
 import { usePostHog } from "posthog-js/react";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useScrollAndNavigateTo } from "@/hooks/useScrollAndNavigateTo";
-// @ts-ignore
-import logo from "../../assets/logo.svg";
 import { OnboardingBanner } from "./home/OnboardingBanner";
 import { showError } from "@/lib/toast";
 import { useSettings } from "@/hooks/useSettings";
@@ -114,13 +112,6 @@ export function SetupBanner() {
       params: { provider: "openrouter" },
     });
   };
-  const handleDyadProSetupClick = () => {
-    posthog.capture("setup-flow:ai-provider-setup:abba-ai:click");
-    IpcClient.getInstance().openExternalUrl(
-      "https://www.abba.ai/pro?utm_source=abba-ai-app&utm_medium=app&utm_campaign=setup-banner",
-    );
-  };
-
   const handleOtherProvidersClick = () => {
     posthog.capture("setup-flow:ai-provider-setup:other:click");
     settingsScrollAndNavigateTo("provider-settings");
@@ -341,19 +332,6 @@ export function SetupBanner() {
                 />
               </div>
 
-              <SetupProviderCard
-                className="mt-2"
-                variant="dyad"
-                onClick={handleDyadProSetupClick}
-                tabIndex={isNodeSetupComplete ? 0 : -1}
-                leadingIcon={
-                  <img src={logo} alt="Dyad Logo" className="w-6 h-6 mr-0.5" />
-                }
-                title="Setup Dyad Pro"
-                subtitle="Access all AI models with one plan"
-                chip={<>Recommended</>}
-              />
-
               <div
                 className="mt-2 p-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800/70 transition-colors"
                 onClick={handleOtherProvidersClick}
@@ -389,18 +367,16 @@ function NodeJsHelpCallout() {
   return (
     <div className="mt-3 p-3 bg-(--background-lighter) border rounded-lg text-sm">
       <p>
-        If you run into issues, read our{" "}
+        If you run into issues installing Node.js, try downloading directly from{" "}
         <a
           onClick={() => {
-            IpcClient.getInstance().openExternalUrl(
-              "https://www.dyad.sh/docs/help/nodejs",
-            );
+            IpcClient.getInstance().openExternalUrl("https://nodejs.org/");
           }}
-          className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
+          className="text-blue-600 dark:text-blue-400 hover:underline font-medium cursor-pointer"
         >
-          Node.js troubleshooting guide
+          nodejs.org
         </a>
-        .{" "}
+        .
       </p>
       <p className="mt-2">
         Still stuck? Click the <b>Help</b> button in the bottom-left corner and

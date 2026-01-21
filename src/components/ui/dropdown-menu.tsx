@@ -14,9 +14,7 @@ function DropdownMenu({
 function DropdownMenuPortal({
   ...props
 }: React.ComponentProps<typeof MenuPrimitive.Portal>) {
-  return (
-    <MenuPrimitive.Portal data-slot="dropdown-menu-portal" {...props} />
-  );
+  return <MenuPrimitive.Portal data-slot="dropdown-menu-portal" {...props} />;
 }
 
 function DropdownMenuTrigger({
@@ -40,10 +38,12 @@ function DropdownMenuContent({
   className,
   sideOffset = 4,
   align,
+  onCloseAutoFocus: _onCloseAutoFocus,
   ...props
 }: React.ComponentProps<typeof MenuPrimitive.Popup> & {
   sideOffset?: number;
   align?: "start" | "center" | "end";
+  onCloseAutoFocus?: (e: Event) => void;
 }) {
   return (
     <MenuPrimitive.Portal>
@@ -64,9 +64,7 @@ function DropdownMenuContent({
 function DropdownMenuGroup({
   ...props
 }: React.ComponentProps<typeof MenuPrimitive.Group>) {
-  return (
-    <MenuPrimitive.Group data-slot="dropdown-menu-group" {...props} />
-  );
+  return <MenuPrimitive.Group data-slot="dropdown-menu-group" {...props} />;
 }
 
 function DropdownMenuItem({

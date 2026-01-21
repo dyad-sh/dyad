@@ -43,7 +43,11 @@ function DialogClose({
 }) {
   const renderProps = getRenderProps(asChild, children);
   return (
-    <DialogPrimitive.Close data-slot="dialog-close" {...props} {...renderProps} />
+    <DialogPrimitive.Close
+      data-slot="dialog-close"
+      {...props}
+      {...renderProps}
+    />
   );
 }
 

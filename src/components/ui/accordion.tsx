@@ -1,12 +1,20 @@
-import type * as React from "react";
+import * as React from "react";
 import { Accordion as AccordionPrimitive } from "@base-ui/react/accordion";
 import { ChevronDownIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
+// Wrapper to provide backward compatibility with Radix UI props
 function Accordion({
+  type: _type,
+  collapsible: _collapsible,
   ...props
-}: React.ComponentProps<typeof AccordionPrimitive.Root>) {
+}: React.ComponentProps<typeof AccordionPrimitive.Root> & {
+  type?: "single" | "multiple";
+  collapsible?: boolean;
+}) {
+  // Base UI uses `value` as an array - for "single" type we just let it handle one at a time
+  // The `collapsible` and `type` props are ignored as Base UI handles these differently
   return <AccordionPrimitive.Root data-slot="accordion" {...props} />;
 }
 

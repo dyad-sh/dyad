@@ -3,11 +3,31 @@ import { Select as SelectPrimitive } from "@base-ui/react/select";
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { getRenderProps } from "@/lib/slot";
 
-function Select({
+// Wrapper to adapt Radix-style onValueChange to Base UI's signature
+function Select<T = string>({
+  onValueChange,
   ...props
-}: React.ComponentProps<typeof SelectPrimitive.Root>) {
-  return <SelectPrimitive.Root data-slot="select" {...props} />;
+}: Omit<React.ComponentProps<typeof SelectPrimitive.Root>, "onValueChange"> & {
+  onValueChange?: (value: T) => void;
+}) {
+  const handleValueChange = React.useCallback(
+    (value: unknown) => {
+      if (onValueChange) {
+        onValueChange(value as T);
+      }
+    },
+    [onValueChange],
+  );
+
+  return (
+    <SelectPrimitive.Root
+      data-slot="select"
+      onValueChange={handleValueChange}
+      {...props}
+    />
+  );
 }
 
 function SelectGroup({
@@ -26,10 +46,13 @@ function SelectTrigger({
   className,
   size = "default",
   children,
+  asChild,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Trigger> & {
   size?: "sm" | "default";
+  asChild?: boolean;
 }) {
+  const renderProps = getRenderProps(asChild, children);
   return (
     <SelectPrimitive.Trigger
       data-slot="select-trigger"
@@ -39,11 +62,16 @@ function SelectTrigger({
         className,
       )}
       {...props}
+      {...(asChild ? renderProps : {})}
     >
-      {children}
-      <SelectPrimitive.Icon>
-        <ChevronDownIcon className="size-4 opacity-50" />
-      </SelectPrimitive.Icon>
+      {asChild ? null : (
+        <>
+          {children}
+          <SelectPrimitive.Icon>
+            <ChevronDownIcon className="size-4 opacity-50" />
+          </SelectPrimitive.Icon>
+        </>
+      )}
     </SelectPrimitive.Trigger>
   );
 }
@@ -52,10 +80,13 @@ function MiniSelectTrigger({
   className,
   size = "default",
   children,
+  asChild,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Trigger> & {
   size?: "sm" | "default";
+  asChild?: boolean;
 }) {
+  const renderProps = getRenderProps(asChild, children);
   return (
     <SelectPrimitive.Trigger
       data-slot="select-trigger"
@@ -65,8 +96,9 @@ function MiniSelectTrigger({
         className,
       )}
       {...props}
+      {...(asChild ? renderProps : {})}
     >
-      {children}
+      {asChild ? null : children}
     </SelectPrimitive.Trigger>
   );
 }
@@ -75,13 +107,17 @@ function SelectContent({
   className,
   children,
   position = "popper",
+  align,
+  onCloseAutoFocus: _onCloseAutoFocus,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Popup> & {
   position?: "popper" | "item-aligned";
+  align?: "start" | "center" | "end";
+  onCloseAutoFocus?: (e: Event) => void;
 }) {
   return (
     <SelectPrimitive.Portal>
-      <SelectPrimitive.Positioner data-slot="select-positioner">
+      <SelectPrimitive.Positioner data-slot="select-positioner" align={align}>
         <SelectPrimitive.Popup
           data-slot="select-content"
           className={cn(
@@ -138,10 +174,7 @@ function SelectItem({
   );
 }
 
-function SelectSeparator({
-  className,
-  ...props
-}: React.ComponentProps<"div">) {
+function SelectSeparator({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="select-separator"

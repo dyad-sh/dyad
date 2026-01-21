@@ -1,14 +1,14 @@
 "use client";
 
-import type * as React from "react";
+import * as React from "react";
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 
 import { cn } from "@/lib/utils";
+import { getRenderProps } from "@/lib/slot";
 
 function TooltipProvider({
-  delayDuration = 0,
+  delayDuration: _delayDuration = 0,
   children,
-  ...props
 }: {
   delayDuration?: number;
   children: React.ReactNode;
@@ -25,22 +25,41 @@ function Tooltip({
 }
 
 function TooltipTrigger({
+  asChild,
+  children,
   ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
-  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />;
+}: React.ComponentProps<typeof TooltipPrimitive.Trigger> & {
+  asChild?: boolean;
+}) {
+  const renderProps = getRenderProps(asChild, children);
+  return (
+    <TooltipPrimitive.Trigger
+      data-slot="tooltip-trigger"
+      {...props}
+      {...renderProps}
+    />
+  );
 }
 
 function TooltipContent({
   className,
   sideOffset = 0,
+  side,
+  align,
   children,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Popup> & {
   sideOffset?: number;
+  side?: "top" | "right" | "bottom" | "left";
+  align?: "start" | "center" | "end";
 }) {
   return (
     <TooltipPrimitive.Portal>
-      <TooltipPrimitive.Positioner sideOffset={sideOffset}>
+      <TooltipPrimitive.Positioner
+        sideOffset={sideOffset}
+        side={side}
+        align={align}
+      >
         <TooltipPrimitive.Popup
           data-slot="tooltip-content"
           className={cn(

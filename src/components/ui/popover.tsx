@@ -2,6 +2,7 @@ import * as React from "react";
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 
 import { cn } from "@/lib/utils";
+import { getRenderProps } from "@/lib/slot";
 
 function Popover({
   ...props
@@ -10,24 +11,38 @@ function Popover({
 }
 
 function PopoverTrigger({
+  asChild,
+  children,
   ...props
-}: React.ComponentProps<typeof PopoverPrimitive.Trigger>) {
-  return <PopoverPrimitive.Trigger data-slot="popover-trigger" {...props} />;
+}: React.ComponentProps<typeof PopoverPrimitive.Trigger> & {
+  asChild?: boolean;
+}) {
+  const renderProps = getRenderProps(asChild, children);
+  return (
+    <PopoverPrimitive.Trigger
+      data-slot="popover-trigger"
+      {...props}
+      {...renderProps}
+    />
+  );
 }
 
 function PopoverContent({
   className,
   align = "center",
+  side,
   sideOffset = 4,
   ...props
 }: React.ComponentProps<typeof PopoverPrimitive.Popup> & {
   align?: "start" | "center" | "end";
+  side?: "top" | "right" | "bottom" | "left";
   sideOffset?: number;
 }) {
   return (
     <PopoverPrimitive.Portal>
       <PopoverPrimitive.Positioner
         align={align}
+        side={side}
         sideOffset={sideOffset}
         data-slot="popover-positioner"
       >

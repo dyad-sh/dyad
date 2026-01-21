@@ -79,7 +79,7 @@
     "happy-dom": "^17.4.4",
     "husky": "^9.1.7",
     "lint-staged": "^15.5.2",
-    "oxlint": "^1.8.0",
+    "oxlint": "^1.41.0",
     "prettier": "3.5.3",
     "rimraf": "^6.0.1",
     "typescript": "^5.8.3",

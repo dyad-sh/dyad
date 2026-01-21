@@ -299,6 +299,38 @@ export interface RenameBranchParams {
   newBranchName: string;
 }
 
+// --- Git Branch Handler Types ---
+export interface GitBranchAppIdParams {
+  appId: number;
+}
+
+export interface CreateGitBranchParams {
+  appId: number;
+  branch: string;
+  from?: string;
+}
+
+export interface GitBranchParams {
+  appId: number;
+  branch: string;
+}
+
+export interface RenameGitBranchParams {
+  appId: number;
+  oldBranch: string;
+  newBranch: string;
+}
+
+export interface ListRemoteGitBranchesParams {
+  appId: number;
+  remote?: string;
+}
+
+export interface CommitChangesParams {
+  appId: number;
+  message: string;
+}
+
 export interface ChangeAppLocationParams {
   appId: number;
   parentDirectory: string;

@@ -14,7 +14,7 @@ export function useCommitChanges() {
       message: string;
     }) => {
       const ipcClient = IpcClient.getInstance();
-      return ipcClient.commitChanges(appId, message);
+      return ipcClient.commitChanges({ appId, message });
     },
     onSuccess: (_, { appId }) => {
       showSuccess("Changes committed successfully");

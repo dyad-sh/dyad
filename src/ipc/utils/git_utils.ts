@@ -416,7 +416,11 @@ export async function getGitUncommittedFiles({
   }
 }
 
-export type UncommittedFileStatus = "added" | "modified" | "deleted" | "renamed";
+export type UncommittedFileStatus =
+  | "added"
+  | "modified"
+  | "deleted"
+  | "renamed";
 
 export interface UncommittedFile {
   path: string;

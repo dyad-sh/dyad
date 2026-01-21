@@ -27,12 +27,19 @@ import { eq } from "drizzle-orm";
 import log from "electron-log";
 import { withLock } from "../utils/lock_utils";
 import { updateAppGithubRepo, ensureCleanWorkspace } from "./github_handlers";
+import type {
+  GitBranchAppIdParams,
+  CreateGitBranchParams,
+  GitBranchParams,
+  RenameGitBranchParams,
+  CommitChangesParams,
+} from "../ipc_types";
 
 const logger = log.scope("git_branch_handlers");
 
 async function handleAbortMerge(
   event: IpcMainInvokeEvent,
-  { appId }: { appId: number },
+  { appId }: GitBranchAppIdParams,
 ): Promise<void> {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app) throw new Error("App not found");
@@ -44,7 +51,7 @@ async function handleAbortMerge(
 // --- GitHub Fetch Handler ---
 async function handleFetchFromGithub(
   event: IpcMainInvokeEvent,
-  { appId }: { appId: number },
+  { appId }: GitBranchAppIdParams,
 ): Promise<void> {
   const settings = readSettings();
   const accessToken = settings.githubAccessToken?.value;
@@ -67,7 +74,7 @@ async function handleFetchFromGithub(
 // --- GitHub Branch Handlers ---
 async function handleCreateBranch(
   event: IpcMainInvokeEvent,
-  { appId, branch, from }: { appId: number; branch: string; from?: string },
+  { appId, branch, from }: CreateGitBranchParams,
 ): Promise<void> {
   // Validate branch name
   if (!branch || branch.length === 0 || branch.length > 255) {
@@ -100,7 +107,7 @@ async function handleCreateBranch(
 
 async function handleDeleteBranch(
   event: IpcMainInvokeEvent,
-  { appId, branch }: { appId: number; branch: string },
+  { appId, branch }: GitBranchParams,
 ): Promise<void> {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app) throw new Error("App not found");
@@ -114,7 +121,7 @@ async function handleDeleteBranch(
 
 async function handleSwitchBranch(
   event: IpcMainInvokeEvent,
-  { appId, branch }: { appId: number; branch: string },
+  { appId, branch }: GitBranchParams,
 ): Promise<void> {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app) throw new Error("App not found");
@@ -173,11 +180,7 @@ async function handleSwitchBranch(
 
 async function handleRenameBranch(
   event: IpcMainInvokeEvent,
-  {
-    appId,
-    oldBranch,
-    newBranch,
-  }: { appId: number; oldBranch: string; newBranch: string },
+  { appId, oldBranch, newBranch }: RenameGitBranchParams,
 ): Promise<void> {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app) throw new Error("App not found");
@@ -215,7 +218,7 @@ class MergeConflictError extends Error {
 
 async function handleMergeBranch(
   event: IpcMainInvokeEvent,
-  { appId, branch }: { appId: number; branch: string },
+  { appId, branch }: GitBranchParams,
 ): Promise<void> {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app) throw new Error("App not found");
@@ -276,7 +279,7 @@ async function handleMergeBranch(
 
 async function handleListLocalBranches(
   event: IpcMainInvokeEvent,
-  { appId }: { appId: number },
+  { appId }: GitBranchAppIdParams,
 ): Promise<{ branches: string[]; current: string | null }> {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app) throw new Error("App not found");
@@ -301,7 +304,7 @@ async function handleListRemoteBranches(
 
 async function handleGetUncommittedFiles(
   event: IpcMainInvokeEvent,
-  { appId }: { appId: number },
+  { appId }: GitBranchAppIdParams,
 ): Promise<UncommittedFile[]> {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app) throw new Error("App not found");
@@ -312,7 +315,7 @@ async function handleGetUncommittedFiles(
 
 async function handleCommitChanges(
   event: IpcMainInvokeEvent,
-  { appId, message }: { appId: number; message: string },
+  { appId, message }: CommitChangesParams,
 ): Promise<string> {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app) throw new Error("App not found");

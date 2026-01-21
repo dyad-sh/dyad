@@ -79,12 +79,14 @@ export type ChatLogsData = z.infer<typeof ChatLogsDataSchema>;
 // Deep Link Schemas
 // =============================================================================
 
+// Keep loose schema for IPC validation (accepts any deep link structure)
 export const DeepLinkDataSchema = z.object({
   type: z.string(),
   payload: z.any().optional(),
 });
 
-export type DeepLinkData = z.infer<typeof DeepLinkDataSchema>;
+// Re-export properly-typed discriminated union for TypeScript type narrowing
+export type { DeepLinkData } from "../deep_link_data";
 
 // =============================================================================
 // App Output Schemas

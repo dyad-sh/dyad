@@ -63,6 +63,8 @@ function ConnectedVercelConnector({
     try {
       const minLoadingTime = new Promise((resolve) => setTimeout(resolve, 750));
       await Promise.all([getDeployments(), minLoadingTime]);
+      // Refresh app data to get the updated deployment URL
+      refreshApp();
     } finally {
       setIsRefreshing(false);
     }

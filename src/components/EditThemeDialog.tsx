@@ -17,6 +17,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Save, Edit2, Loader2 } from "lucide-react";
+import { showError } from "@/lib/toast";
 import { toast } from "sonner";
 import type { CustomTheme } from "@/ipc/ipc_types";
 
@@ -99,7 +100,7 @@ export function EditThemeDialog({
       toast.success("Theme updated successfully");
       setOpen(false);
     } catch (error) {
-      toast.error(
+      showError(
         `Failed to update theme: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
     } finally {

@@ -9,6 +9,7 @@ import { EditThemeDialog } from "@/components/EditThemeDialog";
 import { DeleteConfirmationDialog } from "@/components/DeleteConfirmationDialog";
 import { Button } from "@/components/ui/button";
 import { Plus, Palette } from "lucide-react";
+import { showError } from "@/lib/toast";
 import type { CustomTheme } from "@/ipc/ipc_types";
 
 export default function ThemesPage() {
@@ -66,7 +67,13 @@ function ThemeCard({ theme }: { theme: CustomTheme }) {
   };
 
   const handleDelete = async () => {
-    await deleteThemeMutation.mutateAsync(theme.id);
+    try {
+      await deleteThemeMutation.mutateAsync(theme.id);
+    } catch (error) {
+      showError(
+        `Failed to delete theme: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
+    }
   };
 
   return (

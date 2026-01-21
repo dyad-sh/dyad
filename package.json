@@ -159,6 +159,7 @@
     "lexical-beautiful-mentions": "^0.1.47",
     "lucide-react": "^0.487.0",
     "monaco-editor": "^0.52.2",
+    "node-fetch": "^2.7.0",
     "perfect-freehand": "^1.2.2",
     "posthog-js": "^1.236.3",
     "react": "^19.0.0",
@@ -185,6 +186,7 @@
   "overrides": {
     "@vercel/sdk": {
       "@modelcontextprotocol/sdk": "$@modelcontextprotocol/sdk"
-    }
+    },
+    "zod": "^4.3.5"
   }
 }

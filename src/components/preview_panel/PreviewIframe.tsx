@@ -1172,7 +1172,7 @@ function parseComponentSelection(data: any): ComponentSelection | null {
   }
 
   return {
-    id,
+    id: normalizePath(id),
     name,
     runtimeId,
     relativePath: normalizePath(relativePath),

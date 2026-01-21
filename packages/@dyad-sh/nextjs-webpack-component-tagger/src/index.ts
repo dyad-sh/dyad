@@ -30,7 +30,10 @@ export default function dyadTaggerLoader(this: any, code: string) {
       });
 
       const ms = new MagicString(code);
-      const fileRelative = path.relative(this.rootContext, this.resourcePath);
+      // Normalize path to use forward slashes (fixes Windows backslash issues)
+      const fileRelative = path
+        .relative(this.rootContext, this.resourcePath)
+        .replace(/\\/g, "/");
       let transformCount = 0;
 
       // Walk the AST and transform JSX elements

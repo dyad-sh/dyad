@@ -17,6 +17,7 @@ import {
   AnalyseComponentParams,
   ApplyVisualEditingChangesParams,
 } from "@/ipc/ipc_types";
+import { normalizePath } from "../../../../../shared/normalizePath";
 import {
   transformContent,
   analyzeComponent,
@@ -96,7 +97,9 @@ export function registerVisualEditingHandlers() {
     async (_event, analyseComponentParams: AnalyseComponentParams) => {
       const { appId, componentId } = analyseComponentParams;
       try {
-        const [filePath, lineStr] = componentId.split(":");
+        // Normalize the componentId to handle Windows backslash paths
+        const normalizedComponentId = normalizePath(componentId);
+        const [filePath, lineStr] = normalizedComponentId.split(":");
         const line = parseInt(lineStr, 10);
 
         if (!filePath || isNaN(line)) {

@@ -59,7 +59,9 @@ if (!fs.existsSync(forgeConfigPath)) {
   if (!forgeConfig.includes('setupIcon: "./assets/icon/logo.ico"')) {
     error('MakerSquirrel setupIcon should be "./assets/icon/logo.ico"');
   } else {
-    success('MakerSquirrel setupIcon correctly set to "./assets/icon/logo.ico"');
+    success(
+      'MakerSquirrel setupIcon correctly set to "./assets/icon/logo.ico"',
+    );
   }
 
   // Check appUserModelId in MakerSquirrel config
@@ -81,9 +83,7 @@ if (!fs.existsSync(forgeConfigPath)) {
 
   for (const pattern of dyadIconPatterns) {
     if (pattern.test(forgeConfig)) {
-      error(
-        `Found potential Dyad icon reference matching pattern: ${pattern}`,
-      );
+      error(`Found potential Dyad icon reference matching pattern: ${pattern}`);
     }
   }
 
@@ -95,7 +95,9 @@ if (!fs.existsSync(forgeConfigPath)) {
     error(
       "iconUrl in forge.config.ts still points to the old dyad repository. Should use abba-ai repo.",
     );
-  } else if (forgeConfig.includes("raw.githubusercontent.com/yosiwizman/abba-ai/")) {
+  } else if (
+    forgeConfig.includes("raw.githubusercontent.com/yosiwizman/abba-ai/")
+  ) {
     success("iconUrl correctly points to abba-ai repository");
   }
 }
@@ -135,9 +137,13 @@ for (const iconFile of requiredIcons) {
   } else {
     const stats = fs.statSync(iconPath);
     if (stats.size < 1000) {
-      warn(`Icon file assets/icon/${iconFile} seems too small (${stats.size} bytes)`);
+      warn(
+        `Icon file assets/icon/${iconFile} seems too small (${stats.size} bytes)`,
+      );
     } else {
-      success(`Icon file exists: assets/icon/${iconFile} (${stats.size} bytes)`);
+      success(
+        `Icon file exists: assets/icon/${iconFile} (${stats.size} bytes)`,
+      );
     }
   }
 }
@@ -167,7 +173,9 @@ if (!fs.existsSync(packageJsonPath)) {
 // Summary
 console.log("\n" + "=".repeat(50));
 if (hasErrors) {
-  console.error("\n❌ Branding verification FAILED. Please fix the errors above.");
+  console.error(
+    "\n❌ Branding verification FAILED. Please fix the errors above.",
+  );
   process.exit(1);
 } else {
   console.log("\n✅ All branding checks passed!");

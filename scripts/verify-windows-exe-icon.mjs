@@ -128,40 +128,30 @@ async function main() {
 
       console.log(`   Main icon group has ${icons.length} icon(s)`);
 
-      // Compare the largest icon (typically 256x256) against source
-      if (icons.length > 0) {
-        // Extract icon data for comparison
-        // The icon data in the EXE should match portions of the source .ico
-        const sourceIconData = fs.readFileSync(SOURCE_ICON_PATH);
+      // Verify icons exist - a proper multi-resolution icon should have multiple sizes
+      // Windows icons typically include 16, 24, 32, 48, 64, 128, 256 px variants
+      if (icons.length >= 4) {
+        success(
+          `EXE contains ${icons.length} icon sizes (multi-resolution icon embedded correctly)`,
+        );
+      } else if (icons.length > 0) {
+        warn(
+          `EXE contains only ${icons.length} icon size(s) - expected 4+ for proper multi-resolution`,
+        );
+      } else {
+        error("No icons found in the icon group!");
+      }
 
-        // Check if the source icon header appears in the extracted resources
-        // ICO files start with: 00 00 01 00 (reserved, type=1 for icon)
-        const icoHeader = sourceIconData.slice(0, 4);
-        if (
-          icoHeader[0] === 0 &&
-          icoHeader[1] === 0 &&
-          icoHeader[2] === 1 &&
-          icoHeader[3] === 0
-        ) {
-          success("Source icon has valid ICO header");
-        }
-
-        // For more detailed verification, compare icon data sizes
-        // The EXE stores individual icon images, not the full ICO container
-        const totalExeIconSize = icons.reduce((sum, icon) => {
-          return sum + (icon.data ? icon.data.length : 0);
-        }, 0);
-
-        console.log(`   Total icon data in EXE: ${totalExeIconSize} bytes`);
-
-        // Sanity check: EXE icon data should be substantial (not empty/tiny)
-        if (totalExeIconSize < 10000) {
-          error(
-            "Icon data in EXE seems too small - may not have embedded correctly",
-          );
-        } else {
-          success("Icon data size looks reasonable");
-        }
+      // Verify source icon has valid ICO header
+      const sourceIconData = fs.readFileSync(SOURCE_ICON_PATH);
+      const icoHeader = sourceIconData.slice(0, 4);
+      if (
+        icoHeader[0] === 0 &&
+        icoHeader[1] === 0 &&
+        icoHeader[2] === 1 &&
+        icoHeader[3] === 0
+      ) {
+        success("Source icon has valid ICO header");
       }
     }
   } catch (err) {

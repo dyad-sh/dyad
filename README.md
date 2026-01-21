@@ -39,6 +39,7 @@ Notes:
 ### Windows Icon Troubleshooting
 
 **Fresh install (v0.1.6+)**: New installs automatically show the correct ABBA "A" icon everywhere:
+
 - Setup.exe installer file icon
 - Installed app EXE icon
 - Desktop shortcut
@@ -58,12 +59,14 @@ This is a one-time step due to Windows icon caching behavior. The correct icon i
 To verify the Windows build has correct branding on a clean system:
 
 **Option A: Windows Sandbox** (recommended, ~2 min)
+
 1. Enable Windows Sandbox (Settings → Apps → Optional Features → Windows Sandbox)
 2. Open Windows Sandbox (clean isolated environment)
 3. Download latest `ABBA.AI-<version>.Setup.exe` from [Releases](https://github.com/yosiwizman/dyad/releases)
 4. Run installer in sandbox — verify ABBA "A" icon on installer, shortcut, and taskbar
 
 **Option B: New local Windows user** (~2 min)
+
 1. Create a new local user account
 2. Log in as new user (fresh icon cache)
 3. Install ABBA AI and verify icons

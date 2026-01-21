@@ -50,6 +50,11 @@ if (started) {
   app.quit();
 }
 
+// Set a consistent AppUserModelID for Windows taskbar/pinned icon stability
+if (process.platform === "win32") {
+  app.setAppUserModelId("ai.abba.desktop");
+}
+
 // Decide the git directory depending on environment
 function resolveLocalGitDirectory() {
   if (!app.isPackaged) {

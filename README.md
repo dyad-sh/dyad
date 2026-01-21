@@ -35,6 +35,7 @@ Download the latest release for your platform:
 Notes:
 
 - `RELEASES` and `abba_ai-<version>-full.nupkg` are used for auto-updates; most users only need the installer/zip.
+- **Windows pinned icon refresh (v0.1.2+)**: If your pinned taskbar icon still shows the old Dyad "D" icon after updating, unpin ABBA AI, delete the old desktop shortcut if present, then re-pin after installing v0.1.2 or later. New installs and unpinned shortcuts will use the correct ABBA "A" icon automatically.
 
 ## 🚀 Features
 

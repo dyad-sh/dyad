@@ -155,7 +155,12 @@ const config: ForgeConfig = {
     },
   },
   makers: [
-    new MakerSquirrel({}),
+    new MakerSquirrel({
+      // Squirrel.Windows options: ensure installer + shortcuts use ABBA icon
+      setupIcon: "./assets/icon/logo.ico",
+      iconUrl:
+        "https://raw.githubusercontent.com/yosiwizman/dyad/main/assets/icon/logo.ico",
+    }),
     new MakerZIP({}, ["darwin"]),
     new MakerRpm({}),
     new MakerDeb({

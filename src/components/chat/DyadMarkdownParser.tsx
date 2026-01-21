@@ -28,6 +28,7 @@ import { DyadCodeSearch } from "./DyadCodeSearch";
 import { DyadRead } from "./DyadRead";
 import { DyadListFiles } from "./DyadListFiles";
 import { DyadDatabaseSchema } from "./DyadDatabaseSchema";
+import { DyadDocument } from "./DyadDocument";
 import { mapActionToButton } from "./ChatInput";
 import { SuggestedAction } from "@/lib/schemas";
 import { FixAllErrorsButton } from "./FixAllErrorsButton";
@@ -610,6 +611,22 @@ function renderCustomTag(
         >
           {content}
         </DyadDatabaseSchema>
+      );
+
+    case "dyad-document":
+      return (
+        <DyadDocument
+          node={{
+            properties: {
+              type: attributes.type || "document",
+              name: attributes.name || "",
+              id: attributes.id || "",
+              description: attributes.description || "",
+            },
+          }}
+        >
+          {content}
+        </DyadDocument>
       );
 
     default:

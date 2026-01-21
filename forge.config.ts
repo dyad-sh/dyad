@@ -160,6 +160,9 @@ const config: ForgeConfig = {
       setupIcon: "./assets/icon/logo.ico",
       iconUrl:
         "https://raw.githubusercontent.com/yosiwizman/dyad/main/assets/icon/logo.ico",
+      name: "abba_ai",
+      authors: "ABBA AI",
+      description: "Free, local, open-source AI app builder",
     }),
     new MakerZIP({}, ["darwin"]),
     new MakerRpm({}),

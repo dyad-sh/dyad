@@ -15,7 +15,7 @@ from typing import Optional
 # - | pipes output (but || is logical OR)
 # - && is logical AND
 # - || is logical OR
-# - & followed by space can run background + another command
+# - & can run background + chain another command
 # - ` and $( are command substitution
 # - We don't block () alone as they're used in GraphQL queries
 SHELL_INJECTION_PATTERNS = re.compile(
@@ -24,9 +24,14 @@ SHELL_INJECTION_PATTERNS = re.compile(
     r'|\|\|'       # Logical OR (could chain commands)
     r'|&&'         # Logical AND
     r'|&\s+\S'     # Background + another command (& followed by space and non-space)
+    r'|&\S'        # Background + another command (& followed directly by non-space)
     r'|`'          # Backtick command substitution
     r'|\$\('       # $( command substitution
 )
+
+# Pattern to match quoted strings (single or double quoted)
+# This is used to strip quoted content before checking for shell injection
+QUOTED_STRING_PATTERN = re.compile(r'"[^"]*"|\'[^\']*\'')
 
 
 def extract_gh_command(command: str) -> Optional[str]:
@@ -93,8 +98,14 @@ def contains_shell_injection(cmd: str) -> bool:
     Check if command contains shell metacharacters that could allow injection.
 
     This prevents bypasses like: "gh pr view 123; rm -rf /"
+
+    Shell metacharacters inside quoted strings are safe (e.g., --jq '.[] | ...')
+    so we strip quoted content before checking.
     """
-    return bool(SHELL_INJECTION_PATTERNS.search(cmd))
+    # Strip quoted strings before checking - content inside quotes is safe
+    # This handles cases like: gh api ... --jq '.[] | {field: .field}'
+    cmd_without_quotes = QUOTED_STRING_PATTERN.sub('""', cmd)
+    return bool(SHELL_INJECTION_PATTERNS.search(cmd_without_quotes))
 
 
 def main():
@@ -178,7 +189,8 @@ def check_gh_api_command(cmd: str) -> Optional[dict]:
             return make_allow_decision("Read-only gh api GET request auto-approved")
 
     # Check for --input or -f/--field flags (typically used with POST/PATCH)
-    if re.search(r"(--input\s|--field\s|-f\s|-F\s)", cmd):
+    # Handles both space and equals syntax: --input data.json or --input=data.json
+    if re.search(r"(--input[=\s]|--field[=\s]|-f[=\s]|-F[=\s])", cmd):
         return make_deny_decision(
             "gh api command with input data blocked (likely a write operation)"
         )

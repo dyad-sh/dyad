@@ -58,6 +58,8 @@ gh api --method GET /repos/owner/repo
 gh api --method=GET /repos/owner/repo
 gh api -X GET /repos/owner/repo
 gh api -X=GET /repos/owner/repo
+gh api repos/owner/repo/pulls/123/comments --jq '.[] | {path: .path, body: .body}'
+gh api /repos/owner/repo --jq '.name | ascii_downcase'
 
 # GraphQL queries (read-only)
 gh api graphql -f query="query { viewer { login } }"

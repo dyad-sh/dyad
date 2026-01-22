@@ -23,15 +23,6 @@ const runSwitchVersionTest = async (
   // Should be same as the previous snapshot, but just to be sure.
   await po.snapshotPreview({ name: `v1` });
 
-  // After restore, a new chat is created and a toast appears
-  await expect(
-    po.page.getByText(
-      "We've switched you to a new chat to give the AI a clean context.",
-    ),
-  ).toBeVisible({
-    timeout: Timeout.MEDIUM,
-  });
-
   await expect(po.page.getByText("Version 3")).toBeVisible({
     timeout: Timeout.MEDIUM,
   });

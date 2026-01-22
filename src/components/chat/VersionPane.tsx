@@ -1,6 +1,6 @@
 import { useAtom, useAtomValue } from "jotai";
 import { selectedAppIdAtom, selectedVersionIdAtom } from "@/atoms/appAtoms";
-import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { selectedChatIdAtom, chatMessagesByIdAtom } from "@/atoms/chatAtoms";
 import { useVersions } from "@/hooks/useVersions";
 import { formatDistanceToNow } from "date-fns";
 import { RotateCcw, X, Database, Loader2 } from "lucide-react";
@@ -33,6 +33,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
   const { restartApp } = useRunApp();
   const navigate = useNavigate();
   const [selectedChatId, setSelectedChatId] = useAtom(selectedChatIdAtom);
+  const messagesById = useAtomValue(chatMessagesByIdAtom);
   const { invalidateChats } = useChats(appId);
   const {
     versions: liveVersions,
@@ -249,8 +250,19 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                               await restartApp();
                             }
 
-                            // Create a new chat and navigate to it
-                            if (appId) {
+                            // Check if the version was created in the current chat
+                            // by looking for a message with this commit hash
+                            const currentChatMessages = selectedChatId
+                              ? (messagesById.get(selectedChatId) ?? [])
+                              : [];
+                            const versionInCurrentChat =
+                              currentChatMessages.some(
+                                (msg) => msg.commitHash === version.oid,
+                              );
+
+                            // Only create a new chat if the version is from a different chat
+                            // If it's from the current chat, the revert already deleted the messages
+                            if (appId && !versionInCurrentChat) {
                               try {
                                 const newChatId =
                                   await IpcClient.getInstance().createChat(

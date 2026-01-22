@@ -283,8 +283,8 @@ def check_gh_api_command(cmd: str) -> Optional[dict]:
     # Destructive HTTP methods
     destructive_methods = ["POST", "PUT", "PATCH", "DELETE"]
 
-    # Check for explicit method flag (handles both --method VALUE and --method=VALUE)
-    method_match = re.search(r"--method[=\s]+(\w+)", cmd, re.IGNORECASE)
+    # Check for explicit method flag (handles --method VALUE, --method=VALUE, --method="VALUE", --method='VALUE')
+    method_match = re.search(r'--method[=\s]+["\']?(\w+)["\']?', cmd, re.IGNORECASE)
     if method_match:
         method = method_match.group(1).upper()
         if method in destructive_methods:
@@ -294,8 +294,8 @@ def check_gh_api_command(cmd: str) -> Optional[dict]:
         elif method == "GET":
             return make_allow_decision("Read-only gh api GET request auto-approved")
 
-    # Check for -X shorthand method flag (handles both -X VALUE and -X=VALUE)
-    method_match = re.search(r"-X[=\s]+(\w+)", cmd)
+    # Check for -X shorthand method flag (handles -X VALUE, -X=VALUE, -X="VALUE", -X='VALUE')
+    method_match = re.search(r'-X[=\s]+["\']?(\w+)["\']?', cmd)
     if method_match:
         method = method_match.group(1).upper()
         if method in destructive_methods:

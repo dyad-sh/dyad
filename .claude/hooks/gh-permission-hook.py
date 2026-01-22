@@ -206,6 +206,14 @@ def check_gh_api_command(cmd: str) -> Optional[dict]:
     # Check for --input or -f/--field flags (typically used with POST/PATCH)
     # Handles both space and equals syntax: --input data.json or --input=data.json
     if re.search(r"(--input[=\s]|--field[=\s]|-f[=\s]|-F[=\s])", cmd):
+        # Allow PR comment replies (repos/.../pulls/.../comments/.../replies)
+        if re.search(r'/pulls/\d+/comments/\d+/replies', cmd):
+            return make_allow_decision("PR comment reply auto-approved")
+
+        # Allow issue comment creation/replies
+        if re.search(r'/issues/\d+/comments', cmd):
+            return make_allow_decision("Issue comment auto-approved")
+
         return make_deny_decision(
             "gh api command with input data blocked (likely a write operation)"
         )
@@ -219,18 +227,26 @@ def check_gh_graphql_command(cmd: str) -> Optional[dict]:
     Check gh api graphql commands for queries vs mutations.
 
     GraphQL queries are read-only, mutations are write operations.
+    Some PR-related mutations are allowed for workflow automation.
     """
-    # Look for mutation keyword in the query
-    # Common patterns: -f query="mutation ...", -f query='mutation ...'
-    # The mutation keyword appears at the start of the operation
+    # Check for query operations (read-only) - always allowed
+    if re.search(r'query\s*[\s\({]', cmd, re.IGNORECASE):
+        return make_allow_decision("GraphQL query auto-approved (read-only)")
+
+    # Check for mutation keyword
     if re.search(r'mutation\s*[\s\({]', cmd, re.IGNORECASE):
+        # Allow PR review thread mutations (resolve/unresolve)
+        if re.search(r'resolveReviewThread|unresolveReviewThread', cmd, re.IGNORECASE):
+            return make_allow_decision("PR review thread mutation auto-approved")
+
+        # Allow adding PR review comments
+        if re.search(r'addPullRequestReviewComment|addPullRequestReview', cmd, re.IGNORECASE):
+            return make_allow_decision("PR review comment mutation auto-approved")
+
+        # Block other mutations
         return make_deny_decision(
             "GraphQL mutation blocked (write operation)"
         )
-
-    # Check for query operations (read-only)
-    if re.search(r'query\s*[\s\({]', cmd, re.IGNORECASE):
-        return make_allow_decision("GraphQL query auto-approved (read-only)")
 
     # If we can't determine the operation type, don't auto-approve
     # Let it go through normal permission flow
@@ -270,11 +286,20 @@ def check_gh_command(cmd: str) -> Optional[dict]:
         if re.match(pattern, cmd, re.IGNORECASE):
             return make_allow_decision("PR modification command auto-approved")
 
+    # Issue modification commands are explicitly allowed
+    issue_allowed_patterns = [
+        r"^gh issue (create|edit|close|reopen|comment)\b",
+    ]
+
+    for pattern in issue_allowed_patterns:
+        if re.match(pattern, cmd, re.IGNORECASE):
+            return make_allow_decision("Issue modification command auto-approved")
+
     # Destructive commands that should be blocked
     destructive_patterns = [
         (r"^gh repo delete\b", "Repository deletion"),
-        (r"^gh issue close\b", "Issue closing"),
         (r"^gh issue delete\b", "Issue deletion"),
+        (r"^gh issue (transfer|pin|unpin)\b", "Issue transfer/pin operation"),
         (r"^gh release delete\b", "Release deletion"),
         (r"^gh gist delete\b", "Gist deletion"),
         (r"^gh run cancel\b", "Workflow run cancellation"),
@@ -283,7 +308,6 @@ def check_gh_command(cmd: str) -> Optional[dict]:
         (r"^gh auth logout\b", "Auth logout"),
         (r"^gh config set\b", "Config modification"),
         (r"^gh repo (create|edit|rename|archive)\b", "Repository modification"),
-        (r"^gh issue (create|edit|transfer|pin|unpin)\b", "Issue modification"),
         (r"^gh release (create|edit)\b", "Release modification"),
         (r"^gh gist (create|edit)\b", "Gist modification"),
         (r"^gh label (create|edit|delete)\b", "Label modification"),

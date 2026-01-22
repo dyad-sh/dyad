@@ -75,3 +75,23 @@ sudo gh pr view 123
 command gh pr list
 env gh pr view 123
 sudo env GH_TOKEN=xxx gh pr view 123
+
+# Issue modification commands (allowed)
+gh issue create --title "Test"
+gh issue edit 123 --title "New title"
+gh issue close 123
+gh issue reopen 123
+gh issue comment 123 --body "Comment"
+env GH_TOKEN=xxx gh issue close 123
+sudo gh issue close 123
+env gh issue close 123
+
+# PR review thread mutations (allowed GraphQL)
+gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "123"}) { thread { isResolved } } }'
+gh api graphql -f query='mutation { unresolveReviewThread(input: {threadId: "123"}) { thread { isResolved } } }'
+
+# PR comment replies (allowed)
+gh api repos/owner/repo/pulls/123/comments/456/replies -f body='Reply text'
+
+# Issue comments (allowed)
+gh api repos/owner/repo/issues/123/comments -f body='Comment text'

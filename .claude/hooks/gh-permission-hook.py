@@ -319,7 +319,7 @@ def check_gh_command(cmd: str) -> Optional[dict]:
         (r"^gh gist delete\b", "Gist deletion"),
         (r"^gh run cancel\b", "Workflow run cancellation"),
         (r"^gh run rerun\b", "Workflow re-run"),
-        (r"^gh workflow disable\b", "Workflow disabling"),
+        (r"^gh workflow (disable|enable)\b", "Workflow enable/disable"),
         (r"^gh auth logout\b", "Auth logout"),
         (r"^gh config set\b", "Config modification"),
         (r"^gh repo (create|edit|rename|archive)\b", "Repository modification"),

@@ -3,6 +3,7 @@ import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { MakerZIP } from "@electron-forge/maker-zip";
 import { MakerDeb } from "@electron-forge/maker-deb";
 import { MakerRpm } from "@electron-forge/maker-rpm";
+import { MakerAppImage } from "./makers/MakerAppImage";
 import { VitePlugin } from "@electron-forge/plugin-vite";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
@@ -115,7 +116,7 @@ const config: ForgeConfig = {
         },
     asar: true,
     ignore,
-    extraResource: ["node_modules/dugite/git"],
+    extraResource: ["node_modules/dugite/git", "node_modules/@vscode"],
     // ignore: [/node_modules\/(?!(better-sqlite3|bindings|file-uri-to-path)\/)/],
   },
   rebuildConfig: {
@@ -152,6 +153,9 @@ const config: ForgeConfig = {
       options: {
         mimeType: ["x-scheme-handler/dyad"],
       },
+    }),
+    new MakerAppImage({
+      icon: "./assets/icon/logo.png",
     }),
   ],
   publishers: [

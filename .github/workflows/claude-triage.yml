@@ -1,0 +1,153 @@
+name: Issue Triage
+on:
+  issues:
+    types: [opened]
+jobs:
+  triage:
+    environment: ai-bots
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: anthropics/claude-code-base-action@beta
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          #   anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          model: claude-opus-4-5-20251101
+          allowed_tools: "Bash(gh issue:*),Bash(gh search:*)"
+          prompt: |
+            # GitHub Issue Triage Agent
+
+            ## Context
+
+            ```
+            REPO: ${{ github.repository }}
+            ISSUE NUMBER: ${{ github.event.issue.number }}
+            TITLE: ${{ github.event.issue.title }}
+            BODY: ${{ github.event.issue.body }}
+            AUTHOR: ${{ github.event.issue.user.login }}
+            ```
+
+            ## Guidelines
+
+            - Be concise. People don't like to read long comments.
+            - Leave at most one comment per task. Do not combine the comments from the different tasks. Leave a comment first for task 1, and then a comment for task 2, etc.
+            - Be warm and easy-to-understand. Most users are _NOT_ developers. Do not assume they know technical jargon.
+
+            ## Task 1: Label the Issue
+
+            Analyze the issue and apply appropriate labels using:
+
+            ```bash
+            gh issue edit [number] --add-label "label1,label2"
+            ```
+
+            ### Issue Type Labels (choose one)
+
+            | Condition                          | Label             |
+            | ---------------------------------- | ----------------- |
+            | Bug, regression, or serious defect | `bug`             |
+            | Request for new functionality      | `feature request` |
+            | Usability problem (not a bug)      | `ux/usability`    |
+
+            ### Additional Labels
+
+            | Condition                             | Label              | Action              |
+            | ------------------------------------- | ------------------ | ------------------- |
+            | Includes a Pro user ID                | `pro`              | —                   |
+            | Not written in English                | `issue/lang`       | Comment (see below) |
+            | Missing description or blank sections | `issue/incomplete` | Comment (see below) |
+
+            ### Required Comments
+
+            **For non-English issues:**
+
+            > Hi! We're only able to respond to issues in English. Please translate your issue with ChatGPT so we can help you. Thanks!
+
+            **For incomplete issues:**
+
+            > Hi! Please fill in all the fields in the issue so we can help you. A screenshot is very helpful!
+
+            ## Task 2: Check for Duplicates
+
+            Search all existing issues in this repository (excluding #${{ github.event.issue.number }}) for potential duplicates.
+
+            ### Search Criteria
+
+            - Similar titles or descriptions
+            - Same error messages or symptoms
+            - Related functionality or components
+            - Similar feature requests
+
+            ### Confidence Ratings
+
+            | Rating     | Meaning                                                            |
+            | ---------- | ------------------------------------------------------------------ |
+            | **High**   | Identical error message, same component, or clearly the same issue |
+            | **Medium** | Similar request or problem, but different use case or context      |
+            | **Low**    | Related symptoms, but unclear connection                           |
+
+            ### If Duplicates Found
+
+            Comment on the issue using the following format. Do NOT include low confidence matches if you've found medium or high confidence matches:
+
+            > This issue might be a duplicate of existing issues. Please check:
+            >
+            > - #[number]: [brief description of similarity] (confidence: [high/medium/low])
+            >
+            > Feel free to ignore if none of these address your specific case.
+
+            **Example:**
+
+            > - #123: Contains identical error message and affects same component (confidence: high)
+            > - #124: Similar feature request but slightly different use case (confidence: medium)
+
+            ### Surfacing Helpful Comments
+
+            If a **high-confidence** duplicate is found and there is a helpful comment from **wwwillchen@** on the original issue, include a recommendation in your comment:
+
+            > You might want to try [summary of the suggestion] based on this earlier [comment]([direct link to the comment]).
+
+            **Notes:**
+
+            - Only do this for high-confidence duplicates where you're very confident the issues are the same.
+            - Only surface comments from wwwillchen@ — do not surface comments from other users.
+            - Link directly to the specific comment, not just the issue.
+
+            ### If No Duplicates Found
+
+            Do not comment.
+
+            ## Task 3: Update Issue Title (if necessary)
+
+            Review the issue title and improve it **only if** it meets one of these conditions:
+
+            | Condition | Example (Before → After) |
+            |-----------|--------------------------|
+            | Template placeholder not filled in | `[session report] <add title>` → `[session report] App freezes when saving` |
+            | Too vague or generic | `not able to deploy to vercel` → `Vercel deployment fails with authentication error` |
+            | Unclear error description | `[bug] <npm and pnpm is not recogized >` → `[bug] npm/pnpm not recognized on Windows` |
+
+            ### How to Update
+
+            ```bash
+            gh issue edit [number] --title "New descriptive title"
+            ```
+
+            ### Guidelines
+
+            - Keep titles **short** (under 60 characters if possible)
+            - Start with the **what**: component, action, or error
+            - Preserve prefixes like `[bug]` or `[session report]` if present
+            - Be specific but not overly technical
+            - Don't change titles that are already clear and descriptive
+
+            ### When NOT to Update
+
+            - Title already describes the issue well (e.g., "Vercel Project Selection not always available")
+            - You'd only be making minor wording tweaks
+            - The issue body is too unclear to write a better title (use `issue/incomplete` label instead)

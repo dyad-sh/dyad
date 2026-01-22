@@ -15,10 +15,25 @@ const SNAPSHOT_NAME = "attach-image";
 test("attach image - home chat", async ({ po }) => {
   await po.setUp();
 
+  // Open auxiliary actions menu
   await po
     .getHomeChatInputContainer()
-    .getByTestId("chat-context-file-input")
-    .setInputFiles("e2e-tests/fixtures/images/logo.png");
+    .getByTestId("auxiliary-actions-menu")
+    .click();
+
+  // Hover over "Attach files" to open submenu
+  await po.page.getByRole("menuitem", { name: "Attach files" }).hover();
+
+  // Set up file chooser listener BEFORE clicking the menu item
+  const fileChooserPromise = po.page.waitForEvent("filechooser");
+
+  // Click the menu item to trigger the file picker
+  await po.page.getByText("Attach file as chat context").click();
+
+  // Handle the file chooser dialog
+  const fileChooser = await fileChooserPromise;
+  await fileChooser.setFiles("e2e-tests/fixtures/images/logo.png");
+
   await po.sendPrompt("[dump]");
   await po.snapshotServerDump("last-message", { name: SNAPSHOT_NAME });
   await po.snapshotMessages({ replaceDumpPath: true });
@@ -37,13 +52,15 @@ test("attach image - chat", async ({ po }) => {
   // Hover over "Attach files" to open submenu
   await po.page.getByRole("menuitem", { name: "Attach files" }).hover();
 
-  // attach via file input (click-to-upload)
-  await po.page
-    .getByTestId("chat-context-file-input")
-    .setInputFiles("e2e-tests/fixtures/images/logo.png");
+  // Set up file chooser listener BEFORE clicking the menu item
+  const fileChooserPromise = po.page.waitForEvent("filechooser");
 
-  // Close the menu by pressing Escape
-  await po.page.keyboard.press("Escape");
+  // Click the menu item to trigger the file picker
+  await po.page.getByText("Attach file as chat context").click();
+
+  // Handle the file chooser dialog
+  const fileChooser = await fileChooserPromise;
+  await fileChooser.setFiles("e2e-tests/fixtures/images/logo.png");
 
   await po.sendPrompt("[dump]");
   await po.snapshotServerDump("last-message", { name: SNAPSHOT_NAME });
@@ -63,13 +80,15 @@ test("attach image - chat - upload to codebase", async ({ po }) => {
   // Hover over "Attach files" to open submenu
   await po.page.getByRole("menuitem", { name: "Attach files" }).hover();
 
-  // attach via file input (click-to-upload)
-  await po.page
-    .getByTestId("upload-to-codebase-file-input")
-    .setInputFiles("e2e-tests/fixtures/images/logo.png");
+  // Set up file chooser listener BEFORE clicking the menu item
+  const fileChooserPromise = po.page.waitForEvent("filechooser");
 
-  // Close the menu by pressing Escape
-  await po.page.keyboard.press("Escape");
+  // Click the menu item to trigger the file picker
+  await po.page.getByText("Upload file to codebase").click();
+
+  // Handle the file chooser dialog
+  const fileChooser = await fileChooserPromise;
+  await fileChooser.setFiles("e2e-tests/fixtures/images/logo.png");
 
   await po.sendPrompt("[[UPLOAD_IMAGE_TO_CODEBASE]]");
 

@@ -14,18 +14,27 @@ import { executeSqlTool } from "./tools/execute_sql";
 
 import { readFileTool } from "./tools/read_file";
 import { listFilesTool } from "./tools/list_files";
-import { getDatabaseSchemaTool } from "./tools/get_database_schema";
+import { getSupabaseProjectInfoTool } from "./tools/get_supabase_project_info";
+import { getSupabaseTableSchemaTool } from "./tools/get_supabase_table_schema";
 import { setChatSummaryTool } from "./tools/set_chat_summary";
 import { addIntegrationTool } from "./tools/add_integration";
+import { readLogsTool } from "./tools/read_logs";
 import { editFileTool } from "./tools/edit_file";
 import { webSearchTool } from "./tools/web_search";
+import { webCrawlTool } from "./tools/web_crawl";
+import { updateTodosTool } from "./tools/update_todos";
+import { runTypeChecksTool } from "./tools/run_type_checks";
+import { grepTool } from "./tools/grep";
+import { codeSearchTool } from "./tools/code_search";
+import type { LanguageModelV3ToolResultOutput } from "@ai-sdk/provider";
 import {
   escapeXmlAttr,
   escapeXmlContent,
   type ToolDefinition,
   type AgentContext,
+  type ToolResult,
 } from "./tools/types";
-import type { AgentToolConsent } from "@/ipc/ipc_types";
+import { AgentToolConsent } from "@/lib/schemas";
 import { getSupabaseClientCode } from "@/supabase_admin/supabase_context";
 // Combined tool definitions array
 export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
@@ -39,10 +48,17 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   // searchReplaceTool,
   readFileTool,
   listFilesTool,
-  getDatabaseSchemaTool,
+  grepTool,
+  codeSearchTool,
+  getSupabaseProjectInfoTool,
+  getSupabaseTableSchemaTool,
   setChatSummaryTool,
   addIntegrationTool,
+  readLogsTool,
   webSearchTool,
+  webCrawlTool,
+  updateTodosTool,
+  runTypeChecksTool,
 ];
 // ============================================================================
 // Agent Tool Name Type (derived from TOOL_DEFINITIONS)
@@ -156,6 +172,8 @@ export async function requireAgentToolConsent(
   const current = getAgentToolConsent(params.toolName);
 
   if (current === "always") return true;
+  if (current === "never")
+    throw new Error("Should not ask for consent for a tool marked as 'never'");
 
   // Ask renderer for a decision via event bridge
   const requestId = `agent:${params.toolName}:${crypto.randomUUID()}`;
@@ -226,12 +244,45 @@ async function processArgPlaceholders<T extends Record<string, any>>(
 }
 
 /**
+ * Convert our ToolResult to AI SDK format
+ */
+function convertToolResultForAiSdk(
+  result: ToolResult,
+): LanguageModelV3ToolResultOutput {
+  if (typeof result === "string") {
+    return { type: "text", value: result };
+  }
+  throw new Error(`Unsupported tool result type: ${typeof result}`);
+}
+
+export interface BuildAgentToolSetOptions {
+  /**
+   * If true, exclude tools that modify state (files, database, etc.).
+   * Used for read-only modes like "ask" mode.
+   */
+  readOnly?: boolean;
+}
+
+/**
  * Build ToolSet for AI SDK from tool definitions
  */
-export function buildAgentToolSet(ctx: AgentContext) {
+export function buildAgentToolSet(
+  ctx: AgentContext,
+  options: BuildAgentToolSetOptions = {},
+) {
   const toolSet: Record<string, any> = {};
 
   for (const tool of TOOL_DEFINITIONS) {
+    const consent = getAgentToolConsent(tool.name);
+    if (consent === "never") {
+      continue;
+    }
+
+    // In read-only mode, skip tools that modify state
+    if (options.readOnly && tool.modifiesState) {
+      continue;
+    }
+
     if (tool.isEnabled && !tool.isEnabled(ctx)) {
       continue;
     }
@@ -253,7 +304,8 @@ export function buildAgentToolSet(ctx: AgentContext) {
             throw new Error(`User denied permission for ${tool.name}`);
           }
 
-          return await tool.execute(processedArgs, ctx);
+          const result = await tool.execute(processedArgs, ctx);
+          return convertToolResultForAiSdk(result);
         } catch (error) {
           const errorMessage =
             error instanceof Error ? error.message : String(error);

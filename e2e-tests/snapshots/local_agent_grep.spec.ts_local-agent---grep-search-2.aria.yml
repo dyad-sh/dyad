@@ -1,0 +1,8 @@
+- img
+- text: GREP"createRoot"(2 matches)
+- img
+- text: log
+- button "Copy":
+  - img
+- text: log
+- code: "src/main.tsx:1: import { createRoot } from \"react-dom/client\"; src/main.tsx:4: createRoot(document.getElementById(\"root\")!).render(<App />);"

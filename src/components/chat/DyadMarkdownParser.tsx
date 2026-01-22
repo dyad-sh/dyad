@@ -6,6 +6,8 @@ import { DyadRename } from "./DyadRename";
 import { DyadDelete } from "./DyadDelete";
 import { DyadAddDependency } from "./DyadAddDependency";
 import { DyadExecuteSql } from "./DyadExecuteSql";
+import { DyadLogs } from "./DyadLogs";
+import { DyadGrep } from "./DyadGrep";
 import { DyadAddIntegration } from "./DyadAddIntegration";
 import { DyadEdit } from "./DyadEdit";
 import { DyadSearchReplace } from "./DyadSearchReplace";
@@ -28,9 +30,13 @@ import { DyadCodeSearch } from "./DyadCodeSearch";
 import { DyadRead } from "./DyadRead";
 import { DyadListFiles } from "./DyadListFiles";
 import { DyadDatabaseSchema } from "./DyadDatabaseSchema";
+import { DyadSupabaseTableSchema } from "./DyadSupabaseTableSchema";
+import { DyadSupabaseProjectInfo } from "./DyadSupabaseProjectInfo";
+import { DyadStatus } from "./DyadStatus";
 import { mapActionToButton } from "./ChatInput";
 import { SuggestedAction } from "@/lib/schemas";
 import { FixAllErrorsButton } from "./FixAllErrorsButton";
+import { unescapeXmlAttr, unescapeXmlContent } from "../../../shared/xmlEscape";
 
 const DYAD_CUSTOM_TAGS = [
   "dyad-write",
@@ -38,11 +44,13 @@ const DYAD_CUSTOM_TAGS = [
   "dyad-delete",
   "dyad-add-dependency",
   "dyad-execute-sql",
+  "dyad-read-logs",
   "dyad-add-integration",
   "dyad-output",
   "dyad-problem-report",
   "dyad-chat-summary",
   "dyad-edit",
+  "dyad-grep",
   "dyad-search-replace",
   "dyad-codebase-context",
   "dyad-web-search-result",
@@ -57,6 +65,9 @@ const DYAD_CUSTOM_TAGS = [
   "dyad-mcp-tool-result",
   "dyad-list-files",
   "dyad-database-schema",
+  "dyad-supabase-table-schema",
+  "dyad-supabase-project-info",
+  "dyad-status",
 ];
 
 interface DyadMarkdownParserProps {
@@ -264,25 +275,25 @@ function parseCustomTags(content: string): ContentPiece[] {
       });
     }
 
-    // Parse attributes
+    // Parse attributes and unescape values
     const attributes: Record<string, string> = {};
-    const attrPattern = /(\w+)="([^"]*)"/g;
+    const attrPattern = /([\w-]+)="([^"]*)"/g;
     let attrMatch;
     while ((attrMatch = attrPattern.exec(attributesStr)) !== null) {
-      attributes[attrMatch[1]] = attrMatch[2];
+      attributes[attrMatch[1]] = unescapeXmlAttr(attrMatch[2]);
     }
 
     // Check if this tag was marked as in progress
     const tagInProgressSet = inProgressTags.get(tag);
     const isInProgress = tagInProgressSet?.has(startIndex);
 
-    // Add the tag info
+    // Add the tag info with unescaped content
     contentPieces.push({
       type: "custom-tag",
       tagInfo: {
         tag,
         attributes,
-        content: tagContent,
+        content: unescapeXmlContent(tagContent),
         fullMatch,
         inProgress: isInProgress || false,
       },
@@ -364,7 +375,10 @@ function renderCustomTag(
       return (
         <DyadCodeSearch
           node={{
-            properties: {},
+            properties: {
+              query: attributes.query || "",
+              state: getState({ isStreaming, inProgress }),
+            },
           }}
         >
           {content}
@@ -471,6 +485,41 @@ function renderCustomTag(
         >
           {content}
         </DyadExecuteSql>
+      );
+
+    case "dyad-read-logs":
+      return (
+        <DyadLogs
+          node={{
+            properties: {
+              state: getState({ isStreaming, inProgress }),
+              time: attributes.time || "",
+              type: attributes.type || "",
+              level: attributes.level || "",
+              count: attributes.count || "",
+            },
+          }}
+        >
+          {content}
+        </DyadLogs>
+      );
+
+    case "dyad-grep":
+      return (
+        <DyadGrep
+          node={{
+            properties: {
+              state: getState({ isStreaming, inProgress }),
+              query: attributes.query || "",
+              include: attributes.include || "",
+              exclude: attributes.exclude || "",
+              "case-sensitive": attributes["case-sensitive"] || "",
+              count: attributes.count || "",
+            },
+          }}
+        >
+          {content}
+        </DyadGrep>
       );
 
     case "dyad-add-integration":
@@ -594,6 +643,7 @@ function renderCustomTag(
           node={{
             properties: {
               directory: attributes.directory || "",
+              recursive: attributes.recursive || "",
               state: getState({ isStreaming, inProgress }),
             },
           }}
@@ -613,6 +663,47 @@ function renderCustomTag(
         >
           {content}
         </DyadDatabaseSchema>
+      );
+
+    case "dyad-supabase-table-schema":
+      return (
+        <DyadSupabaseTableSchema
+          node={{
+            properties: {
+              table: attributes.table || "",
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadSupabaseTableSchema>
+      );
+
+    case "dyad-supabase-project-info":
+      return (
+        <DyadSupabaseProjectInfo
+          node={{
+            properties: {
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadSupabaseProjectInfo>
+      );
+
+    case "dyad-status":
+      return (
+        <DyadStatus
+          node={{
+            properties: {
+              title: attributes.title || "Processing...",
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadStatus>
       );
 
     default:

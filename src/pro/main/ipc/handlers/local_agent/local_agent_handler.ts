@@ -8,10 +8,12 @@ import {
   streamText,
   ToolSet,
   stepCountIs,
+  hasToolCall,
   ModelMessage,
   type ToolExecutionOptions,
 } from "ai";
 import log from "electron-log";
+
 import { db } from "@/db";
 import { chats, messages } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -45,10 +47,16 @@ import {
   parsePartialJson,
   escapeXmlAttr,
   escapeXmlContent,
+  UserMessageContentPart,
 } from "./tools/types";
+import {
+  prepareStepMessages,
+  type InjectedMessage,
+} from "./prepare_step_utils";
 import { TOOL_DEFINITIONS } from "./tool_definitions";
 import { parseAiMessagesJson } from "@/ipc/utils/ai_messages_utils";
 import { parseMcpToolKey, sanitizeMcpName } from "@/ipc/utils/mcp_tool_utils";
+import { addIntegrationTool } from "./tools/add_integration";
 
 const logger = log.scope("local_agent_handler");
 
@@ -98,7 +106,24 @@ export async function handleLocalAgentStream(
   {
     placeholderMessageId,
     systemPrompt,
-  }: { placeholderMessageId: number; systemPrompt: string },
+    dyadRequestId,
+    readOnly = false,
+    messageOverride,
+  }: {
+    placeholderMessageId: number;
+    systemPrompt: string;
+    dyadRequestId: string;
+    /**
+     * If true, the agent operates in read-only mode (e.g., ask mode).
+     * State-modifying tools are disabled, and no commits/deploys are made.
+     */
+    readOnly?: boolean;
+    /**
+     * If provided, use these messages instead of fetching from the database.
+     * Used for summarization where messages need to be transformed.
+     */
+    messageOverride?: ModelMessage[];
+  },
 ): Promise<void> {
   const settings = readSettings();
 
@@ -129,8 +154,6 @@ export async function handleLocalAgentStream(
 
   const appPath = getDyadAppPath(chat.app.path);
 
-  // Generate request ID
-
   // Send initial message update
   safeSend(event.sender, "chat:response:chunk", {
     chatId: req.chatId,
@@ -139,6 +162,11 @@ export async function handleLocalAgentStream(
 
   let fullResponse = "";
   let streamingPreview = ""; // Temporary preview for current tool, not persisted
+
+  // Track pending user messages to inject after tool results
+  const pendingUserMessages: UserMessageContentPart[][] = [];
+  // Store injected messages with their insertion index to re-inject at the same spot each step
+  const allInjectedMessages: InjectedMessage[] = [];
 
   try {
     // Get model client
@@ -150,12 +178,15 @@ export async function handleLocalAgentStream(
     // Build tool execute context
     const ctx: AgentContext = {
       event,
+      appId: chat.app.id,
       appPath,
       chatId: chat.id,
       supabaseProjectId: chat.app.supabaseProjectId,
       supabaseOrganizationSlug: chat.app.supabaseOrganizationSlug,
       messageId: placeholderMessageId,
       isSharedModulesChanged: false,
+      todos: [],
+      dyadRequestId,
       onXmlStream: (accumulatedXml: string) => {
         // Stream accumulated XML to UI without persisting
         streamingPreview = accumulatedXml;
@@ -185,17 +216,31 @@ export async function handleLocalAgentStream(
           inputPreview: params.inputPreview,
         });
       },
+      appendUserMessage: (content: UserMessageContentPart[]) => {
+        pendingUserMessages.push(content);
+      },
+      onUpdateTodos: (todos) => {
+        safeSend(event.sender, "agent-tool:todos-update", {
+          chatId: chat.id,
+          todos,
+        });
+      },
     };
 
     // Build tool set (agent tools + MCP tools)
-    const agentTools = buildAgentToolSet(ctx);
-    const mcpTools = await getMcpTools(event, ctx);
+    // In read-only mode, only include read-only tools and skip MCP tools
+    // (since we can't determine if MCP tools modify state)
+    const agentTools = buildAgentToolSet(ctx, { readOnly });
+    const mcpTools = readOnly ? {} : await getMcpTools(event, ctx);
     const allTools: ToolSet = { ...agentTools, ...mcpTools };
 
     // Prepare message history with graceful fallback
-    const messageHistory: ModelMessage[] = chat.messages
-      .filter((msg) => msg.content || msg.aiMessagesJson)
-      .flatMap((msg) => parseAiMessagesJson(msg));
+    // Use messageOverride if provided (e.g., for summarization)
+    const messageHistory: ModelMessage[] = messageOverride
+      ? messageOverride
+      : chat.messages
+          .filter((msg) => msg.content || msg.aiMessagesJson)
+          .flatMap((msg) => parseAiMessagesJson(msg));
 
     // Stream the response
     const streamResult = streamText({
@@ -205,6 +250,7 @@ export async function handleLocalAgentStream(
       }),
       providerOptions: getProviderOptions({
         dyadAppId: chat.app.id,
+        dyadRequestId,
         dyadDisableFiles: true, // Local agent uses tools, not file injection
         files: [],
         mentionedAppsCodebases: [],
@@ -217,8 +263,14 @@ export async function handleLocalAgentStream(
       system: systemPrompt,
       messages: messageHistory,
       tools: allTools,
-      stopWhen: stepCountIs(25), // Allow multiple tool call rounds
+      stopWhen: [stepCountIs(25), hasToolCall(addIntegrationTool.name)], // Allow multiple tool call rounds, stop on add_integration
       abortSignal: abortController.signal,
+      // Inject pending user messages (e.g., images from web_crawl) between steps
+      // We must re-inject all accumulated messages each step because the AI SDK
+      // doesn't persist dynamically injected messages in its internal state.
+      // We track the insertion index so messages appear at the same position each step.
+      prepareStep: (options) =>
+        prepareStepMessages(options, pendingUserMessages, allInjectedMessages),
       onFinish: async (response) => {
         const totalTokens = response.usage?.totalTokens;
         const inputTokens = response.usage?.inputTokens;
@@ -378,17 +430,20 @@ export async function handleLocalAgentStream(
       logger.warn("Failed to save AI messages JSON:", err);
     }
 
-    // Deploy all Supabase functions if shared modules changed
-    await deployAllFunctionsIfNeeded(ctx);
+    // In read-only mode, skip deploys and commits
+    if (!readOnly) {
+      // Deploy all Supabase functions if shared modules changed
+      await deployAllFunctionsIfNeeded(ctx);
 
-    // Commit all changes
-    const commitResult = await commitAllChanges(ctx, ctx.chatSummary);
+      // Commit all changes
+      const commitResult = await commitAllChanges(ctx, ctx.chatSummary);
 
-    if (commitResult.commitHash) {
-      await db
-        .update(messages)
-        .set({ commitHash: commitResult.commitHash })
-        .where(eq(messages.id, placeholderMessageId));
+      if (commitResult.commitHash) {
+        await db
+          .update(messages)
+          .set({ commitHash: commitResult.commitHash })
+          .where(eq(messages.id, placeholderMessageId));
+      }
     }
 
     // Mark as approved (auto-approve for local-agent)
@@ -400,7 +455,7 @@ export async function handleLocalAgentStream(
     // Send completion
     safeSend(event.sender, "chat:response:end", {
       chatId: req.chatId,
-      updatedFiles: true,
+      updatedFiles: !readOnly,
     } satisfies ChatResponseEnd);
 
     return;

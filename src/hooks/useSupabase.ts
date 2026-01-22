@@ -151,7 +151,9 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
         return;
       }
 
-      // Logs are already in ConsoleEntry format, just append them
+      logs.forEach((log) => {
+        IpcClient.getInstance().addLog(log);
+      });
       setConsoleEntries((prev) => [...prev, ...logs]);
 
       // Update the last timestamp for this project

@@ -1,0 +1,16 @@
+- paragraph: "Connected to GitHub Repo:"
+- text: /testuser\/test-git-collab-\d+/
+- combobox:
+  - img
+  - text: "Branch: main"
+- button "Refresh branches":
+  - img
+- button "Create new branch":
+  - img
+- img
+- heading "Branches" [level=3]
+- paragraph: Manage your branches, merge, delete, and more.
+- img
+- button "Sync to GitHub"
+- button "Disconnect from repo"
+- paragraph: Successfully pushed to GitHub!

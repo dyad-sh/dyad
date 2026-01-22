@@ -1,0 +1,25 @@
+- img
+- text: 3 errors
+- button "Run checks":
+  - img
+- button "Clear all"
+- button "Fix 3 problems":
+  - img
+- checkbox "Select problem src/test-errors.ts 2:7 Type 'string' is not assignable to type 'number'." [checked]:
+  - checkbox "Select problem" [checked]:
+    - img
+  - img
+  - img
+  - paragraph: Type 'string' is not assignable to type 'number'.
+- checkbox "Select problem src/test-errors.ts 3:7 Type 'number' is not assignable to type 'string'." [checked]:
+  - checkbox "Select problem" [checked]:
+    - img
+  - img
+  - img
+  - paragraph: Type 'number' is not assignable to type 'string'.
+- checkbox "Select problem src/test-errors.ts 4:1 Cannot find name 'nonExistentFunction'." [checked]:
+  - checkbox "Select problem" [checked]:
+    - img
+  - img
+  - img
+  - paragraph: Cannot find name 'nonExistentFunction'.

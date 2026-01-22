@@ -58,6 +58,8 @@ export const apps = sqliteTable("apps", {
   isFavorite: integer("is_favorite", { mode: "boolean" })
     .notNull()
     .default(sql`0`),
+  // Theme ID for design system theming (null means "no theme")
+  themeId: text("theme_id"),
 });
 
 export const chats = sqliteTable("chats", {
@@ -243,3 +245,17 @@ export const mcpToolConsents = sqliteTable(
   },
   (table) => [unique("uniq_mcp_consent").on(table.serverId, table.toolName)],
 );
+
+// --- Custom Themes table ---
+export const customThemes = sqliteTable("custom_themes", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  description: text("description"),
+  prompt: text("prompt").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});

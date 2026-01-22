@@ -9,13 +9,10 @@ import {
   isServerFunction,
   isSharedServerModule,
 } from "../../../../../../supabase_admin/supabase_utils";
-import { readSettings } from "@/main/settings";
+import { engineFetch } from "./engine_fetch";
 
 const readFile = fs.promises.readFile;
 const logger = log.scope("edit_file");
-
-const DYAD_ENGINE_URL =
-  process.env.DYAD_ENGINE_URL ?? "https://engine.dyad.sh/v1";
 
 const editFileSchema = z.object({
   path: z.string().describe("The file path relative to the app root"),
@@ -27,25 +24,17 @@ const turboFileEditResponseSchema = z.object({
   result: z.string(),
 });
 
-async function callTurboFileEdit(params: {
-  path: string;
-  content: string;
-  originalContent: string;
-  description?: string;
-}): Promise<string> {
-  const settings = readSettings();
-  const apiKey = settings.providerSettings?.auto?.apiKey?.value;
-
-  if (!apiKey) {
-    throw new Error("Dyad Pro API key is required for edit_file tool");
-  }
-
-  const response = await fetch(`${DYAD_ENGINE_URL}/tools/turbo-file-edit`, {
+async function callTurboFileEdit(
+  params: {
+    path: string;
+    content: string;
+    originalContent: string;
+    description?: string;
+  },
+  ctx: AgentContext,
+): Promise<string> {
+  const response = await engineFetch(ctx, "/tools/turbo-file-edit", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
     body: JSON.stringify({
       path: params.path,
       content: params.content,
@@ -145,6 +134,7 @@ export const editFileTool: ToolDefinition<z.infer<typeof editFileSchema>> = {
   description: DESCRIPTION,
   inputSchema: editFileSchema,
   defaultConsent: "always",
+  modifiesState: true,
 
   getConsentPreview: (args) => `Edit ${args.path}`,
 
@@ -174,12 +164,15 @@ export const editFileTool: ToolDefinition<z.infer<typeof editFileSchema>> = {
     const originalContent = await readFile(fullFilePath, "utf8");
 
     // Call the turbo-file-edit endpoint
-    const newContent = await callTurboFileEdit({
-      path: args.path,
-      content: args.content,
-      originalContent,
-      description: args.description,
-    });
+    const newContent = await callTurboFileEdit(
+      {
+        path: args.path,
+        content: args.content,
+        originalContent,
+        description: args.description,
+      },
+      ctx,
+    );
 
     if (!newContent) {
       throw new Error(

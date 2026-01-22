@@ -464,11 +464,30 @@ async function handleGetVercelDeployments(
     // Get deployments for the project
     const deploymentsResponse = await vercel.deployments.getDeployments({
       projectId: app.vercelProjectId,
-      limit: 3, // Get last 3 deployments
+      limit: 5, // Get last 5 deployments
     });
 
     if (!deploymentsResponse.deployments) {
       throw new Error("Failed to retrieve deployments from Vercel.");
+    }
+
+    // Find the most recent READY production deployment and update the stored URL
+    const readyProductionDeployment = deploymentsResponse.deployments.find(
+      (d) => d.readyState === "READY" && d.target === "production",
+    );
+
+    if (readyProductionDeployment?.url) {
+      const newDeploymentUrl = `https://${readyProductionDeployment.url}`;
+      // Only update if the URL has changed
+      if (newDeploymentUrl !== app.vercelDeploymentUrl) {
+        logger.info(
+          `Updating deployment URL for app ${appId}: ${app.vercelDeploymentUrl} -> ${newDeploymentUrl}`,
+        );
+        await db
+          .update(apps)
+          .set({ vercelDeploymentUrl: newDeploymentUrl })
+          .where(eq(apps.id, appId));
+      }
     }
 
     // Map deployments to our interface format

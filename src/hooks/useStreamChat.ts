@@ -33,6 +33,10 @@ export function getRandomNumberId() {
   return Math.floor(Math.random() * 1_000_000_000_000_000);
 }
 
+// Module-level set to track chatIds with active/pending streams
+// This prevents race conditions when clicking rapidly before state updates
+const pendingStreamChatIds = new Set<number>();
+
 export function useStreamChat({
   hasChatId = true,
 }: { hasChatId?: boolean } = {}) {
@@ -86,6 +90,19 @@ export function useStreamChat({
         return;
       }
 
+      // Prevent duplicate streams - check module-level set to avoid race conditions
+      if (pendingStreamChatIds.has(chatId)) {
+        console.warn(
+          `[CHAT] Ignoring duplicate stream request for chat ${chatId} - stream already in progress`,
+        );
+        // Call onSettled to allow callers to clean up their local loading state
+        onSettled?.();
+        return;
+      }
+
+      // Mark this chat as having a pending stream
+      pendingStreamChatIds.add(chatId);
+
       setRecentStreamChatIds((prev) => {
         const next = new Set(prev);
         next.add(chatId);
@@ -127,6 +144,9 @@ export function useStreamChat({
             });
           },
           onEnd: (response: ChatResponseEnd) => {
+            // Remove from pending set now that stream is complete
+            pendingStreamChatIds.delete(chatId);
+
             if (response.updatedFiles) {
               setIsPreviewOpen(true);
               refreshAppIframe();
@@ -159,6 +179,9 @@ export function useStreamChat({
             onSettled?.();
           },
           onError: (errorMessage: string) => {
+            // Remove from pending set now that stream ended with error
+            pendingStreamChatIds.delete(chatId);
+
             console.error(`[CHAT] Stream error for ${chatId}:`, errorMessage);
             setErrorById((prev) => {
               const next = new Map(prev);
@@ -180,6 +203,9 @@ export function useStreamChat({
           },
         });
       } catch (error) {
+        // Remove from pending set on exception
+        pendingStreamChatIds.delete(chatId);
+
         console.error("[CHAT] Exception during streaming setup:", error);
         setIsStreamingById((prev) => {
           const next = new Map(prev);

@@ -2,7 +2,3 @@
   - heading "Blank page" [level=1]
 - link "Made with Dyad":
   - /url: https://www.dyad.sh/
-- text: h1 src/app/page.tsx
-- alert
-- button "Open Next.js Dev Tools":
-  - img

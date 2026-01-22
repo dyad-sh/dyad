@@ -70,6 +70,7 @@ describe("readSettings", () => {
             "provider": "auto",
           },
           "selectedTemplateId": "react",
+          "selectedThemeId": "default",
           "telemetryConsent": "unset",
           "telemetryUserId": "[scrubbed]",
         }
@@ -247,7 +248,7 @@ describe("readSettings", () => {
       );
     });
 
-    it("should strip extra fields not recognized by the schema", () => {
+    it("should preserve extra fields not recognized by the schema", () => {
       const mockFileContent = {
         selectedModel: {
           name: "gpt-4",
@@ -255,8 +256,8 @@ describe("readSettings", () => {
         },
         telemetryConsent: "opted_in",
         hasRunBefore: true,
-        // Extra fields that are not in the schema
-        unknownField: "should be removed",
+        // Extra fields that are not in the schema (should be preserved)
+        unknownField: "should be preserved",
         deprecatedSetting: true,
         extraConfig: {
           someValue: 123,
@@ -280,10 +281,15 @@ describe("readSettings", () => {
       expect(result.telemetryConsent).toBe("opted_in");
       expect(result.hasRunBefore).toBe(true);
 
-      // Extra fields should be stripped by schema validation
-      expect(result).not.toHaveProperty("unknownField");
-      expect(result).not.toHaveProperty("deprecatedSetting");
-      expect(result).not.toHaveProperty("extraConfig");
+      // Extra fields should be preserved by passthrough()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const resultAny = result as any;
+      expect(resultAny.unknownField).toBe("should be preserved");
+      expect(resultAny.deprecatedSetting).toBe(true);
+      expect(resultAny.extraConfig).toEqual({
+        someValue: 123,
+        anotherValue: "test",
+      });
 
       // Should still have defaults for missing properties
       expect(result.enableAutoUpdate).toBe(true);
@@ -319,6 +325,7 @@ describe("readSettings", () => {
             "provider": "auto",
           },
           "selectedTemplateId": "react",
+          "selectedThemeId": "default",
           "telemetryConsent": "unset",
           "telemetryUserId": "[scrubbed]",
         }

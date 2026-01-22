@@ -21,6 +21,66 @@ export const Timeout = {
 };
 
 /**
+ * Normalizes item_reference IDs in the input array to be deterministic.
+ * item_reference objects have the shape { type: "item_reference", id: "msg_..." }
+ * where the ID is a timestamp-based value that changes between test runs.
+ */
+function normalizeItemReferences(dump: any): void {
+  const input = dump?.body?.input;
+  if (!Array.isArray(input)) {
+    return;
+  }
+
+  let refIndex = 0;
+  for (const item of input) {
+    if (item?.type === "item_reference" && item?.id) {
+      item.id = `[[ITEM_REF_${refIndex}]]`;
+      refIndex++;
+    }
+  }
+}
+
+/**
+ * Normalizes tool_call IDs and tool_call_id references to be deterministic.
+ * Tool call IDs have the format "call_[timestamp]_[index]" which changes between runs.
+ */
+function normalizeToolCallIds(dump: any): void {
+  const messages = dump?.body?.messages;
+  if (!Array.isArray(messages)) {
+    return;
+  }
+
+  const oldToNewId: Record<string, string> = {};
+  let toolCallIndex = 0;
+
+  // First pass: collect all tool_call IDs and create mapping
+  for (const message of messages) {
+    if (message?.tool_calls && Array.isArray(message.tool_calls)) {
+      for (const toolCall of message.tool_calls) {
+        if (toolCall?.id && !oldToNewId[toolCall.id]) {
+          oldToNewId[toolCall.id] = `[[TOOL_CALL_${toolCallIndex}]]`;
+          toolCallIndex++;
+        }
+      }
+    }
+  }
+
+  // Second pass: replace all IDs
+  for (const message of messages) {
+    if (message?.tool_calls && Array.isArray(message.tool_calls)) {
+      for (const toolCall of message.tool_calls) {
+        if (toolCall?.id && oldToNewId[toolCall.id]) {
+          toolCall.id = oldToNewId[toolCall.id];
+        }
+      }
+    }
+    if (message?.tool_call_id && oldToNewId[message.tool_call_id]) {
+      message.tool_call_id = oldToNewId[message.tool_call_id];
+    }
+  }
+}
+
+/**
  * Normalizes fileId hashes in versioned_files to be deterministic.
  * FileIds are SHA-256 hashes that may include non-deterministic components
  * like app paths with timestamps. This replaces them with stable placeholders
@@ -315,17 +375,30 @@ export class PageObject {
   async setUpDyadPro({
     autoApprove = false,
     localAgent = false,
-  }: { autoApprove?: boolean; localAgent?: boolean } = {}) {
+    localAgentUseAutoModel = false,
+  }: {
+    autoApprove?: boolean;
+    localAgent?: boolean;
+    localAgentUseAutoModel?: boolean;
+  } = {}) {
     await this.baseSetup();
     await this.goToSettingsTab();
     if (autoApprove) {
       await this.toggleAutoApprove();
     }
-    if (localAgent) {
-      await this.toggleLocalAgentMode();
-    }
     await this.setUpDyadProvider();
     await this.goToAppsTab();
+    if (!localAgent) {
+      await this.selectChatMode("build");
+    }
+    // Select a non-openAI model for local agent mode,
+    // since openAI models go to the responses API.
+    if (localAgent && !localAgentUseAutoModel) {
+      await this.selectModel({
+        provider: "Anthropic",
+        model: "Claude Opus 4.5",
+      });
+    }
   }
 
   async ensurePnpmInstall() {
@@ -401,13 +474,13 @@ export class PageObject {
 
   async selectChatMode(mode: "build" | "ask" | "agent" | "local-agent") {
     await this.page.getByTestId("chat-mode-selector").click();
-    // local-agent appears as "Agent v2 (experimental)" in the UI
-    const optionName =
-      mode === "local-agent"
-        ? "Agent v2 (experimental)"
-        : mode === "agent"
-          ? "Build with MCP (experimental)"
-          : mode;
+    const mapping = {
+      build: "Build Generate and edit code",
+      ask: "Ask Ask",
+      agent: "Build with MCP",
+      "local-agent": "Agent v2",
+    };
+    const optionName = mapping[mode];
     await this.page
       .getByRole("option", {
         name: optionName,
@@ -569,7 +642,13 @@ export class PageObject {
   ////////////////////////////////
 
   async selectPreviewMode(
-    mode: "code" | "problems" | "preview" | "configure" | "security",
+    mode:
+      | "code"
+      | "problems"
+      | "preview"
+      | "configure"
+      | "security"
+      | "publish",
   ) {
     await this.page.getByTestId(`${mode}-mode-button`).click();
   }
@@ -724,6 +803,18 @@ export class PageObject {
     });
   }
 
+  ////////////////////////////////
+  // Security review
+  ////////////////////////////////
+  async clickRunSecurityReview() {
+    const runSecurityReviewButton = this.page
+      .getByRole("button", { name: "Run Security Review" })
+      .first();
+    await runSecurityReviewButton.click();
+    await runSecurityReviewButton.waitFor({ state: "hidden" });
+    await this.waitForChatCompletion();
+  }
+
   async snapshotSecurityFindingsTable() {
     await expect(
       this.page.getByTestId("security-findings-table"),
@@ -734,6 +825,7 @@ export class PageObject {
     type: "all-messages" | "last-message" | "request" = "all-messages",
     { name = "", dumpIndex = -1 }: { name?: string; dumpIndex?: number } = {},
   ) {
+    await this.waitForChatCompletion();
     // Get the text content of the messages list
     const messagesListText = await this.page
       .getByTestId("messages-list")
@@ -780,25 +872,47 @@ export class PageObject {
     // Perform snapshot comparison
     const parsedDump = JSON.parse(dumpContent);
     if (type === "request") {
-      parsedDump["body"]["messages"] = parsedDump["body"]["messages"].map(
-        (message: any) => {
-          if (message.role === "system") {
-            message.content = "[[SYSTEM_MESSAGE]]";
-          }
-          return message;
-        },
-      );
+      if (parsedDump["body"]["input"]) {
+        parsedDump["body"]["input"] = parsedDump["body"]["input"].map(
+          (input: any) => {
+            if (input.role === "system") {
+              input.content = "[[SYSTEM_MESSAGE]]";
+            }
+            return input;
+          },
+        );
+      }
+      if (parsedDump["body"]["messages"]) {
+        parsedDump["body"]["messages"] = parsedDump["body"]["messages"].map(
+          (message: any) => {
+            if (message.role === "system") {
+              message.content = "[[SYSTEM_MESSAGE]]";
+            }
+            return message;
+          },
+        );
+      }
       // Normalize fileIds to be deterministic based on content
       normalizeVersionedFiles(parsedDump);
+      // Normalize item_reference IDs (e.g., msg_1234567890) to be deterministic
+      normalizeItemReferences(parsedDump);
+      // Normalize tool_call IDs (e.g., call_1234567890_0) to be deterministic
+      normalizeToolCallIds(parsedDump);
       expect(
         JSON.stringify(parsedDump, null, 2).replace(/\\r\\n/g, "\\n"),
       ).toMatchSnapshot(name);
       return;
     }
     expect(
-      prettifyDump(parsedDump["body"]["messages"], {
-        onlyLastMessage: type === "last-message",
-      }),
+      prettifyDump(
+        // responses API
+        parsedDump["body"]["input"] ??
+          // chat completion API
+          parsedDump["body"]["messages"],
+        {
+          onlyLastMessage: type === "last-message",
+        },
+      ),
     ).toMatchSnapshot(name);
   }
 
@@ -1177,7 +1291,7 @@ export class PageObject {
 
   async goToAppsTab() {
     await this.page.getByRole("link", { name: "Apps" }).click();
-    await expect(this.page.getByText("Build your dream app")).toBeVisible();
+    await expect(this.page.getByText("Build a new app")).toBeVisible();
   }
 
   async goToChatTab() {

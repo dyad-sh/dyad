@@ -1,0 +1,1 @@
+ALTER TABLE `apps` ADD `theme_id` text;

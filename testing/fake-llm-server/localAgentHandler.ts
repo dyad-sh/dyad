@@ -38,11 +38,24 @@ function getSessionId(messages: any[]): string {
 }
 
 /**
- * Count the number of tool result messages to determine which turn we're on
+ * Count the number of tool result messages AFTER the last user message
+ * to determine which turn we're on for the current fixture.
+ * This ensures each new user prompt (fixture trigger) starts fresh at turn 0.
  */
 function countToolResultRounds(messages: any[]): number {
+  // Find the index of the last user message
+  let lastUserIndex = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i]?.role === "user") {
+      lastUserIndex = i;
+      break;
+    }
+  }
+
+  // Count tool results only after the last user message
   let rounds = 0;
-  for (const msg of messages) {
+  for (let i = lastUserIndex + 1; i < messages.length; i++) {
+    const msg = messages[i];
     if (msg?.role === "tool") {
       rounds++;
     } else if (Array.isArray(msg?.content)) {
@@ -255,8 +268,8 @@ export async function handleLocalAgentFixture(
     const toolResultRounds = countToolResultRounds(messages);
     const turnIndex = toolResultRounds;
 
-    console.log(
-      `[local-agent] Session: ${sessionId}, Turn: ${turnIndex}, Tool rounds: ${toolResultRounds}`,
+    console.error(
+      `[local-agent] Loaded fixture: ${fixtureName}, Session: ${sessionId}, Turn: ${turnIndex}, Tool rounds: ${toolResultRounds}`,
     );
 
     if (turnIndex >= fixture.turns.length) {

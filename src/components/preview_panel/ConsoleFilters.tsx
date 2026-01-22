@@ -1,4 +1,10 @@
-import { Filter, X } from "lucide-react";
+import { Filter, X, Trash2 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface ConsoleFiltersProps {
   levelFilter: "all" | "info" | "warn" | "error";
@@ -7,21 +13,15 @@ interface ConsoleFiltersProps {
     | "server"
     | "client"
     | "edge-function"
-    | "network-requests"
-    | "build-time";
+    | "network-requests";
   sourceFilter: string;
   onLevelFilterChange: (value: "all" | "info" | "warn" | "error") => void;
   onTypeFilterChange: (
-    value:
-      | "all"
-      | "server"
-      | "client"
-      | "edge-function"
-      | "network-requests"
-      | "build-time",
+    value: "all" | "server" | "client" | "edge-function" | "network-requests",
   ) => void;
   onSourceFilterChange: (value: string) => void;
   onClearFilters: () => void;
+  onClearLogs: () => void;
   uniqueSources: string[];
   totalLogs: number;
   showFilters: boolean;
@@ -35,6 +35,7 @@ export const ConsoleFilters = ({
   onTypeFilterChange,
   onSourceFilterChange,
   onClearFilters,
+  onClearLogs,
   uniqueSources,
   totalLogs,
   showFilters,
@@ -74,8 +75,7 @@ export const ConsoleFilters = ({
               | "server"
               | "client"
               | "edge-function"
-              | "network-requests"
-              | "build-time",
+              | "network-requests",
           )
         }
         className="text-xs px-2 py-1 border border-border rounded bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
@@ -85,7 +85,6 @@ export const ConsoleFilters = ({
         <option value="client">Client</option>
         <option value="edge-function">Edge Function</option>
         <option value="network-requests">Network Requests</option>
-        <option value="build-time">Build Time</option>
       </select>
 
       {/* Source filter */}
@@ -111,9 +110,25 @@ export const ConsoleFilters = ({
           className="text-xs px-2 py-1 flex items-center gap-1 border border-border rounded bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
         >
           <X size={12} />
-          Clear
+          Clear Filters
         </button>
       )}
+
+      {/* Clear logs button */}
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={onClearLogs}
+              className="p-1 border border-border rounded bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              data-testid="clear-logs-button"
+            >
+              <Trash2 size={14} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Clear logs</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
 
       <div className="ml-auto text-xs text-gray-500">{totalLogs} logs</div>
     </div>

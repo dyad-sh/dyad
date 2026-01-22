@@ -9,8 +9,10 @@ import type {
   CopyAppParams,
   EditAppFileReturnType,
   RespondToAppInputParams,
+  ConsoleEntry,
   ChangeAppLocationParams,
   ChangeAppLocationResult,
+  AppFileSearchResult,
 } from "../ipc_types";
 import fs from "node:fs";
 import path from "node:path";
@@ -30,6 +32,7 @@ import {
 } from "../utils/process_manager";
 import { getEnvVar } from "../utils/read_env";
 import { readSettings } from "../../main/settings";
+import { addLog, clearLogs } from "../../lib/log_store";
 
 import fixPath from "fix-path";
 
@@ -65,6 +68,67 @@ import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils"
 import { AppSearchResult } from "@/lib/schemas";
 
 import { getAppPort } from "../../../shared/ports";
+import {
+  getRgExecutablePath,
+  MAX_FILE_SEARCH_SIZE,
+  RIPGREP_EXCLUDED_GLOBS,
+} from "../utils/ripgrep_utils";
+
+const logger = log.scope("app_handlers");
+const handle = createLoggedHandler(logger);
+
+function sanitizeSnippetText(text: string) {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Converts a byte offset in UTF-8 encoded string to a character index.
+ * Ripgrep provides byte offsets, but JavaScript strings use character indices.
+ * This handles multi-byte UTF-8 characters (emojis, CJK, accented characters) correctly.
+ */
+function byteOffsetToCharIndex(text: string, byteOffset: number): number {
+  // Cap the byte offset to the actual byte length of the string
+  const totalBytes = Buffer.from(text, "utf8").length;
+  const safeByteOffset = Math.min(byteOffset, totalBytes);
+
+  // Find the character index by checking byte counts at each position
+  // This correctly handles multi-byte characters
+  for (let i = 0; i <= text.length; i++) {
+    const bytesUpToIndex = Buffer.from(text.slice(0, i), "utf8").length;
+    if (bytesUpToIndex >= safeByteOffset) {
+      return i;
+    }
+  }
+
+  return text.length;
+}
+
+function buildSnippetFromMatch({
+  lineText,
+  start,
+  end,
+  lineNumber,
+}: {
+  lineText: string;
+  start: number;
+  end: number;
+  lineNumber: number;
+}): NonNullable<AppFileSearchResult["snippets"]>[number] {
+  const safeLine = lineText.replace(/\r?\n$/, "");
+  // Convert byte offsets to character indices for proper UTF-8 handling
+  const startChar = byteOffsetToCharIndex(safeLine, start);
+  const endChar = byteOffsetToCharIndex(safeLine, end);
+  const before = sanitizeSnippetText(safeLine.slice(0, startChar));
+  const match = sanitizeSnippetText(safeLine.slice(startChar, endChar));
+  const after = sanitizeSnippetText(safeLine.slice(endChar));
+
+  return {
+    before,
+    match,
+    after,
+    line: lineNumber,
+  };
+}
 
 function getDefaultCommand(appId: number): string {
   const port = getAppPort(appId);
@@ -92,9 +156,6 @@ async function copyDir(
     },
   });
 }
-
-const logger = log.scope("app_handlers");
-const handle = createLoggedHandler(logger);
 
 let proxyWorker: Worker | null = null;
 
@@ -246,6 +307,15 @@ function listenToProcess({
       `App ${appId} (PID: ${spawnedProcess.pid}) stdout: ${message}`,
     );
 
+    // Add to central log store
+    addLog({
+      level: "info",
+      type: "server",
+      message,
+      timestamp: Date.now(),
+      appId,
+    });
+
     // This is a hacky heuristic to pick up when drizzle is asking for user
     // to select from one of a few choices. We automatically pick the first
     // option because it's usually a good default choice. We guard this with
@@ -292,11 +362,21 @@ function listenToProcess({
     }
   });
 
-  spawnedProcess.stderr?.on("data", (data) => {
+  spawnedProcess.stderr?.on("data", async (data) => {
     const message = util.stripVTControlCharacters(data.toString());
     logger.error(
       `App ${appId} (PID: ${spawnedProcess.pid}) stderr: ${message}`,
     );
+
+    // Add to central log store
+    addLog({
+      level: "error",
+      type: "server",
+      message,
+      timestamp: Date.now(),
+      appId,
+    });
+
     safeSend(event.sender, "app:output", {
       type: "stderr",
       message,
@@ -564,6 +644,123 @@ async function stopDockerContainersOnPort(port: number): Promise<void> {
   } catch (e) {
     logger.warn(`Failed stopping Docker containers on port ${port}: ${e}`);
   }
+}
+
+async function searchAppFilesWithRipgrep({
+  appPath,
+  query,
+}: {
+  appPath: string;
+  query: string;
+}): Promise<AppFileSearchResult[]> {
+  return new Promise((resolve, reject) => {
+    const results = new Map<string, AppFileSearchResult>();
+    const args = [
+      "--json",
+      "--no-config",
+      "--ignore-case",
+      "--fixed-strings",
+      "--max-filesize",
+      `${MAX_FILE_SEARCH_SIZE}`,
+      ...RIPGREP_EXCLUDED_GLOBS.flatMap((glob) => ["--glob", glob]),
+      query,
+      ".",
+    ];
+
+    const rg = spawn(getRgExecutablePath(), args, { cwd: appPath });
+    let buffer = "";
+
+    rg.stdout.on("data", (data) => {
+      buffer += data.toString();
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const event = JSON.parse(line);
+          if (event.type !== "match" || !event.data) {
+            continue;
+          }
+
+          const matchPath = event.data.path?.text as string;
+          if (!matchPath) continue;
+
+          const absolutePath = path.isAbsolute(matchPath)
+            ? matchPath
+            : path.join(appPath, matchPath);
+          const relativePath = normalizePath(
+            path.relative(appPath, absolutePath),
+          );
+          if (relativePath.startsWith("..")) {
+            continue; // outside app directory
+          }
+
+          const lineText = event.data.lines?.text as string;
+          const lineNumber = event.data.line_number as number;
+          const submatch = event.data.submatches?.[0];
+          if (
+            typeof lineText !== "string" ||
+            typeof lineNumber !== "number" ||
+            !submatch
+          ) {
+            continue;
+          }
+
+          const snippet = buildSnippetFromMatch({
+            lineText,
+            start: submatch.start,
+            end: submatch.end,
+            lineNumber,
+          });
+
+          const existing = results.get(relativePath);
+          if (!existing) {
+            results.set(relativePath, {
+              path: relativePath,
+              matchesContent: true,
+              snippets: [snippet],
+            });
+          } else {
+            // Add snippet to existing result if it doesn't already exist (avoid duplicates)
+            if (!existing.snippets) {
+              existing.snippets = [];
+            }
+            // Only add if this line number isn't already in the snippets
+            const existingLine = existing.snippets.find(
+              (s) => s.line === snippet.line,
+            );
+            if (!existingLine) {
+              existing.snippets.push(snippet);
+            }
+          }
+        } catch (error) {
+          logger.warn("Failed to parse ripgrep output line:", line, error);
+        }
+      }
+    });
+
+    rg.stderr.on("data", (data) => {
+      const message = data.toString();
+      if (message.toLowerCase().includes("binary file skipped")) {
+        return;
+      }
+      logger.debug("ripgrep stderr:", message);
+    });
+
+    rg.on("close", (code) => {
+      // rg exits with code 1 when no matches are found; treat as success
+      if (code !== 0 && code !== 1) {
+        reject(new Error(`ripgrep exited with code ${code}`));
+        return;
+      }
+      resolve(Array.from(results.values()));
+    });
+
+    rg.on("error", (error) => {
+      reject(error);
+    });
+  });
 }
 
 export function registerAppHandlers() {
@@ -1166,6 +1363,9 @@ export function registerAppHandlers() {
           }
         }
 
+        // Clear logs for this app to prevent memory leak
+        clearLogs(appId);
+
         // Delete app from database
         try {
           await db.delete(apps).where(eq(apps.id, appId));
@@ -1564,6 +1764,37 @@ export function registerAppHandlers() {
   );
 
   handle(
+    "search-app-files",
+    async (
+      _,
+      { appId, query }: { appId: number; query: string },
+    ): Promise<AppFileSearchResult[]> => {
+      const trimmedQuery = query.trim();
+      if (!trimmedQuery) {
+        return [];
+      }
+
+      const appRecord = await db.query.apps.findFirst({
+        where: eq(apps.id, appId),
+      });
+
+      if (!appRecord) {
+        throw new Error("App not found");
+      }
+
+      const appPath = getDyadAppPath(appRecord.path);
+
+      // Search file contents with ripgrep
+      const contentMatches = await searchAppFilesWithRipgrep({
+        appPath,
+        query: trimmedQuery,
+      });
+
+      return contentMatches;
+    },
+  );
+
+  handle(
     "search-app",
     async (_, searchQuery: string): Promise<AppSearchResult[]> => {
       // Use parameterized query to prevent SQL injection
@@ -1648,6 +1879,15 @@ export function registerAppHandlers() {
     },
   );
 
+  // Handler for adding logs to central store from renderer
+  ipcMain.handle("add-log", async (_, entry: ConsoleEntry) => {
+    addLog(entry);
+  });
+
+  // Handler for clearing logs for a specific app
+  ipcMain.handle("clear-logs", async (_, { appId }: { appId: number }) => {
+    clearLogs(appId);
+  });
   handle(
     "select-app-location",
     async (

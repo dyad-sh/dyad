@@ -123,31 +123,37 @@ function verifyBucketName() {
 }
 
 /**
- * Verify required env vars are referenced in vault handlers
+ * Verify required env vars are referenced in vault config or handlers
  */
 function verifyEnvVarReferences() {
   console.log("\n🔑 Verifying Environment Variable References...\n");
 
-  const vaultHandlersPath = path.join(
-    ROOT_DIR,
-    "src",
-    "ipc",
-    "handlers",
-    "vault_handlers.ts",
-  );
+  // Check multiple possible locations for env var references
+  const vaultFilePaths = [
+    path.join(ROOT_DIR, "src", "ipc", "handlers", "vault_handlers.ts"),
+    path.join(ROOT_DIR, "src", "vault", "vault_config.ts"),
+  ];
 
-  if (!fs.existsSync(vaultHandlersPath)) {
-    logError(
-      "Vault handlers file not found: src/ipc/handlers/vault_handlers.ts",
-    );
+  let combinedContent = "";
+  let foundFiles = [];
+
+  for (const filePath of vaultFilePaths) {
+    if (fs.existsSync(filePath)) {
+      combinedContent += fs.readFileSync(filePath, "utf-8");
+      foundFiles.push(path.relative(ROOT_DIR, filePath));
+    }
+  }
+
+  if (foundFiles.length === 0) {
+    logError("No vault config files found");
     return;
   }
 
-  const content = fs.readFileSync(vaultHandlersPath, "utf-8");
+  console.log(`  Checking files: ${foundFiles.join(", ")}\n`);
 
   // Check for required env vars
   for (const envVar of REQUIRED_ENV_VARS) {
-    if (content.includes(envVar)) {
+    if (combinedContent.includes(envVar)) {
       logSuccess(`Required env var referenced: ${envVar}`);
     } else {
       logError(`Required env var NOT referenced: ${envVar}`);

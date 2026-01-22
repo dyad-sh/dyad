@@ -191,6 +191,17 @@ export const NeonSchema = z.object({
 });
 export type Neon = z.infer<typeof NeonSchema>;
 
+/**
+ * Vault cloud backup settings.
+ * Stores Supabase project URL and publishable (anon) key.
+ * NEVER store service_role keys here.
+ */
+export const VaultSettingsSchema = z.object({
+  supabaseUrl: z.string().optional(),
+  supabaseAnonKey: SecretSchema.optional(),
+});
+export type VaultSettings = z.infer<typeof VaultSettingsSchema>;
+
 export const ExperimentsSchema = z.object({
   // Deprecated
   enableLocalAgent: z.boolean().describe("DEPRECATED").optional(),
@@ -273,6 +284,7 @@ export const UserSettingsSchema = z
     vercelAccessToken: SecretSchema.optional(),
     supabase: SupabaseSchema.optional(),
     neon: NeonSchema.optional(),
+    vault: VaultSettingsSchema.optional(),
     autoApproveChanges: z.boolean().optional(),
     telemetryConsent: z.enum(["opted_in", "opted_out", "unset"]).optional(),
     telemetryUserId: z.string().optional(),

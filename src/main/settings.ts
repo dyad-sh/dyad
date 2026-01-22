@@ -141,6 +141,17 @@ export function readSettings(): UserSettings {
         encryptionType,
       };
     }
+    // Decrypt vault settings
+    if (combinedSettings.vault?.supabaseAnonKey) {
+      const encryptionType =
+        combinedSettings.vault.supabaseAnonKey.encryptionType;
+      if (encryptionType) {
+        combinedSettings.vault.supabaseAnonKey = {
+          value: decrypt(combinedSettings.vault.supabaseAnonKey),
+          encryptionType,
+        };
+      }
+    }
     for (const provider in combinedSettings.providerSettings) {
       if (combinedSettings.providerSettings[provider].apiKey) {
         const encryptionType =
@@ -189,6 +200,12 @@ export function writeSettings(settings: Partial<UserSettings>): void {
     if (newSettings.vercelAccessToken) {
       newSettings.vercelAccessToken = encrypt(
         newSettings.vercelAccessToken.value,
+      );
+    }
+    // Encrypt vault settings
+    if (newSettings.vault?.supabaseAnonKey) {
+      newSettings.vault.supabaseAnonKey = encrypt(
+        newSettings.vault.supabaseAnonKey.value,
       );
     }
     if (newSettings.supabase) {

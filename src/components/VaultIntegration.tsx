@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Shield, Info, AlertTriangle } from "lucide-react";
+import { RefreshCw, Shield, Info, Settings } from "lucide-react";
 import { IpcClient } from "@/ipc/ipc_client";
 import { showSuccess, showError } from "@/lib/toast";
 import { useQuery } from "@tanstack/react-query";
 import { VaultBackupList } from "./vault/VaultBackupList";
+import { VaultSettings } from "./vault/VaultSettings";
 
 interface VaultStatus {
   isAuthenticated: boolean;
@@ -18,6 +19,7 @@ interface VaultConfig {
 
 export function VaultIntegration() {
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   // Get vault status
   const {
@@ -82,17 +84,10 @@ export function VaultIntegration() {
             </p>
           </div>
         </div>
-        <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-md flex items-start gap-2">
-          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
-          <div>
-            <p className="text-sm text-amber-700 dark:text-amber-300">
-              Vault is not configured.
-            </p>
-            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-              Set VAULT_SUPABASE_URL and VAULT_SUPABASE_ANON_KEY environment
-              variables, or contact your administrator.
-            </p>
-          </div>
+
+        {/* Configuration UI */}
+        <div className="mt-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
+          <VaultSettings />
         </div>
       </div>
     );
@@ -146,19 +141,36 @@ export function VaultIntegration() {
             Connected via {status.organizationName || "Supabase"}
           </p>
         </div>
-        <Button
-          onClick={handleRefresh}
-          variant="outline"
-          size="sm"
-          disabled={isRefreshing}
-          className="flex items-center gap-2"
-        >
-          <RefreshCw
-            className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
-          />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={() => setShowSettings(!showSettings)}
+            variant="ghost"
+            size="sm"
+            className="flex items-center gap-2"
+          >
+            <Settings className="h-4 w-4" />
+          </Button>
+          <Button
+            onClick={handleRefresh}
+            variant="outline"
+            size="sm"
+            disabled={isRefreshing}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw
+              className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
+            />
+            Refresh
+          </Button>
+        </div>
       </div>
+
+      {/* Settings Panel (collapsible) */}
+      {showSettings && (
+        <div className="mt-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
+          <VaultSettings />
+        </div>
+      )}
 
       {/* Requirements Note */}
       <div className="mt-3 p-2 bg-gray-50 dark:bg-gray-800/50 rounded-md">

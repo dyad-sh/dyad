@@ -108,11 +108,18 @@ def check_gh_command(cmd: str) -> dict | None:
         if re.match(pattern, cmd, re.IGNORECASE):
             return make_allow_decision(f"Read-only gh command auto-approved")
 
+    # PR modification commands are explicitly allowed
+    pr_allowed_patterns = [
+        r"^gh pr (create|edit|ready|review|close|merge)\b",
+    ]
+
+    for pattern in pr_allowed_patterns:
+        if re.match(pattern, cmd, re.IGNORECASE):
+            return make_allow_decision("PR modification command auto-approved")
+
     # Destructive commands that should be blocked
     destructive_patterns = [
         (r"^gh repo delete\b", "Repository deletion"),
-        (r"^gh pr close\b", "PR closing"),
-        (r"^gh pr merge\b", "PR merging"),
         (r"^gh issue close\b", "Issue closing"),
         (r"^gh issue delete\b", "Issue deletion"),
         (r"^gh release delete\b", "Release deletion"),
@@ -123,7 +130,6 @@ def check_gh_command(cmd: str) -> dict | None:
         (r"^gh auth logout\b", "Auth logout"),
         (r"^gh config set\b", "Config modification"),
         (r"^gh repo (create|edit|rename|archive)\b", "Repository modification"),
-        (r"^gh pr (create|edit|ready|review)\b", "PR modification"),
         (r"^gh issue (create|edit|transfer|pin|unpin)\b", "Issue modification"),
         (r"^gh release (create|edit)\b", "Release modification"),
         (r"^gh gist (create|edit)\b", "Gist modification"),

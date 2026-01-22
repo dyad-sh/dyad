@@ -75,7 +75,7 @@ Read all unresolved GitHub PR comments and address or resolve them appropriately
        -f body="<explanation of why this doesn't need to be addressed>"
      ```
 
-     Note: `{owner}` and `{repo}` are auto-replaced by `gh` CLI. Replace `<PR_NUMBER>` with the PR number and `<COMMENT_ID>` with the comment's `databaseId` from the GraphQL response.
+     Note: `{owner}` and `{repo}` are auto-replaced by `gh` CLI. Replace `<PR_NUMBER>` with the PR number and `<COMMENT_ID>` with the **first comment's `databaseId`** from the thread's `comments.nodes[0].databaseId` field in the GraphQL response (not the thread's `id`).
 
    - Resolve the thread using GraphQL:
      ```
@@ -96,7 +96,7 @@ Read all unresolved GitHub PR comments and address or resolve them appropriately
      gh api repos/{owner}/{repo}/pulls/<PR_NUMBER>/comments/<COMMENT_ID>/replies \
        -f body="🚩 **Flagged for human review**: <explanation of why this needs human input>"
      ```
-     Note: Replace `<PR_NUMBER>` with the PR number and `<COMMENT_ID>` with the comment's `databaseId` from the GraphQL response.
+     Note: Replace `<PR_NUMBER>` with the PR number and `<COMMENT_ID>` with the **first comment's `databaseId`** from the thread's `comments.nodes[0].databaseId` field in the GraphQL response.
    - Do NOT resolve the thread - leave it open for discussion
 
 5. **After processing all comments, verify and commit changes:**

@@ -4,7 +4,7 @@ Analyze session debugging data to identify errors and issues that may have cause
 
 ## Arguments
 
-- `$ARGUMENTS`: Two arguments expected:
+- `$ARGUMENTS`: Two space-separated arguments expected:
   1. URL to a JSON file containing session debugging data
   2. GitHub issue number or URL
 
@@ -12,7 +12,7 @@ Analyze session debugging data to identify errors and issues that may have cause
 
 1. **Parse the arguments:**
 
-   Extract the session data URL and GitHub issue identifier from `$ARGUMENTS`.
+   Split `$ARGUMENTS` on whitespace. The first argument is the session data URL (starts with `http://` or `https://`), and the second is the GitHub issue identifier (either a number or a GitHub issue URL).
 
 2. **Fetch the GitHub issue:**
 

@@ -17,6 +17,8 @@ from typing import Optional
 # - || is logical OR
 # - & can run background + chain another command
 # - ` and $( are command substitution
+# - $'...' is ANSI-C quoting which can embed escape sequences
+# - <(...) and >(...) are process substitution (execute commands)
 # - \n and \r can separate commands in bash
 # - We don't block () alone as they're used in GraphQL queries
 SHELL_INJECTION_PATTERNS = re.compile(
@@ -30,6 +32,9 @@ SHELL_INJECTION_PATTERNS = re.compile(
     r'|&\s*$'      # Trailing background operator (& at end of command)
     r'|`'          # Backtick command substitution
     r'|\$\('       # $( command substitution
+    r"|\$'"        # ANSI-C quoting $'...' (can embed escape sequences like \n)
+    r'|<\('        # Process substitution <(...)
+    r'|>\('        # Process substitution >(...)
     r'|\n'         # Newline (command separator in bash)
     r'|\r'         # Carriage return (can also separate commands)
     r')'           # End alternation group
@@ -244,14 +249,17 @@ def check_gh_graphql_command(cmd: str) -> Optional[dict]:
     Some PR-related mutations are allowed for workflow automation.
     """
     # Check for mutation keyword FIRST to prevent bypass via "mutation ... query {" payload
-    has_mutation = re.search(r'mutation\s*[\s\({]', cmd, re.IGNORECASE)
+    # Pattern matches: mutation{, mutation (, mutation Name{, mutation Name(
+    has_mutation = re.search(r'\bmutation\s*(?:\w+\s*)?[\({]', cmd, re.IGNORECASE)
     if has_mutation:
         # Allow PR review thread mutations (resolve/unresolve)
-        if re.search(r'resolveReviewThread|unresolveReviewThread', cmd, re.IGNORECASE):
+        # Match at field position: after { with optional whitespace
+        # This prevents bypass via embedding names in argument values
+        if re.search(r'\{\s*(resolveReviewThread|unresolveReviewThread)\b', cmd, re.IGNORECASE):
             return make_allow_decision("PR review thread mutation auto-approved")
 
         # Allow adding PR review comments
-        if re.search(r'addPullRequestReviewComment|addPullRequestReview', cmd, re.IGNORECASE):
+        if re.search(r'\{\s*(addPullRequestReviewComment|addPullRequestReview)\b', cmd, re.IGNORECASE):
             return make_allow_decision("PR review comment mutation auto-approved")
 
         # Block other mutations
@@ -260,7 +268,8 @@ def check_gh_graphql_command(cmd: str) -> Optional[dict]:
         )
 
     # Check for query operations (read-only) - only allowed if no mutation present
-    if re.search(r'query\s*[\s\({]', cmd, re.IGNORECASE):
+    # Pattern matches: query{, query (, query Name{, query Name(
+    if re.search(r'\bquery\s*(?:\w+\s*)?[\({]', cmd, re.IGNORECASE):
         return make_allow_decision("GraphQL query auto-approved (read-only)")
 
     # If we can't determine the operation type, don't auto-approve

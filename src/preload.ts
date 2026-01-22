@@ -182,6 +182,10 @@ const validInvokeChannels = [
   "vault:create-backup",
   "vault:restore-backup",
   "vault:delete-backup",
+  // Vault Auth
+  "vault:auth-sign-in",
+  "vault:auth-sign-out",
+  "vault:auth-status",
   // Test-only channels
   // These should ALWAYS be guarded with IS_TEST_BUILD in the main process.
   // We can't detect with IS_TEST_BUILD in the preload script because

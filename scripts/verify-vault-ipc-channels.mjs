@@ -32,6 +32,10 @@ const VAULT_CHANNELS = [
   "vault:create-backup",
   "vault:restore-backup",
   "vault:delete-backup",
+  // Vault Auth channels
+  "vault:auth-sign-in",
+  "vault:auth-sign-out",
+  "vault:auth-status",
 ];
 
 // 1. Check preload.ts has all Vault channels in allowlist
@@ -84,6 +88,7 @@ const rendererFiles = [
   "src/components/vault/VaultSettings.tsx",
   "src/components/vault/VaultBackupList.tsx",
   "src/components/vault/VaultBackupButton.tsx",
+  "src/components/vault/VaultAuth.tsx",
   "src/components/VaultIntegration.tsx",
 ];
 

@@ -166,15 +166,54 @@ This step verifies the Vault Settings UI works correctly in the **packaged/insta
    - ⚠️ "Needs login" (amber) - if Supabase auth required
    - ❌ "Invalid URL" or "Invalid key" (red) - if config is wrong
 
-### 7.2 Copy Diagnostics
+### 7.2 Vault Sign-In Flow (v0.2.4+)
+
+1. After configuring URL + key, verify the **Sign in to Vault** section appears
+2. Enter a valid email and password
+3. Click **Sign In**
+4. Verify: Success toast appears
+5. Verify: UI shows "Signed in to Vault" with email (masked)
+6. Verify: Backup list loads (may be empty)
+
+### 7.3 Sign-Up Flow (Optional)
+
+1. Click "Need an account? Sign up" link
+2. Enter email and password
+3. Click **Create Account**
+4. If email confirmation is required, check email and confirm
+5. Then sign in with the created account
+
+### 7.4 Sign-Out Flow
+
+1. While signed in, click **Sign Out** button
+2. Verify: Success toast appears
+3. Verify: Sign-in form reappears
+
+### 7.5 Persistence After Restart
+
+**This is critical - the main bug fix in v0.2.4**
+
+1. Configure Vault URL + key
+2. Sign in with email/password
+3. Verify "Signed in to Vault" status
+4. **Completely quit the app** (not just minimize)
+5. **Restart the app**
+6. Navigate to **Settings → Integrations → Vault**
+7. Verify: URL and key are **still configured** (not reset)
+8. Verify: You are **still signed in** (shows email)
+9. Verify: **NO** "Sign in to Supabase above" message appears
+10. Verify: Backup list loads correctly
+
+### 7.6 Copy Diagnostics
 
 1. Click **Copy Diagnostics** button
 2. Paste into a text editor
 3. Verify: Key is **masked** (shows `***...XXXXXX`)
 4. Verify: URL is shown in full
-5. Verify: No IPC errors
+5. Verify: Email shows in Organization field when signed in
+6. Verify: No IPC errors
 
-### 7.3 Expected IPC Channels
+### 7.7 Expected IPC Channels
 
 All these Vault channels should work without "Invalid channel" errors:
 
@@ -188,6 +227,9 @@ All these Vault channels should work without "Invalid channel" errors:
 - `vault:create-backup`
 - `vault:restore-backup`
 - `vault:delete-backup`
+- `vault:auth-sign-in` (v0.2.4+)
+- `vault:auth-sign-out` (v0.2.4+)
+- `vault:auth-status` (v0.2.4+)
 
 ## Troubleshooting
 
@@ -229,6 +271,29 @@ Then rebuild the app.
 - Verify environment variables are set correctly
 
 ## Release Validation Notes
+
+### v0.2.4 (January 2026)
+
+**Fix:** Vault onboarding UX - self-contained auth flow.
+
+Key changes:
+
+- Vault configuration UI (URL + key) is always visible and persists after restart
+- Added email/password sign-in directly within the Vault card
+- Removed "Sign in to Supabase above" message (was confusing)
+- Auth session stored securely using electron-safe-storage
+- Session automatically refreshes when expired
+
+Validation steps:
+
+1. Download and install v0.2.4 from GitHub Releases
+2. Open **Settings → Integrations → Vault**
+3. Enter Supabase URL and anon key → Click **Save**
+4. Sign in with email + password in the Vault card
+5. Expected: "Signed in to Vault" status with email shown
+6. **Restart the app completely**
+7. Expected: Config and sign-in state **persist** after restart
+8. Expected: NO "Sign in to Supabase above" message
 
 ### v0.2.3 (January 2026)
 

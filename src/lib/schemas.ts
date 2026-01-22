@@ -192,6 +192,18 @@ export const NeonSchema = z.object({
 export type Neon = z.infer<typeof NeonSchema>;
 
 /**
+ * Vault auth session stored locally.
+ * Used for Vault-specific authentication (separate from Supabase org OAuth).
+ */
+export const VaultAuthSessionSchema = z.object({
+  accessToken: SecretSchema,
+  refreshToken: SecretSchema,
+  userEmail: z.string(),
+  expiresAt: z.number(), // Unix timestamp
+});
+export type VaultAuthSession = z.infer<typeof VaultAuthSessionSchema>;
+
+/**
  * Vault cloud backup settings.
  * Stores Supabase project URL and publishable (anon) key.
  * NEVER store service_role keys here.
@@ -199,6 +211,7 @@ export type Neon = z.infer<typeof NeonSchema>;
 export const VaultSettingsSchema = z.object({
   supabaseUrl: z.string().optional(),
   supabaseAnonKey: SecretSchema.optional(),
+  authSession: VaultAuthSessionSchema.optional(),
 });
 export type VaultSettings = z.infer<typeof VaultSettingsSchema>;
 

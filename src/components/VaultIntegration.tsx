@@ -6,6 +6,7 @@ import { showSuccess, showError } from "@/lib/toast";
 import { useQuery } from "@tanstack/react-query";
 import { VaultBackupList } from "./vault/VaultBackupList";
 import { VaultSettings } from "./vault/VaultSettings";
+import { VaultAuth } from "./vault/VaultAuth";
 
 interface VaultStatus {
   isAuthenticated: boolean;
@@ -15,6 +16,12 @@ interface VaultStatus {
 interface VaultConfig {
   url: string;
   configured: boolean;
+}
+
+interface VaultAuthStatus {
+  isAuthenticated: boolean;
+  userEmail?: string;
+  expiresAt?: number;
 }
 
 export function VaultIntegration() {
@@ -43,6 +50,15 @@ export function VaultIntegration() {
     },
   });
 
+  // Get vault auth status (for Vault-specific auth)
+  const { data: authStatus } = useQuery<VaultAuthStatus>({
+    queryKey: ["vault-auth-status"],
+    queryFn: async () => {
+      const ipcClient = IpcClient.getInstance();
+      return ipcClient.invoke<VaultAuthStatus>("vault:auth-status");
+    },
+  });
+
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
@@ -66,7 +82,10 @@ export function VaultIntegration() {
     );
   }
 
-  // Check if Vault is configured
+  // Determine if user is authenticated (via Vault auth or Supabase org)
+  const isAuthenticated = authStatus?.isAuthenticated || status?.isAuthenticated;
+
+  // If not configured, show only the configuration UI
   if (!config?.configured) {
     return (
       <div>
@@ -93,8 +112,8 @@ export function VaultIntegration() {
     );
   }
 
-  // Check if user is authenticated
-  if (!status?.isAuthenticated) {
+  // Configured but not authenticated - show config + auth UI
+  if (!isAuthenticated) {
     return (
       <div>
         <div className="flex items-center justify-between">
@@ -110,22 +129,32 @@ export function VaultIntegration() {
               Cloud backup and restore for your ABBA AI projects.
             </p>
           </div>
+          <Button
+            onClick={() => setShowSettings(!showSettings)}
+            variant="ghost"
+            size="sm"
+            className="flex items-center gap-2"
+          >
+            <Settings className="h-4 w-4" />
+          </Button>
         </div>
-        <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-md flex items-start gap-2">
-          <Info className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
-          <div>
-            <p className="text-sm text-blue-700 dark:text-blue-300">
-              Sign in to Supabase above to enable Vault.
-            </p>
-            <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-              Vault requires authentication to securely store your backups.
-            </p>
+
+        {/* Auth UI */}
+        <div className="mt-4">
+          <VaultAuth />
+        </div>
+
+        {/* Collapsible Settings Panel */}
+        {showSettings && (
+          <div className="mt-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
+            <VaultSettings />
           </div>
-        </div>
+        )}
       </div>
     );
   }
 
+  // Fully authenticated - show full UI
   return (
     <div>
       <div className="flex items-center justify-between">
@@ -138,7 +167,7 @@ export function VaultIntegration() {
             </span>
           </h3>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            Connected via {status.organizationName || "Supabase"}
+            Connected as {authStatus?.userEmail || status?.organizationName || "Vault User"}
           </p>
         </div>
         <div className="flex items-center gap-2">

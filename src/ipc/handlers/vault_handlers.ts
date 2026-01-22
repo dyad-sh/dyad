@@ -17,6 +17,7 @@ import {
   DEFAULT_VAULT_URL,
   DEFAULT_VAULT_ANON_KEY,
 } from "../../vault/vault_config";
+import type { VaultAuthSession } from "../../lib/schemas";
 
 const logger = log.scope("vault_handlers");
 const handle = createLoggedHandler(logger);
@@ -33,18 +34,39 @@ function getVaultConfig(): { url: string; anonKey: string } {
 }
 
 /**
- * Get access token from settings for Vault authentication
- * Uses the first available Supabase organization token
+ * Get access token from settings for Vault authentication.
+ * First checks for Vault-specific auth session, then falls back to Supabase org tokens.
  */
 async function getVaultAccessToken(): Promise<string | null> {
   const settings = readSettings();
-  const organizations = settings.supabase?.organizations;
 
+  // First, check for Vault-specific auth session
+  const vaultSession = settings.vault?.authSession;
+  if (vaultSession?.accessToken?.value) {
+    // Check if token is expired
+    const now = Date.now();
+    if (vaultSession.expiresAt > now) {
+      return vaultSession.accessToken.value;
+    }
+    // Token expired, try to refresh
+    if (vaultSession.refreshToken?.value) {
+      try {
+        const refreshed = await refreshVaultSession(vaultSession.refreshToken.value);
+        if (refreshed) {
+          return refreshed.accessToken.value;
+        }
+      } catch (error) {
+        logger.warn("Failed to refresh vault session:", error);
+      }
+    }
+  }
+
+  // Fall back to Supabase organization token
+  const organizations = settings.supabase?.organizations;
   if (!organizations) {
     return null;
   }
 
-  // Get the first organization's access token
   const orgSlugs = Object.keys(organizations);
   if (orgSlugs.length === 0) {
     return null;
@@ -52,6 +74,214 @@ async function getVaultAccessToken(): Promise<string | null> {
 
   const firstOrg = organizations[orgSlugs[0]];
   return firstOrg?.accessToken?.value || null;
+}
+
+/**
+ * Create a Supabase client for Vault authentication
+ */
+function createVaultSupabaseClient() {
+  const config = getVaultConfig();
+  if (!config.url || !config.anonKey) {
+    throw new Error("Vault is not configured. Please set URL and publishable key.");
+  }
+
+  // Dynamic import to avoid bundling issues
+  // We use node-fetch compatible approach for Electron main process
+  return {
+    url: config.url,
+    anonKey: config.anonKey,
+  };
+}
+
+/**
+ * Sign in to Vault using email and password
+ */
+async function signInToVault(
+  email: string,
+  password: string,
+): Promise<VaultAuthSession> {
+  const { url, anonKey } = createVaultSupabaseClient();
+
+  const response = await fetch(`${url}/auth/v1/token?grant_type=password`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: anonKey,
+    },
+    body: JSON.stringify({ email, password }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error_description || error.message || "Sign in failed");
+  }
+
+  const data = await response.json();
+
+  const session: VaultAuthSession = {
+    accessToken: { value: data.access_token },
+    refreshToken: { value: data.refresh_token },
+    userEmail: data.user?.email || email,
+    expiresAt: Date.now() + (data.expires_in * 1000),
+  };
+
+  // Store session in settings
+  const settings = readSettings();
+  writeSettings({
+    vault: {
+      ...settings.vault,
+      authSession: session,
+    },
+  });
+
+  logger.info(`Vault sign-in successful for: ${maskEmail(email)}`);
+  return session;
+}
+
+/**
+ * Sign up for Vault using email and password
+ */
+async function signUpForVault(
+  email: string,
+  password: string,
+): Promise<VaultAuthSession> {
+  const { url, anonKey } = createVaultSupabaseClient();
+
+  const response = await fetch(`${url}/auth/v1/signup`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: anonKey,
+    },
+    body: JSON.stringify({ email, password }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error_description || error.message || "Sign up failed");
+  }
+
+  const data = await response.json();
+
+  // If email confirmation is required, user won't have tokens yet
+  if (!data.access_token) {
+    throw new Error("Please check your email to confirm your account, then sign in.");
+  }
+
+  const session: VaultAuthSession = {
+    accessToken: { value: data.access_token },
+    refreshToken: { value: data.refresh_token },
+    userEmail: data.user?.email || email,
+    expiresAt: Date.now() + (data.expires_in * 1000),
+  };
+
+  // Store session in settings
+  const settings = readSettings();
+  writeSettings({
+    vault: {
+      ...settings.vault,
+      authSession: session,
+    },
+  });
+
+  logger.info(`Vault sign-up successful for: ${maskEmail(email)}`);
+  return session;
+}
+
+/**
+ * Refresh Vault session using refresh token
+ */
+async function refreshVaultSession(
+  refreshToken: string,
+): Promise<VaultAuthSession | null> {
+  const { url, anonKey } = createVaultSupabaseClient();
+
+  const response = await fetch(`${url}/auth/v1/token?grant_type=refresh_token`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: anonKey,
+    },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const data = await response.json();
+
+  const session: VaultAuthSession = {
+    accessToken: { value: data.access_token },
+    refreshToken: { value: data.refresh_token },
+    userEmail: data.user?.email || "",
+    expiresAt: Date.now() + (data.expires_in * 1000),
+  };
+
+  // Update stored session
+  const settings = readSettings();
+  writeSettings({
+    vault: {
+      ...settings.vault,
+      authSession: session,
+    },
+  });
+
+  logger.info("Vault session refreshed");
+  return session;
+}
+
+/**
+ * Sign out from Vault
+ */
+function signOutFromVault(): void {
+  const settings = readSettings();
+  if (settings.vault) {
+    writeSettings({
+      vault: {
+        ...settings.vault,
+        authSession: undefined,
+      },
+    });
+  }
+  logger.info("Vault sign-out completed");
+}
+
+/**
+ * Get current Vault auth status
+ */
+function getVaultAuthStatus(): {
+  isAuthenticated: boolean;
+  userEmail?: string;
+  expiresAt?: number;
+} {
+  const settings = readSettings();
+  const session = settings.vault?.authSession;
+
+  if (!session?.accessToken?.value) {
+    return { isAuthenticated: false };
+  }
+
+  const now = Date.now();
+  if (session.expiresAt <= now) {
+    return { isAuthenticated: false };
+  }
+
+  return {
+    isAuthenticated: true,
+    userEmail: session.userEmail,
+    expiresAt: session.expiresAt,
+  };
+}
+
+/**
+ * Mask email for logging (show only first 2 chars and domain)
+ */
+function maskEmail(email: string): string {
+  const [local, domain] = email.split("@");
+  if (!local || !domain) return "***";
+  const maskedLocal = local.length > 2 ? local.slice(0, 2) + "***" : "***";
+  return `${maskedLocal}@${domain}`;
 }
 
 /**
@@ -372,6 +602,7 @@ export function registerVaultHandlers() {
     const settings = readSettings();
     const organizations = settings.supabase?.organizations;
     const orgSlugs = organizations ? Object.keys(organizations) : [];
+    const vaultAuthStatus = getVaultAuthStatus();
 
     return {
       timestamp: new Date().toISOString(),
@@ -379,8 +610,58 @@ export function registerVaultHandlers() {
       hasAnonKey: config.anonKey.length > 0,
       maskedAnonKey: maskKey(config.anonKey),
       isAuthenticated: !!token,
-      organizationName: orgSlugs[0] || null,
+      organizationName: vaultAuthStatus.userEmail || orgSlugs[0] || null,
       lastError: null, // Could be enhanced to track last error
     };
   });
+
+  /**
+   * Sign in to Vault with email and password
+   */
+  handle(
+    "vault:auth-sign-in",
+    async (
+      _,
+      params: { email: string; password: string; isSignUp?: boolean },
+    ): Promise<{ success: boolean; error?: string; userEmail?: string }> => {
+      try {
+        let session: VaultAuthSession;
+        if (params.isSignUp) {
+          session = await signUpForVault(params.email, params.password);
+        } else {
+          session = await signInToVault(params.email, params.password);
+        }
+        return { success: true, userEmail: session.userEmail };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Authentication failed";
+        logger.error(`Vault auth failed: ${message}`);
+        return { success: false, error: message };
+      }
+    },
+  );
+
+  /**
+   * Sign out from Vault
+   */
+  handle(
+    "vault:auth-sign-out",
+    async (): Promise<{ success: boolean }> => {
+      signOutFromVault();
+      return { success: true };
+    },
+  );
+
+  /**
+   * Get Vault auth status
+   */
+  handle(
+    "vault:auth-status",
+    async (): Promise<{
+      isAuthenticated: boolean;
+      userEmail?: string;
+      expiresAt?: number;
+    }> => {
+      return getVaultAuthStatus();
+    },
+  );
 }

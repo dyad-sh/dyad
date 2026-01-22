@@ -152,6 +152,22 @@ export function readSettings(): UserSettings {
         };
       }
     }
+    // Decrypt vault auth session tokens
+    if (combinedSettings.vault?.authSession) {
+      const session = combinedSettings.vault.authSession;
+      if (session.accessToken?.encryptionType) {
+        session.accessToken = {
+          value: decrypt(session.accessToken),
+          encryptionType: session.accessToken.encryptionType,
+        };
+      }
+      if (session.refreshToken?.encryptionType) {
+        session.refreshToken = {
+          value: decrypt(session.refreshToken),
+          encryptionType: session.refreshToken.encryptionType,
+        };
+      }
+    }
     for (const provider in combinedSettings.providerSettings) {
       if (combinedSettings.providerSettings[provider].apiKey) {
         const encryptionType =
@@ -207,6 +223,16 @@ export function writeSettings(settings: Partial<UserSettings>): void {
       newSettings.vault.supabaseAnonKey = encrypt(
         newSettings.vault.supabaseAnonKey.value,
       );
+    }
+    // Encrypt vault auth session tokens
+    if (newSettings.vault?.authSession) {
+      const session = newSettings.vault.authSession;
+      if (session.accessToken) {
+        session.accessToken = encrypt(session.accessToken.value);
+      }
+      if (session.refreshToken) {
+        session.refreshToken = encrypt(session.refreshToken.value);
+      }
     }
     if (newSettings.supabase) {
       // Encrypt legacy tokens (kept for backwards compat)

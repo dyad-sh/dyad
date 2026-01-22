@@ -223,7 +223,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   }
 
   // Handle case where provider is not found (e.g., invalid ID in URL)
-  if (!providerData && !isDyad) {
+  if (!providerData && !isAbbaAuto) {
     return (
       <div className="min-h-screen px-8 py-4">
         <div className="max-w-4xl mx-auto">
@@ -260,7 +260,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
           isLoading={settingsLoading}
           hasFreeTier={hasFreeTier}
           providerWebsiteUrl={providerWebsiteUrl}
-          isDyad={isDyad}
+          isDyad={isAbbaAuto}
           onBackClick={() => router.history.back()}
         />
 
@@ -288,7 +288,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
             onApiKeyInputChange={setApiKeyInput}
             onSaveKey={handleSaveKey}
             onDeleteKey={handleDeleteKey}
-            isDyad={isDyad}
+            isDyad={isAbbaAuto}
             updateSettings={updateSettings}
           />
         )}

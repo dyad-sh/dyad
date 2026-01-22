@@ -464,7 +464,7 @@ async function handleGetVercelDeployments(
     // Get deployments for the project
     const deploymentsResponse = await vercel.deployments.getDeployments({
       projectId: app.vercelProjectId,
-      limit: 3, // Get last 3 deployments
+      limit: 5, // Get last 5 deployments
     });
 
     if (!deploymentsResponse.deployments) {

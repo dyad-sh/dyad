@@ -321,18 +321,19 @@ export async function gitAddAll({ path }: GitBaseParams): Promise<void> {
 }
 
 export async function gitAdd({ path, filepath }: GitFileParams): Promise<void> {
+  const normalizedFilepath = normalizePath(filepath);
   const settings = readSettings();
   if (settings.enableNativeGit) {
     await execOrThrow(
-      ["add", "--", filepath],
+      ["add", "--", normalizedFilepath],
       path,
-      `Failed to stage file '${filepath}'`,
+      `Failed to stage file '${normalizedFilepath}'`,
     );
   } else {
     await git.add({
       fs,
       dir: path,
-      filepath,
+      filepath: normalizedFilepath,
     });
   }
 }

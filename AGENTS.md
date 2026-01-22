@@ -15,11 +15,13 @@ npm run init-precommit
 RUN THE FOLLOWING CHECKS before you do a commit.
 
 **Formatting**
+
 ```sh
 npm run prettier
 ```
 
 **Linting**
+
 ```sh
 npm run lint
 ```
@@ -30,7 +32,8 @@ If you get any lint errors, you can usually fix it by doing:
 npm run lint:fix
 ```
 
-***Type-checks**
+**\*Type-checks**
+
 ```sh
 npm run ts
 ```

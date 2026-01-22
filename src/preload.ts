@@ -173,6 +173,13 @@ const validInvokeChannels = [
   "get-themes",
   "set-app-theme",
   "get-app-theme",
+  "get-custom-themes",
+  "create-custom-theme",
+  "update-custom-theme",
+  "delete-custom-theme",
+  "generate-theme-prompt",
+  "save-theme-image",
+  "cleanup-theme-images",
   // Test-only channels
   // These should ALWAYS be guarded with IS_TEST_BUILD in the main process.
   // We can't detect with IS_TEST_BUILD in the preload script because

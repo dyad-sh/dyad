@@ -70,20 +70,3 @@ export const themesData: Theme[] = [
     prompt: DEFAULT_THEME_PROMPT,
   },
 ];
-
-export function getThemeById(themeId: string | null): Theme | null {
-  // null means "no theme" - return null
-  if (!themeId) {
-    return null;
-  }
-  return themesData.find((t) => t.id === themeId) ?? null;
-}
-
-export function getThemePrompt(themeId: string | null): string {
-  // null means "no theme" - return empty string (no prompt)
-  if (!themeId) {
-    return "";
-  }
-  const theme = getThemeById(themeId);
-  return theme?.prompt ?? "";
-}

@@ -779,6 +779,65 @@ export interface GetAppThemeParams {
   appId: number;
 }
 
+// --- Custom Theme Types ---
+export interface CustomTheme {
+  id: number;
+  name: string;
+  description: string | null;
+  prompt: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CreateCustomThemeParams {
+  name: string;
+  description?: string;
+  prompt: string;
+}
+
+export interface UpdateCustomThemeParams {
+  id: number;
+  name?: string;
+  description?: string;
+  prompt?: string;
+}
+
+export interface DeleteCustomThemeParams {
+  id: number;
+}
+
+export type ThemeGenerationMode = "inspired" | "high-fidelity";
+
+export type ThemeGenerationModel =
+  | "gemini-3-pro"
+  | "claude-opus-4.5"
+  | "gpt-5.2";
+
+export interface GenerateThemePromptParams {
+  imagePaths: string[]; // File paths to images (stored in temp directory)
+  keywords: string;
+  generationMode: ThemeGenerationMode; // 'inspired' (abstract design system) or 'high-fidelity' (visual recreation)
+  model: ThemeGenerationModel; // Model to use for generation
+}
+
+export interface GenerateThemePromptResult {
+  prompt: string;
+}
+
+// --- Theme Image File Handling ---
+export interface SaveThemeImageParams {
+  data: string; // Base64 encoded image data
+  filename: string; // Original filename for extension detection
+}
+
+export interface SaveThemeImageResult {
+  path: string; // Path to the saved temp file
+}
+
+export interface CleanupThemeImagesParams {
+  paths: string[]; // Paths to delete
+}
+
 // --- Uncommitted Files Types ---
 export type UncommittedFileStatus =
   | "added"

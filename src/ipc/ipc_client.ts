@@ -95,6 +95,15 @@ import type {
   ConsoleEntry,
   SetAppThemeParams,
   GetAppThemeParams,
+  CustomTheme,
+  CreateCustomThemeParams,
+  UpdateCustomThemeParams,
+  DeleteCustomThemeParams,
+  GenerateThemePromptParams,
+  GenerateThemePromptResult,
+  SaveThemeImageParams,
+  SaveThemeImageResult,
+  CleanupThemeImagesParams,
   UncommittedFile,
 } from "./ipc_types";
 import type { Template } from "../shared/templates";
@@ -1684,6 +1693,46 @@ export class IpcClient {
 
   public async getAppTheme(params: GetAppThemeParams): Promise<string | null> {
     return this.ipcRenderer.invoke("get-app-theme", params);
+  }
+
+  public async getCustomThemes(): Promise<CustomTheme[]> {
+    return this.ipcRenderer.invoke("get-custom-themes");
+  }
+
+  public async createCustomTheme(
+    params: CreateCustomThemeParams,
+  ): Promise<CustomTheme> {
+    return this.ipcRenderer.invoke("create-custom-theme", params);
+  }
+
+  public async updateCustomTheme(
+    params: UpdateCustomThemeParams,
+  ): Promise<CustomTheme> {
+    return this.ipcRenderer.invoke("update-custom-theme", params);
+  }
+
+  public async deleteCustomTheme(
+    params: DeleteCustomThemeParams,
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("delete-custom-theme", params);
+  }
+
+  public async generateThemePrompt(
+    params: GenerateThemePromptParams,
+  ): Promise<GenerateThemePromptResult> {
+    return this.ipcRenderer.invoke("generate-theme-prompt", params);
+  }
+
+  public async saveThemeImage(
+    params: SaveThemeImageParams,
+  ): Promise<SaveThemeImageResult> {
+    return this.ipcRenderer.invoke("save-theme-image", params);
+  }
+
+  public async cleanupThemeImages(
+    params: CleanupThemeImagesParams,
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("cleanup-theme-images", params);
   }
 
   // --- Prompts Library ---

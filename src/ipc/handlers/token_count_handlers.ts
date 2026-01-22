@@ -5,7 +5,7 @@ import {
   constructSystemPrompt,
   readAiRules,
 } from "../../prompts/system_prompt";
-import { getThemePrompt } from "../../shared/themes";
+import { getThemePromptById } from "../utils/theme_utils";
 import {
   getSupabaseAvailableSystemPrompt,
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
@@ -65,7 +65,7 @@ export function registerTokenCountHandlers() {
       const mentionedAppNames = parseAppMentions(req.input);
 
       // Count system prompt tokens
-      const themePrompt = getThemePrompt(chat.app?.themeId ?? null);
+      const themePrompt = await getThemePromptById(chat.app?.themeId ?? null);
       let systemPrompt = constructSystemPrompt({
         aiRules: await readAiRules(getDyadAppPath(chat.app.path)),
         chatMode:

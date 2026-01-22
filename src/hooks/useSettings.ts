@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useAtom } from "jotai";
 import { userSettingsAtom, envVarsAtom } from "@/atoms/appAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
-import { type UserSettings } from "@/lib/schemas";
+import { type UserSettings, hasDyadProKey } from "@/lib/schemas";
 import { usePostHog } from "posthog-js/react";
 import { useAppVersion } from "./useAppVersion";
 
@@ -36,9 +36,11 @@ export function useSettings() {
         ipcClient.getEnvVars(),
       ]);
       processSettingsForTelemetry(userSettings);
+      const isPro = hasDyadProKey(userSettings);
+      posthog.people.set({ isPro });
       if (!isInitialLoad && appVersion) {
         posthog.capture("app:initial-load", {
-          isPro: Boolean(userSettings.providerSettings?.auto?.apiKey?.value),
+          isPro,
           appVersion,
         });
         isInitialLoad = true;
@@ -66,6 +68,7 @@ export function useSettings() {
       const updatedSettings = await ipcClient.setUserSettings(newSettings);
       setSettingsAtom(updatedSettings);
       processSettingsForTelemetry(updatedSettings);
+      posthog.people.set({ isPro: hasDyadProKey(updatedSettings) });
 
       setError(null);
       return updatedSettings;

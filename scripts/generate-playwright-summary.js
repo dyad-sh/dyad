@@ -415,34 +415,46 @@ async function run({ github, context, core }) {
   const prNumber = determineIssueNumber({ context });
 
   if (prNumber) {
-    const { data: comments } = await github.rest.issues.listComments({
-      owner: context.repo.owner,
-      repo: context.repo.repo,
-      issue_number: prNumber,
-    });
-
-    const botComment = comments.find(
-      (c) =>
-        c.user?.type === "Bot" &&
-        c.body?.includes("🎭 Playwright Test Results"),
-    );
-
-    if (botComment) {
-      await github.rest.issues.updateComment({
-        owner: context.repo.owner,
-        repo: context.repo.repo,
-        comment_id: botComment.id,
-        body: comment,
-      });
-    } else {
-      await github.rest.issues.createComment({
+    try {
+      const { data: comments } = await github.rest.issues.listComments({
         owner: context.repo.owner,
         repo: context.repo.repo,
         issue_number: prNumber,
-        body: comment,
       });
+
+      const botComment = comments.find(
+        (c) =>
+          c.user?.type === "Bot" &&
+          c.body?.includes("🎭 Playwright Test Results"),
+      );
+
+      if (botComment) {
+        await github.rest.issues.updateComment({
+          owner: context.repo.owner,
+          repo: context.repo.repo,
+          comment_id: botComment.id,
+          body: comment,
+        });
+      } else {
+        await github.rest.issues.createComment({
+          owner: context.repo.owner,
+          repo: context.repo.repo,
+          issue_number: prNumber,
+          body: comment,
+        });
+      }
+    } catch (error) {
+      // Handle permission errors gracefully (common for fork PRs)
+      if (error.status === 403) {
+        console.log(
+          "Unable to post PR comment due to insufficient permissions (this is expected for fork PRs). " +
+            "Results are still available in the job summary.",
+        );
+      } else {
+        throw error;
+      }
     }
-  } else if (!prNumber) {
+  } else {
     console.log("No pull request detected; skipping PR comment");
   }
 

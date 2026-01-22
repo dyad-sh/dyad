@@ -30,7 +30,7 @@ export function VaultIntegration() {
     queryKey: ["vault-status"],
     queryFn: async () => {
       const ipcClient = IpcClient.getInstance();
-      return (ipcClient as any).invoke("vault:get-status");
+      return ipcClient.invoke<VaultStatus>("vault:get-status");
     },
   });
 
@@ -39,7 +39,7 @@ export function VaultIntegration() {
     queryKey: ["vault-config"],
     queryFn: async () => {
       const ipcClient = IpcClient.getInstance();
-      return (ipcClient as any).invoke("vault:get-config");
+      return ipcClient.invoke<VaultConfig>("vault:get-config");
     },
   });
 

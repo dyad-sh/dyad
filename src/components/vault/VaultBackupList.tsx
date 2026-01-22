@@ -50,7 +50,7 @@ export function VaultBackupList() {
     queryKey: ["vault-backups"],
     queryFn: async () => {
       const ipcClient = IpcClient.getInstance();
-      return (ipcClient as any).invoke("vault:list-backups");
+      return ipcClient.invoke<VaultBackup[]>("vault:list-backups");
     },
   });
 
@@ -58,7 +58,7 @@ export function VaultBackupList() {
   const deleteMutation = useMutation({
     mutationFn: async (backupId: string) => {
       const ipcClient = IpcClient.getInstance();
-      return (ipcClient as any).invoke("vault:delete-backup", { backupId });
+      return ipcClient.invoke<void>("vault:delete-backup", { backupId });
     },
     onSuccess: () => {
       showSuccess("Backup deleted successfully");
@@ -81,7 +81,7 @@ export function VaultBackupList() {
       targetPath: string;
     }) => {
       const ipcClient = IpcClient.getInstance();
-      return (ipcClient as any).invoke("vault:restore-backup", {
+      return ipcClient.invoke<void>("vault:restore-backup", {
         backupId,
         targetPath,
       });

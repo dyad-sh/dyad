@@ -98,7 +98,7 @@ export function VaultSettings() {
     queryKey: ["vault-settings"],
     queryFn: async () => {
       const ipcClient = IpcClient.getInstance();
-      return (ipcClient as any).invoke("vault:get-settings");
+      return ipcClient.invoke<VaultSettingsData>("vault:get-settings");
     },
   });
 
@@ -117,13 +117,10 @@ export function VaultSettings() {
       supabaseAnonKey: string;
     }) => {
       const ipcClient = IpcClient.getInstance();
-      return (ipcClient as any).invoke(
+      return ipcClient.invoke<{ success: boolean; error?: string }>(
         "vault:save-settings",
         params,
-      ) as Promise<{
-        success: boolean;
-        error?: string;
-      }>;
+      );
     },
     onSuccess: (result) => {
       if (result.success) {
@@ -146,9 +143,7 @@ export function VaultSettings() {
   const testMutation = useMutation({
     mutationFn: async () => {
       const ipcClient = IpcClient.getInstance();
-      return (ipcClient as any).invoke(
-        "vault:test-connection",
-      ) as Promise<VaultTestResult>;
+      return ipcClient.invoke<VaultTestResult>("vault:test-connection");
     },
     onSuccess: (result) => {
       setConnectionStatus(result.status);
@@ -170,7 +165,7 @@ export function VaultSettings() {
   const handleCopyDiagnostics = async () => {
     try {
       const ipcClient = IpcClient.getInstance();
-      const diagnostics: VaultDiagnostics = await (ipcClient as any).invoke(
+      const diagnostics = await ipcClient.invoke<VaultDiagnostics>(
         "vault:get-diagnostics",
       );
 

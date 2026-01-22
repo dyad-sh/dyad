@@ -35,7 +35,7 @@ export function VaultBackupButton({
   const backupMutation = useMutation({
     mutationFn: async ({ appId, notes }: { appId: number; notes?: string }) => {
       const ipcClient = IpcClient.getInstance();
-      return (ipcClient as any).invoke("vault:create-backup", { appId, notes });
+      return ipcClient.invoke<void>("vault:create-backup", { appId, notes });
     },
     onSuccess: () => {
       showSuccess(`Backup created for "${appName}"`);

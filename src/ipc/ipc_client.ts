@@ -344,6 +344,25 @@ export class IpcClient {
     return IpcClient.instance;
   }
 
+  /**
+   * Generic IPC invoke method for calling main process handlers.
+   * Provides a type-safe way to make IPC calls without needing dedicated methods.
+   * @param channel - The IPC channel to invoke
+   * @param args - Optional arguments to pass to the handler
+   * @returns Promise resolving to the handler's return value
+   */
+  public async invoke<T = unknown>(
+    channel: string,
+    args?: unknown,
+  ): Promise<T> {
+    if (!this.ipcRenderer?.invoke) {
+      throw new Error(
+        "IPC invoke is not available. Make sure the app is running in Electron.",
+      );
+    }
+    return this.ipcRenderer.invoke(channel, args);
+  }
+
   public async restartDyad(): Promise<void> {
     await this.ipcRenderer.invoke("restart-dyad");
   }

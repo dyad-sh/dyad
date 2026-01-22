@@ -3,9 +3,24 @@
 const fs = require("fs");
 const path = require("path");
 
+// Configuration for retry logic
+const MAX_RETRIES = 10;
+const RETRY_DELAY_MS = 30000; // 30 seconds between retries
+const INITIAL_DELAY_MS = 60000; // 1 minute initial wait for uploads to complete
+
+/**
+ * Sleep helper
+ */
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
  * Verifies that all expected binary assets are present in the GitHub release
- * for the version specified in package.json
+ * for the version specified in package.json.
+ *
+ * Includes retry logic to handle async asset uploads that may complete
+ * after the release is created.
  */
 async function verifyReleaseAssets() {
   try {
@@ -15,6 +30,10 @@ async function verifyReleaseAssets() {
     const version = packageJson.version;
 
     console.log(`🔍 Verifying release assets for version ${version}...`);
+    console.log(
+      `⏳ Waiting ${INITIAL_DELAY_MS / 1000}s for all platform builds to upload...`,
+    );
+    await sleep(INITIAL_DELAY_MS);
 
     // GitHub API configuration
     const owner = "yosiwizman";
@@ -92,18 +111,58 @@ async function verifyReleaseAssets() {
     actualAssets.forEach((asset) => console.log(`  - ${asset}`));
     console.log("");
 
-    // Check for missing assets
-    const missingAssets = expectedAssets.filter(
+    // Check for missing assets with retry logic
+    let missingAssets = expectedAssets.filter(
       (expected) => !actualAssets.includes(expected),
     );
 
+    let retryCount = 0;
+    while (missingAssets.length > 0 && retryCount < MAX_RETRIES) {
+      retryCount++;
+      console.log(
+        `\n⏳ Missing ${missingAssets.length} asset(s), retrying in ${RETRY_DELAY_MS / 1000}s (attempt ${retryCount}/${MAX_RETRIES})...`,
+      );
+      missingAssets.forEach((asset) => console.log(`  - ${asset}`));
+      await sleep(RETRY_DELAY_MS);
+
+      // Re-fetch release to check for newly uploaded assets
+      const retryResponse = await fetch(allReleasesUrl, {
+        headers: {
+          Authorization: `token ${token}`,
+          Accept: "application/vnd.github.v3+json",
+          "User-Agent": "abba-ai-release-verifier",
+        },
+      });
+
+      if (!retryResponse.ok) {
+        console.error(
+          `GitHub API error on retry: ${retryResponse.status} ${retryResponse.statusText}`,
+        );
+        continue;
+      }
+
+      const retryReleases = await retryResponse.json();
+      const retryRelease = retryReleases.find((r) => r.tag_name === tagName);
+
+      if (retryRelease) {
+        const retryAssets = (retryRelease.assets || []).map((a) => a.name);
+        console.log(`📦 Found ${retryAssets.length} assets on retry`);
+        missingAssets = expectedAssets.filter(
+          (expected) => !retryAssets.includes(expected),
+        );
+      }
+    }
+
     if (missingAssets.length > 0) {
-      console.error("❌ VERIFICATION FAILED!");
+      console.error("\n❌ VERIFICATION FAILED after all retries!");
       console.error("📭 Missing assets:");
       missingAssets.forEach((asset) => console.error(`  - ${asset}`));
       console.error("");
       console.error(
         "Please ensure all platforms have completed their builds and uploads.",
+      );
+      console.error(
+        `Total wait time: ${(INITIAL_DELAY_MS + MAX_RETRIES * RETRY_DELAY_MS) / 1000}s`,
       );
       process.exit(1);
     }

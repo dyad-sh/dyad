@@ -1020,6 +1020,12 @@ This conversation includes one or more image attachments. When the user uploads 
 
           await handleLocalAgentStream(event, req, abortController, {
             placeholderMessageId: placeholderAssistantMessage.id,
+            // Note: this is using the read-only system prompt rather than the
+            // regular system prompt which gets overrides for special intents
+            // like summarize chat, security review, etc.
+            //
+            // This is OK because those intents should always happen in a new chat
+            // and new chats will default to non-ask modes.
             systemPrompt: readOnlySystemPrompt,
             dyadRequestId: dyadRequestId ?? "[no-request-id]",
             readOnly: true,

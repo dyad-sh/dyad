@@ -62,6 +62,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useRunApp } from "@/hooks/useRunApp";
 import { useShortcut } from "@/hooks/useShortcut";
 import { cn } from "@/lib/utils";
+import { normalizePath } from "../../../shared/normalizePath";
 import { showError } from "@/lib/toast";
 import { AnnotatorOnlyForPro } from "./AnnotatorOnlyForPro";
 import { useAttachments } from "@/hooks/useAttachments";
@@ -1171,10 +1172,10 @@ function parseComponentSelection(data: any): ComponentSelection | null {
   }
 
   return {
-    id,
+    id: normalizePath(id),
     name,
     runtimeId,
-    relativePath,
+    relativePath: normalizePath(relativePath),
     lineNumber,
     columnNumber,
   };

@@ -12,6 +12,8 @@ jobs:
   build:
     environment: release
     strategy:
+      # Continue building other platforms even if one fails
+      fail-fast: false
       # Uncomment max-parallel to prevent race condition (where multiple releases are
       # created concurrently). Typically though, we'll create a release manually ahead of time
       # which prevents the race.

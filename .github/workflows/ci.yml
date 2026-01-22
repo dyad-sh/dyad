@@ -154,14 +154,29 @@ jobs:
         run: npm run pre:e2e
       - name: Prep test server
         run: cd testing/fake-llm-server && npm install && npm run build && cd -
-      - name: Upload build artifacts
+      # macOS: Archive app bundle with tar to preserve metadata (code signatures, extended attributes)
+      # This is necessary because GitHub artifact upload/download loses these attributes
+      - name: Archive macOS app bundle
+        if: contains(matrix.os.name, 'macos')
+        run: tar -cvf out-macos.tar out/
+      - name: Upload build artifacts (macOS)
+        if: contains(matrix.os.name, 'macos')
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: build-${{ matrix.os.name }}
+          path: |
+            out-macos.tar
+            scaffold/
+            testing/fake-llm-server/
+          retention-days: 1
+      - name: Upload build artifacts (Windows)
+        if: contains(matrix.os.name, 'windows')
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: build-${{ matrix.os.name }}
           path: |
             out/
             scaffold/
-            nextjs-template/
             testing/fake-llm-server/
           retention-days: 1
 
@@ -189,6 +204,9 @@ jobs:
           cache-dependency-path: package-lock.json
       - name: Install node modules
         run: npm ci --no-audit --no-fund --progress=false
+        env:
+          # Required for @vscode/ripgrep to download binaries without hitting GitHub API rate limits
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Setup pnpm
         uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
         with:
@@ -216,12 +234,10 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: build-${{ matrix.os.name }}
-      - name: Restore executable permissions (macOS)
+      # macOS: Extract tar archive to restore app bundle with preserved metadata
+      - name: Extract macOS app bundle
         if: contains(matrix.os.name, 'macos')
-        run: chmod +x out/dyad-darwin-arm64/dyad.app/Contents/MacOS/dyad
-      - name: Clear macOS quarantine (if present)
-        if: contains(matrix.os.name, 'macos')
-        run: xattr -cr out/dyad-darwin-arm64/dyad.app || true
+        run: tar -xvf out-macos.tar
       - name: Install Chromium browser for Playwright
         run: npx playwright install chromium --with-deps
       - name: E2E tests (Shard ${{ matrix.shard }}/4)

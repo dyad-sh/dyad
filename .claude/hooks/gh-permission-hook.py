@@ -40,7 +40,7 @@ BLOCKED (denied):
    - release delete, create, edit
    - gist delete, create, edit
    - run cancel, rerun
-   - workflow disable, enable
+   - workflow disable, enable, run
    - auth logout
    - config set
    - label create, edit, delete
@@ -416,7 +416,7 @@ def check_gh_command(cmd: str) -> Optional[dict]:
         (r"^gh gist delete\b", "Gist deletion"),
         (r"^gh run cancel\b", "Workflow run cancellation"),
         (r"^gh run rerun\b", "Workflow re-run"),
-        (r"^gh workflow (disable|enable)\b", "Workflow enable/disable"),
+        (r"^gh workflow (disable|enable|run)\b", "Workflow modification"),
         (r"^gh auth logout\b", "Auth logout"),
         (r"^gh config set\b", "Config modification"),
         (r"^gh repo (create|edit|rename|archive)\b", "Repository modification"),

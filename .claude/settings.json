@@ -15,6 +15,7 @@
 
       "Bash(git:*)",
 
+      "Bash(gh api:*)",
       "Bash(gh pr view:*)",
       "Bash(gh pr list:*)",
       "Bash(gh pr status:*)",

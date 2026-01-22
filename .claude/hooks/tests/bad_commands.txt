@@ -410,6 +410,10 @@ gh gist edit abc123 --remove old.txt
 
 # More workflow operations
 gh run rerun --job 456
+gh workflow run test.yml
+gh workflow run test.yml --ref feature
+gh workflow run test.yml -f input=value
+gh workflow run deploy.yml --json
 
 # Environment operations
 gh api -X DELETE /repos/owner/repo/environments/production

@@ -1023,6 +1023,7 @@ This conversation includes one or more image attachments. When the user uploads 
             systemPrompt: readOnlySystemPrompt,
             dyadRequestId: dyadRequestId ?? "[no-request-id]",
             readOnly: true,
+            messageOverride: isSummarizeIntent ? chatMessages : undefined,
           });
           return;
         }
@@ -1038,6 +1039,7 @@ This conversation includes one or more image attachments. When the user uploads 
             placeholderMessageId: placeholderAssistantMessage.id,
             systemPrompt,
             dyadRequestId: dyadRequestId ?? "[no-request-id]",
+            messageOverride: isSummarizeIntent ? chatMessages : undefined,
           });
           return;
         }

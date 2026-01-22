@@ -108,6 +108,7 @@ export async function handleLocalAgentStream(
     systemPrompt,
     dyadRequestId,
     readOnly = false,
+    messageOverride,
   }: {
     placeholderMessageId: number;
     systemPrompt: string;
@@ -117,6 +118,11 @@ export async function handleLocalAgentStream(
      * State-modifying tools are disabled, and no commits/deploys are made.
      */
     readOnly?: boolean;
+    /**
+     * If provided, use these messages instead of fetching from the database.
+     * Used for summarization where messages need to be transformed.
+     */
+    messageOverride?: ModelMessage[];
   },
 ): Promise<void> {
   const settings = readSettings();
@@ -229,9 +235,12 @@ export async function handleLocalAgentStream(
     const allTools: ToolSet = { ...agentTools, ...mcpTools };
 
     // Prepare message history with graceful fallback
-    const messageHistory: ModelMessage[] = chat.messages
-      .filter((msg) => msg.content || msg.aiMessagesJson)
-      .flatMap((msg) => parseAiMessagesJson(msg));
+    // Use messageOverride if provided (e.g., for summarization)
+    const messageHistory: ModelMessage[] = messageOverride
+      ? messageOverride
+      : chat.messages
+          .filter((msg) => msg.content || msg.aiMessagesJson)
+          .flatMap((msg) => parseAiMessagesJson(msg));
 
     // Stream the response
     const streamResult = streamText({

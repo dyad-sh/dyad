@@ -849,3 +849,10 @@ export interface UncommittedFile {
   path: string;
   status: UncommittedFileStatus;
 }
+
+// --- Restore Types ---
+export interface SyncAppsFromFolderResult {
+  imported: string[];
+  skipped: string[];
+  errors: Array<{ folder: string; error: string }>;
+}

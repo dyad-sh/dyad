@@ -31,6 +31,7 @@ import { ZoomSelector } from "@/components/ZoomSelector";
 import { DefaultChatModeSelector } from "@/components/DefaultChatModeSelector";
 import { useSetAtom } from "jotai";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
+import { RestoreSettings } from "@/components/settings/RestoreSettings";
 
 export default function SettingsPage() {
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
@@ -182,6 +183,17 @@ export default function SettingsPage() {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Restore Section */}
+          <div
+            id="restore"
+            className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6"
+          >
+            <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+              Restore
+            </h2>
+            <RestoreSettings />
           </div>
 
           {/* Danger Zone */}

@@ -27,31 +27,43 @@ function ensureOsBucket(resultsByOs, os) {
   }
 }
 
+function getOsEmoji(os) {
+  if (os === "macOS") return "🍎";
+  if (os === "Windows") return "🪟";
+  if (os === "Linux") return "🐧";
+  return "❓";
+}
+
 // Check if any shards are missing based on blob report file counts.
 // Blob files are named report-${platform}-${timestamp}.zip (e.g., report-darwin-2024-01-01T12-00-00-000Z.zip)
 // We can't identify WHICH shards are missing, only that some are missing by counting files per OS.
 function detectMissingShards(blobFiles) {
   let macosCount = 0;
   let windowsCount = 0;
+  let linuxCount = 0;
 
   for (const file of blobFiles) {
-    // Blob files are named: report-darwin-*.zip or report-win32-*.zip
+    // Blob files are named: report-darwin-*.zip, report-win32-*.zip, or report-linux-*.zip
     if (file.includes("darwin")) {
       macosCount++;
     } else if (file.includes("win32")) {
       windowsCount++;
+    } else if (file.includes("linux")) {
+      linuxCount++;
     }
   }
 
   const macosMissing = Math.max(0, EXPECTED_SHARDS_PER_OS - macosCount);
   const windowsMissing = Math.max(0, EXPECTED_SHARDS_PER_OS - windowsCount);
+  const linuxMissing = Math.max(0, EXPECTED_SHARDS_PER_OS - linuxCount);
 
   return {
     counts: {
       macos: { found: macosCount, missing: macosMissing },
       windows: { found: windowsCount, missing: windowsMissing },
+      linux: { found: linuxCount, missing: linuxMissing },
     },
-    hasMissing: macosMissing > 0 || windowsMissing > 0,
+    hasMissing: macosMissing > 0 || windowsMissing > 0 || linuxMissing > 0,
   };
 }
 
@@ -92,6 +104,8 @@ function detectOperatingSystemsFromReport(report) {
                 detected.add("macOS");
               } else if (p.includes("win32") || p.includes("windows")) {
                 detected.add("Windows");
+              } else if (p.includes("linux")) {
+                detected.add("Linux");
               }
             }
 
@@ -100,6 +114,8 @@ function detectOperatingSystemsFromReport(report) {
               detected.add("macOS");
             } else if (stack.includes("C:\\") || stack.includes("D:\\")) {
               detected.add("Windows");
+            } else if (stack.includes("/home/runner/") || stack.includes("/home/ubuntu/")) {
+              detected.add("Linux");
             }
           }
         }
@@ -147,6 +163,7 @@ async function run({ github, context, core }) {
   const blobFiles = fs.existsSync(blobDir) ? fs.readdirSync(blobDir) : [];
   const hasMacOS = blobFiles.some((f) => f.includes("darwin"));
   const hasWindows = blobFiles.some((f) => f.includes("win32"));
+  const hasLinux = blobFiles.some((f) => f.includes("linux"));
 
   // Check for missing shards
   const { counts: shardCounts, hasMissing } = detectMissingShards(blobFiles);
@@ -155,12 +172,14 @@ async function run({ github, context, core }) {
   const resultsByOs = {};
   if (hasMacOS) ensureOsBucket(resultsByOs, "macOS");
   if (hasWindows) ensureOsBucket(resultsByOs, "Windows");
+  if (hasLinux) ensureOsBucket(resultsByOs, "Linux");
 
   if (Object.keys(resultsByOs).length === 0) {
     const detected = detectOperatingSystemsFromReport(report);
     if (detected.size === 0) {
       ensureOsBucket(resultsByOs, "macOS");
       ensureOsBucket(resultsByOs, "Windows");
+      ensureOsBucket(resultsByOs, "Linux");
     } else {
       for (const os of detected) ensureOsBucket(resultsByOs, os);
     }
@@ -194,6 +213,10 @@ async function run({ github, context, core }) {
                 os = "Windows";
                 break;
               }
+              if (p.includes("linux")) {
+                os = "Linux";
+                break;
+              }
             }
             if (os) break;
 
@@ -208,16 +231,22 @@ async function run({ github, context, core }) {
               ) {
                 os = "Windows";
                 break;
+              } else if (
+                result.error.stack.includes("/home/runner/") ||
+                result.error.stack.includes("/home/ubuntu/")
+              ) {
+                os = "Linux";
+                break;
               }
             }
           }
 
-          // If we still don't know, assign to both (will be roughly split)
+          // If we still don't know, assign to all (will be roughly split)
           const osTargets = os
             ? [os]
             : Object.keys(resultsByOs).length > 0
               ? Object.keys(resultsByOs)
-              : ["macOS", "Windows"];
+              : ["macOS", "Windows", "Linux"];
 
           // Check if this is a flaky test (passed eventually but had prior failures)
           const hadPriorFailure = results
@@ -297,6 +326,9 @@ async function run({ github, context, core }) {
     if (shardCounts.windows.missing > 0) {
       comment += `- 🪟 **Windows**: found ${shardCounts.windows.found}/${EXPECTED_SHARDS_PER_OS} shards (${shardCounts.windows.missing} missing)\n`;
     }
+    if (shardCounts.linux.missing > 0) {
+      comment += `- 🐧 **Linux**: found ${shardCounts.linux.found}/${EXPECTED_SHARDS_PER_OS} shards (${shardCounts.linux.missing} missing)\n`;
+    }
     comment += "\n";
   }
 
@@ -307,7 +339,7 @@ async function run({ github, context, core }) {
     comment += "| OS | Passed | Flaky | Skipped |\n";
     comment += "|:---|:---:|:---:|:---:|\n";
     for (const [os, data] of Object.entries(resultsByOs)) {
-      const emoji = os === "macOS" ? "🍎" : "🪟";
+      const emoji = getOsEmoji(os);
       comment += `| ${emoji} ${os} | ${data.passed} | ${data.flaky} | ${data.skipped} |\n`;
     }
     comment += `\n**Total: ${totalPassed} tests passed**`;
@@ -319,7 +351,7 @@ async function run({ github, context, core }) {
       comment += "\n\n### ⚠️ Flaky Tests\n\n";
       for (const [os, data] of Object.entries(resultsByOs)) {
         if (data.flakyTests.length === 0) continue;
-        const emoji = os === "macOS" ? "🍎" : "🪟";
+        const emoji = getOsEmoji(os);
         comment += `#### ${emoji} ${os}\n\n`;
         for (const f of data.flakyTests.slice(0, 10)) {
           comment += `- \`${f.title}\` (passed after ${f.retries} ${f.retries === 1 ? "retry" : "retries"})\n`;
@@ -335,7 +367,7 @@ async function run({ github, context, core }) {
     comment += "| OS | Passed | Failed | Flaky | Skipped |\n";
     comment += "|:---|:---:|:---:|:---:|:---:|\n";
     for (const [os, data] of Object.entries(resultsByOs)) {
-      const emoji = os === "macOS" ? "🍎" : "🪟";
+      const emoji = getOsEmoji(os);
       comment += `| ${emoji} ${os} | ${data.passed} | ${data.failed} | ${data.flaky} | ${data.skipped} |\n`;
     }
     comment += `\n**Summary: ${totalPassed} passed, ${totalFailed} failed**`;
@@ -346,7 +378,7 @@ async function run({ github, context, core }) {
 
     for (const [os, data] of Object.entries(resultsByOs)) {
       if (data.failures.length === 0) continue;
-      const emoji = os === "macOS" ? "🍎" : "🪟";
+      const emoji = getOsEmoji(os);
       comment += `#### ${emoji} ${os}\n\n`;
 
       // If more than 10 failures, use collapsible accordion
@@ -394,7 +426,7 @@ async function run({ github, context, core }) {
       comment += "### ⚠️ Flaky Tests\n\n";
       for (const [os, data] of Object.entries(resultsByOs)) {
         if (data.flakyTests.length === 0) continue;
-        const emoji = os === "macOS" ? "🍎" : "🪟";
+        const emoji = getOsEmoji(os);
         comment += `#### ${emoji} ${os}\n\n`;
         for (const f of data.flakyTests.slice(0, 10)) {
           comment += `- \`${f.title}\` (passed after ${f.retries} ${f.retries === 1 ? "retry" : "retries"})\n`;

@@ -17,10 +17,6 @@ defaults:
 
 jobs:
   test:
-    # Why Mac and Windows?
-    # I can't run electron playwright on ubuntu-latest and
-    # Linux support for Dyad is experimental so not as important
-    # as Mac + Windows
     strategy:
       fail-fast: false
       matrix:
@@ -29,6 +25,7 @@ jobs:
             # { name: "windows-arm", image: "windows-11-arm" },
             { name: "windows", image: "windows-latest" },
             { name: "macos", image: "macos-latest" },
+            { name: "linux", image: "ubuntu-latest" },
           ]
         # If you update this, you need to update
         # scripts/generate-playwright-summary.js
@@ -89,6 +86,11 @@ jobs:
         run: cd nextjs-template && pnpm install
       - name: Install Chromium browser for Playwright
         run: npx playwright install chromium --with-deps
+      - name: Install Linux dependencies for Electron
+        if: matrix.os.name == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2
       - name: Build
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
@@ -99,7 +101,13 @@ jobs:
         # You can add debug logging to make it easier to see what's failing
         # by adding "DEBUG=pw:browser" in front.
         # Use blob reporter for sharding and merge capabilities
-        run: DEBUG=pw:browser npx playwright test --shard=${{ matrix.shard }}/${{ matrix.shardTotal }}
+        # Linux requires xvfb-run for headless Electron testing
+        run: |
+          if [ "${{ matrix.os.name }}" = "linux" ]; then
+            DEBUG=pw:browser xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" -- npx playwright test --shard=${{ matrix.shard }}/${{ matrix.shardTotal }}
+          else
+            DEBUG=pw:browser npx playwright test --shard=${{ matrix.shard }}/${{ matrix.shardTotal }}
+          fi
       - name: Upload shard results
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: ${{ !cancelled() }}

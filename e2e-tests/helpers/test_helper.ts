@@ -1561,6 +1561,13 @@ export function testWithConfigSkipIfWindows(config: ElectronConfig) {
 // Wrapper that skips tests on Windows platform
 export const testSkipIfWindows = os.platform() === "win32" ? test.skip : test;
 
+// Wrapper that skips tests on Linux platform
+export const testSkipIfLinux = os.platform() === "linux" ? test.skip : test;
+
+// Wrapper that skips tests on Windows or Linux platforms (only runs on macOS)
+export const testOnlyMacOS =
+  os.platform() === "darwin" ? test : test.skip;
+
 function prettifyDump(
   allMessages: {
     role: string;

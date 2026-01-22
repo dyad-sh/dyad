@@ -229,12 +229,9 @@ def check_gh_graphql_command(cmd: str) -> Optional[dict]:
     GraphQL queries are read-only, mutations are write operations.
     Some PR-related mutations are allowed for workflow automation.
     """
-    # Check for query operations (read-only) - always allowed
-    if re.search(r'query\s*[\s\({]', cmd, re.IGNORECASE):
-        return make_allow_decision("GraphQL query auto-approved (read-only)")
-
-    # Check for mutation keyword
-    if re.search(r'mutation\s*[\s\({]', cmd, re.IGNORECASE):
+    # Check for mutation keyword FIRST to prevent bypass via "mutation ... query {" payload
+    has_mutation = re.search(r'mutation\s*[\s\({]', cmd, re.IGNORECASE)
+    if has_mutation:
         # Allow PR review thread mutations (resolve/unresolve)
         if re.search(r'resolveReviewThread|unresolveReviewThread', cmd, re.IGNORECASE):
             return make_allow_decision("PR review thread mutation auto-approved")
@@ -247,6 +244,10 @@ def check_gh_graphql_command(cmd: str) -> Optional[dict]:
         return make_deny_decision(
             "GraphQL mutation blocked (write operation)"
         )
+
+    # Check for query operations (read-only) - only allowed if no mutation present
+    if re.search(r'query\s*[\s\({]', cmd, re.IGNORECASE):
+        return make_allow_decision("GraphQL query auto-approved (read-only)")
 
     # If we can't determine the operation type, don't auto-approve
     # Let it go through normal permission flow

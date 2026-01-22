@@ -14,6 +14,14 @@ npm run init-precommit
 
 RUN THE FOLLOWING CHECKS before you do a commit.
 
+If you have access to the `/dyad:lint` skill, use it to run all pre-commit checks automatically:
+
+```
+/dyad:lint
+```
+
+Otherwise, run the following commands directly:
+
 **Formatting**
 
 ```sh
@@ -32,7 +40,7 @@ If you get any lint errors, you can usually fix it by doing:
 npm run lint:fix
 ```
 
-**\*Type-checks**
+**Type-checks**
 
 ```sh
 npm run ts

@@ -95,3 +95,8 @@ gh api repos/owner/repo/pulls/123/comments/456/replies -f body='Reply text'
 
 # Issue comments (allowed)
 gh api repos/owner/repo/issues/123/comments -f body='Comment text'
+
+# Piping to jq for JSON processing (allowed)
+gh api /repos/owner/repo | jq '.name'
+gh api graphql -f query='query { viewer { login } }' | jq '.data.viewer.login'
+gh pr view 123 --json title | jq '.title'

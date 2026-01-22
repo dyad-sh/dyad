@@ -41,6 +41,11 @@ SHELL_INJECTION_PATTERNS = re.compile(
 # So we only strip single-quoted content before checking for shell injection
 SINGLE_QUOTED_PATTERN = re.compile(r"'[^']*'")
 
+# Safe pipe destinations - commands that only process text output
+# These are safe because they can't execute arbitrary code from piped input
+# jq: JSON processor, commonly used with gh api output
+SAFE_PIPE_PATTERN = re.compile(r'\|\s*jq\s')
+
 
 def extract_gh_command(command: str) -> Optional[str]:
     """
@@ -115,13 +120,21 @@ def contains_shell_injection(cmd: str) -> bool:
     Only single-quoted strings are safe to strip because bash treats their
     content literally. Double-quoted strings still allow command substitution
     (e.g., "$(rm -rf /)" would execute), so we must check inside them.
+
+    Safe pipes to text-processing commands (like jq) are allowed since they
+    only process the output and can't execute arbitrary code.
     """
     # Strip only single-quoted strings before checking
     # Single quotes are truly safe in bash: '$(cmd)' is literal, not executed
     # Double quotes are NOT safe: "$(cmd)" executes cmd
     # This handles cases like: gh api ... --jq '.[] | {field: .field}'
     cmd_without_single_quotes = SINGLE_QUOTED_PATTERN.sub("''", cmd)
-    return bool(SHELL_INJECTION_PATTERNS.search(cmd_without_single_quotes))
+
+    # Replace safe pipe destinations with a placeholder before checking
+    # This allows patterns like: gh api graphql ... | jq '...'
+    cmd_to_check = SAFE_PIPE_PATTERN.sub(' SAFE_PIPE ', cmd_without_single_quotes)
+
+    return bool(SHELL_INJECTION_PATTERNS.search(cmd_to_check))
 
 
 def main():

@@ -5,7 +5,7 @@ import { ErrorComponentProps } from "@tanstack/react-router";
 import { usePostHog } from "posthog-js/react";
 import { IpcClient } from "@/ipc/ipc_client";
 
-const GITHUB_ISSUES_URL = "https://github.com/yosiwizman/dyad/issues";
+const GITHUB_ISSUES_URL = "https://github.com/yosiwizman/abba-ai/issues";
 
 export function ErrorBoundary({ error }: ErrorComponentProps) {
   const [isLoading, setIsLoading] = useState(false);

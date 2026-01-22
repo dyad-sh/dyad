@@ -23,7 +23,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-e2e'))
     # Why Mac and Windows?
     # I can't run electron playwright on ubuntu-latest and
-    # Linux support for Dyad is experimental so not as important
+    # Linux support for ABBA AI is experimental so not as important
     # as Mac + Windows
     strategy:
       fail-fast: false
@@ -56,7 +56,7 @@ jobs:
         with:
           version: latest
       - name: Clone nextjs-template
-        run: git clone --depth 1 https://github.com/dyad-sh/nextjs-template.git nextjs-template
+        run: git clone --depth 1 https://github.com/yosiwizman/nextjs-template.git nextjs-template
       - name: Get pnpm store directory
         id: pnpm-cache
         shell: bash

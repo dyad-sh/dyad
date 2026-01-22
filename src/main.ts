@@ -30,7 +30,7 @@ import {
 import { cleanupOldAiMessagesJson } from "./pro/main/ipc/handlers/local_agent/ai_messages_cleanup";
 import fs from "fs";
 import { gitAddSafeDirectory } from "./ipc/utils/git_utils";
-import { getDyadAppsBaseDirectory } from "./paths/paths";
+import { getAbbaAppsBaseDirectory } from "./paths/paths";
 import { WINDOWS_AUMID } from "./shared/windowsIdentity";
 
 /**
@@ -123,7 +123,7 @@ export async function onReady() {
   if (settings.enableNativeGit) {
     // Don't need to await because this only needs to run before
     // the user starts interacting with ABBA AI app and uses a git-related feature.
-    gitAddSafeDirectory(getDyadAppsBaseDirectory());
+    gitAddSafeDirectory(getAbbaAppsBaseDirectory());
   }
 
   // Check if app was force-closed
@@ -158,7 +158,7 @@ export async function onReady() {
       logger,
       updateSource: {
         type: UpdateSourceType.ElectronPublicUpdateService,
-        repo: "yosiwizman/dyad",
+        repo: "yosiwizman/abba-ai",
         host,
       },
     }); // additional configuration options available

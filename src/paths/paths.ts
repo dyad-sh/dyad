@@ -5,7 +5,7 @@ import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
 /**
  * Gets the base abba-ai-apps directory path (without a specific app subdirectory)
  */
-export function getDyadAppsBaseDirectory(): string {
+export function getAbbaAppsBaseDirectory(): string {
   if (IS_TEST_BUILD) {
     const electron = getElectron();
     return path.join(electron!.app.getPath("userData"), "abba-ai-apps");
@@ -13,13 +13,13 @@ export function getDyadAppsBaseDirectory(): string {
   return path.join(os.homedir(), "abba-ai-apps");
 }
 
-export function getDyadAppPath(appPath: string): string {
+export function getAbbaAppPath(appPath: string): string {
   // If appPath is already absolute, use it as-is
   if (path.isAbsolute(appPath)) {
     return appPath;
   }
   // Otherwise, use the default base path
-  return path.join(getDyadAppsBaseDirectory(), appPath);
+  return path.join(getAbbaAppsBaseDirectory(), appPath);
 }
 
 export function getTypeScriptCachePath(): string {

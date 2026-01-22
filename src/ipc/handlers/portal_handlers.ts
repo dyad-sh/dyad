@@ -3,7 +3,7 @@ import log from "electron-log";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
-import { getDyadAppPath } from "../../paths/paths";
+import { getAbbaAppPath } from "../../paths/paths";
 import { spawn } from "child_process";
 import { gitCommit, gitAdd } from "../utils/git_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
@@ -26,7 +26,7 @@ export function registerPortalHandlers() {
     "portal:migrate-create",
     async (_, { appId }: { appId: number }): Promise<{ output: string }> => {
       const app = await getApp(appId);
-      const appPath = getDyadAppPath(app.path);
+      const appPath = getAbbaAppPath(app.path);
 
       // Run the migration command
       const migrationOutput = await new Promise<string>((resolve, reject) => {

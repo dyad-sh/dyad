@@ -39,6 +39,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Verify branding (fast guardrail)
         run: node scripts/verify-branding.mjs
+      - name: Verify no Dyad branding (fast guardrail)
+        run: node scripts/verify-no-dyad-branding.mjs
+      - name: Verify brand IDs consistency (fast guardrail)
+        run: node scripts/verify-brand-ids.mjs
       - name: Verify Windows AUMID (fast guardrail)
         run: node scripts/verify-windows-aumid.mjs
       - name: Verify tray icon configuration (fast guardrail)

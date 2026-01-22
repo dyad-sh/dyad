@@ -3,7 +3,7 @@
  * Environment variables are sensitive and should not be logged.
  */
 
-import { getDyadAppPath } from "@/paths/paths";
+import { getAbbaAppPath } from "@/paths/paths";
 import { EnvVar } from "../ipc_types";
 import path from "path";
 import fs from "fs";
@@ -14,7 +14,7 @@ const logger = log.scope("app_env_var_utils");
 export const ENV_FILE_NAME = ".env.local";
 
 function getEnvFilePath({ appPath }: { appPath: string }): string {
-  return path.join(getDyadAppPath(appPath), ENV_FILE_NAME);
+  return path.join(getAbbaAppPath(appPath), ENV_FILE_NAME);
 }
 
 export async function updatePostgresUrlEnvVar({

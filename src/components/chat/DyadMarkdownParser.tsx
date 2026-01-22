@@ -118,7 +118,7 @@ export const VanillaMarkdownParser = ({ content }: { content: string }) => {
 };
 
 /**
- * Custom component to parse markdown content with Dyad-specific tags
+ * Custom component to parse markdown content with functional dyad-specific tags (protocol tags)
  */
 export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
   content,

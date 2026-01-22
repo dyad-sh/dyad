@@ -59,9 +59,9 @@ vi.mock("../ipc/utils/git_utils", () => ({
   getGitUncommittedFiles: vi.fn().mockResolvedValue([]),
 }));
 
-// Mock paths module to control getDyadAppPath
+// Mock paths module to control getAbbaAppPath
 vi.mock("../paths/paths", () => ({
-  getDyadAppPath: vi.fn().mockImplementation((appPath) => {
+  getAbbaAppPath: vi.fn().mockImplementation((appPath) => {
     return `/mock/user/data/path/${appPath}`;
   }),
   getUserDataPath: vi.fn().mockReturnValue("/mock/user/data/path"),

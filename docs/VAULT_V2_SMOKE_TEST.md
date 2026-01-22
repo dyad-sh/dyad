@@ -227,3 +227,21 @@ Then rebuild the app.
 
 - Check Edge Function logs in Dashboard → Edge Functions → [function] → Logs
 - Verify environment variables are set correctly
+
+## Release Validation Notes
+
+### v0.2.3 (January 2026)
+
+**Fix:** Vault IPC channels added to preload allowlist.
+
+Validation steps:
+
+1. Download and install v0.2.3 from GitHub Releases
+2. Open **Settings → Integrations → Vault**
+3. Enter Supabase URL and anon key
+4. Click **Save**, then **Test Connection**
+5. Expected: NO "Invalid channel: vault:test-connection" error
+6. Expected: Status pill updates to Connected / Needs Login / Error
+
+Note: Only the **publishable (anon) key** is stored locally — never service_role.
+The key is **masked** in Copy Diagnostics output.

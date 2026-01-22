@@ -1,7 +1,7 @@
 {
   "name": "abba-ai",
   "productName": "ABBA AI",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Free, local, open-source AI app builder",
   "main": ".vite/build/main.js",
   "repository": {

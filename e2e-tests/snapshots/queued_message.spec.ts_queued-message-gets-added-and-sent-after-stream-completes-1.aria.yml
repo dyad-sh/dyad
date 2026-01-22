@@ -1,0 +1,20 @@
+- paragraph: tc=first_message [sleep=medium]
+- paragraph: "Error: Test case file not found: first_message.md"
+- button:
+  - img
+- img
+- text: test-model
+- img
+- text: less than a minute ago
+- paragraph: tc=queued_message
+- paragraph: "Error: Test case file not found: queued_message.md"
+- button:
+  - img
+- img
+- text: test-model
+- img
+- text: less than a minute ago
+- button "Undo":
+  - img
+- button "Retry":
+  - img

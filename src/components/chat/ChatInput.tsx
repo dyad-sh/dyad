@@ -308,7 +308,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         selectedComponents: componentsToSend,
       });
       clearAttachments();
-      posthog.capture("chat:queue");
       return;
     }
 

@@ -1,4 +1,9 @@
-import type { FileAttachment, Message, AgentTodo } from "@/ipc/types";
+import type {
+  FileAttachment,
+  Message,
+  AgentTodo,
+  ComponentSelection,
+} from "@/ipc/types";
 import type { Getter, Setter } from "jotai";
 import { atom } from "jotai";
 
@@ -141,7 +146,7 @@ export const needsFreshPlanChatAtom = atom<boolean>(false);
 export interface QueuedMessage {
   prompt: string;
   attachments?: FileAttachment[];
-  selectedComponents?: any[];
+  selectedComponents?: ComponentSelection[];
 }
 
 export const queuedMessageByIdAtom = atom<Map<number, QueuedMessage>>(

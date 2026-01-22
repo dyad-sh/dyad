@@ -12,11 +12,11 @@ This document provides step-by-step instructions for testing Vault v2 in the **i
 
 Download and install from [GitHub Releases](https://github.com/yosiwizman/dyad/releases/tag/v0.2.4):
 
-| Platform | File |
-|----------|------|
-| Windows | `ABBA.AI-0.2.4.Setup.exe` |
+| Platform              | File                             |
+| --------------------- | -------------------------------- |
+| Windows               | `ABBA.AI-0.2.4.Setup.exe`        |
 | macOS (Apple Silicon) | `ABBA.AI-darwin-arm64-0.2.4.zip` |
-| macOS (Intel) | `ABBA.AI-darwin-x64-0.2.4.zip` |
+| macOS (Intel)         | `ABBA.AI-darwin-x64-0.2.4.zip`   |
 
 ---
 
@@ -249,18 +249,18 @@ Settings file may be corrupted.
 
 ## Checklist Summary
 
-| Test | Status |
-|------|--------|
-| 1. Initial Configuration | ⬜ |
-| 2. Save Configuration | ⬜ |
-| 3. Sign In | ⬜ |
-| 4. Sign Up (optional) | ⬜ |
-| 5. Test Connection | ⬜ |
-| 6. Create Backup | ⬜ |
-| 7. Restore Backup | ⬜ |
-| 8. Persistence After Restart | ⬜ |
-| 9. Sign Out | ⬜ |
-| 10. Copy Diagnostics | ⬜ |
+| Test                         | Status |
+| ---------------------------- | ------ |
+| 1. Initial Configuration     | ⬜     |
+| 2. Save Configuration        | ⬜     |
+| 3. Sign In                   | ⬜     |
+| 4. Sign Up (optional)        | ⬜     |
+| 5. Test Connection           | ⬜     |
+| 6. Create Backup             | ⬜     |
+| 7. Restore Backup            | ⬜     |
+| 8. Persistence After Restart | ⬜     |
+| 9. Sign Out                  | ⬜     |
+| 10. Copy Diagnostics         | ⬜     |
 
 ---
 

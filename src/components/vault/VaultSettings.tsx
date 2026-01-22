@@ -29,13 +29,23 @@ interface VaultTestResult {
   message: string;
 }
 
+type VaultAuthReason =
+  | "AUTHENTICATED"
+  | "NO_SESSION"
+  | "SESSION_EXPIRED"
+  | "TOKEN_REFRESH_FAILED"
+  | "CONFIG_MISSING";
+
 interface VaultDiagnostics {
   timestamp: string;
   supabaseUrl: string;
   hasAnonKey: boolean;
   maskedAnonKey: string;
   isAuthenticated: boolean;
-  organizationName: string | null;
+  authReason: VaultAuthReason;
+  userEmail: string | null;
+  expiresAt: string | null;
+  supabaseOrgSlug: string | null;
   lastError: string | null;
 }
 
@@ -176,8 +186,20 @@ Timestamp: ${diagnostics.timestamp}
 Supabase URL: ${diagnostics.supabaseUrl}
 Has Anon Key: ${diagnostics.hasAnonKey}
 Masked Key: ${diagnostics.maskedAnonKey}
+
+Vault Auth Status
+-----------------
 Authenticated: ${diagnostics.isAuthenticated}
-Organization: ${diagnostics.organizationName || "None"}
+Auth Reason: ${diagnostics.authReason}
+User Email: ${diagnostics.userEmail || "None"}
+Session Expires: ${diagnostics.expiresAt || "N/A"}
+
+Supabase Connection
+-------------------
+Org Slug: ${diagnostics.supabaseOrgSlug || "None"}
+
+Errors
+------
 Last Error: ${diagnostics.lastError || "None"}
 `.trim();
 

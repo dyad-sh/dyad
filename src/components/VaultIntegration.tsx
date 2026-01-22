@@ -18,8 +18,16 @@ interface VaultConfig {
   configured: boolean;
 }
 
+type VaultAuthReason =
+  | "AUTHENTICATED"
+  | "NO_SESSION"
+  | "SESSION_EXPIRED"
+  | "TOKEN_REFRESH_FAILED"
+  | "CONFIG_MISSING";
+
 interface VaultAuthStatus {
   isAuthenticated: boolean;
+  reason: VaultAuthReason;
   userEmail?: string;
   expiresAt?: number;
 }
@@ -82,8 +90,13 @@ export function VaultIntegration() {
     );
   }
 
-  // Determine if user is authenticated (via Vault auth or Supabase org)
-  const isAuthenticated = authStatus?.isAuthenticated || status?.isAuthenticated;
+  // Primary auth: Vault project auth (email/password)
+  // This is required for backup operations
+  const isVaultAuthenticated = authStatus?.isAuthenticated ?? false;
+  // Note: authReason is available via authStatus?.reason if needed for debugging
+
+  // Secondary: Supabase org connection (management API - separate from Vault)
+  const hasSupabaseOrgConnection = status?.isAuthenticated ?? false;
 
   // If not configured, show only the configuration UI
   if (!config?.configured) {
@@ -113,7 +126,8 @@ export function VaultIntegration() {
   }
 
   // Configured but not authenticated - show config + auth UI
-  if (!isAuthenticated) {
+  // Always show VaultAuth form when vault auth is missing
+  if (!isVaultAuthenticated) {
     return (
       <div>
         <div className="flex items-center justify-between">
@@ -139,10 +153,20 @@ export function VaultIntegration() {
           </Button>
         </div>
 
-        {/* Auth UI */}
+        {/* Vault Auth UI - Always show when not authenticated */}
         <div className="mt-4">
           <VaultAuth />
         </div>
+
+        {/* Supabase Org Connection Status (if connected) */}
+        {hasSupabaseOrgConnection && status?.organizationName && (
+          <div className="mt-3 p-2 bg-gray-50 dark:bg-gray-800/50 rounded-md">
+            <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
+              <Info className="h-3 w-3" />
+              Supabase Org: {status.organizationName} (separate from Vault auth)
+            </p>
+          </div>
+        )}
 
         {/* Collapsible Settings Panel */}
         {showSettings && (
@@ -167,7 +191,7 @@ export function VaultIntegration() {
             </span>
           </h3>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            Connected as {authStatus?.userEmail || status?.organizationName || "Vault User"}
+            Vault Auth: {authStatus?.userEmail || "Connected"}
           </p>
         </div>
         <div className="flex items-center gap-2">

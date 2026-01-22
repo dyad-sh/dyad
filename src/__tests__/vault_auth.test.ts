@@ -3,7 +3,9 @@ import { VaultAuthSessionSchema, VaultSettingsSchema } from "../lib/schemas";
 
 describe("VaultAuthSession Schema", () => {
   const validSession = {
-    accessToken: { value: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test.signature" },
+    accessToken: {
+      value: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test.signature",
+    },
     refreshToken: { value: "refresh_token_value" },
     userEmail: "user@example.com",
     expiresAt: Date.now() + 3600000, // 1 hour from now
@@ -153,6 +155,7 @@ describe("Vault Auth IPC Channels", () => {
     "vault:auth-sign-in",
     "vault:auth-sign-out",
     "vault:auth-status",
+    "vault:auth-refresh",
   ];
 
   it("should have consistent channel naming", () => {
@@ -161,7 +164,170 @@ describe("Vault Auth IPC Channels", () => {
     });
   });
 
-  it("should have three auth channels", () => {
-    expect(AUTH_CHANNELS).toHaveLength(3);
+  it("should have four auth channels", () => {
+    expect(AUTH_CHANNELS).toHaveLength(4);
+  });
+});
+
+describe("VaultAuthReason Types", () => {
+  // Valid auth reason values
+  const VALID_REASONS = [
+    "AUTHENTICATED",
+    "NO_SESSION",
+    "SESSION_EXPIRED",
+    "TOKEN_REFRESH_FAILED",
+    "CONFIG_MISSING",
+  ] as const;
+
+  type VaultAuthReason = (typeof VALID_REASONS)[number];
+
+  it("should define all expected auth reasons", () => {
+    expect(VALID_REASONS).toContain("AUTHENTICATED");
+    expect(VALID_REASONS).toContain("NO_SESSION");
+    expect(VALID_REASONS).toContain("SESSION_EXPIRED");
+    expect(VALID_REASONS).toContain("TOKEN_REFRESH_FAILED");
+    expect(VALID_REASONS).toContain("CONFIG_MISSING");
+  });
+
+  it("should have exactly 5 auth reasons", () => {
+    expect(VALID_REASONS).toHaveLength(5);
+  });
+
+  const authReasonMessages: Record<VaultAuthReason, string> = {
+    AUTHENTICATED: "User is authenticated and session is valid",
+    NO_SESSION: "No active session found - user needs to sign in",
+    SESSION_EXPIRED: "Session has expired - user needs to sign in again",
+    TOKEN_REFRESH_FAILED:
+      "Session refresh failed - user needs to sign in again",
+    CONFIG_MISSING: "Vault is not configured - URL or key missing",
+  };
+
+  it("should map all reasons to user-friendly messages", () => {
+    VALID_REASONS.forEach((reason) => {
+      expect(authReasonMessages[reason]).toBeDefined();
+      expect(authReasonMessages[reason].length).toBeGreaterThan(0);
+    });
+  });
+});
+
+describe("Auth Status Result Structure", () => {
+  interface VaultAuthStatusResult {
+    isAuthenticated: boolean;
+    reason: string;
+    userEmail?: string;
+    userId?: string;
+    expiresAt?: number;
+  }
+
+  const createAuthStatus = (
+    overrides: Partial<VaultAuthStatusResult>,
+  ): VaultAuthStatusResult => ({
+    isAuthenticated: false,
+    reason: "NO_SESSION",
+    ...overrides,
+  });
+
+  it("should correctly represent authenticated state", () => {
+    const status = createAuthStatus({
+      isAuthenticated: true,
+      reason: "AUTHENTICATED",
+      userEmail: "user@example.com",
+      expiresAt: Date.now() + 3600000,
+    });
+
+    expect(status.isAuthenticated).toBe(true);
+    expect(status.reason).toBe("AUTHENTICATED");
+    expect(status.userEmail).toBeDefined();
+    expect(status.expiresAt).toBeGreaterThan(Date.now());
+  });
+
+  it("should correctly represent NO_SESSION state", () => {
+    const status = createAuthStatus({
+      isAuthenticated: false,
+      reason: "NO_SESSION",
+    });
+
+    expect(status.isAuthenticated).toBe(false);
+    expect(status.reason).toBe("NO_SESSION");
+    expect(status.userEmail).toBeUndefined();
+  });
+
+  it("should correctly represent SESSION_EXPIRED state", () => {
+    const expiredTime = Date.now() - 1000;
+    const status = createAuthStatus({
+      isAuthenticated: false,
+      reason: "SESSION_EXPIRED",
+      userEmail: "user@example.com",
+      expiresAt: expiredTime,
+    });
+
+    expect(status.isAuthenticated).toBe(false);
+    expect(status.reason).toBe("SESSION_EXPIRED");
+    expect(status.userEmail).toBeDefined();
+    expect(status.expiresAt).toBeLessThan(Date.now());
+  });
+
+  it("should correctly represent CONFIG_MISSING state", () => {
+    const status = createAuthStatus({
+      isAuthenticated: false,
+      reason: "CONFIG_MISSING",
+    });
+
+    expect(status.isAuthenticated).toBe(false);
+    expect(status.reason).toBe("CONFIG_MISSING");
+  });
+});
+
+describe("Diagnostics Output Formatting", () => {
+  interface VaultDiagnostics {
+    timestamp: string;
+    supabaseUrl: string;
+    hasAnonKey: boolean;
+    maskedAnonKey: string;
+    isAuthenticated: boolean;
+    authReason: string;
+    userEmail: string | null;
+    expiresAt: string | null;
+    supabaseOrgSlug: string | null;
+    lastError: string | null;
+  }
+
+  const sampleDiagnostics: VaultDiagnostics = {
+    timestamp: new Date().toISOString(),
+    supabaseUrl: "https://test-project.supabase.co",
+    hasAnonKey: true,
+    maskedAnonKey: "***...abcdef",
+    isAuthenticated: true,
+    authReason: "AUTHENTICATED",
+    userEmail: "user@example.com",
+    expiresAt: new Date(Date.now() + 3600000).toISOString(),
+    supabaseOrgSlug: "my-org",
+    lastError: null,
+  };
+
+  it("should have all required fields", () => {
+    expect(sampleDiagnostics.timestamp).toBeDefined();
+    expect(sampleDiagnostics.supabaseUrl).toBeDefined();
+    expect(sampleDiagnostics.hasAnonKey).toBeDefined();
+    expect(sampleDiagnostics.maskedAnonKey).toBeDefined();
+    expect(sampleDiagnostics.isAuthenticated).toBeDefined();
+    expect(sampleDiagnostics.authReason).toBeDefined();
+  });
+
+  it("should not include raw tokens or keys", () => {
+    const diagnosticsString = JSON.stringify(sampleDiagnostics);
+    expect(diagnosticsString).not.toContain("accessToken");
+    expect(diagnosticsString).not.toContain("refreshToken");
+    expect(diagnosticsString).not.toContain("anonKey");
+    // maskedAnonKey is fine
+    expect(diagnosticsString).toContain("maskedAnonKey");
+  });
+
+  it("should mask the anon key correctly", () => {
+    expect(sampleDiagnostics.maskedAnonKey).toMatch(/^\*\*\*\.\.\./);
+  });
+
+  it("should include authReason for clarity", () => {
+    expect(sampleDiagnostics.authReason).toBe("AUTHENTICATED");
   });
 });

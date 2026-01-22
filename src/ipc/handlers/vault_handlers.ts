@@ -19,6 +19,17 @@ import {
 } from "../../vault/vault_config";
 import type { VaultAuthSession } from "../../lib/schemas";
 
+/**
+ * Vault authentication status reason codes.
+ * Used to provide clear feedback on why authentication failed or succeeded.
+ */
+export type VaultAuthReason =
+  | "AUTHENTICATED"
+  | "NO_SESSION"
+  | "SESSION_EXPIRED"
+  | "TOKEN_REFRESH_FAILED"
+  | "CONFIG_MISSING";
+
 const logger = log.scope("vault_handlers");
 const handle = createLoggedHandler(logger);
 
@@ -51,7 +62,9 @@ async function getVaultAccessToken(): Promise<string | null> {
     // Token expired, try to refresh
     if (vaultSession.refreshToken?.value) {
       try {
-        const refreshed = await refreshVaultSession(vaultSession.refreshToken.value);
+        const refreshed = await refreshVaultSession(
+          vaultSession.refreshToken.value,
+        );
         if (refreshed) {
           return refreshed.accessToken.value;
         }
@@ -82,7 +95,9 @@ async function getVaultAccessToken(): Promise<string | null> {
 function createVaultSupabaseClient() {
   const config = getVaultConfig();
   if (!config.url || !config.anonKey) {
-    throw new Error("Vault is not configured. Please set URL and publishable key.");
+    throw new Error(
+      "Vault is not configured. Please set URL and publishable key.",
+    );
   }
 
   // Dynamic import to avoid bundling issues
@@ -113,7 +128,9 @@ async function signInToVault(
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error_description || error.message || "Sign in failed");
+    throw new Error(
+      error.error_description || error.message || "Sign in failed",
+    );
   }
 
   const data = await response.json();
@@ -122,7 +139,7 @@ async function signInToVault(
     accessToken: { value: data.access_token },
     refreshToken: { value: data.refresh_token },
     userEmail: data.user?.email || email,
-    expiresAt: Date.now() + (data.expires_in * 1000),
+    expiresAt: Date.now() + data.expires_in * 1000,
   };
 
   // Store session in settings
@@ -158,21 +175,25 @@ async function signUpForVault(
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error_description || error.message || "Sign up failed");
+    throw new Error(
+      error.error_description || error.message || "Sign up failed",
+    );
   }
 
   const data = await response.json();
 
   // If email confirmation is required, user won't have tokens yet
   if (!data.access_token) {
-    throw new Error("Please check your email to confirm your account, then sign in.");
+    throw new Error(
+      "Please check your email to confirm your account, then sign in.",
+    );
   }
 
   const session: VaultAuthSession = {
     accessToken: { value: data.access_token },
     refreshToken: { value: data.refresh_token },
     userEmail: data.user?.email || email,
-    expiresAt: Date.now() + (data.expires_in * 1000),
+    expiresAt: Date.now() + data.expires_in * 1000,
   };
 
   // Store session in settings
@@ -196,14 +217,17 @@ async function refreshVaultSession(
 ): Promise<VaultAuthSession | null> {
   const { url, anonKey } = createVaultSupabaseClient();
 
-  const response = await fetch(`${url}/auth/v1/token?grant_type=refresh_token`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      apikey: anonKey,
+  const response = await fetch(
+    `${url}/auth/v1/token?grant_type=refresh_token`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: anonKey,
+      },
+      body: JSON.stringify({ refresh_token: refreshToken }),
     },
-    body: JSON.stringify({ refresh_token: refreshToken }),
-  });
+  );
 
   if (!response.ok) {
     return null;
@@ -215,7 +239,7 @@ async function refreshVaultSession(
     accessToken: { value: data.access_token },
     refreshToken: { value: data.refresh_token },
     userEmail: data.user?.email || "",
-    expiresAt: Date.now() + (data.expires_in * 1000),
+    expiresAt: Date.now() + data.expires_in * 1000,
   };
 
   // Update stored session
@@ -248,27 +272,53 @@ function signOutFromVault(): void {
 }
 
 /**
- * Get current Vault auth status
+ * Structured Vault auth status result
  */
-function getVaultAuthStatus(): {
+export interface VaultAuthStatusResult {
   isAuthenticated: boolean;
+  reason: VaultAuthReason;
   userEmail?: string;
+  userId?: string;
   expiresAt?: number;
-} {
+}
+
+/**
+ * Get current Vault auth status with detailed reason
+ */
+function getVaultAuthStatus(): VaultAuthStatusResult {
   const settings = readSettings();
+  const config = getVaultConfig();
+
+  // Check if Vault is configured
+  if (!config.url || !config.anonKey) {
+    return {
+      isAuthenticated: false,
+      reason: "CONFIG_MISSING",
+    };
+  }
+
   const session = settings.vault?.authSession;
 
   if (!session?.accessToken?.value) {
-    return { isAuthenticated: false };
+    return {
+      isAuthenticated: false,
+      reason: "NO_SESSION",
+    };
   }
 
   const now = Date.now();
   if (session.expiresAt <= now) {
-    return { isAuthenticated: false };
+    return {
+      isAuthenticated: false,
+      reason: "SESSION_EXPIRED",
+      userEmail: session.userEmail,
+      expiresAt: session.expiresAt,
+    };
   }
 
   return {
     isAuthenticated: true,
+    reason: "AUTHENTICATED",
     userEmail: session.userEmail,
     expiresAt: session.expiresAt,
   };
@@ -327,6 +377,7 @@ export interface VaultTestConnectionResult {
   success: boolean;
   status: "connected" | "needs_login" | "invalid_url" | "invalid_key" | "error";
   message: string;
+  authReason?: VaultAuthReason;
 }
 
 export interface VaultDiagnostics {
@@ -335,7 +386,10 @@ export interface VaultDiagnostics {
   hasAnonKey: boolean;
   maskedAnonKey: string;
   isAuthenticated: boolean;
-  organizationName: string | null;
+  authReason: VaultAuthReason;
+  userEmail: string | null;
+  expiresAt: string | null; // ISO timestamp or null
+  supabaseOrgSlug: string | null;
   lastError: string | null;
 }
 
@@ -502,41 +556,84 @@ export function registerVaultHandlers() {
 
   /**
    * Test vault connection
-   * Attempts to call list-backups with limit=1 to verify connectivity
+   * Validates config, attempts session refresh, and tests Edge Function connectivity
    */
   handle(
     "vault:test-connection",
     async (): Promise<VaultTestConnectionResult> => {
       const config = getVaultConfig();
 
-      // Check if configured
+      // Step 1: Validate config
+      if (!config.url) {
+        return {
+          success: false,
+          status: "invalid_url",
+          message: "Supabase URL is not configured",
+          authReason: "CONFIG_MISSING",
+        };
+      }
+
       if (!config.anonKey) {
         return {
           success: false,
           status: "invalid_key",
           message: "Publishable key is not configured",
+          authReason: "CONFIG_MISSING",
         };
       }
 
-      // Check if user is authenticated
+      // Step 2: Check auth status and attempt refresh if expired
+      const authStatus = getVaultAuthStatus();
+      logger.info(`Test connection - auth status: ${authStatus.reason}`);
+
+      if (authStatus.reason === "SESSION_EXPIRED") {
+        // Try to refresh the session
+        const settings = readSettings();
+        const refreshToken = settings.vault?.authSession?.refreshToken?.value;
+        if (refreshToken) {
+          logger.info("Attempting to refresh expired session...");
+          const refreshed = await refreshVaultSession(refreshToken);
+          if (!refreshed) {
+            return {
+              success: false,
+              status: "needs_login",
+              message:
+                "Session expired and refresh failed. Please sign in again.",
+              authReason: "TOKEN_REFRESH_FAILED",
+            };
+          }
+          logger.info("Session refreshed successfully");
+        } else {
+          return {
+            success: false,
+            status: "needs_login",
+            message: "Session expired. Please sign in to Vault.",
+            authReason: "SESSION_EXPIRED",
+          };
+        }
+      }
+
+      // Step 3: Check if we have a valid token
       const token = await getVaultAccessToken();
       if (!token) {
         return {
           success: false,
           status: "needs_login",
-          message: "Sign in to Supabase to use Vault",
+          message: "No active session. Sign in to Vault to enable backups.",
+          authReason: authStatus.reason,
         };
       }
 
+      // Step 4: Test end-to-end connectivity with edge function
       try {
         const client = createVaultClient();
-        // Try to list backups (validates URL, key, and auth)
         await client.listBackups();
 
         return {
           success: true,
           status: "connected",
           message: "Successfully connected to Vault",
+          authReason: "AUTHENTICATED",
         };
       } catch (error) {
         const errorMessage =
@@ -555,7 +652,8 @@ export function registerVaultHandlers() {
           return {
             success: false,
             status: "needs_login",
-            message: "Session expired. Please sign in to Supabase again.",
+            message: "Session expired. Please sign in to Vault again.",
+            authReason: "SESSION_EXPIRED",
           };
         }
 
@@ -594,24 +692,36 @@ export function registerVaultHandlers() {
 
   /**
    * Get vault diagnostics for support
-   * Returns sanitized info (no full keys)
+   * Returns sanitized info (no full keys or tokens)
    */
   handle("vault:get-diagnostics", async (): Promise<VaultDiagnostics> => {
     const config = getVaultConfig();
-    const token = await getVaultAccessToken();
     const settings = readSettings();
     const organizations = settings.supabase?.organizations;
     const orgSlugs = organizations ? Object.keys(organizations) : [];
-    const vaultAuthStatus = getVaultAuthStatus();
+    const authStatus = getVaultAuthStatus();
+
+    // Format expiry timestamp safely
+    let expiresAtFormatted: string | null = null;
+    if (authStatus.expiresAt) {
+      try {
+        expiresAtFormatted = new Date(authStatus.expiresAt).toISOString();
+      } catch {
+        expiresAtFormatted = `Invalid timestamp: ${authStatus.expiresAt}`;
+      }
+    }
 
     return {
       timestamp: new Date().toISOString(),
       supabaseUrl: config.url,
       hasAnonKey: config.anonKey.length > 0,
       maskedAnonKey: maskKey(config.anonKey),
-      isAuthenticated: !!token,
-      organizationName: vaultAuthStatus.userEmail || orgSlugs[0] || null,
-      lastError: null, // Could be enhanced to track last error
+      isAuthenticated: authStatus.isAuthenticated,
+      authReason: authStatus.reason,
+      userEmail: authStatus.userEmail || null,
+      expiresAt: expiresAtFormatted,
+      supabaseOrgSlug: orgSlugs[0] || null,
+      lastError: null,
     };
   });
 
@@ -633,7 +743,8 @@ export function registerVaultHandlers() {
         }
         return { success: true, userEmail: session.userEmail };
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Authentication failed";
+        const message =
+          error instanceof Error ? error.message : "Authentication failed";
         logger.error(`Vault auth failed: ${message}`);
         return { success: false, error: message };
       }
@@ -643,25 +754,44 @@ export function registerVaultHandlers() {
   /**
    * Sign out from Vault
    */
-  handle(
-    "vault:auth-sign-out",
-    async (): Promise<{ success: boolean }> => {
-      signOutFromVault();
-      return { success: true };
-    },
-  );
+  handle("vault:auth-sign-out", async (): Promise<{ success: boolean }> => {
+    signOutFromVault();
+    return { success: true };
+  });
 
   /**
-   * Get Vault auth status
+   * Get Vault auth status with detailed reason
+   */
+  handle("vault:auth-status", async (): Promise<VaultAuthStatusResult> => {
+    return getVaultAuthStatus();
+  });
+
+  /**
+   * Refresh Vault session manually
    */
   handle(
-    "vault:auth-status",
-    async (): Promise<{
-      isAuthenticated: boolean;
-      userEmail?: string;
-      expiresAt?: number;
-    }> => {
-      return getVaultAuthStatus();
+    "vault:auth-refresh",
+    async (): Promise<{ success: boolean; error?: string }> => {
+      const settings = readSettings();
+      const refreshToken = settings.vault?.authSession?.refreshToken?.value;
+
+      if (!refreshToken) {
+        return { success: false, error: "No refresh token available" };
+      }
+
+      try {
+        const session = await refreshVaultSession(refreshToken);
+        if (session) {
+          logger.info("Manual session refresh successful");
+          return { success: true };
+        }
+        return { success: false, error: "Session refresh failed" };
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Refresh failed";
+        logger.error(`Manual session refresh failed: ${message}`);
+        return { success: false, error: message };
+      }
     },
   );
 }

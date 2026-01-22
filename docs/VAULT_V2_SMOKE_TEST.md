@@ -230,6 +230,7 @@ All these Vault channels should work without "Invalid channel" errors:
 - `vault:auth-sign-in` (v0.2.4+)
 - `vault:auth-sign-out` (v0.2.4+)
 - `vault:auth-status` (v0.2.4+)
+- `vault:auth-refresh` (v0.2.6+)
 
 ## Troubleshooting
 
@@ -271,6 +272,42 @@ Then rebuild the app.
 - Verify environment variables are set correctly
 
 ## Release Validation Notes
+
+### v0.2.6 (January 2026)
+
+**Fix:** Vault auth gating + clarity improvements.
+
+Key changes:
+
+- Clear separation between "Vault Auth (Project)" and "Supabase Org Connection"
+- VaultAuth form is ALWAYS shown when user is not authenticated
+- Added structured `authReason` enum: `AUTHENTICATED`, `NO_SESSION`, `SESSION_EXPIRED`, `TOKEN_REFRESH_FAILED`, `CONFIG_MISSING`
+- Test Connection attempts session refresh before returning "needs_login"
+- Diagnostics now include `authReason`, user email, and session expiry timestamp
+- Added "Refresh Session" button in VaultAuth component
+- Removed confusing "Connected as <org>" when Vault auth is missing
+
+**Validation Checklist:**
+
+| Step                                     | Expected Result                                                     | ✅  |
+| ---------------------------------------- | ------------------------------------------------------------------- | --- |
+| 1. Configure URL + key                   | Settings saved, status shows "Not tested"                           | ⬜  |
+| 2. Click Test Connection (no auth)       | Status: "Needs login", reason: "NO_SESSION"                         | ⬜  |
+| 3. Sign in with email/password           | Success toast, "Signed in to Vault (Project Auth)" shown            | ⬜  |
+| 4. Click Test Connection (authenticated) | Status: "Connected", reason: "AUTHENTICATED"                        | ⬜  |
+| 5. Click Copy Diagnostics                | Report includes `Auth Reason: AUTHENTICATED`, `User Email: <email>` | ⬜  |
+| 6. Click Sign Out                        | Success toast, sign-in form reappears                               | ⬜  |
+| 7. Restart app, check Vault              | Config persists, auth status correctly shown                        | ⬜  |
+| 8. If session expired                    | Message: "Session expired", reason: "SESSION_EXPIRED"               | ⬜  |
+| 9. Click Refresh button                  | Session refreshed or prompts re-login                               | ⬜  |
+
+**Screenshots Checklist:**
+
+- [ ] Vault unconfigured state (Settings UI visible)
+- [ ] Vault configured but not authenticated (VaultAuth form visible)
+- [ ] Vault authenticated state ("Signed in to Vault (Project Auth)" visible)
+- [ ] Test Connection: "Connected" status
+- [ ] Diagnostics report showing `authReason`
 
 ### v0.2.4 (January 2026)
 

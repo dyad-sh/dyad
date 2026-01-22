@@ -68,7 +68,7 @@ serve(async (req: Request) => {
         {
           status: 401,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
     }
 
@@ -109,7 +109,7 @@ serve(async (req: Request) => {
         {
           status: 403,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
     }
 
@@ -119,7 +119,10 @@ serve(async (req: Request) => {
       .remove([backup.storage_path]);
 
     if (storageError) {
-      console.warn("Failed to delete storage file (may not exist):", storageError);
+      console.warn(
+        "Failed to delete storage file (may not exist):",
+        storageError,
+      );
       // Continue with database deletion even if storage deletion fails
     }
 
@@ -136,7 +139,7 @@ serve(async (req: Request) => {
         {
           status: 500,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
     }
 

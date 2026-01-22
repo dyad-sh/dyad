@@ -73,7 +73,7 @@ serve(async (req: Request) => {
         {
           status: 401,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
     }
 
@@ -86,7 +86,7 @@ serve(async (req: Request) => {
     const { data: backups, error: fetchError } = await supabaseAdmin
       .from("vault_backups")
       .select(
-        "id, project_name, size_bytes, sha256, status, created_at, app_version, notes"
+        "id, project_name, size_bytes, sha256, status, created_at, app_version, notes",
       )
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
@@ -98,7 +98,7 @@ serve(async (req: Request) => {
         {
           status: 500,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
     }
 

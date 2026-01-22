@@ -72,7 +72,7 @@ serve(async (req: Request) => {
         {
           status: 401,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
     }
 
@@ -113,7 +113,7 @@ serve(async (req: Request) => {
         {
           status: 403,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
     }
 
@@ -124,7 +124,7 @@ serve(async (req: Request) => {
         {
           status: 400,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
     }
 
@@ -141,7 +141,7 @@ serve(async (req: Request) => {
         {
           status: 500,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
     }
 

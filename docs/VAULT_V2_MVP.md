@@ -111,7 +111,7 @@ CREATE TABLE public.vault_backups (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     app_version TEXT,
     notes TEXT,
-    
+
     CONSTRAINT valid_status CHECK (status IN ('pending', 'uploaded', 'failed'))
 );
 
@@ -285,6 +285,7 @@ Use an existing Supabase project or create a new one for ABBA Vault.
 ### 3. Run SQL Migration
 
 Execute the SQL migration in `supabase/migrations/vault_v2_schema.sql`:
+
 1. Go to Supabase Dashboard → SQL Editor
 2. Paste and run the migration SQL
 
@@ -308,6 +309,7 @@ If using custom domains, configure CORS in Supabase Dashboard → Settings → A
 ### 6. Provide App Configuration
 
 The desktop app needs:
+
 - `SUPABASE_VAULT_URL`: Project URL (e.g., `https://xxx.supabase.co`)
 - `SUPABASE_VAULT_ANON_KEY`: Anon/public key for the project
 
@@ -322,13 +324,13 @@ The desktop app needs:
 
 ## Error Handling
 
-| Error | Cause | Resolution |
-|-------|-------|------------|
-| 401 Unauthorized | Invalid/expired JWT | Re-authenticate via Supabase |
-| 403 Forbidden | RLS policy violation | User doesn't own resource |
-| 404 Not Found | Backup doesn't exist | Check backup ID |
-| 413 Payload Too Large | File exceeds limit | Reduce backup size |
-| 500 Internal Error | Server issue | Retry or contact support |
+| Error                 | Cause                | Resolution                   |
+| --------------------- | -------------------- | ---------------------------- |
+| 401 Unauthorized      | Invalid/expired JWT  | Re-authenticate via Supabase |
+| 403 Forbidden         | RLS policy violation | User doesn't own resource    |
+| 404 Not Found         | Backup doesn't exist | Check backup ID              |
+| 413 Payload Too Large | File exceeds limit   | Reduce backup size           |
+| 500 Internal Error    | Server issue         | Retry or contact support     |
 
 ## Version History
 

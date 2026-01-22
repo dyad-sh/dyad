@@ -13,6 +13,7 @@ This document provides step-by-step instructions for verifying the Vault v2 depl
 Open the Supabase Dashboard → Table Editor and confirm:
 
 - [ ] Table `vault_backups` exists with columns:
+
   - `id` (UUID, primary key)
   - `user_id` (UUID, not null)
   - `project_name` (TEXT, not null)
@@ -62,8 +63,9 @@ curl -X POST https://shyspsgqbhiuntdjgfro.supabase.co/functions/v1/vault-list-ba
 ```
 
 Expected response:
+
 ```json
-{"backups":[]}
+{ "backups": [] }
 ```
 
 ### 4.3 Test vault-signed-upload
@@ -76,6 +78,7 @@ curl -X POST https://shyspsgqbhiuntdjgfro.supabase.co/functions/v1/vault-signed-
 ```
 
 Expected response:
+
 ```json
 {
   "backupId": "uuid-here",
@@ -130,34 +133,38 @@ Also delete test files from Storage bucket via Dashboard.
 
 ## Smoke Test Checklist Summary
 
-| Component | Status |
-|-----------|--------|
-| vault_backups table | ⬜ |
-| RLS policies | ⬜ |
-| abba-vault bucket | ⬜ |
-| Storage policies | ⬜ |
-| vault-signed-upload | ⬜ |
-| vault-signed-download | ⬜ |
-| vault-confirm-upload | ⬜ |
-| vault-list-backups | ⬜ |
-| vault-delete-backup | ⬜ |
-| E2E backup flow | ⬜ |
-| E2E restore flow | ⬜ |
+| Component             | Status |
+| --------------------- | ------ |
+| vault_backups table   | ⬜     |
+| RLS policies          | ⬜     |
+| abba-vault bucket     | ⬜     |
+| Storage policies      | ⬜     |
+| vault-signed-upload   | ⬜     |
+| vault-signed-download | ⬜     |
+| vault-confirm-upload  | ⬜     |
+| vault-list-backups    | ⬜     |
+| vault-delete-backup   | ⬜     |
+| E2E backup flow       | ⬜     |
+| E2E restore flow      | ⬜     |
 
 ## Troubleshooting
 
 ### "JWT token is invalid" error
+
 - Ensure the JWT token is fresh (not expired)
 - Verify the token was issued by this Supabase project
 
 ### "Bucket not found" error
+
 - Verify `abba-vault` bucket exists in Storage
 - Check bucket name spelling (case-sensitive)
 
 ### "Permission denied" storage error
+
 - Verify storage RLS policies are correctly applied
 - Ensure the user_id folder matches the authenticated user
 
 ### Edge Function returns 500
+
 - Check Edge Function logs in Dashboard → Edge Functions → [function] → Logs
 - Verify environment variables are set correctly

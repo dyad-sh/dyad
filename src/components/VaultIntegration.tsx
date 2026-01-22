@@ -48,7 +48,7 @@ export function VaultIntegration() {
       showSuccess("Vault status refreshed");
     } catch (error) {
       showError(
-        error instanceof Error ? error.message : "Failed to refresh status"
+        error instanceof Error ? error.message : "Failed to refresh status",
       );
     } finally {
       setIsRefreshing(false);
@@ -89,7 +89,8 @@ export function VaultIntegration() {
               Vault is not configured.
             </p>
             <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-              Set VAULT_SUPABASE_URL and VAULT_SUPABASE_ANON_KEY environment variables, or contact your administrator.
+              Set VAULT_SUPABASE_URL and VAULT_SUPABASE_ANON_KEY environment
+              variables, or contact your administrator.
             </p>
           </div>
         </div>

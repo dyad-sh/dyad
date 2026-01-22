@@ -16,13 +16,15 @@ export function sanitizeProjectName(name: string): string {
     return "unnamed-project";
   }
 
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]/g, "-") // Replace unsafe chars with hyphens
-    .replace(/-+/g, "-") // Collapse multiple hyphens
-    .replace(/^-|-$/g, "") // Trim leading/trailing hyphens
-    .slice(0, 50) // Limit length
-    || "unnamed-project"; // Fallback if empty after sanitization
+  return (
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, "-") // Replace unsafe chars with hyphens
+      .replace(/-+/g, "-") // Collapse multiple hyphens
+      .replace(/^-|-$/g, "") // Trim leading/trailing hyphens
+      .slice(0, 50) || // Limit length
+    "unnamed-project"
+  ); // Fallback if empty after sanitization
 }
 
 /**
@@ -32,7 +34,7 @@ export function sanitizeProjectName(name: string): string {
 export function generateStoragePath(
   userId: string,
   projectName: string,
-  timestamp?: number
+  timestamp?: number,
 ): string {
   const ts = timestamp ?? Date.now();
   const safeName = sanitizeProjectName(projectName);

@@ -19,8 +19,7 @@ const handle = createLoggedHandler(logger);
 // Production URL: https://shyspsgqbhiuntdjgfro.supabase.co
 const VAULT_SUPABASE_URL =
   process.env.VAULT_SUPABASE_URL || "https://shyspsgqbhiuntdjgfro.supabase.co";
-const VAULT_SUPABASE_ANON_KEY =
-  process.env.VAULT_SUPABASE_ANON_KEY || ""; // Set via environment or Supabase Dashboard
+const VAULT_SUPABASE_ANON_KEY = process.env.VAULT_SUPABASE_ANON_KEY || ""; // Set via environment or Supabase Dashboard
 
 /**
  * Get access token from settings for Vault authentication
@@ -138,7 +137,7 @@ export function registerVaultHandlers() {
 
       logger.info(`Backup created: ${backup.id}`);
       return backup;
-    }
+    },
   );
 
   /**
@@ -162,7 +161,7 @@ export function registerVaultHandlers() {
       });
 
       logger.info("Backup restored successfully");
-    }
+    },
   );
 
   /**
@@ -176,7 +175,7 @@ export function registerVaultHandlers() {
       logger.info(`Deleting backup: ${backupId}`);
       await client.deleteBackup(backupId);
       logger.info("Backup deleted");
-    }
+    },
   );
 
   /**
@@ -190,6 +189,6 @@ export function registerVaultHandlers() {
         configured:
           VAULT_SUPABASE_URL !== "https://your-vault-project.supabase.co",
       };
-    }
+    },
   );
 }

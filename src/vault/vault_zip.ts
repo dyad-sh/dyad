@@ -47,7 +47,7 @@ export async function getFileSize(filePath: string): Promise<number> {
  */
 export async function exportProjectToZip(
   projectPath: string,
-  outputPath: string
+  outputPath: string,
 ): Promise<{ zipPath: string; sha256: string; sizeBytes: number }> {
   logger.info(`Exporting project from ${projectPath} to ${outputPath}`);
 
@@ -61,7 +61,7 @@ export async function exportProjectToZip(
  */
 async function exportFallback(
   projectPath: string,
-  outputPath: string
+  outputPath: string,
 ): Promise<{ zipPath: string; sha256: string; sizeBytes: number }> {
   const zlib = await import("zlib");
   const { promisify } = await import("util");
@@ -129,7 +129,7 @@ async function exportFallback(
 export async function importProjectFromZip(
   zipPath: string,
   targetPath: string,
-  expectedSha256?: string
+  expectedSha256?: string,
 ): Promise<void> {
   logger.info(`Importing project from ${zipPath} to ${targetPath}`);
 
@@ -138,7 +138,7 @@ export async function importProjectFromZip(
     const actualHash = await calculateFileHash(zipPath);
     if (actualHash !== expectedSha256) {
       throw new Error(
-        `Hash mismatch: expected ${expectedSha256}, got ${actualHash}`
+        `Hash mismatch: expected ${expectedSha256}, got ${actualHash}`,
       );
     }
     logger.info("Hash verification passed");
@@ -153,7 +153,7 @@ export async function importProjectFromZip(
  */
 async function importFallback(
   zipPath: string,
-  targetPath: string
+  targetPath: string,
 ): Promise<void> {
   const zlib = await import("zlib");
   const { promisify } = await import("util");

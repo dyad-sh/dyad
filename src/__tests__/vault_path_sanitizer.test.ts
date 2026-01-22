@@ -18,7 +18,7 @@ describe("sanitizeProjectName", () => {
 
   it("should replace special characters with hyphens", () => {
     expect(sanitizeProjectName("my@project!name#123")).toBe(
-      "my-project-name-123"
+      "my-project-name-123",
     );
   });
 
@@ -61,7 +61,7 @@ describe("generateStoragePath", () => {
 
     const path = generateStoragePath(userId, projectName, timestamp);
     expect(path).toBe(
-      "550e8400-e29b-41d4-a716-446655440000/1700000000000-my-project.zip"
+      "550e8400-e29b-41d4-a716-446655440000/1700000000000-my-project.zip",
     );
   });
 
@@ -71,7 +71,7 @@ describe("generateStoragePath", () => {
 
     const path = generateStoragePath(userId, projectName);
     expect(path).toMatch(
-      /^550e8400-e29b-41d4-a716-446655440000\/\d+-test\.zip$/
+      /^550e8400-e29b-41d4-a716-446655440000\/\d+-test\.zip$/,
     );
   });
 });
@@ -105,8 +105,8 @@ describe("isValidStoragePath", () => {
   it("should accept valid storage path", () => {
     expect(
       isValidStoragePath(
-        "550e8400-e29b-41d4-a716-446655440000/1700000000000-my-project.zip"
-      )
+        "550e8400-e29b-41d4-a716-446655440000/1700000000000-my-project.zip",
+      ),
     ).toBe(true);
   });
 

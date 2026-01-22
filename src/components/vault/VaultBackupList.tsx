@@ -73,9 +73,18 @@ export function VaultBackupList() {
 
   // Restore mutation
   const restoreMutation = useMutation({
-    mutationFn: async ({ backupId, targetPath }: { backupId: string; targetPath: string }) => {
+    mutationFn: async ({
+      backupId,
+      targetPath,
+    }: {
+      backupId: string;
+      targetPath: string;
+    }) => {
       const ipcClient = IpcClient.getInstance();
-      return (ipcClient as any).invoke("vault:restore-backup", { backupId, targetPath });
+      return (ipcClient as any).invoke("vault:restore-backup", {
+        backupId,
+        targetPath,
+      });
     },
     onSuccess: () => {
       showSuccess("Backup restored successfully");
@@ -96,7 +105,7 @@ export function VaultBackupList() {
     // In production, this should use a proper folder picker dialog
     const targetPath = prompt(
       "Enter the target path for restore:",
-      `${process.env.HOME || process.env.USERPROFILE}/Desktop/${backup.projectName}-restored`
+      `${process.env.HOME || process.env.USERPROFILE}/Desktop/${backup.projectName}-restored`,
     );
 
     if (targetPath) {
@@ -114,9 +123,17 @@ export function VaultBackupList() {
   }
 
   if (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    const isNetworkError = errorMessage.includes("fetch") || errorMessage.includes("network") || errorMessage.includes("Failed to fetch");
-    const isAuthError = errorMessage.includes("authenticated") || errorMessage.includes("token") || errorMessage.includes("401") || errorMessage.includes("unauthorized");
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
+    const isNetworkError =
+      errorMessage.includes("fetch") ||
+      errorMessage.includes("network") ||
+      errorMessage.includes("Failed to fetch");
+    const isAuthError =
+      errorMessage.includes("authenticated") ||
+      errorMessage.includes("token") ||
+      errorMessage.includes("401") ||
+      errorMessage.includes("unauthorized");
 
     if (isNetworkError) {
       return (

@@ -2,7 +2,7 @@
 
 /**
  * Vault Configuration Verification Script
- * 
+ *
  * This script runs as part of CI to verify:
  * 1. Required Edge Function directories exist
  * 2. Bucket name is exactly "abba-vault" in vault code
@@ -29,10 +29,7 @@ const REQUIRED_EDGE_FUNCTIONS = [
 
 const REQUIRED_BUCKET_NAME = "abba-vault";
 
-const REQUIRED_ENV_VARS = [
-  "VAULT_SUPABASE_URL",
-  "VAULT_SUPABASE_ANON_KEY",
-];
+const REQUIRED_ENV_VARS = ["VAULT_SUPABASE_URL", "VAULT_SUPABASE_ANON_KEY"];
 
 const FORBIDDEN_ENV_VARS = [
   "VAULT_SUPABASE_SERVICE_ROLE_KEY",
@@ -56,18 +53,18 @@ function logError(message) {
  */
 function verifyEdgeFunctions() {
   console.log("\n📁 Verifying Edge Functions...\n");
-  
+
   const functionsDir = path.join(ROOT_DIR, "supabase", "functions");
-  
+
   if (!fs.existsSync(functionsDir)) {
     logError(`Edge functions directory not found: ${functionsDir}`);
     return;
   }
-  
+
   for (const funcName of REQUIRED_EDGE_FUNCTIONS) {
     const funcDir = path.join(functionsDir, funcName);
     const indexFile = path.join(funcDir, "index.ts");
-    
+
     if (!fs.existsSync(funcDir)) {
       logError(`Missing Edge Function directory: ${funcName}`);
     } else if (!fs.existsSync(indexFile)) {
@@ -83,37 +80,45 @@ function verifyEdgeFunctions() {
  */
 function verifyBucketName() {
   console.log("\n🪣 Verifying Bucket Name...\n");
-  
+
   const functionsDir = path.join(ROOT_DIR, "supabase", "functions");
   let bucketFound = false;
-  
+
   for (const funcName of REQUIRED_EDGE_FUNCTIONS) {
     const indexFile = path.join(functionsDir, funcName, "index.ts");
-    
+
     if (fs.existsSync(indexFile)) {
       const content = fs.readFileSync(indexFile, "utf-8");
-      
+
       // Check for correct bucket name
       if (content.includes(`"${REQUIRED_BUCKET_NAME}"`)) {
         bucketFound = true;
-        logSuccess(`Bucket name "${REQUIRED_BUCKET_NAME}" found in ${funcName}`);
+        logSuccess(
+          `Bucket name "${REQUIRED_BUCKET_NAME}" found in ${funcName}`,
+        );
       }
-      
+
       // Check for incorrect bucket names
-      const bucketMatches = content.match(/BUCKET_NAME\s*=\s*["']([^"']+)["']/g);
+      const bucketMatches = content.match(
+        /BUCKET_NAME\s*=\s*["']([^"']+)["']/g,
+      );
       if (bucketMatches) {
         for (const match of bucketMatches) {
           const name = match.match(/["']([^"']+)["']/)?.[1];
           if (name && name !== REQUIRED_BUCKET_NAME) {
-            logError(`Incorrect bucket name "${name}" in ${funcName} (expected "${REQUIRED_BUCKET_NAME}")`);
+            logError(
+              `Incorrect bucket name "${name}" in ${funcName} (expected "${REQUIRED_BUCKET_NAME}")`,
+            );
           }
         }
       }
     }
   }
-  
+
   if (!bucketFound) {
-    logError(`Bucket name "${REQUIRED_BUCKET_NAME}" not found in any Edge Function`);
+    logError(
+      `Bucket name "${REQUIRED_BUCKET_NAME}" not found in any Edge Function`,
+    );
   }
 }
 
@@ -122,16 +127,24 @@ function verifyBucketName() {
  */
 function verifyEnvVarReferences() {
   console.log("\n🔑 Verifying Environment Variable References...\n");
-  
-  const vaultHandlersPath = path.join(ROOT_DIR, "src", "ipc", "handlers", "vault_handlers.ts");
-  
+
+  const vaultHandlersPath = path.join(
+    ROOT_DIR,
+    "src",
+    "ipc",
+    "handlers",
+    "vault_handlers.ts",
+  );
+
   if (!fs.existsSync(vaultHandlersPath)) {
-    logError("Vault handlers file not found: src/ipc/handlers/vault_handlers.ts");
+    logError(
+      "Vault handlers file not found: src/ipc/handlers/vault_handlers.ts",
+    );
     return;
   }
-  
+
   const content = fs.readFileSync(vaultHandlersPath, "utf-8");
-  
+
   // Check for required env vars
   for (const envVar of REQUIRED_ENV_VARS) {
     if (content.includes(envVar)) {
@@ -140,7 +153,7 @@ function verifyEnvVarReferences() {
       logError(`Required env var NOT referenced: ${envVar}`);
     }
   }
-  
+
   // Check that forbidden env vars are NOT referenced in client code
   const clientSrcDir = path.join(ROOT_DIR, "src");
   checkForbiddenEnvVars(clientSrcDir);
@@ -151,10 +164,10 @@ function verifyEnvVarReferences() {
  */
 function checkForbiddenEnvVars(dir) {
   const files = fs.readdirSync(dir, { withFileTypes: true });
-  
+
   for (const file of files) {
     const fullPath = path.join(dir, file.name);
-    
+
     if (file.isDirectory()) {
       // Skip node_modules and test directories
       if (file.name !== "node_modules" && !file.name.startsWith("__")) {
@@ -163,10 +176,12 @@ function checkForbiddenEnvVars(dir) {
     } else if (file.name.endsWith(".ts") || file.name.endsWith(".tsx")) {
       const content = fs.readFileSync(fullPath, "utf-8");
       const relativePath = path.relative(ROOT_DIR, fullPath);
-      
+
       for (const envVar of FORBIDDEN_ENV_VARS) {
         if (content.includes(envVar)) {
-          logError(`Forbidden env var "${envVar}" found in client code: ${relativePath}`);
+          logError(
+            `Forbidden env var "${envVar}" found in client code: ${relativePath}`,
+          );
         }
       }
     }
@@ -178,36 +193,44 @@ function checkForbiddenEnvVars(dir) {
  */
 function verifyMigration() {
   console.log("\n📄 Verifying Migration...\n");
-  
+
   const migrationsDir = path.join(ROOT_DIR, "supabase", "migrations");
-  
+
   if (!fs.existsSync(migrationsDir)) {
     logError("Migrations directory not found");
     return;
   }
-  
+
   const files = fs.readdirSync(migrationsDir);
-  const vaultMigration = files.find(f => f.includes("vault"));
-  
+  const vaultMigration = files.find((f) => f.includes("vault"));
+
   if (!vaultMigration) {
     logError("No vault migration file found");
     return;
   }
-  
+
   const migrationPath = path.join(migrationsDir, vaultMigration);
   const content = fs.readFileSync(migrationPath, "utf-8");
-  
+
   logSuccess(`Vault migration found: ${vaultMigration}`);
-  
+
   // Check for bucket creation
-  if (content.includes("storage.buckets") && content.includes(REQUIRED_BUCKET_NAME)) {
+  if (
+    content.includes("storage.buckets") &&
+    content.includes(REQUIRED_BUCKET_NAME)
+  ) {
     logSuccess(`Bucket creation found in migration`);
   } else {
-    logError(`Bucket creation for "${REQUIRED_BUCKET_NAME}" not found in migration`);
+    logError(
+      `Bucket creation for "${REQUIRED_BUCKET_NAME}" not found in migration`,
+    );
   }
-  
+
   // Check for RLS policies
-  if (content.includes("ROW LEVEL SECURITY") || content.includes("CREATE POLICY")) {
+  if (
+    content.includes("ROW LEVEL SECURITY") ||
+    content.includes("CREATE POLICY")
+  ) {
     logSuccess("RLS policies found in migration");
   } else {
     logError("RLS policies not found in migration");

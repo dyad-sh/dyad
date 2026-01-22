@@ -67,7 +67,7 @@ export class VaultClient {
   private async callEdgeFunction<T>(
     functionName: string,
     method: "GET" | "POST",
-    body?: object
+    body?: object,
   ): Promise<T> {
     const url = `${this.config.supabaseUrl}/functions/v1/${functionName}`;
     const authHeader = await this.getAuthHeader();
@@ -111,11 +111,13 @@ export class VaultClient {
     appVersion?: string;
     notes?: string;
   }): Promise<SignedUploadResponse> {
-    logger.info(`Requesting signed upload URL for project: ${params.projectName}`);
+    logger.info(
+      `Requesting signed upload URL for project: ${params.projectName}`,
+    );
     return this.callEdgeFunction<SignedUploadResponse>(
       "vault-signed-upload",
       "POST",
-      params
+      params,
     );
   }
 
@@ -152,7 +154,7 @@ export class VaultClient {
     await this.callEdgeFunction<{ success: boolean }>(
       "vault-confirm-upload",
       "POST",
-      { backupId }
+      { backupId },
     );
     logger.info("Upload confirmed");
   }
@@ -161,13 +163,13 @@ export class VaultClient {
    * Request a signed download URL for a backup
    */
   async requestSignedDownloadUrl(
-    backupId: string
+    backupId: string,
   ): Promise<SignedDownloadResponse> {
     logger.info(`Requesting signed download URL for backup: ${backupId}`);
     return this.callEdgeFunction<SignedDownloadResponse>(
       "vault-signed-download",
       "POST",
-      { backupId }
+      { backupId },
     );
   }
 
@@ -198,7 +200,7 @@ export class VaultClient {
     logger.info("Listing backups");
     const response = await this.callEdgeFunction<{ backups: VaultBackup[] }>(
       "vault-list-backups",
-      "GET"
+      "GET",
     );
     return response.backups;
   }
@@ -211,7 +213,7 @@ export class VaultClient {
     await this.callEdgeFunction<{ success: boolean }>(
       "vault-delete-backup",
       "POST",
-      { backupId }
+      { backupId },
     );
     logger.info("Backup deleted");
   }
@@ -243,7 +245,7 @@ export class VaultClient {
       onProgress?.("Exporting project...", 10);
       const { sha256, sizeBytes } = await exportProjectToZip(
         projectPath,
-        tempZipPath
+        tempZipPath,
       );
 
       // Request signed upload URL
@@ -316,7 +318,7 @@ export class VaultClient {
       await importProjectFromZip(
         tempZipPath,
         targetPath,
-        downloadInfo.sha256 || undefined
+        downloadInfo.sha256 || undefined,
       );
 
       onProgress?.("Complete!", 100);

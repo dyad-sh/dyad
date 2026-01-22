@@ -38,13 +38,16 @@ Notes:
 
 ### Windows Icon Troubleshooting
 
-**Fresh install (v0.1.9+)**: New installs automatically show the correct ABBA "A" icon everywhere:
+**Fresh install (v0.1.10+)**: New installs automatically show the correct ABBA "A" icon everywhere:
 
 - Setup.exe installer file icon
 - Installed app EXE icon
-- Desktop shortcut
+- Desktop shortcut (auto-refreshed on install/update)
+- Start Menu shortcut (auto-refreshed on install/update)
 - Taskbar (when running)
 - System tray / notification area (taskbar corner overflow near clock)
+
+**v0.1.10+ shortcut refresh**: Desktop and Start Menu shortcuts are now automatically refreshed on install and update. This uses Squirrel.Windows events to remove then recreate shortcuts, ensuring icons update immediately without manual intervention.
 
 **Upgrading from older versions**: If your taskbar, shortcut, or system tray still shows the old Dyad "D" icon:
 
@@ -64,7 +67,7 @@ Remove-Item -Path "$env:LOCALAPPDATA\Microsoft\Windows\Explorer\iconcache*" -For
 Start-Process explorer.exe
 ```
 
-This is a one-time step due to Windows icon caching behavior. The correct ABBA icon is embedded in v0.1.9+ builds. Earlier versions (v0.1.5-v0.1.8) had configuration issues where the Dyad artwork was still being used.
+This is a one-time step due to Windows icon caching behavior. The correct ABBA icon is embedded in v0.1.9+ builds. v0.1.10+ also auto-refreshes shortcuts on install/update to ensure icons are always correct.
 
 #### 2-Minute Icon Verification (for developers/testers)
 
@@ -131,6 +134,7 @@ If you're interested in contributing, please read our [contributing](./CONTRIBUT
 - Windows AUMID consistency (`npm run verify-windows-aumid`)
 - Tray icon configuration (`npm run verify-tray-icon`)
 - **Icon hash verification** (`npm run verify-icon-hashes`) - ensures ABBA artwork
+- **Squirrel shortcut handler** (`npm run verify-squirrel-shortcuts`) - ensures shortcut refresh on Windows
 - Windows EXE icon verification (`npm run verify-windows-icon`, Windows CI only)
 
 **E2E tests** (informational, non-blocking):

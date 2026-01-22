@@ -2,8 +2,7 @@ import { app, BrowserWindow, dialog, Menu, nativeImage } from "electron";
 import * as path from "node:path";
 import { registerIpcHandlers } from "./ipc/ipc_host";
 import dotenv from "dotenv";
-// @ts-ignore
-import started from "electron-squirrel-startup";
+import { handleSquirrelEvent } from "./main/squirrelShortcuts";
 import { updateElectronApp, UpdateSourceType } from "update-electron-app";
 import log from "electron-log";
 import {
@@ -59,10 +58,15 @@ dotenv.config();
 // Register IPC handlers before app is ready
 registerIpcHandlers();
 
-// Handle creating/removing shortcuts on Windows when installing/uninstalling.
-if (started) {
-  app.quit();
-}
+// Handle Squirrel.Windows events (install/update/uninstall).
+// This MUST be early, before app.whenReady(). Our custom handler refreshes
+// shortcuts to ensure the correct ABBA icon is shown on Desktop/Start Menu.
+handleSquirrelEvent(app, process.argv).then((handled) => {
+  if (handled) {
+    // App will quit after Squirrel event is processed
+    return;
+  }
+});
 
 // Set AppUserModelID to match Squirrel.Windows shortcut AUMID pattern.
 // Uses shared constant from windowsIdentity.ts to ensure consistency.

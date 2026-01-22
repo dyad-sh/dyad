@@ -304,7 +304,7 @@ export function SetupBanner() {
             </AccordionTrigger>
             <AccordionContent className="px-4 pt-2 pb-4 bg-white dark:bg-zinc-900 border-t border-inherit">
               <p className="text-[15px] mb-3">
-                Not sure what to do? Watch the Get Started video above ☝️
+                Not sure what to do? Check out the documentation link above ☝️
               </p>
               <div className="flex gap-2">
                 <SetupProviderCard

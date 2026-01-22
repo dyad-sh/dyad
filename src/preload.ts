@@ -171,11 +171,23 @@ const validInvokeChannels = [
   "get-themes",
   "set-app-theme",
   "get-app-theme",
+  // Vault (Cloud Backup)
+  "vault:get-status",
+  "vault:get-config",
+  "vault:get-settings",
+  "vault:save-settings",
+  "vault:test-connection",
+  "vault:get-diagnostics",
+  "vault:list-backups",
+  "vault:create-backup",
+  "vault:restore-backup",
+  "vault:delete-backup",
   // Test-only channels
   // These should ALWAYS be guarded with IS_TEST_BUILD in the main process.
   // We can't detect with IS_TEST_BUILD in the preload script because
   // it's a separate process from the main process.
   "supabase:fake-connect-and-set-project",
+  "neon:fake-connect",
 ];
 
 // Add valid receive channels

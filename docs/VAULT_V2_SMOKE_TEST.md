@@ -147,7 +147,66 @@ Also delete test files from Storage bucket via Dashboard.
 | E2E backup flow       | ⬜     |
 | E2E restore flow      | ⬜     |
 
+## 7. Verify Vault Settings UI (Installed App)
+
+This step verifies the Vault Settings UI works correctly in the **packaged/installed app**
+(not just `npm start`).
+
+### 7.1 Test Connection Button
+
+1. Install the app from a release build (Windows Setup.exe or macOS zip)
+2. Launch the installed app
+3. Navigate to **Settings → Integrations → Vault**
+4. Enter your Supabase URL and publishable key
+5. Click **Save**
+6. Click **Test Connection**
+7. Verify: **No "Invalid channel" error** appears
+8. Verify: Status pill shows one of:
+   - ✅ "Connected" (green) - if authenticated
+   - ⚠️ "Needs login" (amber) - if Supabase auth required
+   - ❌ "Invalid URL" or "Invalid key" (red) - if config is wrong
+
+### 7.2 Copy Diagnostics
+
+1. Click **Copy Diagnostics** button
+2. Paste into a text editor
+3. Verify: Key is **masked** (shows `***...XXXXXX`)
+4. Verify: URL is shown in full
+5. Verify: No IPC errors
+
+### 7.3 Expected IPC Channels
+
+All these Vault channels should work without "Invalid channel" errors:
+
+- `vault:get-settings`
+- `vault:save-settings`
+- `vault:test-connection`
+- `vault:get-diagnostics`
+- `vault:get-status`
+- `vault:get-config`
+- `vault:list-backups`
+- `vault:create-backup`
+- `vault:restore-backup`
+- `vault:delete-backup`
+
 ## Troubleshooting
+
+### "Invalid channel: vault:xxx" error
+
+This error means the IPC channel is not in the preload allowlist.
+
+**Fix:** Add the channel to `validInvokeChannels` in `src/preload.ts`
+
+Example:
+
+```typescript
+const validInvokeChannels = [
+  // ... existing channels
+  "vault:test-connection", // Add this
+];
+```
+
+Then rebuild the app.
 
 ### "JWT token is invalid" error
 

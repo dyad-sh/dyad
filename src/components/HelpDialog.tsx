@@ -12,7 +12,7 @@ import { useState } from "react";
 import { HelpBotDialog } from "./HelpBotDialog";
 import { BugScreenshotDialog } from "./BugScreenshotDialog";
 
-const GITHUB_ISSUES_URL = "https://github.com/yosiwizman/abba-ai/issues";
+const GITHUB_ISSUES_URL = "https://github.com/yosiwizman/dyad/issues";
 
 interface HelpDialogProps {
   isOpen: boolean;

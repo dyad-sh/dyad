@@ -26,22 +26,22 @@ This audit identifies all remaining "Dyad" branding references in the ABBA AI co
 
 ### 1. IDENTIFIERS & CONFIGURATION (Critical - All Fixed)
 
-| File              | Line(s) | Finding                                              | Severity | Fix                     | Status   |
-| ----------------- | ------- | ---------------------------------------------------- | -------- | ----------------------- | -------- |
-| `forge.config.ts` | 191     | `name: "dyad"` in publisher config                   | HIGH     | Changed to `"abba-ai"`  | ✅ FIXED |
-| `package.json`    | 9       | `"url": "https://github.com/yosiwizman/dyad.git"`    | HIGH     | Changed to correct repo | ✅ FIXED |
-| `package.json`    | 12      | `"url": "https://github.com/yosiwizman/dyad/issues"` | HIGH     | Changed to correct repo | ✅ FIXED |
-| `package.json`    | 14      | `"homepage": "https://github.com/yosiwizman/dyad"`   | HIGH     | Changed to correct repo | ✅ FIXED |
+| File              | Line(s) | Finding                                              | Severity | Fix                          | Status       |
+| ----------------- | ------- | ---------------------------------------------------- | -------- | ---------------------------- | ------------ |
+| `forge.config.ts` | 191     | `name: "dyad"` in publisher config                   | N/A      | Preserved (GitHub repo name) | ⏸️ PRESERVED |
+| `package.json`    | 9       | `"url": "https://github.com/yosiwizman/dyad.git"`    | HIGH     | Changed to correct repo      | ✅ FIXED     |
+| `package.json`    | 12      | `"url": "https://github.com/yosiwizman/dyad/issues"` | HIGH     | Changed to correct repo      | ✅ FIXED     |
+| `package.json`    | 14      | `"homepage": "https://github.com/yosiwizman/dyad"`   | HIGH     | Changed to correct repo      | ✅ FIXED     |
 
 ### 2. URLs (Critical - All Fixed)
 
-| File                        | Line(s)      | Finding                                        | Severity | Fix                                              | Status   |
-| --------------------------- | ------------ | ---------------------------------------------- | -------- | ------------------------------------------------ | -------- |
-| `src/main.ts`               | 161          | `repo: "yosiwizman/dyad"` in updateElectronApp | HIGH     | Changed to `"yosiwizman/abba-ai"`                | ✅ FIXED |
-| `package.json`              | 22           | `DYAD_ENGINE_URL` staging endpoint             | MEDIUM   | Renamed script, kept endpoint (external service) | ✅ FIXED |
-| `.github/workflows/e2e.yml` | 59           | `dyad-sh/nextjs-template` repo clone           | MEDIUM   | Changed to fork/maintained template              | ✅ FIXED |
-| `README.md`                 | 80, 143, 150 | Links to `yosiwizman/dyad` releases/actions    | MEDIUM   | Updated to `yosiwizman/abba-ai`                  | ✅ FIXED |
-| `CONTRIBUTING.md`           | (if exists)  | Links to dyad repo                             | MEDIUM   | Updated                                          | ✅ FIXED |
+| File                        | Line(s)      | Finding                                        | Severity | Fix                                              | Status       |
+| --------------------------- | ------------ | ---------------------------------------------- | -------- | ------------------------------------------------ | ------------ |
+| `src/main.ts`               | 161          | `repo: "yosiwizman/dyad"` in updateElectronApp | HIGH     | Changed to `"yosiwizman/abba-ai"`                | ✅ FIXED     |
+| `package.json`              | 22           | `DYAD_ENGINE_URL` staging endpoint             | MEDIUM   | Renamed script, kept endpoint (external service) | ✅ FIXED     |
+| `.github/workflows/e2e.yml` | 59           | `dyad-sh/nextjs-template` repo clone           | MEDIUM   | Changed to fork/maintained template              | ✅ FIXED     |
+| `README.md`                 | 80, 143, 150 | Links to releases/actions                      | N/A      | Point to `yosiwizman/dyad` (actual repo)         | ⏸️ PRESERVED |
+| `CONTRIBUTING.md`           | (if exists)  | Links to dyad repo                             | MEDIUM   | Updated                                          | ✅ FIXED     |
 
 ### 3. DOCUMENTATION TEXT (Fixed)
 

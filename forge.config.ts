@@ -164,7 +164,7 @@ const config: ForgeConfig = {
       // Squirrel.Windows options: ensure installer + shortcuts use ABBA icon
       setupIcon: "./assets/icon/logo.ico",
       iconUrl:
-        "https://raw.githubusercontent.com/yosiwizman/abba-ai/main/assets/icon/logo.ico",
+        "https://raw.githubusercontent.com/yosiwizman/dyad/main/assets/icon/logo.ico",
       // IMPORTANT: "name" determines the Squirrel AUMID pattern: com.squirrel.<name>.<name>
       // The app's setAppUserModelId() in main.ts MUST match this pattern exactly.
       name: "abba_ai",
@@ -188,7 +188,7 @@ const config: ForgeConfig = {
       config: {
         repository: {
           owner: "yosiwizman",
-          name: "abba-ai",
+          name: "dyad",
         },
         draft: true,
         force: true,

@@ -76,12 +76,8 @@ if (!fs.existsSync(forgeConfigPath)) {
   }
 
   // Check for any remaining Dyad icon references (case-insensitive)
-  const dyadIconPatterns = [
-    /dyad\.ico/i,
-    /dyad-icon/i,
-    /icon.*dyad/i,
-    /dyad.*icon/i,
-  ];
+  // Note: iconUrl pointing to yosiwizman/dyad repo is acceptable (actual repo name)
+  const dyadIconPatterns = [/dyad\.ico/i, /dyad-icon/i];
 
   for (const pattern of dyadIconPatterns) {
     if (pattern.test(forgeConfig)) {
@@ -89,18 +85,12 @@ if (!fs.existsSync(forgeConfigPath)) {
     }
   }
 
-  // Check iconUrl doesn't point to old dyad repo (should point to abba-ai repo)
+  // Verify iconUrl points to dyad repo (the actual GitHub repo name)
   if (
     forgeConfig.includes("raw.githubusercontent.com/yosiwizman/dyad/") &&
-    forgeConfig.includes("icon")
+    forgeConfig.includes("logo.ico")
   ) {
-    error(
-      "iconUrl in forge.config.ts still points to the old dyad repository. Should use abba-ai repo.",
-    );
-  } else if (
-    forgeConfig.includes("raw.githubusercontent.com/yosiwizman/abba-ai/")
-  ) {
-    success("iconUrl correctly points to abba-ai repository");
+    success("iconUrl points to dyad repository (expected)");
   }
 }
 

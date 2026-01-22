@@ -36,7 +36,7 @@ const EXPECTED = {
   packageName: "abba-ai",
   productName: "ABBA AI",
   squirrelMakerName: "abba_ai",
-  publisherRepoName: "abba-ai",
+  publisherRepoName: "dyad",
   publisherOwner: "yosiwizman",
 };
 

@@ -10,7 +10,7 @@ Download the latest release for your platform:
 - **macOS (Apple Silicon)**: `ABBA.AI-darwin-arm64-<version>.zip`
 - **macOS (Intel)**: `ABBA.AI-darwin-x64-<version>.zip`
 
-👉 [**Download from GitHub Releases**](https://github.com/yosiwizman/abba-ai/releases)
+👉 [**Download from GitHub Releases**](https://github.com/yosiwizman/dyad/releases)
 
 ### Install
 
@@ -77,7 +77,7 @@ To verify the Windows build has correct branding on a clean system:
 
 1. Enable Windows Sandbox (Settings → Apps → Optional Features → Windows Sandbox)
 2. Open Windows Sandbox (clean isolated environment)
-3. Download latest `ABBA.AI-<version>.Setup.exe` from [Releases](https://github.com/yosiwizman/abba-ai/releases)
+3. Download latest `ABBA.AI-<version>.Setup.exe` from [Releases](https://github.com/yosiwizman/dyad/releases)
 4. Run installer in sandbox — verify ABBA "A" icon on installer, shortcut, and taskbar
 
 **Option B: New local Windows user** (~2 min)
@@ -120,7 +120,7 @@ This generates:
 
 **ABBA AI** is open-source (see License info below).
 
-If you're interested in contributing, please read our [contributing](./CONTRIBUTING.md) doc or open an issue at [github.com/yosiwizman/abba-ai](https://github.com/yosiwizman/abba-ai/issues).
+If you're interested in contributing, please read our [contributing](./CONTRIBUTING.md) doc or open an issue at [github.com/yosiwizman/dyad](https://github.com/yosiwizman/dyad/issues).
 
 ### CI & Release Process
 
@@ -140,15 +140,15 @@ If you're interested in contributing, please read our [contributing](./CONTRIBUT
 **E2E tests** (informational, non-blocking):
 
 - Run **nightly** at 2 AM UTC automatically
-- Run **manually** via [Actions → E2E workflow → Run workflow](https://github.com/yosiwizman/abba-ai/actions/workflows/e2e.yml)
+- Run **manually** via [Actions → E2E workflow → Run workflow](https://github.com/yosiwizman/dyad/actions/workflows/e2e.yml)
 - Optionally run on PRs with the `run-e2e` label
 - E2E tests are flaky due to Electron + Playwright environment constraints and do NOT block releases or merges
 
 **Release workflow**:
 
 1. Tag a version (e.g. `v0.1.4`) and push to GitHub
-2. [Release workflow](https://github.com/yosiwizman/abba-ai/actions/workflows/release.yml) builds Windows + macOS installers
-3. Assets are verified, then published to [GitHub Releases](https://github.com/yosiwizman/abba-ai/releases)
+2. [Release workflow](https://github.com/yosiwizman/dyad/actions/workflows/release.yml) builds Windows + macOS installers
+3. Assets are verified, then published to [GitHub Releases](https://github.com/yosiwizman/dyad/releases)
 4. E2E results (if any) are reviewed separately and do not block the release
 
 ## License

@@ -39,7 +39,7 @@ console.log("🔍 Scanning for forbidden Dyad branding...\n");
 // Forbidden patterns - case insensitive
 const FORBIDDEN_PATTERNS = [
   // URLs/repos (should use abba-ai)
-  /github\.com\/yosiwizman\/dyad(?![-a-z])/gi, // dyad repo, not dyad-something
+// Allow references to the repository slug (dyad) for releases/issues
   /github\.com\/dyad-sh\/dyad/gi,
   /dyad\.sh/gi,
   /dyad\.dev/gi,

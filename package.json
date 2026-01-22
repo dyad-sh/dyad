@@ -6,12 +6,12 @@
   "main": ".vite/build/main.js",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yosiwizman/abba-ai.git"
+    "url": "https://github.com/yosiwizman/dyad.git"
   },
   "bugs": {
-    "url": "https://github.com/yosiwizman/abba-ai/issues"
+    "url": "https://github.com/yosiwizman/dyad/issues"
   },
-  "homepage": "https://github.com/yosiwizman/abba-ai",
+  "homepage": "https://github.com/yosiwizman/dyad",
   "engines": {
     "node": ">=20"
   },

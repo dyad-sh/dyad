@@ -3,6 +3,7 @@
     "allow": [
       "Edit",
       "Write",
+      "Skill(dyad:*)",
 
       "Bash(npm run:*)",
       "Bash(npm test:*)",

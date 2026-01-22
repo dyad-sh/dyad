@@ -5,7 +5,7 @@ test("themes management - CRUD operations", async ({ po }) => {
   await po.setUp();
 
   // Navigate to Themes page via Library sidebar
-  await po.page.getByRole("link", { name: "Library" }).hover();
+  await po.goToLibraryTab();
   await po.page.getByRole("link", { name: "Themes" }).click();
   await expect(po.page.getByRole("heading", { name: "Themes" })).toBeVisible();
 
@@ -154,7 +154,7 @@ test("themes management - AI generator image upload limit", async ({ po }) => {
   await po.setUpDyadPro();
 
   // Navigate to Themes page via Library sidebar
-  await po.page.getByRole("link", { name: "Library" }).hover();
+  await po.goToLibraryTab();
   await po.page.getByRole("link", { name: "Themes" }).click();
   await expect(po.page.getByRole("heading", { name: "Themes" })).toBeVisible();
 
@@ -204,7 +204,7 @@ test("themes management - AI generator flow", async ({ po }) => {
   await po.setUp();
 
   // Navigate to Themes page via Library sidebar
-  await po.page.getByRole("link", { name: "Library" }).hover();
+  await po.goToLibraryTab();
   await po.page.getByRole("link", { name: "Themes" }).click();
   await expect(po.page.getByRole("heading", { name: "Themes" })).toBeVisible();
 

@@ -1,7 +1,62 @@
 #!/usr/bin/env python3
 """
-Permission hook to auto-approve read-only GitHub CLI commands
-and reject destructive operations.
+GitHub CLI Permission Hook
+
+This hook enforces a security policy for `gh` commands, auto-approving safe
+operations and blocking dangerous ones.
+
+ALLOWED (auto-approved):
+------------------------
+1. Read-only gh commands:
+   - pr/issue/run/repo/release/workflow/gist: view, list, status, diff, checks, comments
+   - search, browse, status, auth status
+   - config get, config list
+   - run watch, run download, release download
+
+2. PR workflow commands:
+   - pr create, edit, ready, review, close, merge
+
+3. Issue workflow commands:
+   - issue create, edit, close, reopen, comment
+
+4. gh api - REST endpoints:
+   - GET requests (explicit or implicit - gh api defaults to GET)
+   - POST to /pulls/{id}/comments/{id}/replies (PR comment replies)
+   - POST to /issues/{id}/comments (issue comments)
+
+5. gh api graphql - queries and specific mutations:
+   - All GraphQL queries (read-only)
+   - Mutations: resolveReviewThread, unresolveReviewThread
+   - Mutations: addPullRequestReview, addPullRequestReviewComment
+
+6. Piping to safe text-processing commands:
+   - jq, head, tail, grep, wc, sort, uniq, cut, tr, less, more
+
+BLOCKED (denied):
+-----------------
+1. Destructive gh commands:
+   - repo delete, create, edit, rename, archive
+   - issue delete, transfer, pin, unpin
+   - release delete, create, edit
+   - gist delete, create, edit
+   - run cancel, rerun
+   - workflow disable, enable
+   - auth logout
+   - config set
+   - label create, edit, delete
+   - secret/variable management
+
+2. gh api - destructive HTTP methods:
+   - POST, PUT, PATCH, DELETE (except allowed endpoints above)
+
+3. gh api graphql - mutations:
+   - All mutations except the PR review ones listed above
+
+4. Shell injection attempts:
+   - Command chaining: ; && || &
+   - Command substitution: $() ``
+   - Process substitution: <() >()
+   - Piping to non-safe commands
 """
 import json
 import sys
@@ -46,10 +101,29 @@ SHELL_INJECTION_PATTERNS = re.compile(
 # So we only strip single-quoted content before checking for shell injection
 SINGLE_QUOTED_PATTERN = re.compile(r"'[^']*'")
 
+# Pattern to match double-quoted strings that are safe for pipe detection
+# A double-quoted string without $( or backticks cannot execute commands,
+# so any | inside is a literal character, not a shell pipe
+# We use this to allow patterns like: grep -E "bug|error"
+SAFE_DOUBLE_QUOTED_PATTERN = re.compile(r'"[^"$`]*"')
+
 # Safe pipe destinations - commands that only process text output
 # These are safe because they can't execute arbitrary code from piped input
 # jq: JSON processor, commonly used with gh api output
-SAFE_PIPE_PATTERN = re.compile(r'\|\s*jq\s')
+# head/tail: display first/last N lines
+# grep: pattern search (cannot execute code from input)
+# wc: word/line/character count
+# sort/uniq: sort and deduplicate lines
+# cut: extract fields from lines
+# tr: character translation
+# less/more: pagers
+SAFE_PIPE_PATTERN = re.compile(r'\|\s*(jq|head|tail|grep|wc|sort|uniq|cut|tr|less|more)\b')
+
+# Safe redirect patterns - common shell redirects that don't execute commands
+# 2>&1: redirect stderr to stdout (very common for capturing all output)
+# >&2 or 1>&2: redirect stdout to stderr
+# N>&M: redirect file descriptor N to M
+SAFE_REDIRECT_PATTERN = re.compile(r'\d*>&\d+')
 
 
 def extract_gh_command(command: str) -> Optional[str]:
@@ -135,9 +209,18 @@ def contains_shell_injection(cmd: str) -> bool:
     # This handles cases like: gh api ... --jq '.[] | {field: .field}'
     cmd_without_single_quotes = SINGLE_QUOTED_PATTERN.sub("''", cmd)
 
+    # Strip double-quoted strings that don't contain $( or backticks
+    # These are safe for pipe/metachar detection since | inside is literal
+    # This allows patterns like: grep -E "bug|error"
+    cmd_without_safe_doubles = SAFE_DOUBLE_QUOTED_PATTERN.sub('""', cmd_without_single_quotes)
+
     # Replace safe pipe destinations with a placeholder before checking
     # This allows patterns like: gh api graphql ... | jq '...'
-    cmd_to_check = SAFE_PIPE_PATTERN.sub(' SAFE_PIPE ', cmd_without_single_quotes)
+    cmd_to_check = SAFE_PIPE_PATTERN.sub(' SAFE_PIPE ', cmd_without_safe_doubles)
+
+    # Replace safe redirect patterns (like 2>&1) before checking
+    # These are standard shell redirects, not command execution
+    cmd_to_check = SAFE_REDIRECT_PATTERN.sub(' ', cmd_to_check)
 
     return bool(SHELL_INJECTION_PATTERNS.search(cmd_to_check))
 
@@ -252,15 +335,20 @@ def check_gh_graphql_command(cmd: str) -> Optional[dict]:
     # Pattern matches: mutation{, mutation (, mutation Name{, mutation Name(
     has_mutation = re.search(r'\bmutation\s*(?:\w+\s*)?[\({]', cmd, re.IGNORECASE)
     if has_mutation:
-        # Allow PR review thread mutations (resolve/unresolve)
-        # Match at field position: after { with optional whitespace
-        # This prevents bypass via embedding names in argument values
-        if re.search(r'\{\s*(resolveReviewThread|unresolveReviewThread)\b', cmd, re.IGNORECASE):
-            return make_allow_decision("PR review thread mutation auto-approved")
-
-        # Allow adding PR review comments
-        if re.search(r'\{\s*(addPullRequestReviewComment|addPullRequestReview)\b', cmd, re.IGNORECASE):
-            return make_allow_decision("PR review comment mutation auto-approved")
+        # Extract the actual mutation operation name - it must come immediately after
+        # the mutation's opening brace, not nested in input arguments.
+        # Pattern handles: mutation { name..., mutation Name { name..., mutation($var: Type!) { name...
+        # The key is matching right after "mutation [Name] [(variables)] {"
+        allowed_pr_mutations = (
+            r'\bmutation\s*'           # mutation keyword
+            r'(?:\w+\s*)?'             # optional mutation name
+            r'(?:\([^)]*\)\s*)?'       # optional variables in parentheses
+            r'\{\s*'                   # opening brace
+            r'(resolveReviewThread|unresolveReviewThread|'
+            r'addPullRequestReviewComment|addPullRequestReview)\b'
+        )
+        if re.search(allowed_pr_mutations, cmd, re.IGNORECASE):
+            return make_allow_decision("PR review mutation auto-approved")
 
         # Block other mutations
         return make_deny_decision(

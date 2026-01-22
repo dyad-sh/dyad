@@ -179,6 +179,49 @@ gh api /repos/owner/repo/pulls | jq '.[] | {n: .number, t: .title} | select(.n >
 gh api /repos/owner/repo/issues | jq 'map(select(.labels | length > 0)) | .[].title'
 
 # =============================================================================
+# GH API - PIPING TO HEAD/TAIL (safe text-processing commands)
+# =============================================================================
+
+gh api /repos/owner/repo/pulls | head -10
+gh api /repos/owner/repo/pulls | head -100
+gh api /repos/owner/repo/issues | head
+gh api /repos/owner/repo/commits | tail -20
+gh api /repos/owner/repo/commits | tail -n 50
+gh api /repos/owner/repo/releases | tail
+gh api graphql -f query='query { viewer { login } }' | head -5
+gh api graphql -f query='query($owner: String!, $repo: String!, $pr: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $pr) { reviewThreads(first: 100) { nodes { id isResolved isOutdated path line comments(first: 10) { nodes { id databaseId body author { login } createdAt } } } } } } }' -f owner=dyad-sh -f repo=dyad -F pr=2305 | head -100
+gh pr view 123 --json comments | head -50
+gh issue list --json number,title | tail -10
+
+# Combining with stderr redirect (common pattern)
+gh api /repos/owner/repo 2>&1 | head -100
+gh api graphql -f query='query { viewer { login } }' 2>&1 | head -50
+
+# =============================================================================
+# GH API - PIPING TO OTHER SAFE TEXT PROCESSING COMMANDS
+# =============================================================================
+
+gh api /repos/owner/repo/pulls | grep "open"
+gh api /repos/owner/repo/pulls | grep -i "feature"
+gh api /repos/owner/repo/issues | grep -E "bug|error"
+gh api /repos/owner/repo/pulls | wc -l
+gh api /repos/owner/repo/issues | wc -c
+gh api /repos/owner/repo/contributors | sort
+gh api /repos/owner/repo/contributors | sort -r
+gh api /repos/owner/repo/labels | sort | uniq
+gh api /repos/owner/repo/pulls | cut -d'"' -f2
+gh pr list --json number,title | tr ',' '\n'
+gh api /repos/owner/repo 2>&1 | grep "name"
+gh api /repos/owner/repo | less
+gh api /repos/owner/repo | more
+
+# Double-quoted arguments with special regex characters (should be allowed)
+gh api /repos/owner/repo | grep "test|prod"
+gh api /repos/owner/repo | grep -E "open|closed|merged"
+gh api /repos/owner/repo | grep "status && ready"
+gh api /repos/owner/repo | grep "foo;bar"
+
+# =============================================================================
 # GH API GRAPHQL - READ-ONLY QUERIES
 # =============================================================================
 

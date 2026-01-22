@@ -69,3 +69,9 @@ gh api graphql -f query="query GetPR { repository(owner: \"owner\", name: \"repo
 # Commands with env var prefix (the gh command itself should be extracted)
 GH_TOKEN=xxx gh pr view 123
 env GH_TOKEN=xxx gh pr list
+
+# Commands with wrapper prefixes (read-only gh commands should still be approved)
+sudo gh pr view 123
+command gh pr list
+env gh pr view 123
+sudo env GH_TOKEN=xxx gh pr view 123

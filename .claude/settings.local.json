@@ -1,5 +1,11 @@
 {
   "permissions": {
-    "allow": ["Bash(chmod:*)"]
+    "allow": [
+      "Bash(chmod:*)",
+      "Bash(python:*)",
+      "Bash(python3 -m pytest:*)",
+      "Bash(python3:*)",
+      "Skill(dyad:lint)"
+    ]
   }
 }

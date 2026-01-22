@@ -17,8 +17,10 @@ from typing import Optional
 # - || is logical OR
 # - & can run background + chain another command
 # - ` and $( are command substitution
+# - \n and \r can separate commands in bash
 # - We don't block () alone as they're used in GraphQL queries
 SHELL_INJECTION_PATTERNS = re.compile(
+    r'('           # Start alternation group
     r';'           # Command separator
     r'|(?<!\|)\|(?!\|)'  # Single pipe (not ||)
     r'|\|\|'       # Logical OR (could chain commands)
@@ -27,11 +29,16 @@ SHELL_INJECTION_PATTERNS = re.compile(
     r'|&\S'        # Background + another command (& followed directly by non-space)
     r'|`'          # Backtick command substitution
     r'|\$\('       # $( command substitution
+    r'|\n'         # Newline (command separator in bash)
+    r'|\r'         # Carriage return (can also separate commands)
+    r')'           # End alternation group
 )
 
-# Pattern to match quoted strings (single or double quoted)
-# This is used to strip quoted content before checking for shell injection
-QUOTED_STRING_PATTERN = re.compile(r'"[^"]*"|\'[^\']*\'')
+# Pattern to match single-quoted strings only
+# Single quotes in bash are truly literal - no expansion occurs inside them
+# Double quotes still allow command substitution: "$(cmd)" executes cmd
+# So we only strip single-quoted content before checking for shell injection
+SINGLE_QUOTED_PATTERN = re.compile(r"'[^']*'")
 
 
 def extract_gh_command(command: str) -> Optional[str]:
@@ -56,22 +63,27 @@ def extract_gh_command(command: str) -> Optional[str]:
         return cmd
 
     # Pattern to match:
-    # - Optional 'env' command at start
+    # - Optional wrappers: sudo, command, env
     # - Zero or more VAR=value assignments (no spaces in value, or quoted)
     # - Then 'gh ' command
     #
     # Examples:
     # - "GH_TOKEN=xxx gh pr view"
     # - "env GH_TOKEN=xxx gh pr view"
+    # - "sudo gh repo delete"
+    # - "command gh pr view"
     # - "FOO=bar BAZ=qux gh pr view"
+    # - "env gh pr view" (env with no vars)
     #
-    # This pattern ensures 'gh' must come after valid env var syntax,
+    # This pattern ensures 'gh' must come after valid wrapper/env var syntax,
     # not as an argument to another command like "rm -rf / gh pr view"
 
-    # Match: optional 'env ' at start, then VAR=value pairs, then 'gh '
+    # Match: optional wrappers (sudo/command), optional 'env', optional VAR=value pairs, then 'gh '
     # VAR=value allows: VAR=word, VAR="quoted", VAR='quoted'
     env_var_pattern = r'''
         ^                           # Start of string
+        (?:sudo\s+)?                # Optional 'sudo ' command
+        (?:command\s+)?             # Optional 'command ' builtin
         (?:env\s+)?                 # Optional 'env ' command
         (?:                         # Zero or more env var assignments
             [A-Za-z_][A-Za-z0-9_]*  # Variable name
@@ -82,7 +94,7 @@ def extract_gh_command(command: str) -> Optional[str]:
                 |[^\s]+             # Unquoted word (no spaces)
             )
             \s+                     # Whitespace after assignment
-        )+                          # One or more env var assignments
+        )*                          # Zero or more env var assignments (changed from + to *)
         (gh\s+.*)$                  # Capture the gh command
     '''
 
@@ -99,13 +111,16 @@ def contains_shell_injection(cmd: str) -> bool:
 
     This prevents bypasses like: "gh pr view 123; rm -rf /"
 
-    Shell metacharacters inside quoted strings are safe (e.g., --jq '.[] | ...')
-    so we strip quoted content before checking.
+    Only single-quoted strings are safe to strip because bash treats their
+    content literally. Double-quoted strings still allow command substitution
+    (e.g., "$(rm -rf /)" would execute), so we must check inside them.
     """
-    # Strip quoted strings before checking - content inside quotes is safe
+    # Strip only single-quoted strings before checking
+    # Single quotes are truly safe in bash: '$(cmd)' is literal, not executed
+    # Double quotes are NOT safe: "$(cmd)" executes cmd
     # This handles cases like: gh api ... --jq '.[] | {field: .field}'
-    cmd_without_quotes = QUOTED_STRING_PATTERN.sub('""', cmd)
-    return bool(SHELL_INJECTION_PATTERNS.search(cmd_without_quotes))
+    cmd_without_single_quotes = SINGLE_QUOTED_PATTERN.sub("''", cmd)
+    return bool(SHELL_INJECTION_PATTERNS.search(cmd_without_single_quotes))
 
 
 def main():

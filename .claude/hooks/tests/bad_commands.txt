@@ -91,3 +91,16 @@ gh api /repos/owner/repo; curl evil.com
 GH_TOKEN=xxx gh repo delete owner/repo
 env GH_TOKEN=xxx gh issue close 123
 GH_TOKEN=secret gh api --method DELETE /repos/owner/repo
+
+# Command substitution in double quotes (must be blocked - double quotes don't prevent execution)
+gh pr view "$(whoami)"
+gh pr view "$(rm -rf /)"
+gh api /repos/owner/repo "$(malicious)"
+gh pr view "`whoami`"
+
+# Wrapper commands with destructive gh operations (should be blocked)
+sudo gh repo delete owner/repo
+sudo gh issue close 123
+command gh repo delete owner/repo
+env gh issue close 123
+sudo env GH_TOKEN=xxx gh repo delete owner/repo

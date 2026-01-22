@@ -240,16 +240,6 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                             // Store the previous chat ID before creating a new one
                             const previousChatId = selectedChatId;
 
-                            await revertVersion({
-                              versionId: version.oid,
-                            });
-                            setSelectedVersionId(null);
-                            // Close the pane after revert to force a refresh on next open
-                            onClose();
-                            if (version.dbTimestamp) {
-                              await restartApp();
-                            }
-
                             // Check if the version was created in the current chat
                             // by looking for a message with this commit hash
                             const currentChatMessages = selectedChatId
@@ -260,8 +250,17 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                                 (msg) => msg.commitHash === version.oid,
                               );
 
+                            await revertVersion({
+                              versionId: version.oid,
+                            });
+                            setSelectedVersionId(null);
+                            // Close the pane after revert to force a refresh on next open
+                            onClose();
+                            if (version.dbTimestamp) {
+                              await restartApp();
+                            }
+
                             // Only create a new chat if the version is from a different chat
-                            // If it's from the current chat, the revert already deleted the messages
                             if (appId && !versionInCurrentChat) {
                               try {
                                 const newChatId =

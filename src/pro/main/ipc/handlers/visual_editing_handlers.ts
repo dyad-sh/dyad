@@ -20,6 +20,7 @@ import {
   transformContent,
   analyzeComponent,
 } from "../../utils/visual_editing_utils";
+import { normalizePath } from "../../../../../shared/normalizePath";
 
 export function registerVisualEditingHandlers() {
   ipcMain.handle(
@@ -66,7 +67,8 @@ export function registerVisualEditingHandlers() {
 
         // Apply changes to each file
         for (const [relativePath, lineChanges] of fileChanges) {
-          const filePath = safeJoin(appPath, relativePath);
+          const normalizedRelativePath = normalizePath(relativePath);
+          const filePath = safeJoin(appPath, normalizedRelativePath);
           const content = await fsPromises.readFile(filePath, "utf-8");
           const transformedContent = transformContent(content, lineChanges);
           await fsPromises.writeFile(filePath, transformedContent, "utf-8");
@@ -74,12 +76,12 @@ export function registerVisualEditingHandlers() {
           if (fs.existsSync(path.join(appPath, ".git"))) {
             await gitAdd({
               path: appPath,
-              filepath: relativePath,
+              filepath: normalizedRelativePath,
             });
 
             await gitCommit({
               path: appPath,
-              message: `Updated ${relativePath}`,
+              message: `Updated ${normalizedRelativePath}`,
             });
           }
         }

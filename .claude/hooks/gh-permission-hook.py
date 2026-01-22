@@ -39,12 +39,52 @@ def extract_gh_command(command: str) -> Optional[str]:
     - "env GH_TOKEN=xxx gh pr view 123"
 
     Returns None if no gh command is found.
+
+    IMPORTANT: This function only matches `gh` when it's the actual command
+    being executed (at the start, or after env var assignments / the env command).
+    It will NOT match `gh` appearing as an argument to another command.
     """
-    # Match gh command, potentially preceded by env vars or 'env' command
-    # Pattern: optional (VAR=value )* or (env VAR=value )* then "gh "
-    match = re.search(r'(?:^|\s)(gh\s+.*)$', command.strip())
+    cmd = command.strip()
+
+    # Direct gh command at the start
+    if cmd.startswith("gh ") or cmd == "gh":
+        return cmd
+
+    # Pattern to match:
+    # - Optional 'env' command at start
+    # - Zero or more VAR=value assignments (no spaces in value, or quoted)
+    # - Then 'gh ' command
+    #
+    # Examples:
+    # - "GH_TOKEN=xxx gh pr view"
+    # - "env GH_TOKEN=xxx gh pr view"
+    # - "FOO=bar BAZ=qux gh pr view"
+    #
+    # This pattern ensures 'gh' must come after valid env var syntax,
+    # not as an argument to another command like "rm -rf / gh pr view"
+
+    # Match: optional 'env ' at start, then VAR=value pairs, then 'gh '
+    # VAR=value allows: VAR=word, VAR="quoted", VAR='quoted'
+    env_var_pattern = r'''
+        ^                           # Start of string
+        (?:env\s+)?                 # Optional 'env ' command
+        (?:                         # Zero or more env var assignments
+            [A-Za-z_][A-Za-z0-9_]*  # Variable name
+            =                       # Equals sign
+            (?:                     # Value (one of):
+                "[^"]*"             # Double-quoted string
+                |'[^']*'            # Single-quoted string
+                |[^\s]+             # Unquoted word (no spaces)
+            )
+            \s+                     # Whitespace after assignment
+        )+                          # One or more env var assignments
+        (gh\s+.*)$                  # Capture the gh command
+    '''
+
+    match = re.match(env_var_pattern, cmd, re.VERBOSE)
     if match:
         return match.group(1)
+
     return None
 
 

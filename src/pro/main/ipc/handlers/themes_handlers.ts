@@ -1,17 +1,17 @@
-import { createLoggedHandler } from "./safe_handle";
+import { createLoggedHandler } from "../../../../ipc/handlers/safe_handle";
 import log from "electron-log";
 import path from "path";
 import os from "os";
 import fs from "fs";
 import { readFile, writeFile, unlink, mkdir } from "fs/promises";
-import { themesData, type Theme } from "../../shared/themes";
-import { db } from "../../db";
-import { apps, customThemes } from "../../db/schema";
+import { themesData, type Theme } from "../../../../shared/themes";
+import { db } from "../../../../db";
+import { apps, customThemes } from "../../../../db/schema";
 import { eq, sql } from "drizzle-orm";
 import { streamText, TextPart, ImagePart } from "ai";
-import { readSettings } from "../../main/settings";
+import { readSettings } from "../../../../main/settings";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
-import { getModelClient } from "../utils/get_model_client";
+import { getModelClient } from "../../../../ipc/utils/get_model_client";
 import type {
   SetAppThemeParams,
   GetAppThemeParams,
@@ -24,7 +24,7 @@ import type {
   SaveThemeImageParams,
   SaveThemeImageResult,
   CleanupThemeImagesParams,
-} from "../ipc_types";
+} from "@/ipc/ipc_types";
 
 const logger = log.scope("themes_handlers");
 const handle = createLoggedHandler(logger);

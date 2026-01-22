@@ -14,11 +14,18 @@
 
       "Bash(git:*)",
 
-      "Bash(gh pr:*)",
-      "Bash(gh issue:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr status:*)",
+      "Bash(gh pr diff:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh issue view:*)",
+      "Bash(gh issue list:*)",
+      "Bash(gh issue status:*)",
       "Bash(gh repo view:*)",
       "Bash(gh run view:*)",
       "Bash(gh run list:*)",
+      "Bash(gh api:*)",
 
       "Bash(ps:*)",
       "Bash(lsof:*)",

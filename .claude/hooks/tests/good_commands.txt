@@ -1,0 +1,69 @@
+# Commands that should be AUTO-APPROVED by the gh-permission-hook
+# Format: one command per line, lines starting with # are comments
+
+# Read-only PR commands
+gh pr view 123
+gh pr list
+gh pr status
+gh pr diff 123
+gh pr checks 123
+gh pr view --json title,body
+
+# PR modification commands (explicitly allowed)
+gh pr create --title "Test" --body "Test body"
+gh pr edit 123 --title "New title"
+gh pr ready 123
+gh pr review 123 --approve
+gh pr close 123
+gh pr merge 123 --squash
+
+# Read-only issue commands
+gh issue view 456
+gh issue list
+gh issue status
+
+# Read-only repo commands
+gh repo view
+gh repo view owner/repo
+
+# Read-only run/workflow commands
+gh run view 789
+gh run list
+gh run watch 789
+gh run download 789
+
+# Read-only release commands
+gh release view v1.0.0
+gh release list
+gh release download v1.0.0
+
+# Search commands
+gh search repos test
+gh search issues test
+gh search prs test
+
+# Browse and status
+gh browse
+gh status
+gh auth status
+
+# Config read operations
+gh config get editor
+gh config list
+
+# Read-only gh api commands (default to GET)
+gh api /repos/owner/repo
+gh api /repos/owner/repo/pulls
+gh api --method GET /repos/owner/repo
+gh api --method=GET /repos/owner/repo
+gh api -X GET /repos/owner/repo
+gh api -X=GET /repos/owner/repo
+
+# GraphQL queries (read-only)
+gh api graphql -f query="query { viewer { login } }"
+gh api graphql -f query='query { repository(owner: "owner", name: "repo") { name } }'
+gh api graphql -f query="query GetPR { repository(owner: \"owner\", name: \"repo\") { pullRequest(number: 1) { title } } }"
+
+# Commands with env var prefix (the gh command itself should be extracted)
+GH_TOKEN=xxx gh pr view 123
+env GH_TOKEN=xxx gh pr list

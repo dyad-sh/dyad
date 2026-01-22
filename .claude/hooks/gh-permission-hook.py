@@ -6,6 +6,56 @@ and reject destructive operations.
 import json
 import sys
 import re
+from typing import Optional
+
+
+# Shell metacharacters that could allow command chaining/injection
+# Note: We check for specific dangerous patterns, not all shell metacharacters
+# - ; separates commands
+# - | pipes output (but || is logical OR)
+# - && is logical AND
+# - || is logical OR
+# - & followed by space can run background + another command
+# - ` and $( are command substitution
+# - We don't block () alone as they're used in GraphQL queries
+SHELL_INJECTION_PATTERNS = re.compile(
+    r';'           # Command separator
+    r'|(?<!\|)\|(?!\|)'  # Single pipe (not ||)
+    r'|\|\|'       # Logical OR (could chain commands)
+    r'|&&'         # Logical AND
+    r'|&\s+\S'     # Background + another command (& followed by space and non-space)
+    r'|`'          # Backtick command substitution
+    r'|\$\('       # $( command substitution
+)
+
+
+def extract_gh_command(command: str) -> Optional[str]:
+    """
+    Extract the gh command from a potentially prefixed command string.
+
+    Handles cases like:
+    - "gh pr view 123"
+    - "GH_TOKEN=xxx gh pr view 123"
+    - "env GH_TOKEN=xxx gh pr view 123"
+
+    Returns None if no gh command is found.
+    """
+    # Match gh command, potentially preceded by env vars or 'env' command
+    # Pattern: optional (VAR=value )* or (env VAR=value )* then "gh "
+    match = re.search(r'(?:^|\s)(gh\s+.*)$', command.strip())
+    if match:
+        return match.group(1)
+    return None
+
+
+def contains_shell_injection(cmd: str) -> bool:
+    """
+    Check if command contains shell metacharacters that could allow injection.
+
+    This prevents bypasses like: "gh pr view 123; rm -rf /"
+    """
+    return bool(SHELL_INJECTION_PATTERNS.search(cmd))
+
 
 def main():
     try:
@@ -22,12 +72,21 @@ def main():
     if tool_name != "Bash":
         sys.exit(0)
 
-    # Only process gh commands
-    if not command.strip().startswith("gh "):
+    # Extract gh command (handles env var prefixes)
+    gh_command = extract_gh_command(command)
+    if not gh_command:
+        sys.exit(0)
+
+    # Reject commands with shell metacharacters to prevent injection
+    if contains_shell_injection(command):
+        decision = make_deny_decision(
+            "Command contains shell metacharacters that could allow injection"
+        )
+        print(json.dumps(decision))
         sys.exit(0)
 
     # Normalize whitespace for matching
-    normalized_cmd = " ".join(command.split())
+    normalized_cmd = " ".join(gh_command.split())
 
     # Check if this is a gh api command
     if normalized_cmd.startswith("gh api "):
@@ -43,17 +102,21 @@ def main():
     sys.exit(0)
 
 
-def check_gh_api_command(cmd: str) -> dict | None:
+def check_gh_api_command(cmd: str) -> Optional[dict]:
     """
     Check gh api commands for read-only vs destructive operations.
 
     gh api defaults to GET when no --method is specified.
     """
+    # Check for GraphQL commands first
+    if re.search(r"gh\s+api\s+graphql\b", cmd, re.IGNORECASE):
+        return check_gh_graphql_command(cmd)
+
     # Destructive HTTP methods
     destructive_methods = ["POST", "PUT", "PATCH", "DELETE"]
 
-    # Check for explicit method flag
-    method_match = re.search(r"--method\s+(\w+)", cmd, re.IGNORECASE)
+    # Check for explicit method flag (handles both --method VALUE and --method=VALUE)
+    method_match = re.search(r"--method[=\s]+(\w+)", cmd, re.IGNORECASE)
     if method_match:
         method = method_match.group(1).upper()
         if method in destructive_methods:
@@ -63,8 +126,8 @@ def check_gh_api_command(cmd: str) -> dict | None:
         elif method == "GET":
             return make_allow_decision("Read-only gh api GET request auto-approved")
 
-    # Check for -X shorthand method flag
-    method_match = re.search(r"-X\s+(\w+)", cmd)
+    # Check for -X shorthand method flag (handles both -X VALUE and -X=VALUE)
+    method_match = re.search(r"-X[=\s]+(\w+)", cmd)
     if method_match:
         method = method_match.group(1).upper()
         if method in destructive_methods:
@@ -84,7 +147,30 @@ def check_gh_api_command(cmd: str) -> dict | None:
     return make_allow_decision("Read-only gh api request auto-approved (defaults to GET)")
 
 
-def check_gh_command(cmd: str) -> dict | None:
+def check_gh_graphql_command(cmd: str) -> Optional[dict]:
+    """
+    Check gh api graphql commands for queries vs mutations.
+
+    GraphQL queries are read-only, mutations are write operations.
+    """
+    # Look for mutation keyword in the query
+    # Common patterns: -f query="mutation ...", -f query='mutation ...'
+    # The mutation keyword appears at the start of the operation
+    if re.search(r'mutation\s*[\s\({]', cmd, re.IGNORECASE):
+        return make_deny_decision(
+            "GraphQL mutation blocked (write operation)"
+        )
+
+    # Check for query operations (read-only)
+    if re.search(r'query\s*[\s\({]', cmd, re.IGNORECASE):
+        return make_allow_decision("GraphQL query auto-approved (read-only)")
+
+    # If we can't determine the operation type, don't auto-approve
+    # Let it go through normal permission flow
+    return None
+
+
+def check_gh_command(cmd: str) -> Optional[dict]:
     """
     Check other gh commands for read-only vs destructive operations.
     """

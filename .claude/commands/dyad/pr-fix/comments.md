@@ -33,6 +33,7 @@ Read all unresolved GitHub PR comments and address or resolve them appropriately
                comments(first: 10) {
                  nodes {
                    id
+                   databaseId
                    body
                    author { login }
                    createdAt
@@ -68,10 +69,14 @@ Read all unresolved GitHub PR comments and address or resolve them appropriately
    **For not valid issues:**
 
    - Reply to the thread explaining why the concern doesn't apply:
+
      ```
-     gh api repos/{owner}/{repo}/pulls/{pr}/comments/{comment_id}/replies \
+     gh api repos/{owner}/{repo}/pulls/<PR_NUMBER>/comments/<COMMENT_ID>/replies \
        -f body="<explanation of why this doesn't need to be addressed>"
      ```
+
+     Note: `{owner}` and `{repo}` are auto-replaced by `gh` CLI. Replace `<PR_NUMBER>` with the PR number and `<COMMENT_ID>` with the comment's `databaseId` from the GraphQL response.
+
    - Resolve the thread using GraphQL:
      ```
      gh api graphql -f query='
@@ -80,16 +85,18 @@ Read all unresolved GitHub PR comments and address or resolve them appropriately
            thread { isResolved }
          }
        }
-     ' -f threadId=THREAD_ID
+     ' -f threadId=<THREAD_ID>
      ```
+     Note: Replace `<THREAD_ID>` with the thread's `id` field from the GraphQL response.
 
    **For ambiguous issues:**
 
    - Reply to the thread flagging it for human attention:
      ```
-     gh api repos/{owner}/{repo}/pulls/{pr}/comments/{comment_id}/replies \
+     gh api repos/{owner}/{repo}/pulls/<PR_NUMBER>/comments/<COMMENT_ID>/replies \
        -f body="🚩 **Flagged for human review**: <explanation of why this needs human input>"
      ```
+     Note: Replace `<PR_NUMBER>` with the PR number and `<COMMENT_ID>` with the comment's `databaseId` from the GraphQL response.
    - Do NOT resolve the thread - leave it open for discussion
 
 5. **After processing all comments, verify and commit changes:**

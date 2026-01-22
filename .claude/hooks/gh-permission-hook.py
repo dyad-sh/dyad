@@ -27,6 +27,7 @@ SHELL_INJECTION_PATTERNS = re.compile(
     r'|&&'         # Logical AND
     r'|&\s+\S'     # Background + another command (& followed by space and non-space)
     r'|&\S'        # Background + another command (& followed directly by non-space)
+    r'|&\s*$'      # Trailing background operator (& at end of command)
     r'|`'          # Backtick command substitution
     r'|\$\('       # $( command substitution
     r'|\n'         # Newline (command separator in bash)

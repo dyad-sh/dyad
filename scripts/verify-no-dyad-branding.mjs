@@ -3,7 +3,7 @@
  * verify-no-dyad-branding.mjs
  *
  * CI guardrail to prevent reintroduction of Dyad branding in config, docs, and UI text.
- * 
+ *
  * This script scans specific files/patterns for forbidden Dyad branding terms.
  * It DOES NOT scan:
  * - Functional code (dyad_tag_parser.ts, response_processor.ts, etc.)
@@ -43,7 +43,7 @@ const FORBIDDEN_PATTERNS = [
   /github\.com\/dyad-sh\/dyad/gi,
   /dyad\.sh/gi,
   /dyad\.dev/gi,
-  
+
   // Branding text (not functional tags)
   /\bDyad AI\b/gi,
   /\bDyad app\b/gi,
@@ -69,32 +69,32 @@ const ALLOWLIST = [
   "dyad-add-integration",
   "dyad-think",
   "dyad-status",
-  
+
   // Functional code references
   "dyad_tag_parser",
   "DyadMarkdownParser",
   "Dyad*.tsx", // Component file references in docs
   "getDyadAppsBaseDirectory", // Legacy (should be renamed but acceptable in comments)
   "getDyadAppPath",
-  
+
   // Attribution (intentionally preserved)
   "forked from Dyad",
   "forked from [Dyad]",
-  
+
   // NPM package names (published, cannot rename)
   "@dyad-sh/",
-  
+
   // External dependencies
   "dyad-sh/supabase-management-js",
-  
+
   // File references in docs/comments
   "dyad-sw.js",
   "dyad-shim.js",
   "dyad-logs.js",
-  
+
   // Environment variable names (external service)
   "DYAD_ENGINE_URL",
-  
+
   // Audit report itself
   "BRAND_AUDIT.md",
 ];
@@ -130,7 +130,7 @@ const EXCLUDE_PATTERNS = [
 ];
 
 function isAllowlisted(line) {
-  return ALLOWLIST.some(allowed => line.includes(allowed));
+  return ALLOWLIST.some((allowed) => line.includes(allowed));
 }
 
 async function scanFile(filePath) {
@@ -173,7 +173,7 @@ async function main() {
 
     for (const file of files) {
       if (!fs.existsSync(file)) continue;
-      
+
       filesScanned++;
       const hasFileErrors = await scanFile(file);
       if (hasFileErrors) {
@@ -184,10 +184,14 @@ async function main() {
 
   console.log("\n" + "=".repeat(60));
   console.log(`Scanned ${filesScanned} files`);
-  
+
   if (hasErrors) {
-    console.error(`\n❌ Found forbidden Dyad branding in ${filesWithErrors} file(s).`);
-    console.error("\nIf these are intentional (e.g., attribution), add to ALLOWLIST.");
+    console.error(
+      `\n❌ Found forbidden Dyad branding in ${filesWithErrors} file(s).`,
+    );
+    console.error(
+      "\nIf these are intentional (e.g., attribution), add to ALLOWLIST.",
+    );
     console.error("If functional code, add file pattern to EXCLUDE_PATTERNS.");
     process.exit(1);
   } else {

@@ -1071,6 +1071,16 @@ export class PageObject {
     await this.page.getByRole("button", { name: "Add Model" }).click();
   }
 
+  async setUpTestProviderApiKey() {
+    // Fill in a test API key for the custom provider
+    await this.page
+      .getByPlaceholder(/Enter new.*API Key here/)
+      .fill("test-api-key-12345");
+    await this.page.getByRole("button", { name: "Save Key" }).click();
+    // Wait for the key to be saved
+    await expect(this.page.getByText("test-api-key-12345")).toBeVisible();
+  }
+
   async goToSettingsTab() {
     await this.page.getByRole("link", { name: "Settings" }).click();
   }

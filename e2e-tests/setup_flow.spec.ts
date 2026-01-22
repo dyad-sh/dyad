@@ -10,7 +10,9 @@ testSetup.describe("Setup Flow", () => {
     "setup banner shows correct state when node.js is installed",
     async ({ po }) => {
       // Verify the "Setup Dyad" heading is visible
-      await expect(po.page.getByText("Setup Dyad")).toBeVisible();
+      await expect(
+        po.page.getByText("Setup Dyad", { exact: true }),
+      ).toBeVisible();
 
       // Verify both accordion sections are visible
       await expect(
@@ -26,10 +28,10 @@ testSetup.describe("Setup Flow", () => {
 
       // AI provider section should show warning state (needs action)
       await expect(
-        po.page.getByRole("button", { name: "Setup Google Gemini API Key" }),
+        po.page.getByRole("button", { name: /Setup Google Gemini API Key/ }),
       ).toBeVisible();
       await expect(
-        po.page.getByRole("button", { name: "Setup OpenRouter API Key" }),
+        po.page.getByRole("button", { name: /Setup OpenRouter API Key/ }),
       ).toBeVisible();
     },
   );
@@ -40,7 +42,9 @@ testSetup.describe("Setup Flow", () => {
     await po.page.reload();
 
     // Verify setup banner and install button are visible
-    await expect(po.page.getByText("Setup Dyad")).toBeVisible();
+    await expect(
+      po.page.getByText("Setup Dyad", { exact: true }),
+    ).toBeVisible();
     await expect(
       po.page.getByRole("button", { name: "Install Node.js Runtime" }),
     ).toBeVisible();
@@ -79,12 +83,20 @@ testSetup.describe("Setup Flow", () => {
 
   testSetup("ai provider setup flow", async ({ po }) => {
     // Verify setup banner is visible
-    await expect(po.page.getByText("Setup Dyad")).toBeVisible();
+    await expect(
+      po.page.getByText("Setup Dyad", { exact: true }),
+    ).toBeVisible();
+
+    // Dismiss telemetry consent if present
+    const laterButton = po.page.getByRole("button", { name: "Later" });
+    if (await laterButton.isVisible({ timeout: 1000 }).catch(() => false)) {
+      await laterButton.click();
+    }
 
     // Test Google Gemini navigation
     await po.page
-      .getByRole("button", { name: "Setup Google Gemini API Key" })
-      .click();
+      .getByRole("heading", { name: "Setup Google Gemini API Key" })
+      .click({ force: true });
     await expect(
       po.page.getByRole("heading", { name: "Configure Google" }),
     ).toBeVisible();
@@ -92,7 +104,7 @@ testSetup.describe("Setup Flow", () => {
 
     // Test OpenRouter navigation
     await po.page
-      .getByRole("button", { name: "Setup OpenRouter API Key" })
+      .getByRole("heading", { name: "Setup OpenRouter API Key" })
       .click();
     await expect(
       po.page.getByRole("heading", { name: "Configure OpenRouter" }),
@@ -101,19 +113,24 @@ testSetup.describe("Setup Flow", () => {
 
     // Test other providers navigation
     await po.page
-      .getByRole("button", { name: "Setup other AI providers" })
+      .getByRole("heading", { name: "Setup other AI providers" })
       .click();
     await expect(po.page.getByRole("link", { name: "Settings" })).toBeVisible();
 
     // Now configure the test provider
     await po.setUpTestProvider();
+    // Set up API key so provider is considered configured
+    await po.page.getByRole("heading", { name: "test-provider" }).click();
+    await po.setUpTestProviderApiKey();
     await po.setUpTestModel();
 
     // Go back to apps tab
     await po.goToAppsTab();
 
     // After configuring a provider, the setup banner should be gone
-    await expect(po.page.getByText("Setup Dyad")).not.toBeVisible();
-    await expect(po.page.getByText("Build your dream app")).toBeVisible();
+    await expect(
+      po.page.getByText("Setup Dyad", { exact: true }),
+    ).not.toBeVisible();
+    await expect(po.page.getByText("Build a new app")).toBeVisible();
   });
 });

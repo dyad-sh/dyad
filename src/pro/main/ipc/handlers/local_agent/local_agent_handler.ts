@@ -20,7 +20,7 @@ import { eq } from "drizzle-orm";
 
 // Pro check removed - local agent available to all users
 import { readSettings } from "@/main/settings";
-import { getDyadAppPath } from "@/paths/paths";
+import { getAbbaAppPath } from "@/paths/paths";
 import { getModelClient } from "@/ipc/utils/get_model_client";
 import { safeSend } from "@/ipc/utils/safe_sender";
 import { getMaxTokens, getTemperature } from "@/ipc/utils/token_utils";
@@ -130,7 +130,7 @@ export async function handleLocalAgentStream(
     throw new Error(`Chat not found: ${req.chatId}`);
   }
 
-  const appPath = getDyadAppPath(chat.app.path);
+  const appPath = getAbbaAppPath(chat.app.path);
 
   // Send initial message update
   safeSend(event.sender, "chat:response:chunk", {

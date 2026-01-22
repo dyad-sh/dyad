@@ -3,7 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import { createLoggedHandler } from "./safe_handle";
 import log from "electron-log";
-import { getDyadAppPath } from "../../paths/paths";
+import { getAbbaAppPath } from "../../paths/paths";
 import { apps } from "@/db/schema";
 import { db } from "@/db";
 import { chats } from "@/db/schema";
@@ -53,7 +53,7 @@ export function registerImportHandlers() {
     ) => {
       // Only check filesystem if we're copying to dyad-apps
       if (!skipCopy) {
-        const appPath = getDyadAppPath(appName);
+        const appPath = getAbbaAppPath(appName);
         try {
           await fs.access(appPath);
           return { exists: true };
@@ -92,7 +92,7 @@ export function registerImportHandlers() {
       }
 
       // Determine the app path based on skipCopy
-      const appPath = skipCopy ? sourcePath : getDyadAppPath(appName);
+      const appPath = skipCopy ? sourcePath : getAbbaAppPath(appName);
 
       if (!skipCopy) {
         // Check if the app already exists in dyad-apps

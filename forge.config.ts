@@ -188,7 +188,7 @@ const config: ForgeConfig = {
       config: {
         repository: {
           owner: "yosiwizman",
-          name: "dyad",
+          name: "abba-ai",
         },
         draft: true,
         force: true,

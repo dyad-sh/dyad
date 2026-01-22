@@ -6,7 +6,7 @@ import type { ChatSearchResult, ChatSummary } from "../../lib/schemas";
 import { createLoggedHandler } from "./safe_handle";
 
 import log from "electron-log";
-import { getDyadAppPath } from "../../paths/paths";
+import { getAbbaAppPath } from "../../paths/paths";
 import { UpdateChatParams } from "../ipc_types";
 import { getCurrentCommitHash } from "../utils/git_utils";
 
@@ -31,7 +31,7 @@ export function registerChatHandlers() {
     try {
       // Get the current git revision of main branch
       initialCommitHash = await getCurrentCommitHash({
-        path: getDyadAppPath(app.path),
+        path: getAbbaAppPath(app.path),
         ref: "main",
       });
     } catch (error) {

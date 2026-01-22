@@ -6,12 +6,12 @@
   "main": ".vite/build/main.js",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yosiwizman/dyad.git"
+    "url": "https://github.com/yosiwizman/abba-ai.git"
   },
   "bugs": {
-    "url": "https://github.com/yosiwizman/dyad/issues"
+    "url": "https://github.com/yosiwizman/abba-ai/issues"
   },
-  "homepage": "https://github.com/yosiwizman/dyad",
+  "homepage": "https://github.com/yosiwizman/abba-ai",
   "engines": {
     "node": ">=20"
   },
@@ -36,6 +36,8 @@
     "prettier": "npx prettier --write .",
     "presubmit": "npm run prettier:check && npm run lint",
     "verify-branding": "node scripts/verify-branding.mjs",
+    "verify-no-dyad-branding": "node scripts/verify-no-dyad-branding.mjs",
+    "verify-brand-ids": "node scripts/verify-brand-ids.mjs",
     "verify-windows-icon": "node scripts/verify-windows-exe-icon.mjs",
     "verify-windows-aumid": "node scripts/verify-windows-aumid.mjs",
     "verify-tray-icon": "node scripts/verify-tray-icon-config.mjs",

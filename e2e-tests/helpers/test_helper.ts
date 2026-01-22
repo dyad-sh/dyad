@@ -1469,12 +1469,19 @@ export const test = base.extend<{
       if (electronConfig.preLaunchHook) {
         await electronConfig.preLaunchHook({ userDataDir });
       }
+      // Build args array - add --no-sandbox on Linux for CI environments
+      const launchArgs = [
+        appInfo.main,
+        "--enable-logging",
+        `--user-data-dir=${userDataDir}`,
+      ];
+      // Linux CI environments require --no-sandbox because the SUID sandbox
+      // binary is not configured correctly in GitHub Actions runners
+      if (os.platform() === "linux") {
+        launchArgs.push("--no-sandbox");
+      }
       const electronApp = await electron.launch({
-        args: [
-          appInfo.main,
-          "--enable-logging",
-          `--user-data-dir=${userDataDir}`,
-        ],
+        args: launchArgs,
         executablePath: appInfo.executable,
         // Strong suspicion this is causing issues on Windows with tests hanging due to error:
         // ffmpeg failed to write: Error [ERR_STREAM_WRITE_AFTER_END]: write after end

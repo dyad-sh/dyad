@@ -58,7 +58,7 @@ Address review comments and failing checks on a GitHub Pull Request.
 7. **After making all changes, verify the fixes:**
 
    - Run relevant linters: `npm run lint:fix`
-   - Run type checks if TypeScript files were modified: `npm run typecheck`
+   - Run type checks if TypeScript files were modified: `npm run ts`
    - Run any relevant unit tests for modified code
 
 8. **Review all changes made:**

@@ -4,6 +4,7 @@ import { expect } from "@playwright/test";
 test("create and edit prompt", async ({ po }) => {
   await po.setUp();
   await po.goToLibraryTab();
+  await po.page.getByRole("link", { name: "Prompts" }).click();
   await po.createPrompt({
     title: "title1",
     description: "desc",
@@ -24,6 +25,7 @@ test("create and edit prompt", async ({ po }) => {
 test("delete prompt", async ({ po }) => {
   await po.setUp();
   await po.goToLibraryTab();
+  await po.page.getByRole("link", { name: "Prompts" }).click();
   await po.createPrompt({
     title: "title1",
     description: "desc",
@@ -39,6 +41,7 @@ test("delete prompt", async ({ po }) => {
 test("use prompt", async ({ po }) => {
   await po.setUp();
   await po.goToLibraryTab();
+  await po.page.getByRole("link", { name: "Prompts" }).click();
   await po.createPrompt({
     title: "title1",
     description: "desc",

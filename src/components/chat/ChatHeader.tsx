@@ -180,7 +180,8 @@ export function ChatHeader({
       )}
 
       {/* Show uncommitted files banner when on a branch and there are uncommitted changes */}
-      {!isVersionPaneOpen && branchInfo?.branch && (
+      {/* Hide while streaming to avoid distracting the user */}
+      {!isVersionPaneOpen && branchInfo?.branch && !isStreaming && (
         <UncommittedFilesBanner appId={appId} />
       )}
 

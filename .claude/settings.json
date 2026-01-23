@@ -152,9 +152,9 @@
       {
         "hooks": [
           {
-            "type": "prompt",
-            "prompt": "You are evaluating whether Claude should stop working. Your default bias should be to CONTINUE WORKING (ok: false). Only allow stopping when absolutely certain all work is complete.\n\nContext: $ARGUMENTS\n\nAnalyze the conversation and determine:\n\n1. TASK COMPLETION CHECK\n   - Has EVERY task the user requested been fully completed?\n   - Not just acknowledged, but actually done with verifiable output?\n   - Are there any implied subtasks that haven't been addressed?\n\n2. ERROR CHECK\n   - Did any errors occur that weren't resolved?\n   - Are there failed operations that need retry?\n   - Did Claude say it would do something but didn't actually do it?\n\n3. FOLLOW-UP CHECK\n   - Is there obvious next-step work that should be done?\n   - Did the user's request imply multiple steps where only some were completed?\n   - Would a thorough assistant do more here?\n\n4. QUALITY CHECK\n   - Was the work done to completion, not just partially?\n   - Are there placeholders, TODOs, or incomplete sections?\n   - Did Claude stop prematurely mid-task?\n\nDECISION RULES:\n- If ANY task is incomplete → continue (ok: false)\n- If ANY error is unresolved → continue (ok: false)\n- If there's reasonable follow-up work → continue (ok: false)\n- If Claude said \"I'll do X\" but didn't → continue (ok: false)\n- If work quality is partial/rushed → continue (ok: false)\n- ONLY return ok: true if ALL tasks are genuinely, fully complete AND no errors exist AND no reasonable follow-up remains\n\nRespond with JSON:\n- {\"ok\": false, \"reason\": \"specific explanation of what still needs to be done\"} — DEFAULT, use this unless everything is truly complete\n- {\"ok\": true} — ONLY when absolutely certain all work is finished and nothing remains",
-            "timeout": 30
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/stop-hook.py",
+            "timeout": 30000
           }
         ]
       }

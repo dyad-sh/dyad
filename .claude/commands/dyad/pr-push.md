@@ -78,7 +78,7 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
    First, check if a PR already exists for this branch:
 
    ```
-   gh pr view --json number,url 2>/dev/null
+   gh pr view --json number,url
    ```
 
    If a PR already exists, skip PR creation (the push already updated it).

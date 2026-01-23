@@ -131,6 +131,63 @@ class TestResponseFormat:
 class TestTranscriptReading:
     """Test transcript reading functionality."""
 
+    def test_reads_incomplete_tasks_fixture(self):
+        """Should correctly parse the incomplete_tasks fixture.
+
+        This fixture represents a real scenario where:
+        - 5 tasks were created
+        - Tasks 1, 2, 3 were completed
+        - Task 4 is in_progress (never completed)
+        - Task 5 is pending (never started)
+        => 2 tasks remaining
+        """
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("stop_hook", HOOK_PATH)
+        assert spec is not None
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        fixture_path = Path(__file__).parent / "fixtures" / "incomplete_tasks.jsonl"
+        result = module.read_transcript(str(fixture_path))
+
+        # Should contain the user request
+        assert "USER:" in result
+        assert "Fix all the PR review comments" in result
+
+        # Should show task creation
+        assert "TaskCreate" in result
+
+        # Should show the incomplete state - last message is about lint checks
+        assert "lint checks" in result
+
+        # Should NOT have a completion summary
+        assert "All tasks are complete" not in result
+        assert "summary" not in result.lower() or "Providing summary" not in result
+
+    def test_reads_completed_tasks_fixture(self):
+        """Should correctly parse the completed_tasks fixture.
+
+        This fixture represents a scenario where all tasks completed successfully.
+        """
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("stop_hook", HOOK_PATH)
+        assert spec is not None
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        fixture_path = Path(__file__).parent / "fixtures" / "completed_tasks.jsonl"
+        result = module.read_transcript(str(fixture_path))
+
+        # Should contain the user request
+        assert "USER:" in result
+        assert "Fix all the PR review comments" in result
+
+        # Should have a completion summary at the end
+        assert "completed all the PR review comments" in result
+        assert "All tasks are complete" in result
+
     def test_reads_user_messages(self, tmp_path):
         """Should be able to read user messages from transcript."""
         transcript = tmp_path / "transcript.jsonl"

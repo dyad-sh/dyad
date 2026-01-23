@@ -21,13 +21,13 @@ Rebase E2E test snapshots based on failed tests from the PR comments.
 5. For each failed test file, run the e2e test with snapshot update:
 
    ```
-   npm run e2e e2e-tests/<testFilename>.spec.ts -- --update-snapshots
+   PLAYWRIGHT_HTML_OPEN=never npm run e2e e2e-tests/<testFilename>.spec.ts -- --update-snapshots
    ```
 
 6. After updating snapshots, re-run the same tests WITHOUT `--update-snapshots` to verify they pass consistently:
 
    ```
-   npm run e2e e2e-tests/<testFilename>.spec.ts
+   PLAYWRIGHT_HTML_OPEN=never npm run e2e e2e-tests/<testFilename>.spec.ts
    ```
 
    If any test fails on this verification run, inform the user that the snapshots may be flaky and stop.

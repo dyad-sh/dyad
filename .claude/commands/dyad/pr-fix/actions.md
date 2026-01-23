@@ -54,7 +54,7 @@ Fix failing CI checks and GitHub Actions on a Pull Request.
    - If the failures are not snapshot-related:
      - Run the failing tests locally with debug output:
        ```
-       DEBUG=pw:browser npm run e2e -- <test-file>
+       DEBUG=pw:browser PLAYWRIGHT_HTML_OPEN=never npm run e2e -- <test-file>
        ```
      - Investigate and fix the underlying issues
 

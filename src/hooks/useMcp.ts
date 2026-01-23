@@ -31,7 +31,7 @@ export function useMcp() {
   );
 
   const toolsByServerQuery = useQuery<Record<number, McpTool[]>, Error>({
-    queryKey: queryKeys.mcp.toolsByServer.list(serverIds.map(String)),
+    queryKey: queryKeys.mcp.toolsByServer.list(serverIds),
     enabled: serverIds.length > 0,
     queryFn: async () => {
       const ipc = IpcClient.getInstance();

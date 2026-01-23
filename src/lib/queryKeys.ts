@@ -31,7 +31,7 @@ export const queryKeys = {
     all: ["chats"] as const,
     list: (appId: number | null) => ["chats", appId] as const,
     search: (appId: number | null, query: string) =>
-      ["search-chats", appId, query] as const,
+      ["chats", "search", appId, query] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -99,7 +99,7 @@ export const queryKeys = {
   // Security Review
   // ─────────────────────────────────────────────────────────────────────────────
   securityReview: {
-    byApp: (appId: number) => ["security-review", appId] as const,
+    byApp: (appId: number | null) => ["security-review", appId] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -167,8 +167,8 @@ export const queryKeys = {
   // App Upgrades
   // ─────────────────────────────────────────────────────────────────────────────
   appUpgrades: {
-    byApp: (appId: number) => ["app-upgrades", appId] as const,
-    isCapacitor: (appId: number) => ["is-capacitor", appId] as const,
+    byApp: (appId: number | null) => ["app-upgrades", appId] as const,
+    isCapacitor: (appId: number | null) => ["is-capacitor", appId] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -179,7 +179,7 @@ export const queryKeys = {
     servers: ["mcp", "servers"] as const,
     toolsByServer: {
       all: ["mcp", "tools-by-server"] as const,
-      list: (serverIds: string[]) =>
+      list: (serverIds: number[]) =>
         ["mcp", "tools-by-server", serverIds] as const,
     },
     consents: ["mcp", "consents"] as const,

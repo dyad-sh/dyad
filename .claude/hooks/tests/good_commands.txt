@@ -471,6 +471,12 @@ gh pr merge --auto
 gh pr merge --delete-branch
 gh pr merge --squash --subject "feat: feature" --body "Description"
 gh pr merge --admin
+gh pr reopen 123
+gh pr reopen 123 --comment "Reopening for further work"
+gh pr comment 123 --body "Comment text"
+gh pr comment 123 --body-file comment.md
+gh pr comment --body "Comment on current branch PR"
+gh pr comment 123 --edit-last
 
 # =============================================================================
 # ADDITIONAL ISSUE WORKFLOW COMMANDS (allowed)
@@ -552,6 +558,18 @@ gh api /repos/owner/repo/pulls/123/comments/456/replies -f body='Acknowledged'
 gh api repos/owner/repo/issues/1/comments -f body='Working on this'
 gh api repos/owner/repo/issues/999/comments --field body='Fixed in latest commit'
 gh api /repos/owner/repo/issues/123/comments -f body='See PR #456'
+
+# Update issue comments (PATCH to /issues/comments/{id})
+gh api repos/owner/repo/issues/comments/123 --method PATCH -f body='Updated comment'
+gh api repos/owner/repo/issues/comments/456 -X PATCH -f body='Fixed typo'
+gh api /repos/owner/repo/issues/comments/789 --method=PATCH -f body='Clarified'
+gh api -X PATCH repos/owner/repo/issues/comments/999 -f body='Revised'
+
+# Update PR review comments (PATCH to /pulls/comments/{id})
+gh api repos/owner/repo/pulls/comments/123 --method PATCH -f body='Updated review comment'
+gh api repos/owner/repo/pulls/comments/456 -X PATCH -f body='Fixed typo'
+gh api /repos/owner/repo/pulls/comments/789 --method=PATCH -f body='Clarified'
+gh api -X PATCH repos/owner/repo/pulls/comments/999 -f body='Revised'
 
 # =============================================================================
 # ADDITIONAL GRAPHQL QUERIES

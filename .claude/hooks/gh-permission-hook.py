@@ -14,7 +14,7 @@ ALLOWED (auto-approved):
    - run watch, run download, release download
 
 2. PR workflow commands:
-   - pr create, edit, ready, review, close, merge
+   - pr create, edit, ready, review, close, reopen, merge, comment
 
 3. Issue workflow commands:
    - issue create, edit, close, reopen, comment
@@ -375,13 +375,23 @@ def check_gh_api_command(cmd: str) -> Optional[dict]:
     if endpoint:
         # Allow PR comment replies (repos/.../pulls/.../comments/.../replies)
         if re.search(r'/pulls/\d+/comments/\d+/replies$', endpoint):
-            if method in [None, "POST"] or has_input:
+            if method in [None, "POST"]:
                 return make_allow_decision("PR comment reply auto-approved")
 
-        # Allow issue comment creation/replies
+        # Allow issue comment creation (repos/.../issues/.../comments)
         if re.search(r'/issues/\d+/comments$', endpoint):
-            if method in [None, "POST"] or has_input:
+            if method in [None, "POST"]:
                 return make_allow_decision("Issue comment auto-approved")
+
+        # Allow updating issue comments (repos/.../issues/comments/...)
+        if re.search(r'/issues/comments/\d+$', endpoint):
+            if method == "PATCH":
+                return make_allow_decision("Issue comment update auto-approved")
+
+        # Allow updating PR review comments (repos/.../pulls/comments/...)
+        if re.search(r'/pulls/comments/\d+$', endpoint):
+            if method == "PATCH":
+                return make_allow_decision("PR comment update auto-approved")
 
     # Now check if method is destructive (after checking allowed endpoints)
     if method:
@@ -476,7 +486,7 @@ def check_gh_command(cmd: str) -> Optional[dict]:
 
     # PR modification commands are explicitly allowed
     pr_allowed_patterns = [
-        r"^gh pr (create|edit|ready|review|close|merge)\b",
+        r"^gh pr (create|edit|ready|review|close|reopen|merge|comment)\b",
     ]
 
     for pattern in pr_allowed_patterns:

@@ -652,6 +652,44 @@ gh api graphql -f query='mutation addPullRequestReview { deleteRepository(input:
 gh api graphql -f query='mutation($m: String!) { $m }' -f m='deleteIssue(input: {})'
 
 # =============================================================================
+# DESTRUCTIVE METHODS TO ALLOWED ENDPOINTS (should still be blocked)
+# =============================================================================
+
+# DELETE to PR comment replies endpoint (should NOT be auto-approved despite input flag)
+gh api repos/owner/repo/pulls/123/comments/456/replies --method DELETE -f body='x'
+gh api repos/owner/repo/pulls/123/comments/456/replies -X DELETE -f body='bypass attempt'
+gh api --method DELETE repos/owner/repo/pulls/123/comments/456/replies -f body='test'
+gh api -X DELETE /repos/owner/repo/pulls/999/comments/888/replies -f body='delete'
+
+# PUT to PR comment replies endpoint (should NOT be auto-approved)
+gh api repos/owner/repo/pulls/123/comments/456/replies --method PUT -f body='x'
+gh api repos/owner/repo/pulls/123/comments/456/replies -X PUT -f body='bypass'
+
+# PATCH to PR comment replies endpoint (should NOT be auto-approved)
+gh api repos/owner/repo/pulls/123/comments/456/replies --method PATCH -f body='x'
+gh api repos/owner/repo/pulls/123/comments/456/replies -X PATCH -f body='bypass'
+
+# DELETE to issue comments creation endpoint (should NOT be auto-approved)
+gh api repos/owner/repo/issues/123/comments --method DELETE -f body='x'
+gh api repos/owner/repo/issues/123/comments -X DELETE -f body='bypass attempt'
+gh api --method DELETE repos/owner/repo/issues/456/comments -f body='test'
+gh api -X DELETE /repos/owner/repo/issues/789/comments -f body='delete'
+
+# PUT to issue comments endpoint (should NOT be auto-approved)
+gh api repos/owner/repo/issues/123/comments --method PUT -f body='x'
+gh api repos/owner/repo/issues/123/comments -X PUT -f body='bypass'
+
+# DELETE specific issue comments (should NOT be auto-approved - updates are ok, deletes are not)
+gh api repos/owner/repo/issues/comments/123 --method DELETE
+gh api repos/owner/repo/issues/comments/456 -X DELETE
+gh api /repos/owner/repo/issues/comments/789 --method DELETE -f body='x'
+
+# DELETE specific PR review comments (should NOT be auto-approved - updates are ok, deletes are not)
+gh api repos/owner/repo/pulls/comments/123 --method DELETE
+gh api repos/owner/repo/pulls/comments/456 -X DELETE
+gh api /repos/owner/repo/pulls/comments/789 --method DELETE -f body='x'
+
+# =============================================================================
 # WRITE TO SENSITIVE ENDPOINTS
 # =============================================================================
 

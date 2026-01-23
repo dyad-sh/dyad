@@ -46,6 +46,101 @@ export const GetAppThemeParamsSchema = z.object({
 export type GetAppThemeParams = z.infer<typeof GetAppThemeParamsSchema>;
 
 // =============================================================================
+// Custom Theme Schemas
+// =============================================================================
+
+export const CustomThemeSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  description: z.string().nullable(),
+  prompt: z.string(),
+  createdAt: z.date(),
+  updatedAt: z.date(),
+});
+
+export type CustomTheme = z.infer<typeof CustomThemeSchema>;
+
+export const CreateCustomThemeParamsSchema = z.object({
+  name: z.string(),
+  description: z.string().optional(),
+  prompt: z.string(),
+});
+
+export type CreateCustomThemeParams = z.infer<
+  typeof CreateCustomThemeParamsSchema
+>;
+
+export const UpdateCustomThemeParamsSchema = z.object({
+  id: z.number(),
+  name: z.string().optional(),
+  description: z.string().optional(),
+  prompt: z.string().optional(),
+});
+
+export type UpdateCustomThemeParams = z.infer<
+  typeof UpdateCustomThemeParamsSchema
+>;
+
+export const DeleteCustomThemeParamsSchema = z.object({
+  id: z.number(),
+});
+
+export type DeleteCustomThemeParams = z.infer<
+  typeof DeleteCustomThemeParamsSchema
+>;
+
+// Theme generation types
+export const ThemeGenerationModeSchema = z.enum(["inspired", "high-fidelity"]);
+export type ThemeGenerationMode = z.infer<typeof ThemeGenerationModeSchema>;
+
+export const ThemeGenerationModelSchema = z.enum([
+  "gemini-3-pro",
+  "claude-opus-4.5",
+  "gpt-5.2",
+]);
+export type ThemeGenerationModel = z.infer<typeof ThemeGenerationModelSchema>;
+
+export const GenerateThemePromptParamsSchema = z.object({
+  imagePaths: z.array(z.string()),
+  keywords: z.string(),
+  generationMode: ThemeGenerationModeSchema,
+  model: ThemeGenerationModelSchema,
+});
+
+export type GenerateThemePromptParams = z.infer<
+  typeof GenerateThemePromptParamsSchema
+>;
+
+export const GenerateThemePromptResultSchema = z.object({
+  prompt: z.string(),
+});
+
+export type GenerateThemePromptResult = z.infer<
+  typeof GenerateThemePromptResultSchema
+>;
+
+export const SaveThemeImageParamsSchema = z.object({
+  data: z.string(),
+  filename: z.string(),
+});
+
+export type SaveThemeImageParams = z.infer<typeof SaveThemeImageParamsSchema>;
+
+export const SaveThemeImageResultSchema = z.object({
+  path: z.string(),
+});
+
+export type SaveThemeImageResult = z.infer<typeof SaveThemeImageResultSchema>;
+
+export const CleanupThemeImagesParamsSchema = z.object({
+  paths: z.array(z.string()),
+});
+
+export type CleanupThemeImagesParams = z.infer<
+  typeof CleanupThemeImagesParamsSchema
+>;
+
+// =============================================================================
 // Template/Theme Contracts
 // =============================================================================
 
@@ -72,6 +167,50 @@ export const templateContracts = {
     channel: "get-app-theme",
     input: GetAppThemeParamsSchema,
     output: z.string().nullable(),
+  }),
+
+  // Custom theme operations
+  getCustomThemes: defineContract({
+    channel: "get-custom-themes",
+    input: z.void(),
+    output: z.array(CustomThemeSchema),
+  }),
+
+  createCustomTheme: defineContract({
+    channel: "create-custom-theme",
+    input: CreateCustomThemeParamsSchema,
+    output: CustomThemeSchema,
+  }),
+
+  updateCustomTheme: defineContract({
+    channel: "update-custom-theme",
+    input: UpdateCustomThemeParamsSchema,
+    output: CustomThemeSchema,
+  }),
+
+  deleteCustomTheme: defineContract({
+    channel: "delete-custom-theme",
+    input: DeleteCustomThemeParamsSchema,
+    output: z.void(),
+  }),
+
+  // Theme generation operations
+  generateThemePrompt: defineContract({
+    channel: "generate-theme-prompt",
+    input: GenerateThemePromptParamsSchema,
+    output: GenerateThemePromptResultSchema,
+  }),
+
+  saveThemeImage: defineContract({
+    channel: "save-theme-image",
+    input: SaveThemeImageParamsSchema,
+    output: SaveThemeImageResultSchema,
+  }),
+
+  cleanupThemeImages: defineContract({
+    channel: "cleanup-theme-images",
+    input: CleanupThemeImagesParamsSchema,
+    output: z.void(),
   }),
 } as const;
 

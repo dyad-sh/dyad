@@ -235,6 +235,17 @@ export type {
   Theme,
   SetAppThemeParams,
   GetAppThemeParams,
+  CustomTheme,
+  CreateCustomThemeParams,
+  UpdateCustomThemeParams,
+  DeleteCustomThemeParams,
+  ThemeGenerationMode,
+  ThemeGenerationModel,
+  GenerateThemePromptParams,
+  GenerateThemePromptResult,
+  SaveThemeImageParams,
+  SaveThemeImageResult,
+  CleanupThemeImagesParams,
 } from "./templates";
 
 // Proposal types

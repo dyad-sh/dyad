@@ -235,6 +235,9 @@ export type ReleaseChannel = z.infer<typeof ReleaseChannelSchema>;
 export const ZoomLevelSchema = z.enum(["90", "100", "110", "125", "150"]);
 export type ZoomLevel = z.infer<typeof ZoomLevelSchema>;
 
+export const DeviceModeSchema = z.enum(["desktop", "tablet", "mobile"]);
+export type DeviceMode = z.infer<typeof DeviceModeSchema>;
+
 export const SmartContextModeSchema = z.enum([
   "balanced",
   "conservative",
@@ -294,6 +297,7 @@ export const UserSettingsSchema = z
     defaultChatMode: ChatModeSchema.optional(),
     acceptedCommunityCode: z.boolean().optional(),
     zoomLevel: ZoomLevelSchema.optional(),
+    previewDeviceMode: DeviceModeSchema.optional(),
 
     enableAutoFixProblems: z.boolean().optional(),
     enableNativeGit: z.boolean().optional(),

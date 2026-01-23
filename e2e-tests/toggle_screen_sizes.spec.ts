@@ -76,4 +76,32 @@ test.describe("Toggle Screen Size Tests", () => {
     );
     expect(mobileWidth).toBe("375");
   });
+
+  testSkipIfWindows(
+    "should persist device mode after rebuild",
+    async ({ po }) => {
+      test.setTimeout(Timeout.EXTRA_LONG * 2);
+      await setupApp(po);
+
+      const deviceModeButton = po.page.locator(
+        '[data-testid="device-mode-button"]',
+      );
+      const previewIframe = po.page.locator(
+        '[data-testid="preview-iframe-element"]',
+      );
+
+      // Switch to mobile mode
+      await deviceModeButton.click();
+      await po.page.locator('[aria-label="Mobile view"]').click();
+      await expect(previewIframe).toHaveAttribute("style", /width:\s*375px/);
+
+      // Trigger rebuild
+      await po.page.locator('[data-testid="rebuild-button"]').click();
+
+      // Wait for rebuild to complete and verify mobile mode persists
+      await expect(previewIframe).toHaveAttribute("style", /width:\s*375px/, {
+        timeout: Timeout.EXTRA_LONG,
+      });
+    },
+  );
 });

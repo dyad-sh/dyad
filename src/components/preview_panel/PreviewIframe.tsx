@@ -60,10 +60,12 @@ import {
 } from "@/components/ui/popover";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useRunApp } from "@/hooks/useRunApp";
+import { useSettings } from "@/hooks/useSettings";
 import { useShortcut } from "@/hooks/useShortcut";
 import { cn } from "@/lib/utils";
 import { normalizePath } from "../../../shared/normalizePath";
 import { showError } from "@/lib/toast";
+import type { DeviceMode } from "@/lib/schemas";
 import { AnnotatorOnlyForPro } from "./AnnotatorOnlyForPro";
 import { useAttachments } from "@/hooks/useAttachments";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
@@ -178,6 +180,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const { streamMessage } = useStreamChat();
   const { routes: availableRoutes } = useParseRouter(selectedAppId);
   const { restartApp } = useRunApp();
+  const { settings, updateSettings } = useSettings();
   const { userBudget } = useUserBudgetInfo();
   const isProMode = !!userBudget;
 
@@ -212,8 +215,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const [hasStaticText, setHasStaticText] = useState(false);
 
   // Device mode state
-  type DeviceMode = "desktop" | "tablet" | "mobile";
-  const [deviceMode, setDeviceMode] = useState<DeviceMode>("desktop");
+  const deviceMode: DeviceMode = settings?.previewDeviceMode ?? "desktop";
   const [isDevicePopoverOpen, setIsDevicePopoverOpen] = useState(false);
 
   // Device configurations
@@ -963,7 +965,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                   data-testid="device-mode-button"
                   onClick={() => {
                     // Toggle popover open/close
-                    if (isDevicePopoverOpen) setDeviceMode("desktop");
+                    if (isDevicePopoverOpen)
+                      updateSettings({ previewDeviceMode: "desktop" });
                     setIsDevicePopoverOpen(!isDevicePopoverOpen);
                   }}
                   className={cn(
@@ -986,7 +989,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                     value={deviceMode}
                     onValueChange={(value) => {
                       if (value) {
-                        setDeviceMode(value as DeviceMode);
+                        updateSettings({
+                          previewDeviceMode: value as DeviceMode,
+                        });
                         setIsDevicePopoverOpen(false);
                       }
                     }}

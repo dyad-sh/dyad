@@ -15,6 +15,7 @@ test("mention app (with pro)", async ({ po }) => {
 
   await po.importApp("minimal-with-ai-rules");
   await po.goToAppsTab();
+  await po.selectChatMode("build");
   await po.sendPrompt("[dump] @app:minimal-with-ai-rules hi");
 
   await po.snapshotServerDump("request");

@@ -1,5 +1,5 @@
-- dialog:
-  - heading "Codebase Context" [level=3]
+- dialog "Codebase Context":
+  - heading "Codebase Context" [level=2]
   - paragraph:
     - text: Select the files to use as context.
     - img
@@ -11,6 +11,12 @@
   - text: /src\/sub\/\*\* 2 files, ~\d+ tokens/
   - button:
     - img
+  - heading "Exclude Paths" [level=3]
+  - paragraph:
+    - text: These files will be excluded from the context.
+    - img
+  - textbox "node_modules/**/*"
+  - button "Add"
   - heading "Smart Context Auto-includes" [level=3]
   - paragraph:
     - text: These files will always be included in the context.
@@ -22,4 +28,6 @@
     - img
   - text: /manual\/\*\* 3 files, ~\d+ tokens/
   - button:
+    - img
+  - button "Close":
     - img

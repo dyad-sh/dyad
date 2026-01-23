@@ -6,7 +6,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { CheckCircle, Sparkles } from "lucide-react";
+import { Sparkles, Bot, Zap } from "lucide-react";
 
 interface DyadProSuccessDialogProps {
   isOpen: boolean;
@@ -21,29 +21,50 @@ export function DyadProSuccessDialog({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-xl">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100 dark:bg-green-900">
-              <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400" />
+          <DialogTitle className="flex items-center gap-3 text-xl">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-600">
+              <Sparkles className="h-5 w-5 text-white" />
             </div>
-            <span>Dyad Pro Enabled</span>
+            <span>Welcome to Dyad Pro!</span>
           </DialogTitle>
         </DialogHeader>
-        <div className="py-4">
-          <p className="mb-4 text-base">
-            Congrats! Dyad Pro is now enabled in the app.
+
+        <div className="py-4 space-y-4">
+          <p className="text-base text-muted-foreground">
+            You're all set! We've applied these default settings, but you can
+            change them anytime:
           </p>
-          <div className="flex items-center gap-2 mb-3">
-            <Sparkles className="h-5 w-5 text-indigo-500" />
-            <p className="text-sm">You have access to leading AI models.</p>
+
+          <div className="space-y-3">
+            <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-100 dark:bg-indigo-900/50">
+                <Zap className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+              </div>
+              <div>
+                <p className="font-medium">Auto model</p>
+                <p className="text-sm text-muted-foreground">
+                  Automatically picks a top AI model
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-purple-100 dark:bg-purple-900/50">
+                <Bot className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+              </div>
+              <div>
+                <p className="font-medium">Agent mode</p>
+                <p className="text-sm text-muted-foreground">
+                  Dyad can work on bigger tasks and debug issues
+                </p>
+              </div>
+            </div>
           </div>
-          <p className="text-sm text-muted-foreground">
-            You can click the Pro button at the top to access the settings at
-            any time.
-          </p>
         </div>
-        <DialogFooter className="flex justify-end gap-2">
-          <Button onClick={onClose} variant="outline">
-            OK
+
+        <DialogFooter>
+          <Button onClick={onClose} className="w-full">
+            Get Started
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -5,26 +5,30 @@
 import { z } from "zod";
 import { IpcMainInvokeEvent } from "electron";
 import { jsonrepair } from "jsonrepair";
-import { AgentToolConsent } from "@/ipc/ipc_types";
+import { AgentToolConsent } from "@/lib/schemas";
+import { AgentTodo } from "@/ipc/ipc_types";
 
 // ============================================================================
 // XML Escape Helpers
 // ============================================================================
 
-export function escapeXmlAttr(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
+export {
+  escapeXmlAttr,
+  unescapeXmlAttr,
+  escapeXmlContent,
+  unescapeXmlContent,
+} from "../../../../../../../shared/xmlEscape";
 
-export function escapeXmlContent(str: string): string {
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
+// ============================================================================
+// Todo Types
+// ============================================================================
+
+// Re-export AgentTodo as Todo for backwards compatibility within this module
+export type Todo = AgentTodo;
 
 export interface AgentContext {
   event: IpcMainInvokeEvent;
+  appId: number;
   appPath: string;
   chatId: number;
   supabaseProjectId: string | null;
@@ -32,6 +36,10 @@ export interface AgentContext {
   messageId: number;
   isSharedModulesChanged: boolean;
   chatSummary?: string;
+  /** Turn-scoped todo list for agent task tracking */
+  todos: Todo[];
+  /** Request ID for tracking requests to the Dyad engine */
+  dyadRequestId: string;
   /**
    * Streams accumulated XML to UI without persisting to DB (for live preview).
    * Call this repeatedly with the full accumulated XML so far.
@@ -47,6 +55,17 @@ export interface AgentContext {
     toolDescription?: string | null;
     inputPreview?: string | null;
   }) => Promise<boolean>;
+  /**
+   * Append a user message to be sent after the tool result.
+   * Use this when the tool needs to provide non-text content (like images)
+   * that models don't support in tool result messages.
+   */
+  appendUserMessage: (content: UserMessageContentPart[]) => void;
+  /**
+   * Sends updated todos to the renderer for UI display.
+   * Call this when todos are updated to show them in the chat input area.
+   */
+  onUpdateTodos: (todos: Todo[]) => void;
 }
 
 // ============================================================================
@@ -74,6 +93,23 @@ export function parsePartialJson<T extends Record<string, unknown>>(
 }
 
 // ============================================================================
+// Tool Result Types
+// ============================================================================
+
+/**
+ * Content part types for user messages (supports images)
+ * These can be appended as follow-up user messages after tool results
+ */
+export type UserMessageContentPart =
+  | { type: "text"; text: string }
+  | { type: "image-url"; url: string };
+
+/**
+ * Tool result can be a simple string or a structured result with content parts
+ */
+export type ToolResult = string;
+
+// ============================================================================
 // Tool Definition Interface
 // ============================================================================
 
@@ -82,7 +118,12 @@ export interface ToolDefinition<T = any> {
   readonly description: string;
   readonly inputSchema: z.ZodType<T>;
   readonly defaultConsent: AgentToolConsent;
-  execute: (args: T, ctx: AgentContext) => Promise<string>;
+  /**
+   * If true, this tool modifies state (files, database, etc.).
+   * Used to filter out state-modifying tools in read-only mode (e.g., ask mode).
+   */
+  readonly modifiesState?: boolean;
+  execute: (args: T, ctx: AgentContext) => Promise<ToolResult>;
 
   /**
    * If defined, returns whether the tool should be available in the current context.

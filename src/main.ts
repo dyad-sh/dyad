@@ -30,6 +30,8 @@ import {
 } from "./utils/performance_monitor";
 import { cleanupOldAiMessagesJson } from "./pro/main/ipc/handlers/local_agent/ai_messages_cleanup";
 import fs from "fs";
+import { gitAddSafeDirectory } from "./ipc/utils/git_utils";
+import { getDyadAppsBaseDirectory } from "./paths/paths";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -91,6 +93,13 @@ export async function onReady() {
   cleanupOldAiMessagesJson();
 
   const settings = readSettings();
+
+  // Add dyad-apps directory to git safe.directory (required for Windows)
+  if (settings.enableNativeGit) {
+    // Don't need to await because this only needs to run before
+    // the user starts interacting with Dyad app and uses a git-related feature.
+    gitAddSafeDirectory(getDyadAppsBaseDirectory());
+  }
 
   // Check if app was force-closed
   if (settings.isRunning) {

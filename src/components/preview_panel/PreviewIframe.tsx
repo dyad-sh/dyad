@@ -128,6 +128,7 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
               isCollapsed ? "" : "rotate-90"
             }`}
           />
+
           {isCollapsed ? getTruncatedError() : error.message}
         </div>
       </div>
@@ -350,18 +351,21 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       if (event.data?.type === "console-log") {
         const { level, args } = event.data;
         const formattedMessage = `[${level.toUpperCase()}] ${args.join(" ")}`;
-        const logLevel =
+        const logLevel: "info" | "warn" | "error" =
           level === "error" ? "error" : level === "warn" ? "warn" : "info";
-        setConsoleEntries((prev) => [
-          ...prev,
-          {
-            level: logLevel,
-            type: "client",
-            message: formattedMessage,
-            timestamp: Date.now(),
-            appId: selectedAppId!,
-          },
-        ]);
+        const logEntry = {
+          level: logLevel,
+          type: "client" as const,
+          message: formattedMessage,
+          appId: selectedAppId!,
+          timestamp: Date.now(),
+        };
+
+        // Send to central log store
+        IpcClient.getInstance().addLog(logEntry);
+
+        // Also update UI state
+        setConsoleEntries((prev) => [...prev, logEntry]);
         return;
       }
 
@@ -369,16 +373,19 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       if (event.data?.type === "network-request") {
         const { method, url } = event.data;
         const formattedMessage = `→ ${method} ${url}`;
-        setConsoleEntries((prev) => [
-          ...prev,
-          {
-            level: "info",
-            type: "network-requests",
-            message: formattedMessage,
-            timestamp: Date.now(),
-            appId: selectedAppId!,
-          },
-        ]);
+        const logEntry = {
+          level: "info" as const,
+          type: "network-requests" as const,
+          message: formattedMessage,
+          appId: selectedAppId!,
+          timestamp: Date.now(),
+        };
+
+        // Send to central log store
+        IpcClient.getInstance().addLog(logEntry);
+
+        // Also update UI state
+        setConsoleEntries((prev) => [...prev, logEntry]);
         return;
       }
 
@@ -386,17 +393,21 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       if (event.data?.type === "network-response") {
         const { method, url, status, duration } = event.data;
         const formattedMessage = `[${status}] ${method} ${url} (${duration}ms)`;
-        const level = status >= 400 ? "error" : status >= 300 ? "warn" : "info";
-        setConsoleEntries((prev) => [
-          ...prev,
-          {
-            level,
-            type: "network-requests",
-            message: formattedMessage,
-            timestamp: Date.now(),
-            appId: selectedAppId!,
-          },
-        ]);
+        const level: "info" | "warn" | "error" =
+          status >= 400 ? "error" : status >= 300 ? "warn" : "info";
+        const logEntry = {
+          level,
+          type: "network-requests" as const,
+          message: formattedMessage,
+          appId: selectedAppId!,
+          timestamp: Date.now(),
+        };
+
+        // Send to central log store
+        IpcClient.getInstance().addLog(logEntry);
+
+        // Also update UI state
+        setConsoleEntries((prev) => [...prev, logEntry]);
         return;
       }
 
@@ -405,16 +416,19 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         const { method, url, status, error, duration } = event.data;
         const statusCode = status && status !== 0 ? `[${status}] ` : "";
         const formattedMessage = `${statusCode}${method} ${url} - ${error} (${duration}ms)`;
-        setConsoleEntries((prev) => [
-          ...prev,
-          {
-            level: "error",
-            type: "network-requests",
-            message: formattedMessage,
-            timestamp: Date.now(),
-            appId: selectedAppId!,
-          },
-        ]);
+        const logEntry = {
+          level: "error" as const,
+          type: "network-requests" as const,
+          message: formattedMessage,
+          appId: selectedAppId!,
+          timestamp: Date.now(),
+        };
+
+        // Send to central log store
+        IpcClient.getInstance().addLog(logEntry);
+
+        // Also update UI state
+        setConsoleEntries((prev) => [...prev, logEntry]);
         return;
       }
 
@@ -552,30 +566,36 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         }\nStack trace: ${stack}`;
         console.error("Iframe error:", errorMessage);
         setErrorMessage({ message: errorMessage, source: "preview-app" });
-        setConsoleEntries((prev) => [
-          ...prev,
-          {
-            level: "error",
-            type: "client",
-            message: `Iframe error: ${errorMessage}`,
-            timestamp: Date.now(),
-            appId: selectedAppId!,
-          },
-        ]);
+        const logEntry = {
+          level: "error" as const,
+          type: "client" as const,
+          message: `Iframe error: ${errorMessage}`,
+          appId: selectedAppId!,
+          timestamp: Date.now(),
+        };
+
+        // Send to central log store
+        IpcClient.getInstance().addLog(logEntry);
+
+        // Also update UI state
+        setConsoleEntries((prev) => [...prev, logEntry]);
       } else if (type === "build-error-report") {
         console.debug(`Build error report: ${payload}`);
         const errorMessage = `${payload?.message} from file ${payload?.file}.\n\nSource code:\n${payload?.frame}`;
         setErrorMessage({ message: errorMessage, source: "preview-app" });
-        setConsoleEntries((prev) => [
-          ...prev,
-          {
-            level: "error",
-            type: "client",
-            message: `Build error report: ${JSON.stringify(payload)}`,
-            timestamp: Date.now(),
-            appId: selectedAppId!,
-          },
-        ]);
+        const logEntry = {
+          level: "error" as const,
+          type: "client" as const,
+          message: `Build error report: ${JSON.stringify(payload)}`,
+          appId: selectedAppId!,
+          timestamp: Date.now(),
+        };
+
+        // Send to central log store
+        IpcClient.getInstance().addLog(logEntry);
+
+        // Also update UI state
+        setConsoleEntries((prev) => [...prev, logEntry]);
       } else if (type === "pushState" || type === "replaceState") {
         console.debug(`Navigation event: ${type}`, payload);
 

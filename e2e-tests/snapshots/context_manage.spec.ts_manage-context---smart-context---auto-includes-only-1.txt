@@ -22,96 +22,96 @@
     "dyad_options": {
       "versioned_files": {
         "fileIdToContent": {
-          "fd0f9b44a8d543177b124c3b9b5e62da7d0e2683379352e9e2c587d285c36686": "// File contents excluded from context",
-          "732a1ebb3b9b602d7104636b4009f8bb3f1d840c9fed3c3eb0dd56a3d299cbf2": "// a.ts\n",
-          "9a5461c208c95126e54da61c3159980e6447678d96cd065aaff1b87c3a9d1f95": "# AI_RULES.md\n",
-          "86524c67667ac0b50cc96ad10d0e35630e81c9eee53c90bdd4576779c146773d": "// exclude.ts: this file is not in any of the globs\n",
-          "923470fd746b2d90ec177920cc2ac10f9ecefff6272e8f6fa69ea714909478ab": "// exclude.tsx: this file is not in any of the globs\n",
-          "075b6697b2282dfd4cce18f78bcbc51bf5f0d9c0c0911c889b9d72243b9187c3": "[\"even json is included\"]\n",
-          "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855": "",
-          "3d74d7280ec3f9cc2c7b73cbd4e201517b0a30f6a908cf7392adb49d61cef3fc": "// button.tsx\n",
-          "4478ae9a9ff89b3c68fc44309614668629664d86354a381662ffd07716ce20ce": "// helper.ts\n",
-          "2ba642df741f3bdeaf26894e4e0b56d2adacd4202977831e559ca1306e2cc039": "/* some.css */\n",
-          "2f653d8827ab78f82263eb63f722ef7c6be026d4fa5630c3ce6fb94612751e0c": "// foo.ts\n",
-          "50d0d59f927dc56f5f47adc37de69fc9a3334546a54f86a08d742b6c5cef07c9": "// sub/sub1.ts\n",
-          "51304e7cdc9cba392b7ed7f7ae1b8e276bc757bfa15267214e2f20b75a2dac6f": "// sub/sub2.tsx\n",
-          "444fd8107293606e0d88acf691ba98fa30de47c04b58c7930b2ee3e24c6ea17d": "// very-large-file.ts\n\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n"
+          "[[FILE_ID_0]]": "",
+          "[[FILE_ID_1]]": "[\"even json is included\"]\n",
+          "[[FILE_ID_2]]": "/* some.css */\n",
+          "[[FILE_ID_3]]": "// a.ts\n",
+          "[[FILE_ID_4]]": "// button.tsx\n",
+          "[[FILE_ID_5]]": "// exclude.ts: this file is not in any of the globs\n",
+          "[[FILE_ID_6]]": "// exclude.tsx: this file is not in any of the globs\n",
+          "[[FILE_ID_7]]": "// File contents excluded from context",
+          "[[FILE_ID_8]]": "// foo.ts\n",
+          "[[FILE_ID_9]]": "// helper.ts\n",
+          "[[FILE_ID_10]]": "// sub/sub1.ts\n",
+          "[[FILE_ID_11]]": "// sub/sub2.tsx\n",
+          "[[FILE_ID_12]]": "// very-large-file.ts\n\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n// 1234567890\n",
+          "[[FILE_ID_13]]": "# AI_RULES.md\n"
         },
         "fileReferences": [
           {
             "path": ".env.foobar",
             "force": false,
-            "fileId": "fd0f9b44a8d543177b124c3b9b5e62da7d0e2683379352e9e2c587d285c36686"
+            "fileId": "[[FILE_ID_7]]"
           },
           {
             "path": "a.ts",
             "force": true,
-            "fileId": "732a1ebb3b9b602d7104636b4009f8bb3f1d840c9fed3c3eb0dd56a3d299cbf2"
+            "fileId": "[[FILE_ID_3]]"
           },
           {
             "path": "AI_RULES.md",
             "force": false,
-            "fileId": "9a5461c208c95126e54da61c3159980e6447678d96cd065aaff1b87c3a9d1f95"
+            "fileId": "[[FILE_ID_13]]"
           },
           {
             "path": "exclude/exclude.ts",
             "force": false,
-            "fileId": "86524c67667ac0b50cc96ad10d0e35630e81c9eee53c90bdd4576779c146773d"
+            "fileId": "[[FILE_ID_5]]"
           },
           {
             "path": "exclude/exclude.tsx",
             "force": false,
-            "fileId": "923470fd746b2d90ec177920cc2ac10f9ecefff6272e8f6fa69ea714909478ab"
+            "fileId": "[[FILE_ID_6]]"
           },
           {
             "path": "manual/baz.json",
             "force": true,
-            "fileId": "075b6697b2282dfd4cce18f78bcbc51bf5f0d9c0c0911c889b9d72243b9187c3"
+            "fileId": "[[FILE_ID_1]]"
           },
           {
             "path": "manual/file.ts",
             "force": true,
-            "fileId": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            "fileId": "[[FILE_ID_0]]"
           },
           {
             "path": "manual/sub-manual/sub-manual.js",
             "force": true,
-            "fileId": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            "fileId": "[[FILE_ID_0]]"
           },
           {
             "path": "src/components/ui/button.tsx",
             "force": false,
-            "fileId": "3d74d7280ec3f9cc2c7b73cbd4e201517b0a30f6a908cf7392adb49d61cef3fc"
+            "fileId": "[[FILE_ID_4]]"
           },
           {
             "path": "src/components/ui/helper.ts",
             "force": false,
-            "fileId": "4478ae9a9ff89b3c68fc44309614668629664d86354a381662ffd07716ce20ce"
+            "fileId": "[[FILE_ID_9]]"
           },
           {
             "path": "src/dir/some.css",
             "force": false,
-            "fileId": "2ba642df741f3bdeaf26894e4e0b56d2adacd4202977831e559ca1306e2cc039"
+            "fileId": "[[FILE_ID_2]]"
           },
           {
             "path": "src/foo.ts",
             "force": false,
-            "fileId": "2f653d8827ab78f82263eb63f722ef7c6be026d4fa5630c3ce6fb94612751e0c"
+            "fileId": "[[FILE_ID_8]]"
           },
           {
             "path": "src/sub/sub1.ts",
             "force": false,
-            "fileId": "50d0d59f927dc56f5f47adc37de69fc9a3334546a54f86a08d742b6c5cef07c9"
+            "fileId": "[[FILE_ID_10]]"
           },
           {
             "path": "src/sub/sub2.tsx",
             "force": false,
-            "fileId": "51304e7cdc9cba392b7ed7f7ae1b8e276bc757bfa15267214e2f20b75a2dac6f"
+            "fileId": "[[FILE_ID_11]]"
           },
           {
             "path": "src/very-large-file.ts",
             "force": false,
-            "fileId": "444fd8107293606e0d88acf691ba98fa30de47c04b58c7930b2ee3e24c6ea17d"
+            "fileId": "[[FILE_ID_12]]"
           }
         ],
         "messageIndexToFilePathToFileId": {

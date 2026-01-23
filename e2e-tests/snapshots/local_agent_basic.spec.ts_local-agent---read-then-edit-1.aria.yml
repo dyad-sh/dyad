@@ -9,6 +9,8 @@
 - button:
   - img
 - img
+- text: claude-opus-4-5
+- img
 - text: less than a minute ago
 - button "Request ID":
   - img
@@ -18,15 +20,19 @@
 - text: App.tsx Read src/App.tsx
 - paragraph: Now I'll update the welcome message to say Hello World instead.
 - img
-- text: Search & Replace App.tsx
+- text: Turbo Edit App.tsx
 - img
 - text: "src/App.tsx Summary: Update welcome message"
 - paragraph: Done! I've updated the title from 'Minimal imported app' to 'UPDATED imported app'. The change has been applied successfully.
 - button:
   - img
 - img
+- text: claude-opus-4-5
+- img
 - text: less than a minute ago
 - button "Request ID":
+  - img
+- button "Undo":
   - img
 - button "Retry":
   - img

@@ -30,6 +30,7 @@ const validInvokeChannels = [
   "get-chat-logs",
   "list-apps",
   "get-app",
+  "search-app-files",
   "get-app-env-vars",
   "set-app-env-vars",
   "edit-app-file",
@@ -61,7 +62,26 @@ const validInvokeChannels = [
   "github:create-repo",
   "github:connect-existing-repo",
   "github:push",
+  "github:fetch",
+  "github:rebase",
+  "github:rebase-abort",
+  "github:merge-abort",
+  "github:rebase-continue",
+  "github:list-local-branches",
+  "github:list-remote-branches",
+  "github:create-branch",
+  "github:switch-branch",
+  "github:list-collaborators",
+  "github:invite-collaborator",
+  "github:remove-collaborator",
+  "github:rename-branch",
+  "github:merge-branch",
+  "github:get-conflicts",
+  "github:delete-branch",
+  "github:get-git-state",
   "github:disconnect",
+  "git:get-uncommitted-files",
+  "git:commit-changes",
   "neon:create-project",
   "neon:get-project",
   "neon:delete-branch",
@@ -103,6 +123,8 @@ const validInvokeChannels = [
   "check-app-name",
   "rename-branch",
   "clear-session-data",
+  "select-app-location",
+  "change-app-location",
   "get-user-budget",
   "get-context-paths",
   "set-context-paths",
@@ -144,6 +166,20 @@ const validInvokeChannels = [
   "add-to-favorite",
   "github:clone-repo-from-url",
   "get-latest-security-review",
+  // Console logs
+  "add-log",
+  "clear-logs",
+  // Themes
+  "get-themes",
+  "set-app-theme",
+  "get-app-theme",
+  "get-custom-themes",
+  "create-custom-theme",
+  "update-custom-theme",
+  "delete-custom-theme",
+  "generate-theme-prompt",
+  "save-theme-image",
+  "cleanup-theme-images",
   // Test-only channels
   // These should ALWAYS be guarded with IS_TEST_BUILD in the main process.
   // We can't detect with IS_TEST_BUILD in the preload script because
@@ -170,6 +206,10 @@ const validReceiveChannels = [
   "mcp:tool-consent-request",
   // Agent tool consent request from main to renderer
   "agent-tool:consent-request",
+  // Agent todos update from main to renderer
+  "agent-tool:todos-update",
+  // Agent problems update from main to renderer
+  "agent-tool:problems-update",
   // Telemetry events from main to renderer
   "telemetry:event",
 ] as const;

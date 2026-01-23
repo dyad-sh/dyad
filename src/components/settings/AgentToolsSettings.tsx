@@ -13,7 +13,7 @@ import {
   type AgentTool,
 } from "@/hooks/useAgentTools";
 import { Loader2, ChevronRight } from "lucide-react";
-import type { AgentToolConsent } from "@/ipc/ipc_types";
+import { AgentToolConsent } from "@/lib/schemas";
 
 export function AgentToolsSettings() {
   const { tools, isLoading, setConsent } = useAgentTools();
@@ -109,7 +109,7 @@ function ToolConsentRow({
         <div className="min-w-0 flex-1">
           <div className="font-mono text-sm">{name}</div>
           <div className="text-xs text-muted-foreground truncate">
-            {description}
+            {description?.slice(0, 100)} {description?.length > 100 && "..."}
           </div>
         </div>
         <Select
@@ -122,6 +122,7 @@ function ToolConsentRow({
           <SelectContent>
             <SelectItem value="ask">Ask</SelectItem>
             <SelectItem value="always">Always allow</SelectItem>
+            <SelectItem value="never">Never allow</SelectItem>
           </SelectContent>
         </Select>
       </div>

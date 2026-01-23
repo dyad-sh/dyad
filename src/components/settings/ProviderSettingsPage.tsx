@@ -15,6 +15,7 @@ import {
   UserSettings,
   AzureProviderSetting,
   VertexProviderSetting,
+  hasDyadProKey,
 } from "@/lib/schemas";
 
 import { ProviderSettingsHeader } from "./ProviderSettingsHeader";
@@ -66,9 +67,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   const providerDisplayName = isDyad
     ? "Dyad"
     : (providerData?.name ?? "Unknown Provider");
-  const providerWebsiteUrl = isDyad
-    ? "https://academy.dyad.sh/settings"
-    : providerData?.websiteUrl;
+  const providerWebsiteUrl = providerData?.websiteUrl;
   const hasFreeTier = isDyad ? false : providerData?.hasFreeTier;
   const envVarName = isDyad ? undefined : providerData?.envVarName;
 
@@ -126,6 +125,9 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
     setIsSaving(true);
     setSaveError(null);
     try {
+      // Check if this is the first time user is setting up Dyad Pro
+      const isNewDyadProSetup = isDyad && settings && !hasDyadProKey(settings);
+
       const settingsUpdate: Partial<UserSettings> = {
         providerSettings: {
           ...settings?.providerSettings,
@@ -139,6 +141,10 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
       };
       if (isDyad) {
         settingsUpdate.enableDyadPro = true;
+        // Set default chat mode to local-agent when user upgrades to pro
+        if (isNewDyadProSetup) {
+          settingsUpdate.defaultChatMode = "local-agent";
+        }
       }
       await updateSettings(settingsUpdate);
       setApiKeyInput(""); // Clear input on success

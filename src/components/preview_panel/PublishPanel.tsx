@@ -6,6 +6,7 @@ import { VercelConnector } from "@/components/VercelConnector";
 import { PortalMigrate } from "@/components/PortalMigrate";
 import { IpcClient } from "@/ipc/ipc_client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { GithubCollaboratorManager } from "@/components/GithubCollaboratorManager";
 
 export const PublishPanel = () => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
@@ -105,6 +106,11 @@ export const PublishPanel = () => {
               folderName={app.name}
               expanded={true}
             />
+            {app.githubOrg && app.githubRepo && (
+              <div className="pt-4 border-t border-gray-100 dark:border-gray-800">
+                <GithubCollaboratorManager appId={selectedAppId} />
+              </div>
+            )}
           </CardContent>
         </Card>
 

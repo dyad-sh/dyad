@@ -33,9 +33,16 @@ import type {
   ImportAppResult,
   ImportAppParams,
   RenameBranchParams,
+  GitBranchAppIdParams,
+  CreateGitBranchParams,
+  GitBranchParams,
+  RenameGitBranchParams,
+  ListRemoteGitBranchesParams,
+  CommitChangesParams,
   UserBudgetInfo,
   CopyAppParams,
   App,
+  AppFileSearchResult,
   ComponentSelection,
   AppUpgrade,
   ProblemReport,
@@ -73,16 +80,34 @@ import type {
   SupabaseProject,
   DeleteSupabaseOrganizationParams,
   SelectNodeFolderResult,
+  ChangeAppLocationParams,
+  ChangeAppLocationResult,
   ApplyVisualEditingChangesParams,
   AnalyseComponentParams,
   AgentTool,
   SetAgentToolConsentParams,
   AgentToolConsentRequestPayload,
   AgentToolConsentResponseParams,
+  AgentTodosUpdatePayload,
+  AgentProblemsUpdatePayload,
   TelemetryEventPayload,
+  GithubSyncOptions,
+  ConsoleEntry,
+  SetAppThemeParams,
+  GetAppThemeParams,
+  CustomTheme,
+  CreateCustomThemeParams,
+  UpdateCustomThemeParams,
+  DeleteCustomThemeParams,
+  GenerateThemePromptParams,
+  GenerateThemePromptResult,
+  SaveThemeImageParams,
+  SaveThemeImageResult,
+  CleanupThemeImagesParams,
+  UncommittedFile,
 } from "./ipc_types";
-import type { ConsoleEntry } from "../atoms/appAtoms";
 import type { Template } from "../shared/templates";
+import type { Theme } from "../shared/themes";
 import type {
   AppChatContext,
   AppSearchResult,
@@ -136,7 +161,13 @@ export class IpcClient {
   >;
   private mcpConsentHandlers: Map<string, (payload: any) => void>;
   private agentConsentHandlers: Map<string, (payload: any) => void>;
+  private agentTodosHandlers: Set<(payload: AgentTodosUpdatePayload) => void>;
+  private agentProblemsHandlers: Set<
+    (payload: AgentProblemsUpdatePayload) => void
+  >;
   private telemetryEventHandlers: Set<(payload: TelemetryEventPayload) => void>;
+  // Global handlers called for any chat stream start (used for cleanup)
+  private globalChatStreamStartHandlers: Set<(chatId: number) => void>;
   // Global handlers called for any chat stream completion (used for cleanup)
   private globalChatStreamEndHandlers: Set<(chatId: number) => void>;
   private constructor() {
@@ -146,7 +177,10 @@ export class IpcClient {
     this.helpStreams = new Map();
     this.mcpConsentHandlers = new Map();
     this.agentConsentHandlers = new Map();
+    this.agentTodosHandlers = new Set();
+    this.agentProblemsHandlers = new Set();
     this.telemetryEventHandlers = new Set();
+    this.globalChatStreamStartHandlers = new Set();
     this.globalChatStreamEndHandlers = new Set();
     // Set up listeners for stream events
     this.ipcRenderer.on("chat:response:chunk", (data) => {
@@ -295,6 +329,20 @@ export class IpcClient {
       if (handler) handler(payload);
     });
 
+    // Agent todos update from main
+    this.ipcRenderer.on("agent-tool:todos-update", (payload) => {
+      for (const handler of this.agentTodosHandlers) {
+        handler(payload as unknown as AgentTodosUpdatePayload);
+      }
+    });
+
+    // Agent problems update from main
+    this.ipcRenderer.on("agent-tool:problems-update", (payload) => {
+      for (const handler of this.agentProblemsHandlers) {
+        handler(payload as unknown as AgentProblemsUpdatePayload);
+      }
+    });
+
     // Telemetry events from main to renderer
     this.ipcRenderer.on("telemetry:event", (payload) => {
       if (payload && typeof payload === "object" && "eventName" in payload) {
@@ -404,6 +452,22 @@ export class IpcClient {
     }
   }
 
+  public async searchAppFiles(
+    appId: number,
+    query: string,
+  ): Promise<AppFileSearchResult[]> {
+    try {
+      const results = await this.ipcRenderer.invoke("search-app-files", {
+        appId,
+        query,
+      });
+      return results as AppFileSearchResult[];
+    } catch (error) {
+      showError(error);
+      throw error;
+    }
+  }
+
   public async readAppFile(appId: number, filePath: string): Promise<string> {
     return this.ipcRenderer.invoke("read-app-file", {
       appId,
@@ -448,6 +512,11 @@ export class IpcClient {
       onError,
     } = options;
     this.chatStreams.set(chatId, { onUpdate, onEnd, onError });
+
+    // Notify global stream start handlers
+    for (const handler of this.globalChatStreamStartHandlers) {
+      handler(chatId);
+    }
 
     // Handle file attachments if provided
     if (attachments && attachments.length > 0) {
@@ -824,12 +893,36 @@ export class IpcClient {
   // Sync (push) local repo to GitHub
   public async syncGithubRepo(
     appId: number,
-    force?: boolean,
-  ): Promise<{ success: boolean; error?: string }> {
-    return this.ipcRenderer.invoke("github:push", {
+    options: GithubSyncOptions = {},
+  ): Promise<void> {
+    const { force, forceWithLease } = options;
+    await this.ipcRenderer.invoke("github:push", {
       appId,
       force,
+      forceWithLease,
     });
+  }
+
+  public async abortGithubRebase(appId: number): Promise<void> {
+    await this.ipcRenderer.invoke("github:rebase-abort", {
+      appId,
+    });
+  }
+
+  public async abortGithubMerge(appId: number): Promise<void> {
+    await this.ipcRenderer.invoke("github:merge-abort", {
+      appId,
+    } satisfies GitBranchAppIdParams);
+  }
+
+  public async continueGithubRebase(appId: number): Promise<void> {
+    await this.ipcRenderer.invoke("github:rebase-continue", {
+      appId,
+    });
+  }
+
+  public async rebaseGithubRepo(appId: number): Promise<void> {
+    await this.ipcRenderer.invoke("github:rebase", { appId });
   }
 
   public async disconnectGithubRepo(appId: number): Promise<void> {
@@ -837,6 +930,129 @@ export class IpcClient {
       appId,
     });
   }
+
+  public async fetchGithubRepo(appId: number): Promise<void> {
+    await this.ipcRenderer.invoke("github:fetch", {
+      appId,
+    } satisfies GitBranchAppIdParams);
+  }
+
+  public async createGithubBranch(
+    appId: number,
+    branch: string,
+    from?: string,
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("github:create-branch", {
+      appId,
+      branch,
+      from,
+    } satisfies CreateGitBranchParams);
+  }
+
+  public async deleteGithubBranch(
+    appId: number,
+    branch: string,
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("github:delete-branch", {
+      appId,
+      branch,
+    } satisfies GitBranchParams);
+  }
+
+  public async switchGithubBranch(
+    appId: number,
+    branch: string,
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("github:switch-branch", {
+      appId,
+      branch,
+    } satisfies GitBranchParams);
+  }
+
+  public async renameGithubBranch(
+    appId: number,
+    oldBranch: string,
+    newBranch: string,
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("github:rename-branch", {
+      appId,
+      oldBranch,
+      newBranch,
+    } satisfies RenameGitBranchParams);
+  }
+
+  public async mergeGithubBranch(appId: number, branch: string): Promise<void> {
+    await this.ipcRenderer.invoke("github:merge-branch", {
+      appId,
+      branch,
+    } satisfies GitBranchParams);
+  }
+
+  public async getGithubMergeConflicts(appId: number): Promise<string[]> {
+    return this.ipcRenderer.invoke("github:get-conflicts", { appId });
+  }
+
+  public async listLocalGithubBranches(
+    appId: number,
+  ): Promise<{ branches: string[]; current: string | null }> {
+    return this.ipcRenderer.invoke("github:list-local-branches", {
+      appId,
+    } satisfies GitBranchAppIdParams);
+  }
+
+  public async listRemoteGithubBranches(
+    appId: number,
+    remote = "origin",
+  ): Promise<string[]> {
+    return this.ipcRenderer.invoke("github:list-remote-branches", {
+      appId,
+      remote,
+    } satisfies ListRemoteGitBranchesParams);
+  }
+
+  public async getGithubState(appId: number): Promise<{
+    mergeInProgress: boolean;
+    rebaseInProgress: boolean;
+  }> {
+    return this.ipcRenderer.invoke("github:get-git-state", { appId });
+  }
+
+  public async getUncommittedFiles(appId: number): Promise<UncommittedFile[]> {
+    return this.ipcRenderer.invoke("git:get-uncommitted-files", {
+      appId,
+    } satisfies GitBranchAppIdParams);
+  }
+
+  public async commitChanges(params: CommitChangesParams): Promise<string> {
+    return this.ipcRenderer.invoke("git:commit-changes", params);
+  }
+
+  public async listCollaborators(
+    appId: number,
+  ): Promise<{ login: string; avatar_url: string; permissions: any }[]> {
+    return this.ipcRenderer.invoke("github:list-collaborators", { appId });
+  }
+
+  public async inviteCollaborator(
+    appId: number,
+    username: string,
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("github:invite-collaborator", {
+      appId,
+      username,
+    });
+  }
+
+  public async removeCollaborator(
+    appId: number,
+    username: string,
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("github:remove-collaborator", {
+      appId,
+      username,
+    });
+  }
+
   // --- End GitHub Repo Management ---
 
   // --- Vercel Token Management ---
@@ -971,6 +1187,44 @@ export class IpcClient {
 
   public respondToAgentConsentRequest(params: AgentToolConsentResponseParams) {
     this.ipcRenderer.invoke("agent-tool:consent-response", params);
+  }
+
+  /**
+   * Subscribe to agent todos updates from the local agent.
+   * Called when the agent updates its todo list during a streaming session.
+   */
+  public onAgentTodosUpdate(
+    handler: (payload: AgentTodosUpdatePayload) => void,
+  ) {
+    this.agentTodosHandlers.add(handler);
+    return () => {
+      this.agentTodosHandlers.delete(handler);
+    };
+  }
+
+  /**
+   * Subscribe to agent problems updates from the local agent.
+   * Called when the agent runs type checks and updates the problems report.
+   */
+  public onAgentProblemsUpdate(
+    handler: (payload: AgentProblemsUpdatePayload) => void,
+  ) {
+    this.agentProblemsHandlers.add(handler);
+    return () => {
+      this.agentProblemsHandlers.delete(handler);
+    };
+  }
+
+  /**
+   * Subscribe to be notified when any chat stream starts.
+   * Useful for cleanup tasks like clearing pending consent requests.
+   * @returns Unsubscribe function
+   */
+  public onChatStreamStart(handler: (chatId: number) => void): () => void {
+    this.globalChatStreamStartHandlers.add(handler);
+    return () => {
+      this.globalChatStreamStartHandlers.delete(handler);
+    };
   }
 
   /**
@@ -1316,6 +1570,18 @@ export class IpcClient {
     return this.ipcRenderer.invoke("select-app-folder");
   }
 
+  public async selectAppLocation(
+    defaultPath?: string,
+  ): Promise<{ path: string | null; canceled: boolean }> {
+    return this.ipcRenderer.invoke("select-app-location", { defaultPath });
+  }
+
+  public async changeAppLocation(
+    params: ChangeAppLocationParams,
+  ): Promise<ChangeAppLocationResult> {
+    return this.ipcRenderer.invoke("change-app-location", params);
+  }
+
   // Add these methods to IpcClient class
 
   public async selectNodeFolder(): Promise<SelectNodeFolderResult> {
@@ -1344,6 +1610,7 @@ export class IpcClient {
 
   async checkAppName(params: {
     appName: string;
+    skipCopy?: boolean;
   }): Promise<{ exists: boolean }> {
     return this.ipcRenderer.invoke("check-app-name", params);
   }
@@ -1415,6 +1682,59 @@ export class IpcClient {
     return this.ipcRenderer.invoke("get-templates");
   }
 
+  // --- Themes ---
+  public async getThemes(): Promise<Theme[]> {
+    return this.ipcRenderer.invoke("get-themes");
+  }
+
+  public async setAppTheme(params: SetAppThemeParams): Promise<void> {
+    await this.ipcRenderer.invoke("set-app-theme", params);
+  }
+
+  public async getAppTheme(params: GetAppThemeParams): Promise<string | null> {
+    return this.ipcRenderer.invoke("get-app-theme", params);
+  }
+
+  public async getCustomThemes(): Promise<CustomTheme[]> {
+    return this.ipcRenderer.invoke("get-custom-themes");
+  }
+
+  public async createCustomTheme(
+    params: CreateCustomThemeParams,
+  ): Promise<CustomTheme> {
+    return this.ipcRenderer.invoke("create-custom-theme", params);
+  }
+
+  public async updateCustomTheme(
+    params: UpdateCustomThemeParams,
+  ): Promise<CustomTheme> {
+    return this.ipcRenderer.invoke("update-custom-theme", params);
+  }
+
+  public async deleteCustomTheme(
+    params: DeleteCustomThemeParams,
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("delete-custom-theme", params);
+  }
+
+  public async generateThemePrompt(
+    params: GenerateThemePromptParams,
+  ): Promise<GenerateThemePromptResult> {
+    return this.ipcRenderer.invoke("generate-theme-prompt", params);
+  }
+
+  public async saveThemeImage(
+    params: SaveThemeImageParams,
+  ): Promise<SaveThemeImageResult> {
+    return this.ipcRenderer.invoke("save-theme-image", params);
+  }
+
+  public async cleanupThemeImages(
+    params: CleanupThemeImagesParams,
+  ): Promise<void> {
+    await this.ipcRenderer.invoke("cleanup-theme-images", params);
+  }
+
   // --- Prompts Library ---
   public async listPrompts(): Promise<PromptDto[]> {
     return this.ipcRenderer.invoke("prompts:list");
@@ -1476,5 +1796,17 @@ export class IpcClient {
     params: AnalyseComponentParams,
   ): Promise<{ isDynamic: boolean; hasStaticText: boolean }> {
     return this.ipcRenderer.invoke("analyze-component", params);
+  }
+
+  // --- Console Logs ---
+  public addLog(entry: ConsoleEntry): void {
+    // Fire and forget - send log to central store
+    this.ipcRenderer.invoke("add-log", entry).catch((err) => {
+      console.error("Failed to add log to central store:", err);
+    });
+  }
+
+  public async clearLogs(appId: number): Promise<void> {
+    await this.ipcRenderer.invoke("clear-logs", { appId });
   }
 }

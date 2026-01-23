@@ -508,20 +508,35 @@ export const constructSystemPrompt = ({
   aiRules,
   chatMode = "build",
   enableTurboEditsV2,
+  themePrompt,
+  readOnly,
 }: {
   aiRules: string | undefined;
   chatMode?: "build" | "ask" | "agent" | "local-agent";
   enableTurboEditsV2: boolean;
+  themePrompt?: string;
+  /** If true, use read-only mode for local-agent (ask mode with tools) */
+  readOnly?: boolean;
 }) => {
   if (chatMode === "local-agent") {
-    return constructLocalAgentPrompt(aiRules);
+    return constructLocalAgentPrompt(aiRules, themePrompt, { readOnly });
   }
 
-  const systemPrompt = getSystemPromptForChatMode({
+  let systemPrompt = getSystemPromptForChatMode({
     chatMode,
     enableTurboEditsV2,
   });
-  return systemPrompt.replace("[[AI_RULES]]", aiRules ?? DEFAULT_AI_RULES);
+  systemPrompt = systemPrompt.replace(
+    "[[AI_RULES]]",
+    aiRules ?? DEFAULT_AI_RULES,
+  );
+
+  // Append theme prompt if provided
+  if (themePrompt) {
+    systemPrompt += "\n\n" + themePrompt;
+  }
+
+  return systemPrompt;
 };
 
 export const getSystemPromptForChatMode = ({

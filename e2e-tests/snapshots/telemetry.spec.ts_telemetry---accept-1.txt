@@ -1,20 +1,3 @@
-{
-  "selectedModel": {
-    "name": "auto",
-    "provider": "auto"
-  },
-  "providerSettings": {},
-  "telemetryConsent": "unset",
-  "telemetryUserId": "[UUID]",
-  "hasRunBefore": true,
-  "experiments": {},
-  "enableProLazyEditsMode": true,
-  "enableProSmartFilesContextMode": true,
-  "selectedTemplateId": "react",
-  "selectedChatMode": "build",
-  "enableAutoFixProblems": false,
-  "enableAutoUpdate": true,
-  "releaseChannel": "stable",
-  "isRunning": true,
-  "isTestMode": true
-}
++ "lastShownReleaseNotesVersion": "[scrubbed]"
+- "telemetryConsent": "unset"
++ "telemetryConsent": "opted_in"

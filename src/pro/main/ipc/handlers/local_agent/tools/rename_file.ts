@@ -31,6 +31,7 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
     description: "Rename or move a file in the codebase",
     inputSchema: renameFileSchema,
     defaultConsent: "always",
+    modifiesState: true,
 
     getConsentPreview: (args) => `Rename ${args.from} to ${args.to}`,
 

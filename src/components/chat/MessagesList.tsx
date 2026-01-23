@@ -25,6 +25,9 @@ import { useCountTokens } from "@/hooks/useCountTokens";
 interface MessagesListProps {
   messages: Message[];
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
+  onScrollerRef?: (ref: HTMLElement | Window | null) => void | (() => void);
+  distanceFromBottomRef?: React.MutableRefObject<number>;
+  isUserScrolling?: boolean;
 }
 
 // Memoize ChatMessage at module level to prevent recreation on every render
@@ -248,7 +251,16 @@ function FooterComponent({ context }: { context?: FooterContext }) {
 }
 
 export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
-  function MessagesList({ messages, messagesEndRef }, ref) {
+  function MessagesList(
+    {
+      messages,
+      messagesEndRef,
+      onScrollerRef,
+      distanceFromBottomRef,
+      isUserScrolling,
+    },
+    ref,
+  ) {
     const appId = useAtomValue(selectedAppIdAtom);
     const { versions, revertVersion } = useVersions(appId);
     const { streamMessage, isStreaming } = useStreamChat();
@@ -414,7 +426,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
 
     return (
       <div
-        className="absolute inset-0 p-4"
+        className="absolute inset-0 overflow-y-auto p-4"
         ref={ref}
         data-testid="messages-list"
       >
@@ -422,10 +434,18 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
           data={messages}
           increaseViewportBy={{ top: 1000, bottom: 500 }}
           initialTopMostItemIndex={messages.length - 1}
-          followOutput="smooth"
           itemContent={itemContent}
           components={{ Footer: FooterComponent }}
           context={footerContext}
+          scrollerRef={onScrollerRef}
+          followOutput={() => {
+            const shouldAutoScroll =
+              !isUserScrolling &&
+              isStreaming &&
+              distanceFromBottomRef &&
+              distanceFromBottomRef.current <= 280;
+            return shouldAutoScroll ? "auto" : false;
+          }}
         />
       </div>
     );

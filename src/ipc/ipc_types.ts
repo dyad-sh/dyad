@@ -1,11 +1,21 @@
 import { z } from "zod";
 import type { ProblemReport, Problem } from "../../shared/tsc_types";
+import { AgentToolConsent } from "@/lib/schemas";
 export type { ProblemReport, Problem };
 
 export interface AppOutput {
   type: "stdout" | "stderr" | "info" | "client-error" | "input-requested";
   message: string;
   timestamp: number;
+  appId: number;
+}
+
+export interface ConsoleEntry {
+  level: "info" | "warn" | "error";
+  type: "server" | "client" | "edge-function" | "network-requests";
+  message: string;
+  timestamp: number;
+  sourceName?: string;
   appId: number;
 }
 
@@ -28,7 +38,6 @@ export interface RespondToAppInputParams {
 
 export interface ListAppsResponse {
   apps: App[];
-  appBasePath: string;
 }
 
 export interface ChatStreamParams {
@@ -120,6 +129,18 @@ export interface App {
   installCommand: string | null;
   startCommand: string | null;
   isFavorite: boolean;
+  resolvedPath?: string;
+}
+
+export interface AppFileSearchResult {
+  path: string;
+  matchesContent: boolean;
+  snippets?: Array<{
+    before: string;
+    match: string;
+    after: string;
+    line: number;
+  }>;
 }
 
 export interface Version {
@@ -258,6 +279,7 @@ export interface ImportAppParams {
   appName: string;
   installCommand?: string;
   startCommand?: string;
+  skipCopy?: boolean;
 }
 
 export interface CopyAppParams {
@@ -275,6 +297,47 @@ export interface RenameBranchParams {
   appId: number;
   oldBranchName: string;
   newBranchName: string;
+}
+
+// --- Git Branch Handler Types ---
+export interface GitBranchAppIdParams {
+  appId: number;
+}
+
+export interface CreateGitBranchParams {
+  appId: number;
+  branch: string;
+  from?: string;
+}
+
+export interface GitBranchParams {
+  appId: number;
+  branch: string;
+}
+
+export interface RenameGitBranchParams {
+  appId: number;
+  oldBranch: string;
+  newBranch: string;
+}
+
+export interface ListRemoteGitBranchesParams {
+  appId: number;
+  remote?: string;
+}
+
+export interface CommitChangesParams {
+  appId: number;
+  message: string;
+}
+
+export interface ChangeAppLocationParams {
+  appId: number;
+  parentDirectory: string;
+}
+
+export interface ChangeAppLocationResult {
+  resolvedPath: string;
 }
 
 export const UserBudgetInfoSchema = z.object({
@@ -528,6 +591,12 @@ export interface GithubRepository {
   private: boolean;
 }
 
+export interface GithubSyncOptions {
+  force?: boolean;
+  rebase?: boolean;
+  forceWithLease?: boolean;
+}
+
 export type CloneRepoReturnType =
   | {
       app: App;
@@ -677,12 +746,107 @@ export interface AgentToolConsentResponseParams {
 }
 
 // ============================================================================
-// Consent Types
+// Agent Todo Types
 // ============================================================================
 
-export type AgentToolConsent = "ask" | "always";
+export interface AgentTodo {
+  id: string;
+  content: string;
+  status: "pending" | "in_progress" | "completed";
+}
+
+export interface AgentTodosUpdatePayload {
+  chatId: number;
+  todos: AgentTodo[];
+}
+
+export interface AgentProblemsUpdatePayload {
+  appId: number;
+  problems: ProblemReport;
+}
 
 export interface TelemetryEventPayload {
   eventName: string;
   properties?: Record<string, unknown>;
+}
+
+// --- Theme Types ---
+export interface SetAppThemeParams {
+  appId: number;
+  themeId: string | null;
+}
+
+export interface GetAppThemeParams {
+  appId: number;
+}
+
+// --- Custom Theme Types ---
+export interface CustomTheme {
+  id: number;
+  name: string;
+  description: string | null;
+  prompt: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CreateCustomThemeParams {
+  name: string;
+  description?: string;
+  prompt: string;
+}
+
+export interface UpdateCustomThemeParams {
+  id: number;
+  name?: string;
+  description?: string;
+  prompt?: string;
+}
+
+export interface DeleteCustomThemeParams {
+  id: number;
+}
+
+export type ThemeGenerationMode = "inspired" | "high-fidelity";
+
+export type ThemeGenerationModel =
+  | "gemini-3-pro"
+  | "claude-opus-4.5"
+  | "gpt-5.2";
+
+export interface GenerateThemePromptParams {
+  imagePaths: string[]; // File paths to images (stored in temp directory)
+  keywords: string;
+  generationMode: ThemeGenerationMode; // 'inspired' (abstract design system) or 'high-fidelity' (visual recreation)
+  model: ThemeGenerationModel; // Model to use for generation
+}
+
+export interface GenerateThemePromptResult {
+  prompt: string;
+}
+
+// --- Theme Image File Handling ---
+export interface SaveThemeImageParams {
+  data: string; // Base64 encoded image data
+  filename: string; // Original filename for extension detection
+}
+
+export interface SaveThemeImageResult {
+  path: string; // Path to the saved temp file
+}
+
+export interface CleanupThemeImagesParams {
+  paths: string[]; // Paths to delete
+}
+
+// --- Uncommitted Files Types ---
+export type UncommittedFileStatus =
+  | "added"
+  | "modified"
+  | "deleted"
+  | "renamed";
+
+export interface UncommittedFile {
+  path: string;
+  status: UncommittedFileStatus;
 }

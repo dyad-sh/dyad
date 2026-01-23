@@ -15,6 +15,7 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
     description: "Execute SQL on the Supabase database",
     inputSchema: executeSqlSchema,
     defaultConsent: "ask",
+    modifiesState: true,
     isEnabled: (ctx) => !!ctx.supabaseProjectId,
 
     getConsentPreview: (args) =>

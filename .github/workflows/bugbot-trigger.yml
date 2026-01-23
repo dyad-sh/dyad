@@ -1,0 +1,27 @@
+name: BugBot Trigger
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+jobs:
+  trigger-bugbot:
+    environment: ai-bots
+    # Only review code from regular contributors since bug bot has a capped # of PR reviews.
+    if: |
+      (github.event.pull_request.user.login == 'wwwillchen' ||
+      github.event.pull_request.user.login == 'azizmejri1' ||
+      github.event.pull_request.user.login == 'princeaden1') &&
+      !contains(github.event.pull_request.body, '#skip-bugbot') &&
+      !contains(github.event.pull_request.body, '#skip-bb')
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Comment @BugBot run
+        uses: peter-evans/create-or-update-comment@e8674b075228eee787fea43ef493e45ece1004c9 # v5
+        with:
+          # Use a PAT from wwwillchen to post on their behalf
+          token: ${{ secrets.WWWILLCHEN_PR_RW_PAT }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body: "@BugBot run"

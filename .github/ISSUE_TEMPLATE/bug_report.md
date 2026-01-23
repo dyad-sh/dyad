@@ -7,8 +7,10 @@ assignees: ""
 ---
 
 <!--
-⚠️ IMPORTANT: All sections marked as required must be completed in English.
-Issues that do not meet these requirements will be closed and may need to be resubmitted.
+We recommend filing bugs from the app because it automatically includes logs and system info!
+https://www.dyad.sh/docs/help#report-a-bug
+
+Please fill in all fields in English.
 -->
 
 **Describe the bug**

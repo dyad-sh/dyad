@@ -1,9 +1,9 @@
 import path from "path";
 import { spawn } from "child_process";
-import { test } from "./helpers/test_helper";
+import { testSkipIfWindows } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
-test("mcp - call calculator", async ({ po }) => {
+testSkipIfWindows("mcp - call calculator", async ({ po }) => {
   await po.setUp();
   await po.goToSettingsTab();
   await po.page.getByRole("button", { name: "Tools (MCP)" }).click();
@@ -49,7 +49,7 @@ test("mcp - call calculator", async ({ po }) => {
   await po.snapshotServerDump("all-messages");
 });
 
-test("mcp - call calculator via http", async ({ po }) => {
+testSkipIfWindows("mcp - call calculator via http", async ({ po }) => {
   const httpMcpServerPath = path.join(
     __dirname,
     "..",

@@ -26,6 +26,7 @@ testSkipIfWindows(
     await po.importApp("minimal-with-ai-rules");
 
     await po.goToAppsTab();
+    await po.selectChatMode("build");
     const proModesDialog = await po.openProModesDialog({
       location: "home-chat-input-container",
     });

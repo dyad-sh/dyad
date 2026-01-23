@@ -210,6 +210,7 @@ let mockStreamResult: ReturnType<typeof createFakeStream> | null = null;
 vi.mock("ai", () => ({
   streamText: vi.fn(() => mockStreamResult),
   stepCountIs: vi.fn((n: number) => ({ steps: n })),
+  hasToolCall: vi.fn((toolName: string) => ({ toolName })),
 }));
 
 vi.mock("@/ipc/utils/get_model_client", () => ({
@@ -264,6 +265,7 @@ import { handleLocalAgentStream } from "@/pro/main/ipc/handlers/local_agent/loca
 // Tests
 // ============================================================================
 
+const dyadRequestId = "test-request-id";
 describe("handleLocalAgentStream", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -285,7 +287,11 @@ describe("handleLocalAgentStream", () => {
         event,
         { chatId: 1, prompt: "test" },
         new AbortController(),
-        { placeholderMessageId: 10, systemPrompt: "You are helpful" },
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
       );
 
       // Assert
@@ -310,7 +316,11 @@ describe("handleLocalAgentStream", () => {
         event,
         { chatId: 1, prompt: "test" },
         new AbortController(),
-        { placeholderMessageId: 10, systemPrompt: "You are helpful" },
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
       );
 
       // Assert
@@ -332,7 +342,11 @@ describe("handleLocalAgentStream", () => {
           event,
           { chatId: 999, prompt: "test" },
           new AbortController(),
-          { placeholderMessageId: 10, systemPrompt: "You are helpful" },
+          {
+            placeholderMessageId: 10,
+            systemPrompt: "You are helpful",
+            dyadRequestId,
+          },
         ),
       ).rejects.toThrow("Chat not found: 999");
     });
@@ -349,7 +363,11 @@ describe("handleLocalAgentStream", () => {
           event,
           { chatId: 1, prompt: "test" },
           new AbortController(),
-          { placeholderMessageId: 10, systemPrompt: "You are helpful" },
+          {
+            placeholderMessageId: 10,
+            systemPrompt: "You are helpful",
+            dyadRequestId,
+          },
         ),
       ).rejects.toThrow("Chat not found: 1");
     });
@@ -373,7 +391,11 @@ describe("handleLocalAgentStream", () => {
         event,
         { chatId: 1, prompt: "test" },
         new AbortController(),
-        { placeholderMessageId: 10, systemPrompt: "You are helpful" },
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
       );
 
       // Assert - check that chunks were sent
@@ -418,7 +440,11 @@ describe("handleLocalAgentStream", () => {
         event,
         { chatId: 1, prompt: "test" },
         new AbortController(),
-        { placeholderMessageId: 10, systemPrompt: "You are helpful" },
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
       );
 
       // Assert - find the final content update
@@ -451,7 +477,11 @@ describe("handleLocalAgentStream", () => {
         event,
         { chatId: 1, prompt: "test" },
         new AbortController(),
-        { placeholderMessageId: 10, systemPrompt: "You are helpful" },
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
       );
 
       // Assert
@@ -500,7 +530,11 @@ describe("handleLocalAgentStream", () => {
         event,
         { chatId: 1, prompt: "test" },
         abortController,
-        { placeholderMessageId: 10, systemPrompt: "You are helpful" },
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
       );
 
       // Assert - only first chunk should be processed (stream breaks on abort)
@@ -540,7 +574,11 @@ describe("handleLocalAgentStream", () => {
         event,
         { chatId: 1, prompt: "test" },
         abortController,
-        { placeholderMessageId: 10, systemPrompt: "You are helpful" },
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
       );
 
       // Assert - should have saved cancellation message
@@ -569,7 +607,11 @@ describe("handleLocalAgentStream", () => {
         event,
         { chatId: 1, prompt: "test" },
         new AbortController(),
-        { placeholderMessageId: 10, systemPrompt: "You are helpful" },
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
       );
 
       // Assert - commit hash should be saved
@@ -594,7 +636,11 @@ describe("handleLocalAgentStream", () => {
         event,
         { chatId: 1, prompt: "test" },
         new AbortController(),
-        { placeholderMessageId: 10, systemPrompt: "You are helpful" },
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
       );
 
       // Assert - approval state should be set

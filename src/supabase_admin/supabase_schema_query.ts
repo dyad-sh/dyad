@@ -2,7 +2,27 @@
 // which is Apache 2.0 licensed and copyrighted to Jijun Leng
 // https://github.com/jjleng/code-panda/blob/61f1fa514c647de1a8d2ad7f85102d49c6db2086/LICENSE
 
-export const SUPABASE_SCHEMA_QUERY = `
+/**
+ * Build schema query with optional table name filter.
+ * When tableName is provided, only fetches schema for that specific table.
+ */
+export function buildSupabaseSchemaQuery(tableName?: string): string {
+  // Escape single quotes in table name to prevent SQL injection
+  const escapedTableName = tableName?.replace(/'/g, "''");
+  const tableFilter = escapedTableName
+    ? ` AND tables.table_name = '${escapedTableName}'`
+    : "";
+  const columnFilter = escapedTableName
+    ? ` AND c.table_name = '${escapedTableName}'`
+    : "";
+  const policyFilter = escapedTableName
+    ? ` AND cls.relname = '${escapedTableName}'`
+    : "";
+  const triggerFilter = escapedTableName
+    ? ` AND t.event_object_table = '${escapedTableName}'`
+    : "";
+
+  return `
         WITH table_info AS (
             SELECT
                 tables.table_name,
@@ -12,7 +32,7 @@ export const SUPABASE_SCHEMA_QUERY = `
             LEFT JOIN pg_stat_user_tables psut ON tables.table_name = psut.relname
             LEFT JOIN pg_class cls ON psut.relid = cls.oid
             LEFT JOIN pg_description pd ON psut.relid = pd.objoid AND pd.objsubid = 0
-            WHERE tables.table_schema = 'public'
+            WHERE tables.table_schema = 'public'${tableFilter}
         ),
         column_info AS (
             SELECT
@@ -26,7 +46,7 @@ export const SUPABASE_SCHEMA_QUERY = `
                     ) ORDER BY c.ordinal_position
                 ) as columns
             FROM information_schema.columns c
-            WHERE c.table_schema = 'public'
+            WHERE c.table_schema = 'public'${columnFilter}
             GROUP BY c.table_name
         ),
         tables_result AS (
@@ -60,9 +80,12 @@ export const SUPABASE_SCHEMA_QUERY = `
                 )::text as data
             FROM pg_policy pol
             JOIN pg_class cls ON pol.polrelid = cls.oid
-            WHERE cls.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public')
+            WHERE cls.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public')${policyFilter}
         ),
-        functions_result AS (
+        ${
+          tableName
+            ? ""
+            : `functions_result AS (
             SELECT
                 'functions' as result_type,
                 jsonb_build_object(
@@ -81,8 +104,9 @@ export const SUPABASE_SCHEMA_QUERY = `
             FROM pg_proc p
             LEFT JOIN pg_description d ON p.oid = d.objoid
             LEFT JOIN pg_language l ON p.prolang = l.oid
-            WHERE p.pronamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public') AND p.prokind = 'f' -- 'f' = normal function (otherwise source code fetch fails)
-        ),
+            WHERE p.pronamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public') AND p.prokind = 'f'
+        ),` // -- 'f' = normal function (otherwise source code fetch fails)
+        }
         triggers_result AS (
             SELECT
                 'triggers' as result_type,
@@ -97,14 +121,42 @@ export const SUPABASE_SCHEMA_QUERY = `
             FROM information_schema.triggers t
             LEFT JOIN pg_trigger pg_t ON t.trigger_name = pg_t.tgname
             LEFT JOIN pg_proc p ON pg_t.tgfoid = p.oid
-            WHERE t.trigger_schema = 'public'
+            WHERE t.trigger_schema = 'public'${triggerFilter}
         )
         SELECT result_type, data
         FROM (
             SELECT * FROM tables_result
             UNION ALL SELECT * FROM policies_result
-            UNION ALL SELECT * FROM functions_result
+            ${tableName ? "" : "UNION ALL SELECT * FROM functions_result"}
             UNION ALL SELECT * FROM triggers_result
         ) combined_results
         ORDER BY result_type;
 `;
+}
+
+export const SUPABASE_SCHEMA_QUERY = buildSupabaseSchemaQuery();
+
+/**
+ * Query to fetch only database functions from the public schema.
+ */
+export const SUPABASE_FUNCTIONS_QUERY = `
+  SELECT
+    jsonb_build_object(
+      'name', p.proname::text,
+      'description', d.description::text,
+      'arguments', pg_get_function_arguments(p.oid)::text,
+      'return_type', pg_get_function_result(p.oid)::text,
+      'language', l.lanname::text,
+      'volatility', CASE p.provolatile
+        WHEN 'i' THEN 'IMMUTABLE'
+        WHEN 's' THEN 'STABLE'
+        WHEN 'v' THEN 'VOLATILE'
+      END,
+      'source_code', pg_get_functiondef(p.oid)::text
+    )::text as data
+  FROM pg_proc p
+  LEFT JOIN pg_description d ON p.oid = d.objoid
+  LEFT JOIN pg_language l ON p.prolang = l.oid
+  WHERE p.pronamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public')
+    AND p.prokind = 'f';
+`; // 'f' = normal function (otherwise source code fetch fails)

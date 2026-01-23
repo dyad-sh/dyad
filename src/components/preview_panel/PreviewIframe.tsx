@@ -201,6 +201,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   );
   const setPreviewIframeRef = useSetAtom(previewIframeRefAtom);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  // Ref to store the URL to use for the next reload
+  const reloadUrlRef = useRef<string | null>(null);
   const [isPicking, setIsPicking] = useState(false);
   const [annotatorMode, setAnnotatorMode] = useAtom(annotatorModeAtom);
   const [screenshotDataUrl, setScreenshotDataUrl] = useAtom(
@@ -740,14 +742,15 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
   // Function to handle reload
   const handleReload = () => {
+    // Store the current URL to preserve the route during reload
+    reloadUrlRef.current =
+      navigationHistory[currentHistoryPosition] || appUrl || null;
     setReloadKey((prevKey) => prevKey + 1);
     setErrorMessage(undefined);
     // Reset visual editing state
     setVisualEditingSelectedComponent(null);
     setPendingChanges(new Map());
     setCurrentComponentCoordinates(null);
-    // Optionally, add logic here if you need to explicitly stop/start the app again
-    // For now, just changing the key should remount the iframe
     console.debug("Reloading iframe preview for app", selectedAppId);
   };
 
@@ -904,7 +907,10 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <div className="flex items-center justify-between px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded text-sm text-gray-700 dark:text-gray-200 cursor-pointer w-full min-w-0">
-                  <span className="truncate flex-1 mr-2 min-w-0">
+                  <span
+                    className="truncate flex-1 mr-2 min-w-0"
+                    data-testid="preview-address-bar-path"
+                  >
                     {navigationHistory[currentHistoryPosition]
                       ? new URL(navigationHistory[currentHistoryPosition])
                           .pathname
@@ -1109,7 +1115,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                       ? {}
                       : { width: `${deviceWidthConfig[deviceMode]}px` }
                   }
-                  src={appUrl}
+                  src={reloadUrlRef.current || appUrl}
                   allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
                 />
                 {/* Visual Editing Toolbar */}

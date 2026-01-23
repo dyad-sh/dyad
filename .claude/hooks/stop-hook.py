@@ -96,7 +96,7 @@ def get_claude_path() -> str | None:
 
     home = Path.home()
     default_path = home / ".claude" / "local" / "claude"
-    if default_path.exists():
+    if default_path.exists() and os.access(default_path, os.X_OK):
         return str(default_path)
 
     return None
@@ -168,7 +168,7 @@ def read_transcript(transcript_path: str, max_chars: int = 32000) -> str:
             result = begin_part + "\n\n...(middle truncated)...\n\n" + end_part
         return result
 
-    except Exception:
+    except OSError:
         return ""
 
 
@@ -217,14 +217,17 @@ OR
 JSON response:"""
 
     try:
+        # Use stdin for prompt to avoid command-line length limits with large transcripts
+        # Timeout is 25s (5s margin under the 30s hook timeout in settings.json)
         result = subprocess.run(
             [
                 claude_path,
                 "--print",
                 "--output-format", "text",
                 "--model", "sonnet",
-                prompt
+                "-p", "-"
             ],
+            input=prompt,
             capture_output=True,
             text=True,
             timeout=25,
@@ -277,7 +280,7 @@ JSON response:"""
 
         return None
 
-    except subprocess.SubprocessError:
+    except (subprocess.SubprocessError, OSError):
         return None
 
 

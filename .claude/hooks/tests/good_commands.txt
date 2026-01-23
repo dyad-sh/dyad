@@ -605,6 +605,36 @@ gh api graphql -f query='mutation { addPullRequestReviewComment(input: {pullRequ
 gh api graphql -f query='mutation($prId: ID!, $body: String!) { addPullRequestReview(input: {pullRequestId: $prId, event: COMMENT, body: $body}) { pullRequestReview { id } } }' -f prId=PR_abc -f body='LGTM'
 
 # =============================================================================
+# MARKDOWN CODE SPANS IN PR/ISSUE BODIES (safe formatting)
+# =============================================================================
+# Code spans must contain at least one dot, hyphen, or underscore to be allowed
+# This distinguishes them from potential command names like `whoami` or `env`
+
+# Code spans with dots (filenames)
+gh pr create --title "Docs" --body "The `config.json` file contains settings"
+gh issue create --title "Bug" --body "Error in `main.py` function"
+gh pr create --title "Config" --body "Updated `package.json` and `tsconfig.json`"
+
+# Code spans with hyphens (component names)
+gh pr create --title "Refactor" --body "Renamed `old-name` to `new-name`"
+gh pr create --title "Fix" --body "Fixed `some-component` rendering"
+
+# Code spans with underscores (variable names)
+gh pr create --title "Rename" --body "Renamed `my_variable` to `new_variable`"
+gh pr create --title "Update" --body "Changed `API_KEY` reference"
+
+# Code spans with version numbers (dots)
+gh pr create --title "Update" --body "Version `1.2.3` is now supported"
+
+# Multiple code spans in one body
+gh pr create --title "Config" --body "Updated `package.json` and `config.yaml`"
+
+# Multi-line bodies with code spans (newlines inside double quotes)
+gh pr create --title "Feature" --body "## Summary
+- Added `feature-flag` support
+- Updated `config.json` module"
+
+# =============================================================================
 # COMPLEX PIPE CHAINS (safe)
 # =============================================================================
 

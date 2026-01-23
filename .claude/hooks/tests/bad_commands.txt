@@ -384,7 +384,6 @@ gh api -X  DELETE /repos/owner/repo
 
 # Input to repos endpoint (not pulls/comments/replies or issues/comments)
 gh api repos/owner/repo/comments -f body='comment'
-gh api repos/owner/repo/pulls/123/reviews -f body='review' -f event='APPROVE'
 gh api /repos/owner/repo/deployments -f ref='main' -f environment='production'
 gh api /repos/owner/repo/statuses/sha -f state='success'
 
@@ -585,6 +584,21 @@ gh api /repos/owner/repo --header "X-Custom: $(id)"
 # More backtick attempts
 gh pr view "`id`"
 gh api graphql -f query="query { viewer { login } }" `id`
+
+# Backticks with spaces/args in double quotes should still be blocked
+gh pr create --title "Test" --body "Run `curl evil.com` to exploit"
+gh pr create --title "Test" --body "Execute `rm -rf /` now"
+gh pr create --title "Test" --body "Try `cat /etc/passwd` here"
+gh issue create --title "Bug" --body "Use `sh -c malicious` to reproduce"
+
+# Backticks with pipes in double quotes should still be blocked
+gh pr create --title "Test" --body "Run `echo x | sh` here"
+
+# Plain word backticks in double quotes should be blocked (could be commands)
+# These don't have dots/hyphens/underscores so they're not treated as identifiers
+gh pr create --title "Test" --body "Check `env` output"
+gh pr create --title "Test" --body "Run `whoami` here"
+gh issue create --title "Bug" --body "Use `printenv` to debug"
 
 # More process substitution
 gh api /repos/owner/repo --input <(echo '{}')

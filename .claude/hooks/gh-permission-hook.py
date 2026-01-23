@@ -58,6 +58,12 @@ BLOCKED (denied):
    - Command substitution: $() ``
    - Process substitution: <() >()
    - Piping to non-safe commands
+
+Note: Markdown code spans with identifier-like content are allowed in double-quoted
+strings (common in PR/issue descriptions). Code spans must contain at least one
+dot, hyphen, or underscore to be recognized as identifiers (e.g., `config.json`,
+`my-component`, `my_variable`). Plain words like `word` are NOT allowed as they
+could be actual commands like `env` or `whoami`.
 """
 import json
 import sys
@@ -107,6 +113,16 @@ SINGLE_QUOTED_PATTERN = re.compile(r"'[^']*'")
 # so any | inside is a literal character, not a shell pipe
 # We use this to allow patterns like: grep -E "bug|error"
 SAFE_DOUBLE_QUOTED_PATTERN = re.compile(r'"[^"$`]*"')
+
+# Pattern to match markdown-style inline code spans that look like identifiers
+# Must contain at least one of: dot, hyphen, or underscore to distinguish from commands
+# Matches: `config.json`, `my-component`, `my_variable`, `package.json`
+# Does NOT match: `whoami`, `env`, `id` (could be actual commands)
+# SECURITY: Requires non-alpha chars to reduce risk of matching actual commands
+MARKDOWN_CODE_SPAN_PATTERN = re.compile(r'`[\w.-]*[._-][\w.-]*`')
+
+# Pattern to match double-quoted strings (for processing)
+DOUBLE_QUOTED_STRING_PATTERN = re.compile(r'"[^"]*"')
 
 # Safe pipe destinations - commands that only process text output
 # These are safe because they can't execute arbitrary code from piped input
@@ -191,6 +207,19 @@ def extract_gh_command(command: str) -> Optional[str]:
     return None
 
 
+def neutralize_code_spans_in_double_quotes(match: re.Match) -> str:
+    """
+    Process a double-quoted string and neutralize markdown code spans inside it.
+
+    This allows PR/issue bodies with markdown like `concurrency` to pass through,
+    while still blocking backticks outside of quoted strings (real command substitution).
+    """
+    content = match.group(0)
+    # Neutralize code spans (backtick pairs with simple identifier content)
+    neutralized = MARKDOWN_CODE_SPAN_PATTERN.sub("MDCODE", content)
+    return neutralized
+
+
 def contains_shell_injection(cmd: str) -> bool:
     """
     Check if command contains shell metacharacters that could allow injection.
@@ -210,10 +239,18 @@ def contains_shell_injection(cmd: str) -> bool:
     # This handles cases like: gh api ... --jq '.[] | {field: .field}'
     cmd_without_single_quotes = SINGLE_QUOTED_PATTERN.sub("''", cmd)
 
+    # Neutralize markdown code spans ONLY INSIDE double-quoted strings
+    # This allows PR/issue bodies with markdown formatting like `concurrency`
+    # to be stripped in the next step, while still catching backticks outside quotes
+    # (which are real command substitution)
+    cmd_with_neutralized_spans = DOUBLE_QUOTED_STRING_PATTERN.sub(
+        neutralize_code_spans_in_double_quotes, cmd_without_single_quotes
+    )
+
     # Strip double-quoted strings that don't contain $( or backticks
     # These are safe for pipe/metachar detection since | inside is literal
     # This allows patterns like: grep -E "bug|error"
-    cmd_without_safe_doubles = SAFE_DOUBLE_QUOTED_PATTERN.sub('""', cmd_without_single_quotes)
+    cmd_without_safe_doubles = SAFE_DOUBLE_QUOTED_PATTERN.sub('""', cmd_with_neutralized_spans)
 
     # Replace safe pipe destinations with a placeholder before checking
     # This allows patterns like: gh api graphql ... | jq '...'

@@ -147,6 +147,18 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/stop-hook.py",
+            "timeout": 5000
+          }
+        ]
+      }
     ]
   }
 }

@@ -34,7 +34,6 @@ test("mcp - call calculator", async ({ po }) => {
   await po.sendPrompt("[call_tool=calculator_add]", {
     skipWaitForCompletion: true,
   });
-
   // Wait for consent dialog to appear
   const alwaysAllowButton = po.page.getByRole("button", {
     name: "Always allow",
@@ -50,70 +49,71 @@ test("mcp - call calculator", async ({ po }) => {
   await po.snapshotServerDump("all-messages");
 });
 
-test("mcp - call calculator with HTTP transport and authorization", async ({
-  po,
-}) => {
-  // Start the fake HTTP MCP server
-  const testAuthValue = "test-auth-token-123";
-  const serverPath = path.join(
+test("mcp - call calculator via http", async ({ po }) => {
+  const httpMcpServerPath = path.join(
     __dirname,
     "..",
     "testing",
     "fake-http-mcp-server.mjs",
   );
-  const serverProcess = spawn("node", [serverPath], {
-    env: { ...process.env, EXPECTED_AUTH_VALUE: testAuthValue, PORT: "3001" },
+  console.log("Starting HTTP MCP server at:", httpMcpServerPath);
+
+  const httpServerProcess = spawn("node", [httpMcpServerPath], {
+    env: { ...process.env, PORT: "3002" },
     stdio: "pipe",
   });
-
-  // Wait for server to start
-  await new Promise((resolve) => setTimeout(resolve, 2000));
 
   try {
     await po.setUp();
     await po.goToSettingsTab();
     await po.page.getByRole("button", { name: "Tools (MCP)" }).click();
 
+    // Fill in server name
     await po.page
       .getByRole("textbox", { name: "My MCP Server" })
-      .fill("testing-http-mcp-server");
-    await po.page.locator("select").first().selectOption("http");
-    // Wait for URL field to appear after selecting HTTP transport
-    // Use placeholder to find it since label association might not work immediately
+      .fill("testing-mcp-server");
+
     await po.page
-      .getByPlaceholder("http://localhost:3000")
-      .waitFor({ state: "visible" });
-    await po.page
-      .getByPlaceholder("http://localhost:3000")
-      .fill("http://localhost:3001");
+      .locator('div:has-text("Transport") select')
+      .selectOption("http");
+
+    const urlInput = po.page.getByPlaceholder("http://localhost:3000");
+    await expect(urlInput).toBeVisible();
+    await urlInput.fill("http://localhost:3002/mcp");
+
     await po.page.getByRole("button", { name: "Add Server" }).click();
-    // Wait for server to be added and "Add Header" button to appear
-    await po.page
-      .getByRole("button", { name: "Add Header" })
-      .waitFor({ state: "visible" });
+
     await po.page.getByRole("button", { name: "Add Header" }).click();
     await po.page.getByRole("textbox", { name: "Key" }).fill("Authorization");
-    await po.page.getByRole("textbox", { name: "Value" }).fill(testAuthValue);
+    await po.page.getByRole("textbox", { name: "Value" }).fill("testValue1");
     await po.page.getByRole("button", { name: "Save" }).click();
+    await po.goToSettingsTab();
+    await po.page.getByRole("button", { name: "Tools (MCP)" }).click();
     await po.goToAppsTab();
     await po.selectChatMode("agent");
-    // Wait for chat input to be ready
-    await po.getChatInput().waitFor({ state: "visible" });
-    await po.sendPrompt("[call_tool=calculator_add_2]", {
+    await po.sendPrompt("[call_tool=calculator_add]", {
       skipWaitForCompletion: true,
     });
+    const alwaysAllowButton = po.page.getByRole("button", {
+      name: "Allow once",
+    });
+    await expect(alwaysAllowButton).toBeVisible();
+    await po.snapshotMessages();
+    await alwaysAllowButton.click();
     await po.page.getByRole("button", { name: "Approve" }).click();
+
     await po.sendPrompt("[dump]");
-    await po.page.waitForTimeout(1000);
     await po.snapshotServerDump("all-messages");
   } finally {
-    // Clean up server process
-    serverProcess.kill();
-    await new Promise((resolve) => {
-      serverProcess.on("exit", resolve);
-      if (!serverProcess.killed) {
-        serverProcess.kill("SIGTERM");
-      }
+    // Clean up: kill the HTTP server process
+    httpServerProcess.kill();
+    await new Promise<void>((resolve) => {
+      httpServerProcess.on("exit", () => resolve());
+      // Force kill after 2 seconds if it doesn't exit gracefully
+      setTimeout(() => {
+        httpServerProcess.kill("SIGKILL");
+        resolve();
+      }, 2000);
     });
   }
 });

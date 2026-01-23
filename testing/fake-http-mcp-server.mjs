@@ -1,211 +1,114 @@
-import http from "http";
-import { URL } from "url";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { createServer } from "node:http";
+import { z } from "zod";
 
-// Expected authorization value - can be set via environment variable
-const EXPECTED_AUTH_VALUE = process.env.EXPECTED_AUTH_VALUE || "test-auth-token-123";
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3002;
 
-const server = http.createServer(async (req, res) => {
-  // Enable CORS
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+const server = new McpServer({
+  name: "fake-http-mcp",
+  version: "0.1.0",
+});
 
+server.registerTool(
+  "calculator_add",
+  {
+    title: "Calculator Add",
+    description: "Add two numbers and return the sum",
+    inputSchema: { a: z.number(), b: z.number() },
+  },
+  async ({ a, b }) => {
+    const sum = a + b;
+    return {
+      content: [{ type: "text", text: String(sum) }],
+    };
+  },
+);
+
+server.registerTool(
+  "print_envs",
+  {
+    title: "Print Envs",
+    description: "Print the environment variables received by the server",
+    inputSchema: {},
+  },
+  async () => {
+    const envObject = Object.fromEntries(
+      Object.entries(process.env).map(([key, value]) => [key, value ?? ""]),
+    );
+    const pretty = JSON.stringify(envObject, null, 2);
+    return {
+      content: [{ type: "text", text: pretty }],
+    };
+  },
+);
+
+// Create the StreamableHTTP transport
+const transport = new StreamableHTTPServerTransport({
+  sessionIdGenerator: undefined,
+});
+
+// Connect the server to the transport
+await server.connect(transport);
+
+// Create HTTP server
+const httpServer = createServer(async (req, res) => {
+    
+  // Only handle requests to /mcp endpoint
+  if (req.url !== "/mcp") {
+    res.writeHead(404, { "Content-Type": "text/plain" });
+    res.end("Not Found");
+    return;
+  }
+
+  // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    res.writeHead(200);
+    res.writeHead(200, {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    });
     res.end();
     return;
   }
 
-  const url = new URL(req.url, `http://${req.headers.host}`);
-  const path = url.pathname;
+  // Set CORS headers
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
-  // Check authorization for all requests
-  const authHeader = req.headers.authorization;
-  if (!authHeader || authHeader !== EXPECTED_AUTH_VALUE) {
-    res.writeHead(401, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ 
-      error: "Unauthorized",
-      message: "Missing or invalid Authorization header"
-    }));
-    return;
+  try {
+    // Let the transport handle body parsing (it uses raw-body internally)
+    await transport.handleRequest(req, res);
+  } catch (error) {
+    if (!res.headersSent) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: error.message }));
+    }
   }
-
-  // Handle SSE endpoint for streaming
-  if (req.method === "GET" && (path === "/sse" || path === "/message")) {
-    res.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      "Connection": "keep-alive",
-    });
-    
-    // Send initial connection message
-    res.write("data: " + JSON.stringify({ 
-      jsonrpc: "2.0",
-      method: "notifications/initialized"
-    }) + "\n\n");
-    
-    // Keep connection alive
-    const keepAlive = setInterval(() => {
-      res.write(": keepalive\n\n");
-    }, 30000);
-    
-    req.on("close", () => {
-      clearInterval(keepAlive);
-    });
-    
-    return;
-  }
-
-  // Handle POST requests for JSON-RPC messages
-  if (req.method === "POST") {
-    let body = "";
-    req.on("data", (chunk) => {
-      body += chunk.toString();
-    });
-
-    req.on("end", async () => {
-      try {
-        const request = JSON.parse(body);
-        
-        // Handle initialize request
-        if (request.method === "initialize") {
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({
-            jsonrpc: "2.0",
-            id: request.id,
-            result: {
-              protocolVersion: "2024-11-05",
-              capabilities: {
-                tools: {},
-              },
-              serverInfo: {
-                name: "fake-http-mcp",
-                version: "0.1.0",
-              },
-            },
-          }));
-          return;
-        }
-
-        // Handle initialized notification (no response needed)
-        if (request.method === "notifications/initialized") {
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end();
-          return;
-        }
-
-        // Handle tools/list request
-        if (request.method === "tools/list") {
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({
-            jsonrpc: "2.0",
-            id: request.id,
-            result: {
-              tools: [
-                {
-                  name: "calculator_add_2",
-                  description: "Add two numbers and return the sum",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      a: { type: "number", description: "First number" },
-                      b: { type: "number", description: "Second number" },
-                    },
-                    required: ["a", "b"],
-                  },
-                },
-              ],
-            },
-          }));
-          return;
-        }
-
-        // Handle tools/call request - verify auth here too
-        if (request.method === "tools/call") {
-          const { name, arguments: args } = request.params;
-          
-          if (name === "calculator_add_2") {
-            const { a, b } = args;
-            const sum = a + b;
-            
-            res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({
-              jsonrpc: "2.0",
-              id: request.id,
-              result: {
-                content: [
-                  {
-                    type: "text",
-                    text: String(sum),
-                  },
-                ],
-              },
-            }));
-            return;
-          }
-          
-          res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({
-            jsonrpc: "2.0",
-            id: request.id,
-            error: {
-              code: -32601,
-              message: `Unknown tool: ${name}`,
-            },
-          }));
-          return;
-        }
-
-        // Unknown method
-        res.writeHead(400, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({
-          jsonrpc: "2.0",
-          id: request.id,
-          error: {
-            code: -32601,
-            message: `Unknown method: ${request.method}`,
-          },
-        }));
-      } catch (error) {
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({
-          jsonrpc: "2.0",
-          id: request?.id || null,
-          error: {
-            code: -32603,
-            message: error.message,
-          },
-        }));
-      }
-    });
-    return;
-  }
-
-  // 404 for unknown paths
-  res.writeHead(404, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ error: "Not Found" }));
 });
 
-const PORT = process.env.PORT || 3001;
-
-server.listen(PORT, () => {
-  console.log(`Fake HTTP MCP server running on port ${PORT}`);
-  console.log(`Expected auth value: ${EXPECTED_AUTH_VALUE}`);
+httpServer.listen(PORT, "0.0.0.0", () => {
+  console.log(`HTTP MCP server running on http://localhost:${PORT}/mcp`);
+  console.log(`Environment variables:`, Object.keys(process.env).length);
 });
 
-// Handle graceful shutdown
-process.on("SIGTERM", () => {
-  console.log("SIGTERM received, shutting down gracefully");
-  server.close(() => {
+// Graceful shutdown
+process.on("SIGINT", async () => {
+  console.log("\nShutting down server...");
+  await transport.close();
+  httpServer.close(() => {
     console.log("Server closed");
     process.exit(0);
   });
 });
 
-process.on("SIGINT", () => {
-  console.log("SIGINT received, shutting down gracefully");
-  server.close(() => {
+process.on("SIGTERM", async () => {
+  console.log("\nShutting down server...");
+  await transport.close();
+  httpServer.close(() => {
     console.log("Server closed");
     process.exit(0);
   });
 });
+

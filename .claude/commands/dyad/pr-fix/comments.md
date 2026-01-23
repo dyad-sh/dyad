@@ -121,7 +121,7 @@ Read all unresolved GitHub PR comments and address or resolve them appropriately
 
 6. **Push the changes:**
 
-   Run the `/dyad:gh-push` skill to lint, fix any issues, and push.
+   Run the `/dyad:pr-push` skill to lint, fix any issues, and push.
 
 7. **Provide a summary to the user:**
 

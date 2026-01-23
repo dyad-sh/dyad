@@ -67,5 +67,5 @@ Create a plan to fix a GitHub issue, then send it to be worked on remotely after
 
 8. **Execute based on user choice:**
 
-   - If **local**: Proceed to implement the plan step by step, then run `/dyad:gh-push` when complete
+   - If **local**: Proceed to implement the plan step by step, then run `/dyad:pr-push` when complete
    - If **remote**: Use `ExitPlanMode` with `pushToRemote: true` and share the remote session URL with the user

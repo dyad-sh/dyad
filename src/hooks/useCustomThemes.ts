@@ -7,16 +7,14 @@ import type {
   GenerateThemePromptParams,
   GenerateThemePromptResult,
 } from "@/ipc/ipc_types";
-
-// Query key for custom themes
-export const CUSTOM_THEMES_QUERY_KEY = ["custom-themes"];
+import { queryKeys } from "@/lib/queryKeys";
 
 /**
  * Hook to fetch all custom themes.
  */
 export function useCustomThemes() {
   const query = useQuery({
-    queryKey: CUSTOM_THEMES_QUERY_KEY,
+    queryKey: queryKeys.customThemes.all,
     queryFn: async (): Promise<CustomTheme[]> => {
       const ipcClient = IpcClient.getInstance();
       return ipcClient.getCustomThemes();
@@ -47,7 +45,7 @@ export function useCreateCustomTheme() {
     onSuccess: () => {
       // Invalidate all custom theme queries using prefix matching
       queryClient.invalidateQueries({
-        queryKey: ["custom-themes"],
+        queryKey: queryKeys.customThemes.all,
       });
     },
   });
@@ -66,7 +64,7 @@ export function useUpdateCustomTheme() {
     onSuccess: () => {
       // Invalidate all custom theme queries using prefix matching
       queryClient.invalidateQueries({
-        queryKey: ["custom-themes"],
+        queryKey: queryKeys.customThemes.all,
       });
     },
   });
@@ -83,7 +81,7 @@ export function useDeleteCustomTheme() {
     onSuccess: () => {
       // Invalidate all custom theme queries using prefix matching
       queryClient.invalidateQueries({
-        queryKey: ["custom-themes"],
+        queryKey: queryKeys.customThemes.all,
       });
     },
   });

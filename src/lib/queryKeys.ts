@@ -59,6 +59,12 @@ export const queryKeys = {
       ["currentBranch", appId] as const,
   },
 
+  uncommittedFiles: {
+    all: ["uncommittedFiles"] as const,
+    byApp: ({ appId }: { appId: number | null }) =>
+      ["uncommittedFiles", appId] as const,
+  },
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Problems / Diagnostics
   // ─────────────────────────────────────────────────────────────────────────────
@@ -123,6 +129,13 @@ export const queryKeys = {
   // ─────────────────────────────────────────────────────────────────────────────
   themes: {
     all: ["themes"] as const,
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Custom Themes
+  // ─────────────────────────────────────────────────────────────────────────────
+  customThemes: {
+    all: ["custom-themes"] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -211,6 +224,22 @@ export const queryKeys = {
       organizationSlug: string | null;
     }) => ["supabase", "branches", projectId, organizationSlug] as const,
   },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Neon
+  // ─────────────────────────────────────────────────────────────────────────────
+  neon: {
+    project: ({ appId }: { appId: number | null }) =>
+      ["neon-project", appId] as const,
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // App Environment Variables
+  // ─────────────────────────────────────────────────────────────────────────────
+  appEnvVars: {
+    byApp: ({ appId }: { appId: number | null }) =>
+      ["app-env-vars", appId] as const,
+  },
 } as const;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -231,6 +260,9 @@ export type AppQueryKey =
   | QueryKeyOf<(typeof queryKeys.proposals)[keyof typeof queryKeys.proposals]>
   | QueryKeyOf<(typeof queryKeys.versions)[keyof typeof queryKeys.versions]>
   | QueryKeyOf<(typeof queryKeys.branches)[keyof typeof queryKeys.branches]>
+  | QueryKeyOf<
+      (typeof queryKeys.uncommittedFiles)[keyof typeof queryKeys.uncommittedFiles]
+    >
   | QueryKeyOf<(typeof queryKeys.problems)[keyof typeof queryKeys.problems]>
   | QueryKeyOf<
       (typeof queryKeys.contextPaths)[keyof typeof queryKeys.contextPaths]
@@ -243,6 +275,9 @@ export type AppQueryKey =
     >
   | QueryKeyOf<(typeof queryKeys.appTheme)[keyof typeof queryKeys.appTheme]>
   | QueryKeyOf<(typeof queryKeys.themes)[keyof typeof queryKeys.themes]>
+  | QueryKeyOf<
+      (typeof queryKeys.customThemes)[keyof typeof queryKeys.customThemes]
+    >
   | QueryKeyOf<(typeof queryKeys.templates)[keyof typeof queryKeys.templates]>
   | QueryKeyOf<(typeof queryKeys.prompts)[keyof typeof queryKeys.prompts]>
   | QueryKeyOf<(typeof queryKeys.agentTools)[keyof typeof queryKeys.agentTools]>
@@ -255,4 +290,8 @@ export type AppQueryKey =
       (typeof queryKeys.appUpgrades)[keyof typeof queryKeys.appUpgrades]
     >
   | QueryKeyOf<(typeof queryKeys.mcp)[keyof typeof queryKeys.mcp]>
-  | QueryKeyOf<(typeof queryKeys.supabase)[keyof typeof queryKeys.supabase]>;
+  | QueryKeyOf<(typeof queryKeys.supabase)[keyof typeof queryKeys.supabase]>
+  | QueryKeyOf<(typeof queryKeys.neon)[keyof typeof queryKeys.neon]>
+  | QueryKeyOf<
+      (typeof queryKeys.appEnvVars)[keyof typeof queryKeys.appEnvVars]
+    >;

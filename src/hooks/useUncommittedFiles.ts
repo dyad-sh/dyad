@@ -1,6 +1,7 @@
 import { IpcClient } from "@/ipc/ipc_client";
 import { useQuery } from "@tanstack/react-query";
 import type { UncommittedFile } from "@/ipc/ipc_types";
+import { queryKeys } from "@/lib/queryKeys";
 
 export type { UncommittedFile };
 
@@ -10,7 +11,7 @@ export function useUncommittedFiles(appId: number | null) {
     isLoading,
     refetch: refetchUncommittedFiles,
   } = useQuery<UncommittedFile[], Error>({
-    queryKey: ["uncommittedFiles", appId],
+    queryKey: queryKeys.uncommittedFiles.byApp({ appId }),
     queryFn: async (): Promise<UncommittedFile[]> => {
       if (appId === null) {
         throw new Error("appId is null, cannot fetch uncommitted files.");

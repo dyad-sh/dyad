@@ -24,6 +24,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { queryKeys } from "@/lib/queryKeys";
 
 interface CapacitorControlsProps {
   appId: number;
@@ -42,7 +43,7 @@ export function CapacitorControls({ appId }: CapacitorControlsProps) {
 
   // Check if Capacitor is installed
   const { data: isCapacitor, isLoading } = useQuery({
-    queryKey: ["is-capacitor", appId],
+    queryKey: queryKeys.appUpgrades.isCapacitor({ appId }),
     queryFn: () => IpcClient.getInstance().isCapacitor({ appId }),
     enabled: appId !== undefined && appId !== null,
   });

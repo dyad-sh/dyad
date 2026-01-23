@@ -129,7 +129,7 @@ export function AuxiliaryActionsMenu({
     if (!open) {
       // Refresh custom themes when dialog closes
       queryClient.invalidateQueries({
-        queryKey: ["custom-themes"],
+        queryKey: queryKeys.customThemes.all,
       });
     }
   };

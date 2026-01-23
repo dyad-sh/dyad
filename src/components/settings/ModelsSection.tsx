@@ -18,6 +18,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/queryKeys";
 
 interface ModelsSectionProps {
   providerId: string;
@@ -35,10 +36,10 @@ export function ModelsSection({ providerId }: ModelsSectionProps) {
 
   const invalidateModels = () => {
     queryClient.invalidateQueries({
-      queryKey: ["language-models", providerId],
+      queryKey: queryKeys.languageModels.forProvider({ providerId }),
     });
     queryClient.invalidateQueries({
-      queryKey: ["language-models-by-providers"],
+      queryKey: queryKeys.languageModels.byProviders,
     });
   };
 

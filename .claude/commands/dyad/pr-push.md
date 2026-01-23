@@ -4,9 +4,24 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
 
 **IMPORTANT:** This skill MUST complete all steps autonomously. Do NOT ask for user confirmation at any step. Do NOT stop partway through. You MUST push to GitHub by the end of this skill.
 
+## Task Tracking
+
+**You MUST use the TaskCreate and TaskUpdate tools to track your progress.** At the start, create tasks for each step below. Mark each task as `in_progress` when you start it and `completed` when you finish. This ensures you complete ALL steps.
+
 ## Instructions
 
-1. **Check for uncommitted changes:**
+1. **Ensure you are NOT on main branch:**
+
+   Run `git branch --show-current` to check the current branch.
+
+   **CRITICAL:** You MUST NEVER push directly to the main branch. If you are on `main` or `master`:
+   - Generate a descriptive branch name based on the uncommitted changes (e.g., `fix-login-validation`, `add-user-settings-page`)
+   - Create and switch to the new branch: `git checkout -b <branch-name>`
+   - Report that you created a new branch
+
+   If you are already on a feature branch, proceed to the next step.
+
+2. **Check for uncommitted changes:**
 
    Run `git status` to check for any uncommitted changes (staged, unstaged, or untracked files).
 
@@ -17,7 +32,7 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
 
    If there are no uncommitted changes, proceed to the next step.
 
-2. **Run lint checks:**
+3. **Run lint checks:**
 
    Run these commands to ensure the code passes all pre-commit checks:
 
@@ -27,9 +42,9 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
 
    If there are errors that could not be auto-fixed, read the affected files and fix them manually, then re-run the checks until they pass.
 
-   **IMPORTANT:** Do NOT stop after lint passes. You MUST continue to step 3.
+   **IMPORTANT:** Do NOT stop after lint passes. You MUST continue to step 4.
 
-3. **If lint made changes, amend the last commit:**
+4. **If lint made changes, amend the last commit:**
 
    If the lint checks made any changes, stage and amend them into the last commit:
 
@@ -38,9 +53,9 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
    git commit --amend --no-edit
    ```
 
-   **IMPORTANT:** Do NOT stop here. You MUST continue to step 4 to push.
+   **IMPORTANT:** Do NOT stop here. You MUST continue to step 5 to push.
 
-4. **Push the branch (REQUIRED):**
+5. **Push the branch (REQUIRED):**
 
    You MUST push the branch to GitHub. Do NOT skip this step or ask for confirmation.
 
@@ -56,8 +71,9 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
 
    Note: `--force-with-lease` is used because the commit may have been amended. It's safer than `--force` as it will fail if someone else has pushed to the branch.
 
-5. **Summarize the results:**
-   - Report any uncommitted changes that were committed in step 1
+6. **Summarize the results:**
+   - Report if a new feature branch was created (and its name)
+   - Report any uncommitted changes that were committed in step 2
    - Report any files that were IGNORED and not committed (if any), explaining why they were skipped
    - Report any lint fixes that were applied
    - Confirm the branch has been pushed

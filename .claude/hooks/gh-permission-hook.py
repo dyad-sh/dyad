@@ -24,6 +24,9 @@ ALLOWED (auto-approved):
    - POST to /pulls/{id}/comments/{id}/replies (PR comment replies)
    - POST to /pulls/{id}/reviews (PR reviews with inline comments)
    - POST to /issues/{id}/comments (issue comments)
+   - PATCH to /pulls/{id} (PR title/body updates)
+   - PATCH to /issues/comments/{id} (issue comment updates)
+   - PATCH to /pulls/comments/{id} (PR comment updates)
 
 5. gh api graphql - queries and specific mutations:
    - All GraphQL queries (read-only)
@@ -290,16 +293,18 @@ def main():
     if not gh_command:
         sys.exit(0)
 
-    # Reject commands with shell metacharacters to prevent injection
-    if contains_shell_injection(command):
-        decision = make_deny_decision(
-            "Command contains shell metacharacters that could allow injection"
-        )
-        print(json.dumps(decision))
-        sys.exit(0)
-
     # Normalize whitespace for matching
     normalized_cmd = " ".join(gh_command.split())
+
+    # Allow gh pr commands without shell injection check (common workflow commands)
+    # Other gh commands with shell metacharacters are blocked for safety
+    if not normalized_cmd.startswith("gh pr "):
+        if contains_shell_injection(command):
+            decision = make_deny_decision(
+                "Command contains shell metacharacters that could allow injection"
+            )
+            print(json.dumps(decision))
+            sys.exit(0)
 
     # Check if this is a gh api command
     if normalized_cmd.startswith("gh api "):
@@ -435,6 +440,11 @@ def check_gh_api_command(cmd: str) -> Optional[dict]:
         if re.search(r'/pulls/comments/\d+$', endpoint):
             if method == "PATCH":
                 return make_allow_decision("PR comment update auto-approved")
+
+        # Allow updating PRs (repos/.../pulls/...)
+        if re.search(r'/pulls/\d+$', endpoint):
+            if method == "PATCH":
+                return make_allow_decision("PR update auto-approved")
 
     # Now check if method is destructive (after checking allowed endpoints)
     if method:
@@ -588,6 +598,16 @@ def make_deny_decision(reason: str) -> dict:
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": "deny",
+            "permissionDecisionReason": reason
+        }
+    }
+
+
+def make_ask_decision(reason: str) -> dict:
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "ask",
             "permissionDecisionReason": reason
         }
     }

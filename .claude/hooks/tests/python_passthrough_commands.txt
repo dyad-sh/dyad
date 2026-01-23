@@ -30,3 +30,11 @@ python --help
 python3 --help
 python -h
 python3 -h
+
+# =============================================================================
+# PYTEST (allowed module)
+# =============================================================================
+
+python -m pytest
+python3 -m pytest
+python3 -OBm pytest

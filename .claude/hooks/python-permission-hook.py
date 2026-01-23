@@ -14,7 +14,7 @@ BLOCKED:
 - python script.py (outside .claude)
 - python /usr/local/bin/script.py
 - python ../malicious.py
-- python -m <module> (module execution bypasses directory restriction)
+- python -m <module> (module execution bypasses directory restriction, except pytest)
 - python -c "<code>" (inline code execution)
 - python < /tmp/file.py (stdin redirection)
 - python .claude/script.py; malicious_command (shell injection)
@@ -227,8 +227,13 @@ def extract_python_script(command: str) -> tuple[str, str] | None:
             return ("", "Interactive Python mode is not allowed (stdin redirection risk)")
 
         # DENY: -m module execution (bypasses directory restriction)
+        # EXCEPT: pytest is allowed for running tests
         # Check for both standalone -m and combined flags like -um, -Bm
         if arg == '-m' or (arg.startswith('-') and not arg.startswith('--') and 'm' in arg[1:]):
+            # Check if next argument is an allowed module
+            allowed_modules = {'pytest'}
+            if i + 1 < len(args) and args[i + 1] in allowed_modules:
+                return ("", "")  # Passthrough - allow pytest
             return ("", "Python -m module execution is not allowed (bypasses directory restriction)")
 
         # DENY: -c inline code execution

@@ -115,7 +115,9 @@
 
       "Bash(chmod:*)",
 
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(pytest:*)",
+      "Bash(python -m pytest:*)"
     ]
   },
   "hooks": {

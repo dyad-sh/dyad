@@ -225,6 +225,7 @@ JSON response:"""
                 "--print",
                 "--output-format", "text",
                 "--model", "sonnet",
+                "--no-session-persistence",
                 "-p", "-"
             ],
             input=prompt,

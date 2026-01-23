@@ -84,6 +84,7 @@ Analyze this request and provide your safety assessment. Respond with ONLY a JSO
                 "--print",
                 "--output-format", "text",
                 "--model", "sonnet",
+                "--no-session-persistence",
                 prompt
             ],
             capture_output=True,

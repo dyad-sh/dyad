@@ -18,14 +18,14 @@ def issues_match(a: dict, b: dict, line_tolerance: int = 5) -> bool:
     if a['file'] != b['file']:
         return False
     
-    # Check line overlap with tolerance
+    # Check line overlap with tolerance (applied symmetrically to both issues)
     a_start = a.get('line_start', 0)
     a_end = a.get('line_end', a_start)
     b_start = b.get('line_start', 0)
     b_end = b.get('line_end', b_start)
-    
-    a_range = set(range(a_start - line_tolerance, a_end + line_tolerance + 1))
-    b_range = set(range(b_start, b_end + 1))
+
+    a_range = set(range(max(1, a_start - line_tolerance), a_end + line_tolerance + 1))
+    b_range = set(range(max(1, b_start - line_tolerance), b_end + line_tolerance + 1))
     
     if not a_range.intersection(b_range):
         return False

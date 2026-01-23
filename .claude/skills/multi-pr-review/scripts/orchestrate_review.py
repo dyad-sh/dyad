@@ -98,7 +98,11 @@ def parse_unified_diff(diff_content: str) -> list[FileDiff]:
                 ))
             # Extract new filename
             match = re.search(r'b/(.+)$', line)
-            current_file = match.group(1) if match else None
+            if match:
+                current_file = match.group(1)
+            else:
+                print(f"Warning: Could not parse filename from diff line: {line}", file=sys.stderr)
+                current_file = None
             current_content = [line]
             additions = 0
             deletions = 0
@@ -233,9 +237,9 @@ def issues_match(a: Issue, b: Issue, line_tolerance: int = 5) -> bool:
     if a.file != b.file:
         return False
     
-    # Check line overlap with tolerance
-    a_range = set(range(a.line_start - line_tolerance, a.line_end + line_tolerance + 1))
-    b_range = set(range(b.line_start, b.line_end + 1))
+    # Check line overlap with tolerance (applied symmetrically to both issues)
+    a_range = set(range(max(1, a.line_start - line_tolerance), a.line_end + line_tolerance + 1))
+    b_range = set(range(max(1, b.line_start - line_tolerance), b.line_end + line_tolerance + 1))
     if not a_range.intersection(b_range):
         return False
     

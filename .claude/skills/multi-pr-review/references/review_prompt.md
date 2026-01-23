@@ -96,15 +96,21 @@ Analyze these changes and report any correctness issues as JSON. Consider whethe
 [
   {
     "file": "path/to/file.py",
-    "line": 42,
-    "issue": "Division by zero possible when `count` is 0",
-    "criticality": "HIGH"
+    "line_start": 42,
+    "line_end": 42,
+    "severity": "HIGH",
+    "category": "logic",
+    "title": "Division by zero possible",
+    "description": "Division by zero possible when `count` is 0"
   },
   {
     "file": "UNKNOWN - likely UserService callers",
-    "line": "N/A",
-    "issue": "Function signature changed from sync to async but callers not updated in diff",
-    "criticality": "HIGH"
+    "line_start": 0,
+    "line_end": 0,
+    "severity": "HIGH",
+    "category": "logic",
+    "title": "Async signature change missing caller updates",
+    "description": "Function signature changed from sync to async but callers not updated in diff"
   }
 ]
 ```

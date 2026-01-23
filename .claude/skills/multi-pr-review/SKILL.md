@@ -13,7 +13,7 @@ This skill creates three independent sub-agents to review code changes, then agg
 2. Spawn 3 sub-agents, each receiving files in different randomized order
 3. Each agent reviews and classifies issues (high/medium/low criticality)
 4. Aggregate results: report issues where 2+ agents agree on medium+ severity
-5. Post consensus findings as PR comment
+5. Post findings: one summary comment + inline comments on specific lines
 
 ## Workflow
 
@@ -69,7 +69,12 @@ Issues are matched across agents by file + approximate line range + issue type. 
 - 2+ agents identified it AND
 - At least one agent rated it MEDIUM or higher
 
-### Step 5: Post PR Comment
+### Step 5: Post PR Comments
+
+The script posts two types of comments:
+
+1. **Summary comment**: Overview with issue counts by severity
+2. **Inline comments**: Detailed feedback on specific lines of code
 
 ```bash
 python3 scripts/post_comment.py \
@@ -77,6 +82,11 @@ python3 scripts/post_comment.py \
   --repo <OWNER/REPO> \
   --results consensus_results.json
 ```
+
+Options:
+
+- `--dry-run`: Preview comments without posting
+- `--summary-only`: Only post summary, skip inline comments
 
 ## File Structure
 

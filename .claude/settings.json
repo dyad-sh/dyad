@@ -3,6 +3,8 @@
     "allow": [
       "Edit",
       "Write",
+      "Read(/tmp/)",
+      "Read(/tmp/**)",
       "Skill(dyad:*)",
 
       "Bash(npm run:*)",

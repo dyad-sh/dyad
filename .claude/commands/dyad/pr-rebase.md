@@ -1,4 +1,4 @@
-# GitHub Rebase
+# PR Rebase
 
 Rebase the current branch on the latest upstream changes, resolve conflicts, and push.
 

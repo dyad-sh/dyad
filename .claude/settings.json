@@ -5,6 +5,8 @@
       "Write",
       "Read(/tmp/)",
       "Read(/tmp/**)",
+      "Write(/tmp/)",
+      "Write(/tmp/**)",
       "Skill(dyad:*)",
 
       "Bash(npm run:*)",

@@ -1,6 +1,6 @@
 ---
 name: dyad:multi-pr-review
-description: Multi-agent code review system that spawns three independent Claude sub-agents to review PR diffs. Each agent receives files in different randomized order to reduce ordering bias. Issues are classified as high/medium/low criticality. Results are aggregated using consensus voting - only issues flagged by 2+ agents as medium or higher criticality are reported and posted as PR comments. Use when reviewing PRs, performing code review with multiple perspectives, or when consensus-based issue detection is needed.
+description: Multi-agent code review system that spawns three independent Claude sub-agents to review PR diffs. Each agent receives files in different randomized order to reduce ordering bias. Issues are classified as high/medium/low severity. Results are aggregated using consensus voting - only issues identified by 2+ agents where at least one rated it medium or higher severity are reported and posted as PR comments. Use when reviewing PRs, performing code review with multiple perspectives, or when consensus-based issue detection is needed.
 ---
 
 # Multi-Agent PR Review

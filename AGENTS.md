@@ -25,7 +25,7 @@ Otherwise, run the following commands directly:
 **Formatting**
 
 ```sh
-npm run prettier
+npm run fmt
 ```
 
 **Linting**
@@ -61,11 +61,39 @@ Note: if you do this, then you will need to re-add the changes and commit again.
 3. `src/ipc/ipc_host.ts` registers handlers that live in files under `src/ipc/handlers/` (e.g., `app_handlers.ts`, `chat_stream_handlers.ts`, `settings_handlers.ts`).
 4. IPC handlers should `throw new Error("...")` on failure instead of returning `{ success: false }` style payloads.
 
+## Architecture
+
+### React Query key factory
+
+All React Query keys must be defined in `src/lib/queryKeys.ts` using the centralized factory pattern. This provides:
+
+- Type-safe query keys with full autocomplete
+- Hierarchical structure for easy invalidation (invalidate parent to invalidate children)
+- Consistent naming across the codebase
+- Single source of truth for all query keys
+
+**Usage:**
+
+```ts
+import { queryKeys } from "@/lib/queryKeys";
+
+// In useQuery:
+useQuery({
+  queryKey: queryKeys.apps.detail(appId),
+  queryFn: () => IpcClient.getInstance().getApp(appId),
+});
+
+// Invalidating queries:
+queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
+```
+
+**Adding new keys:** Add entries to the appropriate domain in `queryKeys.ts`. Follow the existing pattern with `all` for the base key and specific functions for parameterized keys.
+
 ## React + IPC integration pattern
 
 When creating hooks/components that call IPC handlers:
 
-- Wrap reads in `useQuery`, providing a stable `queryKey`, async `queryFn` that calls the relevant `IpcClient` method, and conditionally use `enabled`/`initialData`/`meta` as needed.
+- Wrap reads in `useQuery`, using keys from `queryKeys` factory (see above), async `queryFn` that calls the relevant `IpcClient` method, and conditionally use `enabled`/`initialData`/`meta` as needed.
 - Wrap writes in `useMutation`; validate inputs locally, call the IPC client, and invalidate related queries on success. Use shared utilities (e.g., toast helpers) in `onError`.
 - Synchronize TanStack Query data with any global state (like Jotai atoms) via `useEffect` only if required.
 
@@ -110,10 +138,6 @@ To get additional debug logs when a test is failing, use:
 ```sh
 DEBUG=pw:browser npm run e2e
 ```
-
-## Before Committing
-
-Always run `/lint` before committing code. This runs TypeScript checks, Prettier formatting, and ESLint to ensure code quality. Fix all errors before creating a commit.
 
 ## Git workflow
 

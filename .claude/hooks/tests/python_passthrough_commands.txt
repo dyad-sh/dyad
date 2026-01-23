@@ -32,9 +32,27 @@ python -h
 python3 -h
 
 # =============================================================================
-# PYTEST (allowed module)
+# PYTEST (allowed module with validated arguments)
 # =============================================================================
 
+# Basic pytest invocations
 python -m pytest
 python3 -m pytest
 python3 -OBm pytest
+
+# Pytest with common options (no paths)
+python -m pytest -v
+python3 -m pytest --verbose
+python -m pytest -x --tb=short
+python3 -m pytest -k "test_something"
+python -m pytest --collect-only
+
+# Pytest with relative paths within project (these are assumed to be in project)
+python -m pytest tests/
+python3 -m pytest src/tests
+python -m pytest tests/unit tests/integration
+python3 -m pytest ./tests
+
+# Pytest with options and paths
+python -m pytest -v tests/
+python3 -m pytest --tb=short tests/unit/

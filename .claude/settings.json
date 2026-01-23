@@ -135,6 +135,18 @@
           }
         ]
       }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/permission-request-hook.py",
+            "timeout": 30000
+          }
+        ]
+      }
     ]
   }
 }

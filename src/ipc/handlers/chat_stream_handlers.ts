@@ -1541,6 +1541,9 @@ ${problemReport.problems
       updatedFiles: false,
     } satisfies ChatResponseEnd);
 
+    // Also emit stream:end so cleanup listeners (e.g., pending agent consents) fire
+    safeSend(event.sender, "chat:stream:end", { chatId });
+
     return true;
   });
 }

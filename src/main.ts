@@ -122,6 +122,7 @@ export async function onReady() {
 
   await onFirstRunMaybe(settings);
   createWindow();
+  createApplicationMenu();
 
   logger.info("Auto-update enabled=", settings.enableAutoUpdate);
   if (settings.enableAutoUpdate) {
@@ -295,6 +296,85 @@ const createWindow = () => {
     const menu = Menu.buildFromTemplate(template);
     menu.popup({ window: mainWindow! });
   });
+};
+
+/**
+ * Create application menu with Edit shortcuts (Undo, Redo, Cut, Copy, Paste, etc.)
+ * This enables standard keyboard shortcuts like Cmd/Ctrl+C, Cmd/Ctrl+V, etc.
+ */
+const createApplicationMenu = () => {
+  const isMac = process.platform === "darwin";
+
+  const template: Electron.MenuItemConstructorOptions[] = [
+    // App menu (macOS only)
+    ...(isMac
+      ? [
+          {
+            label: app.name,
+            submenu: [
+              { role: "about" as const },
+              { type: "separator" as const },
+              { role: "services" as const },
+              { type: "separator" as const },
+              { role: "hide" as const },
+              { role: "hideOthers" as const },
+              { role: "unhide" as const },
+              { type: "separator" as const },
+              { role: "quit" as const },
+            ],
+          },
+        ]
+      : []),
+    // Edit menu - enables keyboard shortcuts for clipboard operations
+    {
+      label: "Edit",
+      submenu: [
+        { role: "undo" },
+        { role: "redo" },
+        { type: "separator" },
+        { role: "cut" },
+        { role: "copy" },
+        { role: "paste" },
+        { role: "delete" },
+        { type: "separator" },
+        { role: "selectAll" },
+      ],
+    },
+    // View menu
+    {
+      label: "View",
+      submenu: [
+        { role: "reload" },
+        { role: "forceReload" },
+        { role: "toggleDevTools" },
+        { type: "separator" },
+        { role: "resetZoom" },
+        { role: "zoomIn" },
+        { role: "zoomOut" },
+        { type: "separator" },
+        { role: "togglefullscreen" },
+      ],
+    },
+    // Window menu
+    {
+      label: "Window",
+      submenu: [
+        { role: "minimize" },
+        { role: "zoom" },
+        ...(isMac
+          ? [
+              { type: "separator" as const },
+              { role: "front" as const },
+              { type: "separator" as const },
+              { role: "window" as const },
+            ]
+          : [{ role: "close" as const }]),
+      ],
+    },
+  ];
+
+  const appMenu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(appMenu);
 };
 
 const gotTheLock = app.requestSingleInstanceLock();

@@ -245,13 +245,31 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                             const currentChatMessages = selectedChatId
                               ? (messagesById.get(selectedChatId) ?? [])
                               : [];
-                            const versionInCurrentChat =
-                              currentChatMessages.some(
+                            const assistantMessageIndex =
+                              currentChatMessages.findIndex(
                                 (msg) => msg.commitHash === version.oid,
                               );
+                            const versionInCurrentChat =
+                              assistantMessageIndex !== -1;
+
+                            // Find the user message that triggered this assistant response
+                            // so we can delete it along with subsequent messages
+                            const userMessage =
+                              assistantMessageIndex > 0
+                                ? currentChatMessages[assistantMessageIndex - 1]
+                                : undefined;
 
                             await revertVersion({
                               versionId: version.oid,
+                              currentChatMessageId:
+                                versionInCurrentChat &&
+                                selectedChatId &&
+                                userMessage
+                                  ? {
+                                      chatId: selectedChatId,
+                                      messageId: userMessage.id,
+                                    }
+                                  : undefined,
                             });
                             setSelectedVersionId(null);
                             // Close the pane after revert to force a refresh on next open

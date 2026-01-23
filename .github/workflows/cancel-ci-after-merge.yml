@@ -17,52 +17,52 @@ jobs:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const branch = context.payload.pull_request.head.ref;
+            const pr = context.payload.pull_request;
+            const branch = pr.head.ref;
+
+            // Skip fork PRs - their CI runs in the fork's context, not the base repo
+            if (pr.head.repo.full_name !== pr.base.repo.full_name) {
+              console.log(`Skipping fork PR from ${pr.head.repo.full_name}`);
+              return;
+            }
 
             console.log(`Looking for CI workflows to cancel for branch: ${branch}`);
 
-            // List workflow runs for the CI workflow on the PR's head branch
-            const { data: workflows } = await github.rest.actions.listRepoWorkflows({
-              owner,
-              repo,
-            });
+            // Use workflow file path instead of display name for reliable matching
+            const workflowFile = 'ci.yml';
 
-            const ciWorkflow = workflows.workflows.find(w => w.name === 'CI');
-            if (!ciWorkflow) {
-              console.log('CI workflow not found');
-              return;
+            // Query all cancelable statuses: in_progress, queued, pending, waiting
+            const statuses = ['in_progress', 'queued', 'pending', 'waiting'];
+            const allRuns = [];
+
+            for (const status of statuses) {
+              try {
+                const { data } = await github.rest.actions.listWorkflowRuns({
+                  owner,
+                  repo,
+                  workflow_id: workflowFile,
+                  branch,
+                  status,
+                });
+                allRuns.push(...data.workflow_runs);
+              } catch (error) {
+                // Status may not be supported or no runs found
+                console.log(`No runs found for status '${status}': ${error.message}`);
+              }
             }
-
-            console.log(`Found CI workflow with ID: ${ciWorkflow.id}`);
-
-            // Get in-progress and queued runs for the CI workflow on the merged branch
-            const { data: runs } = await github.rest.actions.listWorkflowRuns({
-              owner,
-              repo,
-              workflow_id: ciWorkflow.id,
-              branch,
-              status: 'in_progress',
-            });
-
-            const { data: queuedRuns } = await github.rest.actions.listWorkflowRuns({
-              owner,
-              repo,
-              workflow_id: ciWorkflow.id,
-              branch,
-              status: 'queued',
-            });
-
-            const allRuns = [...runs.workflow_runs, ...queuedRuns.workflow_runs];
 
             if (allRuns.length === 0) {
-              console.log('No running or queued CI workflows found for this branch');
+              console.log('No cancelable CI workflows found for this branch');
               return;
             }
 
-            console.log(`Found ${allRuns.length} workflow run(s) to cancel`);
+            // Deduplicate runs by ID (in case a run appears in multiple status queries)
+            const uniqueRuns = [...new Map(allRuns.map(run => [run.id, run])).values()];
 
-            // Cancel each running workflow
-            for (const run of allRuns) {
+            console.log(`Found ${uniqueRuns.length} workflow run(s) to cancel`);
+
+            // Cancel each workflow run
+            for (const run of uniqueRuns) {
               console.log(`Cancelling workflow run ${run.id} (status: ${run.status})`);
               try {
                 await github.rest.actions.cancelWorkflowRun({

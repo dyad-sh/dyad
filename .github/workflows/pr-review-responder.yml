@@ -1,0 +1,73 @@
+name: PR Review Responder
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+jobs:
+  respond-to-pr:
+    environment: ai-bots
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Get PR info and check labels
+        id: pr-info
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+
+            // Get PR associated with this workflow run
+            if (!run.pull_requests || run.pull_requests.length === 0) {
+              console.log('No pull requests associated with this workflow run');
+              core.setOutput('should_continue', 'false');
+              return;
+            }
+
+            const prNumber = run.pull_requests[0].number;
+
+            // Fetch full PR details to get labels
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber
+            });
+
+            const hasRequestLabel = pr.labels.some(label => label.name === 'cc:request');
+
+            if (!hasRequestLabel) {
+              console.log(`PR #${prNumber} does not have the cc:request label`);
+              core.setOutput('should_continue', 'false');
+              return;
+            }
+
+            console.log(`PR #${prNumber} has cc:request label, proceeding with pr-fix`);
+            core.setOutput('pr_number', prNumber);
+            core.setOutput('should_continue', 'true');
+
+      - name: Checkout repository
+        if: steps.pr-info.outputs.should_continue == 'true'
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ github.event.workflow_run.head_repository.full_name }}
+          ref: ${{ github.event.workflow_run.head_branch }}
+          fetch-depth: 0
+
+      - name: Run PR Fix
+        if: steps.pr-info.outputs.should_continue == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: |
+            /dyad:pr-fix ${{ steps.pr-info.outputs.pr_number }}
+
+      - name: Update labels
+        if: steps.pr-info.outputs.should_continue == 'true'
+        run: |
+          gh pr edit ${{ steps.pr-info.outputs.pr_number }} --remove-label "cc:help" --add-label "cc:responded"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

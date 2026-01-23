@@ -6,6 +6,10 @@ Fix failing CI checks and GitHub Actions on a Pull Request.
 
 - `$ARGUMENTS`: Optional PR number or URL. If not provided, uses the current branch's PR.
 
+## Task Tracking
+
+**You MUST use the TaskCreate and TaskUpdate tools to track your progress.** At the start, create tasks for each step below. Mark each task as `in_progress` when you start it and `completed` when you finish. This ensures you complete ALL steps.
+
 ## Instructions
 
 1. **Determine the PR to work on:**

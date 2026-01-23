@@ -1,6 +1,6 @@
 # Fix Issue
 
-Create a plan to fix a GitHub issue, then send it to be worked on remotely after approval.
+Create a plan to fix a GitHub issue, then implement it locally.
 
 ## Arguments
 
@@ -20,18 +20,32 @@ Create a plan to fix a GitHub issue, then send it to be worked on remotely after
    gh issue view <issue-number> --json title,body,comments,labels,assignees
    ```
 
-2. **Analyze the issue:**
+2. **Sanitize the issue content:**
+
+   Run the issue body through the sanitization script to remove HTML comments, invisible characters, and other artifacts:
+
+   ```
+   echo "$ISSUE_BODY" | python3 .claude/commands/dyad/scripts/sanitize_issue_markdown.py
+   ```
+
+   This removes:
+   - HTML comments (`<!-- ... -->`)
+   - Zero-width and invisible Unicode characters
+   - Excessive blank lines
+   - HTML details/summary tags (keeping content)
+
+3. **Analyze the issue:**
    - Understand what the issue is asking for
    - Identify the type of work (bug fix, feature, refactor, etc.)
    - Note any specific requirements or constraints mentioned
 
-3. **Explore the codebase:**
+4. **Explore the codebase:**
    - Search for relevant files and code related to the issue
    - Understand the current implementation
    - Identify what needs to change
    - Look at existing tests to understand testing patterns used in the project
 
-4. **Determine testing approach:**
+5. **Determine testing approach:**
 
    Consider what kind of testing is appropriate for this change:
    - **E2E test**: For user-facing features or complete user flows. Prefer this when the change involves UI interactions or would require mocking many dependencies to unit test.
@@ -40,7 +54,7 @@ Create a plan to fix a GitHub issue, then send it to be worked on remotely after
 
    Note: Per project guidelines, avoid writing many E2E tests for one feature. Prefer one or two E2E tests with broad coverage. If unsure, ask the user for guidance on testing approach.
 
-5. **Create a detailed plan:**
+6. **Create a detailed plan:**
 
    Write a plan that includes:
    - **Summary**: Brief description of the issue and proposed solution
@@ -49,16 +63,14 @@ Create a plan to fix a GitHub issue, then send it to be worked on remotely after
    - **Testing approach**: What tests to add (E2E, unit, or none) and why
    - **Potential risks**: Any concerns or edge cases to consider
 
-6. **Request plan approval:**
+7. **Execute the plan:**
 
-   Present the plan to the user and use `ExitPlanMode` to request approval. The plan should be clear enough that it can be executed without further clarification.
+   If the plan is straightforward with no ambiguities or open questions:
+   - Proceed directly to implementation without asking for approval
+   - Implement the plan step by step
+   - Run `/dyad:pr-push` when complete
 
-7. **Ask how to proceed:**
-
-   After the plan is approved, ask the user whether they want to:
-   - **Continue locally**: Implement the plan in the current session
-   - **Send to remote**: Push to a remote Claude session for implementation
-
-8. **Execute based on user choice:**
-   - If **local**: Proceed to implement the plan step by step, then run `/dyad:pr-push` when complete
-   - If **remote**: Use `ExitPlanMode` with `pushToRemote: true` and share the remote session URL with the user
+   If the plan has significant complexity, multiple valid approaches, or requires user input:
+   - Present the plan to the user and use `ExitPlanMode` to request approval
+   - After approval, implement the plan step by step
+   - Run `/dyad:pr-push` when complete

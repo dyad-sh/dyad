@@ -8,6 +8,7 @@
     "drizzle/",
     "**/pnpm-lock.yaml",
     "**/snapshots/**",
-    "e2e-tests/fixtures/**"
+    "e2e-tests/fixtures/**",
+    ".claude/commands/dyad/scripts/goldens/**"
   ]
 }

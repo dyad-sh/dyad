@@ -57,7 +57,7 @@ This directory contains a minimal HTTP MCP server for local testing.
 
 - **Tools**:
   - **calculator_add**: adds two numbers. Inputs: `a` (number), `b` (number).
-  - **Authorization**: requires an `Authorization` header with the expected value (default: `test-auth-token-123`, configurable via `EXPECTED_AUTH_VALUE` env var).
+  - **print_envs**: returns all environment variables visible to the server as pretty JSON.
 
 ### Requirements
 
@@ -80,12 +80,10 @@ This directory contains a minimal HTTP MCP server for local testing.
 
 ### Configuration
 
-- **Port**: defaults to `3001`, configurable via `PORT` environment variable
-- **Authorization**: defaults to `test-auth-token-123`, configurable via `EXPECTED_AUTH_VALUE` environment variable
+- **Port**: defaults to `3002`, configurable via `PORT` environment variable
 
 ```bash
-export EXPECTED_AUTH_VALUE=my-secret-token
-export PORT=3001
+export PORT=3002
 node testing/fake-http-mcp-server.mjs
 ```
 
@@ -95,11 +93,10 @@ When adding an HTTP MCP server in the app, use:
 
 - **Name**: `testing-http-mcp-server` (or any name)
 - **Transport**: `http`
-- **URL**: `http://localhost:3001` (or your configured port)
-- **Headers**: Add an `Authorization` header with the expected value (e.g., `test-auth-token-123`)
+- **URL**: `http://localhost:3002/mcp` (or your configured port)
+- **Headers**: Optional. You can add custom headers (e.g., `Authorization: Bearer token`) if needed for testing.
 
-Once connected, you should see the tool listed:
+Once connected, you should see the tools listed:
 
 - `calculator_add`
-
-The server verifies the `Authorization` header on all requests. If the header is missing or incorrect, requests will be rejected with a 401 Unauthorized response.
+- `print_envs`

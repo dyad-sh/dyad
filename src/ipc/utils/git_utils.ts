@@ -26,12 +26,20 @@ const logger = log.scope("git_utils");
  * git commands to be intercepted by WSL's relay system, resulting in errors
  * like "execvpe(/bin/bash) failed: No such file or directory".
  */
-function getWindowsSanitizedEnv(): Record<string, string | undefined> | undefined {
+function getWindowsSanitizedEnv():
+  | Record<string, string | undefined>
+  | undefined {
   if (platform() !== "win32") {
     return undefined;
   }
 
-  const currentPath = process.env.PATH ?? "";
+  // On Windows, the PATH environment variable can be stored with different casings
+  // (e.g., "PATH", "Path", "path"). We need to find the actual key used to avoid
+  // creating duplicate entries with different casings.
+  const pathKey =
+    Object.keys(process.env).find((key) => key.toUpperCase() === "PATH") ??
+    "PATH";
+  const currentPath = process.env[pathKey] ?? "";
   const pathSeparator = ";";
 
   // Filter out PATH entries that could trigger WSL interop
@@ -46,6 +54,7 @@ function getWindowsSanitizedEnv(): Record<string, string | undefined> | undefine
       if (
         lowerEntry.includes("\\wsl$\\") ||
         lowerEntry.includes("\\wsl.localhost\\") ||
+        lowerEntry.includes("windowsapps") ||
         lowerEntry.startsWith("/mnt/") ||
         lowerEntry.startsWith("/usr/") ||
         lowerEntry.startsWith("/bin/") ||
@@ -59,7 +68,7 @@ function getWindowsSanitizedEnv(): Record<string, string | undefined> | undefine
 
   return {
     ...process.env,
-    PATH: sanitizedPathEntries.join(pathSeparator),
+    [pathKey]: sanitizedPathEntries.join(pathSeparator),
   };
 }
 
@@ -753,7 +762,7 @@ export async function gitClone({
     if (singleBranch) {
       args.push("--single-branch");
     }
-    args.push(finalUrl, path);
+    args.push("--", finalUrl, path);
     const result = await execGit(args, ".");
 
     if (result.exitCode !== 0) {
@@ -786,11 +795,20 @@ export async function gitSetRemoteUrl({
 }: GitSetRemoteUrlParams): Promise<void> {
   const settings = readSettings();
 
+  // Validate remoteUrl to prevent argument injection attacks
+  // URLs starting with "-" could be interpreted as command-line options
+  if (remoteUrl.startsWith("-")) {
+    throw new Error("Invalid remote URL");
+  }
+
   if (settings.enableNativeGit) {
     // Dugite version
     try {
       // Try to add the remote
-      const result = await execGit(["remote", "add", "origin", remoteUrl], path);
+      const result = await execGit(
+        ["remote", "add", "origin", remoteUrl],
+        path,
+      );
 
       // If remote already exists, update it instead
       if (result.exitCode !== 0 && result.stderr.includes("already exists")) {
@@ -1005,7 +1023,7 @@ export async function gitIsIgnored({
   if (settings.enableNativeGit) {
     // Dugite version
     // git check-ignore file
-    const result = await execGit(["check-ignore", filepath], path);
+    const result = await execGit(["check-ignore", "--", filepath], path);
 
     // If exitCode == 0 → file is ignored
     if (result.exitCode === 0) return true;

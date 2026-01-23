@@ -102,6 +102,44 @@ def test_bad_commands() -> tuple[int, int, list[str]]:
     return passed, failed, failures
 
 
+def test_passthrough_commands() -> tuple[int, int, list[str]]:
+    """Test that commands that should be ignored result in a passthrough."""
+    commands = load_commands("python_passthrough_commands.txt")
+    passed = 0
+    failed = 0
+    failures = []
+
+    for cmd in commands:
+        result = run_hook(cmd)
+        # These commands should result in a passthrough ('none')
+        if result["decision"] != "none":
+            failed += 1
+            failures.append(f"  FAIL (not passthrough): {cmd}\n    Decision: {result['decision']}, Reason: {result['reason']}")
+        else:
+            passed += 1
+
+    return passed, failed, failures
+
+
+def test_security_blocked_commands() -> tuple[int, int, list[str]]:
+    """Test that security bypass attempts are denied."""
+    commands = load_commands("python_security_blocked_commands.txt")
+    passed = 0
+    failed = 0
+    failures = []
+
+    for cmd in commands:
+        result = run_hook(cmd)
+        # Security bypass attempts should be 'deny'
+        if result["decision"] != "deny":
+            failed += 1
+            failures.append(f"  FAIL (not blocked): {cmd}\n    Decision: {result['decision']}, Reason: {result['reason']}")
+        else:
+            passed += 1
+
+    return passed, failed, failures
+
+
 def main():
     print("=" * 60)
     print("Testing python-permission-hook.py")
@@ -128,10 +166,30 @@ def main():
             print(failure)
     print()
 
+    # Test passthrough commands
+    print("Testing PASSTHROUGH commands (should not be handled by hook)...")
+    pass_passed, pass_failed, pass_failures = test_passthrough_commands()
+    print(f"  Passed: {pass_passed}, Failed: {pass_failed}")
+    if pass_failures:
+        print("\n  Failures:")
+        for failure in pass_failures:
+            print(failure)
+    print()
+
+    # Test security blocked commands
+    print("Testing SECURITY BLOCKED commands (bypass attempts should be denied)...")
+    sec_passed, sec_failed, sec_failures = test_security_blocked_commands()
+    print(f"  Passed: {sec_passed}, Failed: {sec_failed}")
+    if sec_failures:
+        print("\n  Failures:")
+        for failure in sec_failures:
+            print(failure)
+    print()
+
     # Summary
     print("=" * 60)
-    total_passed = good_passed + bad_passed
-    total_failed = good_failed + bad_failed
+    total_passed = good_passed + bad_passed + pass_passed + sec_passed
+    total_failed = good_failed + bad_failed + pass_failed + sec_failed
     print(f"TOTAL: {total_passed} passed, {total_failed} failed")
     print("=" * 60)
 

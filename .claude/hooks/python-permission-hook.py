@@ -14,11 +14,85 @@ BLOCKED:
 - python script.py (outside .claude)
 - python /usr/local/bin/script.py
 - python ../malicious.py
+- python -m <module> (module execution bypasses directory restriction)
+- python -c "<code>" (inline code execution)
+- python < /tmp/file.py (stdin redirection)
+- python .claude/script.py; malicious_command (shell injection)
+
+PASSTHROUGH (normal permission flow):
+- Non-python commands (ls, cat, etc.)
+- python --version (version check)
+- python --help (help)
 """
 import json
 import os
 import re
+import shlex
 import sys
+
+
+# Shell metacharacters that could allow command chaining/injection
+# Based on gh-permission-hook.py patterns
+SHELL_INJECTION_PATTERNS = re.compile(
+    r'('
+    r';'                      # Command separator
+    r'|(?<!\|)\|(?!\|)'       # Single pipe (not ||)
+    r'|\|\|'                  # Logical OR
+    r'|&&'                    # Logical AND
+    r'|&\s+\S'                # Background + another command
+    r'|&\S'                   # Background + another command
+    r'|&\s*$'                 # Trailing background operator
+    r'|`'                     # Backtick command substitution
+    r'|\$\('                  # $( command substitution
+    r"|\$'"                   # ANSI-C quoting
+    r'|<\('                   # Process substitution <(...)
+    r'|>\('                   # Process substitution >(...)
+    r'|<\s*[^<]'              # Input redirection (< file)
+    r'|\n'                    # Newline
+    r'|\r'                    # Carriage return
+    r')'
+)
+
+# Pattern to match single-quoted strings (safe to strip for metachar check)
+SINGLE_QUOTED_PATTERN = re.compile(r"'[^']*'")
+
+# Pattern to match double-quoted strings without command substitution
+SAFE_DOUBLE_QUOTED_PATTERN = re.compile(r'"[^"$`]*"')
+
+
+def contains_shell_injection(cmd: str) -> bool:
+    """
+    Check if command contains shell metacharacters that could allow injection.
+    Returns True if dangerous patterns are found.
+    """
+    # Strip single-quoted strings (truly safe in bash)
+    cmd_without_single_quotes = SINGLE_QUOTED_PATTERN.sub("''", cmd)
+
+    # Strip double-quoted strings that don't contain $( or backticks
+    cmd_without_safe_doubles = SAFE_DOUBLE_QUOTED_PATTERN.sub('""', cmd_without_single_quotes)
+
+    return bool(SHELL_INJECTION_PATTERNS.search(cmd_without_safe_doubles))
+
+
+def is_python_command(cmd: str) -> bool:
+    """
+    Quick check if a command looks like a python command.
+    Used to decide whether to apply python-specific security checks.
+    """
+    # Strip env var prefixes
+    stripped = cmd.strip()
+    while True:
+        match = re.match(r'^[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|\'[^\']*\'|[^\s]*)\s+', stripped)
+        if match:
+            stripped = stripped[match.end():]
+        else:
+            break
+
+    # Check for python pattern (including env python, path/to/python, etc.)
+    return bool(re.match(
+        r'^(?:env\s+)?(?:/usr/bin/env\s+)?(?:[^\s]*/)?python3?\b',
+        stripped
+    ))
 
 
 def main():
@@ -44,91 +118,150 @@ def main():
         sys.exit(0)
 
     # Check if this is a python/python3 command
-    python_script = extract_python_script(command)
-    if python_script is None:
+    result = extract_python_script(command)
+
+    if result is None:
         # Not a python command, let it through
         sys.exit(0)
 
+    # Unpack result
+    script_path, denial_reason = result
+
+    # If there's a denial reason, deny the command
+    if denial_reason:
+        decision = make_deny_decision(denial_reason)
+        print(json.dumps(decision))
+        sys.exit(0)
+
+    # If script_path is empty string, it's a passthrough case (e.g., --version)
+    if script_path == "":
+        sys.exit(0)
+
     # Check if the script is inside .claude directory
-    if is_inside_claude_dir(python_script):
+    if is_inside_claude_dir(script_path):
         decision = make_allow_decision(
-            f"Python script is inside .claude directory: {python_script}"
+            f"Python script is inside .claude directory: {script_path}"
         )
         print(json.dumps(decision))
         sys.exit(0)
     else:
         decision = make_deny_decision(
             f"Python scripts can only be run from inside the .claude directory. "
-            f"Attempted to run: {python_script}"
+            f"Attempted to run: {script_path}"
         )
         print(json.dumps(decision))
         sys.exit(0)
 
 
-def extract_python_script(command: str) -> str | None:
+def extract_python_script(command: str) -> tuple[str, str] | None:
     """
     Extract the Python script path from a command.
-    Returns None if not a python command, or the script path if it is.
+
+    Returns:
+    - None if not a python command (passthrough to normal permission flow)
+    - (script_path, "") if a script was found that should be validated
+    - ("", "") if it's a passthrough case like --version or --help
+    - ("", denial_reason) if the command should be denied immediately
     """
-    # Strip leading whitespace and handle common prefixes like env vars
     cmd = command.strip()
+
+    # Check for shell injection FIRST before any parsing
+    if contains_shell_injection(command):
+        # Check if this even looks like a python command before denying
+        if is_python_command(cmd):
+            return ("", "Python command contains shell metacharacters that could allow injection")
+        # Not a python command, let normal flow handle it
+        return None
 
     # Remove common environment variable prefixes
     # e.g., "FOO=bar python script.py" -> "python script.py"
     while True:
-        match = re.match(r'^[A-Za-z_][A-Za-z0-9_]*=[^\s]*\s+', cmd)
+        # Handle both unquoted and quoted env var values
+        match = re.match(r'^[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|\'[^\']*\'|[^\s]*)\s+', cmd)
         if match:
             cmd = cmd[match.end():]
         else:
             break
 
     # Check if command starts with python or python3
-    python_match = re.match(r'^(python3?|/usr/bin/python3?|/usr/local/bin/python3?)\s+', cmd)
+    # Include: python, python3, /usr/bin/python, /usr/local/bin/python,
+    # and handle 'env python' patterns
+    python_match = re.match(
+        r'^(?:env\s+)?'  # Optional 'env ' prefix
+        r'(?:/usr/bin/env\s+)?'  # Optional '/usr/bin/env ' prefix
+        r'((?:[^\s]*/)?python3?)'  # Python executable (with optional path)
+        r'(?:\s+|$)',  # Followed by space or end of string
+        cmd
+    )
     if not python_match:
         return None
 
     # Get the rest after "python" or "python3"
     rest = cmd[python_match.end():].strip()
 
-    # Skip any flags (e.g., -u, -m, --version)
-    # If -m is used, this is a module invocation, not a script
-    if rest.startswith('-m ') or rest.startswith('-m\t'):
-        # Module invocation - allow it for now (could be restricted later)
-        return None
-
-    # Skip other flags
-    while rest.startswith('-'):
-        # Find the end of this flag and its argument
-        flag_match = re.match(r'^-[a-zA-Z]+\s*', rest)
-        if flag_match:
-            rest = rest[flag_match.end():].strip()
-        else:
-            break
-
+    # If no arguments, it's interactive mode - DENY (stdin redirection risk)
     if not rest:
-        # Just "python" with no script - allow interactive mode
-        return None
+        return ("", "Interactive Python mode is not allowed (stdin redirection risk)")
 
-    # Extract the script path (first argument)
-    # Handle quoted paths
-    if rest.startswith('"'):
-        # Double-quoted path
-        match = re.match(r'^"([^"]*)"', rest)
-        if match:
-            return match.group(1)
-        return None
-    elif rest.startswith("'"):
-        # Single-quoted path
-        match = re.match(r"^'([^']*)'", rest)
-        if match:
-            return match.group(1)
-        return None
-    else:
-        # Unquoted path - ends at whitespace or shell metacharacter
-        match = re.match(r'^([^\s;<>&|]+)', rest)
-        if match:
-            return match.group(1)
-        return None
+    # Use shlex for robust argument parsing
+    try:
+        args = shlex.split(rest)
+    except ValueError:
+        # Malformed quotes - deny for safety
+        return ("", "Malformed command (unmatched quotes)")
+
+    if not args:
+        return ("", "Interactive Python mode is not allowed (stdin redirection risk)")
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+
+        # Handle end-of-options delimiter
+        if arg == '--':
+            # Next argument is the script
+            if i + 1 < len(args):
+                return (args[i + 1], "")
+            return ("", "Interactive Python mode is not allowed (stdin redirection risk)")
+
+        # DENY: -m module execution (bypasses directory restriction)
+        if arg == '-m':
+            return ("", "Python -m module execution is not allowed (bypasses directory restriction)")
+
+        # DENY: -c inline code execution
+        if arg == '-c':
+            return ("", "Python -c inline code execution is not allowed")
+
+        # Passthrough: version/help flags (safe, no code execution)
+        if arg in ('--version', '-V', '--help', '-h'):
+            return ("", "")
+
+        # Handle flags that take arguments
+        # Python flags with arguments: -W, -X, -Q (Python 2), -t (Python 2)
+        if arg in ('-W', '-X', '-Q', '-t'):
+            i += 2  # Skip flag and its argument
+            continue
+
+        # Handle combined flags like -Werror or -Xdev
+        if arg.startswith('-W') or arg.startswith('-X'):
+            i += 1
+            continue
+
+        # Skip other short flags (e.g., -u, -B, -O, -OO, -s, -S, -E, -I)
+        if arg.startswith('-') and not arg.startswith('--'):
+            i += 1
+            continue
+
+        # Skip long options we don't specifically handle
+        if arg.startswith('--'):
+            i += 1
+            continue
+
+        # First non-flag argument is the script path
+        return (arg, "")
+
+    # Only flags, no script - passthrough for things like 'python --version'
+    return ("", "")
 
 
 def is_inside_claude_dir(script_path: str) -> bool:

@@ -59,3 +59,40 @@ PYTHONPATH=/some/path python .claude/script.py
 /usr/bin/python3 .claude/script.py
 /usr/local/bin/python .claude/script.py
 /usr/local/bin/python3 .claude/script.py
+
+# =============================================================================
+# ENV PYTHON (various forms)
+# =============================================================================
+
+env python .claude/script.py
+env python3 .claude/script.py
+/usr/bin/env python .claude/script.py
+/usr/bin/env python3 .claude/script.py
+
+# =============================================================================
+# VIRTUALENV / PYENV / CONDA PATHS
+# =============================================================================
+
+./venv/bin/python .claude/script.py
+./venv/bin/python3 .claude/script.py
+.venv/bin/python .claude/script.py
+/home/user/.pyenv/shims/python .claude/script.py
+/opt/conda/bin/python .claude/script.py
+
+# =============================================================================
+# FLAGS WITH ARGUMENTS (-W, -X)
+# =============================================================================
+
+python -W ignore .claude/script.py
+python3 -W error .claude/script.py
+python -X dev .claude/script.py
+python3 -X utf8 .claude/script.py
+python -W ignore -X dev .claude/script.py
+
+# =============================================================================
+# END-OF-OPTIONS DELIMITER (--)
+# =============================================================================
+
+python -- .claude/script.py
+python3 -- .claude/script.py
+python -u -- .claude/script.py

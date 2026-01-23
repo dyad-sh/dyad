@@ -100,11 +100,15 @@ function isCapacitorUpgradeNeeded(appPath: string): boolean {
   return true;
 }
 
-async function getLatestReactVersion(majorVersion: number): Promise<string | null> {
+async function getLatestReactVersion(
+  majorVersion: number,
+): Promise<string | null> {
   try {
     const response = await fetch("https://registry.npmjs.org/react");
     if (!response.ok) {
-      logger.error(`Failed to fetch React versions from NPM: ${response.status}`);
+      logger.error(
+        `Failed to fetch React versions from NPM: ${response.status}`,
+      );
       return null;
     }
     const data = await response.json();
@@ -346,7 +350,7 @@ async function applyCapacitor({
 async function applyReactUpgrade(appPath: string) {
   // Run react2shell to upgrade React
   await simpleSpawn({
-    command: "npx react2shell",
+    command: "npx fix-react2shell-next",
     cwd: appPath,
     successMessage: "React upgrade completed successfully",
     errorPrefix: "Failed to upgrade React",
@@ -387,7 +391,7 @@ export function registerAppUpgradeHandlers() {
             isNeeded = await isReactUpgradeNeeded(appPath);
           }
           return { ...upgrade, isNeeded };
-        })
+        }),
       );
 
       return upgradesWithStatus;

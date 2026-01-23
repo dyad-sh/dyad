@@ -133,10 +133,10 @@ If you would need to mock a lot of things to unit test a feature, prefer to writ
 
 Do NOT write lots of e2e test cases for one feature. Each e2e test case adds a significant amount of overhead, so instead prefer just one or two E2E test cases that each have broad coverage of the feature in question.
 
-To run e2e tests without opening the HTML report (which blocks the terminal), use:
+Before running E2E tests for the first time or after making any application code changes, you must build the application:
 
 ```sh
-PLAYWRIGHT_HTML_OPEN=never npm run e2e
+npm run pre:e2e
 ```
 
 To get additional debug logs when a test is failing, use:

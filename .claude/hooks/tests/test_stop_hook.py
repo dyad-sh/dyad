@@ -128,6 +128,128 @@ class TestResponseFormat:
         assert "stop_hook_active" in hook_content
 
 
+def load_hook_module():
+    """Load the stop hook module for testing."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("stop_hook", HOOK_PATH)
+    assert spec is not None
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+class TestTaskStateExtraction:
+    """Test task state extraction from transcripts."""
+
+    def test_extracts_incomplete_tasks(self):
+        """Should correctly identify remaining tasks from incomplete_tasks fixture.
+
+        The fixture has:
+        - 5 tasks created
+        - Tasks 1, 2, 3 completed
+        - Task 4 in_progress (not completed)
+        - Task 5 pending (never started)
+        => 2 tasks remaining
+        """
+        module = load_hook_module()
+        fixture_path = Path(__file__).parent / "fixtures" / "incomplete_tasks.jsonl"
+        result = module.extract_task_state(str(fixture_path))
+
+        assert result["total"] == 5
+        assert len(result["remaining"]) == 2
+
+        # Check the specific remaining tasks
+        remaining_ids = [task_id for task_id, _, _ in result["remaining"]]
+        assert "4" in remaining_ids
+        assert "5" in remaining_ids
+
+        # Task 4 should be in_progress
+        task4 = [(tid, subj, status) for tid, subj, status in result["remaining"] if tid == "4"][0]
+        assert task4[2] == "in_progress"
+        assert "Verify" in task4[1] or "commit" in task4[1] or "push" in task4[1]
+
+        # Task 5 should be pending
+        task5 = [(tid, subj, status) for tid, subj, status in result["remaining"] if tid == "5"][0]
+        assert task5[2] == "pending"
+        assert "summary" in task5[1].lower()
+
+    def test_extracts_completed_tasks(self):
+        """Should correctly identify all tasks completed from completed_tasks fixture."""
+        module = load_hook_module()
+        fixture_path = Path(__file__).parent / "fixtures" / "completed_tasks.jsonl"
+        result = module.extract_task_state(str(fixture_path))
+
+        assert result["total"] == 3
+        assert len(result["remaining"]) == 0
+
+    def test_handles_nonexistent_file(self):
+        """Should handle nonexistent transcript gracefully."""
+        module = load_hook_module()
+        result = module.extract_task_state("/nonexistent/path.jsonl")
+
+        assert result["total"] == 0
+        assert len(result["remaining"]) == 0
+
+    def test_handles_no_tasks(self, tmp_path):
+        """Should handle transcript with no tasks."""
+        module = load_hook_module()
+        transcript = tmp_path / "no_tasks.jsonl"
+        transcript.write_text('{"type": "user", "message": {"content": "hello"}}\n')
+
+        result = module.extract_task_state(str(transcript))
+
+        assert result["total"] == 0
+        assert len(result["remaining"]) == 0
+
+
+class TestRemainingTasksBlocking:
+    """Test that hook blocks when tasks are remaining."""
+
+    def test_blocks_with_remaining_tasks(self):
+        """Hook should block and list remaining tasks when incomplete."""
+        fixture_path = Path(__file__).parent / "fixtures" / "incomplete_tasks.jsonl"
+
+        returncode, stdout = run_hook({
+            "session_id": "test",
+            "transcript_path": str(fixture_path),
+            "cwd": "/tmp",
+            "stop_hook_active": False
+        })
+
+        assert returncode == 0
+        response = parse_response(stdout)
+        assert response is not None
+        assert response["decision"] == "block"
+
+        # Reason should mention the count
+        assert "2 of 5 tasks remaining" in response["reason"]
+
+        # Reason should list the specific tasks
+        assert "Task 4" in response["reason"]
+        assert "Task 5" in response["reason"]
+        assert "in_progress" in response["reason"]
+        assert "pending" in response["reason"]
+
+    def test_allows_stop_with_all_tasks_completed(self, monkeypatch):
+        """Hook should allow stop (via AI check) when all tasks are completed."""
+        fixture_path = Path(__file__).parent / "fixtures" / "completed_tasks.jsonl"
+
+        # Remove claude from PATH so AI check is skipped
+        monkeypatch.setenv("PATH", "/nonexistent")
+
+        returncode, stdout = run_hook({
+            "session_id": "test",
+            "transcript_path": str(fixture_path),
+            "cwd": "/tmp",
+            "stop_hook_active": False
+        })
+
+        assert returncode == 0
+        # No remaining tasks, and no AI available, so should allow stop
+        assert parse_response(stdout) is None
+
+
 class TestTranscriptReading:
     """Test transcript reading functionality."""
 

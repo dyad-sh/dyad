@@ -20,6 +20,74 @@ import sys
 from pathlib import Path
 
 
+def extract_task_state(transcript_path: str) -> dict:
+    """Extract task state from TaskCreate and TaskUpdate tool calls.
+
+    Returns a dict with:
+        - tasks: dict mapping task_id to {subject, status}
+        - remaining: list of (task_id, subject, status) for incomplete tasks
+        - total: total number of tasks created
+    """
+    tasks: dict[str, dict] = {}
+
+    try:
+        path = Path(transcript_path).expanduser()
+        if not path.exists():
+            return {"tasks": {}, "remaining": [], "total": 0}
+
+        lines = path.read_text().strip().split("\n")
+
+        for line in lines:
+            try:
+                entry = json.loads(line)
+                if entry.get("type") != "assistant":
+                    continue
+
+                content = entry.get("message", {}).get("content", [])
+                for part in content:
+                    if part.get("type") != "tool_use":
+                        continue
+
+                    tool_name = part.get("name", "")
+                    tool_input = part.get("input", {})
+
+                    if tool_name == "TaskCreate":
+                        # TaskCreate assigns sequential IDs starting from 1
+                        task_id = str(len(tasks) + 1)
+                        subject = tool_input.get("subject", f"Task {task_id}")
+                        tasks[task_id] = {
+                            "subject": subject,
+                            "status": "pending"
+                        }
+
+                    elif tool_name == "TaskUpdate":
+                        task_id = tool_input.get("taskId", "")
+                        if task_id and task_id in tasks:
+                            if "status" in tool_input:
+                                tasks[task_id]["status"] = tool_input["status"]
+                            if "subject" in tool_input:
+                                tasks[task_id]["subject"] = tool_input["subject"]
+
+            except json.JSONDecodeError:
+                continue
+
+    except Exception:
+        return {"tasks": {}, "remaining": [], "total": 0}
+
+    # Find remaining (non-completed) tasks
+    remaining = [
+        (task_id, info["subject"], info["status"])
+        for task_id, info in tasks.items()
+        if info["status"] != "completed"
+    ]
+
+    return {
+        "tasks": tasks,
+        "remaining": remaining,
+        "total": len(tasks)
+    }
+
+
 def get_claude_path() -> str | None:
     """Find the claude CLI path."""
     claude_path = shutil.which("claude")
@@ -236,6 +304,26 @@ def main():
     transcript_path = input_data.get("transcript_path", "")
     cwd = input_data.get("cwd", os.getcwd())
 
+    # First, check for remaining tasks (deterministic check)
+    if transcript_path:
+        task_state = extract_task_state(transcript_path)
+        remaining = task_state["remaining"]
+        total = task_state["total"]
+
+        if remaining:
+            # Build detailed reason with remaining tasks
+            task_list = "\n".join(
+                f"  - Task {task_id}: \"{subject}\" (status: {status})"
+                for task_id, subject, status in remaining
+            )
+            reason = (
+                f"{len(remaining)} of {total} tasks remaining:\n{task_list}\n\n"
+                f"Please complete all tasks before stopping."
+            )
+            print(json.dumps(make_block_decision(reason)))
+            sys.exit(0)
+
+    # If no remaining tasks (or no tasks at all), fall back to AI analysis
     transcript = read_transcript(transcript_path)
     if not transcript:
         # No transcript to analyze, allow stop

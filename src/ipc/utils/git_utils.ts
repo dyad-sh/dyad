@@ -82,15 +82,29 @@ async function execGit(
   options?: IGitStringExecutionOptions,
 ): Promise<IGitStringResult> {
   const sanitizedEnv = getWindowsSanitizedEnv();
-  const execOptions: IGitStringExecutionOptions | undefined =
-    sanitizedEnv || options
-      ? {
-          ...options,
-          env: { ...sanitizedEnv, ...options?.env },
-        }
-      : undefined;
 
-  return exec(args, path, execOptions);
+  // Only create execOptions if we need to modify the environment
+  // On Windows: merge sanitized env with any caller-provided env, ensuring sanitized PATH takes precedence
+  // On non-Windows: pass through options unchanged (dugite will use process.env by default)
+  if (sanitizedEnv) {
+    // Find the PATH key used in the sanitized env
+    const pathKey =
+      Object.keys(sanitizedEnv).find((key) => key.toUpperCase() === "PATH") ??
+      "PATH";
+    const execOptions: IGitStringExecutionOptions = {
+      ...options,
+      env: {
+        ...sanitizedEnv,
+        ...options?.env,
+        // Ensure sanitized PATH always takes precedence to prevent WSL contamination
+        [pathKey]: sanitizedEnv[pathKey],
+      },
+    };
+    return exec(args, path, execOptions);
+  }
+
+  // On non-Windows, pass options through unchanged
+  return exec(args, path, options);
 }
 import type {
   GitBaseParams,

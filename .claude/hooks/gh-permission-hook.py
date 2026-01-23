@@ -22,6 +22,7 @@ ALLOWED (auto-approved):
 4. gh api - REST endpoints:
    - GET requests (explicit or implicit - gh api defaults to GET)
    - POST to /pulls/{id}/comments/{id}/replies (PR comment replies)
+   - POST to /pulls/{id}/reviews (PR reviews with inline comments)
    - POST to /issues/{id}/comments (issue comments)
 
 5. gh api graphql - queries and specific mutations:
@@ -377,6 +378,11 @@ def check_gh_api_command(cmd: str) -> Optional[dict]:
         if re.search(r'/pulls/\d+/comments/\d+/replies$', endpoint):
             if method in [None, "POST"]:
                 return make_allow_decision("PR comment reply auto-approved")
+
+        # Allow PR review creation (repos/.../pulls/.../reviews)
+        if re.search(r'/pulls/\d+/reviews$', endpoint):
+            if method in [None, "POST"]:
+                return make_allow_decision("PR review auto-approved")
 
         # Allow issue comment creation (repos/.../issues/.../comments)
         if re.search(r'/issues/\d+/comments$', endpoint):

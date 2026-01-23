@@ -86,3 +86,28 @@ env python -m http.server
 env python3 -c "print('hello')"
 /usr/bin/env python -m pip install malicious
 /usr/bin/env python3 -c "import os"
+
+# =============================================================================
+# HEREDOC / HERE-STRING ATTEMPTS
+# =============================================================================
+
+python <<EOF
+python3 <<'EOF'
+python <<<'print(1)'
+python3 <<<"import os"
+
+# =============================================================================
+# COMBINED FLAGS BYPASS ATTEMPTS
+# =============================================================================
+
+# Combined -c flag (e.g., -Bc = -B + -c)
+python -Bc "print('hello')"
+python3 -Bc "import os"
+python -uBc "malicious code"
+python3 -OBc "__import__('os').system('whoami')"
+
+# Combined -m flag (e.g., -um = -u + -m)
+python -um http.server
+python3 -Bm pip install malicious
+python -uBm runpy /tmp/malicious.py
+python3 -OBm pytest

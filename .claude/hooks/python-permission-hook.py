@@ -47,7 +47,9 @@ SHELL_INJECTION_PATTERNS = re.compile(
     r"|\$'"                   # ANSI-C quoting
     r'|<\('                   # Process substitution <(...)
     r'|>\('                   # Process substitution >(...)
-    r'|<\s*[^<]'              # Input redirection (< file)
+    r'|<<<'                   # Here-string
+    r'|<<[^<]'                # Here-doc (<<EOF, <<'EOF', etc.)
+    r'|<\s*[^<]'              # Input redirection (< file) - note: after heredoc checks
     r'|\n'                    # Newline
     r'|\r'                    # Carriage return
     r')'
@@ -225,11 +227,13 @@ def extract_python_script(command: str) -> tuple[str, str] | None:
             return ("", "Interactive Python mode is not allowed (stdin redirection risk)")
 
         # DENY: -m module execution (bypasses directory restriction)
-        if arg == '-m':
+        # Check for both standalone -m and combined flags like -um, -Bm
+        if arg == '-m' or (arg.startswith('-') and not arg.startswith('--') and 'm' in arg[1:]):
             return ("", "Python -m module execution is not allowed (bypasses directory restriction)")
 
         # DENY: -c inline code execution
-        if arg == '-c':
+        # Check for both standalone -c and combined flags like -Bc, -uc
+        if arg == '-c' or (arg.startswith('-') and not arg.startswith('--') and 'c' in arg[1:]):
             return ("", "Python -c inline code execution is not allowed")
 
         # Passthrough: version/help flags (safe, no code execution)
@@ -237,8 +241,8 @@ def extract_python_script(command: str) -> tuple[str, str] | None:
             return ("", "")
 
         # Handle flags that take arguments
-        # Python flags with arguments: -W, -X, -Q (Python 2), -t (Python 2)
-        if arg in ('-W', '-X', '-Q', '-t'):
+        # Python 3 flags with arguments: -W (warning control), -X (implementation-specific options)
+        if arg in ('-W', '-X'):
             i += 2  # Skip flag and its argument
             continue
 
@@ -268,8 +272,14 @@ def is_inside_claude_dir(script_path: str) -> bool:
     """
     Check if the script path is inside the .claude directory.
     Handles both absolute and relative paths.
+
+    Security note: We intentionally expand environment variables to support
+    paths like $CLAUDE_PROJECT_DIR/.claude/script.py. The subsequent realpath()
+    call resolves the final path, and we verify it's inside .claude after
+    expansion. This prevents bypasses like $HOME/../../../tmp/malicious.py
+    because realpath() resolves to the actual location which is then checked.
     """
-    # Expand environment variables
+    # Expand environment variables (see security note above)
     expanded_path = os.path.expandvars(script_path)
 
     # Get the project directory from environment or use current working directory

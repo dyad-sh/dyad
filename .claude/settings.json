@@ -111,7 +111,11 @@
       "Bash(sort:*)",
       "Bash(uniq:*)",
       "Bash(cut:*)",
-      "Bash(diff:*)"
+      "Bash(diff:*)",
+
+      "Bash(chmod:*)",
+
+      "Bash(python3:*)"
     ]
   },
   "hooks": {

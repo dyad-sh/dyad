@@ -298,9 +298,7 @@ const getProposalHandler = async (
         const totalTokens = messagesTokenCount + codebaseTokenCount;
         const contextWindow = Math.min(await getContextWindow(), 100_000);
         logger.log(
-          `Token usage: ${totalTokens}/${contextWindow} (${
-            (totalTokens / contextWindow) * 100
-          }%)`,
+          `Token usage: ${totalTokens}/${contextWindow} (${(totalTokens / contextWindow) * 100}%)`,
         );
 
         // If we're using more than 80% of the context window, suggest summarizing

@@ -155,9 +155,7 @@ function ExternalLink({
 
   return (
     <a
-      className={`${baseClasses} ${
-        variant === "primary" ? primaryClasses : secondaryClasses
-      }`}
+      className={`${baseClasses} ${variant === "primary" ? primaryClasses : secondaryClasses}`}
       onClick={() => IpcClient.getInstance().openExternalUrl(href)}
     >
       <span>{children}</span>

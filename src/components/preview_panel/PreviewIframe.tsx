@@ -124,9 +124,7 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
         >
           <ChevronRight
             size={14}
-            className={`mt-0.5 transform transition-transform ${
-              isCollapsed ? "" : "rotate-90"
-            }`}
+            className={`mt-0.5 transform transition-transform ${isCollapsed ? "" : "rotate-90"}`}
           />
 
           {isCollapsed ? getTruncatedError() : error.message}
@@ -561,9 +559,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           type === "iframe-sourcemapped-error"
             ? payload?.stack?.split("\n").slice(0, 1).join("\n")
             : payload?.stack;
-        const errorMessage = `Error ${
-          payload?.message || payload?.reason
-        }\nStack trace: ${stack}`;
+        const errorMessage = `Error ${payload?.message || payload?.reason}\nStack trace: ${stack}`;
         console.error("Iframe error:", errorMessage);
         setErrorMessage({ message: errorMessage, source: "preview-app" });
         const logEntry = {
@@ -996,7 +992,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                     }}
                     variant="outline"
                   >
-                    {/* Tooltips placed inside items instead of wrapping 
+                    {/* Tooltips placed inside items instead of wrapping
                     to avoid asChild prop merging that breaks highlighting */}
                     <ToggleGroupItem value="desktop" aria-label="Desktop view">
                       <Tooltip>

@@ -3,6 +3,7 @@ import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
 import { GlobPath, ContextPathResults } from "@/lib/schemas";
+import { queryKeys } from "@/lib/queryKeys";
 
 export function useContextPaths() {
   const queryClient = useQueryClient();
@@ -13,7 +14,7 @@ export function useContextPaths() {
     isLoading,
     error,
   } = useQuery<ContextPathResults, Error>({
-    queryKey: ["context-paths", appId],
+    queryKey: queryKeys.contextPaths.byApp({ appId }),
     queryFn: async () => {
       if (!appId)
         return {
@@ -53,7 +54,9 @@ export function useContextPaths() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["context-paths", appId] });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.contextPaths.byApp({ appId }),
+      });
     },
   });
 

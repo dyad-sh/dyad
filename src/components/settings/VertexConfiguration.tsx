@@ -66,9 +66,9 @@ export function VertexConfiguration() {
 
   const isConfigured = Boolean(
     (projectId.trim() && location && serviceAccountKey) ||
-      (existing.projectId &&
-        existing.location &&
-        existing.serviceAccountKey?.value),
+    (existing.projectId &&
+      existing.location &&
+      existing.serviceAccountKey?.value),
   );
 
   return (

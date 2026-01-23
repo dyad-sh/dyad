@@ -11,7 +11,9 @@ test("file tree search finds content matches and surfaces line numbers", async (
   // Wait for the code view to finish loading files
   await expect(
     po.page.getByText("Loading files...", { exact: false }),
-  ).toBeHidden({ timeout: Timeout.LONG });
+  ).toBeHidden({
+    timeout: Timeout.LONG,
+  });
 
   const searchInput = po.page.getByTestId("file-tree-search");
   await expect(searchInput).toBeVisible({ timeout: Timeout.MEDIUM });

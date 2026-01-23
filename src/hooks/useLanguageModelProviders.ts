@@ -7,13 +7,14 @@ import {
   VertexProviderSetting,
   AzureProviderSetting,
 } from "@/lib/schemas";
+import { queryKeys } from "@/lib/queryKeys";
 
 export function useLanguageModelProviders() {
   const ipcClient = IpcClient.getInstance();
   const { settings, envVars } = useSettings();
 
   const queryResult = useQuery<LanguageModelProvider[], Error>({
-    queryKey: ["languageModelProviders"],
+    queryKey: queryKeys.languageModels.providers,
     queryFn: async () => {
       return ipcClient.getLanguageModelProviders();
     },
@@ -40,7 +41,7 @@ export function useLanguageModelProviders() {
       const azureSettings = providerSettings as AzureProviderSetting;
       const hasSavedSettings = Boolean(
         (azureSettings?.apiKey?.value ?? "").trim() &&
-          (azureSettings?.resourceName ?? "").trim(),
+        (azureSettings?.resourceName ?? "").trim(),
       );
       if (hasSavedSettings) {
         return true;

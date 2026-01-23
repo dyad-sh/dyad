@@ -205,7 +205,9 @@ testSkipIfWindows("discard changes", async ({ po }) => {
 
   // Verify the visual changes dialog is gone
   await expect(po.page.getByText(/\d+ component[s]? modified/)).not.toBeVisible(
-    { timeout: Timeout.MEDIUM },
+    {
+      timeout: Timeout.MEDIUM,
+    },
   );
 
   // Verify that the changes are NOT applied to codebase

@@ -5,6 +5,7 @@ import type {
   LanguageModelProvider,
 } from "@/ipc/ipc_types";
 import { showError } from "@/lib/toast";
+import { queryKeys } from "@/lib/queryKeys";
 
 export function useCustomLanguageModelProvider() {
   const queryClient = useQueryClient();
@@ -33,7 +34,9 @@ export function useCustomLanguageModelProvider() {
     },
     onSuccess: () => {
       // Invalidate and refetch
-      queryClient.invalidateQueries({ queryKey: ["languageModelProviders"] });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.languageModels.providers,
+      });
     },
     onError: (error) => {
       showError(error);
@@ -63,7 +66,9 @@ export function useCustomLanguageModelProvider() {
     },
     onSuccess: () => {
       // Invalidate and refetch
-      queryClient.invalidateQueries({ queryKey: ["languageModelProviders"] });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.languageModels.providers,
+      });
     },
     onError: (error) => {
       showError(error);
@@ -80,7 +85,9 @@ export function useCustomLanguageModelProvider() {
     },
     onSuccess: () => {
       // Invalidate and refetch
-      queryClient.invalidateQueries({ queryKey: ["languageModelProviders"] });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.languageModels.providers,
+      });
     },
     onError: (error) => {
       showError(error);

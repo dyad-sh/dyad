@@ -38,7 +38,9 @@ testWithConfig({
     // Check if the force-close dialog is visible by looking for the heading
     await expect(
       po.page.getByRole("heading", { name: "Force Close Detected" }),
-    ).toBeVisible({ timeout: Timeout.MEDIUM });
+    ).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
 
     // Verify the warning message
     await expect(

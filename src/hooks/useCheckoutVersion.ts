@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { IpcClient } from "@/ipc/ipc_client";
 import { useSetAtom } from "jotai";
 import { activeCheckoutCounterAtom } from "@/store/appAtoms";
+import { queryKeys } from "@/lib/queryKeys";
 
 interface CheckoutVersionVariables {
   appId: number;
@@ -30,10 +31,10 @@ export function useCheckoutVersion() {
       onSuccess: (_, variables) => {
         // Invalidate queries that depend on the current version/branch
         queryClient.invalidateQueries({
-          queryKey: ["currentBranch", variables.appId],
+          queryKey: queryKeys.branches.current({ appId: variables.appId }),
         });
         queryClient.invalidateQueries({
-          queryKey: ["versions", variables.appId],
+          queryKey: queryKeys.versions.list({ appId: variables.appId }),
         });
       },
       meta: { showErrorToast: true },

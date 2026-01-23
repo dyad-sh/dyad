@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { IpcClient } from "@/ipc/ipc_client";
+import { queryKeys } from "@/lib/queryKeys";
 
 export function useSecurityReview(appId: number | null) {
   return useQuery({
-    queryKey: ["security-review", appId],
+    queryKey: queryKeys.securityReview.byApp({ appId }),
     queryFn: async () => {
       if (!appId) {
         throw new Error("App ID is required");

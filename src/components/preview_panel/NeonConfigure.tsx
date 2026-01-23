@@ -10,6 +10,7 @@ import { useLoadApp } from "@/hooks/useLoadApp";
 import { IpcClient } from "@/ipc/ipc_client";
 import type { GetNeonProjectResponse, NeonBranch } from "@/ipc/ipc_types";
 import { NeonDisconnectButton } from "@/components/NeonDisconnectButton";
+import { queryKeys } from "@/lib/queryKeys";
 
 const getBranchTypeColor = (type: NeonBranch["type"]) => {
   switch (type) {
@@ -40,7 +41,7 @@ export const NeonConfigure = () => {
     isLoading,
     error,
   } = useQuery<GetNeonProjectResponse, Error>({
-    queryKey: ["neon-project", selectedAppId],
+    queryKey: queryKeys.neon.project({ appId: selectedAppId }),
     queryFn: async () => {
       if (!selectedAppId) throw new Error("No app selected");
       const ipcClient = IpcClient.getInstance();

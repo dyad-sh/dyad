@@ -1,0 +1,98 @@
+# Commands that should be ALLOWED by the python-permission-hook
+# Format: one command per line, lines starting with # are comments
+# These are python commands that run scripts inside the .claude directory
+
+# =============================================================================
+# BASIC PYTHON COMMANDS
+# =============================================================================
+
+# Simple script execution
+python .claude/script.py
+python3 .claude/script.py
+python .claude/test.py
+python3 .claude/test.py
+
+# Scripts in subdirectories
+python .claude/hooks/test.py
+python3 .claude/hooks/test.py
+python .claude/hooks/tests/test.py
+python3 .claude/hooks/tests/test.py
+
+# =============================================================================
+# QUOTED PATHS
+# =============================================================================
+
+python ".claude/script.py"
+python3 ".claude/script.py"
+python '.claude/script.py'
+python3 '.claude/script.py'
+python ".claude/hooks/test.py"
+python3 ".claude/hooks/test.py"
+
+# =============================================================================
+# WITH FLAGS
+# =============================================================================
+
+python -u .claude/script.py
+python3 -u .claude/script.py
+python -B .claude/script.py
+python3 -B .claude/script.py
+python -u -B .claude/script.py
+python3 -u -B .claude/script.py
+
+# =============================================================================
+# WITH ENVIRONMENT VARIABLES
+# =============================================================================
+
+FOO=bar python .claude/script.py
+FOO=bar python3 .claude/script.py
+DEBUG=1 python .claude/hooks/test.py
+DEBUG=1 python3 .claude/hooks/test.py
+FOO=bar BAZ=qux python .claude/script.py
+PYTHONPATH=/some/path python .claude/script.py
+
+# =============================================================================
+# FULL PYTHON PATHS
+# =============================================================================
+
+/usr/bin/python .claude/script.py
+/usr/bin/python3 .claude/script.py
+/usr/local/bin/python .claude/script.py
+/usr/local/bin/python3 .claude/script.py
+
+# =============================================================================
+# ENV PYTHON (various forms)
+# =============================================================================
+
+env python .claude/script.py
+env python3 .claude/script.py
+/usr/bin/env python .claude/script.py
+/usr/bin/env python3 .claude/script.py
+
+# =============================================================================
+# VIRTUALENV / PYENV / CONDA PATHS
+# =============================================================================
+
+./venv/bin/python .claude/script.py
+./venv/bin/python3 .claude/script.py
+.venv/bin/python .claude/script.py
+/home/user/.pyenv/shims/python .claude/script.py
+/opt/conda/bin/python .claude/script.py
+
+# =============================================================================
+# FLAGS WITH ARGUMENTS (-W, -X)
+# =============================================================================
+
+python -W ignore .claude/script.py
+python3 -W error .claude/script.py
+python -X dev .claude/script.py
+python3 -X utf8 .claude/script.py
+python -W ignore -X dev .claude/script.py
+
+# =============================================================================
+# END-OF-OPTIONS DELIMITER (--)
+# =============================================================================
+
+python -- .claude/script.py
+python3 -- .claude/script.py
+python -u -- .claude/script.py

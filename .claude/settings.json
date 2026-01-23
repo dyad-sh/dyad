@@ -3,12 +3,91 @@
     "allow": [
       "Edit",
       "Write",
+      "Read(/tmp/)",
+      "Read(/tmp/**)",
+      "Write(/tmp/)",
+      "Write(/tmp/**)",
+      "Bash(cat /tmp/*)",
+      "Bash(head /tmp/*)",
+      "Bash(tail /tmp/*)",
+      "Bash(less /tmp/*)",
+      "Bash(more /tmp/*)",
+      "Bash(wc /tmp/*)",
+      "Bash(wc -l /tmp/*)",
+      "Bash(wc -w /tmp/*)",
+      "Bash(wc -c /tmp/*)",
+      "Bash(ls /tmp/*)",
+      "Bash(ls -l /tmp/*)",
+      "Bash(ls -la /tmp/*)",
+      "Bash(ls /tmp/)",
+      "Bash(ls -l /tmp/)",
+      "Bash(ls -la /tmp/)",
+      "Bash(file /tmp/*)",
+      "Bash(stat /tmp/*)",
+      "Bash(diff /tmp/*)",
+      "Bash(md5sum /tmp/*)",
+      "Bash(sha256sum /tmp/*)",
+      "Bash(xxd /tmp/*)",
+      "Bash(hexdump /tmp/*)",
+      "Bash(strings /tmp/*)",
+      "Bash(od /tmp/*)",
+      "Bash(nl /tmp/*)",
+      "Bash(tac /tmp/*)",
+      "Bash(rev /tmp/*)",
+      "Bash(sort /tmp/*)",
+      "Bash(uniq /tmp/*)",
+      "Bash(column /tmp/*)",
+      "Bash(fold /tmp/*)",
+      "Bash(fmt /tmp/*)",
+      "Bash(pr /tmp/*)",
+      "Bash(expand /tmp/*)",
+      "Bash(unexpand /tmp/*)",
+      "Skill(dyad:*)",
+
       "Bash(npm run:*)",
+      "Bash(npm test:*)",
       "Bash(npm install:*)",
+      "Bash(npm update:*)",
+      "Bash(npm ls:*)",
+      "Bash(DEBUG=pw:browser npm run e2e:*)",
+      "Bash(npx playwright show-trace:*)",
+
       "Bash(git:*)",
-      "Bash(gh pr:*)",
-      "Bash(gh issue:*)",
+
+      "Bash(gh api:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr status:*)",
+      "Bash(gh pr diff:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh pr edit:*)",
+      "Bash(gh pr ready:*)",
+      "Bash(gh pr review:*)",
+      "Bash(gh pr close:*)",
+      "Bash(gh pr reopen:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(gh pr comment:*)",
+      "Bash(gh issue view:*)",
+      "Bash(gh issue list:*)",
+      "Bash(gh issue status:*)",
+      "Bash(gh issue create:*)",
+      "Bash(gh issue edit:*)",
+      "Bash(gh issue close:*)",
+      "Bash(gh issue reopen:*)",
+      "Bash(gh issue comment:*)",
       "Bash(gh repo view:*)",
+      "Bash(gh run view:*)",
+      "Bash(gh run list:*)",
+
+      "Bash(ps:*)",
+      "Bash(lsof:*)",
+      "Bash(pkill:*)",
+      "Bash(jq:*)",
+
+      "Bash(which:*)",
+      "Bash(echo:*)",
+      "Bash(pwd:*)",
 
       "Bash(ls:*)",
       "Bash(find:*)",
@@ -18,6 +97,7 @@
       "Bash(wc:*)",
       "Bash(head:*)",
       "Bash(tail:*)",
+      "Bash(xargs cat:*)",
       "Bash(cat:*)",
       "Bash(less:*)",
       "Bash(file:*)",
@@ -31,7 +111,42 @@
       "Bash(sort:*)",
       "Bash(uniq:*)",
       "Bash(cut:*)",
-      "Bash(diff:*)"
+      "Bash(diff:*)",
+
+      "Bash(chmod:*)",
+
+      "Bash(python3:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gh-permission-hook.py",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/python-permission-hook.py",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/permission-request-hook.py",
+            "timeout": 30000
+          }
+        ]
+      }
     ]
   }
 }

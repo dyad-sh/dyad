@@ -362,9 +362,7 @@ async function pollForAccessToken(event: IpcMainInvokeEvent) {
             `Unknown GitHub error: ${data.error_description || data.error}`,
           );
           event.sender.send("github:flow-error", {
-            error: `GitHub authorization error: ${
-              data.error_description || data.error
-            }`,
+            error: `GitHub authorization error: ${data.error_description || data.error}`,
           });
           stopPolling();
           break;

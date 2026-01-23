@@ -224,9 +224,7 @@ export async function processFullResponseActions(
         });
       } catch (error) {
         errors.push({
-          message: `Failed to add dependencies: ${dyadAddDependencyPackages.join(
-            ", ",
-          )}`,
+          message: `Failed to add dependencies: ${dyadAddDependencyPackages.join(", ")}`,
           error: error,
         });
       }
@@ -573,9 +571,7 @@ export async function processFullResponseActions(
           // Just log, but don't throw an error because the user can still
           // commit these changes outside of Dyad if needed.
           logger.error(
-            `Failed to commit changes outside of dyad: ${uncommittedFiles.join(
-              ", ",
-            )}`,
+            `Failed to commit changes outside of dyad: ${uncommittedFiles.join(", ")}`,
           );
           extraFilesError = (error as any).toString();
         }

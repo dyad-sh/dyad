@@ -1,6 +1,7 @@
 import { IpcClient } from "@/ipc/ipc_client";
 import { useQuery } from "@tanstack/react-query";
 import type { BranchResult } from "@/ipc/ipc_types";
+import { queryKeys } from "@/lib/queryKeys";
 
 export function useCurrentBranch(appId: number | null) {
   const {
@@ -8,7 +9,7 @@ export function useCurrentBranch(appId: number | null) {
     isLoading,
     refetch: refetchBranchInfo,
   } = useQuery<BranchResult, Error>({
-    queryKey: ["currentBranch", appId],
+    queryKey: queryKeys.branches.current({ appId }),
     queryFn: async (): Promise<BranchResult> => {
       if (appId === null) {
         // This case should ideally be handled by the `enabled` option

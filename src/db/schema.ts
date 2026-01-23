@@ -168,7 +168,9 @@ export const language_models = sqliteTable("language_models", {
   builtinProviderId: text("builtin_provider_id"),
   customProviderId: text("custom_provider_id").references(
     () => language_model_providers.id,
-    { onDelete: "cascade" },
+    {
+      onDelete: "cascade",
+    },
   ),
   description: text("description"),
   max_output_tokens: integer("max_output_tokens"),

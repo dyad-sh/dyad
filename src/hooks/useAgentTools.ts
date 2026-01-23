@@ -7,6 +7,7 @@ import { IpcClient } from "@/ipc/ipc_client";
 import type { AgentToolName } from "../pro/main/ipc/handlers/local_agent/tool_definitions";
 import type { AgentTool } from "@/ipc/ipc_types";
 import { AgentToolConsent } from "@/lib/schemas";
+import { queryKeys } from "@/lib/queryKeys";
 
 // Re-export types for convenience
 export type { AgentToolName, AgentTool };
@@ -15,7 +16,7 @@ export function useAgentTools() {
   const queryClient = useQueryClient();
 
   const toolsQuery = useQuery({
-    queryKey: ["agent-tools"],
+    queryKey: queryKeys.agentTools.all,
     queryFn: async () => {
       const ipcClient = IpcClient.getInstance();
       return ipcClient.getAgentTools();
@@ -31,7 +32,7 @@ export function useAgentTools() {
       return ipcClient.setAgentToolConsent(params);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["agent-tools"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agentTools.all });
     },
   });
 

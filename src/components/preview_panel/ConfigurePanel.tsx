@@ -24,6 +24,7 @@ import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
 import { useNavigate } from "@tanstack/react-router";
 import { NeonConfigure } from "./NeonConfigure";
+import { queryKeys } from "@/lib/queryKeys";
 
 const EnvironmentVariablesTitle = () => (
   <div className="flex items-center gap-2">
@@ -62,7 +63,7 @@ export const ConfigurePanel = () => {
     isLoading,
     error,
   } = useQuery({
-    queryKey: ["app-env-vars", selectedAppId],
+    queryKey: queryKeys.appEnvVars.byApp({ appId: selectedAppId }),
     queryFn: async () => {
       if (!selectedAppId) return [];
       const ipcClient = IpcClient.getInstance();
@@ -83,7 +84,7 @@ export const ConfigurePanel = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["app-env-vars", selectedAppId],
+        queryKey: queryKeys.appEnvVars.byApp({ appId: selectedAppId }),
       });
       showSuccess("Environment variables saved");
     },

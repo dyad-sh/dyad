@@ -24,7 +24,9 @@ testSkipIfWindows(
     // The button may not exist if there are no problems, so we check for the "No problems found" text
     await expect(
       po.page.getByText(/No problems found|No Problems Report/),
-    ).toBeVisible({ timeout: Timeout.MEDIUM });
+    ).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
 
     // Send prompt that triggers write_file with TS errors, then run_type_checks
     await po.sendPrompt("tc=local-agent/run-type-checks");

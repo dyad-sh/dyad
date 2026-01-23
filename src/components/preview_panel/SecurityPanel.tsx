@@ -3,6 +3,7 @@ import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useSecurityReview } from "@/hooks/useSecurityReview";
 import { IpcClient } from "@/ipc/ipc_client";
+import { queryKeys } from "@/lib/queryKeys";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -748,7 +749,7 @@ export const SecurityPanel = () => {
         rulesContent,
       );
       await queryClient.invalidateQueries({
-        queryKey: ["versions", selectedAppId],
+        queryKey: queryKeys.versions.list({ appId: selectedAppId }),
       });
       if (warning) {
         showWarning(warning);

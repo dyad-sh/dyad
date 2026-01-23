@@ -80,7 +80,7 @@ import { useChatModeToggle } from "@/hooks/useChatModeToggle";
 import { VisualEditingChangesDialog } from "@/components/preview_panel/VisualEditingChangesDialog";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { useQueryClient } from "@tanstack/react-query";
-import { TOKEN_COUNT_QUERY_KEY } from "@/hooks/useCountTokens";
+import { queryKeys } from "@/lib/queryKeys";
 
 const showTokenBarAtom = atom(false);
 
@@ -102,7 +102,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const queryClient = useQueryClient();
   const toggleShowTokenBar = useCallback(() => {
     setShowTokenBar((prev) => !prev);
-    queryClient.invalidateQueries({ queryKey: TOKEN_COUNT_QUERY_KEY });
+    queryClient.invalidateQueries({ queryKey: queryKeys.tokenCount.all });
   }, [setShowTokenBar, queryClient]);
   const [selectedComponents, setSelectedComponents] = useAtom(
     selectedComponentsPreviewAtom,
@@ -985,25 +985,19 @@ function ProposalSummary({
 
   if (sqlQueries.length) {
     parts.push(
-      `${sqlQueries.length} SQL ${
-        sqlQueries.length === 1 ? "query" : "queries"
-      }`,
+      `${sqlQueries.length} SQL ${sqlQueries.length === 1 ? "query" : "queries"}`,
     );
   }
 
   if (serverFunctions.length) {
     parts.push(
-      `${serverFunctions.length} Server ${
-        serverFunctions.length === 1 ? "Function" : "Functions"
-      }`,
+      `${serverFunctions.length} Server ${serverFunctions.length === 1 ? "Function" : "Functions"}`,
     );
   }
 
   if (packagesAdded.length) {
     parts.push(
-      `${packagesAdded.length} ${
-        packagesAdded.length === 1 ? "package" : "packages"
-      }`,
+      `${packagesAdded.length} ${packagesAdded.length === 1 ? "package" : "packages"}`,
     );
   }
 

@@ -28,6 +28,7 @@ import { usePostHog } from "posthog-js/react";
 import { useCheckProblems } from "./useCheckProblems";
 import { useSettings } from "./useSettings";
 import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/queryKeys";
 
 export function getRandomNumberId() {
   return Math.floor(Math.random() * 1_000_000_000_000_000);
@@ -162,7 +163,9 @@ export function useStreamChat({
               });
             }
             // Use queryClient directly with the chatId parameter to avoid stale closure issues
-            queryClient.invalidateQueries({ queryKey: ["proposal", chatId] });
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.proposals.detail({ chatId }),
+            });
 
             refetchUserBudget();
 

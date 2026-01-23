@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { IpcClient } from "@/ipc/ipc_client";
+import { queryKeys } from "@/lib/queryKeys";
 
 export const useCheckName = (appName: string) => {
   return useQuery({
-    queryKey: ["checkAppName", appName],
+    queryKey: queryKeys.appName.check({ name: appName }),
     queryFn: async () => {
       const result = await IpcClient.getInstance().checkAppName({ appName });
       return result;

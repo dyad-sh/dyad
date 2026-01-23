@@ -100,8 +100,8 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
     | undefined;
   const isVertexConfigured = Boolean(
     vertexSettings?.projectId &&
-      vertexSettings?.location &&
-      vertexSettings?.serviceAccountKey?.value,
+    vertexSettings?.location &&
+    vertexSettings?.serviceAccountKey?.value,
   );
 
   const isAzureConfigured =

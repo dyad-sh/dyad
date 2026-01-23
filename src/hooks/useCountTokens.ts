@@ -6,8 +6,7 @@ import {
 import { IpcClient } from "@/ipc/ipc_client";
 import type { TokenCountResult } from "@/ipc/ipc_types";
 import { useCallback, useEffect, useState } from "react";
-
-export const TOKEN_COUNT_QUERY_KEY = ["tokenCount"] as const;
+import { queryKeys } from "@/lib/queryKeys";
 
 export function useCountTokens(chatId: number | null, input: string = "") {
   const queryClient = useQueryClient();
@@ -35,7 +34,7 @@ export function useCountTokens(chatId: number | null, input: string = "") {
     error,
     refetch,
   } = useQuery<TokenCountResult | null>({
-    queryKey: [...TOKEN_COUNT_QUERY_KEY, chatId, debouncedInput],
+    queryKey: queryKeys.tokenCount.forChat({ chatId, input: debouncedInput }),
     queryFn: async () => {
       if (chatId === null) return null;
       return IpcClient.getInstance().countTokens({
@@ -49,7 +48,7 @@ export function useCountTokens(chatId: number | null, input: string = "") {
 
   // For imperative invalidation (e.g., after streaming completes)
   const invalidateTokenCount = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: TOKEN_COUNT_QUERY_KEY });
+    queryClient.invalidateQueries({ queryKey: queryKeys.tokenCount.all });
   }, [queryClient]);
 
   return {

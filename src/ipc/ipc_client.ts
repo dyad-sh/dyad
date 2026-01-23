@@ -1067,6 +1067,7 @@ export class IpcClient {
       })
       .catch((err) => {
         showError(err);
+        throw err;
       });
   }
   // --- End Audio Transcription ---

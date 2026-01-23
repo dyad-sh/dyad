@@ -112,8 +112,10 @@ export function useVoiceInput({ appendText, onError }: UseVoiceInputOptions) {
 
         reader.onloadend = async () => {
           try {
-            const base64data = reader.result as string;
+            const base64data = reader.result as string | null;
+            if (!base64data) return;
             const base64Content = base64data.split(",")[1];
+            if (!base64Content) return;
 
             const text = await IpcClient.getInstance().transcribeAudio(
               base64Content,

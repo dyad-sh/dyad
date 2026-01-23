@@ -16,8 +16,6 @@ import {
   ChevronsDownUp,
   SendHorizontalIcon,
   Lock,
-  Mic,
-  Square,
 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useState } from "react";

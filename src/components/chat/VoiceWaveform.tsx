@@ -59,14 +59,17 @@ export function VoiceWaveform({ analyser }: VoiceWaveformProps) {
   }, [analyser]);
 
   return (
-    <div className="w-full h-[52px] flex items-center justify-center bg-muted/30 rounded-md overflow-hidden border border-border/50">
+    <div
+      data-testid="voice-waveform"
+      className="relative w-full h-[52px] flex items-center justify-center bg-muted/30 rounded-md overflow-hidden border border-border/50"
+    >
       <canvas
         ref={canvasRef}
         width={600}
         height={100}
         className="w-full h-full opacity-80"
       />
-      <div className="absolute text-xs font-medium text-muted-foreground animate-pulse">
+      <div className="absolute inset-0 flex items-center justify-center text-xs font-medium text-muted-foreground animate-pulse">
         Listening...
       </div>
     </div>

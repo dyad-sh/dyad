@@ -1,6 +1,7 @@
 import express from "express";
 import { createServer } from "http";
 import cors from "cors";
+import multer from "multer";
 import { createChatCompletionHandler } from "./chatCompletionHandler";
 import { createResponsesHandler } from "./responsesHandler";
 import {
@@ -238,6 +239,13 @@ app.post("/engine/v1/tools/code-search", (req, res) => {
     console.error(`* code-search error:`, error);
     res.status(400).json({ error: String(error) });
   }
+});
+
+// Dyad Engine audio transcription endpoint (Whisper-style)
+const upload = multer();
+app.post("/engine/v1/audio/transcriptions", upload.any(), (req, res) => {
+  console.log("* audio/transcriptions: received request");
+  res.json({ text: "E2E transcribed text" });
 });
 
 // Start the server

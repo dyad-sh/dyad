@@ -10,7 +10,6 @@ import log from "electron-log";
 import { getExtraProviderOptions } from "./thinking_utils";
 import type { UserSettings } from "../../lib/schemas";
 import type { LanguageModel } from "ai";
-import OpenAI from "openai";
 
 const logger = log.scope("llm_engine_provider");
 
@@ -228,24 +227,6 @@ export function createDyadEngine(
   return provider;
 }
 
-export function createDyadOpenAIClient(
-  options: ExampleProviderSettings,
-): OpenAI {
-  const baseURL = withoutTrailingSlash(options.baseURL);
-
-  const apiKey = loadApiKey({
-    apiKey: options.apiKey,
-    environmentVariableName: "DYAD_PRO_API_KEY",
-    description: "Dyad Pro API key",
-  });
-
-  return new OpenAI({
-    apiKey,
-    baseURL,
-    defaultHeaders: options.headers,
-    fetch: options.fetch,
-  });
-}
 export async function transcribeWithDyadEngine(
   audioBuffer: Buffer,
   filename: string,

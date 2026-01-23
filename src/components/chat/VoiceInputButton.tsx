@@ -48,6 +48,7 @@ export function VoiceInputButton({
 
   const button = (
     <button
+      data-testid="voice-input-button"
       onClick={proModeTogglable ? onClick : undefined}
       className={className}
       title={title}

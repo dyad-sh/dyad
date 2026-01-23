@@ -96,11 +96,15 @@ test.describe("Toggle Screen Size Tests", () => {
       await expect(previewIframe).toHaveAttribute("style", /width:\s*375px/);
 
       // Trigger rebuild
-      await po.page.locator('[data-testid="rebuild-button"]').click();
-
-      // Wait for rebuild to complete and verify mobile mode persists
-      await expect(previewIframe).toHaveAttribute("style", /width:\s*375px/, {
+      await po.clickRebuild();
+      await expect(po.locateLoadingAppPreview()).toBeVisible();
+      await expect(po.locateLoadingAppPreview()).not.toBeVisible({
         timeout: Timeout.EXTRA_LONG,
+      });
+
+      // Verify mobile mode persists after rebuild
+      await expect(previewIframe).toHaveAttribute("style", /width:\s*375px/, {
+        timeout: Timeout.LONG,
       });
     },
   );

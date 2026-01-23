@@ -169,7 +169,7 @@ class TestTranscriptReading:
         assert "response text" in result
 
     def test_truncates_large_transcripts(self, tmp_path):
-        """Should truncate large transcripts to max_chars limit."""
+        """Should truncate large transcripts from the middle, keeping beginning and end."""
         transcript = tmp_path / "transcript.jsonl"
         # Create a large transcript with many messages
         lines = []
@@ -184,11 +184,13 @@ class TestTranscriptReading:
         assert spec.loader is not None
         spec.loader.exec_module(module)
 
-        # With a small max_chars, should truncate
+        # With a small max_chars, should truncate from the middle
         result = module.read_transcript(str(transcript), max_chars=500)
-        assert len(result) <= 520  # Allow some buffer for truncation marker
-        assert "...(truncated)" in result
-        # Should keep the most recent messages (higher numbers)
+        assert len(result) <= 600  # Allow buffer for truncation marker
+        assert "...(middle truncated)..." in result
+        # Should keep beginning messages (lower numbers)
+        assert "message 0" in result or "message 1" in result
+        # Should keep end messages (higher numbers)
         assert "message 99" in result or "message 98" in result
 
 

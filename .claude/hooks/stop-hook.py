@@ -34,12 +34,15 @@ def get_claude_path() -> str | None:
     return None
 
 
-def read_transcript(transcript_path: str, max_chars: int = 8000) -> str:
+def read_transcript(transcript_path: str, max_chars: int = 32000) -> str:
     """Read and format the transcript for analysis.
+
+    Includes content from the beginning and end of the transcript,
+    truncating from the middle if needed to stay within limits.
 
     Args:
         transcript_path: Path to the JSONL transcript file
-        max_chars: Maximum characters for the output (default 8000, ~2000 tokens)
+        max_chars: Maximum characters for the output (default 32000, ~8000 tokens)
     """
     try:
         path = Path(transcript_path).expanduser()
@@ -47,13 +50,9 @@ def read_transcript(transcript_path: str, max_chars: int = 8000) -> str:
             return ""
 
         lines = path.read_text().strip().split("\n")
-        # Get the last N lines to stay within context limits
-        # Each line is a JSON object
-        max_lines = 50
-        recent_lines = lines[-max_lines:] if len(lines) > max_lines else lines
 
         formatted = []
-        for line in recent_lines:
+        for line in lines:
             try:
                 entry = json.loads(line)
                 msg_type = entry.get("type", "unknown")
@@ -88,11 +87,17 @@ def read_transcript(transcript_path: str, max_chars: int = 8000) -> str:
             except json.JSONDecodeError:
                 continue
 
-        # Keep last 30 formatted entries, then trim to max_chars from the end
-        result = "\n".join(formatted[-30:])
+        result = "\n".join(formatted)
         if len(result) > max_chars:
-            # Trim from the beginning, keeping most recent content
-            result = "...(truncated)\n" + result[-max_chars:]
+            # Keep beginning and end, truncate from middle
+            # Reserve ~40% for beginning, ~60% for end (end is more important)
+            begin_budget = int(max_chars * 0.4)
+            end_budget = max_chars - begin_budget - 50  # 50 chars for truncation marker
+
+            begin_part = result[:begin_budget]
+            end_part = result[-end_budget:]
+
+            result = begin_part + "\n\n...(middle truncated)...\n\n" + end_part
         return result
 
     except Exception:

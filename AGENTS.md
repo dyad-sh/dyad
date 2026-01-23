@@ -142,7 +142,7 @@ npm run build
 To run e2e tests without opening the HTML report (which blocks the terminal), use:
 
 ```sh
-PLAYWRIGHT_HTML_OPEN=never npm run e2e
+npm run pre:e2e
 ```
 
 To get additional debug logs when a test is failing, use:

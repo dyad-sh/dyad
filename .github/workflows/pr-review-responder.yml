@@ -36,6 +36,13 @@ jobs:
               pull_number: prNumber
             });
 
+            // Only allow wwwillchen to use this workflow
+            if (pr.user.login !== 'wwwillchen') {
+              console.log(`PR #${prNumber} author ${pr.user.login} is not allowed to use this workflow`);
+              core.setOutput('should_continue', 'false');
+              return;
+            }
+
             const hasRequestLabel = pr.labels.some(label => label.name === 'cc:request');
 
             if (!hasRequestLabel) {
@@ -66,8 +73,8 @@ jobs:
             /dyad:pr-fix ${{ steps.pr-info.outputs.pr_number }}
 
       - name: Update labels
-        if: steps.pr-info.outputs.should_continue == 'true'
+        if: steps.pr-info.outputs.should_continue == 'true' && success()
         run: |
-          gh pr edit ${{ steps.pr-info.outputs.pr_number }} --remove-label "cc:help" --add-label "cc:responded"
+          gh pr edit ${{ steps.pr-info.outputs.pr_number }} --remove-label "cc:request" --add-label "cc:responded" || gh pr edit ${{ steps.pr-info.outputs.pr_number }} --add-label "cc:responded"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

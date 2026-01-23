@@ -38,7 +38,7 @@ export function ReleaseChannelSelector() {
         action: {
           label: "Restart Dyad",
           onClick: () => {
-            ipc.app.restartDyad();
+            ipc.system.restartDyad();
           },
         },
       });

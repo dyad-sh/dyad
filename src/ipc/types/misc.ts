@@ -169,13 +169,6 @@ export const miscContracts = {
     }),
     output: z.void(),
   }),
-
-  // Screenshot
-  takeScreenshot: defineContract({
-    channel: "take-screenshot",
-    input: z.void(),
-    output: z.void(),
-  }),
 } as const;
 
 // =============================================================================

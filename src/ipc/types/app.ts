@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { defineContract, createClient } from "../contracts/core";
-import { ProblemReportSchema } from "./agent";
 
 // =============================================================================
 // App Schemas
@@ -350,12 +349,6 @@ export const appContracts = {
     output: AddToFavoriteResultSchema,
   }),
 
-  restartDyad: defineContract({
-    channel: "restart-dyad",
-    input: z.void(),
-    output: z.void(),
-  }),
-
   selectAppLocation: defineContract({
     channel: "select-app-location",
     input: SelectAppLocationParamsSchema,
@@ -366,12 +359,6 @@ export const appContracts = {
     channel: "check-app-name",
     input: z.object({ appName: z.string() }),
     output: z.object({ exists: z.boolean(), message: z.string().optional() }),
-  }),
-
-  checkProblems: defineContract({
-    channel: "check-problems",
-    input: z.object({ appId: z.number() }),
-    output: ProblemReportSchema,
   }),
 
   searchApps: defineContract({

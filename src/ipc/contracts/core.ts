@@ -231,8 +231,8 @@ export function createEventClient<
         }
       };
 
-      ipcRenderer.on(event.channel, listener);
-      return () => ipcRenderer.removeListener(event.channel, listener);
+      const unsubscribe = ipcRenderer.on(event.channel, listener);
+      return unsubscribe;
     };
   }
 

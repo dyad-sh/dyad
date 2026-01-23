@@ -757,7 +757,7 @@ async function searchAppFilesWithRipgrep({
 }
 
 export function registerAppHandlers() {
-  createTypedHandler(appContracts.restartDyad, async () => {
+  createTypedHandler(systemContracts.restartDyad, async () => {
     app.relaunch();
     app.quit();
   });

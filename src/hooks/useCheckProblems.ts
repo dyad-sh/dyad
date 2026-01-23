@@ -16,7 +16,7 @@ export function useCheckProblems(appId: number | null) {
       if (!appId) {
         throw new Error("App ID is required");
       }
-      return ipc.app.checkProblems({ appId });
+      return ipc.misc.checkProblems({ appId });
     },
     enabled: !!appId && settings?.enableAutoFixProblems,
     // DO NOT SHOW ERROR TOAST.

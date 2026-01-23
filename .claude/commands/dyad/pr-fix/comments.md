@@ -9,7 +9,6 @@ Read all unresolved GitHub PR comments and address or resolve them appropriately
 ## Instructions
 
 1. **Determine the PR to work on:**
-
    - If `$ARGUMENTS` is provided:
      - If it's a number (e.g., `123`), use it as the PR number
      - If it's a URL (e.g., `https://github.com/owner/repo/pull/123`), extract the PR number from the path
@@ -54,7 +53,6 @@ Read all unresolved GitHub PR comments and address or resolve them appropriately
 3. **For each unresolved review thread, categorize it:**
 
    Read the comment(s) in the thread and determine which category it falls into:
-
    - **Valid issue**: A legitimate code review concern that should be addressed (bug, improvement, style issue, etc.)
    - **Not a valid issue**: The reviewer may have misunderstood something, the concern is already addressed elsewhere, or the suggestion conflicts with project requirements
    - **Ambiguous**: The comment is unclear, requires significant discussion, or involves a judgment call that needs human input
@@ -62,14 +60,12 @@ Read all unresolved GitHub PR comments and address or resolve them appropriately
 4. **Handle each category:**
 
    **For valid issues:**
-
    - Read the relevant file(s) mentioned in the comment
    - Understand the context and the requested change
    - Make the necessary code changes to address the feedback
    - The thread will be marked as resolved when the code is pushed (GitHub auto-resolves when the code changes)
 
    **For not valid issues:**
-
    - Reply to the thread explaining why the concern doesn't apply:
 
      ```
@@ -92,7 +88,6 @@ Read all unresolved GitHub PR comments and address or resolve them appropriately
      Note: Replace `<THREAD_ID>` with the thread's `id` field from the GraphQL response.
 
    **For ambiguous issues:**
-
    - Reply to the thread flagging it for human attention:
      ```
      gh api repos/{owner}/{repo}/pulls/<PR_NUMBER>/comments/<COMMENT_ID>/replies \
@@ -104,7 +99,6 @@ Read all unresolved GitHub PR comments and address or resolve them appropriately
 5. **After processing all comments, verify and commit changes:**
 
    If any code changes were made:
-
    - Run `/dyad:lint` to ensure code passes all checks
    - Stage and commit the changes:
 
@@ -126,7 +120,6 @@ Read all unresolved GitHub PR comments and address or resolve them appropriately
 7. **Provide a summary to the user:**
 
    Report:
-
    - **Addressed**: List of comments that were fixed with code changes
    - **Resolved (not valid)**: List of comments that were resolved with explanations
    - **Flagged for human attention**: List of ambiguous comments left open

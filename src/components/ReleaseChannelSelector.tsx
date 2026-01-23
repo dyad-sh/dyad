@@ -33,8 +33,7 @@ export function ReleaseChannelSelector() {
       });
     } else {
       toast("Using Beta release channel", {
-        description:
-          "You will need to restart Dyad for your settings to take effect.",
+        description: "You will need to restart Dyad for your settings to take effect.",
         action: {
           label: "Restart Dyad",
           onClick: () => {
@@ -54,10 +53,7 @@ export function ReleaseChannelSelector() {
         >
           Release Channel
         </label>
-        <Select
-          value={settings.releaseChannel}
-          onValueChange={handleReleaseChannelChange}
-        >
+        <Select value={settings.releaseChannel} onValueChange={handleReleaseChannelChange}>
           <SelectTrigger className="w-32" id="release-channel">
             <SelectValue />
           </SelectTrigger>

@@ -6,8 +6,7 @@
 
 @font-face {
   font-family: "Geist Mono";
-  src: url("/node_modules/geist/dist/fonts/geist-mono/GeistMono-Regular.ttf")
-    format("truetype");
+  src: url("/node_modules/geist/dist/fonts/geist-mono/GeistMono-Regular.ttf") format("truetype");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -15,8 +14,7 @@
 
 @font-face {
   font-family: "Geist Mono";
-  src: url("/node_modules/geist/dist/fonts/geist-mono/GeistMono-Medium.ttf")
-    format("truetype");
+  src: url("/node_modules/geist/dist/fonts/geist-mono/GeistMono-Medium.ttf") format("truetype");
   font-weight: 500;
   font-style: normal;
   font-display: swap;
@@ -24,8 +22,7 @@
 
 @font-face {
   font-family: "Geist Mono";
-  src: url("/node_modules/geist/dist/fonts/geist-mono/GeistMono-Bold.ttf")
-    format("truetype");
+  src: url("/node_modules/geist/dist/fonts/geist-mono/GeistMono-Bold.ttf") format("truetype");
   font-weight: 700;
   font-style: normal;
   font-display: swap;
@@ -33,8 +30,7 @@
 
 @font-face {
   font-family: "Geist";
-  src: url("/node_modules/geist/dist/fonts/geist-sans/Geist-Regular.ttf")
-    format("truetype");
+  src: url("/node_modules/geist/dist/fonts/geist-sans/Geist-Regular.ttf") format("truetype");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -42,8 +38,7 @@
 
 @font-face {
   font-family: "Geist";
-  src: url("/node_modules/geist/dist/fonts/geist-sans/Geist-Medium.ttf")
-    format("truetype");
+  src: url("/node_modules/geist/dist/fonts/geist-sans/Geist-Medium.ttf") format("truetype");
   font-weight: 500;
   font-style: normal;
   font-display: swap;
@@ -51,8 +46,7 @@
 
 @font-face {
   font-family: "Geist";
-  src: url("/node_modules/geist/dist/fonts/geist-sans/Geist-Bold.ttf")
-    format("truetype");
+  src: url("/node_modules/geist/dist/fonts/geist-sans/Geist-Bold.ttf") format("truetype");
   font-weight: 700;
   font-style: normal;
   font-display: swap;

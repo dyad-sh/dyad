@@ -29,9 +29,7 @@ const handle = createLoggedHandler(logger);
 // Use test server URLs when in test mode
 const TEST_SERVER_BASE = "http://localhost:3500";
 
-const VERCEL_API_BASE = IS_TEST_BUILD
-  ? `${TEST_SERVER_BASE}/vercel/api`
-  : "https://api.vercel.com";
+const VERCEL_API_BASE = IS_TEST_BUILD ? `${TEST_SERVER_BASE}/vercel/api` : "https://api.vercel.com";
 
 // --- Helper Functions ---
 
@@ -111,9 +109,7 @@ async function getDefaultTeamId(token: string): Promise<string> {
     });
 
     if (!response.ok) {
-      throw new Error(
-        `Failed to fetch teams: ${response.status} ${response.statusText}`,
-      );
+      throw new Error(`Failed to fetch teams: ${response.status} ${response.statusText}`);
     }
 
     const data = await response.json();
@@ -130,9 +126,7 @@ async function getDefaultTeamId(token: string): Promise<string> {
   }
 }
 
-async function detectFramework(
-  appPath: string,
-): Promise<CreateProjectFramework | undefined> {
+async function detectFramework(appPath: string): Promise<CreateProjectFramework | undefined> {
   try {
     // Check for specific config files first
     const configFiles: Array<{
@@ -205,9 +199,7 @@ async function handleSaveVercelToken(
     // Validate the token by making a test API call
     const isValid = await validateVercelToken(token.trim());
     if (!isValid) {
-      throw new Error(
-        "Invalid access token. Please check your token and try again.",
-      );
+      throw new Error("Invalid access token. Please check your token and try again.");
     }
 
     writeSettings({
@@ -271,9 +263,7 @@ async function handleIsProjectAvailable(
       };
     }
 
-    const projectExists = response.projects.some(
-      (project) => project.name === name,
-    );
+    const projectExists = response.projects.some((project) => project.name === name);
 
     return {
       available: !projectExists,
@@ -400,15 +390,11 @@ async function handleConnectToExistingProject(
       throw new Error("Not authenticated with Vercel.");
     }
 
-    logger.info(
-      `Connecting to existing Vercel project: ${projectId} for app ${appId}`,
-    );
+    logger.info(`Connecting to existing Vercel project: ${projectId} for app ${appId}`);
 
     // Verify the project exists and get its details
     const response = await getVercelProjects(accessToken);
-    const projectData = response.projects?.find(
-      (p) => p.id === projectId || p.name === projectId,
-    );
+    const projectData = response.projects?.find((p) => p.id === projectId || p.name === projectId);
 
     if (!projectData) {
       throw new Error("Project not found. Please check the project ID.");
@@ -430,10 +416,7 @@ async function handleConnectToExistingProject(
 
     logger.info(`Successfully connected to Vercel project: ${projectData.id}`);
   } catch (err: any) {
-    logger.error(
-      "[Vercel Handler] Failed to connect to existing project:",
-      err,
-    );
+    logger.error("[Vercel Handler] Failed to connect to existing project:", err);
     throw new Error(err.message || "Failed to connect to existing project.");
   }
 }
@@ -455,9 +438,7 @@ async function handleGetVercelDeployments(
       throw new Error("App is not linked to a Vercel project.");
     }
 
-    logger.info(
-      `Getting deployments for Vercel project: ${app.vercelProjectId} for app ${appId}`,
-    );
+    logger.info(`Getting deployments for Vercel project: ${app.vercelProjectId} for app ${appId}`);
 
     const vercel = createVercelClient(accessToken);
 

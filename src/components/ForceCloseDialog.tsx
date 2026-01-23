@@ -22,11 +22,7 @@ interface ForceCloseDialogProps {
   };
 }
 
-export function ForceCloseDialog({
-  isOpen,
-  onClose,
-  performanceData,
-}: ForceCloseDialogProps) {
+export function ForceCloseDialog({ isOpen, onClose, performanceData }: ForceCloseDialogProps) {
   const formatTimestamp = (timestamp: number) => {
     return new Date(timestamp).toLocaleString();
   };
@@ -42,8 +38,8 @@ export function ForceCloseDialog({
           <AlertDialogDescription asChild>
             <div className="space-y-4 pt-2">
               <div className="text-base">
-                The app was not closed properly the last time it was running.
-                This could indicate a crash or unexpected termination.
+                The app was not closed properly the last time it was running. This could indicate a
+                crash or unexpected termination.
               </div>
 
               {performanceData && (
@@ -58,22 +54,16 @@ export function ForceCloseDialog({
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     {/* Process Metrics */}
                     <div className="space-y-2">
-                      <div className="font-medium text-foreground">
-                        Process Metrics
-                      </div>
+                      <div className="font-medium text-foreground">Process Metrics</div>
                       <div className="space-y-1">
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Memory:</span>
-                          <span className="font-mono">
-                            {performanceData.memoryUsageMB} MB
-                          </span>
+                          <span className="font-mono">{performanceData.memoryUsageMB} MB</span>
                         </div>
                         {performanceData.cpuUsagePercent !== undefined && (
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">CPU:</span>
-                            <span className="font-mono">
-                              {performanceData.cpuUsagePercent}%
-                            </span>
+                            <span className="font-mono">{performanceData.cpuUsagePercent}%</span>
                           </div>
                         )}
                       </div>
@@ -83,17 +73,12 @@ export function ForceCloseDialog({
                     {(performanceData.systemMemoryUsageMB !== undefined ||
                       performanceData.systemCpuPercent !== undefined) && (
                       <div className="space-y-2">
-                        <div className="font-medium text-foreground">
-                          System Metrics
-                        </div>
+                        <div className="font-medium text-foreground">System Metrics</div>
                         <div className="space-y-1">
                           {performanceData.systemMemoryUsageMB !== undefined &&
-                            performanceData.systemMemoryTotalMB !==
-                              undefined && (
+                            performanceData.systemMemoryTotalMB !== undefined && (
                               <div className="flex justify-between">
-                                <span className="text-muted-foreground">
-                                  Memory:
-                                </span>
+                                <span className="text-muted-foreground">Memory:</span>
                                 <span className="font-mono">
                                   {performanceData.systemMemoryUsageMB} /{" "}
                                   {performanceData.systemMemoryTotalMB} MB
@@ -102,12 +87,8 @@ export function ForceCloseDialog({
                             )}
                           {performanceData.systemCpuPercent !== undefined && (
                             <div className="flex justify-between">
-                              <span className="text-muted-foreground">
-                                CPU:
-                              </span>
-                              <span className="font-mono">
-                                {performanceData.systemCpuPercent}%
-                              </span>
+                              <span className="text-muted-foreground">CPU:</span>
+                              <span className="font-mono">{performanceData.systemCpuPercent}%</span>
                             </div>
                           )}
                         </div>

@@ -28,9 +28,7 @@ test.skip("dyadwrite edit and save - basic flow", async ({ po }) => {
   await po.importApp("minimal");
   await po.clickNewChat();
 
-  await po.sendPrompt(
-    "Create a simple React component in src/components/Hello.tsx",
-  );
+  await po.sendPrompt("Create a simple React component in src/components/Hello.tsx");
   await po.waitForChatCompletion();
 
   await po.clickEditButton();

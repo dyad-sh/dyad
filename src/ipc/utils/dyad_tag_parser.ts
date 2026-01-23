@@ -26,9 +26,7 @@ export function getDyadWriteTags(fullResponse: string): {
 
     if (pathMatch && pathMatch[1]) {
       const path = unescapeXmlAttr(pathMatch[1]);
-      const description = descriptionMatch?.[1]
-        ? unescapeXmlAttr(descriptionMatch[1])
-        : undefined;
+      const description = descriptionMatch?.[1] ? unescapeXmlAttr(descriptionMatch[1]) : undefined;
 
       const contentLines = content.split("\n");
       if (contentLines[0]?.startsWith("```")) {
@@ -41,10 +39,7 @@ export function getDyadWriteTags(fullResponse: string): {
 
       tags.push({ path: normalizePath(path), content, description });
     } else {
-      logger.warn(
-        "Found <dyad-write> tag without a valid 'path' attribute:",
-        match[0],
-      );
+      logger.warn("Found <dyad-write> tag without a valid 'path' attribute:", match[0]);
     }
   }
   return tags;
@@ -68,8 +63,7 @@ export function getDyadRenameTags(fullResponse: string): {
 }
 
 export function getDyadDeleteTags(fullResponse: string): string[] {
-  const dyadDeleteRegex =
-    /<dyad-delete path="([^"]+)"[^>]*>([\s\S]*?)<\/dyad-delete>/g;
+  const dyadDeleteRegex = /<dyad-delete path="([^"]+)"[^>]*>([\s\S]*?)<\/dyad-delete>/g;
   let match;
   const paths: string[] = [];
   while ((match = dyadDeleteRegex.exec(fullResponse)) !== null) {
@@ -90,8 +84,7 @@ export function getDyadAddDependencyTags(fullResponse: string): string[] {
 }
 
 export function getDyadChatSummaryTag(fullResponse: string): string | null {
-  const dyadChatSummaryRegex =
-    /<dyad-chat-summary>([\s\S]*?)<\/dyad-chat-summary>/g;
+  const dyadChatSummaryRegex = /<dyad-chat-summary>([\s\S]*?)<\/dyad-chat-summary>/g;
   const match = dyadChatSummaryRegex.exec(fullResponse);
   if (match && match[1]) {
     return unescapeXmlContent(match[1].trim());
@@ -100,8 +93,7 @@ export function getDyadChatSummaryTag(fullResponse: string): string | null {
 }
 
 export function getDyadExecuteSqlTags(fullResponse: string): SqlQuery[] {
-  const dyadExecuteSqlRegex =
-    /<dyad-execute-sql([^>]*)>([\s\S]*?)<\/dyad-execute-sql>/g;
+  const dyadExecuteSqlRegex = /<dyad-execute-sql([^>]*)>([\s\S]*?)<\/dyad-execute-sql>/g;
   const descriptionRegex = /description="([^"]+)"/;
   let match;
   const queries: { content: string; description?: string }[] = [];
@@ -110,9 +102,7 @@ export function getDyadExecuteSqlTags(fullResponse: string): SqlQuery[] {
     const attributesString = match[1] || "";
     let content = unescapeXmlContent(match[2].trim());
     const descriptionMatch = descriptionRegex.exec(attributesString);
-    const description = descriptionMatch?.[1]
-      ? unescapeXmlAttr(descriptionMatch[1])
-      : undefined;
+    const description = descriptionMatch?.[1] ? unescapeXmlAttr(descriptionMatch[1]) : undefined;
 
     // Handle markdown code blocks if present
     const contentLines = content.split("\n");
@@ -131,8 +121,7 @@ export function getDyadExecuteSqlTags(fullResponse: string): SqlQuery[] {
 }
 
 export function getDyadCommandTags(fullResponse: string): string[] {
-  const dyadCommandRegex =
-    /<dyad-command type="([^"]+)"[^>]*><\/dyad-command>/g;
+  const dyadCommandRegex = /<dyad-command type="([^"]+)"[^>]*><\/dyad-command>/g;
   let match;
   const commands: string[] = [];
 
@@ -148,8 +137,7 @@ export function getDyadSearchReplaceTags(fullResponse: string): {
   content: string;
   description?: string;
 }[] {
-  const dyadSearchReplaceRegex =
-    /<dyad-search-replace([^>]*)>([\s\S]*?)<\/dyad-search-replace>/gi;
+  const dyadSearchReplaceRegex = /<dyad-search-replace([^>]*)>([\s\S]*?)<\/dyad-search-replace>/gi;
   const pathRegex = /path="([^"]+)"/;
   const descriptionRegex = /description="([^"]+)"/;
 
@@ -165,9 +153,7 @@ export function getDyadSearchReplaceTags(fullResponse: string): {
 
     if (pathMatch && pathMatch[1]) {
       const path = unescapeXmlAttr(pathMatch[1]);
-      const description = descriptionMatch?.[1]
-        ? unescapeXmlAttr(descriptionMatch[1])
-        : undefined;
+      const description = descriptionMatch?.[1] ? unescapeXmlAttr(descriptionMatch[1]) : undefined;
 
       // Handle markdown code fences if present
       const contentLines = content.split("\n");
@@ -181,10 +167,7 @@ export function getDyadSearchReplaceTags(fullResponse: string): {
 
       tags.push({ path: normalizePath(path), content, description });
     } else {
-      logger.warn(
-        "Found <dyad-search-replace> tag without a valid 'path' attribute:",
-        match[0],
-      );
+      logger.warn("Found <dyad-search-replace> tag without a valid 'path' attribute:", match[0]);
     }
   }
   return tags;

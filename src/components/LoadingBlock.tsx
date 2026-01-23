@@ -2,13 +2,7 @@ import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { IpcClient } from "@/ipc/ipc_client";
 
-const customLink = ({
-  node: _node,
-  ...props
-}: {
-  node?: any;
-  [key: string]: any;
-}) => (
+const customLink = ({ node: _node, ...props }: { node?: any; [key: string]: any }) => (
   <a
     {...props}
     onClick={(e) => {
@@ -86,10 +80,7 @@ function ChatLoader() {
 
   const renderFadingText = () => {
     return displayText.split("").map((char, index) => {
-      const opacity = Math.min(
-        0.8 + (index / (displayText.length || 1)) * 0.2,
-        1,
-      );
+      const opacity = Math.min(0.8 + (index / (displayText.length || 1)) * 0.2, 1);
       const isEmoji = /\p{Emoji}/u.test(char);
       return (
         <span

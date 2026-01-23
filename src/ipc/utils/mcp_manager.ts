@@ -18,10 +18,7 @@ class McpManager {
   async getClient(serverId: number): Promise<MCPClient> {
     const existing = this.clients.get(serverId);
     if (existing) return existing;
-    const server = await db
-      .select()
-      .from(mcpServers)
-      .where(eq(mcpServers.id, serverId));
+    const server = await db.select().from(mcpServers).where(eq(mcpServers.id, serverId));
     const s = server.find((x) => x.id === serverId);
     if (!s) throw new Error(`MCP server not found: ${serverId}`);
     let transport: StdioClientTransport | StreamableHTTPClientTransport;

@@ -4,11 +4,7 @@ import { createLoggedHandler } from "./safe_handle";
 import { db } from "@/db";
 import { prompts } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import {
-  CreatePromptParamsDto,
-  PromptDto,
-  UpdatePromptParamsDto,
-} from "../ipc_types";
+import { CreatePromptParamsDto, PromptDto, UpdatePromptParamsDto } from "../ipc_types";
 
 const logger = log.scope("prompt_handlers");
 const handle = createLoggedHandler(logger);
@@ -28,10 +24,7 @@ export function registerPromptHandlers() {
 
   handle(
     "prompts:create",
-    async (
-      _e: IpcMainInvokeEvent,
-      params: CreatePromptParamsDto,
-    ): Promise<PromptDto> => {
+    async (_e: IpcMainInvokeEvent, params: CreatePromptParamsDto): Promise<PromptDto> => {
       const { title, description, content } = params;
       if (!title || !content) {
         throw new Error("Title and content are required");
@@ -61,10 +54,7 @@ export function registerPromptHandlers() {
 
   handle(
     "prompts:update",
-    async (
-      _e: IpcMainInvokeEvent,
-      params: UpdatePromptParamsDto,
-    ): Promise<void> => {
+    async (_e: IpcMainInvokeEvent, params: UpdatePromptParamsDto): Promise<void> => {
       const { id, title, description, content } = params;
       if (!id) throw new Error("Prompt id is required");
       if (!title || !content) throw new Error("Title and content are required");
@@ -81,11 +71,8 @@ export function registerPromptHandlers() {
     },
   );
 
-  handle(
-    "prompts:delete",
-    async (_e: IpcMainInvokeEvent, id: number): Promise<void> => {
-      if (!id) throw new Error("Prompt id is required");
-      db.delete(prompts).where(eq(prompts.id, id)).run();
-    },
-  );
+  handle("prompts:delete", async (_e: IpcMainInvokeEvent, id: number): Promise<void> => {
+    if (!id) throw new Error("Prompt id is required");
+    db.delete(prompts).where(eq(prompts.id, id)).run();
+  });
 }

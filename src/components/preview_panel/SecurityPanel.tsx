@@ -122,13 +122,7 @@ function SeverityBadge({ level }: { level: SecurityFinding["level"] }) {
   );
 }
 
-function RunReviewButton({
-  isRunning,
-  onRun,
-}: {
-  isRunning: boolean;
-  onRun: () => void;
-}) {
+function RunReviewButton({ isRunning, onRun }: { isRunning: boolean; onRun: () => void }) {
   return (
     <Button onClick={onRun} className="gap-2" disabled={isRunning}>
       {isRunning ? (
@@ -169,12 +163,7 @@ function ReviewSummary({ data }: { data: SecurityReviewResult }) {
     {} as Record<string, number>,
   );
 
-  const severityLevels: Array<SecurityFinding["level"]> = [
-    "critical",
-    "high",
-    "medium",
-    "low",
-  ];
+  const severityLevels: Array<SecurityFinding["level"]> = ["critical", "high", "medium", "low"];
 
   return (
     <div className="space-y-1 mt-1">
@@ -187,12 +176,8 @@ function ReviewSummary({ data }: { data: SecurityReviewResult }) {
           .map((level) => (
             <span key={level} className="flex items-center gap-1.5">
               <span className="flex-shrink-0">{getSeverityIcon(level)}</span>
-              <span className="font-medium text-gray-900 dark:text-gray-100">
-                {counts[level]}
-              </span>
-              <span className="text-gray-600 dark:text-gray-400 capitalize">
-                {level}
-              </span>
+              <span className="font-medium text-gray-900 dark:text-gray-100">{counts[level]}</span>
+              <span className="text-gray-600 dark:text-gray-400 capitalize">{level}</span>
             </span>
           ))}
       </div>
@@ -276,19 +261,13 @@ function SecurityHeader({
               style={{
                 visibility: shouldRender ? "visible" : "hidden",
                 opacity: isButtonVisible ? 1 : 0,
-                transform: isButtonVisible
-                  ? "translateY(0)"
-                  : "translateY(-8px)",
+                transform: isButtonVisible ? "translateY(0)" : "translateY(-8px)",
                 pointerEvents: shouldRender ? "auto" : "none",
               }}
             >
               {isFixingSelected ? (
                 <>
-                  <svg
-                    className="w-4 h-4 animate-spin"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
                     <circle
                       className="opacity-25"
                       cx="12"
@@ -345,9 +324,7 @@ function LoadingView() {
           />
         </svg>
       </div>
-      <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mt-4">
-        Loading...
-      </h2>
+      <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mt-4">Loading...</h2>
     </div>
   );
 }
@@ -397,22 +374,14 @@ function RunningReviewCard() {
           <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
             Security review is running
           </h3>
-          <p className="text-gray-600 dark:text-gray-400">
-            Results will be available soon.
-          </p>
+          <p className="text-gray-600 dark:text-gray-400">Results will be available soon.</p>
         </div>
       </CardContent>
     </Card>
   );
 }
 
-function NoReviewCard({
-  isRunning,
-  onRun,
-}: {
-  isRunning: boolean;
-  onRun: () => void;
-}) {
+function NoReviewCard({ isRunning, onRun }: { isRunning: boolean; onRun: () => void }) {
   return (
     <Card>
       <CardContent className="pt-6">
@@ -424,8 +393,7 @@ function NoReviewCard({
             No Security Review Found
           </h3>
           <p className="text-gray-600 dark:text-gray-400 mb-4">
-            Run a security review to identify potential vulnerabilities in your
-            application.
+            Run a security review to identify potential vulnerabilities in your application.
           </p>
           <RunReviewButton isRunning={isRunning} onRun={onRun} />
         </div>
@@ -482,15 +450,10 @@ function FindingsTable({
 
   const allSelected =
     sortedFindings.length > 0 &&
-    sortedFindings.every((finding) =>
-      selectedFindings.has(createFindingKey(finding)),
-    );
+    sortedFindings.every((finding) => selectedFindings.has(createFindingKey(finding)));
 
   return (
-    <div
-      className="border rounded-lg overflow-hidden"
-      data-testid="security-findings-table"
-    >
+    <div className="border rounded-lg overflow-hidden" data-testid="security-findings-table">
       <table className="w-full">
         <thead className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700">
           <tr>
@@ -514,11 +477,9 @@ function FindingsTable({
         </thead>
         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
           {sortedFindings.map((finding, index) => {
-            const isLongDescription =
-              finding.description.length > DESCRIPTION_PREVIEW_LENGTH;
+            const isLongDescription = finding.description.length > DESCRIPTION_PREVIEW_LENGTH;
             const displayDescription = isLongDescription
-              ? finding.description.substring(0, DESCRIPTION_PREVIEW_LENGTH) +
-                "..."
+              ? finding.description.substring(0, DESCRIPTION_PREVIEW_LENGTH) + "..."
               : finding.description;
             const findingKey = createFindingKey(finding);
             const isFixing = fixingFindingKey === findingKey;
@@ -585,11 +546,7 @@ function FindingsTable({
                   >
                     {isFixing ? (
                       <>
-                        <svg
-                          className="w-4 h-4 animate-spin"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                        >
+                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
                           <circle
                             className="opacity-25"
                             cx="12"
@@ -653,17 +610,11 @@ function FindingDetailsDialog({
                 onClose(false);
               }
             }}
-            disabled={
-              finding ? fixingFindingKey === createFindingKey(finding) : false
-            }
+            disabled={finding ? fixingFindingKey === createFindingKey(finding) : false}
           >
             {finding && fixingFindingKey === createFindingKey(finding) ? (
               <>
-                <svg
-                  className="w-4 h-4 animate-spin mr-2"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
+                <svg className="w-4 h-4 animate-spin mr-2" fill="none" viewBox="0 0 24 24">
                   <circle
                     className="opacity-25"
                     cx="12"
@@ -702,16 +653,12 @@ export const SecurityPanel = () => {
   const { data, isLoading, error, refetch } = useSecurityReview(selectedAppId);
   const [isRunningReview, setIsRunningReview] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [detailsFinding, setDetailsFinding] = useState<SecurityFinding | null>(
-    null,
-  );
+  const [detailsFinding, setDetailsFinding] = useState<SecurityFinding | null>(null);
   const [isEditRulesOpen, setIsEditRulesOpen] = useState(false);
   const [rulesContent, setRulesContent] = useState("");
   const [fixingFindingKey, setFixingFindingKey] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [selectedFindings, setSelectedFindings] = useState<Set<string>>(
-    new Set(),
-  );
+  const [selectedFindings, setSelectedFindings] = useState<Set<string>>(new Set());
   const [isFixingSelected, setIsFixingSelected] = useState(false);
 
   const {
@@ -941,10 +888,7 @@ ${issuesList}`;
         {isRunningReview ? (
           <RunningReviewCard />
         ) : error ? (
-          <NoReviewCard
-            isRunning={isRunningReview}
-            onRun={handleRunSecurityReview}
-          />
+          <NoReviewCard isRunning={isRunningReview} onRun={handleRunSecurityReview} />
         ) : data && data.findings.length > 0 ? (
           <FindingsTable
             findings={data.findings}
@@ -971,11 +915,10 @@ ${issuesList}`;
               <DialogTitle>Edit Security Rules</DialogTitle>
             </DialogHeader>
             <div className="text-sm text-gray-600 dark:text-gray-400">
-              This allows you to add additional context about your project
-              specifically for security reviews. This content is saved to the{" "}
-              <code className="text-xs">SECURITY_RULES.md</code> file. This can
-              help catch additional issues or avoid flagging issues that are not
-              relevant for your app.
+              This allows you to add additional context about your project specifically for security
+              reviews. This content is saved to the{" "}
+              <code className="text-xs">SECURITY_RULES.md</code> file. This can help catch
+              additional issues or avoid flagging issues that are not relevant for your app.
             </div>
             <div className="mt-3">
               <textarea
@@ -989,10 +932,7 @@ ${issuesList}`;
               <DialogClose asChild>
                 <Button variant="outline">Cancel</Button>
               </DialogClose>
-              <Button
-                onClick={handleSaveRules}
-                disabled={isSaving || isFetchingRules}
-              >
+              <Button onClick={handleSaveRules} disabled={isSaving || isFetchingRules}>
                 {isSaving ? "Saving..." : "Save"}
               </Button>
             </DialogFooter>

@@ -107,9 +107,7 @@ export async function deployAllSupabaseFunctions({
       (entry) => entry.isDirectory() && !entry.name.startsWith("_"),
     );
 
-    logger.info(
-      `Found ${functionDirs.length} functions to deploy in ${functionsDir}`,
-    );
+    logger.info(`Found ${functionDirs.length} functions to deploy in ${functionsDir}`);
 
     // Filter to only functions with index.ts
     const validFunctions: string[] = [];
@@ -122,9 +120,7 @@ export async function deployAllSupabaseFunctions({
         await fs.access(indexPath);
         validFunctions.push(functionName);
       } catch {
-        logger.warn(
-          `Skipping ${functionName}: index.ts not found at ${indexPath}`,
-        );
+        logger.warn(`Skipping ${functionName}: index.ts not found at ${indexPath}`);
       }
     }
 
@@ -168,18 +164,14 @@ export async function deployAllSupabaseFunctions({
 
     // Bulk update all successfully bundled functions to activate them
     if (successfulDeploys.length > 0) {
-      logger.info(
-        `Activating ${successfulDeploys.length} functions via bulk update...`,
-      );
+      logger.info(`Activating ${successfulDeploys.length} functions via bulk update...`);
       try {
         await bulkUpdateFunctions({
           supabaseProjectId,
           functions: successfulDeploys,
           organizationSlug: supabaseOrganizationSlug,
         });
-        logger.info(
-          `Successfully activated ${successfulDeploys.length} functions`,
-        );
+        logger.info(`Successfully activated ${successfulDeploys.length} functions`);
       } catch (error: any) {
         const errorMessage = `Failed to bulk update functions: ${error.message}`;
         logger.error(errorMessage, error);

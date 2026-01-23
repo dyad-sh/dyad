@@ -19,9 +19,7 @@ test("context limit banner appears and summarize works", async ({ po }) => {
   );
 
   // Click the summarize button
-  await contextLimitBanner
-    .getByRole("button", { name: "Summarize into new chat" })
-    .click();
+  await contextLimitBanner.getByRole("button", { name: "Summarize into new chat" }).click();
 
   // Wait for the new chat to load and message to complete
   await po.waitForChatCompletion();
@@ -30,9 +28,7 @@ test("context limit banner appears and summarize works", async ({ po }) => {
   await po.snapshotMessages();
 });
 
-test("context limit banner does not appear when within limit", async ({
-  po,
-}) => {
+test("context limit banner does not appear when within limit", async ({ po }) => {
   await po.setUp();
 
   // Send a message with low token usage (50k tokens)

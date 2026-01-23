@@ -43,10 +43,7 @@ export const Annotator = ({
   handleAnnotatorClick,
 }: {
   screenshotUrl: string;
-  onSubmit?: (
-    file: File[],
-    type?: "chat-context" | "upload-to-codebase",
-  ) => void;
+  onSubmit?: (file: File[], type?: "chat-context" | "upload-to-codebase") => void;
   handleAnnotatorClick: () => void;
 }) => {
   const image = useImage(screenshotUrl);
@@ -182,9 +179,7 @@ export const Annotator = ({
   };
 
   const handleTextInputChange = (inputId: string, value: string) => {
-    setTextInputs((prev) =>
-      prev.map((i) => (i.id === inputId ? { ...i, value } : i)),
-    );
+    setTextInputs((prev) => prev.map((i) => (i.id === inputId ? { ...i, value } : i)));
   };
 
   const handleTextInputMove = (
@@ -195,17 +190,11 @@ export const Annotator = ({
     adjustedY: number,
   ) => {
     setTextInputs((prev) =>
-      prev.map((i) =>
-        i.id === inputId ? { ...i, x, y, adjustedX, adjustedY } : i,
-      ),
+      prev.map((i) => (i.id === inputId ? { ...i, x, y, adjustedX, adjustedY } : i)),
     );
   };
 
-  const handleTextInputKeyDown = (
-    inputId: string,
-    e: React.KeyboardEvent,
-    index: number,
-  ) => {
+  const handleTextInputKeyDown = (inputId: string, e: React.KeyboardEvent, index: number) => {
     if (e.key === "Enter") {
       if (!spanRef.current[index] || !inputRef.current[index]) return;
       spanRef.current[index].textContent = inputRef.current[index].value || "";
@@ -281,10 +270,7 @@ export const Annotator = ({
     const lastShape = shapes[shapes.length - 1];
     if (lastShape && lastShape.type === "line") {
       // Append point
-      const newPoints = [
-        ...lastShape.points,
-        [adjustedPoint.x, adjustedPoint.y] as Point,
-      ];
+      const newPoints = [...lastShape.points, [adjustedPoint.x, adjustedPoint.y] as Point];
       const updatedShape = { ...lastShape, points: newPoints };
 
       // Update shapes without saving history yet (performance)
@@ -319,8 +305,7 @@ export const Annotator = ({
 
   // Calculate scale to fit image in container
   const scale = useMemo(() => {
-    if (!image || containerSize.width === 0 || containerSize.height === 0)
-      return 1;
+    if (!image || containerSize.width === 0 || containerSize.height === 0) return 1;
 
     const scaleX = containerSize.width / image.width;
 
@@ -396,9 +381,7 @@ export const Annotator = ({
           onMouseUp={handleMouseUp}
           onShapeSelect={setSelectedId}
           onShapeDragEnd={(id, x, y) => {
-            const newShapes = shapes.map((s) =>
-              s.id === id ? { ...s, x, y } : s,
-            );
+            const newShapes = shapes.map((s) => (s.id === id ? { ...s, x, y } : s));
             setShapes(newShapes);
             saveHistory(newShapes);
           }}

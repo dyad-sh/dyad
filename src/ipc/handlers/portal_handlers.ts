@@ -60,29 +60,20 @@ export function registerPortalHandlers() {
         });
 
         process.on("close", (code) => {
-          const combinedOutput =
-            stdout + (stderr ? `\n\nErrors/Warnings:\n${stderr}` : "");
+          const combinedOutput = stdout + (stderr ? `\n\nErrors/Warnings:\n${stderr}` : "");
 
           if (code === 0) {
             if (stdout.includes("Migration created at")) {
-              logger.info(
-                `migrate:create completed successfully for app ${appId}`,
-              );
+              logger.info(`migrate:create completed successfully for app ${appId}`);
               resolve(combinedOutput);
             } else {
               logger.error(
                 `migrate:create completed successfully for app ${appId} but no migration was created`,
               );
-              reject(
-                new Error(
-                  "No migration was created because no changes were found.",
-                ),
-              );
+              reject(new Error("No migration was created because no changes were found."));
             }
           } else {
-            logger.error(
-              `migrate:create failed for app ${appId} with exit code ${code}`,
-            );
+            logger.error(`migrate:create failed for app ${appId} with exit code ${code}`);
             const errorMessage = `Migration creation failed (exit code ${code})\n\n${combinedOutput}`;
             reject(new Error(errorMessage));
           }
@@ -101,10 +92,7 @@ export function registerPortalHandlers() {
             appId: app.id,
           });
         } catch (error) {
-          logger.error(
-            "Error storing Neon timestamp at current version:",
-            error,
-          );
+          logger.error("Error storing Neon timestamp at current version:", error);
           throw new Error(
             "Could not store Neon timestamp at current version; database versioning functionality is not working: " +
               error,

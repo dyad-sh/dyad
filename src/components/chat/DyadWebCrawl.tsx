@@ -7,10 +7,7 @@ interface DyadWebCrawlProps {
   node?: any;
 }
 
-export const DyadWebCrawl: React.FC<DyadWebCrawlProps> = ({
-  children,
-  node: _node,
-}) => {
+export const DyadWebCrawl: React.FC<DyadWebCrawlProps> = ({ children, node: _node }) => {
   return (
     <div className="bg-(--background-lightest) rounded-lg px-4 py-2 border my-2">
       <div className="flex items-center justify-between">
@@ -19,9 +16,7 @@ export const DyadWebCrawl: React.FC<DyadWebCrawlProps> = ({
           <div className="text-xs text-blue-600 font-medium">Web Crawl</div>
         </div>
       </div>
-      <div className="text-sm italic text-gray-600 dark:text-gray-300 mt-2">
-        {children}
-      </div>
+      <div className="text-sm italic text-gray-600 dark:text-gray-300 mt-2">{children}</div>
     </div>
   );
 };

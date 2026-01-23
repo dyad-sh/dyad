@@ -45,9 +45,7 @@ async function callTurboFileEdit(
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(
-      `File edit failed: ${response.status} ${response.statusText} - ${errorText}`,
-    );
+    throw new Error(`File edit failed: ${response.status} ${response.statusText} - ${errorText}`);
   }
 
   const data = turboFileEditResponseSchema.parse(await response.json());
@@ -175,9 +173,7 @@ export const editFileTool: ToolDefinition<z.infer<typeof editFileSchema>> = {
     );
 
     if (!newContent) {
-      throw new Error(
-        "Failed to extract content from turbo-file-edit response",
-      );
+      throw new Error("Failed to extract content from turbo-file-edit response");
     }
 
     // Ensure directory exists
@@ -189,11 +185,7 @@ export const editFileTool: ToolDefinition<z.infer<typeof editFileSchema>> = {
     logger.log(`Successfully edited file: ${fullFilePath}`);
 
     // Deploy Supabase function if applicable
-    if (
-      ctx.supabaseProjectId &&
-      isServerFunction(args.path) &&
-      !ctx.isSharedModulesChanged
-    ) {
+    if (ctx.supabaseProjectId && isServerFunction(args.path) && !ctx.isSharedModulesChanged) {
       try {
         await deploySupabaseFunction({
           supabaseProjectId: ctx.supabaseProjectId,

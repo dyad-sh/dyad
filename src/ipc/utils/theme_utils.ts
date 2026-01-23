@@ -36,9 +36,7 @@ export function getBuiltinThemeById(themeId: string | null): Theme | null {
  * Async function to resolve theme prompt by ID.
  * Handles both built-in themes (by ID) and custom themes (prefixed with "custom:")
  */
-export async function getThemePromptById(
-  themeId: string | null,
-): Promise<string> {
+export async function getThemePromptById(themeId: string | null): Promise<string> {
   if (!themeId) {
     return "";
   }

@@ -37,14 +37,9 @@ export function AppSearchDialog({
   const { apps: searchResults } = useSearchApps(debouncedQuery);
 
   // Show all apps if search is empty, otherwise show search results
-  const appsToShow: AppSearchResult[] =
-    debouncedQuery.trim() === "" ? allApps : searchResults;
+  const appsToShow: AppSearchResult[] = debouncedQuery.trim() === "" ? allApps : searchResults;
 
-  const commandFilter = (
-    value: string,
-    search: string,
-    keywords?: string[],
-  ): number => {
+  const commandFilter = (value: string, search: string, keywords?: string[]): number => {
     const q = search.trim().toLowerCase();
     if (!q) return 1;
     const v = (value || "").toLowerCase();
@@ -52,9 +47,7 @@ export function AppSearchDialog({
       // Higher score for earlier match in title/value
       return 100 - Math.max(0, v.indexOf(q));
     }
-    const foundInKeywords = (keywords || []).some((k) =>
-      (k || "").toLowerCase().includes(q),
-    );
+    const foundInKeywords = (keywords || []).some((k) => (k || "").toLowerCase().includes(q));
     return foundInKeywords ? 50 : 0;
   };
 
@@ -73,16 +66,14 @@ export function AppSearchDialog({
     const lowerQuery = q.toLowerCase();
     const idx = lowerText.indexOf(lowerQuery);
     if (idx === -1) {
-      const raw =
-        text.length > radius * 2 ? text.slice(0, radius * 2) + "…" : text;
+      const raw = text.length > radius * 2 ? text.slice(0, radius * 2) + "…" : text;
       return { before: "", match: "", after: "", raw };
     }
     const start = Math.max(0, idx - radius);
     const end = Math.min(text.length, idx + q.length + radius);
     const before = (start > 0 ? "…" : "") + text.slice(start, idx);
     const match = text.slice(idx, idx + q.length);
-    const after =
-      text.slice(idx + q.length, end) + (end < text.length ? "…" : "");
+    const after = text.slice(idx + q.length, end) + (end < text.length ? "…" : "");
     return { before, match, after, raw: before + match + after };
   }
 
@@ -111,9 +102,7 @@ export function AppSearchDialog({
         data-testid="app-search-input"
       />
       <CommandList data-testid="app-search-list">
-        <CommandEmpty data-testid="app-search-empty">
-          No results found.
-        </CommandEmpty>
+        <CommandEmpty data-testid="app-search-empty">No results found.</CommandEmpty>
         <CommandGroup heading="Apps" data-testid="app-search-group">
           {appsToShow.map((app) => {
             const isSearch = searchQuery.trim() !== "";

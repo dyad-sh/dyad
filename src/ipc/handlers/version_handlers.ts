@@ -26,14 +26,8 @@ import {
   isGitStatusClean,
 } from "../utils/git_utils";
 
-import {
-  getNeonClient,
-  getNeonErrorMessage,
-} from "../../neon_admin/neon_management_client";
-import {
-  updatePostgresUrlEnvVar,
-  updateDbPushEnvVar,
-} from "../utils/app_env_var_utils";
+import { getNeonClient, getNeonErrorMessage } from "../../neon_admin/neon_management_client";
+import { updatePostgresUrlEnvVar, updateDbPushEnvVar } from "../utils/app_env_var_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import { retryOnLocked } from "../utils/retryOnLocked";
 
@@ -100,10 +94,7 @@ export function registerVersionHandlers() {
     });
 
     // Create a map of commitHash -> snapshot info for quick lookup
-    const snapshotMap = new Map<
-      string,
-      { neonDbTimestamp: string | null; createdAt: Date }
-    >();
+    const snapshotMap = new Map<string, { neonDbTimestamp: string | null; createdAt: Date }>();
     for (const snapshot of appSnapshots) {
       snapshotMap.set(snapshot.commitHash, {
         neonDbTimestamp: snapshot.neonDbTimestamp,
@@ -122,36 +113,33 @@ export function registerVersionHandlers() {
     }) satisfies Version[];
   });
 
-  handle(
-    "get-current-branch",
-    async (_, { appId }: { appId: number }): Promise<BranchResult> => {
-      const app = await db.query.apps.findFirst({
-        where: eq(apps.id, appId),
-      });
+  handle("get-current-branch", async (_, { appId }: { appId: number }): Promise<BranchResult> => {
+    const app = await db.query.apps.findFirst({
+      where: eq(apps.id, appId),
+    });
 
-      if (!app) {
-        throw new Error("App not found");
-      }
+    if (!app) {
+      throw new Error("App not found");
+    }
 
-      const appPath = getDyadAppPath(app.path);
+    const appPath = getDyadAppPath(app.path);
 
-      // Return appropriate result if the app is not a git repo
-      if (!fs.existsSync(path.join(appPath, ".git"))) {
-        throw new Error("Not a git repository");
-      }
+    // Return appropriate result if the app is not a git repo
+    if (!fs.existsSync(path.join(appPath, ".git"))) {
+      throw new Error("Not a git repository");
+    }
 
-      try {
-        const currentBranch = await gitCurrentBranch({ path: appPath });
+    try {
+      const currentBranch = await gitCurrentBranch({ path: appPath });
 
-        return {
-          branch: currentBranch || "<no-branch>",
-        };
-      } catch (error: any) {
-        logger.error(`Error getting current branch for app ${appId}:`, error);
-        throw new Error(`Failed to get current branch: ${error.message}`);
-      }
-    },
-  );
+      return {
+        branch: currentBranch || "<no-branch>",
+      };
+    } catch (error: any) {
+      logger.error(`Error getting current branch for app ${appId}:`, error);
+      throw new Error(`Failed to get current branch: ${error.message}`);
+    }
+  });
 
   handle(
     "revert-version",
@@ -208,10 +196,7 @@ export function registerVersionHandlers() {
           const { chatId, messageId } = currentChatMessageId;
 
           const messagesToDelete = await db.query.messages.findMany({
-            where: and(
-              eq(messages.chatId, chatId),
-              gte(messages.id, messageId),
-            ),
+            where: and(eq(messages.chatId, chatId), gte(messages.id, messageId)),
             orderBy: desc(messages.id),
           });
 
@@ -222,9 +207,7 @@ export function registerVersionHandlers() {
           if (messagesToDelete.length > 0) {
             await db
               .delete(messages)
-              .where(
-                and(eq(messages.chatId, chatId), gte(messages.id, messageId)),
-              );
+              .where(and(eq(messages.chatId, chatId), gte(messages.id, messageId)));
           }
         } else {
           // Find the chat and message associated with the commit hash
@@ -241,10 +224,7 @@ export function registerVersionHandlers() {
 
             // Find all messages in this chat with IDs > the one with our commit hash
             const messagesToDelete = await db.query.messages.findMany({
-              where: and(
-                eq(messages.chatId, chatId),
-                gt(messages.id, messageWithCommit.id),
-              ),
+              where: and(eq(messages.chatId, chatId), gt(messages.id, messageWithCommit.id)),
               orderBy: desc(messages.id),
             });
 
@@ -256,22 +236,14 @@ export function registerVersionHandlers() {
             if (messagesToDelete.length > 0) {
               await db
                 .delete(messages)
-                .where(
-                  and(
-                    eq(messages.chatId, chatId),
-                    gt(messages.id, messageWithCommit.id),
-                  ),
-                );
+                .where(and(eq(messages.chatId, chatId), gt(messages.id, messageWithCommit.id)));
             }
           }
         }
 
         if (app.neonProjectId && app.neonDevelopmentBranchId) {
           const version = await db.query.versions.findFirst({
-            where: and(
-              eq(versions.appId, appId),
-              eq(versions.commitHash, previousVersionId),
-            ),
+            where: and(eq(versions.appId, appId), eq(versions.commitHash, previousVersionId)),
           });
           if (version && version.neonDbTimestamp) {
             try {
@@ -306,19 +278,13 @@ export function registerVersionHandlers() {
               if (!preserveBranchId) {
                 throw new Error("Preserve branch ID not found");
               }
-              logger.info(
-                `Deleting preserve branch ${preserveBranchId} for app ${appId}`,
-              );
+              logger.info(`Deleting preserve branch ${preserveBranchId} for app ${appId}`);
               try {
                 // Intentionally do not await this because it's not
                 // critical for the restore operation, it's to clean up branches
                 // so the user doesn't hit the branch limit later.
                 retryOnLocked(
-                  () =>
-                    neonClient.deleteProjectBranch(
-                      app.neonProjectId!,
-                      preserveBranchId,
-                    ),
+                  () => neonClient.deleteProjectBranch(app.neonProjectId!, preserveBranchId),
                   `Delete preserve branch ${preserveBranchId} for app ${appId}`,
                   { retryBranchWithChildError: true },
                 );
@@ -333,8 +299,7 @@ export function registerVersionHandlers() {
               // Do not throw, so we can finish switching the postgres branch
               // It might throw because they picked a timestamp that's too old.
             }
-            successMessage =
-              "Successfully restored to version (including database)";
+            successMessage = "Successfully restored to version (including database)";
           }
           await switchPostgresToDevelopmentBranch({
             neonProjectId: app.neonProjectId,
@@ -345,9 +310,7 @@ export function registerVersionHandlers() {
         // Re-deploy all Supabase edge functions after reverting
         if (app.supabaseProjectId) {
           try {
-            logger.info(
-              `Re-deploying all Supabase edge functions for app ${appId} after revert`,
-            );
+            logger.info(`Re-deploying all Supabase edge functions for app ${appId} after revert`);
             const deployErrors = await deployAllSupabaseFunctions({
               appPath,
               supabaseProjectId: app.supabaseProjectId,
@@ -360,9 +323,7 @@ export function registerVersionHandlers() {
               // Note: We don't fail the revert operation if function deployment fails
               // The code has been successfully reverted, but functions may be out of sync
             } else {
-              logger.info(
-                `Successfully re-deployed all Supabase edge functions for app ${appId}`,
-              );
+              logger.info(`Successfully re-deployed all Supabase edge functions for app ${appId}`);
             }
           } catch (error) {
             warningMessage += `Error re-deploying Supabase edge functions after revert: ${error}`;
@@ -393,24 +354,16 @@ export function registerVersionHandlers() {
           throw new Error("App not found");
         }
 
-        if (
-          app.neonProjectId &&
-          app.neonDevelopmentBranchId &&
-          app.neonPreviewBranchId
-        ) {
+        if (app.neonProjectId && app.neonDevelopmentBranchId && app.neonPreviewBranchId) {
           if (gitRef === "main") {
-            logger.info(
-              `Switching Postgres to development branch for app ${appId}`,
-            );
+            logger.info(`Switching Postgres to development branch for app ${appId}`);
             await switchPostgresToDevelopmentBranch({
               neonProjectId: app.neonProjectId,
               neonDevelopmentBranchId: app.neonDevelopmentBranchId,
               appPath: app.path,
             });
           } else {
-            logger.info(
-              `Switching Postgres to preview branch for app ${appId}`,
-            );
+            logger.info(`Switching Postgres to preview branch for app ${appId}`);
 
             // Regardless of whether we have a timestamp or not, we want to disable DB push
             // while we're checking out an earlier version
@@ -420,10 +373,7 @@ export function registerVersionHandlers() {
             });
 
             const version = await db.query.versions.findFirst({
-              where: and(
-                eq(versions.appId, appId),
-                eq(versions.commitHash, gitRef),
-              ),
+              where: and(eq(versions.appId, appId), eq(versions.commitHash, gitRef)),
             });
 
             if (version && version.neonDbTimestamp) {

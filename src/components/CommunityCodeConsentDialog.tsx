@@ -16,28 +16,26 @@ interface CommunityCodeConsentDialogProps {
   onCancel: () => void;
 }
 
-export const CommunityCodeConsentDialog: React.FC<
-  CommunityCodeConsentDialogProps
-> = ({ isOpen, onAccept, onCancel }) => {
+export const CommunityCodeConsentDialog: React.FC<CommunityCodeConsentDialogProps> = ({
+  isOpen,
+  onAccept,
+  onCancel,
+}) => {
   return (
     <AlertDialog open={isOpen} onOpenChange={(open) => !open && onCancel()}>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Community Code Notice</AlertDialogTitle>
           <AlertDialogDescription className="space-y-3">
+            <p>This code was created by a Dyad community member, not our core team.</p>
             <p>
-              This code was created by a Dyad community member, not our core
-              team.
+              Community code can be very helpful, but since it's built independently, it may have
+              bugs, security risks, or could cause issues with your system. We can't provide
+              official support if problems occur.
             </p>
             <p>
-              Community code can be very helpful, but since it's built
-              independently, it may have bugs, security risks, or could cause
-              issues with your system. We can't provide official support if
-              problems occur.
-            </p>
-            <p>
-              We recommend reviewing the code on GitHub first. Only proceed if
-              you're comfortable with these risks.
+              We recommend reviewing the code on GitHub first. Only proceed if you're comfortable
+              with these risks.
             </p>
           </AlertDialogDescription>
         </AlertDialogHeader>

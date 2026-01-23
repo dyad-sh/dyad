@@ -23,9 +23,7 @@ function Component() {
   return <div className="existing-class">Hello</div>;
 }`;
 
-      const changes = new Map([
-        [3, { classes: ["bg-[#0000ff]"], prefixes: ["bg-"] }],
-      ]);
+      const changes = new Map([[3, { classes: ["bg-[#0000ff]"], prefixes: ["bg-"] }]]);
 
       const result = transformContent(content, changes);
       expect(result).toContain("existing-class");
@@ -38,9 +36,7 @@ function Component() {
   return <div className="bg-[#ff0000] p-[16px] text-[18px]">Hello</div>;
 }`;
 
-      const changes = new Map([
-        [3, { classes: ["bg-[#0000ff]"], prefixes: ["bg-"] }],
-      ]);
+      const changes = new Map([[3, { classes: ["bg-[#0000ff]"], prefixes: ["bg-"] }]]);
 
       const result = transformContent(content, changes);
       expect(result).not.toContain("bg-[#ff0000]");
@@ -55,9 +51,7 @@ function Component() {
   return <div className="font-[600] text-lg">Hello</div>;
 }`;
 
-      const changes = new Map([
-        [3, { classes: ["font-[700]"], prefixes: ["font-weight-"] }],
-      ]);
+      const changes = new Map([[3, { classes: ["font-[700]"], prefixes: ["font-weight-"] }]]);
 
       const result = transformContent(content, changes);
       expect(result).not.toContain("font-[600]");
@@ -71,9 +65,7 @@ function Component() {
   return <div className="font-[600] font-[Inter] text-lg">Hello</div>;
 }`;
 
-      const changes = new Map([
-        [3, { classes: ["font-[Roboto]"], prefixes: ["font-family-"] }],
-      ]);
+      const changes = new Map([[3, { classes: ["font-[Roboto]"], prefixes: ["font-family-"] }]]);
 
       const result = transformContent(content, changes);
       expect(result).toContain("font-[600]");
@@ -87,9 +79,7 @@ function Component() {
   return <div className="text-[18px] text-[center] text-[#ff0000]">Hello</div>;
 }`;
 
-      const changes = new Map([
-        [3, { classes: ["text-[24px]"], prefixes: ["text-size-"] }],
-      ]);
+      const changes = new Map([[3, { classes: ["text-[24px]"], prefixes: ["text-size-"] }]]);
 
       const result = transformContent(content, changes);
       expect(result).not.toContain("text-[18px]");
@@ -104,9 +94,7 @@ function Component() {
   return <div className="text-[44px] text-center">Hello</div>;
 }`;
 
-      const changes = new Map([
-        [3, { classes: ["text-[32px]"], prefixes: ["text-size-"] }],
-      ]);
+      const changes = new Map([[3, { classes: ["text-[32px]"], prefixes: ["text-size-"] }]]);
 
       const result = transformContent(content, changes);
       expect(result).not.toContain("text-[44px]");
@@ -120,9 +108,7 @@ function Component() {
   return <div className="mt-[16px] mb-[8px] mx-[24px]">Hello</div>;
 }`;
 
-      const changes = new Map([
-        [3, { classes: ["my-[20px]"], prefixes: ["my-"] }],
-      ]);
+      const changes = new Map([[3, { classes: ["my-[20px]"], prefixes: ["my-"] }]]);
 
       const result = transformContent(content, changes);
       expect(result).not.toContain("mt-[16px]");
@@ -137,9 +123,7 @@ function Component() {
   return <div className="ml-[16px] mr-[8px] my-[24px]">Hello</div>;
 }`;
 
-      const changes = new Map([
-        [3, { classes: ["mx-[20px]"], prefixes: ["mx-"] }],
-      ]);
+      const changes = new Map([[3, { classes: ["mx-[20px]"], prefixes: ["mx-"] }]]);
 
       const result = transformContent(content, changes);
       expect(result).not.toContain("ml-[16px]");
@@ -154,9 +138,7 @@ function Component() {
   return <div className="pt-[16px] pb-[8px] px-[24px]">Hello</div>;
 }`;
 
-      const changes = new Map([
-        [3, { classes: ["py-[20px]"], prefixes: ["py-"] }],
-      ]);
+      const changes = new Map([[3, { classes: ["py-[20px]"], prefixes: ["py-"] }]]);
 
       const result = transformContent(content, changes);
       expect(result).not.toContain("pt-[16px]");
@@ -399,9 +381,7 @@ function Component() {
   );
 }`;
 
-      const changes = new Map([
-        [4, { classes: ["text-[24px]"], prefixes: ["text-size-"] }],
-      ]);
+      const changes = new Map([[4, { classes: ["text-[24px]"], prefixes: ["text-size-"] }]]);
 
       const result = transformContent(content, changes);
       expect(result).toContain("text-[24px]");

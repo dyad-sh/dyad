@@ -1,10 +1,5 @@
 import { z } from "zod";
-import {
-  ToolDefinition,
-  AgentContext,
-  escapeXmlAttr,
-  escapeXmlContent,
-} from "./types";
+import { ToolDefinition, AgentContext, escapeXmlAttr, escapeXmlContent } from "./types";
 import { generateProblemReport } from "@/ipc/processors/tsc";
 import type { Problem } from "@/ipc/ipc_types";
 import { safeSend } from "@/ipc/utils/safe_sender";
@@ -31,9 +26,7 @@ function matchesPaths(problemFile: string, paths: string[]): boolean {
 
   for (const targetPath of paths) {
     // Normalize target path (convert backslashes, remove leading ./ and trailing /)
-    const normalizedTarget = normalizePath(targetPath)
-      .replace(/^\.\//, "")
-      .replace(/\/$/, "");
+    const normalizedTarget = normalizePath(targetPath).replace(/^\.\//, "").replace(/\/$/, "");
 
     // Exact file match
     if (normalizedProblemFile === normalizedTarget) {
@@ -57,16 +50,12 @@ function formatProblems(problems: Problem[]): string {
     return "No type errors found.";
   }
 
-  const lines = problems.map(
-    (p) => `${p.file}:${p.line}:${p.column}: ${p.message}`,
-  );
+  const lines = problems.map((p) => `${p.file}:${p.line}:${p.column}: ${p.message}`);
 
   return `Found ${problems.length} type error(s):\n\n${lines.join("\n")}`;
 }
 
-export const runTypeChecksTool: ToolDefinition<
-  z.infer<typeof runTypeChecksSchema>
-> = {
+export const runTypeChecksTool: ToolDefinition<z.infer<typeof runTypeChecksSchema>> = {
   name: "run_type_checks",
   description: `Run TypeScript type checks on the current workspace. You can provide paths to specific files or directories, or omit the argument to get diagnostics for all files.
 
@@ -89,9 +78,7 @@ export const runTypeChecksTool: ToolDefinition<
       args.paths && args.paths.length > 0
         ? `Type checking: ${args.paths.join(", ")}`
         : "Type checking all files";
-    ctx.onXmlStream(
-      `<dyad-status title="${escapeXmlAttr(title)}"></dyad-status>`,
-    );
+    ctx.onXmlStream(`<dyad-status title="${escapeXmlAttr(title)}"></dyad-status>`);
 
     // Run TypeScript type checking using existing infrastructure
     const problemReport = await generateProblemReport({

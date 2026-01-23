@@ -26,11 +26,7 @@ interface ConsoleHeaderProps {
 }
 
 // Console header component
-const ConsoleHeader = ({
-  isOpen,
-  onToggle,
-  latestMessage,
-}: ConsoleHeaderProps) => (
+const ConsoleHeader = ({ isOpen, onToggle, latestMessage }: ConsoleHeaderProps) => (
   <div
     onClick={onToggle}
     className="flex items-start gap-2 px-4 py-1.5 border-t border-border cursor-pointer hover:bg-[var(--background-darkest)] transition-colors"
@@ -61,9 +57,7 @@ export function PreviewPanel() {
   const consoleEntries = useAtomValue(appConsoleEntriesAtom);
 
   const latestMessage =
-    consoleEntries.length > 0
-      ? consoleEntries[consoleEntries.length - 1]?.message
-      : undefined;
+    consoleEntries.length > 0 ? consoleEntries[consoleEntries.length - 1]?.message : undefined;
 
   useEffect(() => {
     const previousAppId = runningAppIdRef.current;

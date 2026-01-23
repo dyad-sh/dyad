@@ -82,9 +82,7 @@ FOUR
 `;
     const { success, content } = applySearchReplace(original, diff);
     expect(success).toBe(true);
-    expect(content).toBe(
-      ["ONE", "ONE-EXTRA", "2", "3", "FOUR", "5"].join("\n"),
-    );
+    expect(content).toBe(["ONE", "ONE-EXTRA", "2", "3", "FOUR", "5"].join("\n"));
   });
 
   it("detects and strips line-numbered content, inferring start line when omitted", () => {
@@ -102,13 +100,7 @@ A\nB
   });
 
   it("preserves indentation relative to matched block", () => {
-    const original = [
-      "function test() {",
-      "  if (x) {",
-      "    doThing();",
-      "  }",
-      "}",
-    ].join("\n");
+    const original = ["function test() {", "  if (x) {", "    doThing();", "  }", "}"].join("\n");
     const diff = `
 <<<<<<< SEARCH
   if (x) {

@@ -9,9 +9,7 @@ test("can edit custom provider", async ({ po }) => {
   // Edit it
   await po.page.getByTestId("edit-custom-provider").click();
   await po.page.getByRole("textbox", { name: "Display Name" }).clear();
-  await po.page
-    .getByRole("textbox", { name: "Display Name" })
-    .fill("Updated Test Provider");
+  await po.page.getByRole("textbox", { name: "Display Name" }).fill("Updated Test Provider");
 
   await po.page.getByRole("textbox", { name: "API Base URL" }).clear();
   await po.page

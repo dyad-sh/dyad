@@ -96,18 +96,12 @@ export function useSettings() {
 
 function processSettingsForTelemetry(settings: UserSettings) {
   if (settings.telemetryConsent) {
-    window.localStorage.setItem(
-      TELEMETRY_CONSENT_KEY,
-      settings.telemetryConsent,
-    );
+    window.localStorage.setItem(TELEMETRY_CONSENT_KEY, settings.telemetryConsent);
   } else {
     window.localStorage.removeItem(TELEMETRY_CONSENT_KEY);
   }
   if (settings.telemetryUserId) {
-    window.localStorage.setItem(
-      TELEMETRY_USER_ID_KEY,
-      settings.telemetryUserId,
-    );
+    window.localStorage.setItem(TELEMETRY_USER_ID_KEY, settings.telemetryUserId);
   } else {
     window.localStorage.removeItem(TELEMETRY_USER_ID_KEY);
   }

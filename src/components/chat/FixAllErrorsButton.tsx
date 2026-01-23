@@ -8,18 +8,13 @@ interface FixAllErrorsButtonProps {
   chatId: number;
 }
 
-export function FixAllErrorsButton({
-  errorMessages,
-  chatId,
-}: FixAllErrorsButtonProps) {
+export function FixAllErrorsButton({ errorMessages, chatId }: FixAllErrorsButtonProps) {
   const { streamMessage } = useStreamChat();
   const [isLoading, setIsLoading] = useState(false);
 
   const handleFixAllErrors = () => {
     setIsLoading(true);
-    const allErrors = errorMessages
-      .map((msg, i) => `${i + 1}. ${msg}`)
-      .join("\n");
+    const allErrors = errorMessages.map((msg, i) => `${i + 1}. ${msg}`).join("\n");
 
     streamMessage({
       prompt: `Fix all of the following errors:\n\n${allErrors}`,

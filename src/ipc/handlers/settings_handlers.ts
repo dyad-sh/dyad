@@ -11,11 +11,8 @@ export function registerSettingsHandlers() {
   });
 
   // Intentionally do NOT use handle because it could log sensitive data from the args.
-  ipcMain.handle(
-    "set-user-settings",
-    async (_, settings: Partial<UserSettings>) => {
-      writeSettings(settings);
-      return readSettings();
-    },
-  );
+  ipcMain.handle("set-user-settings", async (_, settings: Partial<UserSettings>) => {
+    writeSettings(settings);
+    return readSettings();
+  });
 }

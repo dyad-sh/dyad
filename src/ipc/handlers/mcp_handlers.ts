@@ -21,70 +21,58 @@ export function registerMcpHandlers() {
     return await db.select().from(mcpServers);
   });
 
-  handle(
-    "mcp:create-server",
-    async (_event: IpcMainInvokeEvent, params: CreateMcpServer) => {
-      const { name, transport, command, args, envJson, url, enabled } = params;
-      const result = await db
-        .insert(mcpServers)
-        .values({
-          name,
-          transport,
-          command: command || null,
-          args: args || null,
-          envJson: envJson || null,
-          url: url || null,
-          enabled: !!enabled,
-        })
-        .returning();
-      return result[0];
-    },
-  );
+  handle("mcp:create-server", async (_event: IpcMainInvokeEvent, params: CreateMcpServer) => {
+    const { name, transport, command, args, envJson, url, enabled } = params;
+    const result = await db
+      .insert(mcpServers)
+      .values({
+        name,
+        transport,
+        command: command || null,
+        args: args || null,
+        envJson: envJson || null,
+        url: url || null,
+        enabled: !!enabled,
+      })
+      .returning();
+    return result[0];
+  });
 
-  handle(
-    "mcp:update-server",
-    async (_event: IpcMainInvokeEvent, params: McpServerUpdate) => {
-      const update: any = {};
-      if (params.name !== undefined) update.name = params.name;
-      if (params.transport !== undefined) update.transport = params.transport;
-      if (params.command !== undefined) update.command = params.command;
-      if (params.args !== undefined) update.args = params.args || null;
-      if (params.cwd !== undefined) update.cwd = params.cwd;
-      if (params.envJson !== undefined) update.envJson = params.envJson || null;
-      if (params.url !== undefined) update.url = params.url;
-      if (params.enabled !== undefined) update.enabled = !!params.enabled;
+  handle("mcp:update-server", async (_event: IpcMainInvokeEvent, params: McpServerUpdate) => {
+    const update: any = {};
+    if (params.name !== undefined) update.name = params.name;
+    if (params.transport !== undefined) update.transport = params.transport;
+    if (params.command !== undefined) update.command = params.command;
+    if (params.args !== undefined) update.args = params.args || null;
+    if (params.cwd !== undefined) update.cwd = params.cwd;
+    if (params.envJson !== undefined) update.envJson = params.envJson || null;
+    if (params.url !== undefined) update.url = params.url;
+    if (params.enabled !== undefined) update.enabled = !!params.enabled;
 
-      const result = await db
-        .update(mcpServers)
-        .set(update)
-        .where(eq(mcpServers.id, params.id))
-        .returning();
-      // If server config changed, dispose cached client to be recreated on next use
-      try {
-        mcpManager.dispose(params.id);
-      } catch {}
-      return result[0];
-    },
-  );
+    const result = await db
+      .update(mcpServers)
+      .set(update)
+      .where(eq(mcpServers.id, params.id))
+      .returning();
+    // If server config changed, dispose cached client to be recreated on next use
+    try {
+      mcpManager.dispose(params.id);
+    } catch {}
+    return result[0];
+  });
 
-  handle(
-    "mcp:delete-server",
-    async (_event: IpcMainInvokeEvent, id: number) => {
-      try {
-        mcpManager.dispose(id);
-      } catch {}
-      await db.delete(mcpServers).where(eq(mcpServers.id, id));
-      return { success: true };
-    },
-  );
+  handle("mcp:delete-server", async (_event: IpcMainInvokeEvent, id: number) => {
+    try {
+      mcpManager.dispose(id);
+    } catch {}
+    await db.delete(mcpServers).where(eq(mcpServers.id, id));
+    return { success: true };
+  });
 
   // Tools listing (dynamic)
   handle(
     "mcp:list-tools",
-    async (
-      _event: IpcMainInvokeEvent,
-      serverId: number,
-    ): Promise<McpTool[]> => {
+    async (_event: IpcMainInvokeEvent, serverId: number): Promise<McpTool[]> => {
       try {
         const client = await mcpManager.getClient(serverId);
         const remoteTools = await client.tools();

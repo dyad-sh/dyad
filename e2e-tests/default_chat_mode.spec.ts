@@ -7,9 +7,9 @@ test("default chat mode - pro user defaults and setting change applies to new ch
   await po.setUpDyadPro({ localAgent: true, autoApprove: true });
 
   // Pro users should default to local-agent mode
-  await expect(
-    po.getHomeChatInputContainer().getByTestId("chat-mode-selector"),
-  ).toHaveText("Agent");
+  await expect(po.getHomeChatInputContainer().getByTestId("chat-mode-selector")).toHaveText(
+    "Agent",
+  );
 
   // Change default chat mode to "agent" (Build with MCP) in settings
   await po.goToSettingsTab();
@@ -24,16 +24,14 @@ test("default chat mode - pro user defaults and setting change applies to new ch
   await po.clickNewChat();
 
   // Verify the chat mode selector shows the new default mode
-  await expect(po.page.getByTestId("chat-mode-selector")).toContainText(
-    "Build (MCP)",
-  );
+  await expect(po.page.getByTestId("chat-mode-selector")).toContainText("Build (MCP)");
 });
 
 test("default chat mode - non-pro user defaults to build", async ({ po }) => {
   await po.setUp();
 
   // Non-pro users should default to build mode
-  await expect(
-    po.getHomeChatInputContainer().getByTestId("chat-mode-selector"),
-  ).toHaveText("Build");
+  await expect(po.getHomeChatInputContainer().getByTestId("chat-mode-selector")).toHaveText(
+    "Build",
+  );
 });

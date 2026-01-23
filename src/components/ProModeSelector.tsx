@@ -1,14 +1,6 @@
 import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Sparkles, Info } from "lucide-react";
@@ -93,17 +85,13 @@ export function ProModeSelector() {
                   <a
                     className="inline-flex items-center justify-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
                     onClick={() => {
-                      IpcClient.getInstance().openExternalUrl(
-                        "https://dyad.sh/pro#ai",
-                      );
+                      IpcClient.getInstance().openExternalUrl("https://dyad.sh/pro#ai");
                     }}
                   >
                     Unlock Pro modes
                   </a>
                 </TooltipTrigger>
-                <TooltipContent>
-                  Visit dyad.sh/pro to unlock Pro features
-                </TooltipContent>
+                <TooltipContent>Visit dyad.sh/pro to unlock Pro features</TooltipContent>
               </Tooltip>
             </div>
           )}
@@ -160,10 +148,7 @@ function SelectorRow({
   return (
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-1.5">
-        <Label
-          htmlFor={id}
-          className={!isTogglable ? "text-muted-foreground/50" : ""}
-        >
+        <Label htmlFor={id} className={!isTogglable ? "text-muted-foreground/50" : ""}>
           {label}
         </Label>
         <Tooltip>
@@ -217,9 +202,7 @@ function TurboEditsSelector({
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-1.5">
-        <Label className={!isTogglable ? "text-muted-foreground/50" : ""}>
-          Turbo Edits
-        </Label>
+        <Label className={!isTogglable ? "text-muted-foreground/50" : ""}>Turbo Edits</Label>
         <Tooltip>
           <TooltipTrigger asChild>
             <Info
@@ -270,9 +253,7 @@ function TurboEditsSelector({
               Classic
             </Button>
           </TooltipTrigger>
-          <TooltipContent>
-            Uses a smaller model to complete edits
-          </TooltipContent>
+          <TooltipContent>Uses a smaller model to complete edits</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -286,9 +267,7 @@ function TurboEditsSelector({
               Search & replace
             </Button>
           </TooltipTrigger>
-          <TooltipContent>
-            Find and replaces specific text blocks
-          </TooltipContent>
+          <TooltipContent>Find and replaces specific text blocks</TooltipContent>
         </Tooltip>
       </div>
     </div>
@@ -324,9 +303,7 @@ function SmartContextSelector({
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-1.5">
-        <Label className={!isTogglable ? "text-muted-foreground/50" : ""}>
-          Smart Context
-        </Label>
+        <Label className={!isTogglable ? "text-muted-foreground/50" : ""}>Smart Context</Label>
         <Tooltip>
           <TooltipTrigger asChild>
             <Info
@@ -334,8 +311,7 @@ function SmartContextSelector({
             />
           </TooltipTrigger>
           <TooltipContent side="right" className="max-w-72">
-            Selects the most relevant files as context to save credits working
-            on large codebases.
+            Selects the most relevant files as context to save credits working on large codebases.
           </TooltipContent>
         </Tooltip>
       </div>
@@ -369,9 +345,7 @@ function SmartContextSelector({
               Balanced
             </Button>
           </TooltipTrigger>
-          <TooltipContent>
-            Selects most relevant files with balanced context size
-          </TooltipContent>
+          <TooltipContent>Selects most relevant files with balanced context size</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -386,8 +360,8 @@ function SmartContextSelector({
             </Button>
           </TooltipTrigger>
           <TooltipContent>
-            <b>Experimental:</b> Keeps full conversation history for maximum
-            context and cache-optimized to control costs
+            <b>Experimental:</b> Keeps full conversation history for maximum context and
+            cache-optimized to control costs
           </TooltipContent>
         </Tooltip>
       </div>

@@ -8,12 +8,7 @@ interface ColorPickerProps {
   className?: string;
 }
 
-export function ColorPicker({
-  id,
-  value,
-  onChange,
-  className = "",
-}: ColorPickerProps) {
+export function ColorPicker({ id, value, onChange, className = "" }: ColorPickerProps) {
   return (
     <div className={`flex gap-2 ${className}`}>
       <Input

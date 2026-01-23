@@ -55,15 +55,7 @@ const ALLOWED_EXTENSIONS = [
 // be conservative and never include these directories.
 //
 // ex: https://github.com/dyad-sh/dyad/issues/727
-const EXCLUDED_DIRS = [
-  "node_modules",
-  ".git",
-  "dist",
-  "build",
-  ".next",
-  ".venv",
-  "venv",
-];
+const EXCLUDED_DIRS = ["node_modules", ".git", "dist", "build", ".next", ".venv", "venv"];
 
 // Files to always exclude
 const EXCLUDED_FILES = ["pnpm-lock.yaml", "package-lock.json"];
@@ -122,10 +114,7 @@ const gitIgnoreMtimes = new Map<string, number>();
 /**
  * Check if a path should be ignored based on git ignore rules
  */
-async function isGitIgnored(
-  filePath: string,
-  baseDir: string,
-): Promise<boolean> {
+async function isGitIgnored(filePath: string, baseDir: string): Promise<boolean> {
   try {
     // Check if any relevant .gitignore has been modified
     // Git checks .gitignore files in the path from the repo root to the file
@@ -325,16 +314,12 @@ function shouldReadFileContents({
   const fileName = path.basename(filePath);
 
   // OMITTED_FILES takes precedence - never read if omitted
-  if (
-    OMITTED_FILES.some((pattern) => normalizedRelativePath.includes(pattern))
-  ) {
+  if (OMITTED_FILES.some((pattern) => normalizedRelativePath.includes(pattern))) {
     return false;
   }
 
   // Check if file should be included based on extension or filename
-  return (
-    ALLOWED_EXTENSIONS.includes(ext) || ALWAYS_INCLUDE_FILES.includes(fileName)
-  );
+  return ALLOWED_EXTENSIONS.includes(ext) || ALWAYS_INCLUDE_FILES.includes(fileName);
 }
 
 function shouldReadFileContentsForSmartContext({
@@ -348,18 +333,12 @@ function shouldReadFileContentsForSmartContext({
   const fileName = path.basename(filePath);
 
   // ALWAYS__OMITTED_FILES takes precedence - never read if omitted
-  if (
-    ALWAYS_OMITTED_FILES.some((pattern) =>
-      normalizedRelativePath.includes(pattern),
-    )
-  ) {
+  if (ALWAYS_OMITTED_FILES.some((pattern) => normalizedRelativePath.includes(pattern))) {
     return false;
   }
 
   // Check if file should be included based on extension or filename
-  return (
-    ALLOWED_EXTENSIONS.includes(ext) || ALWAYS_INCLUDE_FILES.includes(fileName)
-  );
+  return ALLOWED_EXTENSIONS.includes(ext) || ALWAYS_INCLUDE_FILES.includes(fileName);
 }
 
 /**
@@ -442,8 +421,7 @@ export async function extractCodebase({
   files: CodebaseFile[];
 }> {
   const settings = readSettings();
-  const isSmartContextEnabled =
-    settings?.enableDyadPro && settings?.enableProSmartFilesContextMode;
+  const isSmartContextEnabled = settings?.enableDyadPro && settings?.enableProSmartFilesContextMode;
 
   try {
     await fsAsync.access(appPath);
@@ -504,11 +482,7 @@ export async function extractCodebase({
   }
 
   // Add files from smartContextAutoIncludes
-  if (
-    isSmartContextEnabled &&
-    smartContextAutoIncludes &&
-    smartContextAutoIncludes.length > 0
-  ) {
+  if (isSmartContextEnabled && smartContextAutoIncludes && smartContextAutoIncludes.length > 0) {
     for (const p of smartContextAutoIncludes) {
       const pattern = createFullGlobPath({
         appPath,
@@ -577,8 +551,7 @@ export async function extractCodebase({
     });
 
     const isForced =
-      autoIncludedFiles.has(path.normalize(file)) &&
-      !excludedFiles.has(path.normalize(file));
+      autoIncludedFiles.has(path.normalize(file)) && !excludedFiles.has(path.normalize(file));
 
     // Determine file content based on whether we should read it
     let fileContent: string;
@@ -645,21 +618,13 @@ async function sortFilesByModificationTime(files: string[]): Promise<string[]> {
     // This is a workaround to ensure stable ordering, although
     // ideally we'd like to sort it by modification time which is
     // important for cache-ability.
-    return fileStats
-      .sort((a, b) => a.file.localeCompare(b.file))
-      .map((item) => item.file);
+    return fileStats.sort((a, b) => a.file.localeCompare(b.file)).map((item) => item.file);
   }
   // Sort by modification time (oldest first)
   return fileStats.sort((a, b) => a.mtime - b.mtime).map((item) => item.file);
 }
 
-function createFullGlobPath({
-  appPath,
-  globPath,
-}: {
-  appPath: string;
-  globPath: string;
-}): string {
+function createFullGlobPath({ appPath, globPath }: { appPath: string; globPath: string }): string {
   // By default the glob package treats "\" as an escape character.
   // We want the path to use forward slash for all platforms.
   return `${appPath.replace(/\\/g, "/")}/${globPath}`;

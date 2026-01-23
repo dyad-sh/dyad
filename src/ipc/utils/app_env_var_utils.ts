@@ -61,9 +61,7 @@ export async function updateDbPushEnvVar({
     }
 
     // Update or add DYAD_DISABLE_DB_PUSH
-    const existingVar = envVars.find(
-      (envVar) => envVar.key === "DYAD_DISABLE_DB_PUSH",
-    );
+    const existingVar = envVars.find((envVar) => envVar.key === "DYAD_DISABLE_DB_PUSH");
     if (existingVar) {
       existingVar.value = disabled ? "true" : "false";
     } else {
@@ -76,9 +74,7 @@ export async function updateDbPushEnvVar({
     const envFileContents = serializeEnvFile(envVars);
     await fs.promises.writeFile(getEnvFilePath({ appPath }), envFileContents);
   } catch (error) {
-    logger.error(
-      `Failed to update DB push environment variable for app ${appPath}: ${error}`,
-    );
+    logger.error(`Failed to update DB push environment variable for app ${appPath}: ${error}`);
     throw error;
   }
 }
@@ -90,20 +86,14 @@ export async function readPostgresUrlFromEnvFile({
 }): Promise<string> {
   const contents = await readEnvFile({ appPath });
   const envVars = parseEnvFile(contents);
-  const postgresUrl = envVars.find(
-    (envVar) => envVar.key === "POSTGRES_URL",
-  )?.value;
+  const postgresUrl = envVars.find((envVar) => envVar.key === "POSTGRES_URL")?.value;
   if (!postgresUrl) {
     throw new Error("POSTGRES_URL not found in .env.local");
   }
   return postgresUrl;
 }
 
-export async function readEnvFile({
-  appPath,
-}: {
-  appPath: string;
-}): Promise<string> {
+export async function readEnvFile({ appPath }: { appPath: string }): Promise<string> {
   return fs.promises.readFile(getEnvFilePath({ appPath }), "utf8");
 }
 
@@ -164,9 +154,7 @@ export function serializeEnvFile(envVars: EnvVar[]): string {
     .map(({ key, value }) => {
       // Add quotes if value contains spaces or special characters
       const needsQuotes = /[\s#"'=&?]/.test(value);
-      const quotedValue = needsQuotes
-        ? `"${value.replace(/"/g, '\\"')}"`
-        : value;
+      const quotedValue = needsQuotes ? `"${value.replace(/"/g, '\\"')}"` : value;
       return `${key}=${quotedValue}`;
     })
     .join("\n");

@@ -22,10 +22,7 @@ export function useLoadAppFile(appId: number | null, filePath: string | null) {
         setContent(fileContent);
         setError(null);
       } catch (error) {
-        console.error(
-          `Error loading file ${filePath} for app ${appId}:`,
-          error,
-        );
+        console.error(`Error loading file ${filePath} for app ${appId}:`, error);
         setError(error instanceof Error ? error : new Error(String(error)));
         setContent(null);
       } finally {
@@ -48,10 +45,7 @@ export function useLoadAppFile(appId: number | null, filePath: string | null) {
       setContent(fileContent);
       setError(null);
     } catch (error) {
-      console.error(
-        `Error refreshing file ${filePath} for app ${appId}:`,
-        error,
-      );
+      console.error(`Error refreshing file ${filePath} for app ${appId}:`, error);
       setError(error instanceof Error ? error : new Error(String(error)));
     } finally {
       setLoading(false);

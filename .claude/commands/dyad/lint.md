@@ -23,7 +23,6 @@ Run pre-commit checks including formatting, linting, and type-checking, and fix 
 3. **Fix remaining lint errors manually:**
 
    If there are lint errors that could not be auto-fixed, read the affected files and fix the errors manually. Common issues include:
-
    - Unused variables or imports (remove them)
    - Missing return types (add them)
    - Any other ESLint rule violations
@@ -37,7 +36,6 @@ Run pre-commit checks including formatting, linting, and type-checking, and fix 
 5. **Fix any type errors:**
 
    If there are type errors, read the affected files and fix them. Common issues include:
-
    - Type mismatches (correct the types)
    - Missing type annotations (add them)
    - Null/undefined handling issues (add appropriate checks)
@@ -51,7 +49,6 @@ Run pre-commit checks including formatting, linting, and type-checking, and fix 
    ```
 
 7. **Summarize the results:**
-
    - Report which checks passed
    - List any fixes that were made manually
    - If any errors could not be fixed, explain why and ask the user for guidance

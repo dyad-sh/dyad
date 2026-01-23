@@ -6,9 +6,7 @@ interface DyadCodeSearchResultProps {
   children?: React.ReactNode;
 }
 
-export const DyadCodeSearchResult: React.FC<DyadCodeSearchResultProps> = ({
-  children,
-}) => {
+export const DyadCodeSearchResult: React.FC<DyadCodeSearchResultProps> = ({ children }) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Parse file paths from children content
@@ -23,11 +21,7 @@ export const DyadCodeSearchResult: React.FC<DyadCodeSearchResultProps> = ({
     for (const line of lines) {
       const trimmedLine = line.trim();
       // Skip empty lines and lines that look like tags
-      if (
-        trimmedLine &&
-        !trimmedLine.startsWith("<") &&
-        !trimmedLine.startsWith(">")
-      ) {
+      if (trimmedLine && !trimmedLine.startsWith("<") && !trimmedLine.startsWith(">")) {
         filePaths.push(trimmedLine);
       }
     }
@@ -88,15 +82,10 @@ export const DyadCodeSearchResult: React.FC<DyadCodeSearchResultProps> = ({
               {files.map((file, index) => {
                 const filePath = file.trim();
                 const fileName = filePath.split("/").pop() || filePath;
-                const pathPart =
-                  filePath.substring(0, filePath.length - fileName.length) ||
-                  "";
+                const pathPart = filePath.substring(0, filePath.length - fileName.length) || "";
 
                 return (
-                  <div
-                    key={index}
-                    className="px-2 py-1 bg-gray-100 dark:bg-zinc-800 rounded-lg"
-                  >
+                  <div key={index} className="px-2 py-1 bg-gray-100 dark:bg-zinc-800 rounded-lg">
                     <div className="flex items-center gap-1.5">
                       <FileText
                         size={14}

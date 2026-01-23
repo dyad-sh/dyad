@@ -6,10 +6,7 @@ interface AttachmentsListProps {
   onRemove: (index: number) => void;
 }
 
-export function AttachmentsList({
-  attachments,
-  onRemove,
-}: AttachmentsListProps) {
+export function AttachmentsList({ attachments, onRemove }: AttachmentsListProps) {
   if (attachments.length === 0) return null;
 
   return (
@@ -32,24 +29,16 @@ export function AttachmentsList({
                   src={URL.createObjectURL(attachment.file)}
                   alt={attachment.file.name}
                   className="w-5 h-5 object-cover rounded"
-                  onLoad={(e) =>
-                    URL.revokeObjectURL((e.target as HTMLImageElement).src)
-                  }
-                  onError={(e) =>
-                    URL.revokeObjectURL((e.target as HTMLImageElement).src)
-                  }
+                  onLoad={(e) => URL.revokeObjectURL((e.target as HTMLImageElement).src)}
+                  onError={(e) => URL.revokeObjectURL((e.target as HTMLImageElement).src)}
                 />
                 <div className="absolute hidden group-hover:block top-6 left-0 z-10">
                   <img
                     src={URL.createObjectURL(attachment.file)}
                     alt={attachment.file.name}
                     className="max-w-[200px] max-h-[200px] object-contain bg-white p-1 rounded shadow-lg"
-                    onLoad={(e) =>
-                      URL.revokeObjectURL((e.target as HTMLImageElement).src)
-                    }
-                    onError={(e) =>
-                      URL.revokeObjectURL((e.target as HTMLImageElement).src)
-                    }
+                    onLoad={(e) => URL.revokeObjectURL((e.target as HTMLImageElement).src)}
+                    onError={(e) => URL.revokeObjectURL((e.target as HTMLImageElement).src)}
                   />
                 </div>
               </div>

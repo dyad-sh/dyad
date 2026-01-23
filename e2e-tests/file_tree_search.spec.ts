@@ -1,17 +1,15 @@
 import { expect } from "@playwright/test";
 import { test, Timeout } from "./helpers/test_helper";
 
-test("file tree search finds content matches and surfaces line numbers", async ({
-  po,
-}) => {
+test("file tree search finds content matches and surfaces line numbers", async ({ po }) => {
   await po.setUp({ autoApprove: true });
   await po.importApp("minimal");
   await po.goToChatTab();
   await po.selectPreviewMode("code");
   // Wait for the code view to finish loading files
-  await expect(
-    po.page.getByText("Loading files...", { exact: false }),
-  ).toBeHidden({ timeout: Timeout.LONG });
+  await expect(po.page.getByText("Loading files...", { exact: false })).toBeHidden({
+    timeout: Timeout.LONG,
+  });
 
   const searchInput = po.page.getByTestId("file-tree-search");
   await expect(searchInput).toBeVisible({ timeout: Timeout.MEDIUM });
@@ -71,9 +69,7 @@ test("file tree search finds content matches and surfaces line numbers", async (
         }) || editors[0];
 
       const position = editor.getPosition();
-      return position
-        ? { lineNumber: position.lineNumber, column: position.column }
-        : null;
+      return position ? { lineNumber: position.lineNumber, column: position.column } : null;
     });
 
     expect(editorPosition).not.toBeNull();

@@ -47,8 +47,7 @@ describe("parseFilesFromMessage", () => {
     });
 
     it("should trim whitespace from file paths in dyad-read tags", () => {
-      const input =
-        '<dyad-read path="  src/components/Button.tsx  "></dyad-read>';
+      const input = '<dyad-read path="  src/components/Button.tsx  "></dyad-read>';
       const result = parseFilesFromMessage(input);
       expect(result).toEqual(["src/components/Button.tsx"]);
     });
@@ -60,15 +59,11 @@ describe("parseFilesFromMessage", () => {
         <dyad-read path="src/utils/helpers.ts"></dyad-read>
       `;
       const result = parseFilesFromMessage(input);
-      expect(result).toEqual([
-        "src/components/Button.tsx",
-        "src/utils/helpers.ts",
-      ]);
+      expect(result).toEqual(["src/components/Button.tsx", "src/utils/helpers.ts"]);
     });
 
     it("should handle file paths with special characters", () => {
-      const input =
-        '<dyad-read path="src/components/@special/Button-v2.tsx"></dyad-read>';
+      const input = '<dyad-read path="src/components/@special/Button-v2.tsx"></dyad-read>';
       const result = parseFilesFromMessage(input);
       expect(result).toEqual(["src/components/@special/Button-v2.tsx"]);
     });
@@ -198,10 +193,7 @@ src/utils/helpers.ts
 </dyad-code-search-result>
 `;
       const result = parseFilesFromMessage(input);
-      expect(result).toEqual([
-        "src/components/Button.tsx",
-        "src/utils/helpers.ts",
-      ]);
+      expect(result).toEqual(["src/components/Button.tsx", "src/utils/helpers.ts"]);
     });
 
     it("should handle complex real-world example", () => {
@@ -266,8 +258,7 @@ src/file2.ts
     });
 
     it("should handle nested angle brackets in file paths", () => {
-      const input =
-        '<dyad-read path="src/components/Generic<T>.tsx"></dyad-read>';
+      const input = '<dyad-read path="src/components/Generic<T>.tsx"></dyad-read>';
       const result = parseFilesFromMessage(input);
       expect(result).toEqual(["src/components/Generic<T>.tsx"]);
     });
@@ -314,10 +305,7 @@ SRC/COMPONENTS/BUTTON.TSX
 /another/absolute/path.ts
 </dyad-code-search-result>`;
       const result = parseFilesFromMessage(input);
-      expect(result).toEqual([
-        "/absolute/path/to/file.tsx",
-        "/another/absolute/path.ts",
-      ]);
+      expect(result).toEqual(["/absolute/path/to/file.tsx", "/another/absolute/path.ts"]);
     });
   });
 });
@@ -406,8 +394,7 @@ describe("processChatMessagesWithVersionedFiles", () => {
       const chatMessages: ModelMessage[] = [
         {
           role: "assistant",
-          content:
-            'I found this file: <dyad-read path="src/old.ts"></dyad-read>',
+          content: 'I found this file: <dyad-read path="src/old.ts"></dyad-read>',
           providerOptions: {
             "dyad-engine": {
               sourceCommitHash: "abc123",
@@ -484,9 +471,7 @@ describe("processChatMessagesWithVersionedFiles", () => {
 
       const fileHash = hashContent(fileContent);
       expect(result.fileIdToContent[fileHash]).toBe(fileContent);
-      expect(result.messageIndexToFilePathToFileId[0]["src/array.ts"]).toBe(
-        fileHash,
-      );
+      expect(result.messageIndexToFilePathToFileId[0]["src/array.ts"]).toBe(fileHash);
     });
 
     it("should skip user messages", async () => {
@@ -497,8 +482,7 @@ describe("processChatMessagesWithVersionedFiles", () => {
       const chatMessages: ModelMessage[] = [
         {
           role: "user",
-          content:
-            'Check this: <dyad-read path="src/user-file.ts"></dyad-read>',
+          content: 'Check this: <dyad-read path="src/user-file.ts"></dyad-read>',
         },
       ];
       const appPath = "/test/app";
@@ -527,8 +511,7 @@ describe("processChatMessagesWithVersionedFiles", () => {
         },
         {
           role: "assistant",
-          content:
-            'Another file: <dyad-read path="src/no-commit2.ts"></dyad-read>',
+          content: 'Another file: <dyad-read path="src/no-commit2.ts"></dyad-read>',
           providerOptions: {
             // dyad-engine not set
           },
@@ -583,9 +566,7 @@ describe("processChatMessagesWithVersionedFiles", () => {
       const file1Content = "file1 content";
       const file2Content = "file2 content";
 
-      mockGetFileAtCommit
-        .mockResolvedValueOnce(file1Content)
-        .mockResolvedValueOnce(file2Content);
+      mockGetFileAtCommit.mockResolvedValueOnce(file1Content).mockResolvedValueOnce(file2Content);
 
       const files: CodebaseFile[] = [];
       const chatMessages: ModelMessage[] = [
@@ -691,8 +672,7 @@ src/file3.ts
       const chatMessages: ModelMessage[] = [
         {
           role: "assistant",
-          content:
-            'Missing file: <dyad-read path="src/missing.ts"></dyad-read>',
+          content: 'Missing file: <dyad-read path="src/missing.ts"></dyad-read>',
           providerOptions: {
             "dyad-engine": {
               sourceCommitHash: "commit1",
@@ -827,8 +807,7 @@ src/missing.ts
         },
         {
           role: "assistant",
-          content:
-            'Here it is again: <dyad-read path="src/file1.ts"></dyad-read>',
+          content: 'Here it is again: <dyad-read path="src/file1.ts"></dyad-read>',
           providerOptions: {
             "dyad-engine": {
               sourceCommitHash: "commit2",
@@ -935,9 +914,7 @@ src/missing.ts
       const sameContent = "identical content";
 
       // Both files have the same content
-      mockGetFileAtCommit
-        .mockResolvedValueOnce(sameContent)
-        .mockResolvedValueOnce(sameContent);
+      mockGetFileAtCommit.mockResolvedValueOnce(sameContent).mockResolvedValueOnce(sameContent);
 
       const files: CodebaseFile[] = [];
       const chatMessages: ModelMessage[] = [
@@ -978,9 +955,7 @@ src/file2.ts
 
   describe("hasExternalChanges", () => {
     it("should default to true when no assistant message has commitHash", async () => {
-      const { getCurrentCommitHash, isGitStatusClean } = await import(
-        "@/ipc/utils/git_utils"
-      );
+      const { getCurrentCommitHash, isGitStatusClean } = await import("@/ipc/utils/git_utils");
       const mockGetCurrentCommitHash = vi.mocked(getCurrentCommitHash);
       const mockIsGitStatusClean = vi.mocked(isGitStatusClean);
 
@@ -1011,9 +986,7 @@ src/file2.ts
     });
 
     it("should be false when latest assistant commit matches current and git status is clean", async () => {
-      const { getCurrentCommitHash, isGitStatusClean } = await import(
-        "@/ipc/utils/git_utils"
-      );
+      const { getCurrentCommitHash, isGitStatusClean } = await import("@/ipc/utils/git_utils");
       const mockGetCurrentCommitHash = vi.mocked(getCurrentCommitHash);
       const mockIsGitStatusClean = vi.mocked(isGitStatusClean);
 
@@ -1047,9 +1020,7 @@ src/file2.ts
     });
 
     it("should be true when latest assistant commit differs from current", async () => {
-      const { getCurrentCommitHash, isGitStatusClean } = await import(
-        "@/ipc/utils/git_utils"
-      );
+      const { getCurrentCommitHash, isGitStatusClean } = await import("@/ipc/utils/git_utils");
       const mockGetCurrentCommitHash = vi.mocked(getCurrentCommitHash);
       const mockIsGitStatusClean = vi.mocked(isGitStatusClean);
 
@@ -1083,9 +1054,7 @@ src/file2.ts
     });
 
     it("should be true when git status is dirty even if commits match", async () => {
-      const { getCurrentCommitHash, isGitStatusClean } = await import(
-        "@/ipc/utils/git_utils"
-      );
+      const { getCurrentCommitHash, isGitStatusClean } = await import("@/ipc/utils/git_utils");
       const mockGetCurrentCommitHash = vi.mocked(getCurrentCommitHash);
       const mockIsGitStatusClean = vi.mocked(isGitStatusClean);
 

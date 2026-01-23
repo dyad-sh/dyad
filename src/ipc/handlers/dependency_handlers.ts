@@ -12,10 +12,7 @@ const handle = createLoggedHandler(logger);
 export function registerDependencyHandlers() {
   handle(
     "chat:add-dep",
-    async (
-      _event,
-      { chatId, packages }: { chatId: number; packages: string[] },
-    ): Promise<void> => {
+    async (_event, { chatId, packages }: { chatId: number; packages: string[] }): Promise<void> => {
       // Find the message from the database
       const foundMessages = await db.query.messages.findMany({
         where: eq(messages.chatId, chatId),
@@ -41,16 +38,10 @@ export function registerDependencyHandlers() {
 
       const message = [...foundMessages]
         .reverse()
-        .find((m) =>
-          m.content.includes(
-            `<dyad-add-dependency packages="${packages.join(" ")}">`,
-          ),
-        );
+        .find((m) => m.content.includes(`<dyad-add-dependency packages="${packages.join(" ")}">`));
 
       if (!message) {
-        throw new Error(
-          `Message with packages ${packages.join(", ")} not found`,
-        );
+        throw new Error(`Message with packages ${packages.join(", ")} not found`);
       }
 
       executeAddDependency({

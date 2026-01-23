@@ -1,13 +1,7 @@
 import type React from "react";
 import type { ReactNode } from "react";
 import { useState } from "react";
-import {
-  ChevronsDownUp,
-  ChevronsUpDown,
-  FileText,
-  Loader,
-  CircleX,
-} from "lucide-react";
+import { ChevronsDownUp, ChevronsUpDown, FileText, Loader, CircleX } from "lucide-react";
 import { CodeHighlight } from "./CodeHighlight";
 import { CustomTagState } from "./stateTypes";
 
@@ -75,15 +69,9 @@ export const DyadLogs: React.FC<DyadLogsProps> = ({ children, node }) => {
         </div>
         <div className="flex items-center">
           {isContentVisible ? (
-            <ChevronsDownUp
-              size={20}
-              className="text-(--primary)/70 hover:text-(--primary)"
-            />
+            <ChevronsDownUp size={20} className="text-(--primary)/70 hover:text-(--primary)" />
           ) : (
-            <ChevronsUpDown
-              size={20}
-              className="text-(--primary)/70 hover:text-(--primary)"
-            />
+            <ChevronsUpDown size={20} className="text-(--primary)/70 hover:text-(--primary)" />
           )}
         </div>
       </div>

@@ -34,13 +34,7 @@ import { useStreamChat } from "@/hooks/useStreamChat";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { Button } from "@/components/ui/button";
 import { useProposal } from "@/hooks/useProposal";
-import {
-  ActionProposal,
-  Proposal,
-  SuggestedAction,
-  FileChange,
-  SqlQuery,
-} from "@/lib/schemas";
+import { ActionProposal, Proposal, SuggestedAction, FileChange, SqlQuery } from "@/lib/schemas";
 
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import { useRunApp } from "@/hooks/useRunApp";
@@ -48,12 +42,7 @@ import { AutoApproveSwitch } from "../AutoApproveSwitch";
 import { usePostHog } from "posthog-js/react";
 import { CodeHighlight } from "./CodeHighlight";
 import { TokenBar } from "./TokenBar";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "../ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 
 import { useVersions } from "@/hooks/useVersions";
 import { useAttachments } from "@/hooks/useAttachments";
@@ -90,8 +79,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const { settings } = useSettings();
   const appId = useAtomValue(selectedAppIdAtom);
   const { refreshVersions } = useVersions(appId);
-  const { streamMessage, isStreaming, setIsStreaming, error, setError } =
-    useStreamChat();
+  const { streamMessage, isStreaming, setIsStreaming, error, setError } = useStreamChat();
   const [showError, setShowError] = useState(true);
   const [isApproving, setIsApproving] = useState(false); // State for approving
   const [isRejecting, setIsRejecting] = useState(false); // State for rejecting
@@ -104,24 +92,14 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     setShowTokenBar((prev) => !prev);
     queryClient.invalidateQueries({ queryKey: queryKeys.tokenCount.all });
   }, [setShowTokenBar, queryClient]);
-  const [selectedComponents, setSelectedComponents] = useAtom(
-    selectedComponentsPreviewAtom,
-  );
+  const [selectedComponents, setSelectedComponents] = useAtom(selectedComponentsPreviewAtom);
   const previewIframeRef = useAtomValue(previewIframeRefAtom);
-  const setVisualEditingSelectedComponent = useSetAtom(
-    visualEditingSelectedComponentAtom,
-  );
-  const setCurrentComponentCoordinates = useSetAtom(
-    currentComponentCoordinatesAtom,
-  );
+  const setVisualEditingSelectedComponent = useSetAtom(visualEditingSelectedComponentAtom);
+  const setCurrentComponentCoordinates = useSetAtom(currentComponentCoordinatesAtom);
   const setPendingVisualChanges = useSetAtom(pendingVisualChangesAtom);
-  const [pendingAgentConsents, setPendingAgentConsents] = useAtom(
-    pendingAgentConsentsAtom,
-  );
+  const [pendingAgentConsents, setPendingAgentConsents] = useAtom(pendingAgentConsentsAtom);
   // Get the first consent in the queue for this chat (if any)
-  const consentsForThisChat = pendingAgentConsents.filter(
-    (c) => c.chatId === chatId,
-  );
+  const consentsForThisChat = pendingAgentConsents.filter((c) => c.chatId === chatId);
   const pendingAgentConsent = consentsForThisChat[0] ?? null;
 
   // Get todos for this chat
@@ -182,11 +160,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   }, [chatId, setMessagesById]);
 
   const handleSubmit = async () => {
-    if (
-      (!inputValue.trim() && attachments.length === 0) ||
-      isStreaming ||
-      !chatId
-    ) {
+    if ((!inputValue.trim() && attachments.length === 0) || isStreaming || !chatId) {
       return;
     }
 
@@ -195,17 +169,12 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
     // Use all selected components for multi-component editing
     const componentsToSend =
-      selectedComponents && selectedComponents.length > 0
-        ? selectedComponents
-        : [];
+      selectedComponents && selectedComponents.length > 0 ? selectedComponents : [];
     setSelectedComponents([]);
     setVisualEditingSelectedComponent(null);
     // Clear overlays in the preview iframe
     if (previewIframeRef?.contentWindow) {
-      previewIframeRef.contentWindow.postMessage(
-        { type: "clear-dyad-component-overlays" },
-        "*",
-      );
+      previewIframeRef.contentWindow.postMessage({ type: "clear-dyad-component-overlays" }, "*");
     }
 
     // Send message with attachments and clear them after sending
@@ -232,11 +201,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   };
 
   const handleApprove = async () => {
-    if (!chatId || !messageId || isApproving || isRejecting || isStreaming)
-      return;
-    console.log(
-      `Approving proposal for chatId: ${chatId}, messageId: ${messageId}`,
-    );
+    if (!chatId || !messageId || isApproving || isRejecting || isStreaming) return;
+    console.log(`Approving proposal for chatId: ${chatId}, messageId: ${messageId}`);
     setIsApproving(true);
     posthog.capture("chat:approve");
     try {
@@ -269,11 +235,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   };
 
   const handleReject = async () => {
-    if (!chatId || !messageId || isApproving || isRejecting || isStreaming)
-      return;
-    console.log(
-      `Rejecting proposal for chatId: ${chatId}, messageId: ${messageId}`,
-    );
+    if (!chatId || !messageId || isApproving || isRejecting || isStreaming) return;
+    console.log(`Rejecting proposal for chatId: ${chatId}, messageId: ${messageId}`);
     setIsRejecting(true);
     posthog.capture("chat:reject");
     try {
@@ -307,9 +270,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       )}
       {/* Display loading or error state for proposal */}
       {isProposalLoading && (
-        <div className="p-4 text-sm text-muted-foreground">
-          Loading proposal...
-        </div>
+        <div className="p-4 text-sm text-muted-foreground">Loading proposal...</div>
       )}
       {proposalError && (
         <div className="p-4 text-sm text-red-600">
@@ -339,9 +300,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                 });
                 // Remove this consent from the queue by requestId
                 setPendingAgentConsents((prev) =>
-                  prev.filter(
-                    (c) => c.requestId !== pendingAgentConsent.requestId,
-                  ),
+                  prev.filter((c) => c.requestId !== pendingAgentConsent.requestId),
                 );
               }}
               onClose={() => {
@@ -351,9 +310,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                 });
                 // Remove this consent from the queue by requestId
                 setPendingAgentConsents((prev) =>
-                  prev.filter(
-                    (c) => c.requestId !== pendingAgentConsent.requestId,
-                  ),
+                  prev.filter((c) => c.requestId !== pendingAgentConsent.requestId),
                 );
               }}
             />
@@ -383,11 +340,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
           {userBudget ? (
             <VisualEditingChangesDialog
-              iframeRef={
-                previewIframeRef
-                  ? { current: previewIframeRef }
-                  : { current: null }
-              }
+              iframeRef={previewIframeRef ? { current: previewIframeRef } : { current: null }}
               onReset={() => {
                 // Exit component selection mode and visual editing
                 setSelectedComponents([]);
@@ -413,9 +366,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                     <TooltipTrigger asChild>
                       <button
                         onClick={() => {
-                          IpcClient.getInstance().openExternalUrl(
-                            "https://dyad.sh/pro",
-                          );
+                          IpcClient.getInstance().openExternalUrl("https://dyad.sh/pro");
                         }}
                         className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors cursor-pointer"
                       >
@@ -424,8 +375,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                       </button>
                     </TooltipTrigger>
                     <TooltipContent>
-                      Visual editing lets you make UI changes without AI and is
-                      a Pro-only feature
+                      Visual editing lets you make UI changes without AI and is a Pro-only feature
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -436,10 +386,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           <SelectedComponentsDisplay />
 
           {/* Use the AttachmentsList component */}
-          <AttachmentsList
-            attachments={attachments}
-            onRemove={removeAttachment}
-          />
+          <AttachmentsList attachments={attachments} onRemove={removeAttachment} />
 
           {/* Use the DragDropOverlay component */}
           <DragDropOverlay isDraggingOver={isDraggingOver} />
@@ -466,10 +413,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
             ) : (
               <button
                 onClick={handleSubmit}
-                disabled={
-                  (!inputValue.trim() && attachments.length === 0) ||
-                  disableSendButton
-                }
+                disabled={(!inputValue.trim() && attachments.length === 0) || disableSendButton}
                 className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
                 title="Send message"
               >
@@ -511,12 +455,7 @@ function SuggestionButton({
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button
-            disabled={isStreaming}
-            variant="outline"
-            size="sm"
-            onClick={onClick}
-          >
+          <Button disabled={isStreaming} variant="outline" size="sm" onClick={onClick}>
             {children}
           </Button>
         </TooltipTrigger>
@@ -553,10 +492,7 @@ function RefactorFileButton({ path }: { path: string }) {
     });
   };
   return (
-    <SuggestionButton
-      onClick={onClick}
-      tooltipText="Refactor the file to improve maintainability"
-    >
+    <SuggestionButton onClick={onClick} tooltipText="Refactor the file to improve maintainability">
       <span className="max-w-[180px] overflow-hidden whitespace-nowrap text-ellipsis">
         Refactor {path.split("/").slice(-2).join("/")}
       </span>
@@ -620,10 +556,7 @@ function RestartButton() {
   }, [selectedAppId, posthog, restartApp]);
 
   return (
-    <SuggestionButton
-      onClick={onClick}
-      tooltipText="Restart the development server"
-    >
+    <SuggestionButton onClick={onClick} tooltipText="Restart the development server">
       Restart app
     </SuggestionButton>
   );
@@ -639,10 +572,7 @@ function RefreshButton() {
   }, [posthog, refreshAppIframe]);
 
   return (
-    <SuggestionButton
-      onClick={onClick}
-      tooltipText="Refresh the application preview"
-    >
+    <SuggestionButton onClick={onClick} tooltipText="Refresh the application preview">
       Refresh app
     </SuggestionButton>
   );
@@ -737,13 +667,7 @@ function ChatInputActions({
   const otherFilesChanged =
     proposal.filesChanged?.filter((f: FileChange) => !f.isServerFunction) ?? [];
 
-  function formatTitle({
-    title,
-    isDetailsVisible,
-  }: {
-    title: string;
-    isDetailsVisible: boolean;
-  }) {
+  function formatTitle({ title, isDetailsVisible }: { title: string; isDetailsVisible: boolean }) {
     if (isDetailsVisible) {
       return title;
     }
@@ -833,15 +757,9 @@ function ChatInputActions({
                   {proposal.securityRisks.map((risk, index) => (
                     <li key={index} className="flex items-start space-x-2">
                       {risk.type === "warning" ? (
-                        <AlertTriangle
-                          size={16}
-                          className="text-yellow-500 mt-0.5 flex-shrink-0"
-                        />
+                        <AlertTriangle size={16} className="text-yellow-500 mt-0.5 flex-shrink-0" />
                       ) : (
-                        <AlertOctagon
-                          size={16}
-                          className="text-red-500 mt-0.5 flex-shrink-0"
-                        />
+                        <AlertOctagon size={16} className="text-red-500 mt-0.5 flex-shrink-0" />
                       )}
                       <div>
                         <span className="font-medium">{risk.title}:</span>{" "}
@@ -878,10 +796,7 @@ function ChatInputActions({
                         );
                       }}
                     >
-                      <Package
-                        size={16}
-                        className="text-muted-foreground flex-shrink-0"
-                      />
+                      <Package size={16} className="text-muted-foreground flex-shrink-0" />
                       <span className="cursor-pointer text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300">
                         {pkg}
                       </span>
@@ -898,10 +813,7 @@ function ChatInputActions({
                   {serverFunctions.map((file: FileChange, index: number) => (
                     <li key={index} className="flex items-center space-x-2">
                       {getIconForFileChange(file)}
-                      <span
-                        title={file.path}
-                        className="truncate cursor-default"
-                      >
+                      <span title={file.path} className="truncate cursor-default">
                         {file.name}
                       </span>
                       <span className="text-muted-foreground text-xs truncate">
@@ -920,10 +832,7 @@ function ChatInputActions({
                   {otherFilesChanged.map((file: FileChange, index: number) => (
                     <li key={index} className="flex items-center space-x-2">
                       {getIconForFileChange(file)}
-                      <span
-                        title={file.path}
-                        className="truncate cursor-default"
-                      >
+                      <span title={file.path} className="truncate cursor-default">
                         {file.name}
                       </span>
                       <span className="text-muted-foreground text-xs truncate">
@@ -944,17 +853,11 @@ function ChatInputActions({
 function getIconForFileChange(file: FileChange) {
   switch (file.type) {
     case "write":
-      return (
-        <FileText size={16} className="text-muted-foreground flex-shrink-0" />
-      );
+      return <FileText size={16} className="text-muted-foreground flex-shrink-0" />;
     case "rename":
-      return (
-        <SendToBack size={16} className="text-muted-foreground flex-shrink-0" />
-      );
+      return <SendToBack size={16} className="text-muted-foreground flex-shrink-0" />;
     case "delete":
-      return (
-        <FileX size={16} className="text-muted-foreground flex-shrink-0" />
-      );
+      return <FileX size={16} className="text-muted-foreground flex-shrink-0" />;
   }
 }
 
@@ -984,33 +887,21 @@ function ProposalSummary({
   const parts: string[] = [];
 
   if (sqlQueries.length) {
-    parts.push(
-      `${sqlQueries.length} SQL ${
-        sqlQueries.length === 1 ? "query" : "queries"
-      }`,
-    );
+    parts.push(`${sqlQueries.length} SQL ${sqlQueries.length === 1 ? "query" : "queries"}`);
   }
 
   if (serverFunctions.length) {
     parts.push(
-      `${serverFunctions.length} Server ${
-        serverFunctions.length === 1 ? "Function" : "Functions"
-      }`,
+      `${serverFunctions.length} Server ${serverFunctions.length === 1 ? "Function" : "Functions"}`,
     );
   }
 
   if (packagesAdded.length) {
-    parts.push(
-      `${packagesAdded.length} ${
-        packagesAdded.length === 1 ? "package" : "packages"
-      }`,
-    );
+    parts.push(`${packagesAdded.length} ${packagesAdded.length === 1 ? "package" : "packages"}`);
   }
 
   if (filesChanged.length) {
-    parts.push(
-      `${filesChanged.length} ${filesChanged.length === 1 ? "file" : "files"}`,
-    );
+    parts.push(`${filesChanged.length} ${filesChanged.length === 1 ? "file" : "files"}`);
   }
 
   // Join all parts with separator
@@ -1032,9 +923,7 @@ function SqlQueryItem({ query }: { query: SqlQuery }) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Database size={16} className="text-muted-foreground flex-shrink-0" />
-          <span className="text-sm font-medium">
-            {queryDescription || "SQL Query"}
-          </span>
+          <span className="text-sm font-medium">{queryDescription || "SQL Query"}</span>
         </div>
         <div>
           {isExpanded ? (
@@ -1046,9 +935,7 @@ function SqlQueryItem({ query }: { query: SqlQuery }) {
       </div>
       {isExpanded && (
         <div className="mt-2 text-xs max-h-[200px] overflow-auto">
-          <CodeHighlight className="language-sql ">
-            {queryContent}
-          </CodeHighlight>
+          <CodeHighlight className="language-sql ">{queryContent}</CodeHighlight>
         </div>
       )}
     </li>

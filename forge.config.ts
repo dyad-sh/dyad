@@ -28,9 +28,7 @@ const SIGNTOOL_PATH = path.join(
 function signWindowsExecutable(filePath: string): void {
   const certHash = process.env.SM_CODE_SIGNING_CERT_SHA1_HASH;
   if (!certHash) {
-    console.log(
-      `[postMake] SM_CODE_SIGNING_CERT_SHA1_HASH not set, skipping signing`,
-    );
+    console.log(`[postMake] SM_CODE_SIGNING_CERT_SHA1_HASH not set, skipping signing`);
     return;
   }
 
@@ -131,9 +129,7 @@ const config: ForgeConfig = {
           continue;
         }
 
-        console.log(
-          `[postMake] Processing Windows artifacts for ${result.arch}`,
-        );
+        console.log(`[postMake] Processing Windows artifacts for ${result.arch}`);
         for (const artifact of result.artifacts) {
           const fileName = path.basename(artifact).toLowerCase();
           // Sign .exe files (the Squirrel installer and Setup.exe)

@@ -162,9 +162,7 @@ export class IpcClient {
   private mcpConsentHandlers: Map<string, (payload: any) => void>;
   private agentConsentHandlers: Map<string, (payload: any) => void>;
   private agentTodosHandlers: Set<(payload: AgentTodosUpdatePayload) => void>;
-  private agentProblemsHandlers: Set<
-    (payload: AgentProblemsUpdatePayload) => void
-  >;
+  private agentProblemsHandlers: Set<(payload: AgentProblemsUpdatePayload) => void>;
   private telemetryEventHandlers: Set<(payload: TelemetryEventPayload) => void>;
   // Global handlers called for any chat stream start (used for cleanup)
   private globalChatStreamStartHandlers: Set<(chatId: number) => void>;
@@ -184,12 +182,7 @@ export class IpcClient {
     this.globalChatStreamEndHandlers = new Set();
     // Set up listeners for stream events
     this.ipcRenderer.on("chat:response:chunk", (data) => {
-      if (
-        data &&
-        typeof data === "object" &&
-        "chatId" in data &&
-        "messages" in data
-      ) {
+      if (data && typeof data === "object" && "chatId" in data && "messages" in data) {
         const { chatId, messages } = data as {
           chatId: number;
           messages: Message[];
@@ -199,10 +192,7 @@ export class IpcClient {
         if (callbacks) {
           callbacks.onUpdate(messages);
         } else {
-          console.warn(
-            `[IPC] No callbacks found for chat ${chatId}`,
-            this.chatStreams,
-          );
+          console.warn(`[IPC] No callbacks found for chat ${chatId}`, this.chatStreams);
         }
       } else {
         showError(new Error(`[IPC] Invalid chunk data received: ${data}`));
@@ -235,11 +225,7 @@ export class IpcClient {
         console.debug("chat:response:end");
         this.chatStreams.delete(chatId);
       } else {
-        console.error(
-          new Error(
-            `[IPC] No callbacks found for chat ${chatId} on stream end`,
-          ),
-        );
+        console.error(new Error(`[IPC] No callbacks found for chat ${chatId} on stream end`));
       }
       // Notify global handlers (used for cleanup like clearing pending consents)
       for (const handler of this.globalChatStreamEndHandlers) {
@@ -249,22 +235,14 @@ export class IpcClient {
 
     this.ipcRenderer.on("chat:response:error", (payload) => {
       console.debug("chat:response:error");
-      if (
-        payload &&
-        typeof payload === "object" &&
-        "chatId" in payload &&
-        "error" in payload
-      ) {
+      if (payload && typeof payload === "object" && "chatId" in payload && "error" in payload) {
         const { chatId, error } = payload as { chatId: number; error: string };
         const callbacks = this.chatStreams.get(chatId);
         if (callbacks) {
           callbacks.onError(error);
           this.chatStreams.delete(chatId);
         } else {
-          console.warn(
-            `[IPC] No callbacks found for chat ${chatId} on error`,
-            this.chatStreams,
-          );
+          console.warn(`[IPC] No callbacks found for chat ${chatId} on error`, this.chatStreams);
         }
         // Notify global handlers (used for cleanup like clearing pending consents)
         for (const handler of this.globalChatStreamEndHandlers) {
@@ -277,12 +255,7 @@ export class IpcClient {
 
     // Help bot events
     this.ipcRenderer.on("help:chat:response:chunk", (data) => {
-      if (
-        data &&
-        typeof data === "object" &&
-        "sessionId" in data &&
-        "delta" in data
-      ) {
+      if (data && typeof data === "object" && "sessionId" in data && "delta" in data) {
         const { sessionId, delta } = data as {
           sessionId: string;
           delta: string;
@@ -301,12 +274,7 @@ export class IpcClient {
       }
     });
     this.ipcRenderer.on("help:chat:response:error", (data) => {
-      if (
-        data &&
-        typeof data === "object" &&
-        "sessionId" in data &&
-        "error" in data
-      ) {
+      if (data && typeof data === "object" && "sessionId" in data && "error" in data) {
         const { sessionId, error } = data as {
           sessionId: string;
           error: string;
@@ -377,9 +345,7 @@ export class IpcClient {
     return this.ipcRenderer.invoke("get-app", appId);
   }
 
-  public async addAppToFavorite(
-    appId: number,
-  ): Promise<{ isFavorite: boolean }> {
+  public async addAppToFavorite(appId: number): Promise<{ isFavorite: boolean }> {
     try {
       const result = await this.ipcRenderer.invoke("add-to-favorite", {
         appId,
@@ -423,10 +389,7 @@ export class IpcClient {
   }
 
   // search for chats
-  public async searchChats(
-    appId: number,
-    query: string,
-  ): Promise<ChatSearchResult[]> {
+  public async searchChats(appId: number, query: string): Promise<ChatSearchResult[]> {
     try {
       const data = await this.ipcRenderer.invoke("search-chats", appId, query);
       return ChatSearchResultsSchema.parse(data);
@@ -452,10 +415,7 @@ export class IpcClient {
     }
   }
 
-  public async searchAppFiles(
-    appId: number,
-    query: string,
-  ): Promise<AppFileSearchResult[]> {
+  public async searchAppFiles(appId: number, query: string): Promise<AppFileSearchResult[]> {
     try {
       const results = await this.ipcRenderer.invoke("search-app-files", {
         appId,
@@ -502,15 +462,7 @@ export class IpcClient {
       onProblems?: (problems: ChatProblemsEvent) => void;
     },
   ): void {
-    const {
-      chatId,
-      redo,
-      attachments,
-      selectedComponents,
-      onUpdate,
-      onEnd,
-      onError,
-    } = options;
+    const { chatId, redo, attachments, selectedComponents, onUpdate, onEnd, onError } = options;
     this.chatStreams.set(chatId, { onUpdate, onEnd, onError });
 
     // Notify global stream start handlers
@@ -617,10 +569,7 @@ export class IpcClient {
   }
 
   // Run an app
-  public async runApp(
-    appId: number,
-    onOutput: (output: AppOutput) => void,
-  ): Promise<void> {
+  public async runApp(appId: number, onOutput: (output: AppOutput) => void): Promise<void> {
     await this.ipcRenderer.invoke("run-app", { appId });
     this.appStreams.set(appId, { onOutput });
   }
@@ -650,9 +599,7 @@ export class IpcClient {
   }
 
   // Respond to an app input request (y/n prompts)
-  public async respondToAppInput(
-    params: RespondToAppInputParams,
-  ): Promise<void> {
+  public async respondToAppInput(params: RespondToAppInputParams): Promise<void> {
     try {
       await this.ipcRenderer.invoke("respond-to-app-input", params);
     } catch (error) {
@@ -686,9 +633,7 @@ export class IpcClient {
   }
 
   // Revert to a specific version
-  public async revertVersion(
-    params: RevertVersionParams,
-  ): Promise<RevertVersionResponse> {
+  public async revertVersion(params: RevertVersionParams): Promise<RevertVersionResponse> {
     return this.ipcRenderer.invoke("revert-version", params);
   }
 
@@ -725,14 +670,9 @@ export class IpcClient {
   }
 
   // Update user settings
-  public async setUserSettings(
-    settings: Partial<UserSettings>,
-  ): Promise<UserSettings> {
+  public async setUserSettings(settings: Partial<UserSettings>): Promise<UserSettings> {
     try {
-      const updatedSettings = await this.ipcRenderer.invoke(
-        "set-user-settings",
-        settings,
-      );
+      const updatedSettings = await this.ipcRenderer.invoke("set-user-settings", settings);
       return updatedSettings;
     } catch (error) {
       showError(error);
@@ -821,9 +761,7 @@ export class IpcClient {
     };
   }
 
-  public onGithubDeviceFlowError(
-    callback: (data: GitHubDeviceFlowErrorData) => void,
-  ): () => void {
+  public onGithubDeviceFlowError(callback: (data: GitHubDeviceFlowErrorData) => void): () => void {
     const listener = (data: any) => {
       console.log("github:flow-error", data);
       callback(data as GitHubDeviceFlowErrorData);
@@ -836,9 +774,7 @@ export class IpcClient {
   // --- End GitHub Device Flow ---
 
   // --- GitHub Repo Management ---
-  public async listGithubRepos(): Promise<
-    { name: string; full_name: string; private: boolean }[]
-  > {
+  public async listGithubRepos(): Promise<{ name: string; full_name: string; private: boolean }[]> {
     return this.ipcRenderer.invoke("github:list-repos");
   }
 
@@ -891,10 +827,7 @@ export class IpcClient {
   }
 
   // Sync (push) local repo to GitHub
-  public async syncGithubRepo(
-    appId: number,
-    options: GithubSyncOptions = {},
-  ): Promise<void> {
+  public async syncGithubRepo(appId: number, options: GithubSyncOptions = {}): Promise<void> {
     const { force, forceWithLease } = options;
     await this.ipcRenderer.invoke("github:push", {
       appId,
@@ -937,11 +870,7 @@ export class IpcClient {
     } satisfies GitBranchAppIdParams);
   }
 
-  public async createGithubBranch(
-    appId: number,
-    branch: string,
-    from?: string,
-  ): Promise<void> {
+  public async createGithubBranch(appId: number, branch: string, from?: string): Promise<void> {
     await this.ipcRenderer.invoke("github:create-branch", {
       appId,
       branch,
@@ -949,20 +878,14 @@ export class IpcClient {
     } satisfies CreateGitBranchParams);
   }
 
-  public async deleteGithubBranch(
-    appId: number,
-    branch: string,
-  ): Promise<void> {
+  public async deleteGithubBranch(appId: number, branch: string): Promise<void> {
     await this.ipcRenderer.invoke("github:delete-branch", {
       appId,
       branch,
     } satisfies GitBranchParams);
   }
 
-  public async switchGithubBranch(
-    appId: number,
-    branch: string,
-  ): Promise<void> {
+  public async switchGithubBranch(appId: number, branch: string): Promise<void> {
     await this.ipcRenderer.invoke("github:switch-branch", {
       appId,
       branch,
@@ -1000,10 +923,7 @@ export class IpcClient {
     } satisfies GitBranchAppIdParams);
   }
 
-  public async listRemoteGithubBranches(
-    appId: number,
-    remote = "origin",
-  ): Promise<string[]> {
+  public async listRemoteGithubBranches(appId: number, remote = "origin"): Promise<string[]> {
     return this.ipcRenderer.invoke("github:list-remote-branches", {
       appId,
       remote,
@@ -1033,20 +953,14 @@ export class IpcClient {
     return this.ipcRenderer.invoke("github:list-collaborators", { appId });
   }
 
-  public async inviteCollaborator(
-    appId: number,
-    username: string,
-  ): Promise<void> {
+  public async inviteCollaborator(appId: number, username: string): Promise<void> {
     await this.ipcRenderer.invoke("github:invite-collaborator", {
       appId,
       username,
     });
   }
 
-  public async removeCollaborator(
-    appId: number,
-    username: string,
-  ): Promise<void> {
+  public async removeCollaborator(appId: number, username: string): Promise<void> {
     await this.ipcRenderer.invoke("github:remove-collaborator", {
       appId,
       username,
@@ -1056,9 +970,7 @@ export class IpcClient {
   // --- End GitHub Repo Management ---
 
   // --- Vercel Token Management ---
-  public async saveVercelAccessToken(
-    params: SaveVercelAccessTokenParams,
-  ): Promise<void> {
+  public async saveVercelAccessToken(params: SaveVercelAccessTokenParams): Promise<void> {
     await this.ipcRenderer.invoke("vercel:save-token", params);
   }
   // --- End Vercel Token Management ---
@@ -1080,9 +992,7 @@ export class IpcClient {
     return this.ipcRenderer.invoke("vercel:is-project-available", params);
   }
 
-  public async createVercelProject(
-    params: CreateVercelProjectParams,
-  ): Promise<void> {
+  public async createVercelProject(params: CreateVercelProjectParams): Promise<void> {
     await this.ipcRenderer.invoke("vercel:create-project", params);
   }
 
@@ -1093,9 +1003,7 @@ export class IpcClient {
     return this.ipcRenderer.invoke("vercel:get-deployments", params);
   }
 
-  public async disconnectVercelProject(
-    params: DisconnectVercelProjectParams,
-  ): Promise<void> {
+  public async disconnectVercelProject(params: DisconnectVercelProjectParams): Promise<void> {
     await this.ipcRenderer.invoke("vercel:disconnect", params);
   }
   // --- End Vercel Project Management ---
@@ -1176,9 +1084,7 @@ export class IpcClient {
     return this.ipcRenderer.invoke("agent-tool:set-consent", params);
   }
 
-  public onAgentToolConsentRequest(
-    handler: (payload: AgentToolConsentRequestPayload) => void,
-  ) {
+  public onAgentToolConsentRequest(handler: (payload: AgentToolConsentRequestPayload) => void) {
     this.agentConsentHandlers.set("consent", handler as any);
     return () => {
       this.agentConsentHandlers.delete("consent");
@@ -1193,9 +1099,7 @@ export class IpcClient {
    * Subscribe to agent todos updates from the local agent.
    * Called when the agent updates its todo list during a streaming session.
    */
-  public onAgentTodosUpdate(
-    handler: (payload: AgentTodosUpdatePayload) => void,
-  ) {
+  public onAgentTodosUpdate(handler: (payload: AgentTodosUpdatePayload) => void) {
     this.agentTodosHandlers.add(handler);
     return () => {
       this.agentTodosHandlers.delete(handler);
@@ -1206,9 +1110,7 @@ export class IpcClient {
    * Subscribe to agent problems updates from the local agent.
    * Called when the agent runs type checks and updates the problems report.
    */
-  public onAgentProblemsUpdate(
-    handler: (payload: AgentProblemsUpdatePayload) => void,
-  ) {
+  public onAgentProblemsUpdate(handler: (payload: AgentProblemsUpdatePayload) => void) {
     this.agentProblemsHandlers.add(handler);
     return () => {
       this.agentProblemsHandlers.delete(handler);
@@ -1244,9 +1146,7 @@ export class IpcClient {
    * Used to forward events to PostHog in the renderer.
    * @returns Unsubscribe function
    */
-  public onTelemetryEvent(
-    handler: (payload: TelemetryEventPayload) => void,
-  ): () => void {
+  public onTelemetryEvent(handler: (payload: TelemetryEventPayload) => void): () => void {
     this.telemetryEventHandlers.add(handler);
     return () => {
       this.telemetryEventHandlers.delete(handler);
@@ -1300,16 +1200,12 @@ export class IpcClient {
   // --- Supabase Management ---
 
   // List all connected Supabase organizations
-  public async listSupabaseOrganizations(): Promise<
-    SupabaseOrganizationInfo[]
-  > {
+  public async listSupabaseOrganizations(): Promise<SupabaseOrganizationInfo[]> {
     return this.ipcRenderer.invoke("supabase:list-organizations");
   }
 
   // Delete a Supabase organization connection
-  public async deleteSupabaseOrganization(
-    params: DeleteSupabaseOrganizationParams,
-  ): Promise<void> {
+  public async deleteSupabaseOrganization(params: DeleteSupabaseOrganizationParams): Promise<void> {
     await this.ipcRenderer.invoke("supabase:delete-organization", params);
   }
 
@@ -1334,9 +1230,7 @@ export class IpcClient {
     return this.ipcRenderer.invoke("supabase:get-edge-logs", params);
   }
 
-  public async setSupabaseAppProject(
-    params: SetSupabaseAppProjectParams,
-  ): Promise<void> {
+  public async setSupabaseAppProject(params: SetSupabaseAppProjectParams): Promise<void> {
     await this.ipcRenderer.invoke("supabase:set-app-project", params);
   }
 
@@ -1350,10 +1244,7 @@ export class IpcClient {
     appId: number;
     fakeProjectId: string;
   }): Promise<void> {
-    await this.ipcRenderer.invoke(
-      "supabase:fake-connect-and-set-project",
-      params,
-    );
+    await this.ipcRenderer.invoke("supabase:fake-connect-and-set-project", params);
   }
 
   // --- End Supabase Management ---
@@ -1363,24 +1254,18 @@ export class IpcClient {
     await this.ipcRenderer.invoke("neon:fake-connect");
   }
 
-  public async createNeonProject(
-    params: CreateNeonProjectParams,
-  ): Promise<NeonProject> {
+  public async createNeonProject(params: CreateNeonProjectParams): Promise<NeonProject> {
     return this.ipcRenderer.invoke("neon:create-project", params);
   }
 
-  public async getNeonProject(
-    params: GetNeonProjectParams,
-  ): Promise<GetNeonProjectResponse> {
+  public async getNeonProject(params: GetNeonProjectParams): Promise<GetNeonProjectResponse> {
     return this.ipcRenderer.invoke("neon:get-project", params);
   }
 
   // --- End Neon Management ---
 
   // --- Portal Management ---
-  public async portalMigrateCreate(params: {
-    appId: number;
-  }): Promise<{ output: string }> {
+  public async portalMigrateCreate(params: { appId: number }): Promise<{ output: string }> {
     return this.ipcRenderer.invoke("portal:migrate-create", params);
   }
 
@@ -1394,11 +1279,7 @@ export class IpcClient {
     return this.ipcRenderer.invoke("get-chat-logs", chatId);
   }
 
-  public async uploadToSignedUrl(
-    url: string,
-    contentType: string,
-    data: any,
-  ): Promise<void> {
+  public async uploadToSignedUrl(url: string, contentType: string, data: any): Promise<void> {
     await this.ipcRenderer.invoke("upload-to-signed-url", {
       url,
       contentType,
@@ -1412,16 +1293,12 @@ export class IpcClient {
   }
 
   public async listLocalLMStudioModels(): Promise<LocalModel[]> {
-    const response = await this.ipcRenderer.invoke(
-      "local-models:list-lmstudio",
-    );
+    const response = await this.ipcRenderer.invoke("local-models:list-lmstudio");
     return response?.models || [];
   }
 
   // Listen for deep link events
-  public onDeepLinkReceived(
-    callback: (data: DeepLinkData) => void,
-  ): () => void {
+  public onDeepLinkReceived(callback: (data: DeepLinkData) => void): () => void {
     const listener = (data: any) => {
       callback(data as DeepLinkData);
     };
@@ -1454,9 +1331,7 @@ export class IpcClient {
   }
 
   // Count tokens for a chat and input
-  public async countTokens(
-    params: TokenCountParams,
-  ): Promise<TokenCountResult> {
+  public async countTokens(params: TokenCountParams): Promise<TokenCountResult> {
     try {
       const result = await this.ipcRenderer.invoke("chat:count-tokens", params);
       return result as TokenCountResult;
@@ -1509,15 +1384,11 @@ export class IpcClient {
     return this.ipcRenderer.invoke("get-language-model-providers");
   }
 
-  public async getLanguageModels(params: {
-    providerId: string;
-  }): Promise<LanguageModel[]> {
+  public async getLanguageModels(params: { providerId: string }): Promise<LanguageModel[]> {
     return this.ipcRenderer.invoke("get-language-models", params);
   }
 
-  public async getLanguageModelsByProviders(): Promise<
-    Record<string, LanguageModel[]>
-  > {
+  public async getLanguageModelsByProviders(): Promise<Record<string, LanguageModel[]>> {
     return this.ipcRenderer.invoke("get-language-models-by-providers");
   }
 
@@ -1537,15 +1408,10 @@ export class IpcClient {
   public async editCustomLanguageModelProvider(
     params: CreateCustomLanguageModelProviderParams,
   ): Promise<LanguageModelProvider> {
-    return this.ipcRenderer.invoke(
-      "edit-custom-language-model-provider",
-      params,
-    );
+    return this.ipcRenderer.invoke("edit-custom-language-model-provider", params);
   }
 
-  public async createCustomLanguageModel(
-    params: CreateCustomLanguageModelParams,
-  ): Promise<void> {
+  public async createCustomLanguageModel(params: CreateCustomLanguageModelParams): Promise<void> {
     await this.ipcRenderer.invoke("create-custom-language-model", params);
   }
 
@@ -1592,15 +1458,11 @@ export class IpcClient {
     return this.ipcRenderer.invoke("get-node-path");
   }
 
-  public async checkAiRules(params: {
-    path: string;
-  }): Promise<{ exists: boolean }> {
+  public async checkAiRules(params: { path: string }): Promise<{ exists: boolean }> {
     return this.ipcRenderer.invoke("check-ai-rules", params);
   }
 
-  public async getLatestSecurityReview(
-    appId: number,
-  ): Promise<SecurityReviewResult> {
+  public async getLatestSecurityReview(appId: number): Promise<SecurityReviewResult> {
     return this.ipcRenderer.invoke("get-latest-security-review", appId);
   }
 
@@ -1628,9 +1490,7 @@ export class IpcClient {
     return this.ipcRenderer.invoke("get-user-budget");
   }
 
-  public async getChatContextResults(params: {
-    appId: number;
-  }): Promise<ContextPathResults> {
+  public async getChatContextResults(params: { appId: number }): Promise<ContextPathResults> {
     return this.ipcRenderer.invoke("get-context-paths", params);
   }
 
@@ -1641,16 +1501,11 @@ export class IpcClient {
     await this.ipcRenderer.invoke("set-context-paths", params);
   }
 
-  public async getAppUpgrades(params: {
-    appId: number;
-  }): Promise<AppUpgrade[]> {
+  public async getAppUpgrades(params: { appId: number }): Promise<AppUpgrade[]> {
     return this.ipcRenderer.invoke("get-app-upgrades", params);
   }
 
-  public async executeAppUpgrade(params: {
-    appId: number;
-    upgradeId: string;
-  }): Promise<void> {
+  public async executeAppUpgrade(params: { appId: number; upgradeId: string }): Promise<void> {
     return this.ipcRenderer.invoke("execute-app-upgrade", params);
   }
 
@@ -1671,9 +1526,7 @@ export class IpcClient {
     return this.ipcRenderer.invoke("open-android", params);
   }
 
-  public async checkProblems(params: {
-    appId: number;
-  }): Promise<ProblemReport> {
+  public async checkProblems(params: { appId: number }): Promise<ProblemReport> {
     return this.ipcRenderer.invoke("check-problems", params);
   }
 
@@ -1699,21 +1552,15 @@ export class IpcClient {
     return this.ipcRenderer.invoke("get-custom-themes");
   }
 
-  public async createCustomTheme(
-    params: CreateCustomThemeParams,
-  ): Promise<CustomTheme> {
+  public async createCustomTheme(params: CreateCustomThemeParams): Promise<CustomTheme> {
     return this.ipcRenderer.invoke("create-custom-theme", params);
   }
 
-  public async updateCustomTheme(
-    params: UpdateCustomThemeParams,
-  ): Promise<CustomTheme> {
+  public async updateCustomTheme(params: UpdateCustomThemeParams): Promise<CustomTheme> {
     return this.ipcRenderer.invoke("update-custom-theme", params);
   }
 
-  public async deleteCustomTheme(
-    params: DeleteCustomThemeParams,
-  ): Promise<void> {
+  public async deleteCustomTheme(params: DeleteCustomThemeParams): Promise<void> {
     await this.ipcRenderer.invoke("delete-custom-theme", params);
   }
 
@@ -1723,15 +1570,11 @@ export class IpcClient {
     return this.ipcRenderer.invoke("generate-theme-prompt", params);
   }
 
-  public async saveThemeImage(
-    params: SaveThemeImageParams,
-  ): Promise<SaveThemeImageResult> {
+  public async saveThemeImage(params: SaveThemeImageParams): Promise<SaveThemeImageResult> {
     return this.ipcRenderer.invoke("save-theme-image", params);
   }
 
-  public async cleanupThemeImages(
-    params: CleanupThemeImagesParams,
-  ): Promise<void> {
+  public async cleanupThemeImages(params: CleanupThemeImagesParams): Promise<void> {
     await this.ipcRenderer.invoke("cleanup-theme-images", params);
   }
 
@@ -1768,13 +1611,11 @@ export class IpcClient {
     },
   ): void {
     this.helpStreams.set(sessionId, options);
-    this.ipcRenderer
-      .invoke("help:chat:start", { sessionId, message })
-      .catch((err) => {
-        this.helpStreams.delete(sessionId);
-        showError(err);
-        options.onError(String(err));
-      });
+    this.ipcRenderer.invoke("help:chat:start", { sessionId, message }).catch((err) => {
+      this.helpStreams.delete(sessionId);
+      showError(err);
+      options.onError(String(err));
+    });
   }
 
   public async takeScreenshot(): Promise<void> {
@@ -1786,9 +1627,7 @@ export class IpcClient {
   }
 
   // --- Visual Editing ---
-  public async applyVisualEditingChanges(
-    changes: ApplyVisualEditingChangesParams,
-  ): Promise<void> {
+  public async applyVisualEditingChanges(changes: ApplyVisualEditingChangesParams): Promise<void> {
     await this.ipcRenderer.invoke("apply-visual-editing-changes", changes);
   }
 

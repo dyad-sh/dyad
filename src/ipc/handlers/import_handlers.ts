@@ -47,10 +47,7 @@ export function registerImportHandlers() {
   // Handler for checking if an app name is already taken
   handle(
     "check-app-name",
-    async (
-      _,
-      { appName, skipCopy }: { appName: string; skipCopy?: boolean },
-    ) => {
+    async (_, { appName, skipCopy }: { appName: string; skipCopy?: boolean }) => {
       // Only check filesystem if we're copying to dyad-apps
       if (!skipCopy) {
         const appPath = getDyadAppPath(appName);
@@ -76,13 +73,7 @@ export function registerImportHandlers() {
     "import-app",
     async (
       _,
-      {
-        path: sourcePath,
-        appName,
-        installCommand,
-        startCommand,
-        skipCopy,
-      }: ImportAppParams,
+      { path: sourcePath, appName, installCommand, startCommand, skipCopy }: ImportAppParams,
     ): Promise<ImportAppResult> => {
       // Validate the source path exists
       try {

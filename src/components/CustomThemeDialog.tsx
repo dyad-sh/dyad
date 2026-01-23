@@ -23,11 +23,7 @@ interface CustomThemeDialogProps {
   onThemeCreated?: (themeId: number) => void; // callback when theme is created
 }
 
-export function CustomThemeDialog({
-  open,
-  onOpenChange,
-  onThemeCreated,
-}: CustomThemeDialogProps) {
+export function CustomThemeDialog({ open, onOpenChange, onThemeCreated }: CustomThemeDialogProps) {
   const [activeTab, setActiveTab] = useState<"manual" | "ai">("ai");
 
   // Manual tab state
@@ -68,11 +64,7 @@ export function CustomThemeDialog({
       return;
     }
     if (!prompt.trim()) {
-      showError(
-        isManual
-          ? "Please enter a theme prompt"
-          : "Please generate a prompt first",
-      );
+      showError(isManual ? "Please enter a theme prompt" : "Please generate a prompt first");
       return;
     }
 
@@ -111,8 +103,7 @@ export function CustomThemeDialog({
         <DialogHeader>
           <DialogTitle>Create Custom Theme</DialogTitle>
           <DialogDescription>
-            Create a custom theme using manual configuration or AI-powered
-            generation.
+            Create a custom theme using manual configuration or AI-powered generation.
           </DialogDescription>
         </DialogHeader>
 

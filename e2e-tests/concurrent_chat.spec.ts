@@ -15,9 +15,7 @@ test("concurrent chat", async ({ po }) => {
   await po.clickChatActivityButton();
 
   // Chat #1 will be the last in the list
-  expect(
-    await po.page.getByTestId(`chat-activity-list-item-1`).textContent(),
-  ).toContain("Chat #1");
+  expect(await po.page.getByTestId(`chat-activity-list-item-1`).textContent()).toContain("Chat #1");
   await po.page.getByTestId(`chat-activity-list-item-1`).click();
   await po.snapshotMessages({ timeout: 12_000 });
 

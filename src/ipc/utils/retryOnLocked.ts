@@ -21,9 +21,7 @@ const RETRY_CONFIG = {
 export async function retryOnLocked<T>(
   operation: () => Promise<T>,
   context: string,
-  {
-    retryBranchWithChildError = false,
-  }: { retryBranchWithChildError?: boolean } = {},
+  { retryBranchWithChildError = false }: { retryBranchWithChildError?: boolean } = {},
 ): Promise<T> {
   let lastError: any;
 

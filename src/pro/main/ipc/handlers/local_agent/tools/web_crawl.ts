@@ -65,9 +65,7 @@ async function callWebCrawl(
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(
-      `Web crawl failed: ${response.status} ${response.statusText} - ${errorText}`,
-    );
+    throw new Error(`Web crawl failed: ${response.status} ${response.statusText} - ${errorText}`);
   }
 
   const data = webCrawlResponseSchema.parse(await response.json());
@@ -126,11 +124,7 @@ export const webCrawlTool: ToolDefinition<z.infer<typeof webCrawlSchema>> = {
 const MAX_TEXT_SNIPPET_LENGTH = 16_000;
 
 // Format a code snippet with a label and language, truncating if necessary.
-export function formatSnippet(
-  label: string,
-  value: string,
-  lang: string,
-): string {
+export function formatSnippet(label: string, value: string, lang: string): string {
   return `${label}:\n\`\`\`${lang}\n${truncateText(value)}\n\`\`\``;
 }
 

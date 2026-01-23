@@ -22,11 +22,7 @@ interface ChatPanelProps {
   onTogglePreview: () => void;
 }
 
-export function ChatPanel({
-  chatId,
-  isPreviewOpen,
-  onTogglePreview,
-}: ChatPanelProps) {
+export function ChatPanel({ chatId, isPreviewOpen, onTogglePreview }: ChatPanelProps) {
   const messagesById = useAtomValue(chatMessagesByIdAtom);
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const [isVersionPaneOpen, setIsVersionPaneOpen] = useState(false);
@@ -243,10 +239,7 @@ export function ChatPanel({
             <ChatInput chatId={chatId} />
           </div>
         )}
-        <VersionPane
-          isVisible={isVersionPaneOpen}
-          onClose={() => setIsVersionPaneOpen(false)}
-        />
+        <VersionPane isVisible={isVersionPaneOpen} onClose={() => setIsVersionPaneOpen(false)} />
       </div>
     </div>
   );

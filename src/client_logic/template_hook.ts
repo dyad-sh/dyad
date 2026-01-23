@@ -3,13 +3,7 @@ import { getAppPort } from "../../shared/ports";
 
 import { v4 as uuidv4 } from "uuid";
 
-export async function neonTemplateHook({
-  appId,
-  appName,
-}: {
-  appId: number;
-  appName: string;
-}) {
+export async function neonTemplateHook({ appId, appName }: { appId: number; appName: string }) {
   console.log("Creating Neon project");
   const neonProject = await IpcClient.getInstance().createNeonProject({
     name: appName,

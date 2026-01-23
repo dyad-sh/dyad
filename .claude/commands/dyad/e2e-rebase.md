@@ -7,7 +7,6 @@ Rebase E2E test snapshots based on failed tests from the PR comments.
 1. Get the current PR number using `gh pr view --json number --jq '.number'`
 
 2. Fetch PR comments and look for the Playwright test results comment. Parse out the failed test filenames from either:
-
    - The "Failed Tests" section (lines starting with `- \`filename.spec.ts`)
    - The "Update Snapshot Commands" section (contains `npm run e2e e2e-tests/filename.spec.ts`)
 
@@ -36,7 +35,6 @@ Rebase E2E test snapshots based on failed tests from the PR comments.
 7. Show the user which snapshots were updated using `git diff` on the snapshot files.
 
 8. Review the snapshot changes to ensure they look reasonable and are consistent with the PR's purpose. Consider:
-
    - Do the changes align with what the PR is trying to accomplish?
    - Are there any unexpected or suspicious changes?
 

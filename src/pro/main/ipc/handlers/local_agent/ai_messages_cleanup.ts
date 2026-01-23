@@ -12,8 +12,7 @@ export const AI_MESSAGES_TTL_DAYS = 30;
  * Run on app startup to prevent database bloat.
  */
 export async function cleanupOldAiMessagesJson() {
-  const cutoffSeconds =
-    Math.floor(Date.now() / 1000) - AI_MESSAGES_TTL_DAYS * 24 * 60 * 60;
+  const cutoffSeconds = Math.floor(Date.now() / 1000) - AI_MESSAGES_TTL_DAYS * 24 * 60 * 60;
   const cutoffDate = new Date(cutoffSeconds * 1000);
 
   try {

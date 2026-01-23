@@ -9,19 +9,12 @@ import log from "electron-log";
 
 const logger = log.scope("createFromTemplate");
 
-export async function createFromTemplate({
-  fullAppPath,
-}: {
-  fullAppPath: string;
-}) {
+export async function createFromTemplate({ fullAppPath }: { fullAppPath: string }) {
   const settings = readSettings();
   const templateId = settings.selectedTemplateId;
 
   if (templateId === "react") {
-    await copyDirectoryRecursive(
-      path.join(__dirname, "..", "..", "scaffold"),
-      fullAppPath,
-    );
+    await copyDirectoryRecursive(path.join(__dirname, "..", "..", "scaffold"), fullAppPath);
     return;
   }
 
@@ -46,9 +39,7 @@ async function cloneRepo(repoUrl: string): Promise<string> {
   const pathParts = url.pathname.split("/").filter((part) => part.length > 0);
 
   if (pathParts.length !== 2) {
-    throw new Error(
-      "Invalid repository URL format. Expected 'https://github.com/org/repo'",
-    );
+    throw new Error("Invalid repository URL format. Expected 'https://github.com/org/repo'");
   }
 
   const orgName = pathParts[0];
@@ -56,18 +47,11 @@ async function cloneRepo(repoUrl: string): Promise<string> {
 
   if (!orgName || !repoName) {
     // This case should ideally be caught by pathParts.length !== 2
-    throw new Error(
-      "Failed to parse organization or repository name from URL.",
-    );
+    throw new Error("Failed to parse organization or repository name from URL.");
   }
   logger.info(`Parsed org: ${orgName}, repo: ${repoName} from ${repoUrl}`);
 
-  const cachePath = path.join(
-    app.getPath("userData"),
-    "templates",
-    orgName,
-    repoName,
-  );
+  const cachePath = path.join(app.getPath("userData"), "templates", orgName, repoName);
 
   if (fs.existsSync(cachePath)) {
     try {
@@ -155,10 +139,7 @@ async function copyRepoToApp(repoCachePath: string, appPath: string) {
     });
     logger.info("Finished copying repository contents.");
   } catch (err) {
-    logger.error(
-      `Error copying repository from ${repoCachePath} to ${appPath}: `,
-      err,
-    );
+    logger.error(`Error copying repository from ${repoCachePath} to ${appPath}: `, err);
     throw err; // Re-throw the error after logging
   }
 }

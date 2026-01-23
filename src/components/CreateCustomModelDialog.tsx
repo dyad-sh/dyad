@@ -42,15 +42,12 @@ export function CreateCustomModelDialog({
         displayName,
         providerId,
         description: description || undefined,
-        maxOutputTokens: maxOutputTokens
-          ? parseInt(maxOutputTokens, 10)
-          : undefined,
+        maxOutputTokens: maxOutputTokens ? parseInt(maxOutputTokens, 10) : undefined,
         contextWindow: contextWindow ? parseInt(contextWindow, 10) : undefined,
       };
 
       if (!params.apiName) throw new Error("Model API name is required");
-      if (!params.displayName)
-        throw new Error("Model display name is required");
+      if (!params.displayName) throw new Error("Model display name is required");
       if (maxOutputTokens && isNaN(params.maxOutputTokens ?? NaN))
         throw new Error("Max Output Tokens must be a valid number");
       if (contextWindow && isNaN(params.contextWindow ?? NaN))
@@ -107,9 +104,7 @@ export function CreateCustomModelDialog({
               <Input
                 id="model-id"
                 value={apiName}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setApiName(e.target.value)
-                }
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setApiName(e.target.value)}
                 className="col-span-3"
                 placeholder="This must match the model expected by the API"
                 required

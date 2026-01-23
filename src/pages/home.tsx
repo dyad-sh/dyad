@@ -16,12 +16,7 @@ import { PrivacyBanner } from "@/components/TelemetryBanner";
 import { INSPIRATION_PROMPTS } from "@/prompts/inspiration_prompts";
 import { useAppVersion } from "@/hooks/useAppVersion";
 
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useTheme } from "@/contexts/ThemeContext";
 import { Button } from "@/components/ui/button";
 import { ExternalLink } from "lucide-react";
@@ -34,11 +29,7 @@ import { ForceCloseDialog } from "@/components/ForceCloseDialog";
 import type { FileAttachment } from "@/ipc/ipc_types";
 import { NEON_TEMPLATE_IDS } from "@/shared/templates";
 import { neonTemplateHook } from "@/client_logic/template_hook";
-import {
-  ProBanner,
-  ManageDyadProButton,
-  SetupDyadProButton,
-} from "@/components/ProBanner";
+import { ProBanner, ManageDyadProButton, SetupDyadProButton } from "@/components/ProBanner";
 import { hasDyadProKey, getEffectiveDefaultChatMode } from "@/lib/schemas";
 
 // Adding an export for attachments
@@ -78,11 +69,7 @@ export default function HomePage() {
 
   useEffect(() => {
     const updateLastVersionLaunched = async () => {
-      if (
-        appVersion &&
-        settings &&
-        settings.lastShownReleaseNotesVersion !== appVersion
-      ) {
+      if (appVersion && settings && settings.lastShownReleaseNotesVersion !== appVersion) {
         const shouldShowReleaseNotes = !!settings.lastShownReleaseNotesVersion;
         await updateSettings({
           lastShownReleaseNotesVersion: appVersion,
@@ -103,10 +90,7 @@ export default function HomePage() {
             setReleaseNotesOpen(true);
           }
         } catch (err) {
-          console.warn(
-            "Unable to check if release note exists for: " + appVersion,
-            err,
-          );
+          console.warn("Unable to check if release note exists for: " + appVersion, err);
         }
       }
     };
@@ -117,9 +101,7 @@ export default function HomePage() {
   const appId = search.appId ? Number(search.appId) : null;
 
   // State for random prompts
-  const [randomPrompts, setRandomPrompts] = useState<
-    typeof INSPIRATION_PROMPTS
-  >([]);
+  const [randomPrompts, setRandomPrompts] = useState<typeof INSPIRATION_PROMPTS>([]);
 
   // Function to get random prompts
   const getRandomPrompts = useCallback(() => {
@@ -162,10 +144,7 @@ export default function HomePage() {
       const result = await IpcClient.getInstance().createApp({
         name: generateCuteAppName(),
       });
-      if (
-        settings?.selectedTemplateId &&
-        NEON_TEMPLATE_IDS.has(settings.selectedTemplateId)
-      ) {
+      if (settings?.selectedTemplateId && NEON_TEMPLATE_IDS.has(settings.selectedTemplateId)) {
         await neonTemplateHook({
           appId: result.app.id,
           appName: result.app.name,
@@ -186,9 +165,7 @@ export default function HomePage() {
         chatId: result.chatId,
         attachments,
       });
-      await new Promise((resolve) =>
-        setTimeout(resolve, settings?.isTestMode ? 0 : 2000),
-      );
+      await new Promise((resolve) => setTimeout(resolve, settings?.isTestMode ? 0 : 2000));
 
       setInputValue("");
       setSelectedAppId(result.app.id);
@@ -265,9 +242,7 @@ export default function HomePage() {
                            dark:bg-gray-800/50 dark:border-gray-700
                            dark:hover:bg-gray-800 dark:hover:border-gray-600"
               >
-                <span className="text-gray-700 dark:text-gray-300">
-                  {item.icon}
-                </span>
+                <span className="text-gray-700 dark:text-gray-300">{item.icon}</span>
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                   {item.label}
                 </span>
@@ -299,9 +274,7 @@ export default function HomePage() {
                 d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
               />
             </svg>
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              More ideas
-            </span>
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">More ideas</span>
           </button>
         </div>
         <ProBanner />
@@ -318,10 +291,7 @@ export default function HomePage() {
               size="sm"
               className="absolute right-10 top-2 focus-visible:ring-0 focus-visible:ring-offset-0"
               onClick={() =>
-                window.open(
-                  releaseUrl.replace("?hideHeader=true&theme=" + theme, ""),
-                  "_blank",
-                )
+                window.open(releaseUrl.replace("?hideHeader=true&theme=" + theme, ""), "_blank")
               }
             >
               <ExternalLink className="w-4 h-4" />

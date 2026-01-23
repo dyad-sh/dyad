@@ -53,30 +53,16 @@ import {
 
 import { Label } from "@/components/ui/label";
 import { showSuccess, showError, showInfo } from "@/lib/toast";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface BranchManagerProps {
   appId: number;
   onBranchChange?: () => void;
 }
 
-export function GithubBranchManager({
-  appId,
-  onBranchChange,
-}: BranchManagerProps) {
+export function GithubBranchManager({ appId, onBranchChange }: BranchManagerProps) {
   const { settings } = useSettings();
   const navigate = useNavigate();
   const [branches, setBranches] = useState<string[]>([]);
@@ -175,10 +161,7 @@ export function GithubBranchManager({
         const errorCode = initialError?.code;
 
         // Fallback: query backend git state if code is missing
-        let inferredCode:
-          | "REBASE_IN_PROGRESS"
-          | "MERGE_IN_PROGRESS"
-          | undefined;
+        let inferredCode: "REBASE_IN_PROGRESS" | "MERGE_IN_PROGRESS" | undefined;
         if (!errorCode) {
           try {
             const state = await IpcClient.getInstance().getGithubState(appId);
@@ -197,8 +180,7 @@ export function GithubBranchManager({
           // Check if there are unresolved conflicts
           let hasConflicts = false;
           try {
-            const conflicts =
-              await IpcClient.getInstance().getGithubMergeConflicts(appId);
+            const conflicts = await IpcClient.getInstance().getGithubMergeConflicts(appId);
             hasConflicts = conflicts.length > 0;
           } catch {
             // If we can't get conflicts, assume there might be conflicts to be safe
@@ -219,8 +201,7 @@ export function GithubBranchManager({
           // Check if there are unresolved conflicts
           let hasConflicts = false;
           try {
-            const conflicts =
-              await IpcClient.getInstance().getGithubMergeConflicts(appId);
+            const conflicts = await IpcClient.getInstance().getGithubMergeConflicts(appId);
             hasConflicts = conflicts.length > 0;
           } catch {
             // If we can't get conflicts, assume there might be conflicts to be safe
@@ -263,9 +244,7 @@ export function GithubBranchManager({
       // Now switch to the target branch
       try {
         await IpcClient.getInstance().switchGithubBranch(appId, targetBranch);
-        showSuccess(
-          `Aborted ongoing ${operationType} and switched to branch '${targetBranch}'`,
-        );
+        showSuccess(`Aborted ongoing ${operationType} and switched to branch '${targetBranch}'`);
         setCurrentBranch(targetBranch);
         onBranchChange?.();
         await loadBranches();
@@ -307,11 +286,7 @@ export function GithubBranchManager({
     setIsRenaming(true);
     try {
       const trimmedNewName = renameBranchName.trim();
-      await IpcClient.getInstance().renameGithubBranch(
-        appId,
-        branchToRename,
-        trimmedNewName,
-      );
+      await IpcClient.getInstance().renameGithubBranch(appId, branchToRename, trimmedNewName);
       showSuccess(`Renamed '${branchToRename}' to '${trimmedNewName}'`);
       setBranchToRename(null);
       setRenameBranchName("");
@@ -335,16 +310,13 @@ export function GithubBranchManager({
       await loadBranches(); // Refresh to see any status changes if we implement them
     } catch (error: any) {
       // Check if it's a merge conflict error (handler converts GitConflictError to MergeConflictError)
-      const isConflict =
-        error?.name === "MergeConflictError" ||
-        error?.name === "GitConflictError";
+      const isConflict = error?.name === "MergeConflictError" || error?.name === "GitConflictError";
 
       if (isConflict) {
         showInfo("Merge conflict detected. Please resolve them in the editor.");
         // Show conflicts dialog
         try {
-          const conflicts =
-            await IpcClient.getInstance().getGithubMergeConflicts(appId);
+          const conflicts = await IpcClient.getInstance().getGithubMergeConflicts(appId);
 
           if (conflicts.length > 0) {
             setConflicts(conflicts);
@@ -379,14 +351,7 @@ export function GithubBranchManager({
         <Select
           value={currentBranch || ""}
           onValueChange={handleSwitchBranch}
-          disabled={
-            isSwitching ||
-            isDeleting ||
-            isRenaming ||
-            isMerging ||
-            isCreating ||
-            isLoading
-          }
+          disabled={isSwitching || isDeleting || isRenaming || isMerging || isCreating || isLoading}
         >
           <SelectTrigger className="w-full" data-testid="branch-select-trigger">
             <SelectValue placeholder="Select branch" />
@@ -418,9 +383,7 @@ export function GithubBranchManager({
                 title="Refresh branches"
                 data-testid="refresh-branches-button"
               >
-                <RefreshCw
-                  className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
-                />
+                <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
               </Button>
             </TooltipTrigger>
             <TooltipContent>Refresh branches</TooltipContent>
@@ -466,10 +429,7 @@ export function GithubBranchManager({
               <div>
                 <Label htmlFor="source-branch">Source Branch</Label>
                 <Select value={sourceBranch} onValueChange={setSourceBranch}>
-                  <SelectTrigger
-                    className="mt-2"
-                    data-testid="source-branch-select-trigger"
-                  >
+                  <SelectTrigger className="mt-2" data-testid="source-branch-select-trigger">
                     <SelectValue placeholder="Select source (optional, defaults to HEAD)" />
                   </SelectTrigger>
                   <SelectContent>
@@ -484,10 +444,7 @@ export function GithubBranchManager({
               </div>
             </div>
             <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setShowCreateDialog(false)}
-              >
+              <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
                 Cancel
               </Button>
               <Button
@@ -503,16 +460,11 @@ export function GithubBranchManager({
       </div>
 
       {/* Rename Dialog */}
-      <Dialog
-        open={!!branchToRename}
-        onOpenChange={(open) => !open && setBranchToRename(null)}
-      >
+      <Dialog open={!!branchToRename} onOpenChange={(open) => !open && setBranchToRename(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Rename Branch</DialogTitle>
-            <DialogDescription>
-              Enter a new name for branch '{branchToRename}'.
-            </DialogDescription>
+            <DialogDescription>Enter a new name for branch '{branchToRename}'.</DialogDescription>
           </DialogHeader>
           <div className="py-4">
             <Label htmlFor="rename-branch-name">New Name</Label>
@@ -541,16 +493,12 @@ export function GithubBranchManager({
       </Dialog>
 
       {/* Merge Dialog */}
-      <Dialog
-        open={!!branchToMerge}
-        onOpenChange={(open) => !open && setBranchToMerge(null)}
-      >
+      <Dialog open={!!branchToMerge} onOpenChange={(open) => !open && setBranchToMerge(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Merge Branch</DialogTitle>
             <DialogDescription>
-              Are you sure you want to merge '{branchToMerge}' into '
-              {currentBranch}'?
+              Are you sure you want to merge '{branchToMerge}' into '{currentBranch}'?
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -576,16 +524,13 @@ export function GithubBranchManager({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Branch</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete the branch '{branchToDelete}'. This
-              action cannot be undone.
+              This will permanently delete the branch '{branchToDelete}'. This action cannot be
+              undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirmDeleteBranch}
-              disabled={isDeleting}
-            >
+            <AlertDialogAction onClick={handleConfirmDeleteBranch} disabled={isDeleting}>
               {isDeleting ? "Deleting..." : "Delete Branch"}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -620,11 +565,8 @@ export function GithubBranchManager({
 
             <AlertDialogDescription className="mt-4 space-y-4 text-sm">
               <p className="text-foreground">
-                A{" "}
-                <span className="font-medium">
-                  {abortConfirmation?.operationType}
-                </span>{" "}
-                operation is currently in progress. Switching to{" "}
+                A <span className="font-medium">{abortConfirmation?.operationType}</span> operation
+                is currently in progress. Switching to{" "}
                 <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
                   {abortConfirmation?.targetBranch}
                 </span>{" "}
@@ -635,24 +577,20 @@ export function GithubBranchManager({
                 <div className="rounded-md border border-red-200 bg-red-50 p-3 text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">
                   <p className="font-medium">Unresolved conflicts detected</p>
                   <p className="mt-1 text-xs">
-                    Aborting will discard any conflict resolution work you’ve
-                    already done.
+                    Aborting will discard any conflict resolution work you’ve already done.
                   </p>
                 </div>
               )}
 
               <p className="text-muted-foreground">
-                Are you sure you want to abort the{" "}
-                {abortConfirmation?.operationType} and switch branches?
+                Are you sure you want to abort the {abortConfirmation?.operationType} and switch
+                branches?
               </p>
             </AlertDialogDescription>
           </AlertDialogHeader>
 
           <AlertDialogFooter className="mt-6 gap-2">
-            <AlertDialogCancel
-              disabled={isSwitching}
-              data-testid="abort-confirmation-cancel"
-            >
+            <AlertDialogCancel disabled={isSwitching} data-testid="abort-confirmation-cancel">
               Keep working
             </AlertDialogCancel>
 
@@ -669,9 +607,7 @@ export function GithubBranchManager({
                 </span>
               ) : (
                 `Abort ${
-                  abortConfirmation?.operationType === "merge"
-                    ? "Merge"
-                    : "Rebase"
+                  abortConfirmation?.operationType === "merge" ? "Merge" : "Rebase"
                 } & Switch`
               )}
             </AlertDialogAction>
@@ -682,16 +618,12 @@ export function GithubBranchManager({
       {/* Conflict Resolver */}
       {conflicts.length > 0 && (
         <p className="text-sm text-red-600">
-          There are conflicts in the repository. Please resolve them in the
-          editor.
+          There are conflicts in the repository. Please resolve them in the editor.
         </p>
       )}
 
       <Card className="transition-all duration-200">
-        <CardHeader
-          className="p-2 cursor-pointer"
-          onClick={() => setIsExpanded((prev) => !prev)}
-        >
+        <CardHeader className="p-2 cursor-pointer" onClick={() => setIsExpanded((prev) => !prev)}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <GitBranch className="w-5 h-5" />
@@ -719,18 +651,15 @@ export function GithubBranchManager({
           <CardContent className="space-y-4 pt-0">
             {/* Banner for native git requirement */}
             {!settings?.enableNativeGit && (
-              <Alert
-                variant="default"
-                className="border-amber-500/50 bg-amber-500/10"
-              >
+              <Alert variant="default" className="border-amber-500/50 bg-amber-500/10">
                 <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
                 <AlertTitle className="text-amber-900 dark:text-amber-100">
                   Native Git Required
                 </AlertTitle>
                 <AlertDescription className="text-amber-800 dark:text-amber-200">
                   <p className="mb-2">
-                    Some Git actions (like rebase, merge abort, and advanced
-                    branch operations) require Native Git to be enabled.
+                    Some Git actions (like rebase, merge abort, and advanced branch operations)
+                    require Native Git to be enabled.
                   </p>
                   <Button
                     variant="outline"
@@ -753,13 +682,7 @@ export function GithubBranchManager({
                       className="flex items-center justify-between text-sm py-1 px-2 hover:bg-gray-50 dark:hover:bg-gray-800 rounded"
                       data-testid={`branch-item-${branch}`}
                     >
-                      <span
-                        className={
-                          branch === currentBranch
-                            ? "font-bold text-blue-600"
-                            : ""
-                        }
-                      >
+                      <span className={branch === currentBranch ? "font-bold text-blue-600" : ""}>
                         {branch}
                       </span>
                       {branch !== currentBranch && (

@@ -46,10 +46,7 @@ export function DefaultChatModeSelector() {
         >
           Default Chat Mode
         </label>
-        <Select
-          value={effectiveDefault}
-          onValueChange={handleDefaultChatModeChange}
-        >
+        <Select value={effectiveDefault} onValueChange={handleDefaultChatModeChange}>
           <SelectTrigger className="w-40" id="default-chat-mode">
             <SelectValue>{getModeDisplayName(effectiveDefault)}</SelectValue>
           </SelectTrigger>
@@ -58,26 +55,20 @@ export function DefaultChatModeSelector() {
               <SelectItem value="local-agent">
                 <div className="flex flex-col items-start">
                   <span className="font-medium">Agent</span>
-                  <span className="text-xs text-muted-foreground">
-                    Better at bigger tasks
-                  </span>
+                  <span className="text-xs text-muted-foreground">Better at bigger tasks</span>
                 </div>
               </SelectItem>
             )}
             <SelectItem value="build">
               <div className="flex flex-col items-start">
                 <span className="font-medium">Build</span>
-                <span className="text-xs text-muted-foreground">
-                  Generate and edit code
-                </span>
+                <span className="text-xs text-muted-foreground">Generate and edit code</span>
               </div>
             </SelectItem>
             <SelectItem value="agent">
               <div className="flex flex-col items-start">
                 <span className="font-medium">Build with MCP</span>
-                <span className="text-xs text-muted-foreground">
-                  Build with tools (MCP)
-                </span>
+                <span className="text-xs text-muted-foreground">Build with tools (MCP)</span>
               </div>
             </SelectItem>
           </SelectContent>

@@ -21,9 +21,7 @@ describe("xmlEscape", () => {
     });
 
     it("should escape all special characters together", () => {
-      expect(escapeXmlAttr('use <a> and "b" & c')).toBe(
-        "use &lt;a&gt; and &quot;b&quot; &amp; c",
-      );
+      expect(escapeXmlAttr('use <a> and "b" & c')).toBe("use &lt;a&gt; and &quot;b&quot; &amp; c");
     });
 
     it("should handle empty strings", () => {

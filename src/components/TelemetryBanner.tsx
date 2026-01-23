@@ -27,9 +27,7 @@ export function PrivacyBanner() {
           </h4>
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
             Help improve Dyad with anonymous usage data.
-            <em className="block italic mt-0.5">
-              Note: this does not log your code or messages.
-            </em>
+            <em className="block italic mt-0.5">Note: this does not log your code or messages.</em>
             <a
               onClick={() => {
                 IpcClient.getInstance().openExternalUrl(

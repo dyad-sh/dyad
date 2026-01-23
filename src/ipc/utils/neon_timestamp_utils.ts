@@ -82,10 +82,7 @@ export async function storeDbTimestampAtCurrentVersion({
 
     // 4. Check if a version with this commit hash already exists
     const existingVersion = await db.query.versions.findFirst({
-      where: and(
-        eq(versions.appId, appId),
-        eq(versions.commitHash, currentCommitHash),
-      ),
+      where: and(eq(versions.appId, appId), eq(versions.commitHash, currentCommitHash)),
     });
 
     if (existingVersion) {
@@ -96,15 +93,8 @@ export async function storeDbTimestampAtCurrentVersion({
           neonDbTimestamp: currentTimestamp,
           updatedAt: new Date(),
         })
-        .where(
-          and(
-            eq(versions.appId, appId),
-            eq(versions.commitHash, currentCommitHash),
-          ),
-        );
-      logger.info(
-        `Updated existing version record with timestamp ${currentTimestamp}`,
-      );
+        .where(and(eq(versions.appId, appId), eq(versions.commitHash, currentCommitHash)));
+      logger.info(`Updated existing version record with timestamp ${currentTimestamp}`);
     } else {
       // Create new version record
       await db.insert(versions).values({
@@ -117,9 +107,7 @@ export async function storeDbTimestampAtCurrentVersion({
       );
     }
 
-    logger.info(
-      `Successfully stored timestamp for commit ${currentCommitHash} in app ${appId}`,
-    );
+    logger.info(`Successfully stored timestamp for commit ${currentCommitHash} in app ${appId}`);
 
     return { timestamp: currentTimestamp };
   } catch (error) {

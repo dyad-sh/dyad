@@ -22,12 +22,8 @@ export interface OllamaProvider {
   (modelId: OllamaChatModelId, settings?: OllamaChatSettings): LanguageModel;
 }
 
-export function createOllamaProvider(
-  options?: OllamaProviderOptions,
-): OllamaProvider {
-  const base = withoutTrailingSlash(
-    options?.baseURL ?? "http://localhost:11434",
-  )!;
+export function createOllamaProvider(options?: OllamaProviderOptions): OllamaProvider {
+  const base = withoutTrailingSlash(options?.baseURL ?? "http://localhost:11434")!;
   const v1Base = (base.endsWith("/v1") ? base : `${base}/v1`) as string;
   const provider = createOpenAICompatible({
     name: "ollama",

@@ -96,9 +96,7 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
           <div className="flex justify-between items-center mb-1.5">
             <h2
               className={`text-lg font-semibold ${
-                isSelected
-                  ? "text-blue-600 dark:text-blue-400"
-                  : "text-gray-900 dark:text-white"
+                isSelected ? "text-blue-600 dark:text-blue-400" : "text-gray-900 dark:text-white"
               }`}
             >
               {template.title}
@@ -132,8 +130,7 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
               }`}
               onClick={handleGithubClick}
             >
-              View on GitHub{" "}
-              <ArrowLeft className="w-4 h-4 ml-1 transform rotate-180" />
+              View on GitHub <ArrowLeft className="w-4 h-4 ml-1 transform rotate-180" />
             </a>
           )}
 

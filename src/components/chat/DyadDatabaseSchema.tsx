@@ -11,10 +11,7 @@ interface DyadDatabaseSchemaProps {
   children: React.ReactNode;
 }
 
-export function DyadDatabaseSchema({
-  node,
-  children,
-}: DyadDatabaseSchemaProps) {
+export function DyadDatabaseSchema({ node, children }: DyadDatabaseSchemaProps) {
   const { state } = node.properties;
   const isLoading = state === "pending";
   const content = typeof children === "string" ? children : "";

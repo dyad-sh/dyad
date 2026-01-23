@@ -9,9 +9,7 @@ const addIntegrationSchema = z.object({
     .describe("The integration provider to add (e.g., 'supabase')"),
 });
 
-export const addIntegrationTool: ToolDefinition<
-  z.infer<typeof addIntegrationSchema>
-> = {
+export const addIntegrationTool: ToolDefinition<z.infer<typeof addIntegrationSchema>> = {
   name: "add_integration",
   description:
     "Add an integration provider to the app (e.g., Supabase for auth, database, or server-side functions). Once you have called this tool, stop and do not call any more tools because you need to wait for the user to set up the integration.",

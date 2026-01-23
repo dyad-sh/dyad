@@ -6,9 +6,7 @@ import type { CreateAppParams, CreateAppResult } from "../ipc/ipc_types";
  * @param params Object containing name, path, and initialPrompt
  * @returns The created app and chatId
  */
-export async function createApp(
-  params: CreateAppParams,
-): Promise<CreateAppResult> {
+export async function createApp(params: CreateAppParams): Promise<CreateAppResult> {
   try {
     return await IpcClient.getInstance().createApp(params);
   } catch (error) {

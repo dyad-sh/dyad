@@ -7,13 +7,7 @@ export function useCommitChanges() {
   const queryClient = useQueryClient();
 
   const { mutateAsync: commitChanges, isPending: isCommitting } = useMutation({
-    mutationFn: async ({
-      appId,
-      message,
-    }: {
-      appId: number;
-      message: string;
-    }) => {
+    mutationFn: async ({ appId, message }: { appId: number; message: string }) => {
       const ipcClient = IpcClient.getInstance();
       return ipcClient.commitChanges({ appId, message });
     },

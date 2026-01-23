@@ -1,10 +1,4 @@
-import {
-  MessageSquare,
-  AlertCircle,
-  AlertTriangle,
-  ChevronDown,
-  ChevronUp,
-} from "lucide-react";
+import { MessageSquare, AlertCircle, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
 import { useSetAtom } from "jotai";
 import { chatInputValueAtom } from "@/atoms/chatAtoms";
 
@@ -41,9 +35,7 @@ export const ConsoleEntryComponent = (props: ConsoleEntryProps) => {
 
   const isTruncated = message.length > MAX_MESSAGE_LENGTH;
   const displayMessage =
-    isTruncated && !isExpanded
-      ? message.slice(0, MAX_MESSAGE_LENGTH) + "..."
-      : message;
+    isTruncated && !isExpanded ? message.slice(0, MAX_MESSAGE_LENGTH) + "..." : message;
 
   const handleSendToChat = () => {
     const time = new Date(timestamp).toLocaleTimeString("en-US", {
@@ -75,19 +67,11 @@ export const ConsoleEntryComponent = (props: ConsoleEntryProps) => {
       className={`relative pr-8 px-2 py-1 my-0.5 rounded transition-colors group ${getBackgroundClass()}`}
     >
       <div className="flex items-start gap-2 flex-wrap">
-        {level === "error" && (
-          <AlertCircle size={14} className="text-red-500 shrink-0 mt-0.5" />
-        )}
+        {level === "error" && <AlertCircle size={14} className="text-red-500 shrink-0 mt-0.5" />}
         {level === "warn" && (
-          <AlertTriangle
-            size={14}
-            className="text-yellow-500 shrink-0 mt-0.5"
-          />
+          <AlertTriangle size={14} className="text-yellow-500 shrink-0 mt-0.5" />
         )}
-        <span
-          className="text-gray-400 shrink-0"
-          title={new Date(timestamp).toLocaleString()}
-        >
+        <span className="text-gray-400 shrink-0" title={new Date(timestamp).toLocaleString()}>
           {formatTimestamp(timestamp)}
         </span>
         <span className="flex-1 whitespace-pre-wrap break-all">

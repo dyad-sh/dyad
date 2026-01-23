@@ -20,11 +20,7 @@ export function parseOllamaHost(host?: string): string {
   }
 
   // Check for regular host:port (but not plain IPv6)
-  if (
-    host.includes(":") &&
-    !host.includes("::") &&
-    host.split(":").length === 2
-  ) {
+  if (host.includes(":") && !host.includes("::") && host.split(":").length === 2) {
     return `http://${host}`;
   }
 
@@ -84,10 +80,7 @@ export async function fetchOllamaModels(): Promise<LocalModelListResponse> {
     logger.info(`Successfully fetched ${models.length} models from Ollama`);
     return { models };
   } catch (error) {
-    if (
-      error instanceof TypeError &&
-      (error as Error).message.includes("fetch failed")
-    ) {
+    if (error instanceof TypeError && (error as Error).message.includes("fetch failed")) {
       throw new Error(
         "Could not connect to Ollama. Make sure it's running at http://localhost:11434",
       );
@@ -97,10 +90,7 @@ export async function fetchOllamaModels(): Promise<LocalModelListResponse> {
 }
 
 export function registerOllamaHandlers() {
-  ipcMain.handle(
-    "local-models:list-ollama",
-    async (): Promise<LocalModelListResponse> => {
-      return fetchOllamaModels();
-    },
-  );
+  ipcMain.handle("local-models:list-ollama", async (): Promise<LocalModelListResponse> => {
+    return fetchOllamaModels();
+  });
 }

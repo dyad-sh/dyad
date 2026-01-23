@@ -42,8 +42,7 @@ export const DyadRename: React.FC<DyadRenameProps> = ({
         <div className="flex flex-col text-xs text-gray-500 dark:text-gray-400 font-medium mb-1">
           {from && (
             <div>
-              <span className="text-gray-500 dark:text-gray-400">From:</span>{" "}
-              {from}
+              <span className="text-gray-500 dark:text-gray-400">From:</span> {from}
             </div>
           )}
           {to && (
@@ -53,9 +52,7 @@ export const DyadRename: React.FC<DyadRenameProps> = ({
           )}
         </div>
       )}
-      <div className="text-sm text-gray-600 dark:text-gray-300 mt-2">
-        {children}
-      </div>
+      <div className="text-sm text-gray-600 dark:text-gray-300 mt-2">{children}</div>
     </div>
   );
 };

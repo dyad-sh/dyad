@@ -12,11 +12,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface DeleteConfirmationDialogProps {
   itemName: string;
@@ -60,8 +56,7 @@ export function DeleteConfirmationDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Delete {itemType}</AlertDialogTitle>
           <AlertDialogDescription>
-            Are you sure you want to delete "{itemName}"? This action cannot be
-            undone.
+            Are you sure you want to delete "{itemName}"? This action cannot be undone.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

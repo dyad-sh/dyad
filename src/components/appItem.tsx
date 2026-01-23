@@ -3,12 +3,7 @@ import { Star } from "lucide-react";
 import { SidebarMenuItem } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { App } from "@/ipc/ipc_types";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 type AppItemProps = {
   app: App;
@@ -35,9 +30,7 @@ export function AppItem({
                 variant="ghost"
                 onClick={() => handleAppClick(app.id)}
                 className={`justify-start w-full text-left py-3 hover:bg-sidebar-accent/80 ${
-                  selectedAppId === app.id
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                    : ""
+                  selectedAppId === app.id ? "bg-sidebar-accent text-sidebar-accent-foreground" : ""
                 }`}
                 data-testid={`app-list-item-${app.name}`}
               >

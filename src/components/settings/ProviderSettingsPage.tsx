@@ -45,16 +45,13 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   // Find the specific provider data from the fetched list
   const providerData = allProviders?.find((p) => p.id === provider);
   useEffect(() => {
-    const layoutMainContentContainer = document.getElementById(
-      "layout-main-content-container",
-    );
+    const layoutMainContentContainer = document.getElementById("layout-main-content-container");
     if (layoutMainContentContainer) {
       layoutMainContentContainer.scrollTo(0, 0);
     }
   }, [providerData?.id]);
 
-  const supportsCustomModels =
-    providerData?.type === "custom" || providerData?.type === "cloud";
+  const supportsCustomModels = providerData?.type === "custom" || providerData?.type === "cloud";
 
   const isDyad = provider === "auto";
 
@@ -64,9 +61,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   const router = useRouter();
 
   // Use fetched data (or defaults for Dyad)
-  const providerDisplayName = isDyad
-    ? "Dyad"
-    : (providerData?.name ?? "Unknown Provider");
+  const providerDisplayName = isDyad ? "Dyad" : (providerData?.name ?? "Unknown Provider");
   const providerWebsiteUrl = providerData?.websiteUrl;
   const hasFreeTier = isDyad ? false : providerData?.hasFreeTier;
   const envVarName = isDyad ? undefined : providerData?.envVarName;
@@ -76,38 +71,26 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
 
   // --- Configuration Logic --- Updated Priority ---
   const isValidUserKey =
-    !!userApiKey &&
-    !userApiKey.startsWith("Invalid Key") &&
-    userApiKey !== "Not Set";
+    !!userApiKey && !userApiKey.startsWith("Invalid Key") && userApiKey !== "Not Set";
   const hasEnvKey = !!(envVarName && envVars[envVarName]);
 
-  const azureSettings = settings?.providerSettings?.azure as
-    | AzureProviderSetting
-    | undefined;
+  const azureSettings = settings?.providerSettings?.azure as AzureProviderSetting | undefined;
   const azureApiKeyFromSettings = (azureSettings?.apiKey?.value ?? "").trim();
-  const azureResourceNameFromSettings = (
-    azureSettings?.resourceName ?? ""
-  ).trim();
-  const azureHasSavedSettings = Boolean(
-    azureApiKeyFromSettings && azureResourceNameFromSettings,
-  );
+  const azureResourceNameFromSettings = (azureSettings?.resourceName ?? "").trim();
+  const azureHasSavedSettings = Boolean(azureApiKeyFromSettings && azureResourceNameFromSettings);
   const azureHasEnvConfiguration = Boolean(
     envVars["AZURE_API_KEY"] && envVars["AZURE_RESOURCE_NAME"],
   );
 
-  const vertexSettings = settings?.providerSettings?.vertex as
-    | VertexProviderSetting
-    | undefined;
+  const vertexSettings = settings?.providerSettings?.vertex as VertexProviderSetting | undefined;
   const isVertexConfigured = Boolean(
     vertexSettings?.projectId &&
-      vertexSettings?.location &&
-      vertexSettings?.serviceAccountKey?.value,
+    vertexSettings?.location &&
+    vertexSettings?.serviceAccountKey?.value,
   );
 
   const isAzureConfigured =
-    provider === "azure"
-      ? azureHasSavedSettings || azureHasEnvConfiguration
-      : false;
+    provider === "azure" ? azureHasSavedSettings || azureHasEnvConfiguration : false;
 
   const isConfigured =
     provider === "azure"
@@ -321,9 +304,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
           <div className="mt-6 flex items-center justify-between p-4 bg-(--background-lightest) rounded-lg border">
             <div>
               <h3 className="font-medium">Enable Dyad Pro</h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Toggle to enable Dyad Pro
-              </p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Toggle to enable Dyad Pro</p>
             </div>
             <Switch
               checked={settings?.enableDyadPro}
@@ -334,9 +315,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
         )}
 
         {/* Conditionally render CustomModelsSection */}
-        {supportsCustomModels && providerData && (
-          <ModelsSection providerId={providerData.id} />
-        )}
+        {supportsCustomModels && providerData && <ModelsSection providerId={providerData.id} />}
         <div className="h-24"></div>
       </div>
     </div>

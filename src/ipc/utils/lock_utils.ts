@@ -28,10 +28,7 @@ export function acquireLock(lockId: number | string): {
  * @param fn The function to execute with the lock
  * @returns Result of the function
  */
-export async function withLock<T>(
-  lockId: number | string,
-  fn: () => Promise<T>,
-): Promise<T> {
+export async function withLock<T>(lockId: number | string, fn: () => Promise<T>): Promise<T> {
   // Wait for any existing operation to complete
   const existingLock = locks.get(lockId);
   if (existingLock) {

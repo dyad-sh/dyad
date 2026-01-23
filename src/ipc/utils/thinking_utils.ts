@@ -1,9 +1,7 @@
 import { PROVIDERS_THAT_SUPPORT_THINKING } from "../shared/language_model_constants";
 import type { UserSettings } from "../../lib/schemas";
 
-function getThinkingBudgetTokens(
-  thinkingBudget?: "low" | "medium" | "high",
-): number {
+function getThinkingBudgetTokens(thinkingBudget?: "low" | "medium" | "high"): number {
   switch (thinkingBudget) {
     case "low":
       return 1_000;

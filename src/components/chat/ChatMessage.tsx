@@ -1,32 +1,15 @@
 import type { Message } from "@/ipc/ipc_types";
-import {
-  DyadMarkdownParser,
-  VanillaMarkdownParser,
-} from "./DyadMarkdownParser";
+import { DyadMarkdownParser, VanillaMarkdownParser } from "./DyadMarkdownParser";
 import { motion } from "framer-motion";
 import { useStreamChat } from "@/hooks/useStreamChat";
-import {
-  CheckCircle,
-  XCircle,
-  Clock,
-  GitCommit,
-  Copy,
-  Check,
-  Info,
-  Bot,
-} from "lucide-react";
+import { CheckCircle, XCircle, Clock, GitCommit, Copy, Check, Info, Bot } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 import { useVersions } from "@/hooks/useVersions";
 import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "../ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 
 interface ChatMessageProps {
   message: Message;
@@ -44,16 +27,11 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
   };
   // Find the version that was active when this message was sent
   const messageVersion = useMemo(() => {
-    if (
-      message.role === "assistant" &&
-      message.commitHash &&
-      liveVersions.length
-    ) {
+    if (message.role === "assistant" && message.commitHash && liveVersions.length) {
       return (
         liveVersions.find(
           (version) =>
-            message.commitHash &&
-            version.oid.slice(0, 7) === message.commitHash.slice(0, 7),
+            message.commitHash && version.oid.slice(0, 7) === message.commitHash.slice(0, 7),
         ) || null
       );
     }
@@ -75,8 +53,7 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
   const formatTimestamp = (timestamp: string | Date) => {
     const now = new Date();
     const messageTime = new Date(timestamp);
-    const diffInHours =
-      (now.getTime() - messageTime.getTime()) / (1000 * 60 * 60);
+    const diffInHours = (now.getTime() - messageTime.getTime()) / (1000 * 60 * 60);
     if (diffInHours < 24) {
       return formatDistanceToNow(messageTime, { addSuffix: true });
     } else {
@@ -85,21 +62,14 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
   };
 
   return (
-    <div
-      className={`flex ${
-        message.role === "assistant" ? "justify-start" : "justify-end"
-      }`}
-    >
+    <div className={`flex ${message.role === "assistant" ? "justify-start" : "justify-end"}`}>
       <div className={`mt-2 w-full max-w-3xl mx-auto group`}>
         <div
           className={`rounded-lg p-2 ${
             message.role === "assistant" ? "" : "ml-24 bg-(--sidebar-accent)"
           }`}
         >
-          {message.role === "assistant" &&
-          !message.content &&
-          isStreaming &&
-          isLastMessage ? (
+          {message.role === "assistant" && !message.content && isStreaming && isLastMessage ? (
             <div className="flex h-6 items-center space-x-2 p-2">
               <motion.div
                 className="h-3 w-3 rounded-full bg-(--primary) dark:bg-blue-500"
@@ -164,31 +134,27 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
                   : ""
               } text-xs`}
             >
-              {message.role === "assistant" &&
-                message.content &&
-                !isStreaming && (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          data-testid="copy-message-button"
-                          onClick={handleCopyFormatted}
-                          className="flex items-center space-x-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
-                        >
-                          {copied ? (
-                            <Check className="h-4 w-4 text-green-500" />
-                          ) : (
-                            <Copy className="h-4 w-4" />
-                          )}
-                          <span className="hidden sm:inline"></span>
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        {copied ? "Copied!" : "Copy"}
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                )}
+              {message.role === "assistant" && message.content && !isStreaming && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        data-testid="copy-message-button"
+                        onClick={handleCopyFormatted}
+                        className="flex items-center space-x-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
+                      >
+                        {copied ? (
+                          <Check className="h-4 w-4 text-green-500" />
+                        ) : (
+                          <Copy className="h-4 w-4" />
+                        )}
+                        <span className="hidden sm:inline"></span>
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>{copied ? "Copied!" : "Copy"}</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
               <div className="flex flex-wrap gap-2">
                 {message.approvalState && (
                   <div className="flex items-center space-x-1">
@@ -229,11 +195,7 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <span className="max-w-50 truncate font-medium">
-                        {
-                          messageVersion.message
-                            .replace(/^\[dyad\]\s*/i, "")
-                            .split("\n")[0]
-                        }
+                        {messageVersion.message.replace(/^\[dyad\]\s*/i, "").split("\n")[0]}
                       </span>
                     </TooltipTrigger>
                     <TooltipContent>{messageVersion.message}</TooltipContent>
@@ -271,9 +233,7 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
                       ) : (
                         <Copy className="h-3 w-3" />
                       )}
-                      <span className="text-xs">
-                        {copiedRequestId ? "Copied" : "Request ID"}
-                      </span>
+                      <span className="text-xs">{copiedRequestId ? "Copied" : "Request ID"}</span>
                     </button>
                   </TooltipTrigger>
                   <TooltipContent>

@@ -56,11 +56,7 @@ export async function refreshNeonToken(): Promise<void> {
       throw new Error(`Token refresh failed: ${response.statusText}`);
     }
 
-    const {
-      accessToken,
-      refreshToken: newRefreshToken,
-      expiresIn,
-    } = await response.json();
+    const { accessToken, refreshToken: newRefreshToken, expiresIn } = await response.json();
 
     // Update settings with new tokens
     writeSettings({
@@ -219,10 +215,7 @@ export async function getNeonOrganizationId(): Promise<string> {
   try {
     const response = await neonClient.getCurrentUserOrganizations();
 
-    if (
-      !response.data?.organizations ||
-      response.data.organizations.length === 0
-    ) {
+    if (!response.data?.organizations || response.data.organizations.length === 0) {
       throw new Error("No organizations found for this Neon account");
     }
 

@@ -142,8 +142,7 @@ Line 3 has @app:App3`;
   });
 
   it("should stop parsing at invalid characters", () => {
-    const prompt =
-      "Check @app:MyApp@InvalidPart and @app:AnotherApp.InvalidPart";
+    const prompt = "Check @app:MyApp@InvalidPart and @app:AnotherApp.InvalidPart";
     const result = parseAppMentions(prompt);
     expect(result).toEqual(["MyApp", "AnotherApp"]);
   });

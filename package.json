@@ -1,16 +1,18 @@
 {
   "name": "dyad",
-  "productName": "dyad",
   "version": "0.34.0-beta.1",
   "description": "Free, local, open-source AI app builder",
-  "main": ".vite/build/main.js",
+  "keywords": [],
+  "license": "MIT",
+  "author": {
+    "name": "Will Chen",
+    "email": "willchen90@gmail.com"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/dyad-sh/dyad.git"
   },
-  "engines": {
-    "node": ">=20"
-  },
+  "main": ".vite/build/main.js",
   "scripts": {
     "clean": "rimraf out scaffold/node_modules",
     "start": "electron-forge start",
@@ -39,52 +41,6 @@
     "pre:e2e": "cross-env E2E_TEST_BUILD=true npm run package",
     "e2e": "playwright test",
     "e2e:shard": "playwright test --shard"
-  },
-  "keywords": [],
-  "author": {
-    "name": "Will Chen",
-    "email": "willchen90@gmail.com"
-  },
-  "license": "MIT",
-  "devDependencies": {
-    "@electron-forge/cli": "^7.11.1",
-    "@electron-forge/maker-deb": "^7.11.1",
-    "@electron-forge/maker-rpm": "^7.11.1",
-    "@electron-forge/maker-squirrel": "^7.11.1",
-    "@electron-forge/maker-zip": "^7.11.1",
-    "@electron-forge/plugin-auto-unpack-natives": "^7.11.1",
-    "@electron-forge/plugin-fuses": "^7.11.1",
-    "@electron-forge/plugin-vite": "^7.11.1",
-    "@electron-forge/publisher-github": "^7.11.1",
-    "@electron/fuses": "^1.8.0",
-    "@playwright/test": "^1.52.0",
-    "@testing-library/react": "^16.3.0",
-    "@types/better-sqlite3": "^7.6.13",
-    "@types/fs-extra": "^11.0.4",
-    "@types/glob": "^8.1.0",
-    "@types/kill-port": "^2.0.3",
-    "@types/node": "^22.14.0",
-    "@types/react": "^19.0.10",
-    "@types/react-dom": "^19.0.4",
-    "@typescript-eslint/eslint-plugin": "^5.62.0",
-    "@typescript-eslint/parser": "^5.62.0",
-    "@typescript/native-preview": "^7.0.0-dev.20260107.1",
-    "@vitest/ui": "^3.1.1",
-    "babel-plugin-react-compiler": "^1.0.0",
-    "cross-env": "^7.0.3",
-    "drizzle-kit": "^0.30.6",
-    "electron": "40.0.0",
-    "eslint": "^8.57.1",
-    "eslint-plugin-import": "^2.31.0",
-    "happy-dom": "^17.4.4",
-    "husky": "^9.1.7",
-    "lint-staged": "^15.5.2",
-    "oxlint": "^1.41.0",
-    "oxfmt": "^0.9.0",
-    "rimraf": "^6.0.1",
-    "typescript": "^5.8.3",
-    "vite": "^5.4.17",
-    "vitest": "^3.1.1"
   },
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "^4.0.9",
@@ -182,9 +138,53 @@
     "uuid": "^11.1.0",
     "zod": "^3.25.76"
   },
+  "devDependencies": {
+    "@electron-forge/cli": "^7.11.1",
+    "@electron-forge/maker-deb": "^7.11.1",
+    "@electron-forge/maker-rpm": "^7.11.1",
+    "@electron-forge/maker-squirrel": "^7.11.1",
+    "@electron-forge/maker-zip": "^7.11.1",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.11.1",
+    "@electron-forge/plugin-fuses": "^7.11.1",
+    "@electron-forge/plugin-vite": "^7.11.1",
+    "@electron-forge/publisher-github": "^7.11.1",
+    "@electron/fuses": "^1.8.0",
+    "@playwright/test": "^1.52.0",
+    "@testing-library/react": "^16.3.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/fs-extra": "^11.0.4",
+    "@types/glob": "^8.1.0",
+    "@types/kill-port": "^2.0.3",
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "@typescript-eslint/eslint-plugin": "^5.62.0",
+    "@typescript-eslint/parser": "^5.62.0",
+    "@typescript/native-preview": "^7.0.0-dev.20260107.1",
+    "@vitest/ui": "^3.1.1",
+    "babel-plugin-react-compiler": "^1.0.0",
+    "cross-env": "^7.0.3",
+    "drizzle-kit": "^0.30.6",
+    "electron": "40.0.0",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.31.0",
+    "happy-dom": "^17.4.4",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.5.2",
+    "oxfmt": "^0.26.0",
+    "oxlint": "^1.41.0",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.8.3",
+    "vite": "^5.4.17",
+    "vitest": "^3.1.1"
+  },
   "overrides": {
     "@vercel/sdk": {
       "@modelcontextprotocol/sdk": "$@modelcontextprotocol/sdk"
     }
-  }
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "productName": "dyad"
 }

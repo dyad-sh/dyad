@@ -7,10 +7,7 @@ interface LocalAgentNewChatToastProps {
   onNeverShowAgain: () => void;
 }
 
-export function LocalAgentNewChatToast({
-  toastId,
-  onNeverShowAgain,
-}: LocalAgentNewChatToastProps) {
+export function LocalAgentNewChatToast({ toastId, onNeverShowAgain }: LocalAgentNewChatToastProps) {
   const handleClose = () => {
     toast.dismiss(toastId);
   };
@@ -49,8 +46,8 @@ export function LocalAgentNewChatToast({
             {/* Message */}
             <div className="mb-4">
               <p className="text-[14px] text-blue-800 dark:text-slate-200 leading-relaxed">
-                <strong>Tip: Create a new chat</strong> to give the agent a
-                clean context for better results.
+                <strong>Tip: Create a new chat</strong> to give the agent a clean context for better
+                results.
               </p>
             </div>
 

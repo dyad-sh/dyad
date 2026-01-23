@@ -11,13 +11,11 @@ Address all outstanding issues on a GitHub Pull Request by handling both review 
 This is a meta-skill that orchestrates two sub-skills to comprehensively fix PR issues.
 
 1. **Run `/dyad:pr-fix:comments`** to handle all unresolved review comments:
-
    - Address valid code review concerns
    - Resolve invalid concerns with explanations
    - Flag ambiguous issues for human attention
 
 2. **Run `/dyad:pr-fix:actions`** to handle failing CI checks:
-
    - Fix failing tests (unit and E2E)
    - Update snapshots if needed
    - Ensure all checks pass

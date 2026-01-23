@@ -58,9 +58,7 @@ export function registerProHandlers() {
 
       if (!response.ok) {
         const errorBody = await response.text();
-        logger.error(
-          `Failed to fetch user budget. Status: ${response.status}. Body: ${errorBody}`,
-        );
+        logger.error(`Failed to fetch user budget. Status: ${response.status}. Body: ${errorBody}`);
         return null;
       }
 
@@ -72,8 +70,7 @@ export function registerProHandlers() {
       // Turn user_abc1234 =>  "****1234"
       // Preserve the last 4 characters so we can correlate bug reports
       // with the user.
-      const redactedUserId =
-        data.userId.length > 8 ? "****" + data.userId.slice(-4) : "<redacted>";
+      const redactedUserId = data.userId.length > 8 ? "****" + data.userId.slice(-4) : "<redacted>";
 
       logger.info("Successfully fetched user budget information.");
 

@@ -49,20 +49,11 @@ export function SetupProviderCard({
       )}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <div className={cn("p-1.5 rounded-full", styles.iconWrapper)}>
-            {leadingIcon}
-          </div>
+          <div className={cn("p-1.5 rounded-full", styles.iconWrapper)}>{leadingIcon}</div>
           <div>
-            <h4 className={cn("font-medium text-[15px]", styles.titleColor)}>
-              {title}
-            </h4>
+            <h4 className={cn("font-medium text-[15px]", styles.titleColor)}>{title}</h4>
             {subtitle ? (
-              <div
-                className={cn(
-                  "text-sm flex items-center gap-1",
-                  styles.subtitleColor,
-                )}
-              >
+              <div className={cn("text-sm flex items-center gap-1", styles.subtitleColor)}>
                 {subtitle}
               </div>
             ) : null}

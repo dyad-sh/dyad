@@ -39,7 +39,6 @@ Identify and fix flaky E2E tests by running them repeatedly and investigating fa
    ```
 
    Notes:
-
    - If `$ARGUMENTS` is provided without the `e2e-tests/` prefix, add it
    - If `$ARGUMENTS` is provided without the `.spec.ts` suffix, add it
    - A test is considered **flaky** if it fails at least once out of 10 runs
@@ -53,7 +52,6 @@ Identify and fix flaky E2E tests by running them repeatedly and investigating fa
    ```
 
    Analyze the debug output to understand:
-
    - Timing issues (race conditions, elements not ready)
    - Animation/transition interference
    - Network timing variability
@@ -63,7 +61,6 @@ Identify and fix flaky E2E tests by running them repeatedly and investigating fa
 6. **Fix the flaky test:**
 
    Common fixes following Playwright best practices:
-
    - Use `await expect(locator).toBeVisible()` before interacting with elements
    - Use `await page.waitForLoadState('networkidle')` for network-dependent tests
    - Use stable selectors (data-testid, role, text) instead of fragile CSS selectors
@@ -94,7 +91,6 @@ Identify and fix flaky E2E tests by running them repeatedly and investigating fa
 9. **Summarize results:**
 
    Report to the user:
-
    - Which tests were identified as flaky
    - What was causing the flakiness
    - What fixes were applied

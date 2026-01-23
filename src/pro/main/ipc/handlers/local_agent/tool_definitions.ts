@@ -126,10 +126,7 @@ export function getAgentToolConsent(toolName: AgentToolName): AgentToolConsent {
   return getDefaultConsent(toolName);
 }
 
-export function setAgentToolConsent(
-  toolName: AgentToolName,
-  consent: AgentToolConsent,
-): void {
+export function setAgentToolConsent(toolName: AgentToolName, consent: AgentToolConsent): void {
   const settings = readSettings();
   writeSettings({
     agentToolConsents: {
@@ -139,10 +136,7 @@ export function setAgentToolConsent(
   });
 }
 
-export function getAllAgentToolConsents(): Record<
-  AgentToolName,
-  AgentToolConsent
-> {
+export function getAllAgentToolConsents(): Record<AgentToolName, AgentToolConsent> {
   const settings = readSettings();
   const stored = settings.agentToolConsents ?? {};
   const result: Record<string, AgentToolConsent> = {};
@@ -246,9 +240,7 @@ async function processArgPlaceholders<T extends Record<string, any>>(
 /**
  * Convert our ToolResult to AI SDK format
  */
-function convertToolResultForAiSdk(
-  result: ToolResult,
-): LanguageModelV3ToolResultOutput {
+function convertToolResultForAiSdk(result: ToolResult): LanguageModelV3ToolResultOutput {
   if (typeof result === "string") {
     return { type: "text", value: result };
   }
@@ -266,10 +258,7 @@ export interface BuildAgentToolSetOptions {
 /**
  * Build ToolSet for AI SDK from tool definitions
  */
-export function buildAgentToolSet(
-  ctx: AgentContext,
-  options: BuildAgentToolSetOptions = {},
-) {
+export function buildAgentToolSet(ctx: AgentContext, options: BuildAgentToolSetOptions = {}) {
   const toolSet: Record<string, any> = {};
 
   for (const tool of TOOL_DEFINITIONS) {
@@ -307,8 +296,7 @@ export function buildAgentToolSet(
           const result = await tool.execute(processedArgs, ctx);
           return convertToolResultForAiSdk(result);
         } catch (error) {
-          const errorMessage =
-            error instanceof Error ? error.message : String(error);
+          const errorMessage = error instanceof Error ? error.message : String(error);
 
           ctx.onXmlComplete(
             `<dyad-output type="error" message="Tool '${tool.name}' failed: ${escapeXmlAttr(errorMessage)}">${escapeXmlContent(errorMessage)}</dyad-output>`,

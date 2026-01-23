@@ -1,11 +1,5 @@
 import { useState } from "react";
-import {
-  FileWarning,
-  Plus,
-  Pencil,
-  Trash2,
-  ArrowRightLeft,
-} from "lucide-react";
+import { FileWarning, Plus, Pencil, Trash2, ArrowRightLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -16,10 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import {
-  useUncommittedFiles,
-  type UncommittedFile,
-} from "@/hooks/useUncommittedFiles";
+import { useUncommittedFiles, type UncommittedFile } from "@/hooks/useUncommittedFiles";
 import { useCommitChanges } from "@/hooks/useCommitChanges";
 import { cn } from "@/lib/utils";
 
@@ -67,12 +58,9 @@ function generateDefaultCommitMessage(files: UncommittedFile[]): string {
 
   const parts: string[] = [];
   if (added > 0) parts.push(`add ${added} file${added > 1 ? "s" : ""}`);
-  if (modified > 0)
-    parts.push(`update ${modified} file${modified > 1 ? "s" : ""}`);
-  if (deleted > 0)
-    parts.push(`remove ${deleted} file${deleted > 1 ? "s" : ""}`);
-  if (renamed > 0)
-    parts.push(`rename ${renamed} file${renamed > 1 ? "s" : ""}`);
+  if (modified > 0) parts.push(`update ${modified} file${modified > 1 ? "s" : ""}`);
+  if (deleted > 0) parts.push(`remove ${deleted} file${deleted > 1 ? "s" : ""}`);
+  if (renamed > 0) parts.push(`rename ${renamed} file${renamed > 1 ? "s" : ""}`);
 
   if (parts.length === 0) return "Update files";
 
@@ -82,8 +70,7 @@ function generateDefaultCommitMessage(files: UncommittedFile[]): string {
 }
 
 export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
-  const { uncommittedFiles, hasUncommittedFiles, isLoading } =
-    useUncommittedFiles(appId);
+  const { uncommittedFiles, hasUncommittedFiles, isLoading } = useUncommittedFiles(appId);
   const { commitChanges, isCommitting } = useCommitChanges();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [commitMessage, setCommitMessage] = useState("");
@@ -141,17 +128,12 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
         <DialogContent className="sm:max-w-lg" data-testid="commit-dialog">
           <DialogHeader>
             <DialogTitle>Review & Commit Changes</DialogTitle>
-            <DialogDescription>
-              Review your changes and enter a commit message.
-            </DialogDescription>
+            <DialogDescription>Review your changes and enter a commit message.</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             <div>
-              <label
-                htmlFor="commit-message"
-                className="text-sm font-medium mb-2 block"
-              >
+              <label htmlFor="commit-message" className="text-sm font-medium mb-2 block">
                 Commit message
               </label>
               <Input
@@ -164,9 +146,7 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
             </div>
 
             <div>
-              <p className="text-sm font-medium mb-2">
-                Changed files ({uncommittedFiles.length})
-              </p>
+              <p className="text-sm font-medium mb-2">Changed files ({uncommittedFiles.length})</p>
               <div
                 className="max-h-60 overflow-y-auto rounded-md border p-2 space-y-1"
                 data-testid="changed-files-list"

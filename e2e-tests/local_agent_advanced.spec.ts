@@ -42,16 +42,9 @@ testSkipIfWindows("local-agent - mcp tool call", async ({ po }) => {
   await po.page.getByRole("button", { name: "Tools (MCP)" }).click();
 
   // Configure the test MCP server
-  await po.page
-    .getByRole("textbox", { name: "My MCP Server" })
-    .fill("testing-mcp-server");
+  await po.page.getByRole("textbox", { name: "My MCP Server" }).fill("testing-mcp-server");
   await po.page.getByRole("textbox", { name: "node" }).fill("node");
-  const testMcpServerPath = path.join(
-    __dirname,
-    "..",
-    "testing",
-    "fake-stdio-mcp-server.mjs",
-  );
+  const testMcpServerPath = path.join(__dirname, "..", "testing", "fake-stdio-mcp-server.mjs");
   await po.page
     .getByRole("textbox", { name: "path/to/mcp-server.js --flag" })
     .fill(testMcpServerPath);

@@ -3,13 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { IpcClient } from "@/ipc/ipc_client";
 import { showSuccess } from "@/lib/toast";
-import {
-  Smartphone,
-  TabletSmartphone,
-  Loader2,
-  ExternalLink,
-  Copy,
-} from "lucide-react";
+import { Smartphone, TabletSmartphone, Loader2, ExternalLink, Copy } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -17,13 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { queryKeys } from "@/lib/queryKeys";
 
 interface CapacitorControlsProps {
@@ -146,9 +134,7 @@ export function CapacitorControls({ appId }: CapacitorControlsProps) {
               <ExternalLink className="h-3 w-3" />
             </Button>
           </CardTitle>
-          <CardDescription>
-            Sync and open your Capacitor mobile projects
-          </CardDescription>
+          <CardDescription>Sync and open your Capacitor mobile projects</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 gap-2">
@@ -183,12 +169,8 @@ export function CapacitorControls({ appId }: CapacitorControlsProps) {
                 <TabletSmartphone className="h-4 w-4" />
               )}
               <div className="text-left">
-                <div className="text-xs font-medium">
-                  {androidButtonText.main}
-                </div>
-                <div className="text-xs text-gray-500">
-                  {androidButtonText.sub}
-                </div>
+                <div className="text-xs font-medium">{androidButtonText.main}</div>
+                <div className="text-xs text-gray-500">{androidButtonText.sub}</div>
               </div>
             </Button>
           </div>
@@ -203,17 +185,14 @@ export function CapacitorControls({ appId }: CapacitorControlsProps) {
               {errorDetails?.title}
             </DialogTitle>
             <DialogDescription>
-              An error occurred while running the Capacitor command. See details
-              below:
+              An error occurred while running the Capacitor command. See details below:
             </DialogDescription>
           </DialogHeader>
 
           {errorDetails && (
             <div className="relative">
               <div className="max-h-[50vh] w-full max-w-md rounded border p-4 bg-gray-50 dark:bg-gray-900 overflow-y-auto">
-                <pre className="text-xs whitespace-pre-wrap font-mono">
-                  {errorDetails.message}
-                </pre>
+                <pre className="text-xs whitespace-pre-wrap font-mono">{errorDetails.message}</pre>
               </div>
               <Button
                 onClick={() => {
@@ -244,11 +223,7 @@ export function CapacitorControls({ appId }: CapacitorControlsProps) {
               <Copy className="h-4 w-4" />
               Copy Error
             </Button>
-            <Button
-              onClick={() => setErrorDialogOpen(false)}
-              variant="outline"
-              size="sm"
-            >
+            <Button onClick={() => setErrorDialogOpen(false)} variant="outline" size="sm">
               Close
             </Button>
           </div>

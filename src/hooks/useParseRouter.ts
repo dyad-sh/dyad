@@ -14,12 +14,7 @@ export function useParseRouter(appId: number | null) {
   const [routes, setRoutes] = useState<ParsedRoute[]>([]);
 
   // Load app to access the file list
-  const {
-    app,
-    loading: appLoading,
-    error: appError,
-    refreshApp,
-  } = useLoadApp(appId);
+  const { app, loading: appLoading, error: appError, refreshApp } = useLoadApp(appId);
 
   // Load router related file to extract routes for non-Next apps
   const {
@@ -78,8 +73,7 @@ export function useParseRouter(appId: number | null) {
       }
 
       // app directory (app router)
-      const appPageRegex =
-        /^(?:src\/)?app\/(.*)\/page\.(?:js|jsx|ts|tsx|mdx)$/i;
+      const appPageRegex = /^(?:src\/)?app\/(.*)\/page\.(?:js|jsx|ts|tsx|mdx)$/i;
       for (const file of files) {
         const lower = file.toLowerCase();
         if (

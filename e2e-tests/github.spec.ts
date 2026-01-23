@@ -12,9 +12,7 @@ test("should connect to GitHub using device flow", async ({ po }) => {
   await expect(po.page.locator("text=FAKE-CODE")).toBeVisible();
 
   // Verify the verification URI is displayed
-  await expect(
-    po.page.locator("text=https://github.com/login/device"),
-  ).toBeVisible();
+  await expect(po.page.locator("text=https://github.com/login/device")).toBeVisible();
 
   // Verify the "Set up your GitHub repo" section appears
   await expect(po.githubConnector.getSetupYourGitHubRepoButton()).toBeVisible();
@@ -28,9 +26,7 @@ test("create and sync to new repo", async ({ po }) => {
   await po.githubConnector.connect();
 
   // Verify "Create new repo" is selected by default
-  await expect(po.githubConnector.getCreateNewRepoModeButton()).toHaveClass(
-    /bg-primary/,
-  );
+  await expect(po.githubConnector.getCreateNewRepoModeButton()).toHaveClass(/bg-primary/);
 
   await po.githubConnector.fillCreateRepoName("test-new-repo");
 

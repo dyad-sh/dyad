@@ -94,10 +94,7 @@ export function generateAppFilesSnapshotData(
       try {
         if (isBinaryFile(entryPath)) {
           const fileBuffer = fs.readFileSync(entryPath);
-          const hash = crypto
-            .createHash("sha256")
-            .update(fileBuffer)
-            .digest("hex");
+          const hash = crypto.createHash("sha256").update(fileBuffer).digest("hex");
           files.push({
             relativePath,
             content: `[binary hash="${hash}"]`,

@@ -43,25 +43,14 @@ function truncateMessage(message: string, maxLength: number = 1000): string {
 
   if (hasStackTrace) {
     const errorMessage = lines[0];
-    const stackFrames = lines
-      .filter((line) => line.startsWith("    at "))
-      .slice(0, 5);
+    const stackFrames = lines.filter((line) => line.startsWith("    at ")).slice(0, 5);
 
-    return (
-      errorMessage +
-      "\n" +
-      stackFrames.join("\n") +
-      "\n... [stack trace truncated]"
-    );
+    return errorMessage + "\n" + stackFrames.join("\n") + "\n... [stack trace truncated]";
   }
 
   // Regular truncation - preserve start and end
   const halfLength = Math.floor((maxLength - 20) / 2);
-  return (
-    message.slice(0, halfLength) +
-    "\n... [truncated] ...\n" +
-    message.slice(-halfLength)
-  );
+  return message.slice(0, halfLength) + "\n... [truncated] ...\n" + message.slice(-halfLength);
 }
 
 function formatLogsForAI(logs: ConsoleEntry[]): string {
@@ -98,16 +87,14 @@ export const readLogsTool: ToolDefinition<z.infer<typeof readLogsSchema>> = {
 
     const filters = [];
     if (args.type && args.type !== "all") filters.push(`type="${args.type}"`);
-    if (args.level && args.level !== "all")
-      filters.push(`level="${args.level}"`);
+    if (args.level && args.level !== "all") filters.push(`level="${args.level}"`);
 
     // Build a descriptive summary of what's being queried
     const parts: string[] = ["Time: last 5 minutes"];
 
     if (args.type && args.type !== "all") parts.push(`Type: ${args.type}`);
     if (args.level && args.level !== "all") parts.push(`Level: ${args.level}`);
-    if (args.searchTerm)
-      parts.push(`Search: "${escapeXmlContent(args.searchTerm)}"`);
+    if (args.searchTerm) parts.push(`Search: "${escapeXmlContent(args.searchTerm)}"`);
     if (args.limit) parts.push(`Limit: ${args.limit}`);
 
     const summary = parts.join(" | ");
@@ -150,9 +137,7 @@ ${summary}
     // Apply search term filter
     if (args.searchTerm) {
       const term = args.searchTerm.toLowerCase();
-      filtered = filtered.filter((log) =>
-        log.message.toLowerCase().includes(term),
-      );
+      filtered = filtered.filter((log) => log.message.toLowerCase().includes(term));
     }
 
     // Sort by timestamp (oldest to newest)
@@ -172,16 +157,14 @@ ${summary}
     const parts: string[] = ["Time: last 5 minutes"];
     if (args.type && args.type !== "all") parts.push(`Type: ${args.type}`);
     if (args.level && args.level !== "all") parts.push(`Level: ${args.level}`);
-    if (args.searchTerm)
-      parts.push(`Search: "${escapeXmlContent(args.searchTerm)}"`);
+    if (args.searchTerm) parts.push(`Search: "${escapeXmlContent(args.searchTerm)}"`);
     if (args.limit) parts.push(`Limit: ${args.limit}`);
     const summary = parts.join(" | ");
 
     // Build filter attributes for the tag
     const filters = [];
     if (args.type && args.type !== "all") filters.push(`type="${args.type}"`);
-    if (args.level && args.level !== "all")
-      filters.push(`level="${args.level}"`);
+    if (args.level && args.level !== "all") filters.push(`level="${args.level}"`);
 
     // Output the complete results in a single tag
     ctx.onXmlComplete(

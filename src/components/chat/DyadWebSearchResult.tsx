@@ -8,10 +8,7 @@ interface DyadWebSearchResultProps {
   children?: React.ReactNode;
 }
 
-export const DyadWebSearchResult: React.FC<DyadWebSearchResultProps> = ({
-  children,
-  node,
-}) => {
+export const DyadWebSearchResult: React.FC<DyadWebSearchResultProps> = ({ children, node }) => {
   const state = node?.properties?.state as CustomTagState;
   const inProgress = state === "pending";
   const [isExpanded, setIsExpanded] = useState(inProgress);
@@ -46,9 +43,7 @@ export const DyadWebSearchResult: React.FC<DyadWebSearchResultProps> = ({
       >
         <Globe size={16} className="text-blue-600" />
         <span>Web Search Result</span>
-        {inProgress && (
-          <Loader size={14} className="ml-1 text-blue-600 animate-spin" />
-        )}
+        {inProgress && <Loader size={14} className="ml-1 text-blue-600 animate-spin" />}
       </div>
 
       {/* Indicator icon */}
@@ -66,11 +61,7 @@ export const DyadWebSearchResult: React.FC<DyadWebSearchResultProps> = ({
         }}
       >
         <div className="px-0 text-sm text-gray-600 dark:text-gray-300">
-          {typeof children === "string" ? (
-            <VanillaMarkdownParser content={children} />
-          ) : (
-            children
-          )}
+          {typeof children === "string" ? <VanillaMarkdownParser content={children} /> : children}
         </div>
       </div>
     </div>

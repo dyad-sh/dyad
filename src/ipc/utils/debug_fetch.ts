@@ -17,12 +17,7 @@ export async function debugFetch(
   url: RequestInfo | URL,
   options: DebugFetchOptions = {},
 ): Promise<Response> {
-  const {
-    debugTag = "fetch",
-    logResponse = true,
-    logStream = true,
-    ...fetchOptions
-  } = options;
+  const { debugTag = "fetch", logResponse = true, logStream = true, ...fetchOptions } = options;
 
   // Log the request
   logger.info(`[${debugTag}] Request:`, {

@@ -1,18 +1,10 @@
 import { expect } from "@playwright/test";
-import {
-  PageObject,
-  test,
-  testSkipIfWindows,
-  Timeout,
-} from "./helpers/test_helper";
+import { PageObject, test, testSkipIfWindows, Timeout } from "./helpers/test_helper";
 import * as fs from "fs";
 import * as path from "path";
 import { execSync } from "child_process";
 
-const runUncommittedFilesBannerTest = async (
-  po: PageObject,
-  nativeGit: boolean,
-) => {
+const runUncommittedFilesBannerTest = async (po: PageObject, nativeGit: boolean) => {
   await po.setUp({ disableNativeGit: !nativeGit });
   await po.sendPrompt("tc=basic");
 
@@ -92,13 +84,10 @@ const runUncommittedFilesBannerTest = async (
   expect(gitLog).toBe(testCommitMessage);
 
   // Verify the files were committed
-  const lastCommitFiles = execSync(
-    "git diff-tree --no-commit-id --name-only -r HEAD",
-    {
-      cwd: appPath,
-      encoding: "utf-8",
-    },
-  ).trim();
+  const lastCommitFiles = execSync("git diff-tree --no-commit-id --name-only -r HEAD", {
+    cwd: appPath,
+    encoding: "utf-8",
+  }).trim();
   expect(lastCommitFiles).toContain("new-file.txt");
 };
 
@@ -106,9 +95,6 @@ test("uncommitted files banner", async ({ po }) => {
   await runUncommittedFilesBannerTest(po, false);
 });
 
-testSkipIfWindows(
-  "uncommitted files banner with native git",
-  async ({ po }) => {
-    await runUncommittedFilesBannerTest(po, true);
-  },
-);
+testSkipIfWindows("uncommitted files banner with native git", async ({ po }) => {
+  await runUncommittedFilesBannerTest(po, true);
+});

@@ -25,14 +25,10 @@ export function useRunApp() {
   const setPreviewErrorMessage = useSetAtom(previewErrorMessageAtom);
 
   const processProxyServerOutput = (output: AppOutput) => {
-    const matchesProxyServerStart = output.message.includes(
-      "[dyad-proxy-server]started=[",
-    );
+    const matchesProxyServerStart = output.message.includes("[dyad-proxy-server]started=[");
     if (matchesProxyServerStart) {
       // Extract both proxy URL and original URL using regex
-      const proxyUrlMatch = output.message.match(
-        /\[dyad-proxy-server\]started=\[(.*?)\]/,
-      );
+      const proxyUrlMatch = output.message.match(/\[dyad-proxy-server\]started=\[(.*?)\]/);
       const originalUrlMatch = output.message.match(/original=\[(.*?)\]/);
 
       if (proxyUrlMatch && proxyUrlMatch[1]) {
@@ -173,9 +169,7 @@ export function useRunApp() {
   }, [setPreviewPanelKey]);
 
   const restartApp = useCallback(
-    async ({
-      removeNodeModules = false,
-    }: { removeNodeModules?: boolean } = {}) => {
+    async ({ removeNodeModules = false }: { removeNodeModules?: boolean } = {}) => {
       if (appId === null) {
         return;
       }
@@ -215,10 +209,7 @@ export function useRunApp() {
           appId,
           (output) => {
             // Handle HMR updates before processing
-            if (
-              output.message.includes("hmr update") &&
-              output.message.includes("[vite]")
-            ) {
+            if (output.message.includes("hmr update") && output.message.includes("[vite]")) {
               onHotModuleReload();
             }
             // Process normally (including input requests)

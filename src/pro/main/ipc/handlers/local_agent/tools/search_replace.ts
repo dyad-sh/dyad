@@ -21,18 +21,11 @@ const searchReplaceSchema = z.object({
     .describe(
       "Content to search for in the file. This should match the existing code that will be replaced",
     ),
-  replace: z
-    .string()
-    .describe("New content to replace the search content with"),
-  description: z
-    .string()
-    .optional()
-    .describe("Brief description of the changes"),
+  replace: z.string().describe("New content to replace the search content with"),
+  description: z.string().optional().describe("Brief description of the changes"),
 });
 
-export const searchReplaceTool: ToolDefinition<
-  z.infer<typeof searchReplaceSchema>
-> = {
+export const searchReplaceTool: ToolDefinition<z.infer<typeof searchReplaceSchema>> = {
   name: "search_replace",
   description:
     "Apply targeted search/replace edits to a file. This is the preferred tool for editing a file.",
@@ -79,20 +72,14 @@ export const searchReplaceTool: ToolDefinition<
     const result = applySearchReplace(original, operations);
 
     if (!result.success || typeof result.content !== "string") {
-      throw new Error(
-        `Failed to apply search-replace: ${result.error ?? "unknown"}`,
-      );
+      throw new Error(`Failed to apply search-replace: ${result.error ?? "unknown"}`);
     }
 
     fs.writeFileSync(fullFilePath, result.content);
     logger.log(`Successfully applied search-replace to: ${fullFilePath}`);
 
     // Deploy Supabase function if applicable
-    if (
-      ctx.supabaseProjectId &&
-      isServerFunction(args.path) &&
-      !ctx.isSharedModulesChanged
-    ) {
+    if (ctx.supabaseProjectId && isServerFunction(args.path) && !ctx.isSharedModulesChanged) {
       try {
         await deploySupabaseFunction({
           supabaseProjectId: ctx.supabaseProjectId,

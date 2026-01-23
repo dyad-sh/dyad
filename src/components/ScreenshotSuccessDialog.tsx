@@ -24,9 +24,7 @@ export function ScreenshotSuccessDialog({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>
-            Screenshot captured to clipboard! Please paste in GitHub issue.
-          </DialogTitle>
+          <DialogTitle>Screenshot captured to clipboard! Please paste in GitHub issue.</DialogTitle>
         </DialogHeader>
         <Button
           variant="default"

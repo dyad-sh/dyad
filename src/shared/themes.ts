@@ -64,8 +64,7 @@ export const themesData: Theme[] = [
   {
     id: "default",
     name: "Default Theme",
-    description:
-      "Balanced design system emphasizing aesthetics, contrast, and functionality.",
+    description: "Balanced design system emphasizing aesthetics, contrast, and functionality.",
     icon: "palette",
     prompt: DEFAULT_THEME_PROMPT,
   },

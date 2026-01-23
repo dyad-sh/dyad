@@ -47,17 +47,8 @@ import {
   pendingVisualChangesAtom,
 } from "@/atoms/previewAtoms";
 import { ComponentSelection } from "@/ipc/ipc_types";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useRunApp } from "@/hooks/useRunApp";
 import { useShortcut } from "@/hooks/useShortcut";
@@ -112,21 +103,14 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
       )}
 
       {/* Error message in the middle */}
-      <div
-        className={cn(
-          "px-6 py-1 text-sm",
-          error.source === "dyad-app" && "pt-6",
-        )}
-      >
+      <div className={cn("px-6 py-1 text-sm", error.source === "dyad-app" && "pt-6")}>
         <div
           className="text-red-700 dark:text-red-300 text-wrap font-mono whitespace-pre-wrap break-words text-xs cursor-pointer flex gap-1 items-start"
           onClick={() => setIsCollapsed(!isCollapsed)}
         >
           <ChevronRight
             size={14}
-            className={`mt-0.5 transform transition-transform ${
-              isCollapsed ? "" : "rotate-90"
-            }`}
+            className={`mt-0.5 transform transition-transform ${isCollapsed ? "" : "rotate-90"}`}
           />
 
           {isCollapsed ? getTruncatedError() : error.message}
@@ -184,27 +168,21 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const isProMode = !!userBudget;
 
   // Navigation state
-  const [isComponentSelectorInitialized, setIsComponentSelectorInitialized] =
-    useState(false);
+  const [isComponentSelectorInitialized, setIsComponentSelectorInitialized] = useState(false);
   const [canGoBack, setCanGoBack] = useState(false);
   const [canGoForward, setCanGoForward] = useState(false);
   const [navigationHistory, setNavigationHistory] = useState<string[]>([]);
   const [currentHistoryPosition, setCurrentHistoryPosition] = useState(0);
-  const setSelectedComponentsPreview = useSetAtom(
-    selectedComponentsPreviewAtom,
+  const setSelectedComponentsPreview = useSetAtom(selectedComponentsPreviewAtom);
+  const [visualEditingSelectedComponent, setVisualEditingSelectedComponent] = useAtom(
+    visualEditingSelectedComponentAtom,
   );
-  const [visualEditingSelectedComponent, setVisualEditingSelectedComponent] =
-    useAtom(visualEditingSelectedComponentAtom);
-  const setCurrentComponentCoordinates = useSetAtom(
-    currentComponentCoordinatesAtom,
-  );
+  const setCurrentComponentCoordinates = useSetAtom(currentComponentCoordinatesAtom);
   const setPreviewIframeRef = useSetAtom(previewIframeRefAtom);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isPicking, setIsPicking] = useState(false);
   const [annotatorMode, setAnnotatorMode] = useAtom(annotatorModeAtom);
-  const [screenshotDataUrl, setScreenshotDataUrl] = useAtom(
-    screenshotDataUrlAtom,
-  );
+  const [screenshotDataUrl, setScreenshotDataUrl] = useAtom(screenshotDataUrlAtom);
 
   const { addAttachments } = useAttachments();
   const setPendingChanges = useSetAtom(pendingVisualChangesAtom);
@@ -278,8 +256,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
       updated.set(componentId, {
         componentId: componentId,
-        componentName:
-          existing?.componentName || visualEditingSelectedComponent?.name || "",
+        componentName: existing?.componentName || visualEditingSelectedComponent?.name || "",
         relativePath: filePath,
         lineNumber: lineNumber,
         styles: existing?.styles || {},
@@ -292,8 +269,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
   // Function to get current styles from selected element
   const getCurrentElementStyles = () => {
-    if (!iframeRef.current?.contentWindow || !visualEditingSelectedComponent)
-      return;
+    if (!iframeRef.current?.contentWindow || !visualEditingSelectedComponent) return;
 
     try {
       // Send message to iframe to get current styles
@@ -503,9 +479,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             );
           }
 
-          setSelectedComponentsPreview((prev) =>
-            prev.filter((c) => c.id !== componentId),
-          );
+          setSelectedComponentsPreview((prev) => prev.filter((c) => c.id !== componentId));
           setVisualEditingSelectedComponent((prev) => {
             const shouldClear = prev?.id === componentId;
             if (shouldClear) {
@@ -561,9 +535,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           type === "iframe-sourcemapped-error"
             ? payload?.stack?.split("\n").slice(0, 1).join("\n")
             : payload?.stack;
-        const errorMessage = `Error ${
-          payload?.message || payload?.reason
-        }\nStack trace: ${stack}`;
+        const errorMessage = `Error ${payload?.message || payload?.reason}\nStack trace: ${stack}`;
         console.error("Iframe error:", errorMessage);
         setErrorMessage({ message: errorMessage, source: "preview-app" });
         const logEntry = {
@@ -659,10 +631,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       const newIsPicking = !isPicking;
       if (!newIsPicking) {
         // Clean up any text editing states when deactivating
-        iframeRef.current.contentWindow.postMessage(
-          { type: "cleanup-all-text-editing" },
-          "*",
-        );
+        iframeRef.current.contentWindow.postMessage({ type: "cleanup-all-text-editing" }, "*");
       }
       setIsPicking(newIsPicking);
       setVisualEditingSelectedComponent(null);
@@ -734,9 +703,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       // Update our local state
       setCurrentHistoryPosition((prev) => prev + 1);
       setCanGoBack(true);
-      setCanGoForward(
-        currentHistoryPosition + 1 < navigationHistory.length - 1,
-      );
+      setCanGoForward(currentHistoryPosition + 1 < navigationHistory.length - 1);
     }
   };
 
@@ -766,10 +733,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       // iframeRef.current.src = newUrl;
 
       // Update navigation history
-      const newHistory = [
-        ...navigationHistory.slice(0, currentHistoryPosition + 1),
-        newUrl,
-      ];
+      const newHistory = [...navigationHistory.slice(0, currentHistoryPosition + 1), newUrl];
       setNavigationHistory(newHistory);
       setCurrentHistoryPosition(newHistory.length - 1);
       setCanGoBack(true);
@@ -787,9 +751,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             <div className="absolute bottom-0 left-0 w-2 h-2 bg-primary rounded-full opacity-80"></div>
             <div className="absolute bottom-0 right-0 w-2 h-2 bg-primary rounded-full opacity-60"></div>
           </div>
-          <p className="text-gray-600 dark:text-gray-300">
-            Preparing app preview...
-          </p>
+          <p className="text-gray-600 dark:text-gray-300">Preparing app preview...</p>
         </div>
       </div>
     );
@@ -798,9 +760,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   // Display message if no app is selected
   if (selectedAppId === null) {
     return (
-      <div className="p-4 text-gray-500 dark:text-gray-400">
-        Select an app to see the preview.
-      </div>
+      <div className="p-4 text-gray-500 dark:text-gray-400">Select an app to see the preview.</div>
     );
   }
 
@@ -825,22 +785,14 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                         ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
                         : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
                     }`}
-                    disabled={
-                      loading ||
-                      !selectedAppId ||
-                      !isComponentSelectorInitialized
-                    }
+                    disabled={loading || !selectedAppId || !isComponentSelectorInitialized}
                     data-testid="preview-pick-element-button"
                   >
                     <MousePointerClick size={16} />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>
-                    {isPicking
-                      ? "Deactivate component selector"
-                      : "Select component"}
-                  </p>
+                  <p>{isPicking ? "Deactivate component selector" : "Select component"}</p>
                   <p>{isMac ? "⌘ + ⇧ + C" : "Ctrl + ⇧ + C"}</p>
                 </TooltipContent>
               </Tooltip>
@@ -856,10 +808,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                         : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
                     }`}
                     disabled={
-                      loading ||
-                      !selectedAppId ||
-                      isPicking ||
-                      !isComponentSelectorInitialized
+                      loading || !selectedAppId || isPicking || !isComponentSelectorInitialized
                     }
                     data-testid="preview-annotator-button"
                   >
@@ -867,11 +816,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                   </button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>
-                    {annotatorMode
-                      ? "Annotator mode active"
-                      : "Activate annotator"}
-                  </p>
+                  <p>{annotatorMode ? "Annotator mode active" : "Activate annotator"}</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -908,8 +853,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 <div className="flex items-center justify-between px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded text-sm text-gray-700 dark:text-gray-200 cursor-pointer w-full min-w-0">
                   <span className="truncate flex-1 mr-2 min-w-0">
                     {navigationHistory[currentHistoryPosition]
-                      ? new URL(navigationHistory[currentHistoryPosition])
-                          .pathname
+                      ? new URL(navigationHistory[currentHistoryPosition]).pathname
                       : "/"}
                   </span>
                   <ChevronDown size={14} className="flex-shrink-0" />
@@ -924,15 +868,11 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                       className="flex justify-between"
                     >
                       <span>{route.label}</span>
-                      <span className="text-gray-500 dark:text-gray-400 text-xs">
-                        {route.path}
-                      </span>
+                      <span className="text-gray-500 dark:text-gray-400 text-xs">{route.path}</span>
                     </DropdownMenuItem>
                   ))
                 ) : (
-                  <DropdownMenuItem disabled>
-                    Loading routes...
-                  </DropdownMenuItem>
+                  <DropdownMenuItem disabled>Loading routes...</DropdownMenuItem>
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
@@ -996,7 +936,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                     }}
                     variant="outline"
                   >
-                    {/* Tooltips placed inside items instead of wrapping 
+                    {/* Tooltips placed inside items instead of wrapping
                     to avoid asChild prop merging that breaks highlighting */}
                     <ToggleGroupItem value="desktop" aria-label="Desktop view">
                       <Tooltip>
@@ -1059,24 +999,15 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         {!appUrl ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center space-y-4 bg-gray-50 dark:bg-gray-950">
             <Loader2 className="w-8 h-8 animate-spin text-gray-400 dark:text-gray-500" />
-            <p className="text-gray-600 dark:text-gray-300">
-              Starting your app server...
-            </p>
+            <p className="text-gray-600 dark:text-gray-300">Starting your app server...</p>
           </div>
         ) : (
-          <div
-            className={cn(
-              "w-full h-full",
-              deviceMode !== "desktop" && "flex justify-center",
-            )}
-          >
+          <div className={cn("w-full h-full", deviceMode !== "desktop" && "flex justify-center")}>
             {annotatorMode && screenshotDataUrl ? (
               <div
                 className="w-full h-full bg-white dark:bg-gray-950"
                 style={
-                  deviceMode == "desktop"
-                    ? {}
-                    : { width: `${deviceWidthConfig[deviceMode]}px` }
+                  deviceMode == "desktop" ? {} : { width: `${deviceWidthConfig[deviceMode]}px` }
                 }
               >
                 {userBudget ? (
@@ -1086,9 +1017,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                     handleAnnotatorClick={handleAnnotatorClick}
                   />
                 ) : (
-                  <AnnotatorOnlyForPro
-                    onGoBack={() => setAnnotatorMode(false)}
-                  />
+                  <AnnotatorOnlyForPro onGoBack={() => setAnnotatorMode(false)} />
                 )}
               </div>
             ) : (
@@ -1104,24 +1033,20 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                   title={`Preview for App ${selectedAppId}`}
                   className="w-full h-full border-none bg-white dark:bg-gray-950"
                   style={
-                    deviceMode == "desktop"
-                      ? {}
-                      : { width: `${deviceWidthConfig[deviceMode]}px` }
+                    deviceMode == "desktop" ? {} : { width: `${deviceWidthConfig[deviceMode]}px` }
                   }
                   src={appUrl}
                   allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
                 />
                 {/* Visual Editing Toolbar */}
-                {isProMode &&
-                  visualEditingSelectedComponent &&
-                  selectedAppId && (
-                    <VisualEditingToolbar
-                      selectedComponent={visualEditingSelectedComponent}
-                      iframeRef={iframeRef}
-                      isDynamic={isDynamicComponent}
-                      hasStaticText={hasStaticText}
-                    />
-                  )}
+                {isProMode && visualEditingSelectedComponent && selectedAppId && (
+                  <VisualEditingToolbar
+                    selectedComponent={visualEditingSelectedComponent}
+                    iframeRef={iframeRef}
+                    isDynamic={isDynamicComponent}
+                    hasStaticText={hasStaticText}
+                  />
+                )}
               </>
             )}
           </div>
@@ -1137,11 +1062,7 @@ function parseComponentSelection(data: any): ComponentSelection | null {
   }
 
   const component = data.component;
-  if (
-    !component ||
-    typeof component.id !== "string" ||
-    typeof component.name !== "string"
-  ) {
+  if (!component || typeof component.id !== "string" || typeof component.name !== "string") {
     return null;
   }
 

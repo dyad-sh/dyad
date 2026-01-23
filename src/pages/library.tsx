@@ -1,17 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { usePrompts } from "@/hooks/usePrompts";
-import {
-  CreatePromptDialog,
-  CreateOrEditPromptDialog,
-} from "@/components/CreatePromptDialog";
+import { CreatePromptDialog, CreateOrEditPromptDialog } from "@/components/CreatePromptDialog";
 import { DeleteConfirmationDialog } from "@/components/DeleteConfirmationDialog";
 import { useDeepLink } from "@/contexts/DeepLinkContext";
 import { AddPromptDeepLinkData } from "@/ipc/deep_link_data";
 import { showInfo } from "@/lib/toast";
 
 export default function LibraryPage() {
-  const { prompts, isLoading, createPrompt, updatePrompt, deletePrompt } =
-    usePrompts();
+  const { prompts, isLoading, createPrompt, updatePrompt, deletePrompt } = usePrompts();
   const { lastDeepLink, clearLastDeepLink } = useDeepLink();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [prefillData, setPrefillData] = useState<
@@ -65,18 +61,11 @@ export default function LibraryPage() {
         {isLoading ? (
           <div>Loading...</div>
         ) : prompts.length === 0 ? (
-          <div className="text-muted-foreground">
-            No prompts yet. Create one to get started.
-          </div>
+          <div className="text-muted-foreground">No prompts yet. Create one to get started.</div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
             {prompts.map((p) => (
-              <PromptCard
-                key={p.id}
-                prompt={p}
-                onUpdate={updatePrompt}
-                onDelete={deletePrompt}
-              />
+              <PromptCard key={p.id} prompt={p} onUpdate={updatePrompt} onDelete={deletePrompt} />
             ))}
           </div>
         )}
@@ -114,17 +103,11 @@ function PromptCard({
           <div>
             <h3 className="text-lg font-semibold">{prompt.title}</h3>
             {prompt.description && (
-              <p className="text-sm text-muted-foreground">
-                {prompt.description}
-              </p>
+              <p className="text-sm text-muted-foreground">{prompt.description}</p>
             )}
           </div>
           <div className="flex gap-2">
-            <CreateOrEditPromptDialog
-              mode="edit"
-              prompt={prompt}
-              onUpdatePrompt={onUpdate}
-            />
+            <CreateOrEditPromptDialog mode="edit" prompt={prompt} onUpdatePrompt={onUpdate} />
             <DeleteConfirmationDialog
               itemName={prompt.title}
               itemType="Prompt"

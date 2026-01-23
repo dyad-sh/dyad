@@ -11,10 +11,7 @@ import {
   type SupabaseProjectLog,
 } from "../../supabase_admin/supabase_management_client";
 import { extractFunctionName } from "../../supabase_admin/supabase_utils";
-import {
-  createLoggedHandler,
-  createTestOnlyLoggedHandler,
-} from "./safe_handle";
+import { createLoggedHandler, createTestOnlyLoggedHandler } from "./safe_handle";
 import { safeSend } from "../utils/safe_sender";
 import { readSettings, writeSettings } from "../../main/settings";
 
@@ -33,43 +30,37 @@ const testOnlyHandle = createTestOnlyLoggedHandler(logger);
 
 export function registerSupabaseHandlers() {
   // List all connected Supabase organizations with details
-  handle(
-    "supabase:list-organizations",
-    async (): Promise<SupabaseOrganizationInfo[]> => {
-      const settings = readSettings();
-      const organizations = settings.supabase?.organizations ?? {};
+  handle("supabase:list-organizations", async (): Promise<SupabaseOrganizationInfo[]> => {
+    const settings = readSettings();
+    const organizations = settings.supabase?.organizations ?? {};
 
-      const results: SupabaseOrganizationInfo[] = [];
+    const results: SupabaseOrganizationInfo[] = [];
 
-      for (const organizationSlug of Object.keys(organizations)) {
-        try {
-          // Fetch organization details and members in parallel
-          const [details, members] = await Promise.all([
-            getOrganizationDetails(organizationSlug),
-            getOrganizationMembers(organizationSlug),
-          ]);
+    for (const organizationSlug of Object.keys(organizations)) {
+      try {
+        // Fetch organization details and members in parallel
+        const [details, members] = await Promise.all([
+          getOrganizationDetails(organizationSlug),
+          getOrganizationMembers(organizationSlug),
+        ]);
 
-          // Find the owner from members
-          const owner = members.find((m) => m.role === "Owner");
+        // Find the owner from members
+        const owner = members.find((m) => m.role === "Owner");
 
-          results.push({
-            organizationSlug,
-            name: details.name,
-            ownerEmail: owner?.email,
-          });
-        } catch (error) {
-          // If we can't fetch details, still include the org with just the ID
-          logger.error(
-            `Failed to fetch details for organization ${organizationSlug}:`,
-            error,
-          );
-          results.push({ organizationSlug });
-        }
+        results.push({
+          organizationSlug,
+          name: details.name,
+          ownerEmail: owner?.email,
+        });
+      } catch (error) {
+        // If we can't fetch details, still include the org with just the ID
+        logger.error(`Failed to fetch details for organization ${organizationSlug}:`, error);
+        results.push({ organizationSlug });
       }
+    }
 
-      return results;
-    },
-  );
+    return results;
+  });
 
   // Delete a Supabase organization connection
   handle(
@@ -122,10 +113,7 @@ export function registerSupabaseHandlers() {
           }
         }
       } catch (error) {
-        logger.error(
-          `Failed to fetch projects for organization ${organizationSlug}:`,
-          error,
-        );
+        logger.error(`Failed to fetch projects for organization ${organizationSlug}:`, error);
         // Continue with other organizations even if one fails
       }
     }
@@ -138,10 +126,7 @@ export function registerSupabaseHandlers() {
     "supabase:list-branches",
     async (
       _,
-      {
-        projectId,
-        organizationSlug,
-      }: { projectId: string; organizationSlug?: string },
+      { projectId, organizationSlug }: { projectId: string; organizationSlug?: string },
     ): Promise<Array<SupabaseBranch>> => {
       const branches = await listSupabaseBranches({
         supabaseProjectId: projectId,
@@ -182,9 +167,7 @@ export function registerSupabaseHandlers() {
 
       if (response.error) {
         const errorMsg =
-          typeof response.error === "string"
-            ? response.error
-            : JSON.stringify(response.error);
+          typeof response.error === "string" ? response.error : JSON.stringify(response.error);
         throw new Error(`Failed to fetch logs: ${errorMsg}`);
       }
 
@@ -198,8 +181,7 @@ export function registerSupabaseHandlers() {
         const functionName = extractFunctionName(eventMessage);
 
         return {
-          level:
-            level === "error" ? "error" : level === "warn" ? "warn" : "info",
+          level: level === "error" ? "error" : level === "warn" ? "warn" : "info",
           type: "edge-function" as const,
           message: eventMessage,
           timestamp: log.timestamp / 1000, // Convert from microseconds to milliseconds
@@ -215,12 +197,7 @@ export function registerSupabaseHandlers() {
     "supabase:set-app-project",
     async (
       _,
-      {
-        projectId,
-        appId,
-        parentProjectId,
-        organizationSlug,
-      }: SetSupabaseAppProjectParams,
+      { projectId, appId, parentProjectId, organizationSlug }: SetSupabaseAppProjectParams,
     ) => {
       await db
         .update(apps)
@@ -253,10 +230,7 @@ export function registerSupabaseHandlers() {
 
   testOnlyHandle(
     "supabase:fake-connect-and-set-project",
-    async (
-      event,
-      { appId, fakeProjectId }: { appId: number; fakeProjectId: string },
-    ) => {
+    async (event, { appId, fakeProjectId }: { appId: number; fakeProjectId: string }) => {
       const fakeOrgId = "fake-org-id";
 
       // Directly store fake credentials in the organizations map
@@ -294,18 +268,14 @@ export function registerSupabaseHandlers() {
           supabaseOrganizationSlug: fakeOrgId,
         })
         .where(eq(apps.id, appId));
-      logger.info(
-        `Set fake Supabase project ${fakeProjectId} for app ${appId} during testing.`,
-      );
+      logger.info(`Set fake Supabase project ${fakeProjectId} for app ${appId} during testing.`);
 
       // Simulate the deep link event
       safeSend(event.sender, "deep-link-received", {
         type: "supabase-oauth-return",
         url: "https://supabase-oauth.dyad.sh/api/connect-supabase/login",
       });
-      logger.info(
-        `Sent fake deep-link-received event for app ${appId} during testing.`,
-      );
+      logger.info(`Sent fake deep-link-received event for app ${appId} during testing.`);
     },
   );
 }

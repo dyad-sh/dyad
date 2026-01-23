@@ -10,9 +10,7 @@ test("env var", async ({ po }) => {
   await po.selectPreviewMode("configure");
 
   // Create a new env var
-  await po.page
-    .getByRole("button", { name: "Add Environment Variable" })
-    .click();
+  await po.page.getByRole("button", { name: "Add Environment Variable" }).click();
   await po.page.getByRole("textbox", { name: "Key" }).click();
   await po.page.getByRole("textbox", { name: "Key" }).fill("aKey");
 
@@ -23,9 +21,7 @@ test("env var", async ({ po }) => {
   await snapshotEnvVar({ appPath, name: "create-aKey" });
 
   // Create second env var
-  await po.page
-    .getByRole("button", { name: "Add Environment Variable" })
-    .click();
+  await po.page.getByRole("button", { name: "Add Environment Variable" }).click();
   await po.page.getByRole("textbox", { name: "Key" }).click();
   await po.page.getByRole("textbox", { name: "Key" }).fill("bKey");
 
@@ -47,13 +43,7 @@ test("env var", async ({ po }) => {
   await snapshotEnvVar({ appPath, name: "delete-aKey" });
 });
 
-async function snapshotEnvVar({
-  appPath,
-  name,
-}: {
-  appPath: string;
-  name: string;
-}) {
+async function snapshotEnvVar({ appPath, name }: { appPath: string; name: string }) {
   expect(() => {
     const envFile = path.join(appPath, ".env.local");
     const envFileContent = fs.readFileSync(envFile, "utf8");

@@ -33,8 +33,7 @@ function Toggle({
   variant,
   size,
   ...props
-}: React.ComponentProps<typeof TogglePrimitive.Root> &
-  VariantProps<typeof toggleVariants>) {
+}: React.ComponentProps<typeof TogglePrimitive.Root> & VariantProps<typeof toggleVariants>) {
   return (
     <TogglePrimitive.Root
       data-slot="toggle"

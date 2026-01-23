@@ -1,25 +1,14 @@
 import { MessageSquare, Upload } from "lucide-react";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useRef } from "react";
 
 interface FileAttachmentDropdownProps {
-  onFileSelect: (
-    files: FileList,
-    type: "chat-context" | "upload-to-codebase",
-  ) => void;
+  onFileSelect: (files: FileList, type: "chat-context" | "upload-to-codebase") => void;
   closeMenu?: () => void;
 }
 
-export function FileAttachmentDropdown({
-  onFileSelect,
-  closeMenu,
-}: FileAttachmentDropdownProps) {
+export function FileAttachmentDropdown({ onFileSelect, closeMenu }: FileAttachmentDropdownProps) {
   const chatContextFileInputRef = useRef<HTMLInputElement>(null);
   const uploadToCodebaseFileInputRef = useRef<HTMLInputElement>(null);
 

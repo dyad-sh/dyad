@@ -16,9 +16,7 @@ testSkipIfWindows("capacitor upgrade and sync works", async ({ po }) => {
 
   // In test mode, this should complete without error and return to idle state
   // Wait for the button to be enabled again (not in loading state)
-  await po.page
-    .getByText("Sync & Open iOS")
-    .waitFor({ state: "visible", timeout: Timeout.LONG });
+  await po.page.getByText("Sync & Open iOS").waitFor({ state: "visible", timeout: Timeout.LONG });
 
   // Test sync & open Android functionality - the button contains "Sync & Open Android"
   const androidButton = po.page.getByRole("button", {

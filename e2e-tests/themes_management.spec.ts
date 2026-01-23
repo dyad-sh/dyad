@@ -10,30 +10,22 @@ test("themes management - CRUD operations", async ({ po }) => {
   await expect(po.page.getByRole("heading", { name: "Themes" })).toBeVisible();
 
   // Verify no themes exist initially
-  await expect(
-    po.page.getByText("No custom themes yet. Create one to get started."),
-  ).toBeVisible();
+  await expect(po.page.getByText("No custom themes yet. Create one to get started.")).toBeVisible();
 
   // === CREATE ===
   // Click New Theme button
   await po.page.getByRole("button", { name: "New Theme" }).click();
 
   // Wait for dialog to open
-  await expect(
-    po.page.getByRole("dialog").getByText("Create Custom Theme"),
-  ).toBeVisible();
+  await expect(po.page.getByRole("dialog").getByText("Create Custom Theme")).toBeVisible();
 
   // Switch to Manual tab
   await po.page.getByRole("tab", { name: "Manual Configuration" }).click();
 
   // Fill in manual configuration form
   await po.page.getByLabel("Theme Name").fill("My Test Theme");
-  await po.page
-    .getByLabel("Description (optional)")
-    .fill("A test theme description");
-  await po.page
-    .getByLabel("Theme Prompt")
-    .fill("Use blue colors and modern styling");
+  await po.page.getByLabel("Description (optional)").fill("A test theme description");
+  await po.page.getByLabel("Theme Prompt").fill("Use blue colors and modern styling");
 
   // Save the theme
   await po.page.getByRole("button", { name: "Save Theme" }).click();
@@ -49,16 +41,12 @@ test("themes management - CRUD operations", async ({ po }) => {
   await po.page.getByTestId("edit-theme-button").click();
 
   // Wait for edit dialog to open
-  await expect(
-    po.page.getByRole("dialog").getByText("Edit Theme"),
-  ).toBeVisible();
+  await expect(po.page.getByRole("dialog").getByText("Edit Theme")).toBeVisible();
 
   // Update the theme details
   await po.page.getByLabel("Theme Name").clear();
   await po.page.getByLabel("Theme Name").fill("Updated Theme");
-  await po.page
-    .getByLabel("Description (optional)")
-    .fill("Updated description");
+  await po.page.getByLabel("Description (optional)").fill("Updated description");
   await po.page.getByLabel("Theme Prompt").clear();
   await po.page.getByLabel("Theme Prompt").fill("Updated prompt content");
 
@@ -81,9 +69,7 @@ test("themes management - CRUD operations", async ({ po }) => {
   // Verify delete confirmation dialog appears
   await expect(po.page.getByRole("alertdialog")).toBeVisible();
   await expect(po.page.getByText("Delete Theme")).toBeVisible();
-  await expect(
-    po.page.getByText('Are you sure you want to delete "Updated Theme"?'),
-  ).toBeVisible();
+  await expect(po.page.getByText('Are you sure you want to delete "Updated Theme"?')).toBeVisible();
 
   // Confirm deletion
   await po.page.getByRole("button", { name: "Delete" }).click();
@@ -93,19 +79,14 @@ test("themes management - CRUD operations", async ({ po }) => {
   await expect(po.page.getByText("Updated Theme")).not.toBeVisible();
 
   // Verify empty state is shown again
-  await expect(
-    po.page.getByText("No custom themes yet. Create one to get started."),
-  ).toBeVisible();
+  await expect(po.page.getByText("No custom themes yet. Create one to get started.")).toBeVisible();
 });
 
 test("themes management - create theme from chat input", async ({ po }) => {
   await po.setUp();
 
   // Open the auxiliary actions menu
-  await po
-    .getHomeChatInputContainer()
-    .getByTestId("auxiliary-actions-menu")
-    .click();
+  await po.getHomeChatInputContainer().getByTestId("auxiliary-actions-menu").click();
 
   // Hover over Themes submenu
   await po.page.getByRole("menuitem", { name: "Themes" }).hover();
@@ -114,21 +95,15 @@ test("themes management - create theme from chat input", async ({ po }) => {
   await po.page.getByRole("menuitem", { name: "New Theme" }).click();
 
   // Wait for dialog to open
-  await expect(
-    po.page.getByRole("dialog").getByText("Create Custom Theme"),
-  ).toBeVisible();
+  await expect(po.page.getByRole("dialog").getByText("Create Custom Theme")).toBeVisible();
 
   // Switch to Manual tab (AI tab is now default)
   await po.page.getByRole("tab", { name: "Manual Configuration" }).click();
 
   // Fill in manual configuration form
   await po.page.getByLabel("Theme Name").fill("Chat Input Theme");
-  await po.page
-    .getByLabel("Description (optional)")
-    .fill("Created from chat input");
-  await po.page
-    .getByLabel("Theme Prompt")
-    .fill("Use dark mode with purple accents");
+  await po.page.getByLabel("Description (optional)").fill("Created from chat input");
+  await po.page.getByLabel("Theme Prompt").fill("Use dark mode with purple accents");
 
   // Save the theme
   await po.page.getByRole("button", { name: "Save Theme" }).click();
@@ -138,16 +113,11 @@ test("themes management - create theme from chat input", async ({ po }) => {
 
   // Verify the newly created theme is auto-selected
   // Re-open the menu to verify
-  await po
-    .getHomeChatInputContainer()
-    .getByTestId("auxiliary-actions-menu")
-    .click();
+  await po.getHomeChatInputContainer().getByTestId("auxiliary-actions-menu").click();
   await po.page.getByRole("menuitem", { name: "Themes" }).hover();
 
   // The custom theme should be visible and selected (has bg-primary class)
-  await expect(po.page.getByTestId("theme-option-custom:1")).toHaveClass(
-    /bg-primary/,
-  );
+  await expect(po.page.getByTestId("theme-option-custom:1")).toHaveClass(/bg-primary/);
 });
 
 test("themes management - AI generator image upload limit", async ({ po }) => {
@@ -162,9 +132,7 @@ test("themes management - AI generator image upload limit", async ({ po }) => {
   await po.page.getByRole("button", { name: "New Theme" }).click();
 
   // Wait for dialog to open
-  await expect(
-    po.page.getByRole("dialog").getByText("Create Custom Theme"),
-  ).toBeVisible();
+  await expect(po.page.getByRole("dialog").getByText("Create Custom Theme")).toBeVisible();
 
   // Verify AI-Powered Generator tab is active by default
   const aiTab = po.page.getByRole("tab", { name: "AI-Powered Generator" });
@@ -209,17 +177,13 @@ test("themes management - AI generator flow", async ({ po }) => {
   await expect(po.page.getByRole("heading", { name: "Themes" })).toBeVisible();
 
   // Verify no themes exist initially
-  await expect(
-    po.page.getByText("No custom themes yet. Create one to get started."),
-  ).toBeVisible();
+  await expect(po.page.getByText("No custom themes yet. Create one to get started.")).toBeVisible();
 
   // Click New Theme button
   await po.page.getByRole("button", { name: "New Theme" }).click();
 
   // Wait for dialog to open
-  await expect(
-    po.page.getByRole("dialog").getByText("Create Custom Theme"),
-  ).toBeVisible();
+  await expect(po.page.getByRole("dialog").getByText("Create Custom Theme")).toBeVisible();
 
   // Verify AI-Powered Generator tab is active by default
   const aiTab = po.page.getByRole("tab", { name: "AI-Powered Generator" });
@@ -237,9 +201,7 @@ test("themes management - AI generator flow", async ({ po }) => {
 
   // Fill in theme details
   await po.page.getByLabel("Theme Name").fill("AI Generated Theme");
-  await po.page
-    .getByLabel("Description (optional)")
-    .fill("Created via AI generator");
+  await po.page.getByLabel("Description (optional)").fill("Created via AI generator");
 
   // Upload an image
   const fileChooserPromise = po.page.waitForEvent("filechooser");

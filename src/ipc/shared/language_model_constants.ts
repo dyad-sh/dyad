@@ -1,9 +1,6 @@
 import { LanguageModel } from "../ipc_types";
 
-export const PROVIDERS_THAT_SUPPORT_THINKING: (keyof typeof MODEL_OPTIONS)[] = [
-  "google",
-  "vertex",
-];
+export const PROVIDERS_THAT_SUPPORT_THINKING: (keyof typeof MODEL_OPTIONS)[] = ["google", "vertex"];
 
 export interface ModelOption {
   name: string;
@@ -39,8 +36,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     {
       name: "gpt-5.1",
       displayName: "GPT 5.1",
-      description:
-        "OpenAI's flagship model- smarter, faster, and more conversational",
+      description: "OpenAI's flagship model- smarter, faster, and more conversational",
       // Technically it's 128k but OpenAI errors if you set max_tokens instead of max_completion_tokens
       maxOutputTokens: undefined,
       contextWindow: 400_000,
@@ -115,8 +111,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     {
       name: "claude-opus-4-5",
       displayName: "Claude Opus 4.5",
-      description:
-        "Anthropic's best model for coding (note: this model is very expensive!)",
+      description: "Anthropic's best model for coding (note: this model is very expensive!)",
       // Set to 32k since context window is 1M tokens
       maxOutputTokens: 32_000,
       contextWindow: 200_000,
@@ -126,8 +121,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     {
       name: SONNET_4_5,
       displayName: "Claude Sonnet 4.5",
-      description:
-        "Anthropic's best model for coding (note: >200k tokens is very expensive!)",
+      description: "Anthropic's best model for coding (note: >200k tokens is very expensive!)",
       // Set to 32k since context window is 1M tokens
       maxOutputTokens: 32_000,
       contextWindow: 1_000_000,
@@ -426,8 +420,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     {
       name: "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
       displayName: "Claude 4.5 Sonnet",
-      description:
-        "Anthropic's best model for coding (note: >200k tokens is very expensive!)",
+      description: "Anthropic's best model for coding (note: >200k tokens is very expensive!)",
       maxOutputTokens: 32_000,
       contextWindow: 1_000_000,
       temperature: 0,

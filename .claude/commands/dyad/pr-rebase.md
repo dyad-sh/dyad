@@ -28,7 +28,6 @@ Rebase the current branch on the latest upstream changes, resolve conflicts, and
    For example: `git rebase upstream/main`
 
 4. **If there are merge conflicts:**
-
    - Identify the conflicting files from the rebase output
    - Read each conflicting file and understand both versions of the changes
    - Resolve the conflicts by editing the files to combine changes appropriately
@@ -51,7 +50,6 @@ Rebase the current branch on the latest upstream changes, resolve conflicts, and
    Run the `/dyad:pr-push` skill to run lint checks, fix any issues, and push the rebased branch.
 
 6. **Summarize the results:**
-
    - Report that the rebase was successful
    - List any conflicts that were resolved
    - Note any lint fixes that were applied

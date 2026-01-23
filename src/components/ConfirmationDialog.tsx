@@ -54,9 +54,7 @@ export default function ConfirmationDialog({
                   {title}
                 </h3>
                 <div className="mt-2">
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {message}
-                  </p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">{message}</p>
                 </div>
               </div>
             </div>

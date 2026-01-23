@@ -1,26 +1,18 @@
 import net from "net";
 
-export function findAvailablePort(
-  minPort: number,
-  maxPort: number,
-): Promise<number> {
+export function findAvailablePort(minPort: number, maxPort: number): Promise<number> {
   return new Promise((resolve, reject) => {
     let attempts = 0;
     const maxAttempts = 3;
 
     function tryPort() {
       if (attempts >= maxAttempts) {
-        reject(
-          new Error(
-            `Failed to find an available port after ${maxAttempts} attempts.`,
-          ),
-        );
+        reject(new Error(`Failed to find an available port after ${maxAttempts} attempts.`));
         return;
       }
 
       attempts++;
-      const port =
-        Math.floor(Math.random() * (maxPort - minPort + 1)) + minPort;
+      const port = Math.floor(Math.random() * (maxPort - minPort + 1)) + minPort;
       const server = net.createServer();
 
       server.once("error", (err: any) => {

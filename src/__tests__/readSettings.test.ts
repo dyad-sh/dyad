@@ -94,10 +94,7 @@ describe("readSettings", () => {
 
       const result = readSettings();
 
-      expect(mockFs.readFileSync).toHaveBeenCalledWith(
-        mockSettingsPath,
-        "utf-8",
-      );
+      expect(mockFs.readFileSync).toHaveBeenCalledWith(mockSettingsPath, "utf-8");
       expect(result.selectedModel).toEqual({
         name: "gpt-4",
         provider: "openai",
@@ -215,9 +212,7 @@ describe("readSettings", () => {
 
       expect(mockSafeStorage.decryptString).not.toHaveBeenCalled();
       expect(result.githubAccessToken?.value).toBe("plaintext-token");
-      expect(result.providerSettings.openai.apiKey?.value).toBe(
-        "plaintext-api-key",
-      );
+      expect(result.providerSettings.openai.apiKey?.value).toBe("plaintext-api-key");
     });
 
     it("should handle secrets without encryptionType", () => {
@@ -240,12 +235,8 @@ describe("readSettings", () => {
       const result = readSettings();
 
       expect(mockSafeStorage.decryptString).not.toHaveBeenCalled();
-      expect(result.githubAccessToken?.value).toBe(
-        "token-without-encryption-type",
-      );
-      expect(result.providerSettings.openai.apiKey?.value).toBe(
-        "api-key-without-encryption-type",
-      );
+      expect(result.githubAccessToken?.value).toBe("token-without-encryption-type");
+      expect(result.providerSettings.openai.apiKey?.value).toBe("api-key-without-encryption-type");
     });
 
     it("should preserve extra fields not recognized by the schema", () => {
@@ -270,10 +261,7 @@ describe("readSettings", () => {
 
       const result = readSettings();
 
-      expect(mockFs.readFileSync).toHaveBeenCalledWith(
-        mockSettingsPath,
-        "utf-8",
-      );
+      expect(mockFs.readFileSync).toHaveBeenCalledWith(mockSettingsPath, "utf-8");
       expect(result.selectedModel).toEqual({
         name: "gpt-4",
         provider: "openai",
@@ -401,10 +389,7 @@ describe("readSettings", () => {
       const result = getSettingsFilePath();
 
       expect(mockGetUserDataPath).toHaveBeenCalled();
-      expect(mockPath.join).toHaveBeenCalledWith(
-        mockUserDataPath,
-        "user-settings.json",
-      );
+      expect(mockPath.join).toHaveBeenCalledWith(mockUserDataPath, "user-settings.json");
       expect(result).toBe(mockSettingsPath);
     });
   });

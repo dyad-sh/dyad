@@ -44,14 +44,10 @@ export function SetupBanner() {
   const posthog = usePostHog();
   const navigate = useNavigate();
   const [isOnboardingVisible, setIsOnboardingVisible] = useState(true);
-  const { isAnyProviderSetup, isLoading: loading } =
-    useLanguageModelProviders();
-  const [nodeSystemInfo, setNodeSystemInfo] = useState<NodeSystemInfo | null>(
-    null,
-  );
+  const { isAnyProviderSetup, isLoading: loading } = useLanguageModelProviders();
+  const [nodeSystemInfo, setNodeSystemInfo] = useState<NodeSystemInfo | null>(null);
   const [nodeCheckError, setNodeCheckError] = useState<boolean>(false);
-  const [nodeInstallStep, setNodeInstallStep] =
-    useState<NodeInstallStep>("install");
+  const [nodeInstallStep, setNodeInstallStep] = useState<NodeInstallStep>("install");
   const checkNode = useCallback(async () => {
     try {
       setNodeCheckError(false);
@@ -79,9 +75,7 @@ export function SetupBanner() {
         setNodeInstallStep("finished-checking");
         setShowManualConfig(false);
       } else if (result.path === null && result.canceled === false) {
-        showError(
-          `Could not find Node.js at the path "${result.selectedPath}"`,
-        );
+        showError(`Could not find Node.js at the path "${result.selectedPath}"`);
       }
     } catch (error) {
       showError("Error setting Node.js path:" + error);
@@ -177,19 +171,10 @@ export function SetupBanner() {
 
   return (
     <>
-      <p className="text-xl font-medium text-zinc-700 dark:text-zinc-300 p-4">
-        Setup Dyad
-      </p>
-      <OnboardingBanner
-        isVisible={isOnboardingVisible}
-        setIsVisible={setIsOnboardingVisible}
-      />
+      <p className="text-xl font-medium text-zinc-700 dark:text-zinc-300 p-4">Setup Dyad</p>
+      <OnboardingBanner isVisible={isOnboardingVisible} setIsVisible={setIsOnboardingVisible} />
       <div className={bannerClasses}>
-        <Accordion
-          type="multiple"
-          className="w-full"
-          defaultValue={itemsNeedAction}
-        >
+        <Accordion type="multiple" className="w-full" defaultValue={itemsNeedAction}>
           <AccordionItem
             value="node-setup"
             className={cn(
@@ -204,9 +189,7 @@ export function SetupBanner() {
               <div className="flex items-center justify-between w-full">
                 <div className="flex items-center gap-3">
                   {getStatusIcon(isNodeSetupComplete, nodeCheckError)}
-                  <span className="font-medium text-sm">
-                    1. Install Node.js (App Runtime)
-                  </span>
+                  <span className="font-medium text-sm">1. Install Node.js (App Runtime)</span>
                 </div>
               </div>
             </AccordionTrigger>
@@ -231,14 +214,12 @@ export function SetupBanner() {
                   <p>Node.js is required to run apps locally.</p>
                   {nodeInstallStep === "waiting-for-continue" && (
                     <p className="mt-1">
-                      After you have installed Node.js, click "Continue". If the
-                      installer didn't work, try{" "}
+                      After you have installed Node.js, click "Continue". If the installer didn't
+                      work, try{" "}
                       <a
                         className="text-blue-500 dark:text-blue-400 hover:underline"
                         onClick={() => {
-                          IpcClient.getInstance().openExternalUrl(
-                            "https://nodejs.org/en/download",
-                          );
+                          IpcClient.getInstance().openExternalUrl("https://nodejs.org/en/download");
                         }}
                       >
                         more download options
@@ -298,16 +279,12 @@ export function SetupBanner() {
             )}
           >
             <AccordionTrigger
-              className={cn(
-                "px-4 py-3 transition-colors w-full hover:no-underline",
-              )}
+              className={cn("px-4 py-3 transition-colors w-full hover:no-underline")}
             >
               <div className="flex items-center justify-between w-full">
                 <div className="flex items-center gap-3">
                   {getStatusIcon(isAnyProviderSetup())}
-                  <span className="font-medium text-sm">
-                    2. Setup AI Access
-                  </span>
+                  <span className="font-medium text-sm">2. Setup AI Access</span>
                 </div>
               </div>
             </AccordionTrigger>
@@ -321,9 +298,7 @@ export function SetupBanner() {
                   variant="google"
                   onClick={handleGoogleSetupClick}
                   tabIndex={isNodeSetupComplete ? 0 : -1}
-                  leadingIcon={
-                    <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                  }
+                  leadingIcon={<Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400" />}
                   title="Setup Google Gemini API Key"
                   chip={<>Free</>}
                 />
@@ -333,9 +308,7 @@ export function SetupBanner() {
                   variant="openrouter"
                   onClick={handleOpenRouterSetupClick}
                   tabIndex={isNodeSetupComplete ? 0 : -1}
-                  leadingIcon={
-                    <Sparkles className="w-4 h-4 text-teal-600 dark:text-teal-400" />
-                  }
+                  leadingIcon={<Sparkles className="w-4 h-4 text-teal-600 dark:text-teal-400" />}
                   title="Setup OpenRouter API Key"
                   chip={<>Free</>}
                 />
@@ -346,9 +319,7 @@ export function SetupBanner() {
                 variant="dyad"
                 onClick={handleDyadProSetupClick}
                 tabIndex={isNodeSetupComplete ? 0 : -1}
-                leadingIcon={
-                  <img src={logo} alt="Dyad Logo" className="w-6 h-6 mr-0.5" />
-                }
+                leadingIcon={<img src={logo} alt="Dyad Logo" className="w-6 h-6 mr-0.5" />}
                 title="Setup Dyad Pro"
                 subtitle="Access all AI models with one plan"
                 chip={<>Recommended</>}
@@ -392,9 +363,7 @@ function NodeJsHelpCallout() {
         If you run into issues, read our{" "}
         <a
           onClick={() => {
-            IpcClient.getInstance().openExternalUrl(
-              "https://www.dyad.sh/docs/help/nodejs",
-            );
+            IpcClient.getInstance().openExternalUrl("https://www.dyad.sh/docs/help/nodejs");
           }}
           className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
         >
@@ -403,8 +372,8 @@ function NodeJsHelpCallout() {
         .{" "}
       </p>
       <p className="mt-2">
-        Still stuck? Click the <b>Help</b> button in the bottom-left corner and
-        then <b>Report a Bug</b>.
+        Still stuck? Click the <b>Help</b> button in the bottom-left corner and then{" "}
+        <b>Report a Bug</b>.
       </p>
     </div>
   );
@@ -438,9 +407,7 @@ function NodeInstallButton({
     case "waiting-for-continue":
       return (
         <Button className="mt-3" onClick={finishNodeInstall}>
-          <div className="flex items-center gap-2">
-            Continue | I installed Node.js
-          </div>
+          <div className="flex items-center gap-2">Continue | I installed Node.js</div>
         </Button>
       );
     case "finished-checking":
@@ -454,11 +421,7 @@ function NodeInstallButton({
   }
 }
 
-export const OpenRouterSetupBanner = ({
-  className,
-}: {
-  className?: string;
-}) => {
+export const OpenRouterSetupBanner = ({ className }: { className?: string }) => {
   const posthog = usePostHog();
   const navigate = useNavigate();
   return (
@@ -473,9 +436,7 @@ export const OpenRouterSetupBanner = ({
         });
       }}
       tabIndex={0}
-      leadingIcon={
-        <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-      }
+      leadingIcon={<Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />}
       title="Setup OpenRouter API Key"
       chip={
         <>

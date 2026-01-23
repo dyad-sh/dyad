@@ -526,10 +526,7 @@ export const constructSystemPrompt = ({
     chatMode,
     enableTurboEditsV2,
   });
-  systemPrompt = systemPrompt.replace(
-    "[[AI_RULES]]",
-    aiRules ?? DEFAULT_AI_RULES,
-  );
+  systemPrompt = systemPrompt.replace("[[AI_RULES]]", aiRules ?? DEFAULT_AI_RULES);
 
   // Append theme prompt if provided
   if (themePrompt) {
@@ -552,10 +549,7 @@ export const getSystemPromptForChatMode = ({
   if (chatMode === "ask") {
     return ASK_MODE_SYSTEM_PROMPT;
   }
-  return (
-    BUILD_SYSTEM_PROMPT +
-    (enableTurboEditsV2 ? TURBO_EDITS_V2_SYSTEM_PROMPT : "")
-  );
+  return BUILD_SYSTEM_PROMPT + (enableTurboEditsV2 ? TURBO_EDITS_V2_SYSTEM_PROMPT : "");
 };
 
 export const readAiRules = async (dyadAppPath: string) => {
@@ -564,9 +558,7 @@ export const readAiRules = async (dyadAppPath: string) => {
     const aiRules = await fs.promises.readFile(aiRulesPath, "utf8");
     return aiRules;
   } catch (error) {
-    logger.info(
-      `Error reading AI_RULES.md, fallback to default AI rules: ${error}`,
-    );
+    logger.info(`Error reading AI_RULES.md, fallback to default AI rules: ${error}`);
     return DEFAULT_AI_RULES;
   }
 };

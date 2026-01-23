@@ -9,7 +9,6 @@ Fix failing CI checks and GitHub Actions on a Pull Request.
 ## Instructions
 
 1. **Determine the PR to work on:**
-
    - If `$ARGUMENTS` contains a PR number or URL, use that
    - Otherwise, get the current branch's PR using `gh pr view --json number,url,title,body --jq '.'`
    - If no PR is found, inform the user and stop
@@ -21,7 +20,6 @@ Fix failing CI checks and GitHub Actions on a Pull Request.
    ```
 
    Identify which checks are failing:
-
    - Lint/formatting checks
    - Type checks
    - Unit tests
@@ -29,19 +27,16 @@ Fix failing CI checks and GitHub Actions on a Pull Request.
    - Build checks
 
 3. **For failing lint/formatting checks:**
-
    - Run `npm run lint:fix` to auto-fix lint issues
    - Run `npm run fmt` to fix formatting
    - Review the changes made
 
 4. **For failing type checks:**
-
    - Run `npm run ts` to identify type errors
    - Read the relevant files and fix the type issues
    - Re-run type checks to verify fixes
 
 5. **For failing unit tests:**
-
    - Run the failing tests locally to reproduce:
      ```
      npm run test -- <test-file-pattern>
@@ -50,7 +45,6 @@ Fix failing CI checks and GitHub Actions on a Pull Request.
    - Fix the underlying code issues or update tests if the behavior change is intentional
 
 6. **For failing Playwright/E2E tests:**
-
    - Check if the failures are snapshot-related by examining the CI logs or PR comments
    - If snapshots need updating, run the `/dyad:e2e-rebase` skill to fix them
    - If the failures are not snapshot-related:
@@ -61,7 +55,6 @@ Fix failing CI checks and GitHub Actions on a Pull Request.
      - Investigate and fix the underlying issues
 
 7. **For failing build checks:**
-
    - Run the build locally:
      ```
      npm run build
@@ -69,7 +62,6 @@ Fix failing CI checks and GitHub Actions on a Pull Request.
    - Fix any build errors that appear
 
 8. **After making all fixes, verify:**
-
    - Run the full lint check: `npm run lint`
    - Run type checks: `npm run ts`
    - Run relevant unit tests
@@ -93,7 +85,6 @@ Fix failing CI checks and GitHub Actions on a Pull Request.
    Then run `/dyad:pr-push` to push the changes.
 
 10. **Provide a summary to the user:**
-
     - List which checks were failing
     - Describe what was fixed for each
     - Note any checks that could not be fixed and require human attention

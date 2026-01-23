@@ -8,10 +8,7 @@ import {
 } from "../ipc/utils/dyad_tag_parser";
 
 import { processFullResponseActions } from "../ipc/processors/response_processor";
-import {
-  removeDyadTags,
-  hasUnclosedDyadWrite,
-} from "../ipc/handlers/chat_stream_handlers";
+import { removeDyadTags, hasUnclosedDyadWrite } from "../ipc/handlers/chat_stream_handlers";
 import fs from "node:fs";
 import { db } from "../db";
 import { cleanFullResponse } from "../ipc/utils/cleanFullResponse";
@@ -629,10 +626,7 @@ describe("getDyadDeleteTags", () => {
       `<dyad-delete path="src/components/Analytics.jsx"></dyad-delete>
       <dyad-delete path="src/utils/unused.js"></dyad-delete>`,
     );
-    expect(result).toEqual([
-      "src/components/Analytics.jsx",
-      "src/utils/unused.js",
-    ]);
+    expect(result).toEqual(["src/components/Analytics.jsx", "src/utils/unused.js"]);
   });
 });
 
@@ -671,14 +665,10 @@ describe("processFullResponse", () => {
   });
 
   it("should return empty object when no dyad-write tags are found", async () => {
-    const result = await processFullResponseActions(
-      "No dyad-write tags here",
-      1,
-      {
-        chatSummary: undefined,
-        messageId: 1,
-      },
-    );
+    const result = await processFullResponseActions("No dyad-write tags here", 1, {
+      chatSummary: undefined,
+      messageId: 1,
+    });
     expect(result).toEqual({
       updatedFiles: false,
       extraFiles: undefined,
@@ -700,10 +690,9 @@ describe("processFullResponse", () => {
       messageId: 1,
     });
 
-    expect(fs.mkdirSync).toHaveBeenCalledWith(
-      "/mock/user/data/path/mock-app-path/src",
-      { recursive: true },
-    );
+    expect(fs.mkdirSync).toHaveBeenCalledWith("/mock/user/data/path/mock-app-path/src", {
+      recursive: true,
+    });
     expect(fs.writeFileSync).toHaveBeenCalledWith(
       "/mock/user/data/path/mock-app-path/src/file1.js",
       "console.log('Hello');",
@@ -757,18 +746,15 @@ describe("processFullResponse", () => {
     });
 
     // Check that directories were created for each file path
-    expect(fs.mkdirSync).toHaveBeenCalledWith(
-      "/mock/user/data/path/mock-app-path/src",
-      { recursive: true },
-    );
-    expect(fs.mkdirSync).toHaveBeenCalledWith(
-      "/mock/user/data/path/mock-app-path/src/utils",
-      { recursive: true },
-    );
-    expect(fs.mkdirSync).toHaveBeenCalledWith(
-      "/mock/user/data/path/mock-app-path/src/components",
-      { recursive: true },
-    );
+    expect(fs.mkdirSync).toHaveBeenCalledWith("/mock/user/data/path/mock-app-path/src", {
+      recursive: true,
+    });
+    expect(fs.mkdirSync).toHaveBeenCalledWith("/mock/user/data/path/mock-app-path/src/utils", {
+      recursive: true,
+    });
+    expect(fs.mkdirSync).toHaveBeenCalledWith("/mock/user/data/path/mock-app-path/src/components", {
+      recursive: true,
+    });
 
     // Using toHaveBeenNthCalledWith to check each specific call
     expect(fs.writeFileSync).toHaveBeenNthCalledWith(
@@ -822,10 +808,9 @@ describe("processFullResponse", () => {
       messageId: 1,
     });
 
-    expect(fs.mkdirSync).toHaveBeenCalledWith(
-      "/mock/user/data/path/mock-app-path/src/components",
-      { recursive: true },
-    );
+    expect(fs.mkdirSync).toHaveBeenCalledWith("/mock/user/data/path/mock-app-path/src/components", {
+      recursive: true,
+    });
     expect(fs.renameSync).toHaveBeenCalledWith(
       "/mock/user/data/path/mock-app-path/src/components/OldComponent.jsx",
       "/mock/user/data/path/mock-app-path/src/components/NewComponent.jsx",
@@ -953,9 +938,7 @@ describe("processFullResponse", () => {
     // Check the commit message includes all operations
     expect(gitCommit).toHaveBeenCalledWith(
       expect.objectContaining({
-        message: expect.stringContaining(
-          "wrote 1 file(s), renamed 1 file(s), deleted 1 file(s)",
-        ),
+        message: expect.stringContaining("wrote 1 file(s), renamed 1 file(s), deleted 1 file(s)"),
       }),
     );
 

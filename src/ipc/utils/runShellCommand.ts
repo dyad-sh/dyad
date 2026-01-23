@@ -28,9 +28,7 @@ export function runShellCommand(command: string): Promise<string | null> {
 
     process.on("close", (code) => {
       if (code === 0) {
-        logger.debug(
-          `Command "${command}" succeeded with code ${code}: ${output.trim()}`,
-        );
+        logger.debug(`Command "${command}" succeeded with code ${code}: ${output.trim()}`);
         resolve(output.trim()); // Command succeeded, return trimmed output
       } else {
         logger.error(`Command "${command}" failed with code ${code}`);

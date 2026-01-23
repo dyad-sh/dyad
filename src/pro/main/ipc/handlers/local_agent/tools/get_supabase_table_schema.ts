@@ -1,19 +1,12 @@
 import { z } from "zod";
-import {
-  ToolDefinition,
-  AgentContext,
-  escapeXmlAttr,
-  escapeXmlContent,
-} from "./types";
+import { ToolDefinition, AgentContext, escapeXmlAttr, escapeXmlContent } from "./types";
 import { getSupabaseTableSchema } from "../../../../../../supabase_admin/supabase_context";
 
 const getSupabaseTableSchemaSchema = z.object({
   tableName: z
     .string()
     .optional()
-    .describe(
-      "Optional table name to get schema for. If omitted, returns schema for all tables.",
-    ),
+    .describe("Optional table name to get schema for. If omitted, returns schema for all tables."),
 });
 
 export const getSupabaseTableSchemaTool: ToolDefinition<
@@ -27,21 +20,15 @@ export const getSupabaseTableSchemaTool: ToolDefinition<
   isEnabled: (ctx) => !!ctx.supabaseProjectId,
 
   getConsentPreview: (args) =>
-    args.tableName
-      ? `Get schema for table "${args.tableName}"`
-      : "Get schema for all tables",
+    args.tableName ? `Get schema for table "${args.tableName}"` : "Get schema for all tables",
 
   execute: async (args, ctx: AgentContext) => {
     if (!ctx.supabaseProjectId) {
       throw new Error("Supabase is not connected to this app");
     }
 
-    const tableAttr = args.tableName
-      ? ` table="${escapeXmlAttr(args.tableName)}"`
-      : "";
-    ctx.onXmlStream(
-      `<dyad-supabase-table-schema${tableAttr}></dyad-supabase-table-schema>`,
-    );
+    const tableAttr = args.tableName ? ` table="${escapeXmlAttr(args.tableName)}"` : "";
+    ctx.onXmlStream(`<dyad-supabase-table-schema${tableAttr}></dyad-supabase-table-schema>`);
 
     const schema = await getSupabaseTableSchema({
       supabaseProjectId: ctx.supabaseProjectId,

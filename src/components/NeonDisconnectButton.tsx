@@ -26,12 +26,7 @@ export function NeonDisconnectButton({ className }: NeonDisconnectButtonProps) {
   }
 
   return (
-    <Button
-      variant="destructive"
-      onClick={handleDisconnect}
-      className={className}
-      size="sm"
-    >
+    <Button variant="destructive" onClick={handleDisconnect} className={className} size="sm">
       Disconnect from Neon
     </Button>
   );

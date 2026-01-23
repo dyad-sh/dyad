@@ -32,10 +32,7 @@ import {
   requireAgentToolConsent,
   clearPendingConsentsForChat,
 } from "./tool_definitions";
-import {
-  deployAllFunctionsIfNeeded,
-  commitAllChanges,
-} from "./processors/file_operations";
+import { deployAllFunctionsIfNeeded, commitAllChanges } from "./processors/file_operations";
 import { mcpManager } from "@/ipc/utils/mcp_manager";
 import { mcpServers } from "@/db/schema";
 import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
@@ -49,10 +46,7 @@ import {
   escapeXmlContent,
   UserMessageContentPart,
 } from "./tools/types";
-import {
-  prepareStepMessages,
-  type InjectedMessage,
-} from "./prepare_step_utils";
+import { prepareStepMessages, type InjectedMessage } from "./prepare_step_utils";
 import { TOOL_DEFINITIONS } from "./tool_definitions";
 import { parseAiMessagesJson } from "@/ipc/utils/ai_messages_utils";
 import { parseMcpToolKey, sanitizeMcpName } from "@/ipc/utils/mcp_tool_utils";
@@ -73,10 +67,7 @@ interface ToolStreamingEntry {
 }
 const toolStreamingEntries = new Map<string, ToolStreamingEntry>();
 
-function getOrCreateStreamingEntry(
-  id: string,
-  toolName?: string,
-): ToolStreamingEntry | undefined {
+function getOrCreateStreamingEntry(id: string, toolName?: string): ToolStreamingEntry | undefined {
   let entry = toolStreamingEntries.get(id);
   if (!entry && toolName) {
     entry = {
@@ -131,8 +122,7 @@ export async function handleLocalAgentStream(
   if (!isDyadProEnabled(settings)) {
     safeSend(event.sender, "chat:response:error", {
       chatId: req.chatId,
-      error:
-        "Agent v2 requires Dyad Pro. Please enable Dyad Pro in Settings → Pro.",
+      error: "Agent v2 requires Dyad Pro. Please enable Dyad Pro in Settings → Pro.",
     });
     return;
   }
@@ -170,10 +160,7 @@ export async function handleLocalAgentStream(
 
   try {
     // Get model client
-    const { modelClient } = await getModelClient(
-      settings.selectedModel,
-      settings,
-    );
+    const { modelClient } = await getModelClient(settings.selectedModel, settings);
 
     // Build tool execute context
     const ctx: AgentContext = {
@@ -190,12 +177,7 @@ export async function handleLocalAgentStream(
       onXmlStream: (accumulatedXml: string) => {
         // Stream accumulated XML to UI without persisting
         streamingPreview = accumulatedXml;
-        sendResponseChunk(
-          event,
-          req.chatId,
-          chat,
-          fullResponse + streamingPreview,
-        );
+        sendResponseChunk(event, req.chatId, chat, fullResponse + streamingPreview);
       },
       onXmlComplete: (finalXml: string) => {
         // Write final XML to DB and UI
@@ -319,9 +301,7 @@ export async function handleLocalAgentStream(
       // Handle thinking block transitions
       if (
         inThinkingBlock &&
-        !["reasoning-delta", "reasoning-end", "reasoning-start"].includes(
-          part.type,
-        )
+        !["reasoning-delta", "reasoning-end", "reasoning-start"].includes(part.type)
       ) {
         chunk = "</think>\n";
         inThinkingBlock = false;
@@ -511,10 +491,7 @@ function sendResponseChunk(
   });
 }
 
-async function getMcpTools(
-  event: IpcMainInvokeEvent,
-  ctx: AgentContext,
-): Promise<ToolSet> {
+async function getMcpTools(event: IpcMainInvokeEvent, ctx: AgentContext): Promise<ToolSet> {
   const mcpToolSet: ToolSet = {};
 
   try {
@@ -560,8 +537,7 @@ async function getMcpTools(
               );
 
               const res = await mcpTool.execute(args, execCtx);
-              const resultStr =
-                typeof res === "string" ? res : JSON.stringify(res);
+              const resultStr = typeof res === "string" ? res : JSON.stringify(res);
 
               ctx.onXmlComplete(
                 `<dyad-mcp-tool-result server="${serverName}" tool="${toolName}">\n${resultStr}\n</dyad-mcp-tool-result>`,
@@ -569,10 +545,8 @@ async function getMcpTools(
 
               return resultStr;
             } catch (error) {
-              const errorMessage =
-                error instanceof Error ? error.message : String(error);
-              const errorStack =
-                error instanceof Error && error.stack ? error.stack : "";
+              const errorMessage = error instanceof Error ? error.message : String(error);
+              const errorStack = error instanceof Error && error.stack ? error.stack : "";
               ctx.onXmlComplete(
                 `<dyad-output type="error" message="MCP tool '${key}' failed: ${escapeXmlAttr(errorMessage)}">${escapeXmlContent(errorStack || errorMessage)}</dyad-output>`,
               );

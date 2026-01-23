@@ -43,10 +43,7 @@ test("move app to a custom storage location", async ({ po }) => {
     expect(fs.existsSync(newAppPath)).toBe(true);
     expect(fs.existsSync(originalPath)).toBe(false);
     await expect(
-      po.page
-        .locator("span.text-sm.break-all")
-        .filter({ hasText: newAppPath })
-        .first(),
+      po.page.locator("span.text-sm.break-all").filter({ hasText: newAppPath }).first(),
     ).toBeVisible();
   }).toPass();
 });

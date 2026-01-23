@@ -33,9 +33,7 @@ testSkipIfWindows("edit style of one selected component", async ({ po }) => {
   await marginButton.click();
 
   // Wait for the popover to fully open by checking for the popover content container
-  const marginDialog = po.page
-    .locator('[role="dialog"]')
-    .filter({ hasText: "Margin" });
+  const marginDialog = po.page.locator('[role="dialog"]').filter({ hasText: "Margin" });
   await expect(marginDialog).toBeVisible({
     timeout: Timeout.LONG,
   });
@@ -100,9 +98,7 @@ testSkipIfWindows("edit text of the selected component", async ({ po }) => {
 
   // Wait for contentEditable to be enabled
   await expect(async () => {
-    const isEditable = await heading.evaluate(
-      (el) => (el as HTMLElement).isContentEditable,
-    );
+    const isEditable = await heading.evaluate((el) => (el as HTMLElement).isContentEditable);
     expect(isEditable).toBe(true);
   }).toPass({ timeout: Timeout.MEDIUM });
 
@@ -166,9 +162,7 @@ testSkipIfWindows("discard changes", async ({ po }) => {
   await marginButton.click();
 
   // Wait for the popover to fully open by checking for the popover content container
-  const marginDialog = po.page
-    .locator('[role="dialog"]')
-    .filter({ hasText: "Margin" });
+  const marginDialog = po.page.locator('[role="dialog"]').filter({ hasText: "Margin" });
   await expect(marginDialog).toBeVisible({
     timeout: Timeout.LONG,
   });
@@ -204,9 +198,9 @@ testSkipIfWindows("discard changes", async ({ po }) => {
   await po.page.getByRole("button", { name: "Discard" }).click();
 
   // Verify the visual changes dialog is gone
-  await expect(po.page.getByText(/\d+ component[s]? modified/)).not.toBeVisible(
-    { timeout: Timeout.MEDIUM },
-  );
+  await expect(po.page.getByText(/\d+ component[s]? modified/)).not.toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
 
   // Verify that the changes are NOT applied to codebase
   const appFileAfter = fs.readFileSync(

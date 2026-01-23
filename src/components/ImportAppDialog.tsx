@@ -20,21 +20,11 @@ import { Label } from "@radix-ui/react-label";
 import { useNavigate } from "@tanstack/react-router";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import type { GithubRepository } from "@/ipc/ipc_types";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useSetAtom } from "jotai";
 import { useLoadApps } from "@/hooks/useLoadApps";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "./ui/accordion";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./ui/accordion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSettings } from "@/hooks/useSettings";
 import { UnconnectedGitHubConnector } from "@/components/GitHubConnector";
@@ -189,9 +179,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
     }
   };
 
-  const handleGithubAppNameChange = async (
-    e: React.ChangeEvent<HTMLInputElement>,
-  ) => {
+  const handleGithubAppNameChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const newName = e.target.value;
     setGithubAppName(newName);
     if (newName.trim()) {
@@ -304,9 +292,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
     setCopyToDyadApps(true);
   };
 
-  const handleAppNameChange = async (
-    e: React.ChangeEvent<HTMLInputElement>,
-  ) => {
+  const handleAppNameChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const newName = e.target.value;
     setCustomAppName(newName);
     if (newName.trim()) {
@@ -331,29 +317,20 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
           <Alert className="border-blue-500/20 text-blue-500 mb-2">
             <Info className="h-4 w-4 flex-shrink-0" />
             <AlertDescription className="text-xs sm:text-sm">
-              App import is an experimental feature. If you encounter any
-              issues, please report them using the Help button.
+              App import is an experimental feature. If you encounter any issues, please report them
+              using the Help button.
             </AlertDescription>
           </Alert>
           <Tabs defaultValue="local-folder" className="w-full">
             <TabsList className="grid w-full grid-cols-3 h-auto">
-              <TabsTrigger
-                value="local-folder"
-                className="text-xs sm:text-sm px-2 py-2"
-              >
+              <TabsTrigger value="local-folder" className="text-xs sm:text-sm px-2 py-2">
                 Local Folder
               </TabsTrigger>
-              <TabsTrigger
-                value="github-repos"
-                className="text-xs sm:text-sm px-2 py-2"
-              >
+              <TabsTrigger value="github-repos" className="text-xs sm:text-sm px-2 py-2">
                 <span className="hidden sm:inline">Your GitHub Repos</span>
                 <span className="sm:hidden">GitHub Repos</span>
               </TabsTrigger>
-              <TabsTrigger
-                value="github-url"
-                className="text-xs sm:text-sm px-2 py-2"
-              >
+              <TabsTrigger value="github-url" className="text-xs sm:text-sm px-2 py-2">
                 GitHub URL
               </TabsTrigger>
             </TabsList>
@@ -370,18 +347,14 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                     ) : (
                       <Folder className="mr-2 h-4 w-4" />
                     )}
-                    {selectFolderMutation.isPending
-                      ? "Selecting folder..."
-                      : "Select Folder"}
+                    {selectFolderMutation.isPending ? "Selecting folder..." : "Select Folder"}
                   </Button>
                 ) : (
                   <div className="space-y-4">
                     <div className="rounded-md border p-3 sm:p-4">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0 flex-1 overflow-hidden">
-                          <p className="text-sm font-medium mb-1">
-                            Selected folder:
-                          </p>
+                          <p className="text-sm font-medium mb-1">Selected folder:</p>
                           <p className="text-xs sm:text-sm text-muted-foreground break-words">
                             {selectedPath}
                           </p>
@@ -403,9 +376,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                       <Checkbox
                         id="copy-to-dyad-apps"
                         checked={copyToDyadApps}
-                        onCheckedChange={(checked) =>
-                          setCopyToDyadApps(checked === true)
-                        }
+                        onCheckedChange={(checked) => setCopyToDyadApps(checked === true)}
                         disabled={importAppMutation.isPending}
                       />
                       <label
@@ -413,9 +384,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                         className="text-xs sm:text-sm cursor-pointer"
                       >
                         Copy to the{" "}
-                        <code className="bg-muted px-1 py-0.5 rounded text-xs">
-                          dyad-apps
-                        </code>{" "}
+                        <code className="bg-muted px-1 py-0.5 rounded text-xs">dyad-apps</code>{" "}
                         folder
                       </label>
                     </div>
@@ -423,14 +392,11 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                     <div className="space-y-2">
                       {nameExists && (
                         <p className="text-xs sm:text-sm text-yellow-500">
-                          An app with this name already exists. Please choose a
-                          different name:
+                          An app with this name already exists. Please choose a different name:
                         </p>
                       )}
                       <div className="relative">
-                        <Label className="text-xs sm:text-sm ml-2 mb-2">
-                          App name
-                        </Label>
+                        <Label className="text-xs sm:text-sm ml-2 mb-2">App name</Label>
                         <Input
                           value={customAppName}
                           onChange={handleAppNameChange}
@@ -453,23 +419,17 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                         </AccordionTrigger>
                         <AccordionContent className="space-y-4">
                           <div className="grid gap-2">
-                            <Label className="text-xs sm:text-sm ml-2 mb-2">
-                              Install command
-                            </Label>
+                            <Label className="text-xs sm:text-sm ml-2 mb-2">Install command</Label>
                             <Input
                               value={installCommand}
-                              onChange={(e) =>
-                                setInstallCommand(e.target.value)
-                              }
+                              onChange={(e) => setInstallCommand(e.target.value)}
                               placeholder="pnpm install"
                               className="text-sm"
                               disabled={importAppMutation.isPending}
                             />
                           </div>
                           <div className="grid gap-2">
-                            <Label className="text-xs sm:text-sm ml-2 mb-2">
-                              Start command
-                            </Label>
+                            <Label className="text-xs sm:text-sm ml-2 mb-2">Start command</Label>
                             <Input
                               value={startCommand}
                               onChange={(e) => setStartCommand(e.target.value)}
@@ -496,15 +456,15 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                             </TooltipTrigger>
                             <TooltipContent>
                               <p className="text-xs">
-                                AI_RULES.md lets Dyad know which tech stack to
-                                use for editing the app
+                                AI_RULES.md lets Dyad know which tech stack to use for editing the
+                                app
                               </p>
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
                         <AlertDescription className="text-xs sm:text-sm">
-                          No AI_RULES.md found. Dyad will automatically generate
-                          one after importing.
+                          No AI_RULES.md found. Dyad will automatically generate one after
+                          importing.
                         </AlertDescription>
                       </Alert>
                     )}
@@ -531,10 +491,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                 <Button
                   onClick={handleImport}
                   disabled={
-                    !selectedPath ||
-                    importAppMutation.isPending ||
-                    nameExists ||
-                    !commandsValid
+                    !selectedPath || importAppMutation.isPending || nameExists || !commandsValid
                   }
                   className="w-full sm:w-auto min-w-[80px]"
                 >
@@ -561,9 +518,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                   )}
 
                   <div className="space-y-2">
-                    <Label className="text-xs sm:text-sm ml-2 mb-2">
-                      App name (optional)
-                    </Label>
+                    <Label className="text-xs sm:text-sm ml-2 mb-2">App name (optional)</Label>
                     <Input
                       value={githubAppName}
                       onChange={handleGithubAppNameChange}
@@ -578,8 +533,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                     )}
                     {githubNameExists && (
                       <p className="text-xs sm:text-sm text-yellow-500">
-                        An app with this name already exists. Please choose a
-                        different name.
+                        An app with this name already exists. Please choose a different name.
                       </p>
                     )}
                   </div>
@@ -596,12 +550,8 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                         className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent/50 transition-colors min-w-0"
                       >
                         <div className="min-w-0 flex-1 overflow-hidden mr-2">
-                          <p className="font-semibold truncate text-sm">
-                            {repo.name}
-                          </p>
-                          <p className="text-xs text-muted-foreground truncate">
-                            {repo.full_name}
-                          </p>
+                          <p className="font-semibold truncate text-sm">{repo.name}</p>
+                          <p className="text-xs text-muted-foreground truncate">{repo.full_name}</p>
                         </div>
                         <Button
                           variant="outline"
@@ -610,11 +560,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                           disabled={importing}
                           className="flex-shrink-0 text-xs"
                         >
-                          {importing ? (
-                            <Loader2 className="animate-spin h-4 w-4" />
-                          ) : (
-                            "Import"
-                          )}
+                          {importing ? <Loader2 className="animate-spin h-4 w-4" /> : "Import"}
                         </Button>
                       </div>
                     ))}
@@ -629,28 +575,20 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                           </AccordionTrigger>
                           <AccordionContent className="space-y-4">
                             <div className="grid gap-2">
-                              <Label className="text-xs sm:text-sm">
-                                Install command
-                              </Label>
+                              <Label className="text-xs sm:text-sm">Install command</Label>
                               <Input
                                 value={installCommand}
-                                onChange={(e) =>
-                                  setInstallCommand(e.target.value)
-                                }
+                                onChange={(e) => setInstallCommand(e.target.value)}
                                 placeholder="pnpm install"
                                 className="text-sm"
                                 disabled={importing}
                               />
                             </div>
                             <div className="grid gap-2">
-                              <Label className="text-xs sm:text-sm">
-                                Start command
-                              </Label>
+                              <Label className="text-xs sm:text-sm">Start command</Label>
                               <Input
                                 value={startCommand}
-                                onChange={(e) =>
-                                  setStartCommand(e.target.value)
-                                }
+                                onChange={(e) => setStartCommand(e.target.value)}
                                 placeholder="pnpm dev"
                                 className="text-sm"
                                 disabled={importing}
@@ -682,9 +620,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                 />
               </div>
               <div className="space-y-2">
-                <Label className="text-xs sm:text-sm">
-                  App name (optional)
-                </Label>
+                <Label className="text-xs sm:text-sm">App name (optional)</Label>
                 <Input
                   value={githubAppName}
                   onChange={handleGithubAppNameChange}
@@ -699,8 +635,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                 )}
                 {githubNameExists && (
                   <p className="text-xs sm:text-sm text-yellow-500">
-                    An app with this name already exists. Please choose a
-                    different name.
+                    An app with this name already exists. Please choose a different name.
                   </p>
                 )}
               </div>
@@ -712,9 +647,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                   </AccordionTrigger>
                   <AccordionContent className="space-y-4">
                     <div className="grid gap-2">
-                      <Label className="text-xs sm:text-sm">
-                        Install command
-                      </Label>
+                      <Label className="text-xs sm:text-sm">Install command</Label>
                       <Input
                         value={installCommand}
                         onChange={(e) => setInstallCommand(e.target.value)}
@@ -724,9 +657,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                       />
                     </div>
                     <div className="grid gap-2">
-                      <Label className="text-xs sm:text-sm">
-                        Start command
-                      </Label>
+                      <Label className="text-xs sm:text-sm">Start command</Label>
                       <Input
                         value={startCommand}
                         onChange={(e) => setStartCommand(e.target.value)}

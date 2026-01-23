@@ -11,10 +11,7 @@ export function TelemetrySwitch() {
         checked={settings?.telemetryConsent === "opted_in"}
         onCheckedChange={() => {
           updateSettings({
-            telemetryConsent:
-              settings?.telemetryConsent === "opted_in"
-                ? "opted_out"
-                : "opted_in",
+            telemetryConsent: settings?.telemetryConsent === "opted_in" ? "opted_out" : "opted_in",
           });
         }}
       />

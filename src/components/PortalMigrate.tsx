@@ -22,14 +22,11 @@ export const PortalMigrate = ({ appId }: PortalMigrateProps) => {
     },
     onSuccess: (result) => {
       setOutput(result.output);
-      showSuccess(
-        "Database migration file generated and committed successfully!",
-      );
+      showSuccess("Database migration file generated and committed successfully!");
       refreshVersions();
     },
     onError: (error) => {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
       setOutput(`Error: ${errorMessage}`);
       showError(errorMessage);
     },
@@ -79,12 +76,7 @@ export const PortalMigrate = ({ appId }: PortalMigrateProps) => {
             )}
           </Button>
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={openDocs}
-            className="text-sm"
-          >
+          <Button variant="outline" size="sm" onClick={openDocs} className="text-sm">
             <ExternalLink className="w-3 h-3 mr-1" />
             Docs
           </Button>

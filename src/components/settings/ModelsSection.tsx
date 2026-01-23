@@ -27,8 +27,7 @@ interface ModelsSectionProps {
 export function ModelsSection({ providerId }: ModelsSectionProps) {
   const [isCustomModelDialogOpen, setIsCustomModelDialogOpen] = useState(false);
   const [isEditModelDialogOpen, setIsEditModelDialogOpen] = useState(false);
-  const [isConfirmDeleteDialogOpen, setIsConfirmDeleteDialogOpen] =
-    useState(false);
+  const [isConfirmDeleteDialogOpen, setIsConfirmDeleteDialogOpen] = useState(false);
   const [modelToDelete, setModelToDelete] = useState<string | null>(null);
   const [modelToEdit, setModelToEdit] = useState<any | null>(null);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
@@ -116,9 +115,7 @@ export function ModelsSection({ providerId }: ModelsSectionProps) {
             <div
               key={model.apiName + model.displayName}
               className={`p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm cursor-pointer hover:shadow-md transition-shadow ${
-                selectedModel === model.apiName
-                  ? "ring-2 ring-blue-500 dark:ring-blue-400"
-                  : ""
+                selectedModel === model.apiName ? "ring-2 ring-blue-500 dark:ring-blue-400" : ""
               }`}
               onClick={() => handleModelClick(model.apiName)}
               onDoubleClick={() => handleModelDoubleClick(model)}
@@ -167,24 +164,16 @@ export function ModelsSection({ providerId }: ModelsSectionProps) {
                   </div>
                 )}
               </div>
-              <p className="text-sm text-gray-500 dark:text-gray-400 italic">
-                {model.apiName}
-              </p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 italic">{model.apiName}</p>
               {model.description && (
-                <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
-                  {model.description}
-                </p>
+                <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">{model.description}</p>
               )}
               <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-gray-500 dark:text-gray-400">
                 {model.contextWindow && (
-                  <span>
-                    Context: {model.contextWindow.toLocaleString()} tokens
-                  </span>
+                  <span>Context: {model.contextWindow.toLocaleString()} tokens</span>
                 )}
                 {model.maxOutputTokens && (
-                  <span>
-                    Max Output: {model.maxOutputTokens.toLocaleString()} tokens
-                  </span>
+                  <span>Max Output: {model.maxOutputTokens.toLocaleString()} tokens</span>
                 )}
               </div>
               <div className="flex flex-wrap gap-x-2">
@@ -210,11 +199,7 @@ export function ModelsSection({ providerId }: ModelsSectionProps) {
       {/* End Custom Models List Area */}
 
       {providerId !== "auto" && (
-        <Button
-          onClick={() => setIsCustomModelDialogOpen(true)}
-          variant="outline"
-          className="mt-6"
-        >
+        <Button onClick={() => setIsCustomModelDialogOpen(true)} variant="outline" className="mt-6">
           <PlusIcon className="mr-2 h-4 w-4" /> Add Custom Model
         </Button>
       )}
@@ -241,29 +226,20 @@ export function ModelsSection({ providerId }: ModelsSectionProps) {
         model={modelToEdit}
       />
 
-      <AlertDialog
-        open={isConfirmDeleteDialogOpen}
-        onOpenChange={setIsConfirmDeleteDialogOpen}
-      >
+      <AlertDialog open={isConfirmDeleteDialogOpen} onOpenChange={setIsConfirmDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              Are you sure you want to delete this model?
-            </AlertDialogTitle>
+            <AlertDialogTitle>Are you sure you want to delete this model?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the
-              custom model "
+              This action cannot be undone. This will permanently delete the custom model "
               {modelToDelete
-                ? models?.find((m) => m.apiName === modelToDelete)
-                    ?.displayName || modelToDelete
+                ? models?.find((m) => m.apiName === modelToDelete)?.displayName || modelToDelete
                 : ""}
               " (API Name: {modelToDelete}).
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setModelToDelete(null)}>
-              Cancel
-            </AlertDialogCancel>
+            <AlertDialogCancel onClick={() => setModelToDelete(null)}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleConfirmDelete}
               className="bg-red-600 hover:bg-red-700"

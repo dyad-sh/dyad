@@ -17,8 +17,7 @@ export function SupabaseIntegration() {
   // Check if there are any connected organizations
   const isConnected = isSupabaseConnected(settings);
 
-  const { organizations, refetchOrganizations, deleteOrganization } =
-    useSupabase();
+  const { organizations, refetchOrganizations, deleteOrganization } = useSupabase();
 
   const handleDisconnectAllFromSupabase = async () => {
     setIsDisconnecting(true);
@@ -36,9 +35,7 @@ export function SupabaseIntegration() {
         showError("Failed to disconnect from Supabase");
       }
     } catch (err: any) {
-      showError(
-        err.message || "An error occurred while disconnecting from Supabase",
-      );
+      showError(err.message || "An error occurred while disconnecting from Supabase");
     } finally {
       setIsDisconnecting(false);
     }
@@ -131,17 +128,13 @@ export function SupabaseIntegration() {
             onCheckedChange={handleMigrationSettingChange}
           />
           <div className="space-y-1">
-            <Label
-              htmlFor="supabase-migrations"
-              className="text-sm font-medium"
-            >
+            <Label htmlFor="supabase-migrations" className="text-sm font-medium">
               Write SQL migration files
             </Label>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              Generate SQL migration files when modifying your Supabase schema.
-              This helps you track database changes in version control, though
-              these files aren't used for chat context, which uses the live
-              schema.
+              Generate SQL migration files when modifying your Supabase schema. This helps you track
+              database changes in version control, though these files aren't used for chat context,
+              which uses the live schema.
             </p>
           </div>
         </div>

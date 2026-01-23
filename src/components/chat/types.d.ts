@@ -16,11 +16,7 @@ declare module "react-markdown" {
       from?: string;
       to?: string;
     }) => JSX.Element;
-    "dyad-delete"?: (props: {
-      children?: ReactNode;
-      node?: any;
-      path?: string;
-    }) => JSX.Element;
+    "dyad-delete"?: (props: { children?: ReactNode; node?: any; path?: string }) => JSX.Element;
     "dyad-add-dependency"?: (props: {
       children?: ReactNode;
       node?: any;

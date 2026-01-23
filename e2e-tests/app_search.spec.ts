@@ -53,9 +53,7 @@ test("app search - basic search dialog functionality", async ({ po }) => {
   await dialog.waitFor({ state: "hidden", timeout: 5000 });
 });
 
-test("app search - search functionality with different terms", async ({
-  po,
-}) => {
+test("app search - search functionality with different terms", async ({ po }) => {
   await po.setUp({ autoApprove: true });
 
   // Create apps with specific content for testing
@@ -267,10 +265,7 @@ test("app search - search by app name", async ({ po }) => {
   if (appNames.length > 0) {
     // Search for the first few characters of the first app name
     const firstAppName = appNames[0];
-    const searchTerm = firstAppName.substring(
-      0,
-      Math.min(4, firstAppName.length),
-    );
+    const searchTerm = firstAppName.substring(0, Math.min(4, firstAppName.length));
     await po.page.getByPlaceholder("Search apps").fill(searchTerm);
     await po.page.waitForTimeout(500);
 
@@ -278,10 +273,7 @@ test("app search - search by app name", async ({ po }) => {
     if (appNames.length > 1) {
       await po.page.getByPlaceholder("Search apps").clear();
       const secondAppName = appNames[1];
-      const secondSearchTerm = secondAppName.substring(
-        0,
-        Math.min(4, secondAppName.length),
-      );
+      const secondSearchTerm = secondAppName.substring(0, Math.min(4, secondAppName.length));
       await po.page.getByPlaceholder("Search apps").fill(secondSearchTerm);
       await po.page.waitForTimeout(500);
     }

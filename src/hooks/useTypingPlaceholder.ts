@@ -34,15 +34,7 @@ export function useTypingPlaceholder(
       clearTimeout(timer);
       clearTimeout(pauseTimer);
     };
-  }, [
-    phrases,
-    index,
-    deleting,
-    charIndex,
-    typingSpeed,
-    deletingSpeed,
-    pauseTime,
-  ]);
+  }, [phrases, index, deleting, charIndex, typingSpeed, deletingSpeed, pauseTime]);
 
   return text;
 }

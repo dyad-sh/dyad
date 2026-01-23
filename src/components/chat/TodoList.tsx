@@ -1,13 +1,6 @@
 import React, { useState } from "react";
 import type { AgentTodo } from "@/ipc/ipc_types";
-import {
-  CheckCircle2,
-  Circle,
-  Loader2,
-  ChevronDown,
-  ChevronUp,
-  ListTodo,
-} from "lucide-react";
+import { CheckCircle2, Circle, Loader2, ChevronDown, ChevronUp, ListTodo } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface TodoListProps {
@@ -18,24 +11,12 @@ function getStatusIcon(status: AgentTodo["status"], size: "sm" | "md" = "sm") {
   const sizeClass = size === "sm" ? "w-3.5 h-3.5" : "w-4 h-4";
   switch (status) {
     case "completed":
-      return (
-        <CheckCircle2
-          className={cn(sizeClass, "text-green-500 flex-shrink-0")}
-        />
-      );
+      return <CheckCircle2 className={cn(sizeClass, "text-green-500 flex-shrink-0")} />;
     case "in_progress":
-      return (
-        <Loader2
-          className={cn(sizeClass, "text-blue-500 animate-spin flex-shrink-0")}
-        />
-      );
+      return <Loader2 className={cn(sizeClass, "text-blue-500 animate-spin flex-shrink-0")} />;
     case "pending":
     default:
-      return (
-        <Circle
-          className={cn(sizeClass, "text-muted-foreground flex-shrink-0")}
-        />
-      );
+      return <Circle className={cn(sizeClass, "text-muted-foreground flex-shrink-0")} />;
   }
 }
 
@@ -79,9 +60,7 @@ export function TodoList({ todos }: TodoListProps) {
                 <Circle className="w-4 h-4 text-muted-foreground flex-shrink-0" />
               )}
               <span className="text-sm text-muted-foreground">
-                {completed === total
-                  ? "All tasks completed"
-                  : "No task in progress"}
+                {completed === total ? "All tasks completed" : "No task in progress"}
               </span>
               <span className="text-xs text-muted-foreground tabular-nums flex-shrink-0">
                 ({completed}/{total})
@@ -109,9 +88,7 @@ export function TodoList({ todos }: TodoListProps) {
               )}
             >
               {getStatusIcon(todo.status)}
-              <span
-                className={cn(todo.status === "completed" && "line-through")}
-              >
+              <span className={cn(todo.status === "completed" && "line-through")}>
                 {todo.content}
               </span>
             </li>

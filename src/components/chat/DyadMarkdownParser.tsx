@@ -86,13 +86,7 @@ type ContentPiece =
   | { type: "markdown"; content: string }
   | { type: "custom-tag"; tagInfo: CustomTagInfo };
 
-const customLink = ({
-  node: _node,
-  ...props
-}: {
-  node?: any;
-  [key: string]: any;
-}) => (
+const customLink = ({ node: _node, ...props }: { node?: any; [key: string]: any }) => (
   <a
     {...props}
     onClick={(e) => {
@@ -121,9 +115,7 @@ export const VanillaMarkdownParser = ({ content }: { content: string }) => {
 /**
  * Custom component to parse markdown content with Dyad-specific tags
  */
-export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
-  content,
-}) => {
+export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({ content }) => {
   const chatId = useAtomValue(selectedChatIdAtom);
   const isStreaming = useAtomValue(isStreamingByIdAtom).get(chatId!) ?? false;
   // Extract content pieces (markdown and custom tags)
@@ -175,17 +167,11 @@ export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
                 </ReactMarkdown>
               )
             : renderCustomTag(piece.tagInfo, { isStreaming })}
-          {index === lastErrorIndex &&
-            errorCount > 1 &&
-            !isStreaming &&
-            chatId && (
-              <div className="mt-3 w-full flex">
-                <FixAllErrorsButton
-                  errorMessages={errorMessages}
-                  chatId={chatId}
-                />
-              </div>
-            )}
+          {index === lastErrorIndex && errorCount > 1 && !isStreaming && chatId && (
+            <div className="mt-3 w-full flex">
+              <FixAllErrorsButton errorMessages={errorMessages} chatId={chatId} />
+            </div>
+          )}
         </React.Fragment>
       ))}
     </>
@@ -230,9 +216,7 @@ function preprocessUnclosedTags(content: string): {
     const missingCloseTags = openCount - closeCount;
     if (missingCloseTags > 0) {
       // Add the required number of closing tags at the end
-      processedContent += Array(missingCloseTags)
-        .fill(`</${tagName}>`)
-        .join("");
+      processedContent += Array(missingCloseTags).fill(`</${tagName}>`).join("");
 
       // Mark the last N tags as in progress where N is the number of missing closing tags
       const inProgressIndexes = new Set<number>();
@@ -253,10 +237,7 @@ function preprocessUnclosedTags(content: string): {
 function parseCustomTags(content: string): ContentPiece[] {
   const { processedContent, inProgressTags } = preprocessUnclosedTags(content);
 
-  const tagPattern = new RegExp(
-    `<(${DYAD_CUSTOM_TAGS.join("|")})\\s*([^>]*)>(.*?)<\\/\\1>`,
-    "gs",
-  );
+  const tagPattern = new RegExp(`<(${DYAD_CUSTOM_TAGS.join("|")})\\s*([^>]*)>(.*?)<\\/\\1>`, "gs");
 
   const contentPieces: ContentPiece[] = [];
   let lastIndex = 0;
@@ -609,20 +590,13 @@ function renderCustomTag(
 
     case "dyad-output":
       return (
-        <DyadOutput
-          type={attributes.type as "warning" | "error"}
-          message={attributes.message}
-        >
+        <DyadOutput type={attributes.type as "warning" | "error"} message={attributes.message}>
           {content}
         </DyadOutput>
       );
 
     case "dyad-problem-report":
-      return (
-        <DyadProblemSummary summary={attributes.summary}>
-          {content}
-        </DyadProblemSummary>
-      );
+      return <DyadProblemSummary summary={attributes.summary}>{content}</DyadProblemSummary>;
 
     case "dyad-chat-summary":
       // Don't render anything for dyad-chat-summary

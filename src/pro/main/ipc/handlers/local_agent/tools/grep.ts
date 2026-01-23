@@ -1,11 +1,6 @@
 import { z } from "zod";
 import { spawn } from "node:child_process";
-import {
-  ToolDefinition,
-  AgentContext,
-  escapeXmlAttr,
-  escapeXmlContent,
-} from "./types";
+import { ToolDefinition, AgentContext, escapeXmlAttr, escapeXmlContent } from "./types";
 import {
   getRgExecutablePath,
   MAX_FILE_SEARCH_SIZE,
@@ -20,13 +15,8 @@ const grepSchema = z.object({
   include_pattern: z
     .string()
     .optional()
-    .describe(
-      "Glob pattern for files to include (e.g. '*.ts' for TypeScript files)",
-    ),
-  exclude_pattern: z
-    .string()
-    .optional()
-    .describe("Glob pattern for files to exclude"),
+    .describe("Glob pattern for files to include (e.g. '*.ts' for TypeScript files)"),
+  exclude_pattern: z.string().optional().describe("Glob pattern for files to exclude"),
   case_sensitive: z
     .boolean()
     .optional()
@@ -39,10 +29,7 @@ interface RipgrepMatch {
   lineText: string;
 }
 
-function buildGrepAttributes(
-  args: Partial<z.infer<typeof grepSchema>>,
-  count?: number,
-): string {
+function buildGrepAttributes(args: Partial<z.infer<typeof grepSchema>>, count?: number): string {
   const attrs: string[] = [];
   if (args.query) {
     attrs.push(`query="${escapeXmlAttr(args.query)}"`);
@@ -208,14 +195,10 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
     }
 
     // Format output: path:line: content
-    const lines = matches.map(
-      (m) => `${m.path}:${m.lineNumber}: ${m.lineText}`,
-    );
+    const lines = matches.map((m) => `${m.path}:${m.lineNumber}: ${m.lineText}`);
     const resultText = lines.join("\n");
 
-    ctx.onXmlComplete(
-      `<dyad-grep ${attrs}>\n${escapeXmlContent(resultText)}\n</dyad-grep>`,
-    );
+    ctx.onXmlComplete(`<dyad-grep ${attrs}>\n${escapeXmlContent(resultText)}\n</dyad-grep>`);
 
     return resultText;
   },

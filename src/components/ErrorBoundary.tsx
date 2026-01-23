@@ -56,9 +56,7 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
 
       // Create the GitHub issue URL with the pre-filled body
       const encodedBody = encodeURIComponent(issueBody);
-      const encodedTitle = encodeURIComponent(
-        "[bug] Error in Dyad application",
-      );
+      const encodedTitle = encodeURIComponent("[bug] Error in Dyad application");
       const githubIssueUrl = `https://github.com/dyad-sh/dyad/issues/new?title=${encodedTitle}&labels=bug,filed-from-app,client-error&body=${encodedBody}`;
 
       // Open the pre-filled GitHub issue page
@@ -66,9 +64,7 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
     } catch (err) {
       console.error("Failed to prepare bug report:", err);
       // Fallback to opening the regular GitHub issue page
-      IpcClient.getInstance().openExternalUrl(
-        "https://github.com/dyad-sh/dyad/issues/new",
-      );
+      IpcClient.getInstance().openExternalUrl("https://github.com/dyad-sh/dyad/issues/new");
     } finally {
       setIsLoading(false);
     }
@@ -77,9 +73,7 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
   return (
     <div className="flex flex-col items-center justify-center h-screen p-6">
       <div className="max-w-md w-full bg-background p-6 rounded-lg shadow-lg">
-        <h2 className="text-xl font-bold mb-4">
-          Sorry, that shouldn't have happened!
-        </h2>
+        <h2 className="text-xl font-bold mb-4">Sorry, that shouldn't have happened!</h2>
 
         <p className="text-sm mb-3">There was an error loading the app...</p>
 
@@ -103,8 +97,7 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
         <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-md flex items-center gap-2">
           <LightbulbIcon className="h-4 w-4 text-blue-700 dark:text-blue-400 flex-shrink-0" />
           <p className="text-sm text-blue-700 dark:text-blue-400">
-            <strong>Tip:</strong> Try closing and re-opening Dyad as a temporary
-            workaround.
+            <strong>Tip:</strong> Try closing and re-opening Dyad as a temporary workaround.
           </p>
         </div>
       </div>

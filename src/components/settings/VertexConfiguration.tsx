@@ -9,8 +9,7 @@ import type { UserSettings, VertexProviderSetting } from "@/lib/schemas";
 
 export function VertexConfiguration() {
   const { settings, updateSettings } = useSettings();
-  const existing =
-    (settings?.providerSettings?.vertex as VertexProviderSetting) ?? {};
+  const existing = (settings?.providerSettings?.vertex as VertexProviderSetting) ?? {};
 
   const [projectId, setProjectId] = useState(existing.projectId || "");
   const [location, setLocation] = useState(existing.location || "");
@@ -49,9 +48,7 @@ export function VertexConfiguration() {
             ...existing,
             projectId: projectId.trim() || undefined,
             location: location || undefined,
-            serviceAccountKey: serviceAccountKey
-              ? { value: serviceAccountKey }
-              : undefined,
+            serviceAccountKey: serviceAccountKey ? { value: serviceAccountKey } : undefined,
           },
         },
       };
@@ -66,9 +63,7 @@ export function VertexConfiguration() {
 
   const isConfigured = Boolean(
     (projectId.trim() && location && serviceAccountKey) ||
-      (existing.projectId &&
-        existing.location &&
-        existing.serviceAccountKey?.value),
+    (existing.projectId && existing.location && existing.serviceAccountKey?.value),
   );
 
   return (
@@ -90,15 +85,12 @@ export function VertexConfiguration() {
             placeholder="us-central1"
           />
           <p className="mt-1 text-xs text-muted-foreground">
-            If you see a "model not found" error, try a different region. Some
-            partner models (MaaS) are only available in specific locations
-            (e.g., us-central1, us-west2).
+            If you see a "model not found" error, try a different region. Some partner models (MaaS)
+            are only available in specific locations (e.g., us-central1, us-west2).
           </p>
         </div>
         <div>
-          <label className="block text-sm font-medium mb-1">
-            Service Account JSON Key
-          </label>
+          <label className="block text-sm font-medium mb-1">Service Account JSON Key</label>
           <Textarea
             value={serviceAccountKey}
             onChange={(e) => setServiceAccountKey(e.target.value)}
@@ -124,8 +116,7 @@ export function VertexConfiguration() {
           <Info className="h-4 w-4" />
           <AlertTitle>Configuration Required</AlertTitle>
           <AlertDescription>
-            Provide Project, Location, and a service account JSON key with
-            Vertex AI access.
+            Provide Project, Location, and a service account JSON key with Vertex AI access.
           </AlertDescription>
         </Alert>
       )}

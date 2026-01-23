@@ -7,10 +7,7 @@ interface DyadMcpToolCallProps {
   children?: React.ReactNode;
 }
 
-export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
-  node,
-  children,
-}) => {
+export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({ node, children }) => {
   const serverName: string = node?.properties?.serverName || "";
   const toolName: string = node?.properties?.toolName || "";
   const [expanded, setExpanded] = useState(false);

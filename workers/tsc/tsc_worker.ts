@@ -18,9 +18,7 @@ function loadLocalTypeScript(appPath: string): typeof import("typescript") {
     const ts = require(requirePath);
     return ts;
   } catch (error) {
-    throw new Error(
-      `Failed to load TypeScript from ${appPath} because of ${error}`,
-    );
+    throw new Error(`Failed to load TypeScript from ${appPath} because of ${error}`);
   }
 }
 
@@ -90,9 +88,7 @@ async function runSingleProject(
       ...ts.sys,
       fileExists: (fileName: string) => vfs.fileExists(fileName),
       readFile: (fileName: string) => vfs.readFile(fileName),
-      onUnRecoverableConfigFileDiagnostic: (
-        diagnostic: import("typescript").Diagnostic,
-      ) => {
+      onUnRecoverableConfigFileDiagnostic: (diagnostic: import("typescript").Diagnostic) => {
         throw new Error(
           `TypeScript config error: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")}`,
         );
@@ -115,13 +111,8 @@ async function runSingleProject(
 
     // Create a unique filename based on both the app path and tsconfig path to prevent collisions
     const configName = path.basename(tsconfigPath, path.extname(tsconfigPath));
-    const appHash = Buffer.from(appPath)
-      .toString("base64")
-      .replace(/[/+=]/g, "_");
-    options.tsBuildInfoFile = path.join(
-      tmpDir,
-      `${appHash}-${configName}.tsbuildinfo`,
-    );
+    const appHash = Buffer.from(appPath).toString("base64").replace(/[/+=]/g, "_");
+    options.tsBuildInfoFile = path.join(tmpDir, `${appHash}-${configName}.tsbuildinfo`);
     options.incremental = true;
   }
 
@@ -134,9 +125,7 @@ async function runSingleProject(
     .filter(isTypeScriptFile);
 
   // Remove deleted files from rootNames
-  const deletedFiles = vfs
-    .getDeletedFiles()
-    .map((file) => path.resolve(appPath, file));
+  const deletedFiles = vfs.getDeletedFiles().map((file) => path.resolve(appPath, file));
   rootNames = rootNames.filter((fileName) => {
     const resolvedPath = path.resolve(fileName);
     return !deletedFiles.includes(resolvedPath);
@@ -156,8 +145,7 @@ async function runSingleProject(
     rootNames,
     options,
     host,
-    configFileParsingDiagnostics:
-      ts.getConfigFileParsingDiagnostics(parsedCommandLine),
+    configFileParsingDiagnostics: ts.getConfigFileParsingDiagnostics(parsedCommandLine),
   });
 
   // Get diagnostics - the incremental program optimizes this by only checking changed files
@@ -176,13 +164,8 @@ async function runSingleProject(
   for (const diagnostic of diagnostics) {
     if (!diagnostic.file) continue;
 
-    const { line, character } = diagnostic.file.getLineAndCharacterOfPosition(
-      diagnostic.start!,
-    );
-    const message = ts.flattenDiagnosticMessageText(
-      diagnostic.messageText,
-      "\n",
-    );
+    const { line, character } = diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start!);
+    const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n");
 
     if (diagnostic.category !== ts.DiagnosticCategory.Error) {
       continue;
@@ -192,8 +175,7 @@ async function runSingleProject(
     const sourceLines = diagnostic.file.getFullText().split(/\r?\n/);
     const lineBefore = line > 0 ? sourceLines[line - 1] : "";
     const problematicLine = sourceLines[line] || "";
-    const lineAfter =
-      line < sourceLines.length - 1 ? sourceLines[line + 1] : "";
+    const lineAfter = line < sourceLines.length - 1 ? sourceLines[line + 1] : "";
 
     let snippet = "";
     if (lineBefore) snippet += lineBefore + "\n";
@@ -247,13 +229,7 @@ function createVirtualCompilerHost(
   ) => {
     // Only write build info files to disk, not emit files
     if (fileName.endsWith(".tsbuildinfo")) {
-      originalWriteFile?.call(
-        host,
-        fileName,
-        data,
-        !!writeByteOrderMark,
-        onError,
-      );
+      originalWriteFile?.call(host, fileName, data, !!writeByteOrderMark, onError);
     }
     // Ignore other emit files since we're only doing type checking
   };
@@ -266,9 +242,7 @@ function isTypeScriptFile(fileName: string): boolean {
   return [".ts", ".tsx", ".js", ".jsx"].includes(ext);
 }
 
-async function processTypeScriptCheck(
-  input: WorkerInput,
-): Promise<WorkerOutput> {
+async function processTypeScriptCheck(input: WorkerInput): Promise<WorkerOutput> {
   try {
     const { appPath, virtualChanges, tsBuildInfoCacheDir } = input;
 

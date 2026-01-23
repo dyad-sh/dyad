@@ -29,10 +29,7 @@ export function registerNeonHandlers() {
   // Do not use log handler because there's sensitive data in the response
   ipcMain.handle(
     "neon:create-project",
-    async (
-      _,
-      { name, appId }: CreateNeonProjectParams,
-    ): Promise<NeonProject> => {
+    async (_, { name, appId }: CreateNeonProjectParams): Promise<NeonProject> => {
       const neonClient = await getNeonClient();
 
       logger.info(`Creating Neon project: ${name} for app ${appId}`);
@@ -54,9 +51,7 @@ export function registerNeonHandlers() {
         );
 
         if (!response.data.project) {
-          throw new Error(
-            "Failed to create project: No project data returned.",
-          );
+          throw new Error("Failed to create project: No project data returned.");
         }
 
         const project = response.data.project;
@@ -74,13 +69,8 @@ export function registerNeonHandlers() {
           `Create preview branch for project ${project.id}`,
         );
 
-        if (
-          !previewBranchResponse.data.branch ||
-          !previewBranchResponse.data.connection_uris
-        ) {
-          throw new Error(
-            "Failed to create preview branch: No branch data returned.",
-          );
+        if (!previewBranchResponse.data.branch || !previewBranchResponse.data.connection_uris) {
+          throw new Error("Failed to create preview branch: No branch data returned.");
         }
 
         const previewBranch = previewBranchResponse.data.branch;
@@ -115,19 +105,12 @@ export function registerNeonHandlers() {
 
   ipcMain.handle(
     "neon:get-project",
-    async (
-      _,
-      { appId }: GetNeonProjectParams,
-    ): Promise<GetNeonProjectResponse> => {
+    async (_, { appId }: GetNeonProjectParams): Promise<GetNeonProjectResponse> => {
       logger.info(`Getting Neon project info for app ${appId}`);
 
       try {
         // Get the app from the database to find the neonProjectId and neonBranchId
-        const app = await db
-          .select()
-          .from(apps)
-          .where(eq(apps.id, appId))
-          .limit(1);
+        const app = await db.select().from(apps).where(eq(apps.id, appId)).limit(1);
 
         if (app.length === 0) {
           throw new Error(`App with ID ${appId} not found`);
@@ -142,9 +125,7 @@ export function registerNeonHandlers() {
         console.log("PROJECT ID", appData.neonProjectId);
 
         // Get project info
-        const projectResponse = await neonClient.getProject(
-          appData.neonProjectId,
-        );
+        const projectResponse = await neonClient.getProject(appData.neonProjectId);
 
         if (!projectResponse.data.project) {
           throw new Error("Failed to get project: No project data returned.");
@@ -162,43 +143,39 @@ export function registerNeonHandlers() {
         }
 
         // Map branches to our format
-        const branches: NeonBranch[] = branchesResponse.data.branches.map(
-          (branch) => {
-            let type: "production" | "development" | "snapshot" | "preview";
+        const branches: NeonBranch[] = branchesResponse.data.branches.map((branch) => {
+          let type: "production" | "development" | "snapshot" | "preview";
 
-            if (branch.default) {
-              type = "production";
-            } else if (branch.id === appData.neonDevelopmentBranchId) {
-              type = "development";
-            } else if (branch.id === appData.neonPreviewBranchId) {
-              type = "preview";
-            } else {
-              type = "snapshot";
-            }
+          if (branch.default) {
+            type = "production";
+          } else if (branch.id === appData.neonDevelopmentBranchId) {
+            type = "development";
+          } else if (branch.id === appData.neonPreviewBranchId) {
+            type = "preview";
+          } else {
+            type = "snapshot";
+          }
 
-            // Find parent branch name if parent_id exists
-            let parentBranchName: string | undefined;
-            if (branch.parent_id) {
-              const parentBranch = branchesResponse.data.branches?.find(
-                (b) => b.id === branch.parent_id,
-              );
-              parentBranchName = parentBranch?.name;
-            }
+          // Find parent branch name if parent_id exists
+          let parentBranchName: string | undefined;
+          if (branch.parent_id) {
+            const parentBranch = branchesResponse.data.branches?.find(
+              (b) => b.id === branch.parent_id,
+            );
+            parentBranchName = parentBranch?.name;
+          }
 
-            return {
-              type,
-              branchId: branch.id,
-              branchName: branch.name,
-              lastUpdated: branch.updated_at,
-              parentBranchId: branch.parent_id,
-              parentBranchName,
-            };
-          },
-        );
+          return {
+            type,
+            branchId: branch.id,
+            branchName: branch.name,
+            lastUpdated: branch.updated_at,
+            parentBranchId: branch.parent_id,
+            parentBranchName,
+          };
+        });
 
-        logger.info(
-          `Successfully retrieved Neon project info for app ${appId}`,
-        );
+        logger.info(`Successfully retrieved Neon project info for app ${appId}`);
 
         return {
           projectId: project.id,
@@ -207,10 +184,7 @@ export function registerNeonHandlers() {
           branches,
         };
       } catch (error) {
-        logger.error(
-          `Failed to get Neon project info for app ${appId}:`,
-          error,
-        );
+        logger.error(`Failed to get Neon project info for app ${appId}:`, error);
         throw error;
       }
     },

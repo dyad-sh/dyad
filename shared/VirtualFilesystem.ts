@@ -53,19 +53,13 @@ export abstract class BaseVirtualFileSystem {
    * Convert normalized path back to platform-appropriate format
    */
   private denormalizePath(normalizedPath: string): string {
-    return process.platform === "win32"
-      ? normalizedPath.replace(/\//g, "\\")
-      : normalizedPath;
+    return process.platform === "win32" ? normalizedPath.replace(/\//g, "\\") : normalizedPath;
   }
 
   /**
    * Apply changes from a response containing dyad tags
    */
-  public applyResponseChanges({
-    deletePaths,
-    renameTags,
-    writeTags,
-  }: VirtualChanges): void {
+  public applyResponseChanges({ deletePaths, renameTags, writeTags }: VirtualChanges): void {
     // Process deletions
     for (const deletePath of deletePaths) {
       this.deleteFile(deletePath);
@@ -130,10 +124,7 @@ export abstract class BaseVirtualFileSystem {
         this.virtualFiles.set(toNormalized, content);
       } catch (error) {
         // If we can't read the source file, we'll let the consumer handle it
-        console.warn(
-          `Could not read source file for rename: ${fromPath}`,
-          error,
-        );
+        console.warn(`Could not read source file for rename: ${fromPath}`, error);
       }
     }
 
@@ -145,17 +136,15 @@ export abstract class BaseVirtualFileSystem {
    * Get all virtual files (files that have been written or modified)
    */
   public getVirtualFiles(): VirtualFile[] {
-    return Array.from(this.virtualFiles.entries()).map(
-      ([normalizedKey, content]) => {
-        // Convert normalized key back to relative path
-        const denormalizedPath = this.denormalizePath(normalizedKey);
+    return Array.from(this.virtualFiles.entries()).map(([normalizedKey, content]) => {
+      // Convert normalized key back to relative path
+      const denormalizedPath = this.denormalizePath(normalizedKey);
 
-        return {
-          path: path.relative(this.baseDir, denormalizedPath),
-          content,
-        };
-      },
-    );
+      return {
+        path: path.relative(this.baseDir, denormalizedPath),
+        content,
+      };
+    });
   }
 
   /**
@@ -272,8 +261,7 @@ export class SyncVirtualFileSystemImpl
     return {
       fileExists: (fileName: string) => this.fileExists(fileName),
       readFile: (fileName: string) => this.readFile(fileName),
-      writeFile: (fileName: string, content: string) =>
-        this.writeFile(fileName, content),
+      writeFile: (fileName: string, content: string) => this.writeFile(fileName, content),
       deleteFile: (fileName: string) => this.deleteFile(fileName),
     };
   }

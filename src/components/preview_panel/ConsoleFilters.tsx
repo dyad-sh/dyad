@@ -1,19 +1,9 @@
 import { Filter, X, Trash2 } from "lucide-react";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface ConsoleFiltersProps {
   levelFilter: "all" | "info" | "warn" | "error";
-  typeFilter:
-    | "all"
-    | "server"
-    | "client"
-    | "edge-function"
-    | "network-requests";
+  typeFilter: "all" | "server" | "client" | "edge-function" | "network-requests";
   sourceFilter: string;
   onLevelFilterChange: (value: "all" | "info" | "warn" | "error") => void;
   onTypeFilterChange: (
@@ -40,8 +30,7 @@ export const ConsoleFilters = ({
   totalLogs,
   showFilters,
 }: ConsoleFiltersProps) => {
-  const hasActiveFilters =
-    levelFilter !== "all" || typeFilter !== "all" || sourceFilter !== "";
+  const hasActiveFilters = levelFilter !== "all" || typeFilter !== "all" || sourceFilter !== "";
 
   if (!showFilters) return null;
 
@@ -52,11 +41,7 @@ export const ConsoleFilters = ({
       {/* Level filter */}
       <select
         value={levelFilter}
-        onChange={(e) =>
-          onLevelFilterChange(
-            e.target.value as "all" | "info" | "warn" | "error",
-          )
-        }
+        onChange={(e) => onLevelFilterChange(e.target.value as "all" | "info" | "warn" | "error")}
         className="text-xs px-2 py-1 border border-border rounded bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
       >
         <option value="all">All Levels</option>
@@ -70,12 +55,7 @@ export const ConsoleFilters = ({
         value={typeFilter}
         onChange={(e) =>
           onTypeFilterChange(
-            e.target.value as
-              | "all"
-              | "server"
-              | "client"
-              | "edge-function"
-              | "network-requests",
+            e.target.value as "all" | "server" | "client" | "edge-function" | "network-requests",
           )
         }
         className="text-xs px-2 py-1 border border-border rounded bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"

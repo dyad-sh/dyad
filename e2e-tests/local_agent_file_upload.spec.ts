@@ -16,10 +16,7 @@ testSkipIfWindows("local-agent - upload file to codebase", async ({ po }) => {
   await po.selectLocalAgentMode();
 
   // Open auxiliary actions menu
-  await po
-    .getChatInputContainer()
-    .getByTestId("auxiliary-actions-menu")
-    .click();
+  await po.getChatInputContainer().getByTestId("auxiliary-actions-menu").click();
 
   // Hover over "Attach files" to open submenu
   await po.page.getByRole("menuitem", { name: "Attach files" }).hover();
@@ -45,10 +42,7 @@ testSkipIfWindows("local-agent - upload file to codebase", async ({ po }) => {
   expect(fs.existsSync(filePath)).toBe(true);
 
   // The file contents should match the original uploaded file
-  const expectedContents = fs.readFileSync(
-    "e2e-tests/fixtures/images/logo.png",
-    "base64",
-  );
+  const expectedContents = fs.readFileSync("e2e-tests/fixtures/images/logo.png", "base64");
   const actualContents = fs.readFileSync(filePath, "base64");
   expect(actualContents).toBe(expectedContents);
 

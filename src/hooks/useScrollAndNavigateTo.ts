@@ -13,10 +13,7 @@ type ScrollOptions = {
 /**
  * Returns an async function that navigates to the given route, then scrolls the element with the provided id into view.
  */
-export function useScrollAndNavigateTo(
-  to: string = "/settings",
-  options?: ScrollOptions,
-) {
+export function useScrollAndNavigateTo(to: string = "/settings", options?: ScrollOptions) {
   const navigate = useNavigate();
   const setActiveSection = useSetAtom(activeSettingsSectionAtom);
 

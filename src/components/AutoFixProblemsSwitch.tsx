@@ -4,11 +4,7 @@ import { Switch } from "@/components/ui/switch";
 
 import { showInfo } from "@/lib/toast";
 
-export function AutoFixProblemsSwitch({
-  showToast = false,
-}: {
-  showToast?: boolean;
-}) {
+export function AutoFixProblemsSwitch({ showToast = false }: { showToast?: boolean }) {
   const { settings, updateSettings } = useSettings();
   return (
     <div className="flex items-center space-x-2">

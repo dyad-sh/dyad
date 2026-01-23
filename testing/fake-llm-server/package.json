@@ -1,6 +1,10 @@
 {
   "name": "fake-llm-server",
   "version": "1.0.0",
+  "description": "Fake OpenAI API server for testing",
+  "keywords": [],
+  "license": "ISC",
+  "author": "",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
@@ -8,10 +12,6 @@
     "dev": "ts-node index.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "Fake OpenAI API server for testing",
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.18.2",

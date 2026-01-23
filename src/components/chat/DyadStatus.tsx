@@ -1,12 +1,6 @@
 import React, { useState } from "react";
 import { CustomTagState } from "./stateTypes";
-import {
-  Loader2,
-  CheckCircle2,
-  XCircle,
-  ChevronsDownUp,
-  ChevronsUpDown,
-} from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, ChevronsDownUp, ChevronsUpDown } from "lucide-react";
 
 interface DyadStatusProps {
   node: {
@@ -28,11 +22,7 @@ export function DyadStatus({ node, children }: DyadStatusProps) {
   return (
     <div
       className={`bg-(--background-lightest) hover:bg-(--background-lighter) rounded-lg px-4 py-2 border my-2 cursor-pointer ${
-        isInProgress
-          ? "border-amber-500"
-          : isAborted
-            ? "border-red-500"
-            : "border-border"
+        isInProgress ? "border-amber-500" : isAborted ? "border-red-500" : "border-border"
       }`}
       onClick={() => setIsContentVisible(!isContentVisible)}
     >

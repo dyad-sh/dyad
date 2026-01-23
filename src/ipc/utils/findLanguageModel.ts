@@ -10,9 +10,7 @@ export async function findLanguageModel(
   });
 
   if (model.customModelId) {
-    const customModel = models.find(
-      (m) => m.type === "custom" && m.id === model.customModelId,
-    );
+    const customModel = models.find((m) => m.type === "custom" && m.id === model.customModelId);
     if (customModel) {
       return customModel;
     }

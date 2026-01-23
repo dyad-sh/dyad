@@ -513,9 +513,7 @@ export interface RevertVersionParams {
   };
 }
 
-export type RevertVersionResponse =
-  | { successMessage: string }
-  | { warningMessage: string };
+export type RevertVersionResponse = { successMessage: string } | { warningMessage: string };
 
 // --- Help Bot Types ---
 export interface StartHelpChatParams {
@@ -559,8 +557,7 @@ export interface McpServer {
   updatedAt: number;
 }
 
-export interface CreateMcpServer
-  extends Omit<McpServer, "id" | "createdAt" | "updatedAt"> {}
+export interface CreateMcpServer extends Omit<McpServer, "id" | "createdAt" | "updatedAt"> {}
 export type McpServerUpdate = Partial<McpServer> & Pick<McpServer, "id">;
 export type McpToolConsentType = "ask" | "always" | "denied";
 
@@ -734,10 +731,7 @@ export interface AgentToolConsentRequestPayload {
   inputPreview?: string | null;
 }
 
-export type AgentToolConsentDecision =
-  | "accept-once"
-  | "accept-always"
-  | "decline";
+export type AgentToolConsentDecision = "accept-once" | "accept-always" | "decline";
 
 export interface AgentToolConsentResponseParams {
   requestId: string;
@@ -808,10 +802,7 @@ export interface DeleteCustomThemeParams {
 
 export type ThemeGenerationMode = "inspired" | "high-fidelity";
 
-export type ThemeGenerationModel =
-  | "gemini-3-pro"
-  | "claude-opus-4.5"
-  | "gpt-5.2";
+export type ThemeGenerationModel = "gemini-3-pro" | "claude-opus-4.5" | "gpt-5.2";
 
 export interface GenerateThemePromptParams {
   imagePaths: string[]; // File paths to images (stored in temp directory)
@@ -839,11 +830,7 @@ export interface CleanupThemeImagesParams {
 }
 
 // --- Uncommitted Files Types ---
-export type UncommittedFileStatus =
-  | "added"
-  | "modified"
-  | "deleted"
-  | "renamed";
+export type UncommittedFileStatus = "added" | "modified" | "deleted" | "renamed";
 
 export interface UncommittedFile {
   path: string;

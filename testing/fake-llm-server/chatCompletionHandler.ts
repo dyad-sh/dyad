@@ -2,10 +2,7 @@ import { Request, Response } from "express";
 import fs from "fs";
 import path from "path";
 import { CANNED_MESSAGE, createStreamChunk } from ".";
-import {
-  handleLocalAgentFixture,
-  extractLocalAgentFixture,
-} from "./localAgentHandler";
+import { handleLocalAgentFixture, extractLocalAgentFixture } from "./localAgentHandler";
 
 let globalCounter = 0;
 
@@ -39,9 +36,7 @@ export const createChatCompletionHandler =
       if (typeof lastUserMessage.content === "string") {
         textContent = lastUserMessage.content;
       } else if (Array.isArray(lastUserMessage.content)) {
-        const textPart = lastUserMessage.content.find(
-          (p: any) => p.type === "text",
-        );
+        const textPart = lastUserMessage.content.find((p: any) => p.type === "text");
         if (textPart) {
           textContent = textPart.text;
         }
@@ -63,8 +58,7 @@ export const createChatCompletionHandler =
       Array.isArray(lastMessage.content) &&
       lastMessage.content.some(
         (part: { type: string; text: string }) =>
-          part.type === "text" &&
-          part.text.includes("[[UPLOAD_IMAGE_TO_CODEBASE]]"),
+          part.type === "text" && part.text.includes("[[UPLOAD_IMAGE_TO_CODEBASE]]"),
       )
     ) {
       messageContent = `Uploading image to codebase
@@ -87,9 +81,7 @@ DYAD_ATTACHMENT_0
     if (
       lastMessage &&
       typeof lastMessage.content === "string" &&
-      lastMessage.content.startsWith(
-        "Fix these 2 TypeScript compile-time error",
-      )
+      lastMessage.content.startsWith("Fix these 2 TypeScript compile-time error")
     ) {
       // Fix errors in create-ts-errors.md and introduce a new error
       messageContent = `
@@ -107,9 +99,7 @@ x.nonExistentMethod2();
     if (
       lastMessage &&
       typeof lastMessage.content === "string" &&
-      lastMessage.content.startsWith(
-        "Fix these 1 TypeScript compile-time error",
-      )
+      lastMessage.content.startsWith("Fix these 1 TypeScript compile-time error")
     ) {
       // Fix errors in create-ts-errors.md and introduce a new error
       messageContent = `
@@ -410,9 +400,7 @@ export default Index;
       typeof lastMessage?.content === "string" &&
       !lastMessage?.content.startsWith("Summarize the following chat:") &&
       lastMessage?.content?.match?.(/\[high-tokens=(\d+)\]/);
-    const highTokensValue = highTokensMatch
-      ? parseInt(highTokensMatch[1], 10)
-      : null;
+    const highTokensValue = highTokensMatch ? parseInt(highTokensMatch[1], 10) : null;
 
     // Split the message into characters to simulate streaming
     const messageChars = messageContent.split("");

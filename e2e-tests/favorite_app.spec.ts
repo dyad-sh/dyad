@@ -21,9 +21,7 @@ test.describe("Favorite App Tests", () => {
     await expect(appItem).toBeVisible();
 
     // Click the favorite button
-    const favoriteButton = appItem
-      .locator("xpath=..")
-      .locator('[data-testid="favorite-button"]');
+    const favoriteButton = appItem.locator("xpath=..").locator('[data-testid="favorite-button"]');
     await expect(favoriteButton).toBeVisible();
     await favoriteButton.click();
 
@@ -50,9 +48,7 @@ test.describe("Favorite App Tests", () => {
     const appItem = po.page.locator(`[data-testid="app-list-item-${appName}"]`);
 
     // First, add to favorite
-    const favoriteButton = appItem
-      .locator("xpath=..")
-      .locator('[data-testid="favorite-button"]');
+    const favoriteButton = appItem.locator("xpath=..").locator('[data-testid="favorite-button"]');
     await favoriteButton.click();
 
     // Check that the star is filled (favorited)
@@ -60,9 +56,7 @@ test.describe("Favorite App Tests", () => {
     await expect(star).toHaveClass(/fill-\[#6c55dc\]/);
 
     // Now, remove from favorite
-    const unfavoriteButton = appItem
-      .locator("xpath=..")
-      .locator('[data-testid="favorite-button"]');
+    const unfavoriteButton = appItem.locator("xpath=..").locator('[data-testid="favorite-button"]');
     await expect(unfavoriteButton).toBeVisible();
     await unfavoriteButton.click();
 

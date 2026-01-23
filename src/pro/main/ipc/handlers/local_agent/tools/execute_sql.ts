@@ -9,49 +9,47 @@ const executeSqlSchema = z.object({
   description: z.string().optional().describe("Brief description of the query"),
 });
 
-export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
-  {
-    name: "execute_sql",
-    description: "Execute SQL on the Supabase database",
-    inputSchema: executeSqlSchema,
-    defaultConsent: "ask",
-    modifiesState: true,
-    isEnabled: (ctx) => !!ctx.supabaseProjectId,
+export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> = {
+  name: "execute_sql",
+  description: "Execute SQL on the Supabase database",
+  inputSchema: executeSqlSchema,
+  defaultConsent: "ask",
+  modifiesState: true,
+  isEnabled: (ctx) => !!ctx.supabaseProjectId,
 
-    getConsentPreview: (args) =>
-      args.query.slice(0, 100) + (args.query.length > 100 ? "..." : ""),
+  getConsentPreview: (args) => args.query.slice(0, 100) + (args.query.length > 100 ? "..." : ""),
 
-    buildXml: (args, isComplete) => {
-      if (args.query == undefined) return undefined;
+  buildXml: (args, isComplete) => {
+    if (args.query == undefined) return undefined;
 
-      let xml = `<dyad-execute-sql description="${escapeXmlAttr(args.description ?? "")}">\n${args.query}`;
-      if (isComplete) {
-        xml += "\n</dyad-execute-sql>";
+    let xml = `<dyad-execute-sql description="${escapeXmlAttr(args.description ?? "")}">\n${args.query}`;
+    if (isComplete) {
+      xml += "\n</dyad-execute-sql>";
+    }
+    return xml;
+  },
+
+  execute: async (args, ctx: AgentContext) => {
+    if (!ctx.supabaseProjectId) {
+      throw new Error("Supabase is not connected to this app");
+    }
+
+    await executeSupabaseSql({
+      supabaseProjectId: ctx.supabaseProjectId,
+      query: args.query,
+      organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+    });
+
+    // Write migration file if enabled
+    const settings = readSettings();
+    if (settings.enableSupabaseWriteSqlMigration) {
+      try {
+        await writeMigrationFile(ctx.appPath, args.query, args.description);
+      } catch (error) {
+        return `SQL executed, but failed to write migration file: ${error}`;
       }
-      return xml;
-    },
+    }
 
-    execute: async (args, ctx: AgentContext) => {
-      if (!ctx.supabaseProjectId) {
-        throw new Error("Supabase is not connected to this app");
-      }
-
-      await executeSupabaseSql({
-        supabaseProjectId: ctx.supabaseProjectId,
-        query: args.query,
-        organizationSlug: ctx.supabaseOrganizationSlug ?? null,
-      });
-
-      // Write migration file if enabled
-      const settings = readSettings();
-      if (settings.enableSupabaseWriteSqlMigration) {
-        try {
-          await writeMigrationFile(ctx.appPath, args.query, args.description);
-        } catch (error) {
-          return `SQL executed, but failed to write migration file: ${error}`;
-        }
-      }
-
-      return "Successfully executed SQL query";
-    },
-  };
+    return "Successfully executed SQL query";
+  },
+};

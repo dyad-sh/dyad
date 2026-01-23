@@ -1,9 +1,5 @@
 import { useCallback } from "react";
-import type {
-  ComponentSelection,
-  Message,
-  FileAttachment,
-} from "@/ipc/ipc_types";
+import type { ComponentSelection, Message, FileAttachment } from "@/ipc/ipc_types";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
   chatErrorByIdAtom,
@@ -38,9 +34,7 @@ export function getRandomNumberId() {
 // This prevents race conditions when clicking rapidly before state updates
 const pendingStreamChatIds = new Set<number>();
 
-export function useStreamChat({
-  hasChatId = true,
-}: { hasChatId?: boolean } = {}) {
+export function useStreamChat({ hasChatId = true }: { hasChatId?: boolean } = {}) {
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const isStreamingById = useAtomValue(isStreamingByIdAtom);
   const setIsStreamingById = useSetAtom(isStreamingByIdAtom);
@@ -84,10 +78,7 @@ export function useStreamChat({
       selectedComponents?: ComponentSelection[];
       onSettled?: () => void;
     }) => {
-      if (
-        (!prompt.trim() && (!attachments || attachments.length === 0)) ||
-        !chatId
-      ) {
+      if ((!prompt.trim() && (!attachments || attachments.length === 0)) || !chatId) {
         return;
       }
 
@@ -217,11 +208,7 @@ export function useStreamChat({
         });
         setErrorById((prev) => {
           const next = new Map(prev);
-          if (chatId)
-            next.set(
-              chatId,
-              error instanceof Error ? error.message : String(error),
-            );
+          if (chatId) next.set(chatId, error instanceof Error ? error.message : String(error));
           return next;
         });
         onSettled?.();
@@ -241,14 +228,8 @@ export function useStreamChat({
 
   return {
     streamMessage,
-    isStreaming:
-      hasChatId && chatId !== undefined
-        ? (isStreamingById.get(chatId) ?? false)
-        : false,
-    error:
-      hasChatId && chatId !== undefined
-        ? (errorById.get(chatId) ?? null)
-        : null,
+    isStreaming: hasChatId && chatId !== undefined ? (isStreamingById.get(chatId) ?? false) : false,
+    error: hasChatId && chatId !== undefined ? (errorById.get(chatId) ?? null) : null,
     setError: (value: string | null) =>
       setErrorById((prev) => {
         const next = new Map(prev);

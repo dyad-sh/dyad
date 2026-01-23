@@ -16,10 +16,7 @@ import { db } from "../../db";
 import { chats, messages } from "../../db/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import type { SmartContextMode } from "../../lib/schemas";
-import {
-  constructSystemPrompt,
-  readAiRules,
-} from "../../prompts/system_prompt";
+import { constructSystemPrompt, readAiRules } from "../../prompts/system_prompt";
 import { getThemePromptById } from "../utils/theme_utils";
 import {
   getSupabaseAvailableSystemPrompt,
@@ -28,24 +25,14 @@ import {
 import { getDyadAppPath } from "../../paths/paths";
 import { readSettings } from "../../main/settings";
 import type { ChatResponseEnd, ChatStreamParams } from "../ipc_types";
-import {
-  CodebaseFile,
-  extractCodebase,
-  readFileWithCache,
-} from "../../utils/codebase";
-import {
-  dryRunSearchReplace,
-  processFullResponseActions,
-} from "../processors/response_processor";
+import { CodebaseFile, extractCodebase, readFileWithCache } from "../../utils/codebase";
+import { dryRunSearchReplace, processFullResponseActions } from "../processors/response_processor";
 import { streamTestResponse } from "./testing_chat_handlers";
 import { getTestResponse } from "./testing_chat_handlers";
 import { getModelClient, ModelClient } from "../utils/get_model_client";
 import log from "electron-log";
 import { sendTelemetryEvent } from "../utils/telemetry";
-import {
-  getSupabaseContext,
-  getSupabaseClientCode,
-} from "../../supabase_admin/supabase_context";
+import { getSupabaseContext, getSupabaseClientCode } from "../../supabase_admin/supabase_context";
 import { SUMMARIZE_CHAT_SYSTEM_PROMPT } from "../../prompts/summarize_chat_system_prompt";
 import { SECURITY_REVIEW_SYSTEM_PROMPT } from "../../prompts/security_review_prompt";
 import fs from "node:fs";
@@ -83,11 +70,7 @@ import { inArray } from "drizzle-orm";
 import { replacePromptReference } from "../utils/replacePromptReference";
 import { mcpManager } from "../utils/mcp_manager";
 import z from "zod";
-import {
-  isDyadProEnabled,
-  isSupabaseConnected,
-  isTurboEditsV2Enabled,
-} from "@/lib/schemas";
+import { isDyadProEnabled, isSupabaseConnected, isTurboEditsV2Enabled } from "@/lib/schemas";
 import { AI_STREAMING_ERROR_MESSAGE_PREFIX } from "@/shared/texts";
 import { getCurrentCommitHash } from "../utils/git_utils";
 import {
@@ -110,16 +93,7 @@ const partialResponses = new Map<number, string>();
 const TEMP_DIR = path.join(os.tmpdir(), "dyad-attachments");
 
 // Common helper functions
-const TEXT_FILE_EXTENSIONS = [
-  ".md",
-  ".txt",
-  ".json",
-  ".csv",
-  ".js",
-  ".ts",
-  ".html",
-  ".css",
-];
+const TEXT_FILE_EXTENSIONS = [".md", ".txt", ".json", ".csv", ".js", ".ts", ".html", ".css"];
 
 async function isTextFile(filePath: string): Promise<boolean> {
   const ext = path.extname(filePath).toLowerCase();
@@ -162,9 +136,7 @@ async function processStreamChunks({
   fullResponse: string;
   abortController: AbortController;
   chatId: number;
-  processResponseChunkUpdate: (params: {
-    fullResponse: string;
-  }) => Promise<string>;
+  processResponseChunkUpdate: (params: { fullResponse: string }) => Promise<string>;
 }): Promise<{ fullResponse: string; incrementalResponse: string }> {
   let incrementalResponse = "";
   let inThinkingBlock = false;
@@ -173,9 +145,7 @@ async function processStreamChunks({
     let chunk = "";
     if (
       inThinkingBlock &&
-      !["reasoning-delta", "reasoning-end", "reasoning-start"].includes(
-        part.type,
-      )
+      !["reasoning-delta", "reasoning-end", "reasoning-start"].includes(part.type)
     ) {
       chunk = "</think>";
       inThinkingBlock = false;
@@ -254,18 +224,13 @@ export function registerChatStreamHandlers() {
 
         // Find the most recent user message
         let lastUserMessageIndex = chatMessages.length - 1;
-        while (
-          lastUserMessageIndex >= 0 &&
-          chatMessages[lastUserMessageIndex].role !== "user"
-        ) {
+        while (lastUserMessageIndex >= 0 && chatMessages[lastUserMessageIndex].role !== "user") {
           lastUserMessageIndex--;
         }
 
         if (lastUserMessageIndex >= 0) {
           // Delete the user message
-          await db
-            .delete(messages)
-            .where(eq(messages.id, chatMessages[lastUserMessageIndex].id));
+          await db.delete(messages).where(eq(messages.id, chatMessages[lastUserMessageIndex].id));
 
           // If there's an assistant message after the user message, delete it too
           if (
@@ -274,9 +239,7 @@ export function registerChatStreamHandlers() {
           ) {
             await db
               .delete(messages)
-              .where(
-                eq(messages.id, chatMessages[lastUserMessageIndex + 1].id),
-              );
+              .where(eq(messages.id, chatMessages[lastUserMessageIndex + 1].id));
           }
         }
       }
@@ -386,9 +349,7 @@ export function registerChatStreamHandlers() {
 
             componentSnippet = snippetLines.join("\n");
           } catch (err) {
-            logger.error(
-              `Error reading selected component file content: ${err}`,
-            );
+            logger.error(`Error reading selected component file content: ${err}`);
           }
 
           userPrompt += `\n${componentsToProcess.length > 1 ? `${componentsToProcess.indexOf(component) + 1}. ` : ""}Component: ${component.name} (file: ${component.relativePath})
@@ -470,8 +431,10 @@ ${componentSnippet}
         );
       } else {
         // Normal AI processing for non-test prompts
-        const { modelClient, isEngineEnabled, isSmartContextEnabled } =
-          await getModelClient(settings.selectedModel, settings);
+        const { modelClient, isEngineEnabled, isSmartContextEnabled } = await getModelClient(
+          settings.selectedModel,
+          settings,
+        );
 
         const appPath = getDyadAppPath(updatedChat.app.path);
         // When we don't have smart context enabled, we
@@ -480,9 +443,7 @@ ${componentSnippet}
         // If we have selected components and smart context is enabled,
         // we handle this specially below.
         const chatContext =
-          req.selectedComponents &&
-          req.selectedComponents.length > 0 &&
-          !isSmartContextEnabled
+          req.selectedComponents && req.selectedComponents.length > 0 && !isSmartContextEnabled
             ? {
                 contextPaths: req.selectedComponents.map((component) => ({
                   globPath: component.relativePath,
@@ -500,11 +461,7 @@ ${componentSnippet}
         // For smart context and selected components, we will mark the selected components' files as focused.
         // This means that we don't do the regular smart context handling, but we'll allow fetching
         // additional files through <dyad-read> as needed.
-        if (
-          isSmartContextEnabled &&
-          req.selectedComponents &&
-          req.selectedComponents.length > 0
-        ) {
+        if (isSmartContextEnabled && req.selectedComponents && req.selectedComponents.length > 0) {
           const selectedPaths = new Set(
             req.selectedComponents.map((component) => component.relativePath),
           );
@@ -544,9 +501,7 @@ ${componentSnippet}
 
           otherAppsCodebaseInfo = mentionedAppsSection;
 
-          logger.log(
-            `Added ${mentionedAppsCodebases.length} mentioned app codebases`,
-          );
+          logger.log(`Added ${mentionedAppsCodebases.length} mentioned app codebases`);
         }
 
         logger.log(`Extracted codebase information from ${appPath}`);
@@ -588,16 +543,12 @@ ${componentSnippet}
           // Ensure the first message is a user message
           if (recentMessages.length > 0 && recentMessages[0].role !== "user") {
             // Find the first user message
-            const firstUserIndex = recentMessages.findIndex(
-              (msg) => msg.role === "user",
-            );
+            const firstUserIndex = recentMessages.findIndex((msg) => msg.role === "user");
             if (firstUserIndex > 0) {
               // Drop assistant messages before the first user message
               recentMessages = recentMessages.slice(firstUserIndex);
             } else if (firstUserIndex === -1) {
-              logger.warn(
-                "No user messages found in recent history, set recent messages to empty",
-              );
+              logger.warn("No user messages found in recent history, set recent messages to empty");
               recentMessages = [];
             }
           }
@@ -619,25 +570,19 @@ ${componentSnippet}
 
         let systemPrompt = constructSystemPrompt({
           aiRules,
-          chatMode:
-            settings.selectedChatMode === "agent"
-              ? "build"
-              : settings.selectedChatMode,
+          chatMode: settings.selectedChatMode === "agent" ? "build" : settings.selectedChatMode,
           enableTurboEditsV2: isTurboEditsV2Enabled(settings),
           themePrompt,
         });
 
         // Add information about mentioned apps if any
         if (otherAppsCodebaseInfo) {
-          const mentionedAppsList = mentionedAppsCodebases
-            .map(({ appName }) => appName)
-            .join(", ");
+          const mentionedAppsList = mentionedAppsCodebases.map(({ appName }) => appName).join(", ");
 
           systemPrompt += `\n\n# Referenced Apps\nThe user has mentioned the following apps in their prompt: ${mentionedAppsList}. Their codebases have been included in the context for your reference. When referring to these apps, you can understand their structure and code to provide better assistance, however you should NOT edit the files in these referenced apps. The referenced apps are NOT part of the current app and are READ-ONLY.`;
         }
 
-        const isSecurityReviewIntent =
-          req.prompt.startsWith("/security-review");
+        const isSecurityReviewIntent = req.prompt.startsWith("/security-review");
         if (isSecurityReviewIntent) {
           systemPrompt = SECURITY_REVIEW_SYSTEM_PROMPT;
           try {
@@ -649,8 +594,7 @@ ${componentSnippet}
             securityRules = await fs.promises.readFile(rulesPath, "utf8");
 
             if (securityRules && securityRules.trim().length > 0) {
-              systemPrompt +=
-                "\n\n# Project-specific security rules:\n" + securityRules;
+              systemPrompt += "\n\n# Project-specific security rules:\n" + securityRules;
             }
           } catch (error) {
             // Best-effort: if reading rules fails, continue without them
@@ -658,10 +602,7 @@ ${componentSnippet}
           }
         }
 
-        if (
-          updatedChat.app?.supabaseProjectId &&
-          isSupabaseConnected(settings)
-        ) {
+        if (updatedChat.app?.supabaseProjectId && isSupabaseConnected(settings)) {
           const supabaseClientCode = await getSupabaseClientCode({
             projectId: updatedChat.app.supabaseProjectId,
             organizationSlug: updatedChat.app.supabaseOrganizationSlug ?? null,
@@ -675,8 +616,7 @@ ${componentSnippet}
               ? ""
               : await getSupabaseContext({
                   supabaseProjectId: updatedChat.app.supabaseProjectId,
-                  organizationSlug:
-                    updatedChat.app.supabaseOrganizationSlug ?? null,
+                  organizationSlug: updatedChat.app.supabaseOrganizationSlug ?? null,
                 }));
         } else if (
           // Neon projects don't need Supabase.
@@ -688,9 +628,7 @@ ${componentSnippet}
         ) {
           systemPrompt += "\n\n" + SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT;
         }
-        const isSummarizeIntent = req.prompt.startsWith(
-          "Summarize from chat-id=",
-        );
+        const isSummarizeIntent = req.prompt.startsWith("Summarize from chat-id=");
         if (isSummarizeIntent) {
           systemPrompt = SUMMARIZE_CHAT_SYSTEM_PROMPT;
         }
@@ -698,15 +636,11 @@ ${componentSnippet}
         // Update the system prompt for images if there are image attachments
         const hasImageAttachments =
           req.attachments &&
-          req.attachments.some((attachment) =>
-            attachment.type.startsWith("image/"),
-          );
+          req.attachments.some((attachment) => attachment.type.startsWith("image/"));
 
         const hasUploadedAttachments =
           req.attachments &&
-          req.attachments.some(
-            (attachment) => attachment.attachmentType === "upload-to-codebase",
-          );
+          req.attachments.some((attachment) => attachment.attachmentType === "upload-to-codebase");
         // If there's mixed attachments (e.g. some upload to codebase attachments and some upload images as chat context attachemnts)
         // we will just include the file upload system prompt, otherwise the AI gets confused and doesn't reliably
         // print out the dyad-write tags.
@@ -826,10 +760,7 @@ This conversation includes one or more image attachments. When the user uploads 
             }
           }
         } else {
-          logger.warn(
-            "Unexpected number of chat messages:",
-            chatMessages.length,
-          );
+          logger.warn("Unexpected number of chat messages:", chatMessages.length);
         }
 
         if (isSummarizeIntent) {
@@ -866,10 +797,7 @@ This conversation includes one or more image attachments. When the user uploads 
           dyadDisableFiles?: boolean;
         }) => {
           if (isEngineEnabled) {
-            logger.log(
-              "sending AI request to engine with request id:",
-              dyadRequestId,
-            );
+            logger.log("sending AI request to engine with request id:", dyadRequestId);
           } else {
             logger.log("sending AI request");
           }
@@ -881,9 +809,7 @@ This conversation includes one or more image attachments. When the user uploads 
               appPath,
             });
           }
-          const smartContextMode: SmartContextMode = isDeepContextEnabled
-            ? "deep"
-            : "balanced";
+          const smartContextMode: SmartContextMode = isDeepContextEnabled ? "deep" : "balanced";
           const providerOptions = getProviderOptions({
             dyadAppId: updatedChat.app.id,
             dyadRequestId,
@@ -923,10 +849,7 @@ This conversation includes one or more image attachments. When the user uploads 
                   .set({ maxTokensUsed: maxTokensUsed })
                   .where(eq(messages.id, placeholderAssistantMessage.id))
                   .catch((error) => {
-                    logger.error(
-                      "Failed to save total tokens for assistant message",
-                      error,
-                    );
+                    logger.error("Failed to save total tokens for assistant message", error);
                   });
 
                 logger.log(
@@ -943,9 +866,7 @@ This conversation includes one or more image attachments. When the user uploads 
                 errorMessage += "\n\nDetails: " + responseBody;
               }
               const message = errorMessage || JSON.stringify(error);
-              const requestIdPrefix = isEngineEnabled
-                ? `[Request ID: ${dyadRequestId}] `
-                : "";
+              const requestIdPrefix = isEngineEnabled ? `[Request ID: ${dyadRequestId}] ` : "";
               logger.error(
                 `AI stream text error for request: ${requestIdPrefix} errorMessage=${errorMessage} error=`,
                 error,
@@ -967,11 +888,7 @@ This conversation includes one or more image attachments. When the user uploads 
 
         let lastDbSaveAt = 0;
 
-        const processResponseChunkUpdate = async ({
-          fullResponse,
-        }: {
-          fullResponse: string;
-        }) => {
+        const processResponseChunkUpdate = async ({ fullResponse }: { fullResponse: string }) => {
           // Store the current partial response
           partialResponses.set(req.chatId, fullResponse);
           // Save to DB (in case user is switching chats during the stream)
@@ -1037,10 +954,7 @@ This conversation includes one or more image attachments. When the user uploads 
         // Handle local-agent mode (Agent v2)
         // Mentioned apps can't be handled by the local agent (defer to balanced smart context
         // in build mode)
-        if (
-          settings.selectedChatMode === "local-agent" &&
-          !mentionedAppsCodebases.length
-        ) {
+        if (settings.selectedChatMode === "local-agent" && !mentionedAppsCodebases.length) {
           await handleLocalAgentStream(event, req, abortController, {
             placeholderMessageId: placeholderAssistantMessage.id,
             systemPrompt,
@@ -1110,10 +1024,7 @@ This conversation includes one or more image attachments. When the user uploads 
           });
           fullResponse = result.fullResponse;
 
-          if (
-            settings.selectedChatMode !== "ask" &&
-            isTurboEditsV2Enabled(settings)
-          ) {
+          if (settings.selectedChatMode !== "ask" && isTurboEditsV2Enabled(settings)) {
             let issues = await dryRunSearchReplace({
               fullResponse,
               appPath: getDyadAppPath(updatedChat.app.path),
@@ -1166,18 +1077,17 @@ This conversation includes one or more image attachments. When the user uploads 
 ${formattedSearchReplaceIssues}`,
               } as const;
 
-              const { fullStream: fixSearchReplaceStream } =
-                await simpleStreamText({
-                  // Build messages: reuse chat history and original full response, then ask to fix search-replace issues.
-                  chatMessages: [
-                    ...chatMessages,
-                    { role: "assistant", content: originalFullResponse },
-                    ...previousAttempts,
-                    userPrompt,
-                  ],
-                  modelClient,
-                  files: files,
-                });
+              const { fullStream: fixSearchReplaceStream } = await simpleStreamText({
+                // Build messages: reuse chat history and original full response, then ask to fix search-replace issues.
+                chatMessages: [
+                  ...chatMessages,
+                  { role: "assistant", content: originalFullResponse },
+                  ...previousAttempts,
+                  userPrompt,
+                ],
+                modelClient,
+                files: files,
+              });
               previousAttempts.push(userPrompt);
               const result = await processStreamChunks({
                 fullStream: fixSearchReplaceStream,
@@ -1228,10 +1138,7 @@ ${formattedSearchReplaceIssues}`,
 
               const { fullStream: contStream } = await simpleStreamText({
                 // Build messages: replay history then pre-fill assistant with current partial.
-                chatMessages: [
-                  ...chatMessages,
-                  { role: "assistant", content: fullResponse },
-                ],
+                chatMessages: [...chatMessages, { role: "assistant", content: fullResponse }],
                 modelClient,
                 files: files,
               });
@@ -1284,9 +1191,7 @@ ${problemReport.problems
   .join("\n")}
 </dyad-problem-report>`;
 
-                logger.info(
-                  `Attempting to auto-fix problems, attempt #${autoFixAttempts + 1}`,
-                );
+                logger.info(`Attempting to auto-fix problems, attempt #${autoFixAttempts + 1}`);
                 autoFixAttempts++;
                 const problemFixPrompt = createProblemFixPrompt(problemReport);
 
@@ -1306,16 +1211,12 @@ ${problemReport.problems
                   writeTags,
                 });
 
-                const { formattedOutput: codebaseInfo, files } =
-                  await extractCodebase({
-                    appPath,
-                    chatContext,
-                    virtualFileSystem,
-                  });
-                const { modelClient } = await getModelClient(
-                  settings.selectedModel,
-                  settings,
-                );
+                const { formattedOutput: codebaseInfo, files } = await extractCodebase({
+                  appPath,
+                  chatContext,
+                  virtualFileSystem,
+                });
+                const { modelClient } = await getModelClient(settings.selectedModel, settings);
 
                 const { fullStream } = await simpleStreamText({
                   modelClient,
@@ -1396,10 +1297,7 @@ ${problemReport.problems
                 );
                 partialResponses.delete(req.chatId);
               } catch (error) {
-                logger.error(
-                  `Error saving partial response for chat ${chatId}:`,
-                  error,
-                );
+                logger.error(`Error saving partial response for chat ${chatId}:`, error);
               }
             }
             return req.chatId;
@@ -1411,9 +1309,7 @@ ${problemReport.problems
       // Only save the response and process it if we weren't aborted
       if (!abortController.signal.aborted && fullResponse) {
         // Scrape from: <dyad-chat-summary>Renaming profile file</dyad-chat-title>
-        const chatTitle = fullResponse.match(
-          /<dyad-chat-summary>(.*?)<\/dyad-chat-summary>/,
-        );
+        const chatTitle = fullResponse.match(/<dyad-chat-summary>(.*?)<\/dyad-chat-summary>/);
         if (chatTitle) {
           await db
             .update(chats)
@@ -1428,10 +1324,7 @@ ${problemReport.problems
           .set({ content: fullResponse })
           .where(eq(messages.id, placeholderAssistantMessage.id));
         const settings = readSettings();
-        if (
-          settings.autoApproveChanges &&
-          settings.selectedChatMode !== "ask"
-        ) {
+        if (settings.autoApproveChanges && settings.selectedChatMode !== "ask") {
           const status = await processFullResponseActions(
             fullResponse,
             req.chatId,
@@ -1542,9 +1435,7 @@ export function formatMessagesForSummary(
 ) {
   if (messages.length <= 8) {
     // If we have 8 or fewer messages, include all of them
-    return messages
-      .map((m) => `<message role="${m.role}">${m.content}</message>`)
-      .join("\n");
+    return messages.map((m) => `<message role="${m.role}">${m.content}</message>`).join("\n");
   }
 
   // Take first 2 messages and last 6 messages
@@ -1561,9 +1452,7 @@ export function formatMessagesForSummary(
     ...lastMessages,
   ];
 
-  return combinedMessages
-    .map((m) => `<message role="${m.role}">${m.content}</message>`)
-    .join("\n");
+  return combinedMessages.map((m) => `<message role="${m.role}">${m.content}</message>`).join("\n");
 }
 
 // Helper function to replace text attachment placeholders with full content
@@ -1609,20 +1498,14 @@ async function prepareMessageWithAttachments(
   let textContent = message.content;
   // Get the original text content
   if (typeof textContent !== "string") {
-    logger.warn(
-      "Message content is not a string - shouldn't happen but using message as-is",
-    );
+    logger.warn("Message content is not a string - shouldn't happen but using message as-is");
     return message;
   }
 
   // Process text file attachments - replace placeholder tags with full content
   for (const filePath of attachmentPaths) {
     const fileName = path.basename(filePath);
-    textContent = await replaceTextAttachmentWithContent(
-      textContent,
-      filePath,
-      fileName,
-    );
+    textContent = await replaceTextAttachmentWithContent(textContent, filePath, fileName);
   }
 
   // For user messages with attachments, create a content array
@@ -1643,8 +1526,7 @@ async function prepareMessageWithAttachments(
         // Using base64 strings instead of raw Buffers ensures proper JSON serialization
         // for storage in aiMessagesJson (raw Buffers serialize inefficiently and exceed size limits)
         const imageBuffer = await readFile(filePath);
-        const mimeType =
-          ext === ".jpg" ? "image/jpeg" : `image/${ext.slice(1)}`;
+        const mimeType = ext === ".jpg" ? "image/jpeg" : `image/${ext.slice(1)}`;
         const base64Data = imageBuffer.toString("base64");
 
         // Add the image to the content parts with base64 data and mediaType
@@ -1678,8 +1560,7 @@ function removeThinkingTags(text: string): string {
 }
 
 export function removeProblemReportTags(text: string): string {
-  const problemReportRegex =
-    /<dyad-problem-report[^>]*>[\s\S]*?<\/dyad-problem-report>/g;
+  const problemReportRegex = /<dyad-problem-report[^>]*>[\s\S]*?<\/dyad-problem-report>/g;
   return text.replace(problemReportRegex, "").trim();
 }
 

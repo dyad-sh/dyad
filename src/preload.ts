@@ -227,15 +227,10 @@ contextBridge.exposeInMainWorld("electron", {
       }
       throw new Error(`Invalid channel: ${channel}`);
     },
-    on: (
-      channel: ValidReceiveChannel,
-      listener: (...args: unknown[]) => void,
-    ) => {
+    on: (channel: ValidReceiveChannel, listener: (...args: unknown[]) => void) => {
       if (validReceiveChannels.includes(channel)) {
-        const subscription = (
-          _event: Electron.IpcRendererEvent,
-          ...args: unknown[]
-        ) => listener(...args);
+        const subscription = (_event: Electron.IpcRendererEvent, ...args: unknown[]) =>
+          listener(...args);
         ipcRenderer.on(channel, subscription);
         return () => {
           ipcRenderer.removeListener(channel, subscription);
@@ -248,10 +243,7 @@ contextBridge.exposeInMainWorld("electron", {
         ipcRenderer.removeAllListeners(channel);
       }
     },
-    removeListener: (
-      channel: ValidReceiveChannel,
-      listener: (...args: unknown[]) => void,
-    ) => {
+    removeListener: (channel: ValidReceiveChannel, listener: (...args: unknown[]) => void) => {
       if (validReceiveChannels.includes(channel)) {
         ipcRenderer.removeListener(channel, listener);
       }

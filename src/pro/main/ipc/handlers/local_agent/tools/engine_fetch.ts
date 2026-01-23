@@ -6,8 +6,7 @@
 import { readSettings } from "@/main/settings";
 import type { AgentContext } from "./types";
 
-export const DYAD_ENGINE_URL =
-  process.env.DYAD_ENGINE_URL ?? "https://engine.dyad.sh/v1";
+export const DYAD_ENGINE_URL = process.env.DYAD_ENGINE_URL ?? "https://engine.dyad.sh/v1";
 
 export interface EngineFetchOptions extends Omit<RequestInit, "headers"> {
   /** Additional headers to include */

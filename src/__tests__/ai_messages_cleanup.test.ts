@@ -91,14 +91,11 @@ describe("cleanupOldAiMessagesJson", () => {
     expect(createdAtArg).toBe(schemaMocks.messages.createdAt);
 
     const nowSeconds = Math.floor(Date.now() / 1000);
-    const expectedCutoffSeconds =
-      nowSeconds - AI_MESSAGES_TTL_DAYS * 24 * 60 * 60;
+    const expectedCutoffSeconds = nowSeconds - AI_MESSAGES_TTL_DAYS * 24 * 60 * 60;
     const expectedCutoffDate = new Date(expectedCutoffSeconds * 1000);
     expect(cutoffDateArg).toEqual(expectedCutoffDate);
 
-    expect(logMocks.log).toHaveBeenCalledWith(
-      "Cleaned up old ai_messages_json entries",
-    );
+    expect(logMocks.log).toHaveBeenCalledWith("Cleaned up old ai_messages_json entries");
     expect(logMocks.warn).not.toHaveBeenCalled();
   });
 
@@ -112,9 +109,7 @@ describe("cleanupOldAiMessagesJson", () => {
     await expect(cleanupOldAiMessagesJson()).resolves.toBeUndefined();
 
     expect(logMocks.warn).toHaveBeenCalledTimes(1);
-    expect(logMocks.warn.mock.calls[0][0]).toBe(
-      "Failed to cleanup old ai_messages_json:",
-    );
+    expect(logMocks.warn.mock.calls[0][0]).toBe("Failed to cleanup old ai_messages_json:");
     expect(logMocks.warn.mock.calls[0][1]).toBe(err);
   });
 });

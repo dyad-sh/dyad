@@ -34,9 +34,7 @@ for (const { testName, newAppName, buttonName, expectedVersion } of tests) {
     await po.page.getByRole("button", { name: buttonName }).click();
 
     // Expect to be on the new app's detail page
-    await expect(
-      po.page.getByRole("heading", { name: newAppName }),
-    ).toBeVisible({
+    await expect(po.page.getByRole("heading", { name: newAppName })).toBeVisible({
       // Potentially takes a while for the copy to complete
       timeout: Timeout.MEDIUM,
     });

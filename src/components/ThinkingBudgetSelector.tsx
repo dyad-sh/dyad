@@ -20,8 +20,7 @@ const options: OptionInfo[] = [
   {
     value: "low",
     label: "Low",
-    description:
-      "Minimal thinking tokens for faster responses and lower costs.",
+    description: "Minimal thinking tokens for faster responses and lower costs.",
   },
   {
     value: defaultValue,
@@ -31,8 +30,7 @@ const options: OptionInfo[] = [
   {
     value: "high",
     label: "High",
-    description:
-      "Extended thinking for complex problems requiring deep analysis.",
+    description: "Extended thinking for complex problems requiring deep analysis.",
   },
 ];
 
@@ -47,8 +45,7 @@ export const ThinkingBudgetSelector: React.FC = () => {
   const currentValue = settings?.thinkingBudget || defaultValue;
 
   // Find the current option to display its description
-  const currentOption =
-    options.find((opt) => opt.value === currentValue) || options[1];
+  const currentOption = options.find((opt) => opt.value === currentValue) || options[1];
 
   return (
     <div className="space-y-1">
@@ -72,9 +69,7 @@ export const ThinkingBudgetSelector: React.FC = () => {
           </SelectContent>
         </Select>
       </div>
-      <div className="text-sm text-gray-500 dark:text-gray-400">
-        {currentOption.description}
-      </div>
+      <div className="text-sm text-gray-500 dark:text-gray-400">{currentOption.description}</div>
     </div>
   );
 };

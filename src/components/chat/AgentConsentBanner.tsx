@@ -2,12 +2,7 @@ import React from "react";
 import { Button } from "../ui/button";
 import { X, Bot, Info, ShieldCheck, Check, Ban } from "lucide-react";
 import type { PendingAgentConsent } from "@/atoms/chatAtoms";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "../ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 
 interface AgentConsentBannerProps {
   consent: PendingAgentConsent;
@@ -27,8 +22,7 @@ export function AgentConsentBanner({
 
   // Collapsible input preview state
   const [isInputExpanded, setIsInputExpanded] = React.useState(false);
-  const [inputCollapsedMaxHeight, setInputCollapsedMaxHeight] =
-    React.useState<number>(0);
+  const [inputCollapsedMaxHeight, setInputCollapsedMaxHeight] = React.useState<number>(0);
   const [inputHasOverflow, setInputHasOverflow] = React.useState(false);
   const inputRef = React.useRef<HTMLDivElement | null>(null);
 

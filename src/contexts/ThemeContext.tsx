@@ -25,8 +25,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
     const applyTheme = () => {
       const root = window.document.documentElement;
-      const isDark =
-        theme === "dark" || (theme === "system" && mediaQuery.matches);
+      const isDark = theme === "dark" || (theme === "system" && mediaQuery.matches);
 
       root.classList.remove("light", "dark");
       root.classList.add(isDark ? "dark" : "light");
@@ -41,11 +40,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     return () => mediaQuery.removeEventListener("change", listener);
   }, [theme]);
 
-  return (
-    <ThemeContext.Provider value={{ theme, setTheme }}>
-      {children}
-    </ThemeContext.Provider>
-  );
+  return <ThemeContext.Provider value={{ theme, setTheme }}>{children}</ThemeContext.Provider>;
 }
 
 export function useTheme() {
@@ -60,9 +55,7 @@ export function useTheme() {
   useEffect(() => {
     const darkModeQuery = window.matchMedia("(prefers-color-scheme: dark)");
     const updateTheme = () => {
-      setIsDarkMode(
-        theme === "dark" || (theme === "system" && darkModeQuery.matches),
-      );
+      setIsDarkMode(theme === "dark" || (theme === "system" && darkModeQuery.matches));
     };
 
     updateTheme();

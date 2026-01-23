@@ -7,13 +7,9 @@ const logger = log.scope("vercel_utils");
 // Use test server URLs when in test mode
 const TEST_SERVER_BASE = "http://localhost:3500";
 
-const VERCEL_API_BASE = IS_TEST_BUILD
-  ? `${TEST_SERVER_BASE}/vercel/api`
-  : "https://api.vercel.com";
+const VERCEL_API_BASE = IS_TEST_BUILD ? `${TEST_SERVER_BASE}/vercel/api` : "https://api.vercel.com";
 
-export async function getVercelTeamSlug(
-  teamId: string,
-): Promise<string | null> {
+export async function getVercelTeamSlug(teamId: string): Promise<string | null> {
   try {
     const settings = readSettings();
     const accessToken = settings.vercelAccessToken?.value;
@@ -31,9 +27,7 @@ export async function getVercelTeamSlug(
     });
 
     if (!response.ok) {
-      logger.error(
-        `Failed to fetch team details: ${response.status} ${response.statusText}`,
-      );
+      logger.error(`Failed to fetch team details: ${response.status} ${response.statusText}`);
       return null;
     }
 

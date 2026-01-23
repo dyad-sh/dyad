@@ -1,21 +1,10 @@
-import {
-  PanelRightOpen,
-  History,
-  PlusCircle,
-  GitBranch,
-  Info,
-} from "lucide-react";
+import { PanelRightOpen, History, PlusCircle, GitBranch, Info } from "lucide-react";
 import { PanelRightClose } from "lucide-react";
 import { useAtom, useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useVersions } from "@/hooks/useVersions";
 import { Button } from "../ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "../ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { IpcClient } from "@/ipc/ipc_client";
 import { useRouter } from "@tanstack/react-router";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
@@ -49,15 +38,9 @@ export function ChatHeader({
   const [selectedChatId, setSelectedChatId] = useAtom(selectedChatIdAtom);
   const { invalidateChats } = useChats(appId);
   const { isStreaming } = useStreamChat();
-  const isAnyCheckoutVersionInProgress = useAtomValue(
-    isAnyCheckoutVersionInProgressAtom,
-  );
+  const isAnyCheckoutVersionInProgress = useAtomValue(isAnyCheckoutVersionInProgressAtom);
 
-  const {
-    branchInfo,
-    isLoading: branchInfoLoading,
-    refetchBranchInfo,
-  } = useCurrentBranch(appId);
+  const { branchInfo, isLoading: branchInfoLoading, refetchBranchInfo } = useCurrentBranch(appId);
 
   const { checkoutVersion, isCheckingOutVersion } = useCheckoutVersion();
   const { renameBranch, isRenamingBranch } = useRenameBranch();
@@ -123,9 +106,7 @@ export function ChatHeader({
                         <span className="flex items-center  gap-1">
                           {isAnyCheckoutVersionInProgress ? (
                             <>
-                              <span>
-                                Please wait, switching back to latest version...
-                              </span>
+                              <span>Please wait, switching back to latest version...</span>
                             </>
                           ) : (
                             <>
@@ -171,9 +152,7 @@ export function ChatHeader({
               onClick={handleCheckoutMainBranch}
               disabled={isCheckingOutVersion || branchInfoLoading}
             >
-              {isCheckingOutVersion
-                ? "Checking out..."
-                : "Switch to main branch"}
+              {isCheckingOutVersion ? "Checking out..." : "Switch to main branch"}
             </Button>
           )}
         </div>
@@ -202,9 +181,7 @@ export function ChatHeader({
             className="hidden @6xs:flex cursor-pointer items-center gap-1 text-sm px-2 py-1 rounded-md"
           >
             <History size={16} />
-            {versionsLoading
-              ? "..."
-              : `Version ${versions.length}${versionPostfix}`}
+            {versionsLoading ? "..." : `Version ${versions.length}${versionPostfix}`}
           </Button>
         </div>
 
@@ -213,11 +190,7 @@ export function ChatHeader({
           onClick={onTogglePreview}
           className="cursor-pointer p-2 hover:bg-(--background-lightest) rounded-md"
         >
-          {isPreviewOpen ? (
-            <PanelRightClose size={20} />
-          ) : (
-            <PanelRightOpen size={20} />
-          )}
+          {isPreviewOpen ? <PanelRightClose size={20} /> : <PanelRightOpen size={20} />}
         </button>
       </div>
     </div>

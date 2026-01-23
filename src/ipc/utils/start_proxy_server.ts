@@ -26,15 +26,12 @@ export async function startProxy(
     onStarted,
   } = opts;
 
-  const worker = new Worker(
-    path.resolve(__dirname, "..", "..", "worker", "proxy_server.js"),
-    {
-      workerData: {
-        targetOrigin,
-        port,
-      },
+  const worker = new Worker(path.resolve(__dirname, "..", "..", "worker", "proxy_server.js"), {
+    workerData: {
+      targetOrigin,
+      port,
     },
-  );
+  });
 
   worker.on("message", (m) => {
     logger.info("[proxy]", m);

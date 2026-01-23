@@ -48,8 +48,7 @@ describe("problem_prompt", () => {
             file: "src/components/Button.tsx",
             line: 8,
             column: 12,
-            message:
-              "Type 'string | undefined' is not assignable to type 'string'.",
+            message: "Type 'string | undefined' is not assignable to type 'string'.",
             code: 2322,
             snippet,
           },
@@ -57,8 +56,7 @@ describe("problem_prompt", () => {
             file: "src/hooks/useApi.ts",
             line: 42,
             column: 5,
-            message:
-              "Argument of type 'unknown' is not assignable to parameter of type 'string'.",
+            message: "Argument of type 'unknown' is not assignable to parameter of type 'string'.",
             code: 2345,
             snippet,
           },
@@ -166,8 +164,7 @@ describe("problem_prompt", () => {
             file: "src/components/Modal.tsx",
             line: 35,
             column: 20,
-            message:
-              "Property 'isOpen' does not exist on type 'IntrinsicAttributes & ModalProps'.",
+            message: "Property 'isOpen' does not exist on type 'IntrinsicAttributes & ModalProps'.",
             code: 2339,
             snippet,
           },

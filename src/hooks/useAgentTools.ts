@@ -24,10 +24,7 @@ export function useAgentTools() {
   });
 
   const setConsentMutation = useMutation({
-    mutationFn: async (params: {
-      toolName: AgentToolName;
-      consent: AgentToolConsent;
-    }) => {
+    mutationFn: async (params: { toolName: AgentToolName; consent: AgentToolConsent }) => {
       const ipcClient = IpcClient.getInstance();
       return ipcClient.setAgentToolConsent(params);
     },

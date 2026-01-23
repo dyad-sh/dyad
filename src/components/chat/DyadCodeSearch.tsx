@@ -8,13 +8,9 @@ interface DyadCodeSearchProps {
   node?: { properties?: { query?: string; state?: CustomTagState } };
 }
 
-export const DyadCodeSearch: React.FC<DyadCodeSearchProps> = ({
-  children,
-  node,
-}) => {
+export const DyadCodeSearch: React.FC<DyadCodeSearchProps> = ({ children, node }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const query =
-    node?.properties?.query || (typeof children === "string" ? children : "");
+  const query = node?.properties?.query || (typeof children === "string" ? children : "");
   const state = node?.properties?.state as CustomTagState;
   const inProgress = state === "pending";
 
@@ -73,20 +69,14 @@ export const DyadCodeSearch: React.FC<DyadCodeSearchProps> = ({
         <div className="text-sm text-gray-600 dark:text-gray-300 space-y-2">
           {query && (
             <div>
-              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                Query:
-              </span>
+              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Query:</span>
               <div className="italic mt-0.5">{query}</div>
             </div>
           )}
           {children && (
             <div>
-              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                Results:
-              </span>
-              <div className="mt-0.5 whitespace-pre-wrap font-mono text-xs">
-                {children}
-              </div>
+              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Results:</span>
+              <div className="mt-0.5 whitespace-pre-wrap font-mono text-xs">{children}</div>
             </div>
           )}
         </div>

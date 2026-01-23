@@ -35,8 +35,7 @@ self.addEventListener("fetch", (event) => {
   if (urlObj.protocol !== "http:" && urlObj.protocol !== "https:") return;
 
   // Chrome SW footgun: only-if-cached must be same-origin or it throws.
-  if (request.cache === "only-if-cached" && request.mode !== "same-origin")
-    return;
+  if (request.cache === "only-if-cached" && request.mode !== "same-origin") return;
 
   // Skip noisy Vite and Next.js development module requests
   const pathname = urlObj.pathname;

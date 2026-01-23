@@ -1,9 +1,4 @@
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useNavigate } from "@tanstack/react-router";
 import { providerSettingsRoute } from "@/routes/settings/providers/$provider";
 import type { LanguageModelProvider } from "@/ipc/ipc_types";
@@ -27,19 +22,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 import { CreateCustomProviderDialog } from "./CreateCustomProviderDialog";
 
 export function ProviderSettingsGrid() {
   const navigate = useNavigate();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingProvider, setEditingProvider] =
-    useState<LanguageModelProvider | null>(null);
+  const [editingProvider, setEditingProvider] = useState<LanguageModelProvider | null>(null);
   const [providerToDelete, setProviderToDelete] = useState<string | null>(null);
 
   const {
@@ -97,9 +87,7 @@ export function ProviderSettingsGrid() {
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>Error</AlertTitle>
-          <AlertDescription>
-            Failed to load AI providers: {error.message}
-          </AlertDescription>
+          <AlertDescription>Failed to load AI providers: {error.message}</AlertDescription>
         </Alert>
       </div>
     );
@@ -190,9 +178,7 @@ export function ProviderSettingsGrid() {
         >
           <CardHeader className="p-4 flex flex-col items-center justify-center h-full">
             <PlusIcon className="h-8 w-8 text-muted-foreground mb-2" />
-            <CardTitle className="text-lg font-medium text-center">
-              Add custom provider
-            </CardTitle>
+            <CardTitle className="text-lg font-medium text-center">Add custom provider</CardTitle>
             <CardDescription className="text-center">
               Connect to a custom LLM API endpoint
             </CardDescription>
@@ -222,16 +208,13 @@ export function ProviderSettingsGrid() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Custom Provider</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete this custom provider and all its
-              associated models. This action cannot be undone.
+              This will permanently delete this custom provider and all its associated models. This
+              action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteProvider}
-              disabled={isDeleting}
-            >
+            <AlertDialogAction onClick={handleDeleteProvider} disabled={isDeleting}>
               {isDeleting ? "Deleting..." : "Delete Provider"}
             </AlertDialogAction>
           </AlertDialogFooter>

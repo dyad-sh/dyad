@@ -17,10 +17,7 @@ interface DyadAddIntegrationProps {
   children: React.ReactNode;
 }
 
-export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
-  node,
-  children,
-}) => {
+export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({ node, children }) => {
   const navigate = useNavigate();
   const { streamMessage, isStreaming } = useStreamChat();
 
@@ -68,11 +65,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
               fill="currentColor"
               className="opacity-20"
             />
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M9 12l2 2 4-4"
-            />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4" />
           </svg>
           <span className="font-semibold text-green-800 dark:text-green-300">
             Supabase integration complete
@@ -101,9 +94,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   return (
     <div className="flex flex-col gap-2 my-2 p-3 border rounded-md bg-secondary/10 dark:bg-secondary/20">
       <div className="text-sm">
-        <div className="font-medium text-foreground">
-          Integrate with {provider}?
-        </div>
+        <div className="font-medium text-foreground">Integrate with {provider}?</div>
         <div className="text-muted-foreground text-xs">{children}</div>
       </div>
       <Button onClick={handleSetupClick} className="self-start w-full">

@@ -21,9 +21,7 @@ export interface InjectedMessage {
 /**
  * Transform a UserMessageContentPart to the format expected by the AI SDK.
  */
-export function transformContentPart(
-  part: UserMessageContentPart,
-): TextPart | ImagePart {
+export function transformContentPart(part: UserMessageContentPart): TextPart | ImagePart {
   if (part.type === "text") {
     return { type: "text", text: part.text };
   }
@@ -114,11 +112,7 @@ export function prepareStepMessages<
   const { messages, ...rest } = options;
 
   // Move any new pending messages to the permanent injected list
-  processPendingMessages(
-    pendingUserMessages,
-    allInjectedMessages,
-    messages.length,
-  );
+  processPendingMessages(pendingUserMessages, allInjectedMessages, messages.length);
 
   // If no messages to inject, don't modify
   if (allInjectedMessages.length === 0) {
@@ -127,10 +121,7 @@ export function prepareStepMessages<
 
   // Build the new messages array with injections
   // Cast is safe because InjectedMessage["message"] is a valid ModelMessage
-  const newMessages = injectMessagesAtPositions(
-    messages,
-    allInjectedMessages,
-  ) as TMessage[];
+  const newMessages = injectMessagesAtPositions(messages, allInjectedMessages) as TMessage[];
 
   return { messages: newMessages, ...rest };
 }

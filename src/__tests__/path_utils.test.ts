@@ -10,9 +10,7 @@ describe("safeJoin", () => {
   describe("safe paths", () => {
     it("should join simple relative paths", () => {
       const result = safeJoin(testBaseDir, "src", "components", "Button.tsx");
-      expect(result).toBe(
-        path.join(testBaseDir, "src", "components", "Button.tsx"),
-      );
+      expect(result).toBe(path.join(testBaseDir, "src", "components", "Button.tsx"));
     });
 
     it("should handle single file names", () => {
@@ -37,9 +35,7 @@ describe("safeJoin", () => {
 
     it("should handle multiple path segments", () => {
       const result = safeJoin(testBaseDir, "a", "b", "c", "d", "file.txt");
-      expect(result).toBe(
-        path.join(testBaseDir, "a", "b", "c", "d", "file.txt"),
-      );
+      expect(result).toBe(path.join(testBaseDir, "a", "b", "c", "d", "file.txt"));
     });
 
     it("should work with actual temp directory", () => {
@@ -61,10 +57,7 @@ describe("safeJoin", () => {
     });
 
     it("should handle Windows-style nested directories", () => {
-      const result = safeJoin(
-        testBaseDir,
-        "pages\\home\\components\\index.tsx",
-      );
+      const result = safeJoin(testBaseDir, "pages\\home\\components\\index.tsx");
       // safeJoin normalizes backslashes to forward slashes
       expect(result).toBe("/app/workspace/pages/home/components/index.tsx");
     });
@@ -97,34 +90,24 @@ describe("safeJoin", () => {
 
     it("should throw on mixed traversal with valid components", () => {
       expect(() =>
-        safeJoin(
-          testBaseDir,
-          "src",
-          "components",
-          "..",
-          "..",
-          "..",
-          "outside.txt",
-        ),
+        safeJoin(testBaseDir, "src", "components", "..", "..", "..", "outside.txt"),
       ).toThrow(/would escape the base directory/);
     });
 
     it("should throw on absolute Unix paths", () => {
-      expect(() => safeJoin(testBaseDir, "/etc/passwd")).toThrow(
+      expect(() => safeJoin(testBaseDir, "/etc/passwd")).toThrow(/would escape the base directory/);
+    });
+
+    it("should throw on absolute Windows paths", () => {
+      expect(() => safeJoin(testBaseDir, "C:\\Windows\\System32\\config")).toThrow(
         /would escape the base directory/,
       );
     });
 
-    it("should throw on absolute Windows paths", () => {
-      expect(() =>
-        safeJoin(testBaseDir, "C:\\Windows\\System32\\config"),
-      ).toThrow(/would escape the base directory/);
-    });
-
     it("should throw on Windows UNC paths", () => {
-      expect(() =>
-        safeJoin(testBaseDir, "\\\\server\\share\\file.txt"),
-      ).toThrow(/would escape the base directory/);
+      expect(() => safeJoin(testBaseDir, "\\\\server\\share\\file.txt")).toThrow(
+        /would escape the base directory/,
+      );
     });
 
     it("should throw on home directory shortcuts", () => {
@@ -153,9 +136,7 @@ describe("safeJoin", () => {
 
     it("should handle nested current directory references", () => {
       const result = safeJoin(testBaseDir, "src/./components/./Button.tsx");
-      expect(result).toBe(
-        path.join(testBaseDir, "src/./components/./Button.tsx"),
-      );
+      expect(result).toBe(path.join(testBaseDir, "src/./components/./Button.tsx"));
     });
 
     it("should throw when current dir plus traversal escapes", () => {
@@ -217,9 +198,7 @@ describe("safeJoin", () => {
     });
 
     it("should throw when trying to escape root", () => {
-      expect(() => safeJoin("/tmp", "../etc/passwd")).toThrow(
-        /would escape the base directory/,
-      );
+      expect(() => safeJoin("/tmp", "../etc/passwd")).toThrow(/would escape the base directory/);
     });
   });
 });

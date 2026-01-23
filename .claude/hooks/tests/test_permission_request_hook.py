@@ -5,7 +5,7 @@ Tests for the AI-powered PermissionRequest hook.
 This is a PermissionRequest hook (not PreToolUse) that runs when the user
 would see a permission dialog. It can auto-approve or auto-deny.
 
-Response format: { "behavior": "allow" | "deny", "reason": "..." }
+Response format: { "hookSpecificOutput": { "hookEventName": "PermissionRequest", "decision": { "behavior": "allow" | "deny" } } }
 """
 import json
 import subprocess
@@ -66,13 +66,13 @@ class TestHookBasics:
         """All tools should be analyzed (matcher is *)."""
         # Without claude CLI available, all tools pass through
         # but the hook should attempt to analyze them
-        returncode, stdout = run_hook("Read", {"file_path": "/etc/passwd"})
+        returncode, _stdout = run_hook("Read", {"file_path": "/etc/passwd"})
         assert returncode == 0
         # Passes through because claude CLI analysis returns None
 
     def test_bash_commands_analyzed(self):
         """Bash commands should be analyzed including gh and python."""
-        returncode, stdout = run_hook("Bash", {"command": "gh pr view 123"})
+        returncode, _stdout = run_hook("Bash", {"command": "gh pr view 123"})
         assert returncode == 0
         # All commands go through AI analysis now
 
@@ -139,10 +139,10 @@ class TestPolicyGuidelines:
         policy_content = self.POLICY_PATH.read_text()
         assert "git push --force" in policy_content
 
-    def test_policy_covers_shell_injection(self):
-        """Policy should mention shell injection patterns."""
+    def test_policy_covers_shell_patterns(self):
+        """Policy should mention shell patterns requiring inspection."""
         policy_content = self.POLICY_PATH.read_text()
-        assert "Shell injection" in policy_content
+        assert "Shell patterns requiring inspection" in policy_content
         assert "Command chaining" in policy_content
 
     def test_policy_covers_curl_pipe_sh(self):

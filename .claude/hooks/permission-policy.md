@@ -27,9 +27,10 @@ tool requests and determine their safety level. Be conservative - when in doubt,
 
 1. **Read-only file operations**:
    - ls, tree, find, du, df (listing/stats)
-   - cat, head, tail, less, more (reading files)
+   - cat, head, tail (reading files)
    - file, stat, wc (file info)
    - diff (comparing files)
+   - Note: `less` and `more` are NOT auto-approved because they support shell escapes
 
 2. **Safe text processing**:
    - grep, rg, ag (search)

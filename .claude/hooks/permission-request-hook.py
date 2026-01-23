@@ -19,7 +19,6 @@ Usage:
 """
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -104,22 +103,42 @@ Analyze this request and provide your safety assessment. Respond with ONLY a JSO
                 return parsed
         except json.JSONDecodeError:
             # Extract JSON from markdown code fences if present
-            json_match = re.search(
-                r'\{[^{}]*"score"\s*:\s*"(?:GREEN|YELLOW|RED)"[^{}]*\}',
-                response_text,
-                re.DOTALL
-            )
-            if json_match:
-                try:
-                    parsed = json.loads(json_match.group())
-                    if "score" in parsed and parsed["score"] in ("GREEN", "YELLOW", "RED"):
-                        return parsed
-                except json.JSONDecodeError:
-                    pass
+            # Use a more robust approach that handles braces in string values
+            # by finding all potential JSON objects and trying to parse each
+            start_indices = [i for i, c in enumerate(response_text) if c == '{']
+            for start in start_indices:
+                # Find matching closing brace by counting brace depth
+                depth = 0
+                in_string = False
+                escape_next = False
+                for i, c in enumerate(response_text[start:], start):
+                    if escape_next:
+                        escape_next = False
+                        continue
+                    if c == '\\' and in_string:
+                        escape_next = True
+                        continue
+                    if c == '"' and not escape_next:
+                        in_string = not in_string
+                        continue
+                    if not in_string:
+                        if c == '{':
+                            depth += 1
+                        elif c == '}':
+                            depth -= 1
+                            if depth == 0:
+                                candidate = response_text[start:i + 1]
+                                try:
+                                    parsed = json.loads(candidate)
+                                    if "score" in parsed and parsed["score"] in ("GREEN", "YELLOW", "RED"):
+                                        return parsed
+                                except json.JSONDecodeError:
+                                    pass
+                                break
 
         return None
 
-    except (subprocess.TimeoutExpired, Exception):
+    except subprocess.SubprocessError:
         return None
 
 

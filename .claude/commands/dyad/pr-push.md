@@ -71,9 +71,39 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
 
    Note: `--force-with-lease` is used because the commit may have been amended. It's safer than `--force` as it will fail if someone else has pushed to the branch.
 
-6. **Summarize the results:**
+6. **Create or update the PR (REQUIRED):**
+
+   **CRITICAL:** Do NOT tell the user to visit a URL to create a PR. You MUST create it automatically.
+
+   First, check if a PR already exists for this branch:
+
+   ```
+   gh pr view --json number,url 2>/dev/null
+   ```
+
+   If a PR already exists, skip PR creation (the push already updated it).
+
+   If NO PR exists, create one using `gh pr create`:
+
+   ```
+   gh pr create --title "<descriptive title>" --body "$(cat <<'EOF'
+   ## Summary
+   <1-3 bullet points summarizing the changes>
+
+   ## Test plan
+   <How to test these changes>
+
+   🤖 Generated with [Claude Code](https://claude.com/claude-code)
+   EOF
+   )"
+   ```
+
+   Use the commit messages and changed files to write a good title and summary.
+
+7. **Summarize the results:**
    - Report if a new feature branch was created (and its name)
    - Report any uncommitted changes that were committed in step 2
    - Report any files that were IGNORED and not committed (if any), explaining why they were skipped
    - Report any lint fixes that were applied
    - Confirm the branch has been pushed
+   - **Include the PR URL** (either newly created or existing)

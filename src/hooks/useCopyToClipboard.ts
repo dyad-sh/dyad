@@ -155,11 +155,7 @@ export const useCopyToClipboard = () => {
         const outputType = attributes.type || "info";
         const message = attributes.message || "";
         const emoji =
-          outputType === "error"
-            ? "❌"
-            : outputType === "warning"
-              ? "⚠️"
-              : "ℹ️";
+          outputType === "error" ? "❌" : outputType === "warning" ? "⚠️" : "ℹ️";
 
         let outputResult = `${emoji} **${outputType.toUpperCase()}**`;
         if (message) {

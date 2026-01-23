@@ -7,7 +7,7 @@ Run pre-commit checks including formatting, linting, and type-checking, and fix 
 1. **Run formatting check and fix:**
 
    ```
-   npm run prettier
+   npm run fmt
    ```
 
    This will automatically fix any formatting issues.
@@ -47,7 +47,7 @@ Run pre-commit checks including formatting, linting, and type-checking, and fix 
    After making manual fixes, re-run the checks to ensure everything passes:
 
    ```
-   npm run prettier && npm run lint && npm run ts
+   npm run fmt && npm run lint && npm run ts
    ```
 
 7. **Summarize the results:**

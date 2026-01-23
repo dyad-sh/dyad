@@ -219,9 +219,7 @@ export const mcpServers = sqliteTable("mcp_servers", {
     string
   > | null>(),
   url: text("url"),
-  enabled: integer("enabled", { mode: "boolean" })
-    .notNull()
-    .default(sql`0`),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(sql`0`),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),

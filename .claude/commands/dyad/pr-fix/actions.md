@@ -31,7 +31,7 @@ Fix failing CI checks and GitHub Actions on a Pull Request.
 3. **For failing lint/formatting checks:**
 
    - Run `npm run lint:fix` to auto-fix lint issues
-   - Run `npm run prettier` to fix formatting
+   - Run `npm run fmt` to fix formatting
    - Review the changes made
 
 4. **For failing type checks:**

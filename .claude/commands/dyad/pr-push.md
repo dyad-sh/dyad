@@ -23,7 +23,7 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
    Run these commands to ensure the code passes all pre-commit checks:
 
    ```
-   npm run prettier && npm run lint:fix && npm run ts
+   npm run fmt && npm run lint:fix && npm run ts
    ```
 
    If there are errors that could not be auto-fixed, read the affected files and fix them manually, then re-run the checks until they pass.

@@ -4,7 +4,7 @@ import { queryKeys } from "@/lib/queryKeys";
 
 export function useSecurityReview(appId: number | null) {
   return useQuery({
-    queryKey: queryKeys.securityReview.byApp(appId),
+    queryKey: queryKeys.securityReview.byApp({ appId }),
     queryFn: async () => {
       if (!appId) {
         throw new Error("App ID is required");

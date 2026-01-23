@@ -4,7 +4,7 @@ import { queryKeys } from "@/lib/queryKeys";
 
 export const useCheckName = (appName: string) => {
   return useQuery({
-    queryKey: queryKeys.appName.check(appName),
+    queryKey: queryKeys.appName.check({ name: appName }),
     queryFn: async () => {
       const result = await IpcClient.getInstance().checkAppName({ appName });
       return result;

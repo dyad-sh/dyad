@@ -164,7 +164,7 @@ export function useStreamChat({
             }
             // Use queryClient directly with the chatId parameter to avoid stale closure issues
             queryClient.invalidateQueries({
-              queryKey: queryKeys.proposals.detail(chatId),
+              queryKey: queryKeys.proposals.detail({ chatId }),
             });
 
             refetchUserBudget();

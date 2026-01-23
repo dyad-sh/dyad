@@ -197,7 +197,7 @@ export const FileEditor = ({
         currentValueRef.current,
       );
       await queryClient.invalidateQueries({
-        queryKey: queryKeys.versions.list(appId),
+        queryKey: queryKeys.versions.list({ appId }),
       });
       if (settings?.enableAutoFixProblems) {
         checkProblems();

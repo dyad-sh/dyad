@@ -10,7 +10,7 @@ export function useProposal(chatId?: number | undefined) {
     error,
     refetch: refreshProposal,
   } = useQuery<ProposalResult | null, Error>({
-    queryKey: queryKeys.proposals.detail(chatId),
+    queryKey: queryKeys.proposals.detail({ chatId }),
     queryFn: async (): Promise<ProposalResult | null> => {
       if (chatId === undefined) {
         return null;

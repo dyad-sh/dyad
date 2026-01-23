@@ -110,7 +110,7 @@ export function AuxiliaryActionsMenu({
       });
       // Invalidate app theme query to refresh
       queryClient.invalidateQueries({
-        queryKey: queryKeys.appTheme.byApp(appId),
+        queryKey: queryKeys.appTheme.byApp({ appId }),
       });
     } else {
       // Update default theme in settings (for new apps)

@@ -79,7 +79,7 @@ import { queryKeys } from "@/lib/queryKeys";
 
 // In useQuery:
 useQuery({
-  queryKey: queryKeys.apps.detail(appId),
+  queryKey: queryKeys.apps.detail({ appId }),
   queryFn: () => IpcClient.getInstance().getApp(appId),
 });
 
@@ -87,7 +87,7 @@ useQuery({
 queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
 ```
 
-**Adding new keys:** Add entries to the appropriate domain in `queryKeys.ts`. Follow the existing pattern with `all` for the base key and specific functions for parameterized keys.
+**Adding new keys:** Add entries to the appropriate domain in `queryKeys.ts`. Follow the existing pattern with `all` for the base key and factory functions using object parameters for parameterized keys.
 
 ## React + IPC integration pattern
 

@@ -15,7 +15,7 @@ export function useLoadApp(appId: number | null) {
     error,
     refetch: refreshApp,
   } = useQuery<App | null, Error>({
-    queryKey: queryKeys.apps.detail(appId),
+    queryKey: queryKeys.apps.detail({ appId }),
     queryFn: async () => {
       if (appId === null) {
         return null;
@@ -46,6 +46,6 @@ export const invalidateAppQuery = (
   { appId }: { appId: number | null },
 ) => {
   return queryClient.invalidateQueries({
-    queryKey: queryKeys.apps.detail(appId),
+    queryKey: queryKeys.apps.detail({ appId }),
   });
 };

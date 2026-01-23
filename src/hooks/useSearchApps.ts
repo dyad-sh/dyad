@@ -7,7 +7,7 @@ export function useSearchApps(query: string) {
   const enabled = Boolean(query && query.trim().length > 0);
 
   const { data, isFetching, isLoading } = useQuery({
-    queryKey: queryKeys.apps.search(query),
+    queryKey: queryKeys.apps.search({ query }),
     enabled,
     queryFn: async (): Promise<AppSearchResult[]> => {
       return IpcClient.getInstance().searchApps(query);

@@ -31,10 +31,10 @@ export function useCheckoutVersion() {
       onSuccess: (_, variables) => {
         // Invalidate queries that depend on the current version/branch
         queryClient.invalidateQueries({
-          queryKey: queryKeys.branches.current(variables.appId),
+          queryKey: queryKeys.branches.current({ appId: variables.appId }),
         });
         queryClient.invalidateQueries({
-          queryKey: queryKeys.versions.list(variables.appId),
+          queryKey: queryKeys.versions.list({ appId: variables.appId }),
         });
       },
       meta: { showErrorToast: true },

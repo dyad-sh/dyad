@@ -16,7 +16,9 @@ export function useLanguageModelsForProvider(providerId: string | undefined) {
     LanguageModel[],
     Error // Specify Error type for better error handling
   >({
-    queryKey: queryKeys.languageModels.forProvider(providerId ?? ""),
+    queryKey: queryKeys.languageModels.forProvider({
+      providerId: providerId ?? "",
+    }),
     queryFn: async () => {
       if (!providerId) {
         // Avoid calling IPC if providerId is not set

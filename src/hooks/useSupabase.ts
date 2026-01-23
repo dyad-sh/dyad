@@ -96,10 +96,10 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
 
   // Query: Load branches for a Supabase project
   const branchesQuery = useQuery<SupabaseBranch[], Error>({
-    queryKey: queryKeys.supabase.branches(
-      branchesProjectId ?? "",
-      branchesOrganizationSlug ?? null,
-    ),
+    queryKey: queryKeys.supabase.branches({
+      projectId: branchesProjectId ?? "",
+      organizationSlug: branchesOrganizationSlug ?? null,
+    }),
     queryFn: async () => {
       const ipcClient = IpcClient.getInstance();
       const list = await ipcClient.listSupabaseBranches({

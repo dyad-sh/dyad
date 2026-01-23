@@ -34,7 +34,7 @@ export function useCountTokens(chatId: number | null, input: string = "") {
     error,
     refetch,
   } = useQuery<TokenCountResult | null>({
-    queryKey: queryKeys.tokenCount.forChat(chatId, debouncedInput),
+    queryKey: queryKeys.tokenCount.forChat({ chatId, input: debouncedInput }),
     queryFn: async () => {
       if (chatId === null) return null;
       return IpcClient.getInstance().countTokens({

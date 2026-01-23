@@ -7,7 +7,7 @@ export function useChats(appId: number | null) {
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery<ChatSummary[]>({
-    queryKey: queryKeys.chats.list(appId),
+    queryKey: queryKeys.chats.list({ appId }),
     queryFn: async () => {
       return IpcClient.getInstance().getChats(appId ?? undefined);
     },

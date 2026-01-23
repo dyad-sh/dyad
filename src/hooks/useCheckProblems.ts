@@ -12,7 +12,7 @@ export function useCheckProblems(appId: number | null) {
     error,
     refetch: checkProblems,
   } = useQuery<ProblemReport, Error>({
-    queryKey: queryKeys.problems.byApp(appId),
+    queryKey: queryKeys.problems.byApp({ appId }),
     queryFn: async (): Promise<ProblemReport> => {
       if (!appId) {
         throw new Error("App ID is required");

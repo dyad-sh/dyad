@@ -6,7 +6,7 @@ export function useAppTheme(appId: number | undefined) {
   const queryClient = useQueryClient();
 
   const query = useQuery({
-    queryKey: queryKeys.appTheme.byApp(appId),
+    queryKey: queryKeys.appTheme.byApp({ appId }),
     queryFn: async (): Promise<string | null> => {
       return IpcClient.getInstance().getAppTheme({ appId: appId! });
     },
@@ -15,7 +15,7 @@ export function useAppTheme(appId: number | undefined) {
 
   const invalidate = () => {
     queryClient.invalidateQueries({
-      queryKey: queryKeys.appTheme.byApp(appId),
+      queryKey: queryKeys.appTheme.byApp({ appId }),
     });
   };
 

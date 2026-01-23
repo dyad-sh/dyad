@@ -21,7 +21,7 @@ export function useVersions(appId: number | null) {
     error,
     refetch: refreshVersions,
   } = useQuery<Version[], Error>({
-    queryKey: queryKeys.versions.list(appId),
+    queryKey: queryKeys.versions.list({ appId }),
     queryFn: async (): Promise<Version[]> => {
       if (appId === null) {
         return [];
@@ -73,10 +73,10 @@ export function useVersions(appId: number | null) {
         toast.warning(result.warningMessage);
       }
       await queryClient.invalidateQueries({
-        queryKey: queryKeys.versions.list(appId),
+        queryKey: queryKeys.versions.list({ appId }),
       });
       await queryClient.invalidateQueries({
-        queryKey: queryKeys.branches.current(appId),
+        queryKey: queryKeys.branches.current({ appId }),
       });
       if (selectedChatId) {
         const chat = await IpcClient.getInstance().getChat(selectedChatId);
@@ -87,7 +87,7 @@ export function useVersions(appId: number | null) {
         });
       }
       await queryClient.invalidateQueries({
-        queryKey: queryKeys.problems.byApp(appId),
+        queryKey: queryKeys.problems.byApp({ appId }),
       });
     },
     meta: { showErrorToast: true },

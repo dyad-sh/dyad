@@ -8,7 +8,7 @@
  * - Single source of truth for all query keys
  *
  * Usage:
- *   queryKey: queryKeys.apps.detail(appId)
+ *   queryKey: queryKeys.apps.detail({ appId })
  *   queryClient.invalidateQueries({ queryKey: queryKeys.apps.all })
  *
  * @see https://tkdodo.eu/blog/effective-react-query-keys
@@ -20,8 +20,10 @@ export const queryKeys = {
   // ─────────────────────────────────────────────────────────────────────────────
   apps: {
     all: ["apps"] as const,
-    detail: (appId: number | null) => ["apps", "detail", appId] as const,
-    search: (query: string) => ["apps", "search", query] as const,
+    detail: ({ appId }: { appId: number | null }) =>
+      ["apps", "detail", appId] as const,
+    search: ({ query }: { query: string }) =>
+      ["apps", "search", query] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -29,8 +31,8 @@ export const queryKeys = {
   // ─────────────────────────────────────────────────────────────────────────────
   chats: {
     all: ["chats"] as const,
-    list: (appId: number | null) => ["chats", appId] as const,
-    search: (appId: number | null, query: string) =>
+    list: ({ appId }: { appId: number | null }) => ["chats", appId] as const,
+    search: ({ appId, query }: { appId: number | null; query: string }) =>
       ["chats", "search", appId, query] as const,
   },
 
@@ -39,7 +41,8 @@ export const queryKeys = {
   // ─────────────────────────────────────────────────────────────────────────────
   proposals: {
     all: ["proposal"] as const,
-    detail: (chatId: number | undefined) => ["proposal", chatId] as const,
+    detail: ({ chatId }: { chatId: number | undefined }) =>
+      ["proposal", chatId] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -47,12 +50,13 @@ export const queryKeys = {
   // ─────────────────────────────────────────────────────────────────────────────
   versions: {
     all: ["versions"] as const,
-    list: (appId: number | null) => ["versions", appId] as const,
+    list: ({ appId }: { appId: number | null }) => ["versions", appId] as const,
   },
 
   branches: {
     all: ["currentBranch"] as const,
-    current: (appId: number | null) => ["currentBranch", appId] as const,
+    current: ({ appId }: { appId: number | null }) =>
+      ["currentBranch", appId] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -60,7 +64,8 @@ export const queryKeys = {
   // ─────────────────────────────────────────────────────────────────────────────
   problems: {
     all: ["problems"] as const,
-    byApp: (appId: number | null) => ["problems", appId] as const,
+    byApp: ({ appId }: { appId: number | null }) =>
+      ["problems", appId] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -68,7 +73,8 @@ export const queryKeys = {
   // ─────────────────────────────────────────────────────────────────────────────
   contextPaths: {
     all: ["context-paths"] as const,
-    byApp: (appId: number | null) => ["context-paths", appId] as const,
+    byApp: ({ appId }: { appId: number | null }) =>
+      ["context-paths", appId] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -76,7 +82,7 @@ export const queryKeys = {
   // ─────────────────────────────────────────────────────────────────────────────
   tokenCount: {
     all: ["tokenCount"] as const,
-    forChat: (chatId: number | null, input: string) =>
+    forChat: ({ chatId, input }: { chatId: number | null; input: string }) =>
       ["tokenCount", chatId, input] as const,
   },
 
@@ -84,7 +90,7 @@ export const queryKeys = {
   // Files
   // ─────────────────────────────────────────────────────────────────────────────
   files: {
-    search: (appId: number | null, query: string) =>
+    search: ({ appId, query }: { appId: number | null; query: string }) =>
       ["search-app-files", appId, query] as const,
   },
 
@@ -92,14 +98,15 @@ export const queryKeys = {
   // App Name Check
   // ─────────────────────────────────────────────────────────────────────────────
   appName: {
-    check: (name: string) => ["checkAppName", name] as const,
+    check: ({ name }: { name: string }) => ["checkAppName", name] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Security Review
   // ─────────────────────────────────────────────────────────────────────────────
   securityReview: {
-    byApp: (appId: number | null) => ["security-review", appId] as const,
+    byApp: ({ appId }: { appId: number | null }) =>
+      ["security-review", appId] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -107,7 +114,8 @@ export const queryKeys = {
   // ─────────────────────────────────────────────────────────────────────────────
   appTheme: {
     all: ["app-theme"] as const,
-    byApp: (appId: number | undefined) => ["app-theme", appId] as const,
+    byApp: ({ appId }: { appId: number | undefined }) =>
+      ["app-theme", appId] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -144,7 +152,7 @@ export const queryKeys = {
   languageModels: {
     providers: ["languageModelProviders"] as const,
     byProviders: ["language-models-by-providers"] as const,
-    forProvider: (providerId: string) =>
+    forProvider: ({ providerId }: { providerId: string }) =>
       ["language-models", providerId] as const,
   },
 
@@ -160,15 +168,18 @@ export const queryKeys = {
   // ─────────────────────────────────────────────────────────────────────────────
   vercel: {
     all: ["vercel-deployments"] as const,
-    deployments: (appId: number) => ["vercel-deployments", appId] as const,
+    deployments: ({ appId }: { appId: number }) =>
+      ["vercel-deployments", appId] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
   // App Upgrades
   // ─────────────────────────────────────────────────────────────────────────────
   appUpgrades: {
-    byApp: (appId: number | null) => ["app-upgrades", appId] as const,
-    isCapacitor: (appId: number | null) => ["is-capacitor", appId] as const,
+    byApp: ({ appId }: { appId: number | null }) =>
+      ["app-upgrades", appId] as const,
+    isCapacitor: ({ appId }: { appId: number | null }) =>
+      ["is-capacitor", appId] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -179,7 +190,7 @@ export const queryKeys = {
     servers: ["mcp", "servers"] as const,
     toolsByServer: {
       all: ["mcp", "tools-by-server"] as const,
-      list: (serverIds: number[]) =>
+      list: ({ serverIds }: { serverIds: number[] }) =>
         ["mcp", "tools-by-server", serverIds] as const,
     },
     consents: ["mcp", "consents"] as const,
@@ -192,8 +203,13 @@ export const queryKeys = {
     all: ["supabase"] as const,
     organizations: ["supabase", "organizations"] as const,
     projects: ["supabase", "projects"] as const,
-    branches: (projectId: string, organizationSlug: string | null) =>
-      ["supabase", "branches", projectId, organizationSlug] as const,
+    branches: ({
+      projectId,
+      organizationSlug,
+    }: {
+      projectId: string;
+      organizationSlug: string | null;
+    }) => ["supabase", "branches", projectId, organizationSlug] as const,
   },
 } as const;
 

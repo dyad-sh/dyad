@@ -30,7 +30,9 @@ export function useDeleteCustomModel({
     onSuccess: (data, params: DeleteCustomModelParams) => {
       // Invalidate queries related to language models for the specific provider
       queryClient.invalidateQueries({
-        queryKey: queryKeys.languageModels.forProvider(params.providerId),
+        queryKey: queryKeys.languageModels.forProvider({
+          providerId: params.providerId,
+        }),
       });
       // Invalidate general model list if needed
       queryClient.invalidateQueries({

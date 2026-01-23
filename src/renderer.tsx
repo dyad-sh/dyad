@@ -204,7 +204,7 @@ function App() {
     const ipc = IpcClient.getInstance();
     const unsubscribe = ipc.onAgentProblemsUpdate((payload) => {
       queryClient.setQueryData(
-        queryKeys.problems.byApp(payload.appId),
+        queryKeys.problems.byApp({ appId: payload.appId }),
         payload.problems,
       );
     });

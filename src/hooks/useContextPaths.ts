@@ -14,7 +14,7 @@ export function useContextPaths() {
     isLoading,
     error,
   } = useQuery<ContextPathResults, Error>({
-    queryKey: queryKeys.contextPaths.byApp(appId),
+    queryKey: queryKeys.contextPaths.byApp({ appId }),
     queryFn: async () => {
       if (!appId)
         return {
@@ -55,7 +55,7 @@ export function useContextPaths() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: queryKeys.contextPaths.byApp(appId),
+        queryKey: queryKeys.contextPaths.byApp({ appId }),
       });
     },
   });

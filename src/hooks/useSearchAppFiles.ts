@@ -8,7 +8,7 @@ export function useSearchAppFiles(appId: number | null, query: string) {
   const enabled = Boolean(appId != null && trimmedQuery.length > 0);
 
   const { data, isFetching, isLoading, error } = useQuery({
-    queryKey: queryKeys.files.search(appId, trimmedQuery),
+    queryKey: queryKeys.files.search({ appId, query: trimmedQuery }),
     enabled,
     queryFn: async (): Promise<AppFileSearchResult[]> => {
       return IpcClient.getInstance().searchAppFiles(appId!, trimmedQuery);

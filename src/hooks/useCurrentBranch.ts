@@ -9,7 +9,7 @@ export function useCurrentBranch(appId: number | null) {
     isLoading,
     refetch: refetchBranchInfo,
   } = useQuery<BranchResult, Error>({
-    queryKey: queryKeys.branches.current(appId),
+    queryKey: queryKeys.branches.current({ appId }),
     queryFn: async (): Promise<BranchResult> => {
       if (appId === null) {
         // This case should ideally be handled by the `enabled` option

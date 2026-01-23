@@ -15,7 +15,7 @@ export function AppUpgrades({ appId }: { appId: number | null }) {
     isLoading,
     error: queryError,
   } = useQuery({
-    queryKey: queryKeys.appUpgrades.byApp(appId),
+    queryKey: queryKeys.appUpgrades.byApp({ appId }),
     queryFn: () => {
       if (!appId) {
         return Promise.resolve([]);
@@ -42,17 +42,17 @@ export function AppUpgrades({ appId }: { appId: number | null }) {
     },
     onSuccess: (_, upgradeId) => {
       queryClient.invalidateQueries({
-        queryKey: queryKeys.appUpgrades.byApp(appId),
+        queryKey: queryKeys.appUpgrades.byApp({ appId }),
       });
       if (upgradeId === "capacitor") {
         // Capacitor upgrade is done, so we need to invalidate the Capacitor
         // query to show the new status.
         queryClient.invalidateQueries({
-          queryKey: queryKeys.appUpgrades.isCapacitor(appId),
+          queryKey: queryKeys.appUpgrades.isCapacitor({ appId }),
         });
       }
       queryClient.invalidateQueries({
-        queryKey: queryKeys.versions.list(appId),
+        queryKey: queryKeys.versions.list({ appId }),
       });
     },
   });

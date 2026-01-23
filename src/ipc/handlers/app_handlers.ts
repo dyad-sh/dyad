@@ -54,7 +54,6 @@ import {
   gitInit,
   gitListBranches,
   gitRenameBranch,
-  gitAddSafeDirectory,
 } from "../utils/git_utils";
 import { safeSend } from "../utils/safe_sender";
 import { normalizePath } from "../../../shared/normalizePath";
@@ -1601,12 +1600,6 @@ export function registerAppHandlers() {
             .where(eq(apps.id, appId))
             .returning();
 
-          // Add new path to git safe.directory (required for Windows)
-          const settings = readSettings();
-          if (settings.enableNativeGit && newAppPath !== oldAppPath) {
-            gitAddSafeDirectory(newAppPath);
-          }
-
           return;
         } catch (error: any) {
           // Attempt to rollback the file move
@@ -2032,12 +2025,6 @@ export function registerAppHandlers() {
               `Error deleting old app directory ${currentResolvedPath}:`,
               error,
             );
-          }
-
-          // Add new path to git safe.directory (required for Windows)
-          const settings = readSettings();
-          if (settings.enableNativeGit) {
-            gitAddSafeDirectory(nextResolvedPath);
           }
 
           return {

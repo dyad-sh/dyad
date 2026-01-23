@@ -20,16 +20,26 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
 
 2. **Run lint checks:**
 
-   Run the `/dyad:lint` skill to ensure the code passes all pre-commit checks. Fix any issues that arise.
+   Run these commands to ensure the code passes all pre-commit checks:
+
+   ```
+   npm run prettier && npm run lint:fix && npm run ts
+   ```
+
+   If there are errors that could not be auto-fixed, read the affected files and fix them manually, then re-run the checks until they pass.
+
+   **IMPORTANT:** Do NOT stop after lint passes. You MUST continue to step 3.
 
 3. **If lint made changes, amend the last commit:**
 
-   If the lint skill made any changes, stage and amend them into the last commit:
+   If the lint checks made any changes, stage and amend them into the last commit:
 
    ```
    git add -A
    git commit --amend --no-edit
    ```
+
+   **IMPORTANT:** Do NOT stop here. You MUST continue to step 4 to push.
 
 4. **Push the branch (REQUIRED):**
 

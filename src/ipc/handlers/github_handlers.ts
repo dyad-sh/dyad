@@ -1255,7 +1255,7 @@ async function handleCloneRepoFromUrl(
 // --- Registration ---
 export function registerGithubHandlers() {
   createTypedHandler(githubContracts.startFlow, async (event, params) => {
-    handleStartGithubFlow(event, params);
+    return handleStartGithubFlow(event, params);
   });
 
   createTypedHandler(githubContracts.listRepos, async () => {

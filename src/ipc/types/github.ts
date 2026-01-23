@@ -5,6 +5,7 @@ import {
   createClient,
   createEventClient,
 } from "../contracts/core";
+import { AppSchema } from "./app";
 
 // =============================================================================
 // GitHub Schemas
@@ -95,7 +96,7 @@ export const CloneRepoParamsSchema = z.object({
 
 export const CloneRepoResultSchema = z.union([
   z.object({
-    app: z.any(), // App schema
+    app: AppSchema,
     hasAiRules: z.boolean(),
   }),
   z.object({

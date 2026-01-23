@@ -18,15 +18,11 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const pr = context.payload.pull_request;
-            const branch = pr.head.ref;
+            // Use head SHA instead of branch name - works for both fork and non-fork PRs
+            // since workflow runs are registered to the base repo regardless
+            const headSha = pr.head.sha;
 
-            // Skip fork PRs - their CI runs in the fork's context, not the base repo
-            if (pr.head.repo.full_name !== pr.base.repo.full_name) {
-              console.log(`Skipping fork PR from ${pr.head.repo.full_name}`);
-              return;
-            }
-
-            console.log(`Looking for CI workflows to cancel for branch: ${branch}`);
+            console.log(`Looking for CI workflows to cancel for SHA: ${headSha}`);
 
             // Use workflow file path instead of display name for reliable matching
             const workflowFile = 'ci.yml';
@@ -41,7 +37,7 @@ jobs:
                   owner,
                   repo,
                   workflow_id: workflowFile,
-                  branch,
+                  head_sha: headSha,
                   status,
                 });
                 allRuns.push(...data.workflow_runs);
@@ -52,7 +48,7 @@ jobs:
             }
 
             if (allRuns.length === 0) {
-              console.log('No cancelable CI workflows found for this branch');
+              console.log('No cancelable CI workflows found for this SHA');
               return;
             }
 
